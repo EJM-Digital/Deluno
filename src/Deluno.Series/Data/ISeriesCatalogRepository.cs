@@ -431,12 +431,6 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string libraryId,
         CancellationToken cancellationToken);
 
-    Task<bool> UpdateSeriesReplacementPolicyAsync(
-        string seriesId,
-        string libraryId,
-        bool preventLowerQualityReplacements,
-        CancellationToken cancellationToken);
-
     /// <summary>
     /// Episodes in this library that have a file which is below the quality
     /// cutoff, oldest first, capped at <paramref name="perSeriesLimit"/> per

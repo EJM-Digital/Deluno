@@ -3278,54 +3278,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
-        series.MapPut("/{id}/replacement-protection", async (
-            string id,
-            [FromBody] UpdateSeriesReplacementProtectionRequest request,
-            HttpContext httpContext,
-            ISeriesCatalogRepository repository,
-            IMediaStateRepository mediaStateRepository,
-            IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
-            {
-                return Results.NotFound();
-            }
-
-            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
-                    MediaKind.Series,
-                    [id],
-                    cancellationToken))
-                .OrderByDescending(item => item.UpdatedUtc)
-                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (wantedItem is null)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
-                });
-            }
-
-            var updated = await repository.UpdateSeriesReplacementPolicyAsync(
-                id,
-                wantedItem.LibraryId,
-                request.PreventLowerQualityReplacements,
-                cancellationToken);
-
-            if (!updated) return Results.NotFound();
-            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
-            return Results.Ok(new { updated = true });
-        });
-
-
         // The series screen/drawer's own control for the "monitor new
         // episodes" preset (#801) - changeable at any time, not only at add
         // time, and applied the next time this series' episode catalogue is
@@ -4192,9 +4144,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             : $"{queued}. That is everything that needs refreshing.";
     }
 
-
-    private sealed record UpdateSeriesReplacementProtectionRequest(
-        bool PreventLowerQualityReplacements);
 
     private sealed record UpdateSeriesMonitorNewEpisodesRequest(bool MonitorNewEpisodes);
 

@@ -556,7 +556,6 @@ PUT /api/series/{id}/libraries/{libraryId}
 PUT /api/series/{id}/metadata/override
 PUT /api/series/{id}/monitor-new-episodes
 PUT /api/series/{id}/numbering
-PUT /api/series/{id}/replacement-protection
 PUT /api/series/{id}/subtitles/override
 PUT /api/settings/
 PUT /api/settings/automation

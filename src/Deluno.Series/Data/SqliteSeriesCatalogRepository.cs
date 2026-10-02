@@ -6140,33 +6140,6 @@ public sealed class SqliteSeriesCatalogRepository(
         return ReadWantedSeries(reader);
     }
 
-    public async Task<bool> UpdateSeriesReplacementPolicyAsync(
-        string seriesId,
-        string libraryId,
-        bool preventLowerQualityReplacements,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE series_wanted_state
-            SET prevent_lower_quality_replacements = @value,
-                updated_utc = @updatedUtc
-            WHERE series_id = @seriesId AND library_id = @libraryId;
-            """;
-        AddParameter(command, "@seriesId", seriesId);
-        AddParameter(command, "@libraryId", libraryId);
-        AddParameter(command, "@value", preventLowerQualityReplacements ? 1 : 0);
-        AddParameter(command, "@updatedUtc", DateTimeOffset.UtcNow.ToString("O"));
-
-        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
-        return affected > 0;
-    }
-
     public async Task<IReadOnlyList<string>> ListEpisodesNeedingRecoveryAsync(
         string libraryId,
         int perSeriesLimit,
