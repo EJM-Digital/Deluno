@@ -46,7 +46,6 @@ import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import {
-  LIST_TRACK,
   ListCard,
   ListCell,
   ListEmpty,
@@ -60,7 +59,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { eventLabel } from "../lib/activity-format";
-import { ActivityFilterBar, useActivityFilterChoices, useActivityHistory } from "../components/app/activity-history";
+import { ActivityFilterTokens, ActivityFilters, useActivityFilterChoices, useActivityHistory } from "../components/app/activity-history";
 import {
   activityLinkForFile,
   activityLinkForTitle,
@@ -323,6 +322,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const historyLoading = historyOn && history.isPending;
   const historyBroken = historyOn && history.isError;
   const failedTitleJobs = counts.failed ?? 0;
+  // The card says what it holds in words, so it never repeats the page's title: the chosen status and how many.
+  const chosenCount = counts[status];
+  const cardTitle = status === "all" ? "Everything" : `${STATUS_CHIPS.find((chip) => chip.value === status)?.label ?? ""}${chosenCount !== undefined ? ` · ${chosenCount}` : ""}`;
 
   async function handleRetryFailedJobs() {
     setBusy(true);
@@ -386,6 +388,19 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 
   return (
     <div className="grid gap-[var(--page-gap)]">
+      <ActivityFilters
+        filters={filters}
+        setFilters={setFilters}
+        chips={
+          <FilterChips<ActivityStatus>
+            label="Show"
+            value={status}
+            onValueChange={setStatus}
+            options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
+          />
+        }
+      />
+
       <PageToolbar
         actions={
           <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
@@ -396,24 +411,16 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       />
 
       <ListCard
-        title="Activity"
+        title={<span>{cardTitle}</span>}
         actions={
-          <div className="flex min-w-0 items-center gap-2">
-            <FilterChips<ActivityStatus>
-              label="Show"
-              value={status}
-              onValueChange={setStatus}
-              options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
-            />
-            {status === "failed" ? (
-              <Button type="button" size="sm" className="shrink-0" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedTitleJobs === 0}>
-                Retry failed jobs
-              </Button>
-            ) : null}
-          </div>
+          status === "failed" ? (
+            <Button type="button" size="sm" className="shrink-0" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedTitleJobs === 0}>
+              Retry failed jobs
+            </Button>
+          ) : null
         }
       >
-        <ActivityFilterBar filters={filters} setFilters={setFilters} clearFilters={clearFilters} />
+        <ActivityFilterTokens filters={filters} setFilters={setFilters} clearFilters={clearFilters} />
 
         {rows.length === 0 && historyLoading ? (
           <ListEmpty title="Reading the history" description="This takes a moment." />
@@ -445,20 +452,22 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           <>
             <ListTable
               columns={[
-                { label: "Title and step", width: "minmax(0,1.5fr)" },
-                { label: "Detail", width: "minmax(0,1.8fr)" },
-                { label: "When", width: "minmax(0,0.9fr)", mobile: true },
-                { label: "Status", width: LIST_TRACK.status, mobile: true }
+                { label: "Title", width: "minmax(0,1.2fr)" },
+                { label: "What happened", width: "minmax(0,2fr)", mobile: true },
+                { label: "When", width: "120px" }
               ]}
             >
               {rows.map((row) => (
                 <ListRow key={row.key} onClick={row.open} selected={row.selected}>
                   <ListNameCell name={row.title} sub={row.step} />
-                  <ListCell primary={row.detail ?? "—"} secondary={row.detailSub} />
-                  <ListCell primary={formatPreferenceDateTime(row.whenUtc, preferences)} mobile />
-                  <ListCell mobile>
-                    <Chip tone={row.pill.tone}>{row.pill.label}</Chip>
+                  <ListCell mobile className="max-md:max-w-[9.5rem]">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Chip tone={row.pill.tone}>{row.pill.label}</Chip>
+                      <span className="min-w-0 truncate text-foreground">{row.detail ?? "—"}</span>
+                    </div>
+                    {row.detailSub ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{row.detailSub}</span> : null}
                   </ListCell>
+                  <ListCell primary={formatPreferenceDateTime(row.whenUtc, preferences)} />
                 </ListRow>
               ))}
             </ListTable>

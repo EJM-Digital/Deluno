@@ -146,9 +146,9 @@ test.describe("authenticated app smoke", () => {
   // #1100: a filtered Activity view is a link (Live's Turned down card opens this one), read against the real host.
   test("opens the Activity history from a filtered link and keeps the filters in the address", async ({ page }) => {
     await page.goto("/activity?type=turned-down&since=today&reason=language");
-    await expect(page.getByRole("combobox", { name: "Filter by event type" })).toContainText("Turned down", { timeout: 15_000 });
-    await expect(page.getByRole("combobox", { name: "Filter by reason" })).toContainText("Not in a language you want");
-    await expect(page.getByRole("combobox", { name: "Filter by date" })).toContainText("Today");
+    await expect(page.getByRole("combobox", { name: "Filter by step" })).toContainText("Turned down", { timeout: 15_000 });
+    await expect(page.getByText("Reason: Not in a language you want")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Filter by time" })).toContainText("Today");
     await expect(page.getByText("Nothing matches these filters")).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).first().click();
     await expect(page).not.toHaveURL(/type=turned-down/);

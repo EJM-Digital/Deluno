@@ -1621,3 +1621,10 @@ html .text-\[64px\] {
   0%, 22%   { background-position: -160% 0; }
   82%, 100% { background-position: 260% 0; }
 }
+
+/* A page's filter controls in the header's slot (Activity's search, chips and dropdowns, 38px like Weir's History) are
+   taller than the title's line. They centre on it and lend it a few pixels, so the header stays one height. */
+#topbar-page-tabs:has([data-header-controls]) {
+  align-self: center;
+  margin-block: -4px;
+}

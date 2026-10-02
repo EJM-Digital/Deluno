@@ -9,7 +9,7 @@
  *
  * Contracts: GET /api/activity (paged, filtered), GET /api/activity/filters (the words each filter offers).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { fetchJson, fetchPage, type ActivityEventItem, type ActivityFilterChoices } from "../../lib/api";
@@ -24,15 +24,19 @@ import {
   type ActivityFilters
 } from "../../lib/activity-history";
 import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-format";
+import { X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { MenuSelect } from "../ui/menu-select";
-import { FILTER_MENU_TRIGGER, FILTER_ROW_CLASS } from "../ui/filter-chips";
+import { HeaderTabsPortal, useHeaderSlot } from "../ui/header-tabs";
+import { cn } from "../../lib/utils";
 
 const PAGE_SIZE = 50;
 
 
-const FIELD_CLASS = "h-[var(--control-height-sm)] w-44 rounded-[8px] px-2.5 text-[length:var(--type-caption)]";
+/** The height of the chips box in the header (Weir: `.mm-header__slot .mm-segmented`), shared by the search and the dropdowns. */
+const CONTROL_HEIGHT = "h-[2.375rem]";
+const MENU_TRIGGER = `${CONTROL_HEIGHT} rounded-[12px] border border-hairline bg-card px-3 text-[length:var(--type-control)] font-medium text-muted-foreground hover:text-foreground`;
 
 function useDebouncedWrite(value: string, urlValue: string, write: (next: string) => void) {
   useEffect(() => {
@@ -94,8 +98,126 @@ export function useActivityHistory({ enabled, onOpenEvent }: { enabled: boolean;
   return { filters, setFilters, clearFilters, history, events, folded, filtered: hasActivityFilters(filters) };
 }
 
-/** The history filters, as a second line of the Activity card. */
-export function ActivityFilterBar({
+/**
+ * What narrows the list, as Weir's History draws it (the owner, 2 Oct 2026): a search, the status chips and, at the right,
+ * two dropdowns, on the header's title line after the title. Where the title, these and the page's buttons do not
+ * fit that line, measured, they take a row of their own directly under the header, in the same order; below `lg`
+ * they are always in that row. The chips are passed in because the page owns the status and its counts.
+ */
+export function ActivityFilters({
+  filters,
+  setFilters,
+  chips
+}: {
+  filters: ActivityFilters;
+  setFilters: (patch: Partial<ActivityFilters>) => void;
+  chips: React.ReactNode;
+}) {
+  const choices = useActivityFilterChoices();
+  const slot = useHeaderSlot();
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const [fits, setFits] = useState(true);
+
+  // Typing waits a moment before it reaches the address, so every key is not a new question.
+  const [titleDraft, setTitleDraft] = useState(filters.title);
+  useEffect(() => setTitleDraft(filters.title), [filters.title]);
+  useDebouncedWrite(titleDraft, filters.title, (next) => setFilters({ title: next }));
+
+  // The title line holds them only while the title, their least width and the page's buttons fit `#topbar-main`.
+  const measure = () => {
+    if (!slot) return;
+    const controls = controlsRef.current;
+    const main = document.getElementById("topbar-main");
+    const title = document.getElementById("topbar-title");
+    if (!controls || !main || !title) return;
+    const search = controls.querySelector<HTMLElement>("[data-activity-search]");
+    const chipsBox = controls.querySelector<HTMLElement>("[data-activity-chips] > *");
+    const scope = controls.querySelector<HTMLElement>("[data-activity-scope]");
+    if (!search || !chipsBox || !scope) return;
+    const minimum = (parseFloat(getComputedStyle(search).minWidth) || 0) + chipsBox.scrollWidth + scope.offsetWidth + 16;
+    const actions = document.getElementById("topbar-page-actions");
+    const buttons = actions && actions.childElementCount ? actions.getBoundingClientRect().width : 0;
+    const mainGap = parseFloat(getComputedStyle(main).columnGap) || 0;
+    const titleGap = parseFloat(getComputedStyle(title.parentElement ?? title).columnGap) || 0;
+    const room = main.getBoundingClientRect().width - (buttons > 0 ? buttons + mainGap : 0);
+    setFits(title.getBoundingClientRect().width + titleGap + minimum <= room);
+  };
+  useLayoutEffect(measure);
+  useLayoutEffect(() => {
+    if (!slot || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    for (const id of ["topbar-main", "topbar-title", "topbar-page-actions"]) {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    }
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    void fonts?.ready.then(measure);
+    return () => observer.disconnect();
+    // measure reads only the document and the controls' own box.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]);
+
+  const inHeader = slot !== null && fits;
+  const customSince = filters.since !== "" && !isQuickSince(filters.since);
+  const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? [])];
+  const sinceOptions = customSince
+    ? [...ACTIVITY_SINCE_CHOICES, { value: filters.since, label: `Since ${filters.since}` }]
+    : ACTIVITY_SINCE_CHOICES.map((choice) => ({ ...choice }));
+
+  const controls = (
+    <div
+      ref={controlsRef}
+      role="group"
+      aria-label="Filter the activity"
+      data-testid="activity-filters"
+      data-placement={inHeader ? "header" : "row"}
+      data-header-controls={inHeader ? "" : undefined}
+      className={cn("flex min-w-0 items-center gap-2", inHeader ? "flex-1" : "w-full pt-3 max-lg:flex-wrap")}
+    >
+      <Input
+        data-activity-search
+        type="search"
+        aria-label="Find a title"
+        placeholder="Find a title"
+        value={titleDraft}
+        onChange={(event) => setTitleDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") event.currentTarget.blur();
+        }}
+        className={cn(CONTROL_HEIGHT, "w-auto min-w-[6.5rem] flex-[0_100_260px] rounded-[12px] max-lg:max-w-[22rem] max-lg:flex-[1_1_12rem]")}
+      />
+      <div data-activity-chips className="flex min-w-0 shrink items-center max-lg:order-3 max-lg:basis-full">
+        {chips}
+      </div>
+      <div data-activity-scope className="ml-auto flex shrink-0 items-center gap-2">
+        <MenuSelect
+          label="Filter by step"
+          value={filters.type}
+          onChange={(value) => setFilters({ type: value })}
+          options={typeOptions}
+          className="w-[9rem]"
+          triggerClassName={MENU_TRIGGER}
+        />
+        <MenuSelect
+          label="Filter by time"
+          value={filters.since}
+          onChange={(value) => setFilters({ since: value, until: "" })}
+          options={sinceOptions}
+          className="w-[9rem]"
+          triggerClassName={MENU_TRIGGER}
+        />
+      </div>
+    </div>
+  );
+
+  return inHeader ? <HeaderTabsPortal slot={slot}>{controls}</HeaderTabsPortal> : controls;
+}
+
+/**
+ * The filters that no longer have a control but that a link can still set (a file, a source, an outcome, a reason,
+ * one title, an end day), as removable tokens at the start of the list card, with one link to clear everything.
+ */
+export function ActivityFilterTokens({
   filters,
   setFilters,
   clearFilters
@@ -105,87 +227,34 @@ export function ActivityFilterBar({
   clearFilters: () => void;
 }) {
   const choices = useActivityFilterChoices();
-
-  // Typing waits a moment before it reaches the address, so every key is not a new question.
-  const [titleDraft, setTitleDraft] = useState(filters.title);
-  const [fileDraft, setFileDraft] = useState(filters.file);
-  useEffect(() => setTitleDraft(filters.title), [filters.title]);
-  useEffect(() => setFileDraft(filters.file), [filters.file]);
-  useDebouncedWrite(titleDraft, filters.title, (next) => setFilters({ title: next }));
-  useDebouncedWrite(fileDraft, filters.file, (next) => setFilters({ file: next }));
-
-  const filtered = hasActivityFilters(filters);
-  const customDays = filters.since !== "" && !isQuickSince(filters.since);
-  const showCustomDays = customDays || filters.until !== "";
-  const showReason = filters.type === "turned-down" || filters.reason !== "";
-
-  const menu = (key: keyof ActivityFilters, label: string, any: string, options: { value: string; label: string }[] | undefined) => (
-    <MenuSelect
-      label={label}
-      value={filters[key]}
-      onChange={(value) => setFilters({ [key]: value })}
-      options={[{ value: "", label: any }, ...(options ?? [])]}
-      triggerClassName={FILTER_MENU_TRIGGER}
-    />
-  );
-
+  const word = (list: { value: string; label: string }[] | undefined, value: string) => list?.find((choice) => choice.value === value)?.label ?? value;
+  const tokens: { key: string; text: string; clear: Partial<ActivityFilters> }[] = [];
+  if (filters.file) tokens.push({ key: "file", text: `File: ${filters.file}`, clear: { file: "" } });
+  if (filters.source) tokens.push({ key: "source", text: `From: ${word(choices.data?.sources, filters.source)}`, clear: { source: "" } });
+  if (filters.outcome) tokens.push({ key: "outcome", text: `Outcome: ${word(choices.data?.outcomes, filters.outcome)}`, clear: { outcome: "" } });
+  if (filters.reason) tokens.push({ key: "reason", text: `Reason: ${word(choices.data?.reasons, filters.reason)}`, clear: { reason: "" } });
+  if (filters.item) tokens.push({ key: "item", text: "Only this title", clear: { item: "", itemType: "" } });
+  else if (filters.itemType) tokens.push({ key: "itemType", text: `Kind of title: ${filters.itemType}`, clear: { itemType: "" } });
+  if (filters.until) tokens.push({ key: "until", text: `Until: ${filters.until}`, clear: { until: "" } });
+  if (tokens.length === 0) return null;
   return (
-    <div className={FILTER_ROW_CLASS} role="group" aria-label="Filter the activity">
-      <Input
-        type="search"
-        aria-label="Filter by title"
-        placeholder="Title"
-        value={titleDraft}
-        onChange={(event) => setTitleDraft(event.target.value)}
-        className={FIELD_CLASS}
-      />
-      <Input
-        type="search"
-        aria-label="Filter by file"
-        placeholder="File or folder"
-        value={fileDraft}
-        onChange={(event) => setFileDraft(event.target.value)}
-        className={FIELD_CLASS}
-      />
-      {menu("type", "Filter by event type", "All kinds of event", choices.data?.types)}
-      {menu("source", "Filter by source", "Any source", choices.data?.sources)}
-      {menu("outcome", "Filter by outcome", "Any outcome", choices.data?.outcomes)}
-      {showReason ? menu("reason", "Filter by reason", "Any reason", choices.data?.reasons) : null}
-      <MenuSelect
-        label="Filter by date"
-        value={customDays ? "custom" : filters.since}
-        onChange={(value) => (value === "custom" ? setFilters({ since: filters.until || filters.since || "today" }) : setFilters({ since: value, until: "" }))}
-        options={[...ACTIVITY_SINCE_CHOICES, { value: "custom", label: "Pick days" }]}
-        triggerClassName={FILTER_MENU_TRIGGER}
-      />
-      {showCustomDays ? (
-        <>
-          <Input
-            type="date"
-            aria-label="From day"
-            value={customDays ? filters.since : ""}
-            onChange={(event) => setFilters({ since: event.target.value })}
-            className={FIELD_CLASS}
-          />
-          <Input
-            type="date"
-            aria-label="Until day"
-            value={filters.until}
-            onChange={(event) => setFilters({ until: event.target.value })}
-            className={FIELD_CLASS}
-          />
-        </>
-      ) : null}
-      {filters.item ? (
-        <Button type="button" variant="outline" size="sm" onClick={() => setFilters({ item: "", itemType: "" })}>
-          Only this title: stop
-        </Button>
-      ) : null}
-      {filtered ? (
-        <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
-          Clear filters
-        </Button>
-      ) : null}
+    <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2" role="group" aria-label="Filters set by a link">
+      {tokens.map((token) => (
+        <span key={token.key} className="inline-flex h-[var(--control-height-sm)] max-w-full items-center gap-1 rounded-full border border-hairline bg-surface-1 pl-3 pr-1 text-[length:var(--type-caption)] font-medium text-foreground">
+          <span className="truncate">{token.text}</span>
+          <button
+            type="button"
+            aria-label={`Remove filter ${token.text}`}
+            onClick={() => setFilters(token.clear)}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X aria-hidden className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+        Clear filters
+      </Button>
     </div>
   );
 }
