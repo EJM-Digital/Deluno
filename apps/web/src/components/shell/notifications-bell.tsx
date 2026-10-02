@@ -36,7 +36,7 @@ import { AlsoWorthALook, bellRowElement } from "../../routes/dashboard/needs-you
 import { bellRows, type BellRow } from "../../lib/bell-rows";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
-import { activityLinkForEvent, activityStatusLink } from "../../lib/activity-history";
+import { activityLinkForEvent, activityLinkForStatus } from "../../lib/activity-history";
 import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
 import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
@@ -325,7 +325,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
           <button
             type="button"
             onClick={() => {
-              navigate(activityStatusLink());
+              navigate(activityLinkForStatus());
               close(false);
             }}
             className="block w-full border-t border-hairline px-4 py-3 text-center text-[length:var(--type-body-sm)] font-semibold text-primary transition hover:bg-muted/45"

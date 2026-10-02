@@ -45,7 +45,7 @@ import { defineSources } from "../../lib/route-cache";
 import { sharedSources } from "../../lib/shared-sources";
 import { plural } from "./format";
 import { SYSTEM_BACKGROUND_JOBS_LINK, splitStoppedJobs } from "../../lib/background-jobs";
-import { activityStatusLink } from "../../lib/activity-history";
+import { activityLinkForStatus } from "../../lib/activity-history";
 
 /** Two tabs (#1087): Live is what is moving, System is the plumbing. */
 export type DashboardTab = "live" | "system";
@@ -435,7 +435,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     tone: "bad",
     title: `${plural(titleJobsGaveUp, "job")} about a title gave up`,
     text: "They failed on every attempt. Open them in Activity to retry or dismiss.",
-    to: activityStatusLink("failed"),
+    to: activityLinkForStatus("failed"),
     action: "Open Activity",
     count: titleJobsGaveUp > 0 ? 1 : 0
   });

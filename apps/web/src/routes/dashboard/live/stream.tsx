@@ -7,7 +7,7 @@
 import { useMemo, type ReactElement, type RefObject } from "react";
 import { Link } from "react-router-dom";
 import { eventLabel } from "../../../lib/activity-format";
-import { activityStatusLink } from "../../../lib/activity-history";
+import { activityLinkForStatus } from "../../../lib/activity-history";
 import { motionAllowed } from "../../../lib/page-motion";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
@@ -25,7 +25,7 @@ export { sentenceOf } from "./group";
 /** The most entries the stream lays out; it shows the whole ones that fit and says how many more (the owner, 2 Oct 2026, as Weir). */
 const MAX_ROWS = 20;
 /** This feed is the history of everything, so a row about no title in particular, and "All activity", open All. */
-const ACTIVITY_HISTORY = activityStatusLink();
+const ACTIVITY_HISTORY = activityLinkForStatus();
 
 function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEntityId">, titles: TitleLookup): string {
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);

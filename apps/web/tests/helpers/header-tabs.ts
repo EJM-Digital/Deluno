@@ -47,14 +47,17 @@ export async function expectSectionChosen(page: Page, name: string): Promise<voi
 /** Chooses a local-state section wherever it is drawn: on the title line, in the row below `lg`, or under "More". */
 export async function openSection(page: Page, name: string, exact = false): Promise<void> {
   const choice = sectionSwitch(page, name, exact);
+  const more = page.getByRole("button", { name: "More", exact: true });
+  // Wait for the page to draw its sections before deciding where this one is.
+  await choice.or(more).first().waitFor();
   if (await choice.count()) {
     try {
-      await choice.first().click({ timeout: 2_000 });
+      await choice.first().click({ timeout: 5_000 });
       return;
     } catch {
-      // Folded into More, or folded while it was being clicked.
+      // Folded into More while it was being clicked.
     }
   }
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await more.click();
   await page.getByRole("menuitem", { name, exact }).click();
 }
