@@ -388,6 +388,26 @@ describe("Import issues show the specific rejection reason (#798)", () => {
     expect(screen.getByText("No video stream was detected in this file.")).toBeInTheDocument();
   });
 
+  it("never prints a code on a row: every failure kind is said in words", async () => {
+    const cases = loaderData.movieRecovery.recentCases;
+    const kinds = ["downloadFailed", "processor-held", "vanished-downloading", "someNewKind", "another-new-kind"];
+    kinds.forEach((kind, index) => cases.push({ ...cases[0], id: `kind-${index}`, title: `Film ${index}`, failureKind: kind }));
+    try {
+      renderActivity("/activity?status=needs-decision");
+      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(screen.getByText("Held by the processor")).toBeInTheDocument();
+      const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
+      for (const kind of kinds) expect(rows.join(" ")).not.toContain(kind);
+      // No camelCase or kebab-case word is printed in the Title column's second line.
+      for (const row of screen.getAllByRole("row")) {
+        const step = row.querySelector("[role=cell] span:nth-of-type(2)")?.textContent ?? "";
+        expect(step).not.toMatch(/[a-z][A-Z]|[a-z]-[a-z]/);
+      }
+    } finally {
+      cases.splice(1);
+    }
+  });
+
   it("opens the full reason, recommendation and evidence in a drawer", async () => {
     renderActivity("/activity?status=needs-decision");
     await userEvent.click(screen.getByText("Arrival"));

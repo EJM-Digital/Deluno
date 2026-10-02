@@ -134,3 +134,33 @@ export function decisionWords(decision: BlockDecision): string {
       return "asks you first";
   }
 }
+
+/** What an import-recovery case's `failureKind` says on a row, in plain words (the Activity list's second line). */
+const FAILURE_KIND_WORDS: Record<string, string> = {
+  quality: "Quality rejected",
+  unmatched: "Needs matching",
+  corrupt: "Corrupt",
+  downloadFailed: "Download failed",
+  importFailed: "Import failed",
+  "vanished-downloading": "Download vanished from the client",
+  processedFileIsLess: "Processor returned a smaller file",
+  "processor-output-missing": "Missing from processor output",
+  "processor-unmatched-output": "Unmatched in processor output",
+  "processor-lost": "Processor lost the file",
+  "processor-timeout": "Processor timed out",
+  "processor-stalled": "Processor stalled",
+  "processor-failed": "Processor failed",
+  "processor-held": "Held by the processor",
+  "processor-refuses-every-copy": "Processor refuses every copy"
+};
+
+/**
+ * A failure kind in words. A kind with no entry is still never printed as a code: camelCase and kebab-case are split
+ * into lower-case words and the first is capitalised.
+ */
+export function failureKindWords(kind: string): string {
+  const known = FAILURE_KIND_WORDS[kind] ?? REASON_WORDS[kind];
+  if (known) return known;
+  const spaced = kind.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").trim().toLowerCase();
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "Needs review";
+}

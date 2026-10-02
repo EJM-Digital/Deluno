@@ -69,7 +69,7 @@ import {
   resolveUntil,
   type ActivityStatus
 } from "../lib/activity-history";
-import { reasonWords } from "../lib/failure-reasons";
+import { failureKindWords } from "../lib/failure-reasons";
 import {
   fileNameFromPath,
   parseDeletedLeftoverPaths,
@@ -268,7 +268,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     for (const item of importCases) {
       const id = `${item.mediaLabel}-${item.id}`;
       rows.push({
-        key: `import-${id}`, kind: "import", status: "needs-decision", whenUtc: item.detectedUtc, title: item.title, step: reasonWords(item.failureKind),
+        key: `import-${id}`, kind: "import", status: "needs-decision", whenUtc: item.detectedUtc, title: item.title, step: failureKindWords(item.failureKind),
         detail: item.summary, pill: OPEN_PILL["needs-decision"],
         open: () => setOpenImportCaseId(id), selected: openImportCaseId === id
       });
@@ -604,7 +604,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         onOpenChange={(next) => {
           if (!next) setOpenImportCaseId(null);
         }}
-        title={openImportCase ? `${reasonWords(openImportCase.failureKind)} · ${openImportCase.title}` : "Import issue"}
+        title={openImportCase ? `${failureKindWords(openImportCase.failureKind)} · ${openImportCase.title}` : "Import issue"}
         description={openImportCase ? `${openImportCase.mediaLabel} · found ${formatPreferenceDateTime(openImportCase.detectedUtc, preferences)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenImportCaseId(null)} />}
       >
