@@ -330,8 +330,7 @@ public sealed record DashboardSystemSection(
     DateTimeOffset? NextBackupUtc,
     bool BackupsEnabled,
     bool InternetOutage,
-    DateTimeOffset? OutageSinceUtc,
-    int NotificationsUnread);
+    DateTimeOffset? OutageSinceUtc);
 
 public sealed record DashboardMachine(
     DateTimeOffset CapturedUtc,

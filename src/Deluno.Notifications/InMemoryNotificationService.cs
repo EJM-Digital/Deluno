@@ -4,60 +4,8 @@ namespace Deluno.Notifications;
 
 public class InMemoryNotificationService : INotificationService
 {
-    private readonly Dictionary<string, NotificationItem> _notifications = new();
     private readonly Dictionary<string, NotificationPreferences> _preferences = new();
     private readonly object _lock = new();
-
-    public Task<NotificationItem> CreateNotificationAsync(
-        string type,
-        string title,
-        string message,
-        string severity,
-        Dictionary<string, object>? metadata = null,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            var notification = new NotificationItem
-            {
-                Id = Guid.NewGuid().ToString(),
-                Type = type,
-                Title = title,
-                Message = message,
-                Severity = severity,
-                CreatedUtc = DateTime.UtcNow,
-                Metadata = metadata
-            };
-
-            _notifications[notification.Id] = notification;
-            return Task.FromResult(notification);
-        }
-    }
-
-    public Task<List<NotificationItem>> GetNotificationsAsync(
-        int limit = 50,
-        int offset = 0,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            var result = _notifications.Values
-                .OrderByDescending(n => n.CreatedUtc)
-                .Skip(offset)
-                .Take(limit)
-                .ToList();
-            return Task.FromResult(result);
-        }
-    }
-
-    public Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            var count = _notifications.Values.Count(n => !n.IsRead);
-            return Task.FromResult(count);
-        }
-    }
 
     public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
     {

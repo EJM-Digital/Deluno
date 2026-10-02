@@ -176,9 +176,7 @@ public sealed class SubtitleRejectionBlocklistTests
             new UpdateLibrarySubtitlesRequest(Languages: ["en"], Mode: "all"),
             CancellationToken.None);
 
-        var notificationService = new InMemoryNotificationService();
-        var publisher = new NotificationEventPublisher(notificationService, new NullRealtimeEventPublisher());
-        var handler = new LibrarySubtitleSearchJobHandler(libraries, subtitles, fetchService, jobStore, publisher, jobStore);
+        var handler = new LibrarySubtitleSearchJobHandler(libraries, subtitles, fetchService, jobStore, jobStore);
 
         return (handler, movies, subtitles, jobStore, library!, timeProvider);
     }

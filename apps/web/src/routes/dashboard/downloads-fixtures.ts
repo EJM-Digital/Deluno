@@ -24,7 +24,7 @@ export const emptySummary: DashboardSummary = {
   blocklist: { asOfUtc: NOW, count: 0 },
   health: { asOfUtc: NOW, problems: 0, unknown: 0, suggestions: 0, lastRunUtc: null, topProblems: [] },
   storage: { asOfUtc: NOW, readingUtc: null, volumes: [] },
-  system: { asOfUtc: NOW, version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 30, machine: null, jobs: { running: 0, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null, notificationsUnread: 0 },
+  system: { asOfUtc: NOW, version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 30, machine: null, jobs: { running: 0, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null },
   activity: { asOfUtc: NOW, windowHours: 24, searchesRun: 0, downloadsStarted: 0, importsCompleted: 0, cleanupRemovals: 0, retentionRemovals: 0, recent: [] }
 };
 
