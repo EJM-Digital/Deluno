@@ -59,6 +59,14 @@ describe("a card's detail lines are the mockup's, from real readings", () => {
     expect(detailLines(card({ stage: "importing" }), 4, NOW)).toEqual([]);
   });
 
+  it("a title with the processor or being imported ends on its release name, small and monospaced, like every other card", () => {
+    const working = detailLines(card({ stage: "processor", release: "Sintel.2010.1080p-NTb" }), 4, NOW);
+    expect(working.map(text)).toEqual(["Handed over", "Sintel.2010.1080p-NTb"]);
+    expect(working[1].mono).toBe(true);
+    const importing = detailLines(card({ stage: "importing", destination: "Movies", release: "Sintel.2010.1080p-NTb" }), 4, NOW);
+    expect(importing.map(text)).toEqual(["To Movies", "Sintel.2010.1080p-NTb"]);
+  });
+
   it("says why Deluno is fetching it as a last line, except for a request that already says so", () => {
     expect(detailLines(card({ stage: "grabbed", release: "x", startedBy: "upgrade" }), 4, NOW).map(text)).toEqual(["x", "Looking for an upgrade"]);
     expect(detailLines(card({ stage: "requested", startedBy: "seerr", routeNote: "Asked by Sam" }), 4, NOW).map(text)).toEqual(["Asked by Sam", "4 indexers to ask"]);

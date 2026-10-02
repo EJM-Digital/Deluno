@@ -18,12 +18,13 @@ import { formatSize } from "../downloads-kit";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import "./shelf.css";
-import { initialsOf } from "./card";
+import { PosterTile } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
 import { libraryPosters, posterSize, postersAcross } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
-import { LANES } from "./lanes";
+import { useOpenSlots } from "./shelf-slots";
+import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
 import type { TitleLookup } from "./titles";
 
 /** The header when nothing has come in today and the shelf shows the latest of the last seven days. */
@@ -89,7 +90,7 @@ function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; i
   const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgradeSaid, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   const page = group.library === "tv" ? "/tv" : "/movies";
   return (
-    <li className="lsh-poster" data-size={small ? "small" : "full"} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
+    <li className="lsh-poster" {...{ [TILE_KEY_ATTRIBUTE]: group.key }} data-size={small ? "small" : "full"} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
       <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library${small && upgradeSaid ? `, ${upgradeSaid}` : ""}, ${when}`}>
         <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className="lsh-art">
           {group.quality ? <span aria-hidden className={cn("lsh-mark", group.met === true && "met", group.met === false && "upg")}>{group.quality}</span> : null}
@@ -98,12 +99,7 @@ function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; i
             alt=""
             loading="lazy"
             className="h-full w-full object-cover"
-            fallback={
-              <span aria-hidden className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-surface-3">
-                <LANES.imported.icon className="h-4 w-4 text-success" />
-                <span className="text-[length:var(--type-caption)] font-semibold leading-none text-muted-foreground">{initialsOf(title)}</span>
-              </span>
-            }
+            fallback={<PosterTile title={title} kind={group.library} />}
           />
           {upgrades > 0 && !small ? <span className="lsh-up" title={group.previousQuality ? `Upgraded from ${group.previousQuality}` : "Upgraded"}>↑</span> : null}
         </span>
@@ -156,7 +152,11 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
   const small = posterSize(posters?.width) === "small";
-  const inRow = posters ? shown.slice(0, across) : shown;
+  // A title whose poster is on its way has a slot that is closed or opening: the poster it pushes out is kept until it is gone.
+  const slots = useOpenSlots(boxRef);
+  const inRow = posters ? shown.slice(0, across + slots) : shown;
+  useSlideNeighbours(boxRef, inRow.map((group) => group.key).join("|"), posters?.width ?? null);
+  useTileArrivals(boxRef, shown.map((group) => group.key).join("|"));
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
 
   return (
