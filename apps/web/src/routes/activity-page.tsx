@@ -519,6 +519,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         ) : (
           <>
             <ListTable
+              listId="activity"
               columns={[
                 { label: "Title", width: "minmax(0,1.2fr)" },
                 { label: "What happened", width: "minmax(0,2fr)", mobile: true },

@@ -75,6 +75,7 @@ export function DownloadsNow({ summary, telemetry, attention, action, live = NO_
           wrap={(shown) => (
             <ListTable
               chevron={false}
+              listId="dashboard-downloads"
               columns={[
                 { label: "Title", width: "minmax(0,1.35fr)", mobile: true },
                 { label: "Client", width: "minmax(0,1.5fr)" },

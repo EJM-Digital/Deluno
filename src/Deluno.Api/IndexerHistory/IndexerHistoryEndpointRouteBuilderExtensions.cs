@@ -21,6 +21,8 @@ public static class IndexerHistoryEndpointRouteBuilderExtensions
             string? pageToken,
             string? eventType,
             string? indexerName,
+            string? sortBy,
+            string? sortDirection,
             IIndexerHistoryService service,
             CancellationToken cancellationToken) =>
         {
@@ -28,6 +30,7 @@ public static class IndexerHistoryEndpointRouteBuilderExtensions
                 new PageRequest(pageSize ?? 50, pageToken),
                 string.IsNullOrWhiteSpace(eventType) ? null : eventType,
                 string.IsNullOrWhiteSpace(indexerName) ? null : indexerName,
+                IndexerHistorySort.Parse(sortBy, sortDirection),
                 cancellationToken);
             return Results.Ok(page);
         });

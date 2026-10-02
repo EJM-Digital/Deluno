@@ -157,6 +157,42 @@ public sealed class IndexerHistoryServiceTests
         Assert.NotEqual(first.Items[0].Id, second.Items[0].Id);
     }
 
+    [Fact]
+    public async Task Sorts_the_whole_feed_by_a_column_before_paging_it()
+    {
+        var (service, eventStore, _, _) = Build();
+        // The newest events belong to indexers that sort last, so a sort applied only to the first page would be wrong.
+        eventStore.Events.Add(Event("zeta", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-1)));
+        eventStore.Events.Add(Event("mid", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-2)));
+        eventStore.Events.Add(Event("alpha", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-3)));
+        eventStore.Events.Add(Event("beta", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-4)));
+
+        var sort = IndexerHistorySort.Parse("indexer", "asc");
+        var first = await service.ListAsync(new PageRequest(2, null), null, null, sort, CancellationToken.None);
+        var second = await service.ListAsync(new PageRequest(2, first.NextPageToken), null, null, sort, CancellationToken.None);
+
+        Assert.Equal(["alpha", "beta"], first.Items.Select(item => item.IndexerName));
+        Assert.Equal(["mid", "zeta"], second.Items.Select(item => item.IndexerName));
+
+        var descending = await service.ListAsync(new PageRequest(4, null), null, null, IndexerHistorySort.Parse("indexer", "desc"), CancellationToken.None);
+        Assert.Equal(["zeta", "mid", "beta", "alpha"], descending.Items.Select(item => item.IndexerName));
+    }
+
+    [Fact]
+    public async Task Sorts_by_when_in_either_direction_and_ignores_a_column_it_does_not_know()
+    {
+        var (service, eventStore, _, _) = Build();
+        eventStore.Events.Add(Event("a", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-1)));
+        eventStore.Events.Add(Event("b", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-5)));
+
+        var oldestFirst = await service.ListAsync(new PageRequest(50, null), null, null, IndexerHistorySort.Parse("when", "asc"), CancellationToken.None);
+        Assert.Equal(["b", "a"], oldestFirst.Items.Select(item => item.IndexerName));
+
+        Assert.Null(IndexerHistorySort.Parse("nonsense", "asc"));
+        var fallback = await service.ListAsync(new PageRequest(50, null), null, null, IndexerHistorySort.Parse("nonsense", "asc"), CancellationToken.None);
+        Assert.Equal(["a", "b"], fallback.Items.Select(item => item.IndexerName));
+    }
+
     private static IndexerHistoryItem Event(string indexerName, string eventType, DateTimeOffset createdUtc)
         => new(Guid.NewGuid().ToString("n"), null, indexerName, eventType, "read", "message", null, null, null, createdUtc);
 

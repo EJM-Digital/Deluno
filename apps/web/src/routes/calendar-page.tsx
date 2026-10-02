@@ -473,6 +473,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
           />
         ) : (
           <ListTable
+            listId="calendar"
             columns={[
               { label: "What" },
               { label: "Kind", mobile: true },
