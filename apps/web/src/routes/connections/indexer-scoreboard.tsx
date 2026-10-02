@@ -1,3 +1,4 @@
+import { toneSortValue } from "../../lib/status-tones";
 import type { IndexerScoreboardRow, IndexerScoreboardSnapshot } from "../../lib/api";
 import { Chip, type ChipProps } from "../../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../../components/ui/list-card";
@@ -62,8 +63,20 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
           </div>
 
           <ListCard title={`Last ${snapshot.windowDays} days`} titleCase={false}>
-            <ListTable columns={[{ label: "Indexer" }, { label: "Queries" }, { label: "Response" }, { label: "Failure rate" }, { label: "Grabs" }, { label: "Conversion" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-              {rows.map((row) => (
+            <ListTable
+              listId="indexer-scoreboard"
+              items={rows}
+              columns={[
+                { id: "indexer", label: "Indexer", sort: (row) => row.name.toLowerCase() },
+                { id: "queries", label: "Queries", sort: (row) => row.totalQueries },
+                { id: "response", label: "Response", sort: (row) => row.averageResponseMilliseconds },
+                { id: "failureRate", label: "Failure rate", sort: (row) => row.failureRate },
+                { id: "grabs", label: "Grabs", sort: (row) => row.totalGrabs },
+                { id: "conversion", label: "Conversion", sort: (row) => row.queryToGrabConversion },
+                { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (row) => toneSortValue(statusTone(row), row.isEnabled ? row.healthStatus : row.healthStatus === "removed" ? "Removed" : "Paused") }
+              ]}
+            >
+              {(rows) => rows.map((row) => (
                 <ListRow key={row.id}>
                   <ListNameCell name={row.name} sub={row.recommendation} />
                   <ListCell numeric primary={numberFormat.format(row.totalQueries)} secondary={`Search ${numberFormat.format(row.searchQueries)} · RSS ${numberFormat.format(row.rssQueries)} · Auth ${numberFormat.format(row.authQueries)}`} />

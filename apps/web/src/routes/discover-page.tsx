@@ -235,7 +235,7 @@ export function DiscoverPage() {
               {section.items.length === 0 ? (
                 <ListEmpty title="Nothing in this list right now" description="Check the list's own settings under Settings → Lists." />
               ) : (
-                <ListTable columns={[{ label: "Title" }, { label: "Status", width: LIST_TRACK.status }, { label: "", width: "96px" }]}>
+                <ListTable listId="discover-lists" columns={[{ label: "Title" }, { label: "Status", width: LIST_TRACK.status }, { label: "", width: "96px" }]}>
                   {section.items.map((entry) => (
                     <ListRow key={`${entry.title}:${entry.year ?? ""}`}>
                       <ListNameCell name={entry.title} sub={entry.year ? String(entry.year) : "Year unknown"} />

@@ -60,12 +60,45 @@ public interface IIndexerHistoryEventStore
 /// store above and the existing per-movie/per-series search history -- the
 /// same events those screens already show, never a second copy of them.
 /// </summary>
+/// <summary>
+/// How the combined history is ordered when a column header is clicked (#1119). The whole feed
+/// is sorted before it is cut into pages, so the order holds across "Show more", not just in the
+/// rows already on screen. No sort means newest first.
+/// </summary>
+public sealed record IndexerHistorySort(string Field, bool Descending)
+{
+    public const string Event = "event";
+    public const string Indexer = "indexer";
+    public const string Outcome = "outcome";
+    public const string When = "when";
+
+    /// <summary>Reads the query-string form; a field the screen has no column for is ignored, so a stale link falls back to newest first.</summary>
+    public static IndexerHistorySort? Parse(string? field, string? direction)
+    {
+        var normalised = field?.Trim().ToLowerInvariant();
+        if (normalised is not (Event or Indexer or Outcome or When))
+        {
+            return null;
+        }
+
+        return new IndexerHistorySort(normalised, string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase));
+    }
+}
+
 public interface IIndexerHistoryService
 {
     Task<Page<IndexerHistoryItem>> ListAsync(
         PageRequest request,
         string? eventType,
         string? indexerName,
+        CancellationToken cancellationToken)
+        => ListAsync(request, eventType, indexerName, null, cancellationToken);
+
+    Task<Page<IndexerHistoryItem>> ListAsync(
+        PageRequest request,
+        string? eventType,
+        string? indexerName,
+        IndexerHistorySort? sort,
         CancellationToken cancellationToken);
 
     /// <summary>Hides every event up to now from the combined view (#754) without deleting anyone's underlying data.</summary>

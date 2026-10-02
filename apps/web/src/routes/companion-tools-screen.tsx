@@ -1,3 +1,4 @@
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { ExternalLink, Loader2 } from "lucide-react";
@@ -118,15 +119,17 @@ export function CompanionToolsPage() {
           <ListEmpty title="No companion tools" description="This build offers none." />
         ) : (
           <ListTable
+            listId="companion-tools"
+            items={data.tools}
             columns={[
-              { label: "Tool" },
-              { label: "On this computer" },
-              { label: "Last step" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "Set up", width: LIST_TRACK.toggle, mobile: true }
+              { id: "tool", label: "Tool", sort: (tool) => tool.name.toLowerCase() },
+              { id: "onThisComputer", label: "On this computer", sort: (tool) => (tool.state === "connected" ? 2 : tool.state === "installed" ? 1 : 0) },
+              { id: "lastStep", label: "Last step", sort: (tool) => (tool.job?.message ?? "").toLowerCase() },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (tool) => { const chip = stateChip(tool); return toneSortValue(chip.tone, chip.label); } },
+              { id: "setUp", label: "Set up", width: LIST_TRACK.toggle, mobile: true, sortable: false }
             ]}
           >
-            {data.tools.map((tool) => {
+            {(rows) => rows.map((tool) => {
               const chip = stateChip(tool);
               return (
                 <ListRow key={tool.id} onClick={() => { setOpenId(tool.id); }} selected={openId === tool.id}>

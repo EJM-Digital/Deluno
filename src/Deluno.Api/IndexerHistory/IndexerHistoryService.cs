@@ -30,10 +30,18 @@ public sealed class IndexerHistoryService(
     // deliberately separate, larger change from #754's own scope.
     private const int PerSourceLimit = 500;
 
+    public Task<Page<IndexerHistoryItem>> ListAsync(
+        PageRequest request,
+        string? eventType,
+        string? indexerName,
+        CancellationToken cancellationToken)
+        => ListAsync(request, eventType, indexerName, null, cancellationToken);
+
     public async Task<Page<IndexerHistoryItem>> ListAsync(
         PageRequest request,
         string? eventType,
         string? indexerName,
+        IndexerHistorySort? sort,
         CancellationToken cancellationToken)
     {
         var clearedBeforeUtc = await eventStore.GetClearedBeforeUtcAsync(cancellationToken);
@@ -57,8 +65,8 @@ public sealed class IndexerHistoryService(
             .Where(item => clearedBeforeUtc is null || item.CreatedUtc > clearedBeforeUtc)
             .Where(item => eventType is null || string.Equals(item.EventType, eventType, StringComparison.OrdinalIgnoreCase))
             .Where(item => string.IsNullOrWhiteSpace(indexerName) || string.Equals(item.IndexerName, indexerName, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.CreatedUtc)
             .ToArray();
+        merged = Order(merged, sort);
 
         var offset = ParseOffset(request.PageToken);
         var pageSize = request.BoundedPageSize;
@@ -67,6 +75,34 @@ public sealed class IndexerHistoryService(
         var nextToken = nextOffset < merged.Length ? DelunoPageToken.Encode(nextOffset.ToString()) : null;
 
         return Page<IndexerHistoryItem>.Of(page, nextToken);
+    }
+
+    /// <summary>
+    /// The chosen column first, then newest first and by id, so two rows with the same value
+    /// never swap places between one page and the next.
+    /// </summary>
+    private static IndexerHistoryItem[] Order(IndexerHistoryItem[] items, IndexerHistorySort? sort)
+    {
+        if (sort is null || (sort.Field == IndexerHistorySort.When && sort.Descending))
+        {
+            return items.OrderByDescending(item => item.CreatedUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
+        }
+
+        if (sort.Field == IndexerHistorySort.When)
+        {
+            return items.OrderBy(item => item.CreatedUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
+        }
+
+        Func<IndexerHistoryItem, string> key = sort.Field switch
+        {
+            IndexerHistorySort.Event => item => item.EventType,
+            IndexerHistorySort.Indexer => item => item.IndexerName,
+            _ => item => item.Outcome
+        };
+        var ordered = sort.Descending
+            ? items.OrderByDescending(key, StringComparer.OrdinalIgnoreCase)
+            : items.OrderBy(key, StringComparer.OrdinalIgnoreCase);
+        return ordered.ThenByDescending(item => item.CreatedUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
     }
 
     public Task ClearAsync(CancellationToken cancellationToken)
