@@ -325,7 +325,7 @@ export function SettingsDestinationRulesPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Match" }, { label: "Goes to", width: "minmax(0,1.4fr)" }, { label: "Used by" }, { label: "Rule order", width: "90px", align: "end" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+          <ListTable listId="destination-rules" columns={[{ label: "Name" }, { label: "Match" }, { label: "Goes to", width: "minmax(0,1.4fr)" }, { label: "Used by" }, { label: "Rule order", width: "90px", align: "end" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
             {sorted.map((rule) => (
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={rule.name} sub={rule.mediaType === "tv" ? "TV shows" : "Movies"} />

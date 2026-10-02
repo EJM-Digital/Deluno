@@ -509,7 +509,7 @@ export function SettingsProfilesPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Allowed", width: "minmax(0,1.4fr)" }, { label: "Stops at" }, { label: "Used by" }, { label: "Formats", width: LIST_TRACK.status, mobile: true }]}>
+          <ListTable listId="quality-profiles" columns={[{ label: "Name" }, { label: "Allowed", width: "minmax(0,1.4fr)" }, { label: "Stops at" }, { label: "Used by" }, { label: "Formats", width: LIST_TRACK.status, mobile: true }]}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((profile) => {

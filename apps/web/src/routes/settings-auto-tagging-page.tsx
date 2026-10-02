@@ -295,8 +295,18 @@ export function SettingsAutoTaggingPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "When", width: "minmax(0,1.6fr)" }, { label: "Gives" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-            {rules.map((rule) => (
+          <ListTable
+            listId="auto-tagging"
+            items={rules}
+            columns={[
+              { id: "name", label: "Name", sort: (rule) => rule.name.toLowerCase() },
+              { id: "when", label: "When", width: "minmax(0,1.6fr)", sort: (rule) => describeConditions(rule.specifications, names).toLowerCase() },
+              { id: "gives", label: "Gives", sort: (rule) => rule.tags.join(", ").toLowerCase() },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (rule) => rule.isEnabled },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (rule) => rule.isEnabled }
+            ]}
+          >
+            {(rows) => rows.map((rule) => (
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={rule.name} sub={scopeLabel(rule.appliesTo)} />
                 <ListCell primary={describeConditions(rule.specifications, names)} secondary={rule.removeAutomatically ? "Takes the tags back when a title stops matching" : undefined} />

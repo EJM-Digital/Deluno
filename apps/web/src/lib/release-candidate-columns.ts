@@ -43,6 +43,24 @@ function sortValue(candidate: CandidateColumnsInput, key: CandidateSortKey): num
   }
 }
 
+/** What a results column sorts by when its header is clicked (#1119); a release with no value for it sorts last either way. */
+export function candidateSortValue(candidate: CandidateColumnsInput, key: CandidateSortKey): number | string | null {
+  switch (key) {
+    case "protocol":
+      return (candidate.indexerProtocol ?? "").toLowerCase() || null;
+    case "age":
+      return candidate.releaseAgeHours ?? null;
+    case "seeders":
+      return candidate.seeders ?? null;
+    case "leechers":
+      return candidate.leechers ?? null;
+    case "size":
+      return candidate.sizeBytes ?? null;
+    case "grabs":
+      return candidate.grabs ?? null;
+  }
+}
+
 export function sortCandidates<T extends CandidateColumnsInput>(
   candidates: readonly T[],
   key: CandidateSortKey,

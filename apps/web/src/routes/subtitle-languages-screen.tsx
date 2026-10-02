@@ -303,15 +303,17 @@ export function SubtitleLanguagesPage() {
           />
         ) : (
           <ListTable
+            listId="subtitle-languages"
+            items={libraries}
             columns={[
-              { label: "Library" },
-              { label: "Languages" },
-              { label: "How many per file" },
-              { label: "Unnamed subtitles" },
-              { label: "Asking", width: LIST_TRACK.status, mobile: true }
+              { id: "library", label: "Library", sort: (library) => library.name.toLowerCase() },
+              { id: "languages", label: "Languages", sort: (library) => (library.subtitleLanguages ?? []).map((code) => nameOf(code, languages)).join(", ").toLowerCase() },
+              { id: "howMany", label: "How many per file", sort: (library) => ((library.subtitleLanguages ?? []).length === 0 ? "" : library.subtitleLanguageMode === "first" ? "any" : "all") },
+              { id: "unnamed", label: "Unnamed subtitles", sort: (library) => (library.subtitleUnknownLanguage ? nameOf(library.subtitleUnknownLanguage, languages) : "Left unknown").toLowerCase() },
+              { id: "asking", label: "Asking", width: LIST_TRACK.status, mobile: true, sort: (library) => (library.subtitleLanguages ?? []).length }
             ]}
           >
-            {libraries.map((library) => {
+            {(rows) => rows.map((library) => {
               const wanted = library.subtitleLanguages ?? [];
               return (
                 <ListRow key={library.id} onClick={() => open(library)} selected={editing?.id === library.id}>

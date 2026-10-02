@@ -1,3 +1,4 @@
+import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -373,16 +374,18 @@ export function MediaServersPage() {
           />
         ) : (
           <ListTable
+            listId="media-servers"
+            items={servers}
             columns={[
-              { label: "Server" },
-              { label: "Address" },
-              { label: "Reports itself as" },
-              { label: "Last test" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+              { id: "server", label: "Server", sort: (server) => server.name.toLowerCase() },
+              { id: "address", label: "Address", sort: (server) => server.baseUrl.toLowerCase() },
+              { id: "reports", label: "Reports itself as", sort: (server) => (server.serverName ?? "").toLowerCase() },
+              { id: "lastTest", label: "Last test", sort: (server) => (server.lastHealthTestUtc ? new Date(server.lastHealthTestUtc) : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (server) => { const chip = healthChip(server); return toneSortValue(chip.tone, chip.label); } },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (server) => server.isEnabled }
             ]}
           >
-            {servers.map((server) => {
+            {(rows) => rows.map((server) => {
               const chip = healthChip(server);
               const collectionProblem = collections.find((collection) => collection.serverId === server.id && collection.problem)?.problem;
               return (

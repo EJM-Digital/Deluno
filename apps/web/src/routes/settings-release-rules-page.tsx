@@ -318,16 +318,19 @@ export function SettingsReleaseRulesPage() {
           />
         ) : (
           <ListTable
+            listId="release-rules"
+            items={sorted}
             columns={[
-              { label: "Rule", width: "minmax(0,1.45fr)" },
-              { label: "Applies to", width: "minmax(0,1fr)" },
-              { label: "Protocol", width: "130px" },
-              { label: "Timing", width: "minmax(0,1.2fr)" },
-              { label: "Terms", width: "minmax(0,1.25fr)" },
-              ...(firstMatch ? [{ label: "Order", width: "96px" }] : [])
+              // First-match order is the priority order, so the rows are never re-sorted there; the columns still move.
+              { id: "rule", label: "Rule", width: "minmax(0,1.45fr)", sort: firstMatch ? undefined : (profile) => profile.name.toLowerCase() },
+              { id: "appliesTo", label: "Applies to", width: "minmax(0,1fr)", sort: firstMatch ? undefined : (profile) => joinTagList(tagsOf(profile)).toLowerCase() },
+              { id: "protocol", label: "Protocol", width: "130px", sort: firstMatch ? undefined : (profile) => protocolLabel(profile.preferredProtocol) },
+              { id: "timing", label: "Timing", width: "minmax(0,1.2fr)", sort: firstMatch ? undefined : (profile) => formatTiming(profile).toLowerCase() },
+              { id: "terms", label: "Terms", width: "minmax(0,1.25fr)", sort: firstMatch ? undefined : (profile) => profile.preferredTerms.length },
+              ...(firstMatch ? [{ id: "order", label: "Order", width: "96px", movable: false, sortable: false }] : [])
             ]}
           >
-            {sorted.map((profile) => {
+            {(rows) => rows.map((profile) => {
               const tags = tagsOf(profile);
               const orderIndex = orderable.findIndex((item) => item.id === profile.id);
               return (

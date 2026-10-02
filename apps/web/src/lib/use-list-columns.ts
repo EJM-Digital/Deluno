@@ -105,10 +105,10 @@ export function compareSortValues(a: SortValue, b: SortValue): number {
   return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
 }
 
-export function sortListItems<T>(items: T[], column: ListColumnSpec<T> | undefined, direction: SortDirection): T[] {
+export function sortListItems<T>(items: readonly T[], column: ListColumnSpec<T> | undefined, direction: SortDirection): T[] {
   const sort = column?.sort;
   const compare = column?.compare;
-  if (!compare && (!sort || typeof sort === "string")) return items;
+  if (!compare && (!sort || typeof sort === "string")) return items as T[];
   const sign = direction === "asc" ? 1 : -1;
   const decorated = items.map((item, index) => ({ item, index }));
   if (compare) {
@@ -151,7 +151,7 @@ export interface ListColumnsState<T = never> {
 export function useListColumns<T>(
   listId: string | undefined,
   columns: ReadonlyArray<ListColumnSpec<T>>,
-  items?: T[],
+  items?: readonly T[],
   options?: { serverSort?: boolean }
 ): ListColumnsState<T> {
   const [stored, setStored] = useState<StoredState>(() => (listId ? readStored(listId) : { order: [], sort: null }));
@@ -176,7 +176,7 @@ export function useListColumns<T>(
 
   const sortedItems = useMemo(() => {
     if (!items) return [] as T[];
-    if (!activeSort || options?.serverSort) return items;
+    if (!activeSort || options?.serverSort) return items as T[];
     return sortListItems(items, columns[ids.indexOf(activeSort.id)], activeSort.direction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, activeSort, options?.serverSort, ids.join("|")]);
