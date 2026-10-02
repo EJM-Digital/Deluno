@@ -55,7 +55,8 @@ export function PageToolbarAction({ children, className, ...props }: PageToolbar
   const actionStyle = (variant ?? "default") === "default"
     ? {
         ...style,
-        backgroundImage: "linear-gradient(to bottom, var(--toolbar-accent), var(--toolbar-accent))",
+        // The fallback is for the header: a page's buttons sit there from `lg` up, outside the row that sets the accent.
+        backgroundImage: "linear-gradient(to bottom, var(--toolbar-accent, hsl(var(--primary))), var(--toolbar-accent, hsl(var(--primary))))",
         color: "hsl(var(--background))"
       }
     : style;
@@ -96,6 +97,7 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
   } as React.CSSProperties;
 
   const slot = useHeaderSlot();
+  const actionSlot = useHeaderSlot("topbar-page-actions");
   const headerItems: HeaderTabItem[] = (tabs ?? []).map((tab) => {
     const isComplete = tab.status === "complete";
     const tabLabel = typeof tab.label === "string" ? titleCaseLabel(tab.label) : undefined;
@@ -115,7 +117,11 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
   // only what the page itself puts in it; a page with tabs and no buttons has no row there. Below `lg`, and on a page
   // rendered without the header, the tabs stay in this row as a scrolling strip.
   const tabsInHeader = (hasTabs || hasSections) && slot !== null;
-  const rowEmpty = tabsInHeader && !actions;
+  // The page's buttons go on the title line too, right of the tabs and left of search (James, 2 Oct 2026), so a page
+  // whose row held only tabs and buttons has no row at all from `lg` up.
+  const actionsInHeader = Boolean(actions) && actionSlot !== null;
+  const rowHasLeft = !tabsInHeader && (hasTabs || hasSections || Boolean(left));
+  const rowEmpty = !rowHasLeft && (!actions || actionsInHeader);
   const sectionItems: HeaderTabItem[] = (hasSections ? sections!.options : []).map((option) => ({
     key: option.value,
     label: option.label,
@@ -133,6 +139,7 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
           {hasSections ? <HeaderTabs role="tablist" items={sectionItems} label={sections!.label} /> : <HeaderTabs items={headerItems} label="Sections" />}
         </HeaderTabsPortal>
       ) : null}
+      {actionsInHeader ? <HeaderTabsPortal slot={actionSlot}>{actions}</HeaderTabsPortal> : null}
       <div className={cn("flex min-h-[var(--toolbar-height)] min-w-0 max-w-full flex-wrap items-center justify-between gap-[var(--grid-gap)] border-b border-hairline/80 dark:border-white/[0.08] sm:h-[var(--toolbar-height)] sm:flex-nowrap", rowEmpty && "hidden", className)} style={accentStyle}>
         {hasTabs && !tabsInHeader ? (
           <nav
@@ -193,7 +200,7 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
         ) : (
           <span />
         )}
-        {actions ? <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+        {actions && !actionsInHeader ? <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
       </div>
       {area ? <HowThisWorks id={area.id} lead={area.explainer.lead} steps={area.explainer.steps} /> : null}
     </>

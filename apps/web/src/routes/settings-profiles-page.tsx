@@ -492,16 +492,11 @@ export function SettingsProfilesPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={TABS}
-        actions={
-          <>
-            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-      <PageToolbarAction onClick={openCreate}>New quality profile</PageToolbarAction>
-          </>
-        }
+        actions={<PageToolbarAction onClick={openCreate}>New quality profile</PageToolbarAction>}
       />
 
 
-      <ListCard title="Quality Profiles" count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"} · complete quality decisions used by Library Profiles` : undefined}>
+      <ListCard title="Quality Profiles" actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />} count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"} · complete quality decisions used by Library Profiles` : undefined}>
         {qualityProfiles.length === 0 ? (
           <ListEmpty
             title="No quality profiles yet"
