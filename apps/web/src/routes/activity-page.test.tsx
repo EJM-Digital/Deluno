@@ -333,6 +333,16 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
     expect(within(dialog).getAllByText("Imported Arrival (2016).").length).toBeGreaterThan(0);
   });
 
+  it("opens on Jobs & downloads, and on the history when the link carries a history filter", () => {
+    authedFetchMock.mockImplementation(async (path: string) => answerActivityApi(path));
+    const plain = renderActivity();
+    expect(screen.getByRole("radio", { name: "Jobs & downloads" })).toHaveAttribute("aria-checked", "true");
+    plain.unmount();
+
+    renderActivity("/activity?since=today");
+    expect(screen.getByRole("radio", { name: "History" })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("shows older events a page at a time", async () => {
     authedFetchMock.mockImplementation(async (path: string) => {
       if (!path.startsWith("/api/activity?")) return answerActivityApi(path);
@@ -340,7 +350,7 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
         ? jsonResponse({ items: [activityEvents[1]], nextPageToken: null, hasMore: false })
         : jsonResponse({ items: [activityEvents[0]], nextPageToken: "next", hasMore: true });
     });
-    renderActivity();
+    renderActivity("/activity?section=events");
 
     await screen.findByText("Deluno will not use Arrival.2016.2160p again.");
     expect(screen.queryByText("Imported Arrival (2016).")).not.toBeInTheDocument();
