@@ -838,7 +838,8 @@ function ContentTopbar({
 
         <div className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
         <div className="min-w-0 flex-1">
-          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
+          {/* One line, always: with the page's buttons beside it a long one wrapped to three and the header grew. */}
+          <p title={typeof subtitle === "string" ? subtitle : undefined} className="truncate text-[length:var(--section-eyebrow-size)] font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. A page that has tabs (the Dashboard) puts them on the title's own line,
@@ -848,6 +849,10 @@ function ContentTopbar({
             <div id="topbar-page-tabs" className="hidden min-w-0 flex-1 empty:hidden lg:block" />
           </div>
         </div>
+        {/* The page's own buttons ("New indexer", "Refresh", "Manual import") sit here from `lg` up, right of the tabs
+            and left of search, so no page spends a row on them (the owner, 2 Oct 2026). One height for all of them, as on
+            the library shelf's row. */}
+        <div id="topbar-page-actions" className="hidden shrink-0 items-center gap-2 empty:hidden lg:flex [&_:is(button,a)]:h-[var(--control-height)]" />
         </div>
 
         {/*

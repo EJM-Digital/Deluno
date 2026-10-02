@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources } from "../lib/route-cache";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
-import { CalendarPlus, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
 import { CalendarSubscribeDrawer } from "../components/app/calendar-subscribe-drawer";
@@ -244,16 +244,35 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
   const episodeCount = visible.filter((entry) => entry.id.startsWith("episode:")).length;
   const movieCount = visible.length - episodeCount;
 
-  // Both views carry the same two actions in the same place, so switching
-  // between Calendar and List never moves a control out from under the cursor.
+  // What is shown and when: these steer the card, so they sit in its header, and both views carry them in the same
+  // place, so switching between Calendar and List never moves a control out from under the cursor. Subscribe and
+  // Refresh do something, so they go on the title line with every page's buttons (the owner, 2 Oct 2026).
   const cardActions = (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setSubscribeOpen(true)}>
-        <CalendarPlus className="h-3.5 w-3.5" />
-        Subscribe
+      {isListOnlyScope(scope) ? null : (
+        <SegmentedControl<View>
+          aria-label="View"
+          className="mr-1 w-auto"
+          value={effectiveView}
+          onValueChange={setView}
+          options={[
+            { value: "grid", label: "Calendar" },
+            { value: "list", label: "List" }
+          ]}
+        />
+      )}
+      <Button type="button" size="sm" variant="outline" className="mr-1" onClick={() => setOptionsOpen(true)}>
+        <SlidersHorizontal className="h-3.5 w-3.5" />
+        Options
       </Button>
-      <Button type="button" size="sm" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-        Refresh
+      <Button type="button" size="sm" variant="outline" className="w-[var(--control-height-sm)] px-0" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <Button type="button" size="sm" variant="outline" onClick={() => setOffset(0)}>
+        Today
+      </Button>
+      <Button type="button" size="sm" variant="outline" className="w-[var(--control-height-sm)] px-0" aria-label={`Next ${scope}`} onClick={() => setOffset((value) => value + 1)}>
+        <ChevronRight className="h-4 w-4" />
       </Button>
     </>
   );
@@ -281,31 +300,13 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
         }}
         actions={
           <>
-            {isListOnlyScope(scope) ? null : (
-              <SegmentedControl<View>
-                aria-label="View"
-                className="mr-1 w-auto"
-                value={effectiveView}
-                onValueChange={setView}
-                options={[
-                  { value: "grid", label: "Calendar" },
-                  { value: "list", label: "List" }
-                ]}
-              />
-            )}
-            <Button type="button" size="sm" variant="outline" className="mr-1" onClick={() => setOptionsOpen(true)}>
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Options
+            <Button type="button" variant="outline" onClick={() => setSubscribeOpen(true)}>
+              <CalendarPlus className="h-4 w-4" />
+              Subscribe
             </Button>
-            <span className="mr-1 text-[length:var(--type-body-sm)] font-medium text-foreground">{range.label}</span>
-            <Button type="button" variant="outline" size="icon" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setOffset(0)}>
-              Today
-            </Button>
-            <Button type="button" variant="outline" size="icon" aria-label={`Next ${scope}`} onClick={() => setOffset((value) => value + 1)}>
-              <ChevronRight className="h-4 w-4" />
+            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
+              <RefreshCw className={revalidator.state !== "idle" ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+              Refresh
             </Button>
           </>
         }
@@ -408,7 +409,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
         </Card>
       ) : (
       <ListCard
-        title="Schedule"
+        title={range.label}
         count={visible.length ? `${byDay.length} ${byDay.length === 1 ? "day" : "days"} with something on` : undefined}
         actions={cardActions}
       >

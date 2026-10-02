@@ -486,13 +486,10 @@ export function SearchCyclesPage() {
       <PageToolbar
         tabs={automationNavItems}
         actions={
-          <>
-            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-            <Button type="button" variant={paused ? "default" : "outline"} onClick={() => void toggleGlobal()} disabled={busy === "global"}>
+          <Button type="button" variant={paused ? "default" : "outline"} onClick={() => void toggleGlobal()} disabled={busy === "global"}>
             {busy === "global" ? <Loader2 className="h-4 w-4 animate-spin" /> : paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-              {paused ? "Resume automation" : "Pause automation"}
-            </Button>
-          </>
+            {paused ? "Resume automation" : "Pause automation"}
+          </Button>
         }
       />
 
@@ -522,7 +519,7 @@ export function SearchCyclesPage() {
         </ListCard>
       ) : null}
 
-      {view !== "failed" ? <ListCard title={view === "missing" ? "Missing search schedules" : view === "upgrades" ? "Upgrade search schedules" : "Library schedules"} count={scheduleLibraries.length ? `${scheduleLibraries.length} ${scheduleLibraries.length === 1 ? "library" : "libraries"}` : undefined}>
+      {view !== "failed" ? <ListCard title={view === "missing" ? "Missing search schedules" : view === "upgrades" ? "Upgrade search schedules" : "Library schedules"} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />} count={scheduleLibraries.length ? `${scheduleLibraries.length} ${scheduleLibraries.length === 1 ? "library" : "libraries"}` : undefined}>
         {scheduleLibraries.length === 0 ? (
           <ListEmpty title={libraries.length === 0 ? "No libraries yet" : view === "missing" ? "No libraries search for missing titles" : "No libraries search for upgrades"} description={libraries.length === 0 ? "Create a library first, then Deluno can search it on a schedule." : "Open a library's automation settings to turn this search on."} />
         ) : (

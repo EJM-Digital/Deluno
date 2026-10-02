@@ -796,24 +796,7 @@ export function SettingsCustomFormatsPage() {
     <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
-        actions={
-          <>
-            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-            <Button type="button" variant="outline" onClick={openTestDrawer}>
-              <FlaskConical className="h-4 w-4" />
-              Test a release
-            </Button>
-            {/* #777: JSON import/export, separate from a TRaSH guide sync. */}
-            <Button type="button" variant="outline" onClick={openImportDrawer}>
-              Import
-            </Button>
-            <Button type="button" variant="outline" onClick={() => void exportAllRules()} disabled={busy === "export-all" || customFormats.length === 0}>
-              {busy === "export-all" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Export all
-            </Button>
-            <PageToolbarAction onClick={() => openRule(null)}>New custom rule</PageToolbarAction>
-          </>
-        }
+        actions={<PageToolbarAction onClick={() => openRule(null)}>New custom rule</PageToolbarAction>}
       />
 
       {moveItems.length ? (
@@ -1015,7 +998,28 @@ export function SettingsCustomFormatsPage() {
         </div>
       </ListCard>
 
-      <ListCard title="Advanced release rules" count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"} · full TRaSH and custom controls` : undefined}>
+      <ListCard
+        title="Advanced release rules"
+        // Testing, importing and exporting act on these rules, so they sit with them; the title line keeps "New custom
+        // rule" and the tabs keep their room (the owner, 2 Oct 2026).
+        actions={
+          <>
+            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
+            <Button type="button" variant="outline" size="sm" onClick={openTestDrawer}>
+              <FlaskConical className="h-3.5 w-3.5" />
+              Test a release
+            </Button>
+            {/* #777: JSON import/export, separate from a TRaSH guide sync. */}
+            <Button type="button" variant="outline" size="sm" onClick={openImportDrawer}>
+              Import
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void exportAllRules()} disabled={busy === "export-all" || customFormats.length === 0}>
+              {busy === "export-all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Export all
+            </Button>
+          </>
+        }
+        count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"} · full TRaSH and custom controls` : undefined}>
         {customFormats.length === 0 ? (
           <ListEmpty
             title="No advanced release rules yet"

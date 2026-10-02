@@ -93,11 +93,11 @@ function subscribeToWidth(onChange: () => void) {
 }
 
 /**
- * The header's slot for tabs, or null where tabs do not go in it: below `lg` (the slot is hidden there, so the page
- * draws its own row) and on a page rendered without the header. Exactly one place draws the tabs at a time, so the
- * page never holds a hidden second copy.
+ * A header slot (the tabs' by default, or `topbar-page-actions` for the page's buttons), or null where nothing goes in
+ * it: below `lg` (the slot is hidden there, so the page draws its own row) and on a page rendered without the header.
+ * Exactly one place draws the tabs or buttons at a time, so the page never holds a hidden second copy.
  */
-export function useHeaderSlot(): HTMLElement | null {
+export function useHeaderSlot(id = "topbar-page-tabs"): HTMLElement | null {
   const wide = React.useSyncExternalStore(
     subscribeToWidth,
     () => typeof window.matchMedia === "function" && window.matchMedia(LG_QUERY).matches,
@@ -105,8 +105,8 @@ export function useHeaderSlot(): HTMLElement | null {
   );
   const [slot, setSlot] = React.useState<HTMLElement | null>(null);
   React.useLayoutEffect(() => {
-    setSlot(document.getElementById("topbar-page-tabs"));
-  }, []);
+    setSlot(document.getElementById(id));
+  }, [id]);
   return wide ? slot : null;
 }
 

@@ -9,7 +9,7 @@
  *
  * Contracts: GET/PUT /api/quality-model.
  */
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -102,30 +102,31 @@ export function SettingsQualityPage() {
     }
   }
 
+  const scopeSwitch = (
+    <SegmentedControl<"movie" | "episode">
+      aria-label="Show sizes for"
+      className="w-auto"
+      value={scope}
+      onValueChange={setScope}
+      options={[
+        { value: "movie", label: "Movies" },
+        { value: "episode", label: "TV" }
+      ]}
+    />
+  );
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
         actions={
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingReset(true)}>
-              Reset to defaults
-            </Button>
-            <SegmentedControl<"movie" | "episode">
-              aria-label="Show sizes for"
-              className="w-auto"
-              value={scope}
-              onValueChange={setScope}
-              options={[
-                // "Movies · TV" is the vocabulary MediaTypeFilter already uses everywhere else.
-                { value: "movie", label: "Movies" },
-                { value: "episode", label: "TV" }
-              ]}
-            />
-          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingReset(true)}>
+            Reset to defaults
+          </Button>
         }
       />
 
+      {/* "Movies · TV" is the vocabulary MediaTypeFilter already uses everywhere else. */}
       {scope === "movie" ? (
         <SizeCard
           scope="movie"
@@ -136,6 +137,7 @@ export function SettingsQualityPage() {
           maxKey="movieMaxGb"
           step={0.1}
           onChange={updateTier}
+          switcher={scopeSwitch}
         />
       ) : (
         <SizeCard
@@ -147,6 +149,7 @@ export function SettingsQualityPage() {
           maxKey="episodeMaxMb"
           step={100}
           onChange={updateTier}
+          switcher={scopeSwitch}
         />
       )}
 
@@ -200,7 +203,8 @@ function SizeCard({
   preferredKey,
   maxKey,
   step,
-  onChange
+  onChange,
+  switcher
 }: {
   /** Disambiguates control labels between the movie and episode tables. */
   scope: "movie" | "episode";
@@ -212,6 +216,8 @@ function SizeCard({
   maxKey: keyof QualityTierDefinition;
   step: number;
   onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
+  /** The Movies | TV switch: it chooses which table this card shows, so it sits in the card's own header. */
+  switcher?: ReactNode;
 }) {
   const format = (value: number) => (unit === "GB" ? `${value} ${unit}` : `${value.toLocaleString()} ${unit}`);
   // 0 as a maximum means "no upper limit", matching the backend's convention.
@@ -233,9 +239,12 @@ function SizeCard({
       title={scope === "movie" ? "Movie file sizes" : "Episode file sizes"}
       count={`The final check that rejects a release as implausibly small or large. 0 and 0 means no limit.`}
       actions={
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(Object.fromEntries(bands.map((band) => [band.label, !allOpen])))}>
-          {allOpen ? "Collapse all" : "Expand all"}
-        </Button>
+        <>
+          {switcher}
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(Object.fromEntries(bands.map((band) => [band.label, !allOpen])))}>
+            {allOpen ? "Collapse all" : "Expand all"}
+          </Button>
+        </>
       }
     >
       <div className="overflow-x-auto">
