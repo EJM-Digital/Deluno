@@ -88,8 +88,12 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
   const [boxRef, fits] = useFittingRows();
   const more = Math.max(0, shown.length - Math.min(fits, MAX_ROWS));
   const quiet = routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens";
+  // As Weir's: the count line stays what it is, and the entries that do not fit are one link beside "All activity".
+  const moreLink = more > 0 ? (
+    <Link to="/activity" className="lact-more" aria-label={`${more.toLocaleString("en-AU")} more in the activity log`}>{more.toLocaleString("en-AU")} more</Link>
+  ) : null;
   return (
-    <Panel title="Activity" count={more > 0 ? `${more.toLocaleString("en-AU")} more` : quiet} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
+    <Panel title="Activity" count={quiet} aside={moreLink} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (

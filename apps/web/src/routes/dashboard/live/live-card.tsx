@@ -8,9 +8,11 @@ import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 
-export function LiveCard({ title, count, to, toLabel, iconOnly = false, className, bodyClassName, children }: {
+export function LiveCard({ title, count, aside, to, toLabel, iconOnly = false, className, bodyClassName, children }: {
   title: string;
   count?: ReactNode;
+  /** A small extra link at the right, before the card's own link (Activity's "N more", as Weir's). */
+  aside?: ReactNode;
   to?: string;
   toLabel?: string;
   /** The link is an arrow alone (its name is still said), so a long count line keeps the room. */
@@ -27,6 +29,7 @@ export function LiveCard({ title, count, to, toLabel, iconOnly = false, classNam
       <header className="flex min-h-[44px] shrink-0 items-baseline gap-[10px] whitespace-nowrap px-[18px] pb-[10px] pt-[14px]">
         <h2 id={id} className="m-0 shrink-0 text-[length:var(--type-card-title)] font-bold text-foreground">{title}</h2>
         <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] text-muted-foreground">{count}</span>
+        {aside}
         {to ? (
           <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`} className="ml-auto shrink-0 rounded-sm text-[length:var(--button-font-size-sm)] font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--ring))]">
             {iconOnly ? null : `${toLabel ?? "Open"} `}
