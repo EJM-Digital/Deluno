@@ -328,49 +328,6 @@ public sealed class SqliteConnectionsRepository(
         return items;
     }
 
-    public async Task<ConnectionItem> CreateConnectionAsync(
-        CreateConnectionRequest request,
-        CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow();
-        var item = new ConnectionItem(
-            Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New connection",
-            ConnectionKind: NormalizeConnectionKind(request.ConnectionKind),
-            Role: NormalizeName(request.Role) ?? "General",
-            EndpointUrl: NormalizePath(request.EndpointUrl),
-            IsEnabled: request.IsEnabled,
-            CreatedUtc: now,
-            UpdatedUtc: now);
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO app_connections (
-                id, name, connection_kind, role, endpoint_url, is_enabled, created_utc, updated_utc
-            )
-            VALUES (
-                @id, @name, @connectionKind, @role, @endpointUrl, @isEnabled, @createdUtc, @updatedUtc
-            );
-            """;
-
-        AddParameter(command, "@id", item.Id);
-        AddParameter(command, "@name", item.Name);
-        AddParameter(command, "@connectionKind", item.ConnectionKind);
-        AddParameter(command, "@role", item.Role);
-        AddParameter(command, "@endpointUrl", item.EndpointUrl);
-        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
-        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
-        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
-
-        return item;
-    }
-
     public async Task<IndexerItem> CreateIndexerAsync(
         CreateIndexerRequest request,
         CancellationToken cancellationToken)
@@ -1441,18 +1398,6 @@ public sealed class SqliteConnectionsRepository(
         }
     }
 
-    public async Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM app_connections WHERE id = @id;";
-        AddParameter(command, "@id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
-    }
-
     public async Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1680,21 +1625,6 @@ public sealed class SqliteConnectionsRepository(
         command.CommandText = "DELETE FROM download_clients WHERE id = @id;";
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
-    }
-
-    private static string NormalizeConnectionKind(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "indexer" => "indexer",
-            "downloadclient" => "downloadClient",
-            "download client" => "downloadClient",
-            "notification" => "notification",
-            "mediaserver" => "mediaServer",
-            "media server" => "mediaServer",
-            _ => "indexer"
-        };
     }
 
     private static string NormalizeMediaScope(string? value)

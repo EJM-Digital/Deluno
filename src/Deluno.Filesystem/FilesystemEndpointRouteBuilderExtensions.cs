@@ -98,37 +98,6 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return Results.Ok(preview);
         });
 
-        filesystem.MapPost("/import/execute", async (
-            [FromBody] ImportExecuteRequest request,
-            IImportPipelineService importPipeline,
-            CancellationToken cancellationToken) =>
-        {
-            // A body without a preview is a bad request, not a broken Deluno.
-            //
-            // `Preview` is non-nullable on the record and the JSON binder does
-            // not enforce that, so a caller that omits it — or sends the
-            // preview's fields flattened onto the top level, which is the
-            // natural mistake — bound null and the pipeline dereferenced it.
-            // What came back was 500 "An unexpected error occurred", which
-            // tells the person Deluno broke when in fact their request did.
-            if (request?.Preview is null)
-            {
-                return Results.Json(
-                    new { message = "An import needs a preview. Send the preview object returned by /api/filesystem/import/preview under a \"preview\" property." },
-                    statusCode: StatusCodes.Status400BadRequest);
-            }
-
-            var result = await importPipeline.ExecuteAsync(request, cancellationToken);
-            if (result.Succeeded && result.Response is not null)
-            {
-                return Results.Ok(result.Response);
-            }
-
-            return Results.Json(
-                new { message = result.Message },
-                statusCode: result.StatusCode);
-        });
-
         // #889 (cleanup sheet E9): a season pack's own leftovers - an extra,
         // sample, or unlisted special that never resolved to a canonical
         // episode - are never deleted on their own. This is the screen
@@ -392,14 +361,6 @@ public static class FilesystemEndpointRouteBuilderExtensions
             }
 
             return Results.Ok(BuildPathDiagnostic(path));
-        });
-
-        filesystem.MapGet("/reconciliation", async (
-            IFilesystemReconciliationService reconciliationService,
-            CancellationToken cancellationToken) =>
-        {
-            var report = await reconciliationService.ScanAsync(cancellationToken);
-            return Results.Ok(report);
         });
 
         filesystem.MapPost("/reconciliation/repair", async (

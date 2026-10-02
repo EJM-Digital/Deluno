@@ -7869,18 +7869,6 @@ public sealed class ImportPipelineServiceTests
         public Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
-        public Task MarkAsReadAsync(string notificationId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task MarkAllAsReadAsync(CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task DeleteNotificationAsync(string notificationId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task ClearAllNotificationsAsync(CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
         public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(preferences);
 

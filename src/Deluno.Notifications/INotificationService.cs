@@ -29,26 +29,6 @@ public interface INotificationService
     Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mark notification as read
-    /// </summary>
-    Task MarkAsReadAsync(string notificationId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Mark all notifications as read
-    /// </summary>
-    Task MarkAllAsReadAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Delete a notification
-    /// </summary>
-    Task DeleteNotificationAsync(string notificationId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Delete all notifications
-    /// </summary>
-    Task ClearAllNotificationsAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Get notification preferences for the current user
     /// </summary>
     Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default);

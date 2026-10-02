@@ -23,7 +23,6 @@ public sealed class ImportBodyIsCheckedTests
 {
     public static TheoryData<string> ImportRoutes() =>
     [
-        "/api/filesystem/import/execute",
         "/api/filesystem/import/jobs"
     ];
 

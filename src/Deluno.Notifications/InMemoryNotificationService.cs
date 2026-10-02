@@ -59,52 +59,6 @@ public class InMemoryNotificationService : INotificationService
         }
     }
 
-    public Task MarkAsReadAsync(string notificationId, CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            if (_notifications.TryGetValue(notificationId, out var notification))
-            {
-                notification.ReadUtc = DateTime.UtcNow;
-            }
-            return Task.CompletedTask;
-        }
-    }
-
-    public Task MarkAllAsReadAsync(CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            var now = DateTime.UtcNow;
-            foreach (var notification in _notifications.Values)
-            {
-                if (!notification.IsRead)
-                {
-                    notification.ReadUtc = now;
-                }
-            }
-            return Task.CompletedTask;
-        }
-    }
-
-    public Task DeleteNotificationAsync(string notificationId, CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            _notifications.Remove(notificationId);
-            return Task.CompletedTask;
-        }
-    }
-
-    public Task ClearAllNotificationsAsync(CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            _notifications.Clear();
-            return Task.CompletedTask;
-        }
-    }
-
     public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();

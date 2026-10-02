@@ -5,17 +5,6 @@ export type PreferenceCandidateStatus = "rejected" | "needsReview" | "acceptable
 export type PreferenceRelationshipKind = "implies" | "requires" | "subsumes" | "coreOf" | "carriedBy" | "incompatible";
 export type PreferenceEvidenceModel = "openWorld" | "closedWorld";
 
-export interface PreferenceTraitDefinition {
-  id: string;
-  dimension: string;
-  displayName: string;
-  aliases: string[] | null;
-  mediaTypes: string[] | null;
-  guideSource: string | null;
-  guideVersion: string | null;
-  transient: boolean;
-}
-
 export interface PreferenceRelationship {
   fromTraitId: string;
   toTraitId: string;
@@ -108,13 +97,6 @@ export interface StoredReleasePreferencePlan {
   plan: ReleasePreferencePlan;
   planHash: string;
   createdUtc: string;
-}
-
-export interface ReleasePreferenceRegistryResponse {
-  version: string;
-  mediaType: string;
-  traits: PreferenceTraitDefinition[];
-  relationships: PreferenceRelationship[];
 }
 
 export type LegacyPreferenceRuleKind =

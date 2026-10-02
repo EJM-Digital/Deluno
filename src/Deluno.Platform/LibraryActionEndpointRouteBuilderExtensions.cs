@@ -41,18 +41,6 @@ public static class LibraryActionEndpointRouteBuilderExtensions
         var write = endpoints.MapGroup(string.Empty)
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-        write.MapPost("/api/destination-rules/resolve", async (
-            [FromBody] DestinationResolutionRequest request,
-            IPlatformSettingsRepository repository,
-            ILibrariesRepository librariesRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var settings = await repository.GetAsync(cancellationToken);
-            var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
-            var result = ResolveDestination(request, settings, rules);
-            return Results.Ok(result);
-        });
-
         write.MapPost("/api/libraries/{id}/search-now", async (
             string id,
             HttpContext httpContext,
@@ -270,22 +258,6 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             return Results.Accepted(null, progress);
         });
 
-        write.MapPost("/api/libraries/{id}/import-existing/cancel", async (
-            string id,
-            HttpContext httpContext,
-            [FromServices] IExistingLibraryImportService importService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var progress = await importService.SetStateAsync(id, LibraryImportRunStatuses.Cancelled, cancellationToken);
-            return progress is null ? Results.NotFound() : Results.Accepted(null, progress);
-        });
-
         // What the run set aside rather than guessing at. Capped, because a bad
         // library could produce one of these per title.
         write.MapGet("/api/libraries/{id}/import-existing/issues", async (
@@ -342,88 +314,6 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             SearchWindowStartHour: library.SearchWindowStartHour,
             SearchWindowEndHour: library.SearchWindowEndHour);
     }
-
-    private static DestinationResolutionResult ResolveDestination(
-        [FromBody] DestinationResolutionRequest request,
-        PlatformSettingsSnapshot settings,
-        IReadOnlyList<DestinationRuleItem> rules)
-    {
-        var mediaType = NormalizeMediaType(request.MediaType);
-        var title = string.IsNullOrWhiteSpace(request.Title) ? "Untitled" : request.Title.Trim();
-        var rootFallback = mediaType == "tv"
-            ? settings.SeriesRootPath ?? settings.MovieRootPath ?? string.Empty
-            : settings.MovieRootPath ?? settings.SeriesRootPath ?? string.Empty;
-
-        var match = rules
-            .Where(rule => rule.IsEnabled && string.Equals(NormalizeMediaType(rule.MediaType), mediaType, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(rule => rule.Priority)
-            .FirstOrDefault(rule => MatchesDestinationRule(rule, request));
-
-        var rootPath = match?.RootPath ?? rootFallback;
-        var template = match?.FolderTemplate ??
-                       (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
-        var folderName = NamingTemplateRenderer.RenderFolder(
-            template,
-            title,
-            request.Year,
-            request.ImdbId,
-            request.TvDbId,
-            request.QualityProfile,
-            request.Genres?.FirstOrDefault(),
-            request.Tags?.FirstOrDefault(),
-            request.Network,
-            replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
-            colonReplacementMode: settings.ColonReplacementMode);
-        var fullPath = string.IsNullOrWhiteSpace(rootPath)
-            ? folderName
-            : Path.Combine(rootPath, folderName);
-
-        return new DestinationResolutionResult(
-            MediaType: mediaType,
-            Title: title,
-            Year: request.Year,
-            RootPath: rootPath,
-            FolderName: folderName,
-            FullPath: fullPath,
-            MatchedRuleId: match?.Id,
-            MatchedRuleName: match?.Name,
-            Reason: match is null
-                ? "No destination rule matched, so Deluno used the default root folder."
-                : string.Equals(match.MatchKind.Trim(), "tag", StringComparison.OrdinalIgnoreCase)
-                    ? $"Placed by the tag \"{match.MatchValue.Trim()}\" (rule '{match.Name}', priority {match.Priority})."
-                    : $"Matched {match.MatchKind} rule '{match.Name}' with priority {match.Priority}.");
-    }
-
-    private static string NormalizeMediaType(string? mediaType)
-        => mediaType?.Trim().ToLowerInvariant() is "tv" or "series" or "shows"
-            ? "tv"
-            : "movies";
-
-    private static bool MatchesDestinationRule(DestinationRuleItem rule, DestinationResolutionRequest request)
-    {
-        var expected = rule.MatchValue.Trim();
-        if (string.IsNullOrWhiteSpace(expected))
-        {
-            return false;
-        }
-
-        return rule.MatchKind.Trim().ToLowerInvariant() switch
-        {
-            "genre" => ContainsAny(request.Genres, expected),
-            "tag" => ContainsAny(request.Tags, expected),
-            "studio" => ContainsText(request.Studio, expected),
-            "language" or "originallanguage" => ContainsText(request.OriginalLanguage, expected),
-            "title" => ContainsText(request.Title, expected),
-            _ => ContainsAny(request.Genres, expected) || ContainsAny(request.Tags, expected)
-        };
-    }
-
-    private static bool ContainsAny(IReadOnlyList<string>? values, string expected)
-        => values?.Any(value => ContainsText(value, expected)) == true;
-
-    private static bool ContainsText(string? value, string expected)
-        => !string.IsNullOrWhiteSpace(value) &&
-           value.Contains(expected, StringComparison.OrdinalIgnoreCase);
 
 }
 

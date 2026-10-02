@@ -2297,32 +2297,6 @@ public sealed class SqliteSeriesCatalogRepository(
             RecentItems: items);
     }
 
-    public async Task<SeriesInventorySummary> GetInventorySummaryAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                (SELECT COUNT(*) FROM series_entries),
-                (SELECT COUNT(*) FROM season_entries),
-                (SELECT COUNT(*) FROM episode_entries),
-                (SELECT COUNT(*) FROM episode_entries WHERE has_file = 1);
-            """;
-
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
-
-        return new SeriesInventorySummary(
-            SeriesCount: reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
-            SeasonCount: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
-            EpisodeCount: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-            ImportedEpisodeCount: reader.IsDBNull(3) ? 0 : reader.GetInt32(3));
-    }
-
     public async Task<SeriesInventoryDetail?> GetInventoryDetailAsync(string seriesId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -5561,61 +5535,6 @@ public sealed class SqliteSeriesCatalogRepository(
         return items;
     }
 
-    /// <summary>Episodes still wanted across every series, newest air date first.</summary>
-    public async Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
-        int take,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                e.id, e.series_id, s.title, e.season_number, e.episode_number, e.title,
-                e.air_date_utc, e.monitored,
-                COALESCE(w.wanted_status, 'missing'),
-                COALESCE(w.wanted_reason, 'Episode is missing from the library.'),
-                w.last_search_utc, w.next_eligible_search_utc
-            FROM episode_entries e
-            INNER JOIN series_entries s ON s.id = e.series_id
-            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
-            WHERE e.has_file = 0
-              AND COALESCE(w.wanted_status, 'missing') IN ('missing', 'upgrade')
-            ORDER BY
-                CASE WHEN e.air_date_utc IS NULL THEN 1 ELSE 0 END,
-                e.air_date_utc DESC,
-                s.title ASC,
-                e.season_number ASC,
-                e.episode_number ASC
-            LIMIT @take;
-            """;
-        AddParameter(command, "@take", take);
-
-        var items = new List<WantedEpisodeItem>();
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(new WantedEpisodeItem(
-                EpisodeId: reader.GetString(0),
-                SeriesId: reader.GetString(1),
-                SeriesTitle: reader.GetString(2),
-                SeasonNumber: reader.GetInt32(3),
-                EpisodeNumber: reader.GetInt32(4),
-                Title: reader.IsDBNull(5) ? null : reader.GetString(5),
-                AirDateUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
-                Monitored: reader.GetInt64(7) == 1,
-                WantedStatus: reader.GetString(8),
-                WantedReason: reader.GetString(9),
-                LastSearchUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10)),
-                NextEligibleSearchUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11))));
-        }
-
-        return items;
-    }
-
     public async Task<(IReadOnlyList<WantedEpisodeItem> Items, int Total)> ListWantedEpisodesPageAsync(
         string wantedStatus,
         bool? monitored,
@@ -6359,74 +6278,6 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@episodeId", episodeId);
 
         return await command.ExecuteScalarAsync(cancellationToken) as string;
-    }
-
-    public async Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
-        string seriesId,
-        string libraryId,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                e.id,
-                e.season_number,
-                e.episode_number,
-                e.title,
-                e.air_date_utc,
-                e.monitored,
-                e.has_file,
-                COALESCE(w.wanted_status, 'missing'),
-                COALESCE(w.wanted_reason, 'Episode is missing from the library.'),
-                COALESCE(w.quality_cutoff_met, e.quality_cutoff_met),
-                w.current_quality,
-                w.target_quality,
-                COALESCE(w.prevent_lower_quality_replacements, 1),
-                w.quality_delta_last_decision,
-                w.last_search_utc,
-                w.next_eligible_search_utc,
-                e.updated_utc
-            FROM episode_entries e
-            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id AND w.library_id = @libraryId
-            WHERE e.series_id = @seriesId
-              AND e.monitored = 1
-              AND e.has_file = 0
-            ORDER BY e.season_number ASC, e.episode_number ASC;
-            """;
-        AddParameter(command, "@seriesId", seriesId);
-        AddParameter(command, "@libraryId", libraryId);
-
-        var episodes = new List<SeriesEpisodeInventoryItem>();
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            episodes.Add(new SeriesEpisodeInventoryItem(
-                EpisodeId: reader.GetString(0),
-                SeasonNumber: reader.GetInt32(1),
-                EpisodeNumber: reader.GetInt32(2),
-                Title: reader.IsDBNull(3) ? null : reader.GetString(3),
-                AirDateUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
-                Overview: null,
-                Monitored: reader.GetInt64(5) == 1,
-                HasFile: reader.GetInt64(6) == 1,
-                WantedStatus: reader.GetString(7),
-                WantedReason: reader.GetString(8),
-                QualityCutoffMet: reader.GetInt64(9) == 1,
-                CurrentQuality: reader.IsDBNull(10) ? null : reader.GetString(10),
-                TargetQuality: reader.IsDBNull(11) ? null : reader.GetString(11),
-                PreventLowerQualityReplacements: reader.GetInt64(12) == 1,
-                LastQualityDeltaDecision: reader.IsDBNull(13) ? null : reader.GetInt32(13),
-                LastSearchUtc: reader.IsDBNull(14) ? null : ParseTimestamp(reader.GetString(14)),
-                NextEligibleSearchUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(16))));
-        }
-
-        return episodes;
     }
 
     private static SeriesWantedItem MapWanted(MediaWantedItem item)

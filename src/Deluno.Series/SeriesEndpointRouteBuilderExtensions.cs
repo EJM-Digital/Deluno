@@ -198,12 +198,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(summary);
         });
 
-        series.MapGet("/inventory", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
-        {
-            var summary = await repository.GetInventorySummaryAsync(cancellationToken);
-            return Results.Ok(summary);
-        });
-
         series.MapGet("/{id}/inventory", async (
             string id,
             ISeriesCatalogRepository repository,
@@ -227,15 +221,6 @@ public static class SeriesEndpointRouteBuilderExtensions
                 now.AddHours(requestedHours),
                 requestedTake,
                 cancellationToken);
-            return Results.Ok(items);
-        });
-
-        series.MapGet("/episodes/wanted", async (
-            int? take,
-            ISeriesCatalogRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var items = await repository.ListWantedEpisodesAsync(Math.Clamp(take ?? 200, 1, 1000), cancellationToken);
             return Results.Ok(items);
         });
 
@@ -356,33 +341,6 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var item = await repository.AddImportRecoveryCaseAsync(request, cancellationToken);
             return Results.Ok(item);
-        });
-
-        series.MapPost("/import-recovery/{id}/resolve", async (
-            string id,
-            HttpContext httpContext,
-            ISeriesCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
-            IDownloadDispatchesRepository dispatchesRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
-            if (updated is null)
-            {
-                return Results.NotFound();
-            }
-
-            // The alert recorded beside this case settles with it (#537).
-            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
-
-            await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
-            return Results.Ok(updated);
         });
 
         series.MapPost("/import-recovery/{id}/dismiss", async (
@@ -612,22 +570,6 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
-        });
-
-        series.MapGet("/{id}/preference-evaluation", async (
-            string id,
-            string? libraryId,
-            string? fileIdentity,
-            IMediaStateRepository mediaStateRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var snapshot = await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
-                MediaKind.Series,
-                id,
-                libraryId,
-                fileIdentity,
-                cancellationToken);
-            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
         });
 
         // Posters for the titles on the Dashboard's Live board (#1096): only the ids that still exist are answered, so a deleted title is simply absent (no failing request per id).
@@ -1573,37 +1515,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(updated);
         });
 
-        series.MapPost("/{id}/metadata/jobs", async (
-            string id,
-            HttpContext httpContext,
-            ISeriesCatalogRepository repository,
-            IJobScheduler jobScheduler,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var item = await repository.GetByIdAsync(id, cancellationToken);
-            if (item is null)
-            {
-                return Results.NotFound();
-            }
-
-            var job = await jobScheduler.EnqueueAsync(
-                new EnqueueJobRequest(
-                    JobType: "series.metadata.refresh",
-                    Source: "metadata",
-                    PayloadJson: JsonSerializer.Serialize(new { item.Id, item.Title, item.StartYear }),
-                    RelatedEntityType: "series",
-                    RelatedEntityId: item.Id),
-                cancellationToken);
-
-            return Results.Ok(job);
-        });
-
         series.MapPut("/{id}/metadata/override", async (
             string id,
             [FromBody] MetadataOverrideRequest request,
@@ -2323,34 +2234,6 @@ public static class SeriesEndpointRouteBuilderExtensions
           job would have been a second way to do the same thing, racing the
           first (DESIGN-002 rule 3).
         */
-        series.MapPost("/bulk/subtitle-rescan", async (
-            HttpContext httpContext,
-            [FromBody] BulkSubtitleRescanRequest request,
-            IMediaSubtitleRepository subtitles,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (request.SeriesIds is not { Count: > 0 })
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["seriesIds"] = ["Choose at least one title before re-reading subtitles."]
-                });
-            }
-
-            var cleared = await subtitles.ClearScansAsync(MediaKind.Series, request.SeriesIds, cancellationToken);
-
-            // "queued" rather than "done": the pass that re-reads them runs on
-            // the library's own schedule, and saying otherwise would promise
-            // something this request has not made happen.
-            return Results.Ok(new { queued = request.SeriesIds.Count, cleared });
-        });
-
         /*
           #922's one-click "This is out of sync": a person's own judgment, fed
           through #897's mechanism. Deletes the file, blocklists it so it is
@@ -3395,58 +3278,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
-        series.MapGet("/{id}/workflow-status", async (
-            string id,
-            ISeriesCatalogRepository repository,
-            IMediaStateRepository mediaStateRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
-            {
-                return Results.NotFound();
-            }
-
-            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
-                    MediaKind.Series,
-                    [id],
-                    cancellationToken))
-                .OrderByDescending(item => item.UpdatedUtc)
-                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (wantedItem is null)
-            {
-                return Results.Ok(new
-                {
-                    wantedStatus = "untracked",
-                    reason = "This series is not linked to any library.",
-                    isReplacementAllowed = true,
-                    qualityDelta = (int?)null,
-                    currentQuality = (string?)null,
-                    targetQuality = (string?)null,
-                    preventLowerQualityReplacements = true,
-                    lastQualityDeltaDecision = (int?)null
-                });
-            }
-
-            // A show's status is its episodes' rung, which the catalogue stores
-            // on this row (SeriesRung). Re-deciding it here from the title-level
-            // file and quality is the category mistake SeriesRung was written to
-            // remove: it called a show with one episode on disk "missing" only
-            // because that one file's quality had no name.
-            return Results.Ok(new
-            {
-                wantedStatus = wantedItem.WantedStatus,
-                reason = wantedItem.WantedReason,
-                isReplacementAllowed = true,
-                qualityDelta = (int?)null,
-                currentQuality = wantedItem.CurrentQuality,
-                targetQuality = wantedItem.TargetQuality,
-                preventLowerQualityReplacements = wantedItem.PreventLowerQualityReplacements,
-                lastQualityDeltaDecision = wantedItem.LastQualityDeltaDecision
-            });
-        });
-
         series.MapPut("/{id}/replacement-protection", async (
             string id,
             [FromBody] UpdateSeriesReplacementProtectionRequest request,
@@ -3494,6 +3325,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated = true });
         });
 
+
         // The series screen/drawer's own control for the "monitor new
         // episodes" preset (#801) - changeable at any time, not only at add
         // time, and applied the next time this series' episode catalogue is
@@ -3517,69 +3349,6 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
             return Results.Ok(new { updated = true, monitorNewEpisodes = request.MonitorNewEpisodes });
-        });
-
-        series.MapGet("/{id}/monitored-missing", async (
-            string id,
-            ISeriesCatalogRepository repository,
-            IMediaStateRepository mediaStateRepository,
-            ISeriesWorkflowService workflowService,
-            CancellationToken cancellationToken) =>
-        {
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
-            {
-                return Results.NotFound();
-            }
-
-            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
-                    MediaKind.Series,
-                    [id],
-                    cancellationToken))
-                .OrderByDescending(item => item.UpdatedUtc)
-                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (wantedItem is null)
-            {
-                return Results.Ok(new { episodes = Array.Empty<object>(), seasonPackRecommendations = Array.Empty<object>() });
-            }
-
-            var missingEpisodes = await repository.ListMonitoredMissingEpisodesAsync(id, wantedItem.LibraryId, cancellationToken);
-
-            var seasonGroups = missingEpisodes
-                .GroupBy(e => e.SeasonNumber)
-                .Select(g =>
-                {
-                    var inventory = (IReadOnlyList<SeriesEpisodeInventoryItem>)g.ToList();
-                    var allSeasonEpisodes = missingEpisodes.Where(e => e.SeasonNumber == g.Key).ToList();
-                    var seasonDecision = workflowService.EvaluateSeasonPackStrategy(allSeasonEpisodes, monitoredOnly: true);
-                    return new
-                    {
-                        seasonNumber = g.Key,
-                        missingEpisodeCount = g.Count(),
-                        preferSeasonPack = seasonDecision.PreferSeasonPack,
-                        reason = seasonDecision.Reason,
-                        monitoredMissingCount = seasonDecision.MonitoredMissingCount,
-                        totalMonitoredCount = seasonDecision.TotalMonitoredCount
-                    };
-                })
-                .ToArray();
-
-            return Results.Ok(new
-            {
-                seriesId = id,
-                totalMissingMonitored = missingEpisodes.Count,
-                episodes = missingEpisodes.Select(e => new
-                {
-                    e.EpisodeId,
-                    e.SeasonNumber,
-                    e.EpisodeNumber,
-                    e.Title,
-                    e.WantedStatus,
-                    e.LastSearchUtc
-                }).ToArray(),
-                seasonPackRecommendations = seasonGroups
-            });
         });
 
         series.MapPost("/", async (
@@ -4428,8 +4197,6 @@ public static class SeriesEndpointRouteBuilderExtensions
         bool PreventLowerQualityReplacements);
 
     private sealed record UpdateSeriesMonitorNewEpisodesRequest(bool MonitorNewEpisodes);
-
-    private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? SeriesIds);
 
     private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
 

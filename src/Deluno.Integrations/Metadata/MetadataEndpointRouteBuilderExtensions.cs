@@ -137,22 +137,6 @@ public static class MetadataEndpointRouteBuilderExtensions
                 latestStatus.LastFailure));
         });
 
-        metadata.MapDelete("/cache", async (
-            HttpContext httpContext,
-            string? mediaType,
-            TmdbMetadataProvider provider,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await provider.InvalidateCacheAsync(mediaType, cancellationToken);
-            return Results.Ok(new { cleared = true, mediaType = mediaType ?? "all" });
-        });
-
         metadata.MapGet("/artwork/{cacheKey}", async (
             HttpContext httpContext,
             string cacheKey,

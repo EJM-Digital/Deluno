@@ -1333,48 +1333,6 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     [Fact]
-    public async Task ListWantedEpisodesAsync_excludes_episodes_that_already_have_a_file()
-    {
-        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
-        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
-        using var _ = storage;
-
-        await repository.SyncEpisodeCatalogueAsync(
-            seriesId,
-            [
-                new CatalogueEpisodeItem(1, 1, "Ep 1", null, now.AddDays(-10)),
-                new CatalogueEpisodeItem(1, 2, "Ep 2", null, now.AddDays(-9)),
-            ],
-            source: "tmdb",
-            CancellationToken.None);
-
-        await repository.ImportExistingAsync(
-            libraryId: "series-main",
-            title: "Severance",
-            startYear: 2022,
-            wantedStatus: "covered",
-            wantedReason: "Current file is accepted.",
-            currentQuality: "WEB 1080p",
-            targetQuality: "WEB 1080p",
-            qualityCutoffMet: true,
-            filePath: @"C:\media\severance\s01e01.mkv",
-            fileSizeBytes: 123456,
-            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\severance\s01e01.mkv", FileSizeBytes: 123456)],
-            CancellationToken.None);
-
-        var wanted = await repository.ListWantedEpisodesAsync(10, CancellationToken.None);
-
-        Assert.Single(wanted);
-        var episodeIds = await GetEpisodeIdsAsync(storage, seriesId);
-        Assert.Equal(episodeIds[(1, 2)], wanted[0].EpisodeId);
-        Assert.Equal(
-            123456L,
-            await repository.GetEpisodeFileSizeBytesAsync(
-                episodeIds[(1, 1)],
-                CancellationToken.None));
-    }
-
-    [Fact]
     public async Task ImportExistingAsync_writes_series_and_episode_rows_for_an_existing_disk_file()
     {
         var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");

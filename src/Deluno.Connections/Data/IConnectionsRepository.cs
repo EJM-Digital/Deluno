@@ -7,10 +7,6 @@ public interface IConnectionsRepository
 {
     Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken);
 
-    Task<ConnectionItem> CreateConnectionAsync(
-        CreateConnectionRequest request,
-        CancellationToken cancellationToken);
-
     Task<IReadOnlyList<IndexerItem>> ListIndexersAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -80,7 +76,6 @@ public interface IConnectionsRepository
         CancellationToken cancellationToken,
         IntegrationFailure? failure = null);
 
-    Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteDownloadClientAsync(string id, CancellationToken cancellationToken);
 

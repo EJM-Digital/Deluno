@@ -117,26 +117,6 @@ public sealed class DeleteLifecycleTests
     }
 
     [Fact]
-    public async Task Deleting_a_connection_removes_it_and_saying_it_twice_does_not_work()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-
-        var id = await CreateAsync(app, "/api/connections/", new
-        {
-            name = "Spare box",
-            connectionKind = "indexer",
-            role = "search",
-            endpointUrl = "http://127.0.0.1:9117",
-            isEnabled = true
-        });
-
-        Assert.Contains(id, await ListIdsAsync(app, "/api/connections/"));
-        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/connections/{id}")).StatusCode);
-        Assert.DoesNotContain(id, await ListIdsAsync(app, "/api/connections/"));
-        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.DeleteAsync($"/api/connections/{id}")).StatusCode);
-    }
-
-    [Fact]
     public async Task Deleting_a_policy_set_removes_it_and_saying_it_twice_does_not_work()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -245,52 +225,6 @@ public sealed class DeleteLifecycleTests
         Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/exclusions/{created.Id}")).StatusCode);
         Assert.DoesNotContain(created.Id, await ListIdsAsync(app, "/api/exclusions"));
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.DeleteAsync($"/api/exclusions/{created.Id}")).StatusCode);
-    }
-
-    [Fact]
-    public async Task Dismissing_one_notification_leaves_the_others_alone()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var notifications = app.Services.GetRequiredService<INotificationService>();
-
-        var doomed = await notifications.CreateNotificationAsync(
-            "test", "Going", "This one gets dismissed", "info",
-            cancellationToken: CancellationToken.None);
-        var keeper = await notifications.CreateNotificationAsync(
-            "test", "Staying", "This one does not", "info",
-            cancellationToken: CancellationToken.None);
-
-        var response = await app.Client.DeleteAsync($"/api/notifications/{doomed.Id}");
-        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
-
-        var remaining = await ListIdsAsync(app, "/api/notifications/");
-        Assert.DoesNotContain(doomed.Id, remaining);
-        Assert.Contains(keeper.Id, remaining);
-    }
-
-    [Fact]
-    public async Task Clearing_notifications_empties_the_list_and_the_unread_count()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var notifications = app.Services.GetRequiredService<INotificationService>();
-
-        foreach (var index in Enumerable.Range(1, 3))
-        {
-            await notifications.CreateNotificationAsync(
-                "test", $"Notice {index}", "Something happened", "info",
-                cancellationToken: CancellationToken.None);
-        }
-
-        Assert.Equal(3, (await ListIdsAsync(app, "/api/notifications/")).Count);
-
-        var response = await app.Client.DeleteAsync("/api/notifications/");
-        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
-
-        Assert.Empty(await ListIdsAsync(app, "/api/notifications/"));
-
-        using var unread = JsonDocument.Parse(
-            await (await app.Client.GetAsync("/api/notifications/unread-count")).Content.ReadAsStringAsync());
-        Assert.Equal(0, unread.RootElement.GetProperty("unreadCount").GetInt32());
     }
 
     /// <summary>
@@ -529,11 +463,9 @@ public sealed class DeleteLifecycleTests
             CancellationToken.None);
         Assert.NotNull(exclusion);
 
-        Assert.Contains(exclusion!.Id, await ListIdsAsync(app, $"/api/intake-sources/{sourceId}/exclusions"));
         Assert.Equal(
             HttpStatusCode.NoContent,
             (await app.Client.DeleteAsync($"/api/intake-sources/{sourceId}/exclusions/{exclusion.Id}")).StatusCode);
-        Assert.DoesNotContain(exclusion.Id, await ListIdsAsync(app, $"/api/intake-sources/{sourceId}/exclusions"));
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await app.Client.DeleteAsync($"/api/intake-sources/{sourceId}/exclusions/{exclusion.Id}")).StatusCode);
@@ -562,16 +494,6 @@ public sealed class DeleteLifecycleTests
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await app.Client.DeleteAsync($"/api/integrations/processors/connections/{id}")).StatusCode);
-    }
-
-    [Fact]
-    public async Task Clearing_the_metadata_cache_is_allowed_even_when_it_is_already_empty()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-
-        var response = await app.Client.DeleteAsync("/api/metadata/cache");
-
-        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
 
     // ------------------------------------------------------------------ helpers

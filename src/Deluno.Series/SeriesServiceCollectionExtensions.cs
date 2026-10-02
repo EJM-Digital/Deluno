@@ -42,7 +42,6 @@ public static class SeriesServiceCollectionExtensions
         // transaction and no second copy of the table names.
         services.AddSingleton<IQualityRankSink>(provider => provider.GetRequiredService<ISeriesCatalogRepository>());
         services.AddSingleton<ISeriesImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<ISeriesCatalogRepository>());
-        services.AddSingleton<ISeriesWorkflowService, SeriesWorkflowService>();
         // Scoped, not singleton: it consumes IAcquisitionDecisionPipeline and
         // IDownloadClientGrabService, which are both scoped.
         services.TryAddScoped<ISeasonSearchExecutor, SeasonSearchExecutor>();

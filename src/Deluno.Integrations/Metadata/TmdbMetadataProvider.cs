@@ -1447,26 +1447,6 @@ public sealed partial class TmdbMetadataProvider(
         }
     }
 
-    public async Task InvalidateCacheAsync(string? mediaType, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Cache,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        if (string.IsNullOrWhiteSpace(mediaType))
-        {
-            command.CommandText = "DELETE FROM search_result_cache;";
-        }
-        else
-        {
-            command.CommandText = "DELETE FROM search_result_cache WHERE media_type = @mediaType;";
-            AddParameter(command, "@mediaType", NormalizeMediaType(mediaType));
-        }
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
     private async Task WriteSearchCacheAsync(
         string cacheKey,
         string mediaType,

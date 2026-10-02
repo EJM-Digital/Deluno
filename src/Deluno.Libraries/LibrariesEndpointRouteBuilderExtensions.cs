@@ -408,49 +408,6 @@ public static class LibrariesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
-        endpoints.MapPut("/api/libraries/{id}/quality-profile", async (
-            string id,
-            HttpContext httpContext,
-            [FromBody] UpdateLibraryQualityProfileRequest request,
-            [FromServices] ILibrariesRepository repository,
-            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            IJobScheduler jobScheduler,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var item = await repository.UpdateLibraryQualityProfileAsync(id, request, cancellationToken);
-            if (item is null)
-            {
-                return Results.NotFound();
-            }
-
-            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
-
-            await jobScheduler.EnqueueAsync(
-                new EnqueueJobRequest(
-                    JobType: item.MediaType == "tv" ? "series.quality.recalculate" : "movies.quality.recalculate",
-                    Source: item.MediaType,
-                    PayloadJson: JsonSerializer.Serialize(new
-                    {
-                        libraryId = item.Id,
-                        libraryName = item.Name,
-                        mediaType = item.MediaType,
-                        cutoffQuality = item.CutoffQuality,
-                        upgradeUntilCutoff = item.UpgradeUntilCutoff,
-                        upgradeUnknownItems = item.UpgradeUnknownItems
-                    }),
-                    RelatedEntityType: "library",
-                    RelatedEntityId: item.Id),
-                cancellationToken);
-
-            return Results.Ok(item);
-        });
-
         endpoints.MapPut("/api/libraries/{id}/media-plan", async (
             string id,
             HttpContext httpContext,
@@ -559,46 +516,6 @@ public static class LibrariesEndpointRouteBuilderExtensions
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
             return Results.NoContent();
-        });
-
-        libraries.MapGet("export", async (
-            HttpContext httpContext,
-            [FromServices] ILibrariesRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var items = await repository.ListLibrariesAsync(cancellationToken);
-            var export = items.Select(lib => new
-            {
-                lib.Name,
-                lib.MediaType,
-                lib.Purpose,
-                lib.RootPath,
-                lib.DownloadsPath,
-                lib.QualityProfileId,
-                lib.ImportWorkflow,
-                lib.ProcessorName,
-                lib.ProcessorOutputPath,
-                lib.ProcessorTimeoutMinutes,
-                lib.ProcessorFailureMode,
-                lib.AutoSearchEnabled,
-                lib.MissingSearchEnabled,
-                lib.UpgradeSearchEnabled,
-                lib.SearchIntervalMinutes,
-                lib.RetryDelayHours,
-                lib.MaxItemsPerRun,
-                lib.MaxMissingItemsPerRun,
-                lib.MaxUpgradeItemsPerRun,
-                lib.SearchWindowStartHour,
-                lib.SearchWindowEndHour,
-                lib.SearchWindowDays
-            });
-            return Results.Ok(new { exportedAt = DateTimeOffset.UtcNow, libraries = export });
         });
 
         endpoints.MapGet("/api/libraries/{id}/routing", async (

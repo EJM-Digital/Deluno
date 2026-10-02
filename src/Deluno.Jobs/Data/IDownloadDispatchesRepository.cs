@@ -69,15 +69,6 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Find dispatches that were grabbed but not detected in client.
-    /// </summary>
-    Task<IReadOnlyList<DownloadDispatchItem>> FindUnresolvedDispatchesAsync(
-        int minAgeMinutes,
-        string? clientId,
-        int limit,
-        CancellationToken cancellationToken);
-
-    /// <summary>
     /// The downloads still on their way: sent to a client and not yet imported,
     /// refused at import, or archived, whether or not the client has shown them
     /// yet (#554, #555).

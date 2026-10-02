@@ -53,32 +53,6 @@ public sealed class SqliteQualityRepository(
         return items;
     }
 
-    public async Task ReorderQualityProfilesAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
-
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        for (var index = 0; index < ids.Count; index++)
-        {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText =
-                """
-                UPDATE quality_profiles
-                SET sort_order = @sortOrder
-                WHERE id = @id;
-                """;
-            AddParameter(command, "@id", ids[index]);
-            AddParameter(command, "@sortOrder", index + 1);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await transaction.CommitAsync(cancellationToken);
-    }
-
     public async Task<IReadOnlyList<CustomFormatItem>> ListCustomFormatsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -242,39 +216,6 @@ public sealed class SqliteQualityRepository(
             Acquisition: request.Acquisition?.Normalize(),
             ScoreLimits: request.ScoreLimits?.Normalize(),
             LanguagePreference: request.LanguagePreference?.Normalize());
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
-
-        await InsertQualityProfileAsync(connection, item, cancellationToken);
-        return item;
-    }
-
-    public async Task<QualityProfileItem> CreateQualityProfileFromPresetAsync(
-        string presetId,
-        string? nameOverride,
-        CancellationToken cancellationToken)
-    {
-        var preset = QualityProfilePresetCatalog.FindById(presetId)
-            ?? throw new InvalidOperationException($"Preset '{presetId}' not found.");
-
-        var now = timeProvider.GetUtcNow();
-        var item = new QualityProfileItem(
-            Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(nameOverride) ?? preset.Name,
-            MediaType: preset.MediaType,
-            CutoffQuality: preset.CutoffQuality,
-            AllowedQualities: preset.AllowedQualities,
-            CustomFormatIds: string.Empty,
-            UpgradeUntilCutoff: preset.UpgradeUntilCutoff,
-            UpgradeUnknownItems: preset.UpgradeUnknownItems,
-            AllowLowerQualityReplacements: false,
-            PresetId: preset.Id,
-            PresetVersion: preset.Version,
-            PresetDrifted: false,
-            CreatedUtc: now,
-            UpdatedUtc: now);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,

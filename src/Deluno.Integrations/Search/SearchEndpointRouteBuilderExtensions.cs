@@ -252,101 +252,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 ? Results.NoContent()
                 : Results.NotFound());
 
-        var releases = endpoints.MapGroup("/api/releases");
         var rankingModel = endpoints.MapGroup("/api/ranking-model");
         var intelligentRouting = endpoints.MapGroup("/api/intelligent-routing");
-
-        releases.MapPost("explain", async (
-            ReleaseExplainRequest request,
-            IQualityModelService qualityModelService,
-            IReleaseRankingModelService rankingModelService,
-            IPlatformSettingsRepository platformSettingsRepository,
-            IReleaseProfileRepository releaseProfileRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var releaseName = request.ReleaseName?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(releaseName))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["releaseName"] = ["Release name is required."]
-                });
-            }
-
-            var customFormats = request.CustomFormats ?? [];
-            var customFormatScore = CustomFormatMatcher.EvaluateUpgradeScore(releaseName, customFormats, out var matchedFormats);
-            var releaseProfiles = await releaseProfileRepository.ListApplicableAsync(request.TagNames, cancellationToken);
-
-            var qualityModel = await qualityModelService.GetAsync(cancellationToken);
-            var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
-            var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
-                ReleaseName: releaseName,
-                Quality: request.AssumedQuality ?? LibraryQualityDecider.DetectQuality(releaseName) ?? "WEB 1080p",
-                CurrentQuality: request.CurrentQuality,
-                TargetQuality: request.TargetQuality ?? "WEB 1080p",
-                SizeBytes: request.SizeBytes,
-                Seeders: request.Seeders,
-                DownloadUrl: request.DownloadUrl ?? "https://example.com/fake",
-                SourcePriorityScore: 100,
-                CustomFormatScore: customFormatScore,
-                    NeverGrabPatterns: request.NeverGrabPatterns?
-                    .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
-                ReleaseProfiles: releaseProfiles,
-                IndexerProtocol: request.IndexerProtocol,
-                ReleaseAgeHours: request.ReleaseAgeHours,
-                MinimumAgeMinutes: request.MinimumAgeMinutes,
-                RetentionDays: request.RetentionDays,
-                MaximumSizeMb: request.MaximumSizeMb,
-                MinimumSeeders: request.MinimumSeeders,
-                IndexerFlags: request.IndexerFlags,
-                PreferIndexerFlags: request.PreferIndexerFlags,
-                RequiredWords: request.RequiredWords,
-                IgnoredWords: request.IgnoredWords,
-                MultiLanguages: request.MultiLanguages,
-                SeasonPackSearchMode: request.SeasonPackSearchMode,
-                AvailableUtc: request.AvailableUtc,
-                AvailabilityDelayDays: request.AvailabilityDelayDays));
-
-            var boost = rankingModelService.Score(new ReleaseRankingFeatures(
-                Seeders: request.Seeders,
-                SizeBytes: request.SizeBytes,
-                QualityDelta: decision.QualityDelta,
-                CustomFormatScore: decision.CustomFormatScore,
-                SourcePriorityScore: 100,
-                EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
-                ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
-            var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, platformSettings.SearchScoringMode);
-
-            return Results.Ok(new
-            {
-                releaseName,
-                decision.Status,
-                decision.MeetsCutoff,
-                decision.Summary,
-                decision.Reasons,
-                decision.RiskFlags,
-                decision.QualityDelta,
-                decision.ReleaseGroup,
-                decision.EstimatedBitrateMbps,
-                decision.PolicyVersion,
-                legacyScoring = new
-                {
-                    label = "Legacy scoring provenance",
-                    provenanceOnly = true,
-                    score = scoreComputation.FinalScore,
-                    ruleScore = decision.Score,
-                    scoringMode = scoreComputation.Mode,
-                    scoringExplanation = scoreComputation.Explanation,
-                    customFormatScore = decision.CustomFormatScore,
-                    seederScore = decision.SeederScore,
-                    sizeScore = decision.SizeScore,
-                    rankingBoost = boost,
-                    matchedCustomFormats = matchedFormats
-                }
-            });
-        });
 
         rankingModel.MapGet("status", (IReleaseRankingModelService rankingModelService) =>
         {
@@ -731,32 +638,6 @@ public static class SearchEndpointRouteBuilderExtensions
             : (double)SuccessfulGrabs / TotalQueries;
     }
 }
-
-file sealed record ReleaseExplainRequest(
-    string? ReleaseName,
-    string? AssumedQuality,
-    string? CurrentQuality,
-    string? TargetQuality,
-    long? SizeBytes,
-    int? Seeders,
-    string? DownloadUrl,
-    string? NeverGrabPatterns,
-    IReadOnlyList<CustomFormatItem>? CustomFormats,
-    IReadOnlyList<string>? TagNames = null,
-    string? IndexerProtocol = null,
-    double? ReleaseAgeHours = null,
-    int? MinimumAgeMinutes = null,
-    int? RetentionDays = null,
-    int? MaximumSizeMb = null,
-    int? MinimumSeeders = null,
-    string? IndexerFlags = null,
-    string? PreferIndexerFlags = null,
-    string? RequiredWords = null,
-    string? IgnoredWords = null,
-    string? MultiLanguages = null,
-    string? SeasonPackSearchMode = null,
-    DateTimeOffset? AvailableUtc = null,
-    int? AvailabilityDelayDays = null);
 
 /// <summary>An address to check for a Cloudflare helper (#628).</summary>
 public sealed record CloudflareHelperTestRequest(string? Url);

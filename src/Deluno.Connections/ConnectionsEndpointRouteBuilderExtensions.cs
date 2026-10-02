@@ -704,50 +704,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
-        connections.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
-        {
-            var items = await repository.ListConnectionsAsync(cancellationToken);
-            return Results.Ok(items);
-        });
-
-        connections.MapPost(string.Empty, async (
-            HttpContext httpContext,
-            [FromBody] CreateConnectionRequest request,
-            [FromServices] IConnectionsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var errors = ValidateConnection(request);
-            if (errors.Count > 0)
-            {
-                return Results.ValidationProblem(errors);
-            }
-
-            var item = await repository.CreateConnectionAsync(request, cancellationToken);
-            return Results.Ok(item);
-        });
-
-        connections.MapDelete("{id}", async (
-            string id,
-            HttpContext httpContext,
-            [FromServices] IConnectionsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var removed = await repository.DeleteConnectionAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
-        });
-
         return endpoints;
     }
 
@@ -758,23 +714,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         if (!DownloadClientProtocolCatalog.IsDispatchable(request.Protocol))
         {
             errors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
-        }
-
-        return errors;
-    }
-
-    private static Dictionary<string, string[]> ValidateConnection(CreateConnectionRequest request)
-    {
-        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            errors["name"] = ["Give this connection a name."];
-        }
-
-        if (string.IsNullOrWhiteSpace(request.ConnectionKind))
-        {
-            errors["connectionKind"] = ["Choose what kind of connection this is."];
         }
 
         return errors;

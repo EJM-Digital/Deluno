@@ -126,7 +126,7 @@ public sealed class DelunoAllowedHostsMiddlewareTests
             NullLogger<DelunoAllowedHostsMiddleware>.Instance);
 
         var context = HttpContextFor("evil.example.com");
-        context.Request.Path = "/hubs/activity";
+        context.Request.Path = "/hubs/deluno";
         context.Request.Headers["Connection"] = "Upgrade";
         context.Request.Headers["Upgrade"] = "websocket";
 
@@ -148,7 +148,7 @@ public sealed class DelunoAllowedHostsMiddlewareTests
             NullLogger<DelunoAllowedHostsMiddleware>.Instance);
 
         var context = HttpContextFor("my-pc:5099");
-        context.Request.Path = "/hubs/activity";
+        context.Request.Path = "/hubs/deluno";
         context.Request.Headers["Connection"] = "Upgrade";
         context.Request.Headers["Upgrade"] = "websocket";
 

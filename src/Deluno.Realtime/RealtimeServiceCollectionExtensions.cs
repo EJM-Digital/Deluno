@@ -58,7 +58,6 @@ public static class RealtimeServiceCollectionExtensions
 
     public static IEndpointRouteBuilder MapDelunoRealtime(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapHub<ActivityHub>("/hubs/activity");
         endpoints.MapHub<ActivityHub>("/hubs/deluno");
         return endpoints;
     }

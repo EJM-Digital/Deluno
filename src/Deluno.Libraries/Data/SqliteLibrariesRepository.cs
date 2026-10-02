@@ -619,48 +619,6 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
-    public async Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
-        string id,
-        UpdateLibraryQualityProfileRequest request,
-        CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
-
-        var library = await GetLibraryAsync(connection, id, cancellationToken);
-        if (library is null)
-        {
-            return null;
-        }
-
-        var qualityProfileId = await SqliteQualityRepository.ResolveQualityProfileIdAsync(
-            connection,
-            library.MediaType,
-            NormalizeName(request.QualityProfileId),
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE libraries
-            SET
-                quality_profile_id = @qualityProfileId,
-                default_policy_set_id = NULL,
-                updated_utc = @updatedUtc
-            WHERE id = @id;
-            """;
-
-        AddParameter(command, "@id", id);
-        AddParameter(command, "@qualityProfileId", qualityProfileId);
-        AddParameter(command, "@updatedUtc", now.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
-
-        return await GetLibraryAsync(connection, id, cancellationToken);
-    }
-
 
     /// <summary>
     /// The subtitle languages this library wants, and how many of them it needs.

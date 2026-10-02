@@ -2,17 +2,11 @@ import { fetchJson } from "./client";
 import type {
   ReleasePreferencePlanCompilation,
   ReleasePreferencePlan,
-  ReleasePreferenceRegistryResponse,
   ReleasePreferencePreviewResponse,
   StoredReleasePreferencePlan
 } from "./types";
 
 const RELEASE_PREFERENCES_BASE = "/api/v1/release-preferences";
-
-export function fetchPreferenceRegistry(mediaType?: string) {
-  const query = mediaType ? `?mediaType=${encodeURIComponent(mediaType)}` : "";
-  return fetchJson<ReleasePreferenceRegistryResponse>(`${RELEASE_PREFERENCES_BASE}/registry${query}`);
-}
 
 export function fetchStoredPreferencePlans(mediaType?: string) {
   const query = mediaType ? `?mediaType=${encodeURIComponent(mediaType)}` : "";

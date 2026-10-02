@@ -3490,40 +3490,6 @@ public sealed class SqliteJobStore(
         return Page<ActivityEventItem>.Of(events, nextPageToken);
     }
 
-    public async Task<IReadOnlyList<ActivityHourCount>> GetActivityCountsByHourAsync(
-        DateTimeOffset sinceUtc,
-        int offsetMinutes,
-        CancellationToken cancellationToken)
-    {
-        var counts = new List<ActivityHourCount>();
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        // created_utc is indexed, so this is a range read; the hour is taken in the caller's own time.
-        command.CommandText =
-            """
-            SELECT
-                CAST(strftime('%H', created_utc, @shift) AS INTEGER),
-                category,
-                COUNT(*)
-            FROM activity_events
-            WHERE created_utc >= @sinceUtc AND category <> 'release.turned-down'
-            GROUP BY 1, category;
-            """;
-        AddParameter(command, "@sinceUtc", sinceUtc.ToUniversalTime().ToString("O"));
-        AddParameter(command, "@shift", (offsetMinutes >= 0 ? "+" : "-") + Math.Abs(offsetMinutes).ToString(CultureInfo.InvariantCulture) + " minutes");
-
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            counts.Add(new ActivityHourCount(reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2)));
-        }
-
-        return counts;
-    }
-
     public async Task<ActivityStatsSnapshot> GetActivityStatsAsync(
         DateTimeOffset sinceUtc,
         int windowHours,

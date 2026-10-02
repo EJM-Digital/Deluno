@@ -18,13 +18,6 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
     public Task<DownloadDispatchItem?> GetDispatchIncludingArchivedAsync(string dispatchId, CancellationToken cancellationToken) =>
         Task.FromResult<DownloadDispatchItem?>(null);
 
-    public Task<IReadOnlyList<DownloadDispatchItem>> FindUnresolvedDispatchesAsync(
-        int minAgeMinutes,
-        string? clientId,
-        int limit,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<DownloadDispatchItem>>(new List<DownloadDispatchItem>());
-
     public Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
         int limit,
         CancellationToken cancellationToken) =>
