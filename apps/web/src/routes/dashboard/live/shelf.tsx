@@ -21,7 +21,7 @@ import "./shelf.css";
 import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
-import { libraryPosters, postersAcross } from "./layout";
+import { libraryPosters, posterSize, postersAcross } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
@@ -52,6 +52,13 @@ export function arrivedDetail(titles: number, upgraded: number, bytes: number): 
   return parts.join(" · ");
 }
 
+/**
+ * A library's colour on the strip a small poster wears: hues from outside the status colours (green, amber, red), taken in
+ * Settings › Libraries order and then round again. Weir uses its workflow hues the same way.
+ */
+export const LIBRARY_HUES = [205, 265, 320, 188, 232, 290] as const;
+export const libraryHue = (position: number): number => LIBRARY_HUES[Math.max(0, position) % LIBRARY_HUES.length];
+
 /** The chosen chip is remembered per browser. */
 export const SHELF_LIBRARY_KEY = "deluno.live.shelfLibrary";
 
@@ -72,16 +79,18 @@ function rememberChoice(value: string): void {
   }
 }
 
-function Poster({ group, isNew, captions, tag }: { group: ArrivalGroup; isNew: boolean; captions: boolean; tag: { id: string; name: string } | null }) {
+function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; isNew: boolean; captions: boolean; tag: { id: string; name: string; hue: number } | null; small: boolean }) {
   const { title, poster, to, upgrades, episodes } = group;
   const when = arrivedWhen(group.at);
   const sub = episodes ? `${episodes} · ${when}` : when;
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
-  const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : "an upgrade") : null, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
+  // A small poster has no arrow, so what it said goes into the tooltip and the name.
+  const upgradeSaid = upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : small && group.previousQuality ? `upgraded from ${group.previousQuality}` : "an upgrade") : null;
+  const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgradeSaid, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   const page = group.library === "tv" ? "/tv" : "/movies";
   return (
-    <li className="lsh-poster" data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
-      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library, ${when}`}>
+    <li className="lsh-poster" data-size={small ? "small" : "full"} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
+      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library${small && upgradeSaid ? `, ${upgradeSaid}` : ""}, ${when}`}>
         <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className="lsh-art">
           {group.quality ? <span aria-hidden className={cn("lsh-mark", group.met === true && "met", group.met === false && "upg")}>{group.quality}</span> : null}
           <ArtworkImage
@@ -96,7 +105,7 @@ function Poster({ group, isNew, captions, tag }: { group: ArrivalGroup; isNew: b
               </span>
             }
           />
-          {upgrades > 0 ? <span className="lsh-up" title={group.previousQuality ? `Upgraded from ${group.previousQuality}` : "Upgraded"}>↑</span> : null}
+          {upgrades > 0 && !small ? <span className="lsh-up" title={group.previousQuality ? `Upgraded from ${group.previousQuality}` : "Upgraded"}>↑</span> : null}
         </span>
         {captions ? <span className="lsh-cap">{title}<small>{sub}</small></span> : null}
       </Link>
@@ -104,7 +113,8 @@ function Poster({ group, isNew, captions, tag }: { group: ArrivalGroup; isNew: b
         <Link
           className="lsh-tag"
           to={`${page}?library=${encodeURIComponent(tag.id)}`}
-          title={`Open ${tag.name}`}
+          title={`Open ${tag.name} in the library`}
+          style={{ ["--tile-hue" as string]: tag.hue }}
           onClick={(event: MouseEvent) => event.stopPropagation()}
         >
           {tag.name}
@@ -145,6 +155,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const posters = box.height > 0 ? libraryPosters(box.height, box.width) : null;
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
+  const small = posterSize(posters?.width) === "small";
   const inRow = posters ? shown.slice(0, across) : shown;
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
 
@@ -162,7 +173,8 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
         {inRow.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : inRow.map((group) => {
           const id = group.libraryId;
           const name = id ? names.get(id) ?? group.libraryName : null;
-          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} captions={posters?.captions ?? true} tag={id && name ? { id, name } : null} />;
+          const position = libraries.findIndex((entry) => entry.libraryId === id);
+          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} captions={posters?.captions ?? true} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} />;
         })}
       </ul>
     </Panel>

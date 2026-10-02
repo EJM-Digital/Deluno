@@ -186,6 +186,19 @@ export function libraryPosters(boxHeight: number, boxWidth = 0): LibraryPosters 
   return { captions, width: Math.max(24, Math.min(fromHeight, forFive)) };
 }
 
+/**
+ * A poster narrower than this is too small for its decorations: the upgrade chip and the library's tag would cover a third of
+ * the art or more. Weir's Just finished shelf uses the same number and the same rule (2 Oct 2026).
+ */
+export const FULL_DECORATIONS_MIN_PX = 64;
+
+export type PosterSize = "small" | "full";
+
+/** How a poster of this width is dressed: "full" wears the upgrade chip and the library's whole tag, "small" a slim colour strip. Not measured yet, it is "full". */
+export function posterSize(width: number | null | undefined): PosterSize {
+  return width != null && width < FULL_DECORATIONS_MIN_PX ? "small" : "full";
+}
+
 /** Whole posters across a row of `boxWidth` px, at least one; never a part of one. */
 export function postersAcross(boxWidth: number, posterWidth: number): number {
   return Math.max(1, Math.floor((boxWidth - POSTERS_PAD_X + POSTER_GAP_PX) / (posterWidth + POSTER_GAP_PX)));
