@@ -77,7 +77,7 @@ function TabBar({ active, onSelect, className }: {
   className?: string;
 }) {
   return (
-    <div role="tablist" aria-label="Dashboard sections" className={cn("flex items-center gap-1", className)}>
+    <div role="tablist" aria-label="Dashboard sections" className={cn("inline-flex w-fit items-center gap-[2px] rounded-[12px] border border-hairline bg-card p-[3px]", className)}>
       {DASHBOARD_TABS.map((tab) => {
         const selected = tab === active;
         return (
@@ -92,8 +92,9 @@ function TabBar({ active, onSelect, className }: {
             size="sm"
             onClick={() => onSelect(tab)}
             className={cn(
-              "px-3.5",
-              selected ? "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary" : "border border-transparent"
+              // Weir's segmented control: a bordered group, each tab 30px tall at 13px, the chosen one outlined.
+              "h-[30px] rounded-[10px] px-[14px] text-[length:13px]",
+              selected ? "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary" : "border border-transparent"
             )}
           >
             {TAB_LABELS[tab]}
