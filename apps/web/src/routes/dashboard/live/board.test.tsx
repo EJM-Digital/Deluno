@@ -96,14 +96,14 @@ describe("the layout rules", () => {
 
   it("sizes the posters from the one row's height, exactly 2:3, and draws whole posters only", () => {
     // 168px of row less a 34px caption = 134px of art, 89px wide (floor of 134 / 1.5).
-    expect(libraryPosters(180)).toEqual({ captions: true, width: 88 });
-    expect(libraryPosters(112)).toEqual({ captions: false, width: 66 });
+    expect(libraryPosters(180)).toEqual({ captions: true, caption: "compact", width: 88 });
+    expect(libraryPosters(112)).toEqual({ captions: false, caption: "none", width: 66 });
     expect(libraryPosters(10).width).toBe(24);
     expect(libraryPosters(2000).width).toBe(170);
     // 89px posters with a 12px gap in a 410px box (400px inside its padding): 4 whole ones, never a part one.
     // At least five whole posters across: a wide-and-short row keeps its height's size, a narrow one makes them smaller, still 2:3.
-    expect(libraryPosters(180, 2000)).toEqual({ captions: true, width: 88 });
-    expect(libraryPosters(180, 410)).toEqual({ captions: true, width: 70 });
+    expect(libraryPosters(180, 2000)).toEqual({ captions: true, caption: "compact", width: 88 });
+    expect(libraryPosters(180, 410)).toEqual({ captions: true, caption: "compact", width: 70 });
     expect(postersAcross(410, libraryPosters(180, 410).width)).toBe(5);
     expect(postersAcross(410, 89)).toBe(4);
     expect(postersAcross(400, 89)).toBe(3);
@@ -548,7 +548,7 @@ describe("arrived today", () => {
   ];
   const shelf = (extra: object = {}) => withRouter(<Shelf items={arrivals()} titles={NO_TITLES} newest={new Set(["1"])} heading="3 arrived today" library={section} {...extra} />);
 
-  it("shows every arrival on one shelf, each poster with the Movies page's bar and the upgrade as an arrow; the newest has the ring", () => {
+  it("shows every arrival on one shelf, nothing on the art but the picture and the library's tag, and the state in the status line below; the newest has the ring", () => {
     shelf();
     expect(screen.queryByRole("region", { name: "TV Shows" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Movies" })).toBeNull();
@@ -556,15 +556,16 @@ describe("arrived today", () => {
     const film1 = screen.getByRole("link", { name: /^Film 1/ });
     expect(film1).toHaveAttribute("href", "/movies/1");
     expect(screen.getByRole("link", { name: /^Show 9/ })).toHaveAttribute("href", "/tv/9");
-    // Quality met is the gold bar, upgradable the green one, with the quality on it; an upgrade carries an arrow that says what it replaced.
-    expect(film1.querySelector(".lsh-mark")).toHaveClass("met");
-    expect(film1.querySelector(".lsh-mark")).toHaveTextContent("WEB 1080p");
+    // No quality bar and no arrow on the art. Quality met is a gold dot, can be upgraded a green one, with the quality in the words; an upgrade that landed says "Upgraded" in its own colour.
+    expect(document.querySelector(".lsh-mark, .lsh-up")).toBeNull();
+    expect(film1.querySelector(".lsh-art")!.children).toHaveLength(1);
+    expect(film1.querySelector(".lsh-status")).toHaveAttribute("data-tone", "met");
+    expect(film1.querySelector(".lsh-status")).toHaveTextContent("Quality met · WEB 1080p");
     const film2 = screen.getByRole("link", { name: /^Film 2/ });
-    expect(film2.querySelector(".lsh-mark")).toHaveClass("upg");
-    expect(film2.querySelector(".lsh-mark")).toHaveTextContent("Bluray 1080p");
-    expect(film2.querySelector(".lsh-up")).toHaveAttribute("title", "Upgraded from WEB 720p");
+    expect(film2.querySelector(".lsh-status")).toHaveAttribute("data-tone", "upgradable");
+    expect(film2.querySelector(".lsh-status")).toHaveTextContent("Upgraded · Bluray 1080p");
     expect(film2).toHaveAttribute("title", expect.stringContaining("WEB 720p → Bluray 1080p"));
-    expect(film1.querySelector(".lsh-up")).toBeNull();
+    expect(film2.getAttribute("aria-label")).toContain("upgraded from WEB 720p");
     expect(film1.closest("li")).toHaveAttribute("data-new");
   });
 

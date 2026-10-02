@@ -26,6 +26,8 @@ export interface ArrivalGroup {
   upgrades: number;
   /** "S01E04" for one episode, "12 episodes" for several, empty for a film. */
   episodes: string | null;
+  /** For several episodes of one season whose numbers are known: "S01E05–E08 · 4 episodes"; null otherwise. */
+  episodeSpan: string | null;
   sizeBytes: number;
   /** Which kind of title it is: a show (TV) or a film (Movies). */
   library: ArrivalLibrary;
@@ -61,6 +63,20 @@ function episodeCode(item: ArrivalItem, titles: TitleLookup): string | null {
     if (info) return code(info.season, info.episode);
   }
   return item.release ? episodeFromRelease(item.release) : null;
+}
+
+/** "S01E05–E08 · 4 episodes" for a run of one season's episodes, or null where the numbers are not all known or they span seasons. */
+export function episodeSpanOf(codes: ReadonlyArray<string | null>): string | null {
+  if (codes.length < 2) return null;
+  const parsed = codes.map((value) => /^S(\d+)E(\d+)$/i.exec(value ?? ""));
+  if (parsed.some((match) => !match)) return null;
+  const seasons = new Set(parsed.map((match) => Number(match![1])));
+  if (seasons.size !== 1) return null;
+  const numbers = parsed.map((match) => Number(match![2]));
+  const first = Math.min(...numbers);
+  const last = Math.max(...numbers);
+  const two = (value: number) => String(value).padStart(2, "0");
+  return `S${two([...seasons][0])}E${two(first)}${last === first ? "" : `–E${two(last)}`} · ${codes.length} episodes`;
 }
 
 /** Quality met only when every arrival in the group met it; upgradable when any can still be upgraded; unknown when none says. */
@@ -109,6 +125,7 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
       previousQuality: members.length === 1 ? first.previousQuality : null,
       upgrades,
       episodes: !isShow ? null : members.length === 1 ? episodeCode(first, titles) : `${members.length} episodes`,
+      episodeSpan: isShow && members.length > 1 ? episodeSpanOf(members.map((item) => episodeCode(item, titles))) : null,
       sizeBytes: members.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
       libraryId: first.libraryId ?? null,
       libraryName: first.libraryName ?? null,

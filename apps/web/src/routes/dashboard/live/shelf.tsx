@@ -9,7 +9,7 @@
  * imported flies in from the journey (see `useFlyToShelf`) when the chip shown includes its library, and simply appears
  * with reduced motion. With nothing in today, the shelf shows the latest of the last seven days.
  */
-import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
 import type { DashboardLibrarySection } from "../../../lib/api/types/operations";
@@ -21,7 +21,8 @@ import "./shelf.css";
 import { PosterTile } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
-import { libraryPosters, posterSize, postersAcross } from "./layout";
+import { posterDetail, posterStatus } from "./poster-caption";
+import { libraryPosters, posterSize, postersAcross, shelfRowNeed, type CaptionTier } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { useOpenSlots } from "./shelf-slots";
 import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
@@ -80,20 +81,20 @@ function rememberChoice(value: string): void {
   }
 }
 
-function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; isNew: boolean; captions: boolean; tag: { id: string; name: string; hue: number } | null; small: boolean }) {
+function Poster({ group, isNew, caption, tag, small }: { group: ArrivalGroup; isNew: boolean; caption: CaptionTier; tag: { id: string; name: string; hue: number } | null; small: boolean }) {
   const { title, poster, to, upgrades, episodes } = group;
   const when = arrivedWhen(group.at);
-  const sub = episodes ? `${episodes} · ${when}` : when;
+  const status = posterStatus(group);
+  const detailLine = posterDetail(group);
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
-  // A small poster has no arrow, so what it said goes into the tooltip and the name.
-  const upgradeSaid = upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : small && group.previousQuality ? `upgraded from ${group.previousQuality}` : "an upgrade") : null;
+  // The upgrade is said in the status line; the tooltip and the name say it in full.
+  const upgradeSaid = upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : group.previousQuality ? `upgraded from ${group.previousQuality}` : "an upgrade") : null;
   const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgradeSaid, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   const page = group.library === "tv" ? "/tv" : "/movies";
   return (
-    <li className="lsh-poster" {...{ [TILE_KEY_ATTRIBUTE]: group.key }} data-size={small ? "small" : "full"} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
-      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library${small && upgradeSaid ? `, ${upgradeSaid}` : ""}, ${when}`}>
+    <li className="lsh-poster" {...{ [TILE_KEY_ATTRIBUTE]: group.key }} data-size={small ? "small" : "full"} data-caption={caption} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
+      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library${upgradeSaid ? `, ${upgradeSaid}` : ""}, ${when}`}>
         <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className="lsh-art">
-          {group.quality ? <span aria-hidden className={cn("lsh-mark", group.met === true && "met", group.met === false && "upg")}>{group.quality}</span> : null}
           <ArtworkImage
             src={poster}
             alt=""
@@ -101,9 +102,22 @@ function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; i
             className="h-full w-full object-cover"
             fallback={<PosterTile title={title} kind={group.library} />}
           />
-          {upgrades > 0 && !small ? <span className="lsh-up" title={group.previousQuality ? `Upgraded from ${group.previousQuality}` : "Upgraded"}>↑</span> : null}
         </span>
-        {captions ? <span className="lsh-cap">{title}<small>{sub}</small></span> : null}
+        {caption === "none" ? null : (
+          <span className={cn("lsh-cap", caption === "full" && "lsh-cap--full")}>
+            <span className="lsh-title">{title}</span>
+            <span className="lsh-status" data-tone={status.tone}>
+              <i aria-hidden className="lsh-dot" />
+              <span>{status.words}</span>
+            </span>
+            {caption === "full" ? (
+              <>
+                <small className="lsh-detail">{detailLine}</small>
+                <small className="lsh-when">{when}</small>
+              </>
+            ) : null}
+          </span>
+        )}
       </Link>
       {tag ? (
         <Link
@@ -120,7 +134,7 @@ function Poster({ group, isNew, captions, tag, small }: { group: ArrivalGroup; i
   );
 }
 
-export function Shelf({ items, titles, newest, heading, detail, latest = false, library }: {
+export function Shelf({ items, titles, newest, heading, detail, latest = false, library, onHeightNeed }: {
   items: ArrivalItem[];
   titles: TitleLookup;
   /** Keys that have just arrived: the newest has the ring. */
@@ -133,6 +147,11 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   latest?: boolean;
   /** The library's own counts: for each kind of title, and for each library. */
   library?: DashboardLibrarySection | null;
+  /**
+   * Told the height the card can use (its own chrome and the posters at the width the five-poster rule caps them to), so the page
+   * can give spare height to something else; see `gridRows`. It does not change with the card's height, so telling it cannot loop.
+   */
+  onHeightNeed?: (px: number) => void;
 }) {
   const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
   const libraries = useMemo(() => library?.libraryCounts ?? [], [library?.libraryCounts]);
@@ -152,6 +171,14 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
   const small = posterSize(posters?.width) === "small";
+  // The card's chrome (header, chips, padding) is what its height has beyond the row's, and does not change with the height:
+  // the need is that and the height the row's posters can use at this width.
+  useLayoutEffect(() => {
+    const row = boxRef.current;
+    if (!row || !onHeightNeed || !(row.clientHeight > 0)) return;
+    const card = row.closest<HTMLElement>(".lsh");
+    if (card) onHeightNeed(card.offsetHeight - row.clientHeight + shelfRowNeed(row.clientWidth));
+  }, [box.width, box.height, onHeightNeed, boxRef]);
   // A title whose poster is on its way has a slot that is closed or opening: the poster it pushes out is kept until it is gone.
   const slots = useOpenSlots(boxRef);
   const inRow = posters ? shown.slice(0, across + slots) : shown;
@@ -174,7 +201,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
           const id = group.libraryId;
           const name = id ? names.get(id) ?? group.libraryName : null;
           const position = libraries.findIndex((entry) => entry.libraryId === id);
-          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} captions={posters?.captions ?? true} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} />;
+          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} caption={posters?.caption ?? "compact"} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} />;
         })}
       </ul>
     </Panel>

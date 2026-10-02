@@ -20,7 +20,7 @@
  * storage and system problems are on System.
  */
 import type { JSX } from "react";
-import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { GRID_AREAS, GRID_COLUMNS, gridRows, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./live/layout";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
@@ -147,7 +147,9 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const [gridRef, grid] = useElementSize<HTMLDivElement>();
   // The mockup's row heights are shares of the window's height (the page is fit to the window beside the right column), re-read whenever the grid is resized.
   const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
-  const rows = gridRows(grid.height, grid.height);
+  // What the bottom row can use, as the shelf measures it, so spare height goes to the journey and the band rather than to empty space under the posters.
+  const [lowNeed, setLowNeed] = useState<number>();
+  const rows = gridRows(grid.height, grid.height, { lowNeed });
   // Activity's rows go to one line when its row is short.
   const compactActivity = side && rows.low < 12.5 * rem;
   useFlyToShelf(root, cards, items);
@@ -192,6 +194,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
         <div className="grid min-h-0 min-w-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
           <Shelf
+            onHeightNeed={setLowNeed}
             items={shelfItems}
             titles={titles}
             newest={newestArrivals}
