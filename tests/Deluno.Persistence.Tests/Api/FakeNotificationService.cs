@@ -12,16 +12,6 @@ internal sealed class FakeNotificationService : INotificationService
 {
     public NotificationPreferences Preferences { get; set; } = new();
 
-    public Task<NotificationItem> CreateNotificationAsync(
-        string type, string title, string message, string severity,
-        Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new NotificationItem { Type = type, Title = title, Message = message, Severity = severity });
-
-    public Task<List<NotificationItem>> GetNotificationsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
-        => Task.FromResult(new List<NotificationItem>());
-
-    public Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
-
     public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default) => Task.FromResult(Preferences);
 
     public Task UpdatePreferencesAsync(NotificationPreferences preferences, CancellationToken cancellationToken = default)

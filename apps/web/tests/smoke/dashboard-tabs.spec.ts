@@ -162,7 +162,7 @@ async function serveBusyInstall(page: Page) {
       topProblems: [1, 2, 3, 4, 5].map((n) => ({ id: `health-${n}`, title: `Health problem number ${n} with a long title`, category: "system", message: "A sentence that says what is wrong and is long enough to need the room it is given.", sinceUtc: null, link: "/system", snoozed: false }))
     },
     storage: { asOfUtc: now, readingUtc: now, volumes: [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `v${n}`, label: `Drive ${n}`, roles: ["library"], paths: [`/media/${n}`], available: true, totalBytes: 8e12, freeBytes: 4e12 })) },
-    system: { asOfUtc: now, version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 3600, machine: { capturedUtc: now, cpuPercent: 4, memoryBytes: 9e8, memoryPercent: 3 }, jobs: { running: 1, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null, notificationsUnread: 0 },
+    system: { asOfUtc: now, version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 3600, machine: { capturedUtc: now, cpuPercent: 4, memoryBytes: 9e8, memoryPercent: 3 }, jobs: { running: 1, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null },
     activity: {
       asOfUtc: now, windowHours: 24, searchesRun: 1, downloadsStarted: 0, importsCompleted: 0, cleanupRemovals: 0, retentionRemovals: 0,
       recent: Array.from({ length: 12 }, (_, n) => ({ id: `a${n}`, category: "task.finished", label: "Task finished", message: `Something Deluno did, number ${n + 1}.`, relatedEntityType: null, relatedEntityId: null, createdUtc: now }))

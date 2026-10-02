@@ -7860,15 +7860,6 @@ public sealed class ImportPipelineServiceTests
 
     private sealed class FakeNotificationService(NotificationPreferences preferences) : INotificationService
     {
-        public Task<NotificationItem> CreateNotificationAsync(string type, string title, string message, string severity, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task<List<NotificationItem>> GetNotificationsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
         public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(preferences);
 

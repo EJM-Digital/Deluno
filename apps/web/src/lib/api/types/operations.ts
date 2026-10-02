@@ -1107,7 +1107,6 @@ export interface DashboardSystemSection {
   backupsEnabled: boolean;
   internetOutage: boolean;
   outageSinceUtc: string | null;
-  notificationsUnread: number;
 }
 
 export interface DashboardActivityItem {

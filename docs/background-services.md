@@ -26,7 +26,6 @@ Every `BackgroundService` and `IHostedService` in Deluno (`src` and `apps`), and
 | `PlatformSchemaInitializer`, `MoviesSchemaInitializer`, `SeriesSchemaInitializer`, `JobsSchemaInitializer`, `CacheSchemaInitializer` | Same: retry for a locked database, then fail start-up and mark the database failed on the start-up gate. | Migrations commit one at a time, so a retry carries on where it stopped. |
 | `IndexerIdentityBackfillService` | Caught and logged; history stays filed by name. | |
 | `CollectionExclusionMigrationHostedService`, `MovieRungRepairReportService` | Caught, logged, shown on Health (a `startup:...` problem key), run again next start. | |
-| `NotificationEventPublisher` | Does nothing at start. | |
 | `BackgroundServiceFailureMonitor` | Nothing to fail. | The safety net itself. |
 
 ### Loops (`BackgroundService`)

@@ -108,7 +108,6 @@ public sealed class LibrarySubtitleTypePreferenceTests
         var recorder = new RecordingFetchService();
         var handler = new LibrarySubtitleSearchJobHandler(
             libraries, subtitles, recorder, jobStore.JobStore,
-            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()),
             jobStore.JobStore);
 
         await handler.HandleAsync(JobFor(libraryId), CancellationToken.None);
@@ -148,7 +147,6 @@ public sealed class LibrarySubtitleTypePreferenceTests
         var fetchService = new ForcedFoundFetchService();
         var handler = new LibrarySubtitleSearchJobHandler(
             libraries, subtitles, fetchService, jobs.JobStore,
-            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()),
             jobs.JobStore);
 
         await handler.HandleAsync(JobFor(libraryId), CancellationToken.None);

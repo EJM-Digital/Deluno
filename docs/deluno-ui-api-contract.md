@@ -202,8 +202,7 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
                  machine?: { capturedUtc, cpuPercent, memoryBytes, memoryPercent? },
                  jobs: { running, queued, failed },
                  lanes: [{ name, state: "running"|"idle"|"failing"|"restarting"|"disabled", activeJobs, lastError? }],
-                 lastBackupUtc?, nextBackupUtc?, backupsEnabled, internetOutage, outageSinceUtc?,
-                 notificationsUnread },
+                 lastBackupUtc?, nextBackupUtc?, backupsEnabled, internetOutage, outageSinceUtc? },
   activity?:   { asOfUtc, windowHours, searchesRun, downloadsStarted, importsCompleted,
                  cleanupRemovals, retentionRemovals,
                  recent: [{ id, category, label, message, relatedEntityType?, relatedEntityId?, createdUtc }] (8, newest first, label = plain-words name of the kind, #1086; category is the raw code) }

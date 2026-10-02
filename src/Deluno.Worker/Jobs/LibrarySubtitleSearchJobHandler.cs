@@ -48,7 +48,6 @@ public sealed class LibrarySubtitleSearchJobHandler(
     IMediaSubtitleRepository mediaSubtitleRepository,
     ISubtitleFetchService subtitleFetchService,
     IJobScheduler jobScheduler,
-    NotificationEventPublisher notificationEventPublisher,
     IActivityFeedRepository activityFeedRepository)
     : IJobHandler
 {
@@ -112,14 +111,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Read before any fetch for this item: whether a language already
-            // had a row decides "downloaded" from "upgraded" once the fetch
-            // below succeeds, and a fetch's own RecordFetchedAsync call would
-            // have already overwritten that answer.
             var existingSubtitles = await mediaSubtitleRepository.ListSubtitlesAsync(kind, item.MediaId, cancellationToken);
-            var languagesAlreadyHeld = existingSubtitles
-                .Select(subtitle => subtitle.Language)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             // A forced track is fetched once and left alone after that — it is
             // never re-checked against the cutoff the way the full subtitle is,
             // because "made for this file" means nothing for four lines of
@@ -172,7 +164,6 @@ public sealed class LibrarySubtitleSearchJobHandler(
                                 MatchRung: (int)forcedOutcome.Match,
                                 SourceKey: forcedOutcome.SourceKey),
                             cancellationToken);
-                        await notificationEventPublisher.PublishSubtitleDownloadedAsync(item.Title, $"{language} (forced)", cancellationToken);
                         forcedAlreadyHeld.Add(language);
                     }
                 }
@@ -257,12 +248,9 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         $"{decision.ToStoredName()}: {outcome.Reason}", cancellationToken);
                     // No candidate was written, so there is nothing to score
                     // (score stays null — the default above).
-                    await notificationEventPublisher.PublishSubtitleFailedAsync(
-                        item.Title, language, outcome.Reason, cancellationToken);
                     continue;
                 }
 
-                var wasAlreadyHeld = languagesAlreadyHeld.Contains(language);
                 await mediaSubtitleRepository.RecordFetchedAsync(
                     kind,
                     item.MediaId,
@@ -282,15 +270,6 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         MatchRung: (int)outcome.Match,
                         SourceKey: outcome.SourceKey),
                     cancellationToken);
-
-                if (wasAlreadyHeld)
-                {
-                    await notificationEventPublisher.PublishSubtitleUpgradedAsync(item.Title, language, cancellationToken);
-                }
-                else
-                {
-                    await notificationEventPublisher.PublishSubtitleDownloadedAsync(item.Title, language, cancellationToken);
-                }
 
                 if (outcome.Match >= SubtitleCutoff.Rung)
                 {

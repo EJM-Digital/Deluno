@@ -11,7 +11,6 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
-using Deluno.Notifications;
 using Deluno.Platform.Data;
 using Deluno.Series.Data;
 using Deluno.Worker.Services;
@@ -691,8 +690,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
         var backupTask = sp.GetRequiredService<IDelunoBackupService>().GetSettingsAsync(CancellationToken.None);
         var machineTask = sp.GetRequiredService<IMachineTelemetryRepository>().GetLatestAsync(CancellationToken.None);
         var jobCountsTask = sp.GetRequiredService<IJobQueueRepository>().CountJobsByStatusAsync(CancellationToken.None);
-        var unreadTask = sp.GetRequiredService<INotificationService>().GetUnreadCountAsync(CancellationToken.None);
-        await Task.WhenAll(updatesTask, backupTask, machineTask, jobCountsTask, unreadTask);
+        await Task.WhenAll(updatesTask, backupTask, machineTask, jobCountsTask);
 
         var counts = jobCountsTask.Result;
         int JobsWith(params string[] statuses) => statuses.Sum(status => counts.GetValueOrDefault(status, 0));
@@ -719,8 +717,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
             backupTask.Result.NextRunUtc,
             backupTask.Result.Enabled,
             connectivity.IsOutage,
-            connectivity.IsOutage ? connectivity.SinceUtc : null,
-            unreadTask.Result);
+            connectivity.IsOutage ? connectivity.SinceUtc : null);
     }
 
     // -------------------------------------------------------------- activity

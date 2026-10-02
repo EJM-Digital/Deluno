@@ -34,7 +34,6 @@ public sealed class SubtitleTitleSearchJobHandler(
     IMediaSubtitleRepository mediaSubtitleRepository,
     IMediaSubtitleOverrideRepository mediaSubtitleOverrideRepository,
     ISubtitleFetchService subtitleFetchService,
-    NotificationEventPublisher notificationEventPublisher,
     IActivityFeedRepository activityFeedRepository)
     : IJobHandler
 {
@@ -81,11 +80,6 @@ public sealed class SubtitleTitleSearchJobHandler(
         {
             return $"{item.Title} already has every subtitle language it asks for.";
         }
-
-        var existingSubtitles = await mediaSubtitleRepository.ListSubtitlesAsync(kind, item.MediaId, cancellationToken);
-        var languagesAlreadyHeld = existingSubtitles
-            .Select(subtitle => subtitle.Language)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var request = new SubtitleSearchRequest(
             Title: item.Title,
@@ -144,11 +138,9 @@ public sealed class SubtitleTitleSearchJobHandler(
                 await mediaSubtitleRepository.RecordAttemptHistoryAsync(
                     kind, item.MediaId, language, provider: null,
                     $"{decision.ToStoredName()}: {outcome.Reason}", cancellationToken);
-                await notificationEventPublisher.PublishSubtitleFailedAsync(item.Title, language, outcome.Reason, cancellationToken);
                 continue;
             }
 
-            var wasAlreadyHeld = languagesAlreadyHeld.Contains(language);
             await mediaSubtitleRepository.RecordFetchedAsync(
                 kind, item.MediaId,
                 new MediaSubtitleRow(
@@ -163,15 +155,6 @@ public sealed class SubtitleTitleSearchJobHandler(
                     MatchRung: (int)outcome.Match,
                     SourceKey: outcome.SourceKey),
                 cancellationToken);
-
-            if (wasAlreadyHeld)
-            {
-                await notificationEventPublisher.PublishSubtitleUpgradedAsync(item.Title, language, cancellationToken);
-            }
-            else
-            {
-                await notificationEventPublisher.PublishSubtitleDownloadedAsync(item.Title, language, cancellationToken);
-            }
 
             var decisionOnSuccess = outcome.Match >= SubtitleCutoff.Rung
                 ? SubtitleDecision.MeetsSubtitlePlan

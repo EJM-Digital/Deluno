@@ -194,9 +194,7 @@ public sealed class SubtitleTitleSearchJobHandlerTests
             new UpdateLibrarySubtitlesRequest(Languages: ["en"], Mode: "all"),
             CancellationToken.None);
 
-        var notificationService = new InMemoryNotificationService();
-        var publisher = new NotificationEventPublisher(notificationService, new NullRealtimeEventPublisher());
-        var handler = new SubtitleTitleSearchJobHandler(libraries, subtitles, overrides, fetchService, publisher, jobStore);
+        var handler = new SubtitleTitleSearchJobHandler(libraries, subtitles, overrides, fetchService, jobStore);
 
         return (handler, movies, subtitles, library!);
     }

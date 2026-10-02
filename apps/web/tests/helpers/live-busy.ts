@@ -84,7 +84,7 @@ export async function serveLiveBusy(page: Page) {
         { id: "v3", label: "Downloads (F:)", roles: ["downloads"], paths: ["F:/Downloads"], available: true, totalBytes: 2e12, freeBytes: 0.3e12 }
       ]
     },
-    system: { asOfUtc: at(0), version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 7200, machine: null, jobs: { running: 1, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null, notificationsUnread: 0 },
+    system: { asOfUtc: at(0), version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 7200, machine: null, jobs: { running: 1, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null },
     activity: { asOfUtc: at(0), windowHours: 24, searchesRun: 30, downloadsStarted: 9, importsCompleted: 6, cleanupRemovals: 2, retentionRemovals: 1, recent: [] }
   };
 

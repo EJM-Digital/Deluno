@@ -51,7 +51,7 @@ export function emptySummary(): DashboardSummary {
     system: {
       asOfUtc: NOW, version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 120, machine: null,
       jobs: { running: 0, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false,
-      internetOutage: false, outageSinceUtc: null, notificationsUnread: 0
+      internetOutage: false, outageSinceUtc: null
     },
     activity: { asOfUtc: NOW, windowHours: 24, searchesRun: 0, downloadsStarted: 0, importsCompleted: 0, cleanupRemovals: 0, retentionRemovals: 0, recent: [] }
   };

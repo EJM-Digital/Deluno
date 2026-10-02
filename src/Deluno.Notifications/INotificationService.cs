@@ -2,32 +2,14 @@ using Deluno.Notifications.Contracts;
 
 namespace Deluno.Notifications;
 
+/// <summary>
+/// Which kinds of event may reach the outbound notification connections.
+/// Deluno does not keep an in-app list of notifications: the bell and the
+/// Dashboard read Activity and the attention rules, so there is nothing here
+/// to create, list or mark read.
+/// </summary>
 public interface INotificationService
 {
-    /// <summary>
-    /// Create and send a notification
-    /// </summary>
-    Task<NotificationItem> CreateNotificationAsync(
-        string type,
-        string title,
-        string message,
-        string severity,
-        Dictionary<string, object>? metadata = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Get all notifications for the current user
-    /// </summary>
-    Task<List<NotificationItem>> GetNotificationsAsync(
-        int limit = 50,
-        int offset = 0,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Get unread notifications count
-    /// </summary>
-    Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Get notification preferences for the current user
     /// </summary>
