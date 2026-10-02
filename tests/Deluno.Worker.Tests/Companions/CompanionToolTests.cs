@@ -214,6 +214,8 @@ public sealed class CompanionToolTests : IDisposable
             Written.Add(path);
         }
 
+        public List<string> Stopped { get; } = [];
+        public void StopProcess(string processName) => Stopped.Add(processName);
         public bool IsProcessRunning(string processName) => false;
         public bool IsPortInUse(int port) => false;
         public IReadOnlyList<int> ListeningPortsOf(string folder) => [];

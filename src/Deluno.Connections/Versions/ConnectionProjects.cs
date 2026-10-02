@@ -32,6 +32,23 @@ public static class ConnectionProjects
             _ => null
         };
 
+    /// <summary>The name a person knows the project by ("qBittorrent", "SABnzbd").</summary>
+    public static string DisplayName(string project)
+        => project switch
+        {
+            Qbittorrent => "qBittorrent",
+            Transmission => "Transmission",
+            Deluge => "Deluge",
+            Sabnzbd => "SABnzbd",
+            Nzbget => "NZBGet",
+            Plex => "Plex",
+            Jellyfin => "Jellyfin",
+            Emby => "Emby",
+            Seerr => "Seerr",
+            Weir => "Weir",
+            _ => project
+        };
+
     public static string? ForMediaServer(string? kind)
         => MediaServerKinds.Normalize(kind);
 }

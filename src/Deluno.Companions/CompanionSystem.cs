@@ -30,6 +30,9 @@ public interface ICompanionSystem
     /// </summary>
     bool IsProcessRunning(string processName);
 
+    /// <summary>Closes every copy of the program running in this Windows session (#1118: before its installer replaces it).</summary>
+    void StopProcess(string processName);
+
     bool IsPortInUse(int port);
 
     /// <summary>
@@ -87,6 +90,35 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
         finally
         {
             foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    public void StopProcess(string processName)
+    {
+        using var current = Process.GetCurrentProcess();
+        foreach (var process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (process.SessionId != current.SessionId)
+                {
+                    continue;
+                }
+
+                if (!process.CloseMainWindow() || !process.WaitForExit(5000))
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                }
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+            {
+                // Already gone, or not ours to close.
+            }
+            finally
             {
                 process.Dispose();
             }

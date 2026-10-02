@@ -59,6 +59,22 @@ public sealed class ConnectionVersionStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_dismissed_version_is_kept_through_later_readings_and_only_for_that_connection()
+    {
+        await _store.RecordAsync(ConnectionKinds.DownloadClient, "qb1", "qbittorrent", "4.6.7", CancellationToken.None);
+        await _store.RecordAsync(ConnectionKinds.DownloadClient, "qb2", "qbittorrent", "4.6.7", CancellationToken.None);
+
+        Assert.True(await _store.DismissAsync(ConnectionKinds.DownloadClient, "qb1", "5.0.2", CancellationToken.None));
+        Assert.False(await _store.DismissAsync(ConnectionKinds.DownloadClient, "nothing", "5.0.2", CancellationToken.None));
+        await _store.RecordAsync(ConnectionKinds.DownloadClient, "qb1", "qbittorrent", "4.6.8", CancellationToken.None);
+
+        var rows = (await _store.ListAsync(CancellationToken.None)).ToDictionary(row => row.Id);
+        Assert.Equal("5.0.2", rows["qb1"].DismissedVersion);
+        Assert.Equal("4.6.8", rows["qb1"].Version);
+        Assert.Null(rows["qb2"].DismissedVersion);
+    }
+
+    [Fact]
     public async Task The_same_id_in_two_kinds_is_two_connections()
     {
         await _store.RecordAsync(ConnectionKinds.Indexer, "1", "prowlarr", "2.6.5.5623", CancellationToken.None);
