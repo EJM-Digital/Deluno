@@ -325,7 +325,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
           <button
             type="button"
             onClick={() => {
-              navigate("/activity");
+              navigate("/activity?section=events");
               close(false);
             }}
             className="block w-full border-t border-hairline px-4 py-3 text-center text-[length:var(--type-body-sm)] font-semibold text-primary transition hover:bg-muted/45"

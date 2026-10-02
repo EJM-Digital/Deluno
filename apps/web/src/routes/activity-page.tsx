@@ -54,7 +54,7 @@ import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { eventLabel, foldCrossMediaJobRuns, foldRoutineJobEvents } from "../lib/activity-format";
 import { ActivityHistory, useActivityFilterChoices } from "../components/app/activity-history";
-import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
+import { activityLinkForFile, activityLinkForTitle, hasActivityFilterParams } from "../lib/activity-history";
 import { reasonWords } from "../lib/failure-reasons";
 import { isChosenOnSearch, relatedEntityLabel } from "../lib/dispatch-target";
 import {
@@ -96,14 +96,17 @@ export function ActivityPage() {
 
 function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSourceData<typeof activitySources>; revalidator: RouteSourceState<typeof activitySources>["revalidator"] }) {
   const lastDispatchRefresh = useRef(0);
-  // The section is in the address too, so a link can land on the history (#1100). With nothing asked for, the
-  // page opens on the history: it is what Live's "All activity" and a title's link mean.
+  // The section is in the address too, so a link can land on the history (#1100). With nothing asked for, the page
+  // opens on Jobs & downloads, what is happening now (the owner, 2 Oct 2026); a link carrying a history filter or an event
+  // opens the history, and the links that mean the history ask for it by name.
   const [searchParams, setSearchParams] = useSearchParams();
   const filterChoices = useActivityFilterChoices();
   const requestedSection = searchParams.get("section");
   const section: Section = requestedSection === "jobs" || requestedSection === "imports" || requestedSection === "events"
     ? requestedSection
-    : "events";
+    : hasActivityFilterParams(searchParams) || searchParams.has("event")
+      ? "events"
+      : "jobs";
   const setSection = (next: Section) =>
     setSearchParams((current) => {
       const params = new URLSearchParams(current);

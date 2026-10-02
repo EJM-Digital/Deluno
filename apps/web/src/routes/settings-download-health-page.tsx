@@ -429,7 +429,7 @@ function ConnectivityCheckCard({
               : "Has not skipped a pass."}
           </span>
           {lastSkip ? (
-            <Link to="/activity" className="shrink-0 text-primary underline-offset-2 hover:underline">
+            <Link to="/activity?section=events" className="shrink-0 text-primary underline-offset-2 hover:underline">
               See in Activity
             </Link>
           ) : null}

@@ -23,15 +23,17 @@ export { sentenceOf } from "./group";
 
 /** The most entries the stream lays out; it shows the whole ones that fit and says how many more (the owner, 2 Oct 2026, as Weir). */
 const MAX_ROWS = 20;
+/** This feed is the history, so its links open Activity's history rather than its jobs. */
+const ACTIVITY_HISTORY = "/activity?section=events";
 
 function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEntityId">, titles: TitleLookup): string {
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
   if (named) return named.to;
   const kind = item.relatedEntityType?.toLowerCase() ?? "";
-  if (!item.relatedEntityId) return "/activity";
+  if (!item.relatedEntityId) return ACTIVITY_HISTORY;
   if (kind.includes("movie")) return `/movies/${item.relatedEntityId}`;
   if (kind.includes("series") || kind.includes("show")) return `/tv/${item.relatedEntityId}`;
-  return "/activity";
+  return ACTIVITY_HISTORY;
 }
 
 /** The sentence with the title in bold, where the sentence says it. */
@@ -90,10 +92,10 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
   const quiet = routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens";
   // As Weir's: the count line stays what it is, and the entries that do not fit are one link beside "All activity".
   const moreLink = more > 0 ? (
-    <Link to="/activity" className="lact-more" aria-label={`${more.toLocaleString("en-AU")} more in the activity log`}>{more.toLocaleString("en-AU")} more</Link>
+    <Link to={ACTIVITY_HISTORY} className="lact-more" aria-label={`${more.toLocaleString("en-AU")} more in the activity log`}>{more.toLocaleString("en-AU")} more</Link>
   ) : null;
   return (
-    <Panel title="Activity" count={quiet} aside={moreLink} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
+    <Panel title="Activity" count={quiet} aside={moreLink} to={ACTIVITY_HISTORY} toLabel="All activity" className="lact min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (

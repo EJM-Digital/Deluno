@@ -216,7 +216,7 @@ describe("notifications bell (#907)", () => {
     const user = await openPanel();
 
     await user.click(await screen.findByRole("button", { name: "Show all activity" }));
-    expect(navigate).toHaveBeenLastCalledWith("/activity");
+    expect(navigate).toHaveBeenLastCalledWith("/activity?section=events");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

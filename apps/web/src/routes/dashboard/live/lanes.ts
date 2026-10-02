@@ -22,7 +22,7 @@ export const LANES: Record<Stage, LaneStyle> = {
   downloading: { label: "Downloading", icon: Download, accent: "--info", text: "text-info", to: "/queue" },
   processor: { label: "Processing", icon: ShieldCheck, accent: "--journey-process", text: "text-[hsl(var(--journey-process))]", to: "/queue" },
   importing: { label: "Importing", icon: FolderInput, accent: "--journey-import", text: "text-[hsl(var(--journey-import))]", to: "/queue" },
-  imported: { label: "In the library", icon: Library, accent: "--success", text: "text-success", to: "/activity" }
+  imported: { label: "In the library", icon: Library, accent: "--success", text: "text-success", to: "/activity?section=events" }
 };
 
 export const TONE_TEXT: Record<Tone, string> = { ok: "text-success", warn: "text-warning", bad: "text-destructive", info: "text-foreground", idle: "text-muted-foreground" };
