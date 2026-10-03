@@ -398,12 +398,12 @@ public sealed class ConnectionUpdateTests : IDisposable
         {
             var url = request.RequestUri!.AbsoluteUri;
             HttpContent content;
-            if (url.EndsWith("/releases/latest", StringComparison.Ordinal))
+            if (url.Contains("/releases?", StringComparison.Ordinal))
             {
                 content = new StringContent($$"""
-                    {"tag_name":"v3.3.0","assets":[
+                    [{"tag_name":"v9.9.9","draft":true,"assets":[]},{"tag_name":"v3.3.0-rc.1","prerelease":true,"assets":[]},{"tag_name":"v3.3.0","assets":[
                       {"name":"{{CompanionCatalog.WeirSetupAsset}}","browser_download_url":"https://downloads.example.test/{{CompanionCatalog.WeirSetupAsset}}"},
-                      {"name":"{{CompanionCatalog.WeirChecksumsAsset}}","browser_download_url":"https://downloads.example.test/{{CompanionCatalog.WeirChecksumsAsset}}"}]}
+                      {"name":"{{CompanionCatalog.WeirChecksumsAsset}}","browser_download_url":"https://downloads.example.test/{{CompanionCatalog.WeirChecksumsAsset}}"}]}]
                     """, Encoding.UTF8, "application/json");
             }
             else if (url.EndsWith(CompanionCatalog.WeirChecksumsAsset, StringComparison.Ordinal))

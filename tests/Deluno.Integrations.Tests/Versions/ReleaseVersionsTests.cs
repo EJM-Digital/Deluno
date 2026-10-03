@@ -31,14 +31,45 @@ public sealed class ReleaseVersionsTests
     [InlineData("5.0.0-beta1", "5.0.2")]
     [InlineData("5.0.0beta1", "5.0.2")]
     [InlineData("5.0.0rc2", "5.0.2")]
-    [InlineData("5.0.0-RC.2", "5.0.2")]
+    [InlineData("5.0.0-RC.2", "5.0.0")]
     [InlineData("2.0.0b1", "2.2.0")]
     [InlineData("2.1.1.dev0", "2.2.0")]
     [InlineData("0.0.1-dev", "4.0.0")]
-    [InlineData("0.0.1-development", "4.0.0")]
     [InlineData("4.1.0-nightly", "4.1.1")]
-    public void A_beta_or_development_build_is_never_called_out_of_date(string running, string latest)
+    [InlineData("1.0.0-rc.1", "1.0.0-rc.2")]
+    [InlineData("1.0.0-rc.9", "1.0.0")]
+    [InlineData("1.0.0-rc.2", "1.0.0-rc.10")]
+    [InlineData("1.0.0-rc.1", "1.0.1-rc.1")]
+    public void A_pre_release_build_is_out_of_date_when_any_newer_release_exists(string running, string latest)
+        => Assert.True(ReleaseVersions.IsOutOfDate(running, latest));
+
+    [Theory]
+    [InlineData("1.0.0-rc.2", "1.0.0-rc.2")]
+    [InlineData("1.0.0-rc.2", "1.0.0-rc.1")]
+    [InlineData("1.0.0-rc.1", "0.9.0")]
+    [InlineData("1.0.0", "1.0.0-rc.9")]
+    [InlineData("5.0.0-beta1", "5.0.0-beta1")]
+    public void A_pre_release_build_that_is_current_or_ahead_is_up_to_date(string running, string latest)
         => Assert.False(ReleaseVersions.IsOutOfDate(running, latest));
+
+    [Theory]
+    [InlineData("5.0.2", "5.1.0-beta1")]
+    [InlineData("5.0.2", "6.0.0rc1")]
+    [InlineData("1.0.0", "1.0.1-rc.1")]
+    public void A_stable_build_is_compared_only_with_stable_releases(string running, string latest)
+        => Assert.False(ReleaseVersions.IsOutOfDate(running, latest));
+
+    [Fact]
+    public void Release_order_puts_rc2_over_rc1_and_stable_over_any_rc()
+    {
+        int Order(string a, string b) => Math.Sign(ReleaseVersions.ComparePrecedence(ReleaseVersions.Parse(a)!, ReleaseVersions.Parse(b)!));
+
+        Assert.Equal(1, Order("1.0.0-rc.2", "1.0.0-rc.1"));
+        Assert.Equal(1, Order("1.0.0-rc.10", "1.0.0-rc.9"));
+        Assert.Equal(1, Order("1.0.0", "1.0.0-rc.9"));
+        Assert.Equal(1, Order("1.0.0-rc.1", "1.0.0-beta.5"));
+        Assert.Equal(0, Order("v1.0.0-rc.1", "1.0.0-rc1"));
+    }
 
     [Theory]
     [InlineData(null)]

@@ -15,12 +15,19 @@ public abstract record ReleaseFeed(string Project)
     public abstract LatestRelease? Pick(string body);
 }
 
-/// <summary>A GitHub project that publishes releases; <c>releases/latest</c> already leaves out drafts and prereleases.</summary>
-public sealed record GitHubReleasesFeed(string Project, string Repository) : ReleaseFeed(Project)
+/// <summary>
+/// A GitHub project that publishes releases. By default <c>releases/latest</c>, which already leaves out drafts
+/// and prereleases. With <paramref name="IncludePreReleases"/> (Weir, whose releases are release candidates, #1123)
+/// the newest release by version order, pre-releases included, drafts never.
+/// </summary>
+public sealed record GitHubReleasesFeed(string Project, string Repository, bool IncludePreReleases = false) : ReleaseFeed(Project)
 {
-    public override Uri RequestUri => new($"https://api.github.com/repos/{Repository}/releases/latest");
+    public override Uri RequestUri => IncludePreReleases
+        ? new($"https://api.github.com/repos/{Repository}/releases?per_page=100")
+        : new($"https://api.github.com/repos/{Repository}/releases/latest");
 
-    public override LatestRelease? Pick(string body) => ReleaseFeedParsers.FromGitHubRelease(body);
+    public override LatestRelease? Pick(string body)
+        => IncludePreReleases ? ReleaseFeedParsers.FromGitHubReleaseList(body) : ReleaseFeedParsers.FromGitHubRelease(body);
 }
 
 /// <summary>A GitHub project that only tags its releases (qBittorrent "release-5.2.4", Deluge "deluge-2.2.0").</summary>
@@ -64,6 +71,24 @@ public static class ReleaseFeedParsers
         {
             return null;
         }
+    }
+
+    /// <summary>The newest release in a <c>/releases</c> list by version order, pre-releases included, drafts never (#1123).</summary>
+    public static LatestRelease? FromGitHubReleaseList(string body)
+    {
+        if (ReleaseVersions.NewestGitHubRelease(body) is not { } root)
+        {
+            return null;
+        }
+
+        var text = root.GetProperty("tag_name").GetString()!.Trim();
+        if (text.Length > 1 && (text[0] is 'v' or 'V') && char.IsDigit(text[1]))
+        {
+            text = text[1..];
+        }
+
+        var url = root.TryGetProperty("html_url", out var html) && html.ValueKind == JsonValueKind.String ? SafeUrl(html.GetString()) : null;
+        return new LatestRelease(text, url);
     }
 
     public static LatestRelease? FromGitHubTags(string body, string repository, string tagPrefix)

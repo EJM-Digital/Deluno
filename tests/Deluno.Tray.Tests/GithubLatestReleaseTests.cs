@@ -5,6 +5,49 @@ namespace Deluno.Tray.Tests;
 
 public sealed class GithubLatestReleaseTests
 {
+    private const string Releases = """
+        [{"tag_name":"v1.0.0-rc.1","draft":false,"prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/rc1/Weir-win-Setup.exe"}]},
+         {"tag_name":"v1.0.0-rc.2","draft":false,"prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/rc2/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/rc2/SHA256SUMS.txt"}]},
+         {"tag_name":"v9.0.0","draft":true,"prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/draft/Weir-win-Setup.exe"}]}]
+        """;
+
+    [Fact]
+    public void Picks_the_highest_version_release_including_pre_releases_and_never_a_draft()
+    {
+        var release = GithubLatestRelease.PickRelease(Releases);
+
+        Assert.Equal("https://x.test/rc2/Weir-win-Setup.exe", release!.Assets!.First(a => a.Name == "Weir-win-Setup.exe").BrowserDownloadUrl);
+        Assert.Contains(release.Assets!, a => a.Name == "SHA256SUMS.txt");
+    }
+
+    [Fact]
+    public void Resolves_a_repository_whose_only_release_is_a_pre_release()
+    {
+        var release = GithubLatestRelease.PickRelease("""[{"tag_name":"v1.0.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/Weir-win-Setup.exe"}]}]""");
+
+        Assert.Equal("https://x.test/Weir-win-Setup.exe", release!.Assets![0].BrowserDownloadUrl);
+    }
+
+    [Fact]
+    public void Orders_rc2_over_rc1_and_a_stable_release_over_rc9()
+    {
+        string Pick(params string[] tags) => GithubLatestRelease.PickRelease("[" + string.Join(",", tags.Select(t => $$"""{"tag_name":"{{t}}","assets":[{"name":"{{t}}","browser_download_url":"https://x.test/{{t}}"}]}""")) + "]")!.Assets![0].Name!;
+
+        Assert.Equal("v1.0.0-rc.2", Pick("v1.0.0-rc.1", "v1.0.0-rc.2"));
+        Assert.Equal("v1.0.0", Pick("v1.0.0-rc.9", "v1.0.0"));
+        Assert.Null(GithubLatestRelease.PickRelease("""[{"tag_name":"v1.0.0","draft":true}]"""));
+    }
+
+    [Fact]
+    public void The_checksum_check_still_applies_to_the_pre_release_asset()
+    {
+        var release = GithubLatestRelease.PickRelease(Releases)!;
+        var sums = "d34db33f  Weir-win-Setup.exe\n";
+
+        Assert.Equal("d34db33f", GithubLatestRelease.ParseChecksum(sums, release.Assets!.First(a => a.Name == "Weir-win-Setup.exe").Name!));
+        Assert.Null(GithubLatestRelease.ParseChecksum("d34db33f  OldWeir-win-Setup.exe\n", "Weir-win-Setup.exe"));
+    }
+
     [Fact]
     public void Reads_the_matching_line_from_a_standard_SHA256SUMS_file()
     {
