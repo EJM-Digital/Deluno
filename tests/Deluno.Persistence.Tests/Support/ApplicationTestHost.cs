@@ -75,15 +75,45 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
         Action<IServiceCollection>? replaceServices = null)
     {
         var storage = TestStorage.Create();
-        var host = new HostBuilder()
+
+        // The databases arrive already migrated (see MigratedDatabaseTemplate),
+        // so the schema initializers find every migration applied and only
+        // check it. Each host still owns a private copy of the files.
+        await MigratedDatabaseTemplate.CopyIntoAsync(storage.DataRoot);
+
+        var host = BuildHost(storage.DataRoot, replaceServices);
+
+        await host.StartAsync(cancellationToken);
+
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await SignInAsOwnerAsync(host, client, cancellationToken));
+
+        return new ApplicationTestHost(storage, host, client);
+    }
+
+    /// <summary>
+    /// Starts and stops the host once against an empty data root, so that its
+    /// migrated databases can be kept as a template.
+    /// </summary>
+    internal static async Task MigrateEmptyDataRootAsync(string dataRoot)
+    {
+        using var host = BuildHost(dataRoot, replaceServices: null);
+        await host.StartAsync();
+        await host.StopAsync();
+    }
+
+    private static IHost BuildHost(string dataRoot, Action<IServiceCollection>? replaceServices)
+    {
+        return new HostBuilder()
             .ConfigureWebHost(web => web
                 .UseTestServer()
                 .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
-                    new Dictionary<string, string?> { ["Storage:DataRoot"] = storage.DataRoot }))
+                    new Dictionary<string, string?> { ["Storage:DataRoot"] = dataRoot }))
                 .ConfigureServices((context, services) =>
                 {
                     services.AddDelunoInfrastructure(context.Configuration);
-                    services.AddDelunoPlatformSecrets(Path.Combine(storage.DataRoot, "secrets", "master.key"));
+                    services.AddDelunoPlatformSecrets(Path.Combine(dataRoot, "secrets", "master.key"));
                     services.AddDelunoApplicationModules();
                     KeepOnlyTheServicesThatBuildTheSchema(services);
                     replaceServices?.Invoke(services);
@@ -99,14 +129,6 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     app.UseEndpoints(endpoints => endpoints.MapDelunoApplicationEndpoints());
                 }))
             .Build();
-
-        await host.StartAsync(cancellationToken);
-
-        var client = host.GetTestClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", await SignInAsOwnerAsync(host, client, cancellationToken));
-
-        return new ApplicationTestHost(storage, host, client);
     }
 
     /// <summary>
