@@ -4,7 +4,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 /**
  * #1119: a list's columns can be dragged into a new order and sorted by
  * clicking a header; both are remembered in this browser, and "Reset columns"
- * puts them back.
+ * (a menu item behind the card's Columns button) puts them back.
  */
 test.describe("list columns", () => {
   test.skip(({ isMobile }) => isMobile, "Columns collapse on a phone; the drag is a pointer gesture on the wide layout.");
@@ -48,7 +48,7 @@ test.describe("list columns", () => {
     await page.mouse.down();
     await page.mouse.move(source.x + 24, y, { steps: 3 });
     // Mid-drag the header is lifted: it follows the pointer by transform and nothing else on the page moves.
-    await expect(page.locator(`[role="columnheader"][data-col-id="${from}"]`)).toHaveCSS("z-index", "5");
+    await expect(page.locator(`[role="columnheader"][data-col-id="${from}"]`)).toHaveCSS("z-index", "3");
     await page.mouse.move(target.x + 10, y, { steps: 12 });
     await page.mouse.up();
   }
@@ -62,7 +62,7 @@ test.describe("list columns", () => {
 
     const defaultOrder = await headerOrder(page);
     expect(defaultOrder.slice(0, 3)).toEqual(["name", "protocol", "usedFor"]);
-    await expect(page.getByRole("button", { name: "Reset columns" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Columns" })).toHaveCount(1);
 
     // Move Protocol in front of Name.
     await dragHeader(page, "protocol", "name");
@@ -79,15 +79,21 @@ test.describe("list columns", () => {
     const descending = (await nameCells(page)).filter((text) => text.includes(`${stamp}`));
     expect(descending).toEqual([...ascending].reverse());
 
+    // A third click reverses again; there is no click that goes back to the default order.
+    await nameSort.click();
+    await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "ascending");
+    await nameSort.click();
+    await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "descending");
+
     // Remembered across a reload.
     await page.reload();
     await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "descending");
     expect((await headerOrder(page)).slice(0, 2)).toEqual(["protocol", "name"]);
 
     // Reset columns puts the order and the sort back.
-    await page.getByRole("button", { name: "Reset columns" }).click();
-    await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "none");
+    await page.getByRole("button", { name: "Columns", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Reset columns" }).click();
+    await expect(page.locator('[role="columnheader"][data-col-id="name"]')).not.toHaveAttribute("aria-sort");
     expect((await headerOrder(page)).slice(0, 3)).toEqual(["name", "protocol", "usedFor"]);
-    await expect(page.getByRole("button", { name: "Reset columns" })).toHaveCount(0);
   });
 });

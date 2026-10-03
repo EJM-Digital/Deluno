@@ -954,6 +954,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
         actions={
           <ColumnPicker
+            label="Show columns"
             columns={QUEUE_OPTIONAL_COLUMNS}
             isVisible={queueColumns.isVisible}
             onToggle={queueColumns.toggle}
