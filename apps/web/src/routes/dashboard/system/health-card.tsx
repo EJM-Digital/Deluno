@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import { Link } from "react-router-dom";
+import { FilterChips } from "../../../components/ui/filter-chips";
 import { useLiveEvent } from "../../../lib/use-signalr";
 import { ago } from "../format";
 import { useAction, send, type ActionState } from "../downloads-kit";
@@ -106,21 +107,15 @@ export function HealthCard({ model, hasChecks, jump, now }: { model: HealthModel
         <span className="sy-muted sy-num">{summary}</span>
         <Link className="sy-link" to="/system" aria-label="Open all health checks">All checks →</Link>
       </div>
-      <div className="sy-areas" role="group" aria-label="Health areas">
-        {model.tallies.map((tally) => (
-          <button
-            key={tally.key}
-            type="button"
-            className={`sy-area${filter === tally.key ? " sy-on" : ""}${sheen ? " sy-checking" : ""}`}
-            style={{ "--c": TONE_VAR[tally.tone] } as CSSProperties}
-            title={`${tally.name}: ${tally.ok} of ${tally.total} pass`}
-            aria-pressed={filter === tally.key}
-            onClick={() => setFilter((current) => (current === tally.key ? null : tally.key))}
-          >
-            <span className="sy-nm"><span aria-hidden="true" style={{ color: TONE_VAR[tally.tone] }}>●</span> {tally.name}</span>
-            <span className="sy-ct"><b>{tally.ok}</b>/{tally.total}</span>
-          </button>
-        ))}
+      <div className="sy-areas">
+        <FilterChips<string>
+          label="Health areas"
+          size="sm"
+          value={filter ?? ""}
+          // Pressing the chosen area again goes back to the problems, as the ribbon always did.
+          onValueChange={(key) => setFilter((current) => (current === key ? null : (key as HealthArea)))}
+          options={model.tallies.map((tally) => ({ value: tally.key, label: `${tally.name} ${tally.ok}/${tally.total}` }))}
+        />
       </div>
       <ul className="sy-checklist sy-scroll" ref={list}>
         {rows.map((row) => <Row key={row.id} row={row} action={action} now={now} />)}

@@ -25,9 +25,8 @@ import {
   XCircle
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { Field } from "../ui/field";
-import { Input } from "../ui/input";
-import { Select } from "../ui/select";
+import { FILTER_MENU_TRIGGER, FilterChips } from "../ui/filter-chips";
+import { MenuSelect } from "../ui/menu-select";
 import type { ActivityEventItem } from "../../lib/api";
 import { eventLabel } from "../../lib/activity-format";
 
@@ -135,20 +134,17 @@ function severityForCategory(category: string): Severity {
 }
 
 /* ── Component ───────────────────────────────────────────────────── */
-interface AuditTimelineProps {
-  events: ActivityEventItem[];
-  /** Prepended live events from WebSocket */
-  liveEvents?: TimelineEvent[];
-  maxVisible?: number;
-}
+const PAGE = 50;
 
-export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: AuditTimelineProps) {
+/**
+ * The timeline's filters and the events they leave, held by the screen that owns the card so the filters can sit in
+ * the card's header (#1115) and the body shows only the events.
+ */
+export function useAuditTimeline(events: ActivityEventItem[], liveEvents: TimelineEvent[] = [], maxVisible = 200) {
   const [query, setQuery] = useState("");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sevFilter, setSevFilter] = useState<Severity | "all">("all");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [showCount, setShowCount] = useState(50);
-  const topRef = useRef<HTMLDivElement>(null);
+  const [showCount, setShowCount] = useState(PAGE);
 
   const converted = useMemo(() => events.map(apiToTimeline), [events]);
   const all = useMemo(() => {
@@ -179,6 +175,72 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
       .slice(0, maxVisible);
   }, [all, catFilter, sevFilter, query, maxVisible]);
 
+  const counts = useMemo(() => {
+    const byCategory: Record<string, number> = {};
+    for (const e of all) byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
+    return byCategory;
+  }, [all]);
+
+  const liveIds = useMemo(() => new Set(liveEvents.map((e) => e.id)), [liveEvents]);
+
+  return {
+    query,
+    setQuery: (next: string) => { setQuery(next); setShowCount(PAGE); },
+    catFilter,
+    setCatFilter: (next: string) => { setCatFilter(next); setShowCount(PAGE); },
+    sevFilter,
+    setSevFilter: (next: Severity | "all") => { setSevFilter(next); setShowCount(PAGE); },
+    showCount,
+    showMore: () => setShowCount((n) => n + PAGE),
+    all,
+    filtered,
+    counts,
+    liveIds,
+    /** The card's count: how many events, and whether a filter is narrowing them. */
+    countLabel: `${filtered.length} event${filtered.length !== 1 ? "s" : ""}${query || catFilter !== "all" || sevFilter !== "all" ? " matching" : ""}`
+  };
+}
+
+export type AuditTimelineState = ReturnType<typeof useAuditTimeline>;
+
+const SEVERITY_OPTIONS = [
+  { value: "all", label: "All severities" },
+  { value: "info", label: "Info" },
+  { value: "success", label: "Success" },
+  { value: "warning", label: "Warning" },
+  { value: "error", label: "Error" }
+];
+
+/** The category chips and the severity picker, for the card's header after its title (the Indexers card's pattern). */
+export function AuditTimelineFilters({ timeline }: { timeline: AuditTimelineState }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+      <FilterChips<string>
+        label="Filter by kind of event"
+        size="sm"
+        value={timeline.catFilter}
+        onValueChange={timeline.setCatFilter}
+        options={[
+          { value: "all", label: "All", count: timeline.all.length },
+          ...ALL_CATEGORIES.map((cat) => ({ value: cat, label: CAT_CONFIG[cat]?.label ?? cat, count: timeline.counts[cat] ?? 0 }))
+        ]}
+      />
+      <MenuSelect
+        label="Filter by severity"
+        value={timeline.sevFilter}
+        onChange={(next) => timeline.setSevFilter(next as Severity | "all")}
+        options={SEVERITY_OPTIONS}
+        triggerClassName={FILTER_MENU_TRIGGER}
+      />
+    </div>
+  );
+}
+
+export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const topRef = useRef<HTMLDivElement>(null);
+  const { filtered, showCount, liveIds } = timeline;
+
   const visible = filtered.slice(0, showCount);
   const hasMore = filtered.length > showCount;
 
@@ -193,55 +255,6 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Field label="Search events" hideLabel className="relative min-w-[180px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setShowCount(50); }}
-            placeholder="Search events…"
-            className="h-9 pl-8 text-[length:var(--type-body-sm)]"
-          />
-        </Field>
-
-        {/* Category filter */}
-        <div className="flex flex-wrap gap-1">
-          <FilterChip active={catFilter === "all"} onClick={() => { setCatFilter("all"); setShowCount(50); }}>
-            All
-          </FilterChip>
-          {ALL_CATEGORIES.map((cat) => (
-            <FilterChip
-              key={cat}
-              active={catFilter === cat}
-              onClick={() => { setCatFilter(cat === catFilter ? "all" : cat); setShowCount(50); }}
-            >
-              {CAT_CONFIG[cat]?.label ?? cat}
-            </FilterChip>
-          ))}
-        </div>
-
-        {/* Severity filter */}
-        <Field label="Severity" hideLabel>
-          <Select
-            value={sevFilter}
-            onChange={(e) => { setSevFilter(e.target.value as Severity | "all"); setShowCount(50); }}
-          >
-            <option value="all">All severities</option>
-            <option value="info">Info</option>
-            <option value="success">Success</option>
-            <option value="warning">Warning</option>
-            <option value="error">Error</option>
-          </Select>
-        </Field>
-      </div>
-
-      {/* Counter */}
-      <p className="text-[length:var(--type-caption)] uppercase tracking-[0.16em] text-muted-foreground">
-        {filtered.length} event{filtered.length !== 1 ? "s" : ""}
-        {(query || catFilter !== "all" || sevFilter !== "all") ? " matching current filters" : ""}
-      </p>
-
       {/* Timeline */}
       <div ref={topRef} className="relative">
         {/* Vertical rail */}
@@ -254,7 +267,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
             const SevIcon = sev.icon;
             const CatIcon = cat.icon;
             const isExp = expanded.has(event.id);
-            const isFirst = i === 0 && liveEvents.some((e) => e.id === event.id);
+            const isFirst = i === 0 && liveIds.has(event.id);
 
             return (
               <li
@@ -337,7 +350,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
         {hasMore ? (
           <button
             type="button"
-            onClick={() => setShowCount((n) => n + 50)}
+            onClick={timeline.showMore}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-hairline py-3 text-[length:var(--type-caption)] text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
           >
             <ChevronDown className="h-4 w-4" />
@@ -346,30 +359,5 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
         ) : null}
       </div>
     </div>
-  );
-}
-
-function FilterChip({
-  children,
-  active,
-  onClick
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-2.5 py-0.5 text-[length:var(--type-caption)] font-medium transition-all select-none",
-        active
-          ? "border-primary/40 bg-primary/10 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]"
-          : "border-hairline bg-surface-1 text-muted-foreground hover:border-primary/25 hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
   );
 }

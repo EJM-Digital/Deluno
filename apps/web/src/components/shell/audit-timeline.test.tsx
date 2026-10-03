@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ActivityEventItem } from "../../lib/api";
-import { AuditTimeline } from "./audit-timeline";
+import { AuditTimeline, useAuditTimeline, type TimelineEvent } from "./audit-timeline";
+
+function Timeline({ events, liveEvents }: { events: ActivityEventItem[]; liveEvents: TimelineEvent[] }) {
+  return <AuditTimeline timeline={useAuditTimeline(events, liveEvents)} />;
+}
 
 const fetched: ActivityEventItem = {
   id: "e1",
@@ -20,7 +24,7 @@ const fetched: ActivityEventItem = {
 describe("System timeline names each event in plain words", () => {
   it("shows the label on fetched and live events, never the code", () => {
     render(
-      <AuditTimeline
+      <Timeline
         events={[fetched]}
         liveEvents={[
           {
@@ -42,7 +46,7 @@ describe("System timeline names each event in plain words", () => {
 
   it("falls back to words, not the code, for a live event that arrives without a label", () => {
     render(
-      <AuditTimeline
+      <Timeline
         events={[]}
         liveEvents={[
           { id: "e3", message: "Something.", category: "download.brand.new", severity: "info", createdUtc: "2026-09-30T03:00:00Z" }
