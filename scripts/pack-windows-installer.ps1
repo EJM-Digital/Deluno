@@ -161,44 +161,23 @@ try {
         # Extraction-only use of the official binary is license-clean; the
         # source licence forbids building a competing archiver from it, which
         # is not what this is. Upstream licence ships alongside.
+        #
+        # fetch-unrar.ps1 checks the download against a pinned SHA-256 (#1124),
+        # the same script the release workflow runs.
         try {
-            $self = Join-Path ([System.IO.Path]::GetTempPath()) "unrarw64.exe"
-            $extract = Join-Path ([System.IO.Path]::GetTempPath()) ("deluno-unrar-" + [Guid]::NewGuid().ToString("n"))
-            $previousProgress = $ProgressPreference
-            $ProgressPreference = "SilentlyContinue"
-            try { Invoke-WebRequest -Uri "https://www.rarlab.com/rar/unrarw64.exe" -OutFile $self -UseBasicParsing }
-            finally { $ProgressPreference = $previousProgress }
-            New-Item -ItemType Directory -Force -Path $extract | Out-Null
-
-            # -s is the silent switch. Without it this self-extractor opens a
-            # WinRAR dialog and waits - which it did, on the packaging machine's
-            # desktop, while the build sat there looking like a slow step. A
-            # packaging script must never be able to ask a person anything.
-            #
-            # The timeout is belt and braces: -s is documented, and a future
-            # build of this SFX deciding to prompt anyway must fail the step
-            # rather than hang it.
-            $unrarProcess = Start-Process -FilePath $self -ArgumentList "-s", "-d$extract" -PassThru -WindowStyle Hidden
-            if (-not $unrarProcess.WaitForExit(60000)) {
-                $unrarProcess.Kill()
-                throw "UnRAR self-extractor did not finish in 60s; it may be waiting for input."
-            }
-            $unrar = Get-ChildItem $extract -Recurse -Filter "UnRAR.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($unrar) {
-                $unrarTarget = Join-Path $payload "tools\unrar"
-                New-Item -ItemType Directory -Force -Path $unrarTarget | Out-Null
-                Copy-Item $unrar.FullName $unrarTarget -Force
-                $license = Get-ChildItem $extract -Recurse -Filter "license.txt" -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($license) { Copy-Item $license.FullName $unrarTarget -Force }
-                Write-Host "   UnRAR.exe bundled"
-            }
-            else {
-                Write-Warning "UnRAR.exe could not be extracted; RAR archives will need unrar installed separately."
-            }
+            & (Join-Path $PSScriptRoot "fetch-unrar.ps1") -RuntimeIdentifier $RuntimeIdentifier
+            $unrarSource = Join-Path $root "tools\unrar\$RuntimeIdentifier"
+            $unrarTarget = Join-Path $payload "tools\unrar"
+            New-Item -ItemType Directory -Force -Path $unrarTarget | Out-Null
+            Copy-Item -Path (Join-Path $unrarSource "*") -Destination $unrarTarget -Exclude ".sha256" -Force
+            Write-Host "   UnRAR.exe bundled"
         }
         catch {
-            # Not fatal. A missing UnRAR costs one import path; a failed
-            # release costs the release.
+            # A download that is not the pinned file is never shipped, and it is
+            # not a warning either: it stops the packaging.
+            if ($_.Exception.Message -like "UnRAR checksum mismatch*") { throw }
+            # Otherwise not fatal. A missing UnRAR costs one import path; a
+            # failed release costs the release.
             Write-Warning "UnRAR could not be fetched ($($_.Exception.Message)); continuing without it."
         }
     }

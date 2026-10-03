@@ -27,13 +27,18 @@
 param(
     [string]$RuntimeIdentifier = "win-x64",
 
-    # The release line, not `master-latest`. Bump deliberately.
+    # The FFmpeg release line. Bump together with the pin below.
     [string]$Release = "n9.0",
 
     [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
+
+# The pin. Tag, asset and hash move together or not at all.
+$pinnedTag = "autobuild-2026-08-31-13-27"
+$pinnedAsset = "ffmpeg-n9.0.1-11-ge47273f4d9-win64-lgpl-shared-9.0.zip"
+$pinnedSha256 = "83a824f0729a69d143c9865125bb86988a11dd388325f0033711045522068aa0"
 
 $root = Split-Path -Parent $PSScriptRoot
 $toolsRoot = Join-Path $root "tools\ffmpeg"
@@ -44,15 +49,17 @@ if ($RuntimeIdentifier -ne "win-x64") {
     throw "fetch-ffmpeg.ps1 only knows win-x64 so far; $RuntimeIdentifier needs its own asset name."
 }
 
-# Already have this exact release? Then this script is a no-op, which is what
-# makes it safe to call from the publish script on every build.
-if (-not $Force -and (Test-Path $stamp) -and ((Get-Content $stamp -Raw).Trim() -eq $Release)) {
-    Write-Host "FFmpeg $Release is already in $target."
+# Already have this exact build? Then this script is a no-op, which is what
+# makes it safe to call from the publish script on every build. The stamp names
+# the pinned asset and hash, so a changed pin fetches again.
+$stampValue = "$Release $pinnedTag $pinnedAsset $pinnedSha256"
+if (-not $Force -and (Test-Path $stamp) -and ((Get-Content $stamp -Raw).Trim() -eq $stampValue)) {
+    Write-Host "FFmpeg $Release ($pinnedAsset) is already in $target."
     return
 }
 
-$asset = "ffmpeg-$Release-latest-win64-lgpl-shared-$($Release.TrimStart('n')).zip"
-$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$asset"
+$asset = $pinnedAsset
+$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$pinnedTag/$asset"
 
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("deluno-ffmpeg-" + [System.Guid]::NewGuid().ToString("n"))
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
@@ -71,6 +78,12 @@ try {
     finally {
         $ProgressPreference = $previousProgress
     }
+
+    $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $pinnedSha256) {
+        throw "FFmpeg checksum mismatch for ${asset}: expected $pinnedSha256 but the download is $actual. Nothing was unpacked."
+    }
+    Write-Host "SHA-256 matches the pin."
 
     Write-Host "Extracting ..."
     Expand-Archive -Path $zip -DestinationPath $staging -Force
@@ -113,7 +126,7 @@ try {
         Copy-Item -Path $licence -Destination (Join-Path $target "FFMPEG-LICENSE.txt") -Force
     }
 
-    Set-Content -Path $stamp -Value $Release -Encoding utf8
+    Set-Content -Path $stamp -Value $stampValue -Encoding utf8
 
     $size = [math]::Round(((Get-ChildItem $target -Recurse | Measure-Object Length -Sum).Sum / 1MB), 1)
     Write-Host "FFmpeg $Release is in $target ($size MB)."
