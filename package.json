@@ -1,6 +1,7 @@
 {
   "name": "deluno-monorepo",
   "private": true,
+  "license": "AGPL-3.0-only",
   "workspaces": [
     "apps/web",
     "sdk/typescript"
