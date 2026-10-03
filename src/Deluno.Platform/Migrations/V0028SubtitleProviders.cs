@@ -60,7 +60,7 @@ public sealed class V0028SubtitleProviders : SqliteSqlMigration
 
         -- One row per provider. Configuring the same source twice would give it
         -- two sets of credentials, two health states and two places to disable
-        -- it — and Weir's registry shipped OpenSubtitles as two entries
+        -- it — and another tool's registry shipped OpenSubtitles as two entries
         -- backed by one handler, which is what that looks like when nothing
         -- stops it.
         CREATE UNIQUE INDEX IF NOT EXISTS ix_subtitle_providers_key
@@ -71,4 +71,9 @@ public sealed class V0028SubtitleProviders : SqliteSqlMigration
         CREATE INDEX IF NOT EXISTS ix_subtitle_providers_enabled_priority
             ON subtitle_providers (is_enabled, priority, id);
         """;
+
+    // The comment inside the SQL above was reworded when the old product name was
+    // removed from the repository; installs that ran the earlier wording are adopted.
+    protected override IEnumerable<string> SupersededChecksumValues =>
+        ["885748222ee60ca53149604c38b3b3bcd5bcda347b3ad7b11c33ba089b8a7f00"];
 }

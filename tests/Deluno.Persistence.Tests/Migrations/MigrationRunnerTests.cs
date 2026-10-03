@@ -81,6 +81,42 @@ public sealed class MigrationRunnerTests
         Assert.Equal(1, await ReadScalarAsync<int>(connection, "SELECT apply_count FROM migration_probe WHERE id = 1;"));
     }
 
+    [Theory]
+    [InlineData(typeof(V0028SubtitleProviders), "885748222ee60ca53149604c38b3b3bcd5bcda347b3ad7b11c33ba089b8a7f00")]
+    [InlineData(typeof(V0065CompanionToolWeir), "715f8f482a35a1c1068207cd1e5395af42c5eb583d13fc9028b37e02180ac118")]
+    public async Task ApplyAsync_adopts_installs_that_ran_the_wording_or_conversion_before_the_old_product_name_was_removed(Type type, string oldChecksum)
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-10-03T05:00:00Z")));
+        var migration = (IDelunoDatabaseMigration)Activator.CreateInstance(type)!;
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Platform, [migration], CancellationToken.None);
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform))
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE schema_migrations SET checksum = @old WHERE version = @version;";
+            var old = command.CreateParameter();
+            old.ParameterName = "@old";
+            old.Value = oldChecksum;
+            command.Parameters.Add(old);
+            var version = command.CreateParameter();
+            version.ParameterName = "@version";
+            version.Value = migration.Version;
+            command.Parameters.Add(version);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Platform, [migration], CancellationToken.None);
+
+        await using var check = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        Assert.Equal(
+            migration.Checksum,
+            await ReadScalarAsync<string>(check, $"SELECT checksum FROM schema_migrations WHERE version = {migration.Version};"));
+    }
+
     [Fact]
     public async Task Schema_initializers_record_initial_migration_for_each_database()
     {

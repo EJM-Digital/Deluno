@@ -591,7 +591,7 @@ public sealed class ProcessorConnectionService(
     /// <summary>
     /// A refusal here is one of two things, and each has one fix. Weir
     /// answers 403 when no webhook secret is set anywhere, and 401 when the one
-    /// Deluno sent is missing or wrong (Weir #480, filed when it was Weir). Said as that, because
+    /// Deluno sent is missing or wrong (Weir #480). Said as that, because
     /// "forbidden" gives nobody anything to do.
     /// </summary>
     /// <remarks>
