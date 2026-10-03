@@ -43,11 +43,11 @@ Rendered references on the rig:
   noise. The movie page has no Continuing switch, no Continuing legend rung and no
   clearance table.
 
-  Two pages, one implementation: `ui-explorations/card-decider-core.js` draws the
-  card and each page mounts it with its medium. The pages differ only in the prose
+  Two pages, one implementation: one shared script drew the
+  card and each page mounted it with its medium. The pages differ only in the prose
   they carry.
 - `/renders/bars-that-speak.html` — the treatments side by side, with the reasoning
-  written between them. (source: `ui-explorations/bars-that-speak.html`)
+  written between them.
 
 James: *"there is a 'show text on progress bar' for both sonarr and radarr —
 sonarr looks to display episode count 0/0 whereas radarr shows quality — this is
