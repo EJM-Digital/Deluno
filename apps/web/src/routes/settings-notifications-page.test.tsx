@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -216,5 +216,43 @@ describe("per-connection triggers (#1016, #1017)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.eventFilters).toBe("grab,import,upgrade,app.update");
     expect(body.includeHealthWarnings).toBe(true);
+  });
+});
+
+describe("Delivery history columns (#1119)", () => {
+  afterEach(() => {
+    deliveries.length = 0;
+    localStorage.clear();
+  });
+
+  it("sorts by a column header and offers Reset columns, like every other list", () => {
+    const delivery = (id: string, title: string, attemptCount: number): NotificationWebhookDeliveryItem => ({
+      id,
+      webhookId: "hook",
+      eventCategory: "import",
+      title,
+      status: "delivered",
+      attemptCount,
+      maxAttempts: 5,
+      nextAttemptUtc: null,
+      lastAttemptUtc: null,
+      lastStatusCode: 200,
+      lastError: null,
+      createdUtc: "2026-10-03T00:00:00Z",
+      updatedUtc: "2026-10-03T00:00:00Z"
+    });
+    deliveries.push(delivery("b", "Beta imported", 1), delivery("a", "Alpha imported", 3));
+    renderPage();
+
+    const eventNames = () => screen.getAllByText(/^(Alpha|Beta) imported$/).map((node) => node.textContent);
+    expect(eventNames()).toEqual(["Beta imported", "Alpha imported"]);
+
+    // The three preference lists above also have an Event column; Delivery history is the last one on the page.
+    const header = screen.getAllByRole("columnheader").filter((node) => node.getAttribute("data-col-id") === "event").at(-1)!;
+    fireEvent.click(within(header).getByRole("button"));
+    expect(header.getAttribute("aria-sort")).toBe("ascending");
+    expect(eventNames()).toEqual(["Alpha imported", "Beta imported"]);
+
+    expect(screen.getAllByRole("button", { name: "Columns" }).length).toBeGreaterThan(0);
   });
 });
