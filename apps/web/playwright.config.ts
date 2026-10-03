@@ -83,7 +83,11 @@ export default defineConfig({
       }
     },
     {
-      command: "npm run build && node scripts/serve-smoke-preview.mjs",
+      // CI builds the web app once and hands every shard that build
+      // (DELUNO_SMOKE_PREBUILT=1), instead of each shard building it again.
+      command: process.env.DELUNO_SMOKE_PREBUILT === "1"
+        ? "node scripts/serve-smoke-preview.mjs"
+        : "npm run build && node scripts/serve-smoke-preview.mjs",
       url: smokeWebUrl,
       reuseExistingServer: false,
       // This command runs a full production `vite build` before it serves, and
