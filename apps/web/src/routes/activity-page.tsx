@@ -89,6 +89,7 @@ import {
   processingEntries,
   type LiveStepEntry
 } from "../lib/activity-live-steps";
+import { isBackgroundJob } from "../lib/background-jobs";
 import { failureKindWords } from "../lib/failure-reasons";
 import {
   fileNameFromPath,
@@ -261,12 +262,12 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   }, [openEvent, deletedLeftoverPaths]);
 
   // The open items: what is still going, what stopped, and what needs a decision. Jobs that are not about a
-  // title are not listed here (System lists them).
+  // title are not listed here (System lists them); an import is about a title even when its job does not name one.
   const openRows = useMemo<ActivityRow[]>(() => {
     const rows: ActivityRow[] = [];
     const jobWhen = (job: JobQueueItem) => job.completedUtc ?? job.startedUtc ?? job.scheduledUtc;
     for (const job of jobs) {
-      if (!job.relatedEntityId) continue;
+      if (isBackgroundJob(job)) continue;
       const retrying = isJobRetrying(job);
       if (!(isJobInProgress(job.status as JobStatus) || isJobPending(job.status as JobStatus) || retrying)) continue;
       const state = retrying ? `Retrying, attempt ${job.attempts} of ${job.maxAttempts}` : getJobStatusLabel(job.status as JobStatus);
@@ -278,7 +279,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     for (const job of stopped) {
-      if (!job.relatedEntityId) continue;
+      if (isBackgroundJob(job)) continue;
       rows.push({
         key: `job-${job.id}`, kind: "job", status: "failed", whenUtc: jobWhen(job), title: job.label, step: job.sourceLabel,
         detail: job.lastError ?? `${getJobStatusLabel(job.status as JobStatus)} after ${job.attempts} ${job.attempts === 1 ? "attempt" : "attempts"}`,
