@@ -65,6 +65,47 @@ anyway.
   lists the same things with filters.
 - The hidden Wanted episodes page is gone; its address opens TV Shows.
 
+### Lists you can arrange
+
+- Every list's columns can be dragged into a new order, and clicking a
+  heading sorts by it; click again to reverse. Deluno remembers both for
+  each list in your browser, and the Columns button on the card puts them
+  back.
+- Lists where the order means something, such as episodes by season or the
+  ranked releases for a title, can be rearranged but not re-sorted.
+- Indexer History sorts the whole history, not just the page you can see.
+
+### Know when your apps have an update
+
+- Every download client, media server, Seerr and processor shows the
+  version it is running, and the newer version when one is out, for example
+  "4.6.7 · 5.2.4 available".
+- A new version is a notice in the bell. Its connection shows the release
+  notes and, for Weir, qBittorrent and SABnzbd that Deluno installed on this
+  computer, Update now: Deluno checks the installer, updates the app,
+  restarts it and checks the version again. Anything else gets a short
+  how-to.
+- The notice clears itself once the new version is running, or Dismiss
+  this version clears it until an even newer one comes out.
+
+### Collections
+
+- Each film in a collection you follow can be excluded, so Deluno never
+  adds or searches for it, and included again later.
+
+### Activity
+
+- A case under Needs a decision can be decided from its panel in Activity,
+  with the same buttons as the bell.
+
+### Tidied up
+
+- Fifty server routes nothing used are gone, along with the code behind
+  them, and a few links that led to old addresses now go straight to the
+  right page.
+- Notification settings no longer list switches that did nothing, and the
+  ones that remain are saved, so a restart no longer resets them.
+
 ### Fixed
 
 - The account menu at the bottom of the sidebar no longer catches clicks
