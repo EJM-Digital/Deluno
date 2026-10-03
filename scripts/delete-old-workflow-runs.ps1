@@ -45,10 +45,15 @@ $reserve = 1500
 $i = 0
 foreach ($run in $doomed) {
     if ($i % 50 -eq 0) {
-        $core = gh api rate_limit --jq '.resources.core' | ConvertFrom-Json
-        if ($core.remaining -le $reserve) {
-            $resetAt = [DateTimeOffset]::FromUnixTimeSeconds($core.reset).LocalDateTime
-            Write-Host "  $($core.remaining) GitHub calls left this hour; pausing until $($resetAt.ToString('HH:mm')) so other work is not blocked."
+        # Read the budget from a real call's headers: on 3 Oct 2026 `gh api rate_limit` kept reporting 5000 left
+        # while real calls were refused with remaining 0.
+        $headers = gh api -i user 2>$null
+        $remaining = [int](($headers | Select-String -Pattern '^x-ratelimit-remaining:\s*(\d+)' | Select-Object -First 1).Matches.Groups[1].Value)
+        $reset = [long](($headers | Select-String -Pattern '^x-ratelimit-reset:\s*(\d+)' | Select-Object -First 1).Matches.Groups[1].Value)
+        if (-not $reset) { $remaining = 0; $reset = [DateTimeOffset]::UtcNow.AddMinutes(5).ToUnixTimeSeconds() }
+        if ($remaining -le $reserve) {
+            $resetAt = [DateTimeOffset]::FromUnixTimeSeconds($reset).LocalDateTime
+            Write-Host "  $remaining GitHub calls left this hour; pausing until $($resetAt.ToString('HH:mm')) so other work is not blocked."
             Start-Sleep -Seconds ([Math]::Max(30, [int]($resetAt - (Get-Date)).TotalSeconds + 30))
         }
         if ($i -gt 0) { Write-Host "  $i of $($doomed.Count)" }
