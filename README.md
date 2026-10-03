@@ -15,21 +15,21 @@ It runs on Windows and in Docker. It is for one person, and your data stays on y
 > or just ugly, [tell us](https://github.com/jampat000/Deluno/issues). That is the
 > most useful thing you can do right now, and every report gets read.
 
-<img src="screenshots/dashboard.png" width="49%"> <img src="screenshots/movies.png" width="49%">
+<img src="screenshots/dashboard-live.png" width="49%"> <img src="screenshots/dashboard-system.png" width="49%">
 
-*Dashboard, and the Movies library*
+*The Dashboard: what is happening right now, and the health of the machine*
 
-<img src="screenshots/shows.png" width="49%"> <img src="screenshots/queue.png" width="49%">
+<img src="screenshots/movies.png" width="49%"> <img src="screenshots/movie.png" width="49%">
 
-*TV shows, and the download queue*
+*The Movies library, and one movie's page*
 
-<img src="screenshots/quality.png" width="49%"> <img src="screenshots/indexers.png" width="49%">
+<img src="screenshots/transfers.png" width="49%"> <img src="screenshots/activity.png" width="49%">
 
-*Quality and release choices, and your search sources*
+*Transfers, and Activity: every search, grab, import and rename, in the order it happened*
 
-<img src="screenshots/activity.png">
+<img src="screenshots/quality.png">
 
-*Activity: every search, grab, import and rename, in the order it happened*
+*Quality and release choices*
 
 ## What it replaces, and why one app is better
 

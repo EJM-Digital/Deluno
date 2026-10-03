@@ -164,4 +164,5 @@ export async function serveLiveRig(page: Page) {
   parts.events.sort((a, b) => Date.parse((b as { createdUtc: string }).createdUtc) - Date.parse((a as { createdUtc: string }).createdUtc));
   void numberOf;
   void poster;
+  return parts;
 }
