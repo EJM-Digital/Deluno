@@ -204,16 +204,16 @@ public sealed class ConnectionUpdateService(
         return items;
     }
 
-    /// <summary>"Dismiss this version": the newest version Deluno knows of for the connection. False when there is none to dismiss.</summary>
-    public async Task<bool> DismissAsync(string kind, string id, CancellationToken cancellationToken)
+    /// <summary>"Dismiss this version": the newest version Deluno knows of for the connection. Returns the version dismissed, or null when there is none to dismiss.</summary>
+    public async Task<string?> DismissAsync(string kind, string id, CancellationToken cancellationToken)
     {
         var row = (await versions.ListAsync(cancellationToken)).FirstOrDefault(item => Same(item.Kind, kind) && item.Id == id);
         if (row?.Project is null || latest.Peek(row.Project) is not { } release)
         {
-            return false;
+            return null;
         }
 
-        return await versions.DismissAsync(row.Kind, row.Id, release.Version, cancellationToken);
+        return await versions.DismissAsync(row.Kind, row.Id, release.Version, cancellationToken) ? release.Version : null;
     }
 
     /// <summary>

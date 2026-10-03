@@ -83,7 +83,7 @@ public static class CompanionModule
             string id,
             [FromServices] ConnectionUpdateService service,
             CancellationToken cancellationToken)
-            => await service.DismissAsync(kind, id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+            => await service.DismissAsync(kind, id, cancellationToken) is { } dismissed ? Results.Ok(new { dismissed }) : Results.NotFound());
 
         updates.MapPost("{kind}/{id}/update", async (
             HttpContext httpContext,

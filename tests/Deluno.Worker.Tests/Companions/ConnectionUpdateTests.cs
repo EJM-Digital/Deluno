@@ -79,9 +79,9 @@ public sealed class ConnectionUpdateTests : IDisposable
         var store = StoreOver(rows);
         var service = Service(rows, () => new LatestRelease("5.0.2", null), store);
 
-        Assert.True(await service.DismissAsync(ConnectionKinds.DownloadClient, "qb1", CancellationToken.None));
+        Assert.Equal("5.0.2", await service.DismissAsync(ConnectionKinds.DownloadClient, "qb1", CancellationToken.None));
         store.Verify(item => item.DismissAsync(ConnectionKinds.DownloadClient, "qb1", "5.0.2", It.IsAny<CancellationToken>()), Times.Once);
-        Assert.False(await service.DismissAsync(ConnectionKinds.DownloadClient, "missing", CancellationToken.None));
+        Assert.Null(await service.DismissAsync(ConnectionKinds.DownloadClient, "missing", CancellationToken.None));
     }
 
     // ------------------------------------------------------------------ what Deluno may update
