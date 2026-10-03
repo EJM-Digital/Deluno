@@ -1,0 +1,70 @@
+# Security updates only (James, 3 Oct 2026): Dependabot opens a pull request when a dependency has a published
+# security advisory, and never for a routine version bump. Routine bumps are batched by hand.
+#
+# `open-pull-requests-limit: 0` is what turns routine version updates off. It does not switch security updates on:
+# that is a repository setting (Settings > Code security > Dependabot security updates), which must be enabled
+# there. With it on, Dependabot reads this file for where each ecosystem's manifests live and how to group them,
+# and the security pull requests are not counted against the limit.
+version: 2
+updates:
+  # The .NET projects. Each project lists its own packages.
+  - package-ecosystem: nuget
+    directories:
+      - "/src/*"
+      - "/tests/*"
+      - "/apps/windows-tray"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      nuget-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The web app, the TypeScript SDK and the monorepo root share one package-lock.json at the root.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The metadata gateway is a separate Node service with its own lock file.
+  - package-ecosystem: npm
+    directory: "/services/metadata-gateway"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The Dockerfile's base images.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
