@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Reads rig.json - where the simulation rig is.
+    Reads rig.json - where the simulation rig is. An untracked rig.local.json beside it, if present, overrides it with the real values.
 
 .DESCRIPTION
     Dot-source this and call Get-Rig. Every lab script used to carry the rig's
@@ -33,7 +33,32 @@ function Get-Rig {
         throw "The rig configuration is missing: $Path"
     }
 
-    return (Get-Content -Path $Path -Raw | ConvertFrom-Json)
+    $rig = Get-Content -Path $Path -Raw | ConvertFrom-Json
+
+    # rig.json holds placeholders and is committed. The real addresses and NAS
+    # paths live in rig.local.json beside it, which is not committed and wins
+    # over rig.json for every key it sets.
+    $localPath = Join-Path (Split-Path -Parent $Path) ([System.IO.Path]::GetFileNameWithoutExtension($Path) + '.local.json')
+    if (Test-Path $localPath) {
+        Merge-RigObject -Base $rig -Over (Get-Content -Path $localPath -Raw | ConvertFrom-Json)
+    }
+
+    return $rig
+}
+
+function Merge-RigObject {
+    param($Base, $Over)
+
+    foreach ($p in $Over.PSObject.Properties) {
+        $existing = $Base.PSObject.Properties[$p.Name]
+        if ($existing -and $existing.Value -is [System.Management.Automation.PSCustomObject] -and $p.Value -is [System.Management.Automation.PSCustomObject]) {
+            Merge-RigObject -Base $existing.Value -Over $p.Value
+        } elseif ($existing) {
+            $existing.Value = $p.Value
+        } else {
+            $Base | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value
+        }
+    }
 }
 
 function Get-RigCredential {
