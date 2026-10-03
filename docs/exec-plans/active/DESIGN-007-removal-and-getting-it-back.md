@@ -66,7 +66,7 @@ than verified it says so.
 | `DELETE /api/exclusions/{id}` | Removes one exclusion row | Nothing — this is the "let it back in" route, and it is correct |
 | `DELETE /api/recycle-bin/{id}`<br>`POST /api/recycle-bin/cleanup` | Permanently removes recycled files *(behaviour inferred from the contract; not read line by line)* | **The only genuinely irreversible deletion in the product** |
 | `DELETE /api/{movies,series}/import-recovery/{id}` | Dismisses an import-recovery case *(inferred)* | The file it was about |
-| `DELETE /api/metadata/cache` | Clears cached metadata | Nothing that matters |
+| ~~`DELETE /api/metadata/cache`~~ | Cleared cached metadata. **Removed in rc.27 (#1116):** nothing called it | Nothing that matters |
 
 Config deletes — API keys, indexers, quality profiles, tags, custom formats,
 policy sets, library views, webhooks, backups, path mappings, the setup draft —
@@ -81,7 +81,7 @@ are out of scope here. They delete a row and own nothing on disk.
 | `POST /api/{movies,series}/bulk/search` | The same, many titles | **No** |
 | `POST /api/libraries/{id}/search-now` | The same, whole library | **No** |
 | `POST /api/{movies,series}/{id}/grab` | Sends one chosen release to a client | **No** |
-| `POST /api/v1/download-dispatches/{dispatchId}/retry` | Refuses unless the grab status is `failed`; enqueues a library search job with `maxItems: 1` | **No** — so it walks into the same wall the first attempt hit |
+| ~~`POST /api/v1/download-dispatches/{dispatchId}/retry`~~ | Refused unless the grab status was `failed`; enqueued a library search job with `maxItems: 1`. **Removed in rc.27 (#1116):** no screen called it, and Search now does the same | **No** — so it walked into the same wall the first attempt hit |
 | `POST /api/integrations/processors/handoffs/{id}/retry` | Re-submits a hand-off *(inferred)* | n/a |
 | `POST /api/jobs/retry-failed` | Re-runs failed jobs | **No** |
 | `POST /api/{movies,series}/{id}/force-redownload` (PR #432) | Clears hand-off, download and exclusions, then searches | **Yes — and it is the only one** |
@@ -424,7 +424,7 @@ never has to wait for a timer to find out what Deluno thinks.
 | Retention clears the recycle bin (decision 15) | **Empty now**, saying exactly what it will take | ✅ `GET /api/recycle-bin/cleanup/preview`, then the existing `POST` |
 | A refused copy is cleaned up (decision 16) | **Clean up now** on the blocklist row | ✅ `POST /api/blocked-releases/{id}/cleanup` |
 | Removal clears the client (decision 9) | **Forget at the client** on a title, on its own | ✅ the acquisition override |
-| An import fails and retries once | **Retry import now** | ✅ `POST /api/v1/download-dispatches/{id}/retry` |
+| An import fails and retries once | **Retry import now** — the **Retry** on its recovery case, on Transfers' Needs attention and in the bell | ✅ `POST /api/{movies,series}/import-recovery/{id}/retry`, which re-runs the import (`RecoveryCaseRetry`) and resolves the case. Until rc.27 this row named `POST /api/v1/download-dispatches/{id}/retry`; that route only queued another search, no screen called it, and it was removed in rc.27 (#1116) |
 | A library pauses when its root is unreachable (decision 12) | **Re-check now**, rather than waiting | ✅ the same file check — it reports unreachable roots and touches nothing in them |
 
 ### Decision 12, built
@@ -951,3 +951,26 @@ building rather than by reading:
   The one-spot guard caught a cadence being chosen at a call site. Playwright
   caught two buttons sharing a name. None of those would have been noticed by
   reading.
+
+---
+
+## Changes in 1.0.0-rc.27 (3 October 2026)
+
+The clean-up of routes nothing called (#1116) touched four things this design relies on. Each one was checked against
+this document, against Weir and the tray, and against the rig's own logs before it was kept removed. Weir calls only
+`/api/integrations/processors/events` on Deluno, and that route is unchanged.
+
+- **"Retry import now"** is the recovery case's **Retry**, `POST /api/{movies,series}/import-recovery/{id}/retry`. It
+  re-runs the import and resolves the case, and it is offered on Transfers' Needs attention and in the bell. The
+  dispatch retry route this document used to name only queued a search, nothing called it, and it is gone.
+- **A recovery case's decisions** are unchanged: Retry, Search again, Import the original, Stop wanting it, Dismiss and
+  delete. The `/resolve` routes that were removed were never called; Dismiss settles a case by hand.
+- **The memory that keeps Deluno from reporting the same stuck download every hour** used to be "dispatch alerts". It
+  now lives on each download's own timeline as problem rows (`IDispatchProblemLog`). The behaviour is the same: a
+  problem is recorded once, stays recorded after its issue is dismissed, and is released, settling its issue, when the
+  download moves on. The old `dispatch_alerts` table is left in place and read once on start, so an upgraded install
+  does not re-report what it already held.
+- **Family H's reconcile** still runs through `FilesystemReconciliationService`, on the schedule and through **Check
+  now**. Only its unused read-out route, `GET /api/filesystem/reconciliation`, is gone.
+- **Activity** became one list (#1114). Its **Needs a decision** rows show each case's evidence. The buttons that decide
+  a case are on Transfers and in the bell.
