@@ -26,6 +26,9 @@ apps/web/playwright-report/
 # ~128 MB of binaries that do not belong in git.
 tools/ffmpeg/
 
+# UnRAR, fetched by scripts/fetch-unrar.ps1 (checked against a pinned SHA-256).
+tools/unrar/
+
 # Python-backed lab fixtures compile locally during validation.
 __pycache__/
 *.py[cod]
