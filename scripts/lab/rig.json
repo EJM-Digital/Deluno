@@ -7,7 +7,7 @@
     "",
     "The Windows administrator password is deliberately not stored here.",
     "Pass -Password or set DELUNO_LAB_PASSWORD for scripts that need WinRM.",
-    "The Deluno sign-in below is disposable application test data."
+    "The rig's Deluno sign-in password is not stored here either: scripts read it from DELUNO_LAB_APP_PASSWORD, so deluno.password stays null."
   ],
 
   "host": "192.168.1.51",
@@ -28,7 +28,7 @@
   "deluno": {
     "url": "http://192.168.1.51:5099",
     "userName": "admin",
-    "password": "***REMOVED***",
+    "password": null,
     "appPath": "C:\\Deluno\\App",
     "taskName": "Deluno Host"
   },

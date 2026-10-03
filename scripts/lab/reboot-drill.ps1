@@ -51,7 +51,7 @@ function Head($m) { Write-Host ""; Write-Host $m }
 
 function Get-Token {
     $login = Invoke-RestMethod "$base/api/auth/login" -Method Post -ContentType 'application/json' -Body (@{
-        userName = $rig.deluno.userName; password = $rig.deluno.password } | ConvertTo-Json) -TimeoutSec 30
+        userName = $rig.deluno.userName; password = (Get-RigAppPassword) } | ConvertTo-Json) -TimeoutSec 30
     @{ Authorization = "Bearer $($login.accessToken)" }
 }
 

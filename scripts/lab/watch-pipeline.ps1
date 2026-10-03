@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 $rig = Get-Rig
 if (-not $DelunoUrl) { $DelunoUrl = $rig.deluno.url }
 if (-not $UserName)  { $UserName = $rig.deluno.userName }
-if (-not $Password)  { $Password = $rig.deluno.password }
+if (-not $Password)  { $Password = Get-RigAppPassword }
 
 $login = Invoke-RestMethod -Uri "$DelunoUrl/api/auth/login" -Method Post -ContentType 'application/json' `
     -Body (@{ username = $UserName; password = $Password } | ConvertTo-Json)
