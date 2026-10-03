@@ -9,7 +9,7 @@ public static class NotificationsServiceCollectionExtensions
     {
         services.AddSingleton<INotificationRepository, SqliteNotificationRepository>();
         services.AddSingleton<IOutboundNotificationService, OutboundNotificationService>();
-        services.AddSingleton<INotificationService, InMemoryNotificationService>();
+        services.AddSingleton<INotificationService, SqliteNotificationService>();
         services.AddHttpClient("notifications");
         return services;
     }

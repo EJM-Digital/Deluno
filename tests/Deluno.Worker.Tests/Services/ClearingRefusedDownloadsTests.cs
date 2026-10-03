@@ -305,7 +305,7 @@ public sealed class ClearingRefusedDownloadsTests
         var blocklist = Blocklist(Refused("hash-1"));
         var clients = Clients();
         var outbound = new RecordingOutboundNotificationService();
-        var preferences = new InMemoryNotificationService();
+        var preferences = new InMemoryNotificationPreferences();
         var current = await preferences.GetPreferencesAsync(CancellationToken.None);
         current.CleanupClearedEnabled = true;
         await preferences.UpdatePreferencesAsync(current, CancellationToken.None);
@@ -322,7 +322,7 @@ public sealed class ClearingRefusedDownloadsTests
         var blocklist = Blocklist(Refused("hash-1"));
         var clients = Clients();
         var outbound = new RecordingOutboundNotificationService();
-        var preferences = new InMemoryNotificationService();
+        var preferences = new InMemoryNotificationPreferences();
 
         await Cleanup(blocklist.Object, clients.Object, Sharing(), outboundNotificationService: outbound, notificationPreferences: preferences)
             .CleanUpEverythingAsync(CancellationToken.None);
@@ -494,4 +494,19 @@ public sealed class ClearingRefusedDownloadsTests
             "qbittorrent-main",
             "qBittorrent",
             DateTimeOffset.UnixEpoch);
+}
+
+/// <summary>Holds preferences in memory for tests that have no database.</summary>
+internal sealed class InMemoryNotificationPreferences : INotificationService
+{
+    private Deluno.Notifications.Contracts.NotificationPreferences current = new();
+
+    public Task<Deluno.Notifications.Contracts.NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(current);
+
+    public Task UpdatePreferencesAsync(Deluno.Notifications.Contracts.NotificationPreferences preferences, CancellationToken cancellationToken = default)
+    {
+        current = preferences;
+        return Task.CompletedTask;
+    }
 }

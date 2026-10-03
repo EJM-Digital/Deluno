@@ -216,7 +216,7 @@ public sealed class UnmatchedImportGiveUpServiceTests
 
         timeProvider.Advance(TimeSpan.FromDays(4));
         var outbound = new RecordingOutboundNotificationService();
-        var preferences = new InMemoryNotificationService();
+        var preferences = new SqliteNotificationService(storage.Factory, timeProvider);
         var current = await preferences.GetPreferencesAsync(CancellationToken.None);
         current.UnmatchedImportGivenUpEnabled = true;
         await preferences.UpdatePreferencesAsync(current, CancellationToken.None);
@@ -256,7 +256,7 @@ public sealed class UnmatchedImportGiveUpServiceTests
 
         timeProvider.Advance(TimeSpan.FromDays(4));
         var outbound = new RecordingOutboundNotificationService();
-        var preferences = new InMemoryNotificationService();
+        var preferences = new SqliteNotificationService(storage.Factory, timeProvider);
         var service = CreateGiveUpService(
             storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RecordingGateway(),
             outboundNotificationService: outbound, notificationPreferences: preferences);

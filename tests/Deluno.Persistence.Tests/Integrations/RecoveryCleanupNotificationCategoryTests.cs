@@ -254,7 +254,7 @@ public sealed class RecoveryCleanupNotificationCategoryTests
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var registry = new DownloadClientRegistry([new FakeClient("qbittorrent")]);
             var outbound = new RecordingOutboundNotificationService();
-            var notificationService = new InMemoryNotificationService();
+            var notificationService = new SqliteNotificationService(storage.Factory, time);
             var preferences = await notificationService.GetPreferencesAsync(CancellationToken.None);
             preferences.QueueItemRemovedEnabled = queueItemRemovedEnabled;
             preferences.OrphanedDownloadRemovedEnabled = orphanedDownloadRemovedEnabled;
