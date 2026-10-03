@@ -79,7 +79,7 @@ describe("System", () => {
     expect(within(health).getByRole("button", { name: "Unsnooze: An old problem" })).toBeInTheDocument();
     // An area lists all of its checks, the passing ones too.
     const user = userEvent.setup();
-    await user.click(within(health).getByRole("button", { name: /^Machine/ }));
+    await user.click(within(health).getByRole("radio", { name: /^Machine/ }));
     expect(within(health).getByText("Library folders")).toBeInTheDocument();
   });
 

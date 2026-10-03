@@ -162,17 +162,8 @@
 /* ---------- health ---------- */
 .sy-health { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
 .sy-health.sy-flash { animation: sy-ring 1.2s ease; }
-.sy-areas { display: flex; padding: 0 12px 10px; }
-.sy-area { all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 auto; padding: 9px 12px 9px 20px; margin-right: -10px; min-width: 0; white-space: nowrap; color: var(--sy-fg);
-  background: color-mix(in srgb, var(--c) 12%, transparent); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%); font-size: 12px; font-weight: 600; }
-.sy-area:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
-.sy-area:first-child { clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%); border-radius: 9px 0 0 9px; padding-left: 12px; }
-.sy-area:last-child { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 14px 50%); border-radius: 0 9px 9px 0; margin-right: 0; }
-.sy-area .sy-nm { display: inline-flex; gap: 5px; align-items: center; overflow: hidden; text-overflow: ellipsis; }
-.sy-area .sy-ct { font-weight: 700; color: var(--sy-muted); font-size: 11.5px; }
-.sy-area .sy-ct b { color: var(--sy-fg); }
-.sy-area.sy-on { background: color-mix(in srgb, var(--c) 30%, transparent); box-shadow: inset 0 -2px 0 var(--c); }
-.sy-area.sy-checking::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, hsl(0 0% 100% / .1) 50%, transparent 70%); animation: sy-sheen 1.4s linear infinite; }
+.sy-areas { display: flex; min-width: 0; padding: 0 12px 10px; }
+.sy-areas > * { min-width: 0; max-width: 100%; }
 .sy-checklist { list-style: none; margin: 0; padding: 0 12px 12px; }
 .sy-chk { display: grid; grid-template-columns: 10px minmax(0, 1fr) calc(8.2 * 14px) calc(8.2 * 14px); gap: 12px; align-items: center; padding: 8px; border-bottom: 1px solid var(--sy-line-soft); border-radius: 8px; }
 .sy-chk .sy-meta2 { display: flex; gap: 6px; align-items: center; margin-top: 3px; font-style: normal; font-size: 11px; color: var(--sy-faint); }

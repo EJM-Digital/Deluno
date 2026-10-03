@@ -30,7 +30,7 @@ import { LogFilesCard } from "../components/app/log-files-card";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
+import { AuditTimeline, AuditTimelineFilters, useAuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
@@ -247,13 +247,16 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
 
   // The timeline has its own tab; repeating all 500 events here made Health
   // three times taller than everything on it that actually answers "is it well?".
+  const timeline = useAuditTimeline(activity, liveEvents, activityPageSize);
   const auditCard = (
     <>
       <ListCard
         title="Activity timeline"
-        count="Every event Deluno has recorded, live as it happens"
+        count={timeline.countLabel}
+        filter={{ value: timeline.query, onChange: timeline.setQuery, placeholder: "Find an event" }}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+            <AuditTimelineFilters timeline={timeline} />
             <MenuSelect
               label="Rows shown"
               value={String(activityPageSize)}
@@ -277,7 +280,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
       >
         <div className="space-y-2 p-[var(--card-pad-x)]">
           <SaveStatus state={activityStatus.state} message={activityStatus.message} />
-          <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={activityPageSize} />
+          <AuditTimeline timeline={timeline} />
         </div>
       </ListCard>
       <ConfirmDialog
