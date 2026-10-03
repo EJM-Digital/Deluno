@@ -36,13 +36,19 @@ public abstract class SqliteSqlMigration : IDelunoDatabaseMigration
     public string LegacyChecksum => _legacyChecksum.Value;
 
     public IReadOnlyCollection<string> SupersededChecksums =>
-        SupersededSql.Select(sql => Hash($"{Version}|{Name}|{Normalize(sql)}")).ToArray();
+        SupersededSql.Select(sql => Hash($"{Version}|{Name}|{Normalize(sql)}")).Concat(SupersededChecksumValues).ToArray();
 
     /// <summary>
     /// Earlier SQL for this migration, replaced before any release shipped it.
     /// Only for a correction made the same day on an unreleased migration.
     /// </summary>
     protected virtual IEnumerable<string> SupersededSql => [];
+
+    /// <summary>
+    /// Checksums of earlier definitions, for when the earlier SQL can no longer be kept
+    /// in the source (a migration emptied after the data it converted stopped existing).
+    /// </summary>
+    protected virtual IEnumerable<string> SupersededChecksumValues => [];
 
     protected abstract string Sql { get; }
 

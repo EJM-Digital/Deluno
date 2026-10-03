@@ -3,13 +3,12 @@ using Deluno.Infrastructure.Storage.Migrations;
 namespace Deluno.Platform.Migrations;
 
 /// <summary>
-/// Weir is now Weir (#529). The login Deluno generated for it was kept under
-/// the tool id <c>weir</c>; it moves to <c>weir</c> so an install that set
-/// it up before the rename still shows and uses it. The secret is protected
-/// under a purpose shared by every companion tool, so it moves as it is.
+/// Converted a companion tool login saved under Weir's former name to the
+/// <c>weir</c> tool id. A fresh install has nothing to convert, so this does
+/// nothing; the number stays so the numbering stays intact.
 ///
-/// <para>A <c>weir</c> row, if one somehow exists already, wins: it was written
-/// after the rename and is the newer login.</para>
+/// <para>An install that already ran the conversion holds the checksum of the old
+/// SQL, so that checksum is listed as superseded and the row is adopted.</para>
 /// </summary>
 public sealed class V0065CompanionToolWeir : SqliteSqlMigration
 {
@@ -17,13 +16,8 @@ public sealed class V0065CompanionToolWeir : SqliteSqlMigration
 
     public override string Name => "companion_tool_weir";
 
-    protected override string Sql =>
-        """
-        UPDATE companion_tool_logins
-        SET tool_id = 'weir'
-        WHERE tool_id = 'weir'
-          AND NOT EXISTS (SELECT 1 FROM companion_tool_logins WHERE tool_id = 'weir');
+    protected override string Sql => "SELECT 1;";
 
-        DELETE FROM companion_tool_logins WHERE tool_id = 'weir';
-        """;
+    protected override IEnumerable<string> SupersededChecksumValues =>
+        ["715f8f482a35a1c1068207cd1e5395af42c5eb583d13fc9028b37e02180ac118"];
 }
