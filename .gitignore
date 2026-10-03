@@ -53,3 +53,7 @@ vendor/rig-installers/
 # derived from it. Sixty megabytes of video, regenerable from the source, and
 # covered by the NAS sync. Same reasoning as vendor/rig-installers above.
 vendor/e2e-fixtures/
+
+# Runtime data (databases, protection keys, backups) is created by a running
+# Deluno and never belongs in git; scripts/check-tracked-files.ps1 enforces it.
+/data/

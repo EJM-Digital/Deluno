@@ -339,6 +339,15 @@ if ($publicExposure.ExitCode -eq 0) {
     Write-Fail "No private addresses, names or passwords in public files"
 }
 
+# No databases, keys, Python scripts or .env files in git (#1125).
+$trackedFiles = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-tracked-files.ps1")
+if ($trackedFiles.ExitCode -eq 0) {
+    Write-Ok "No databases, keys, Python scripts or .env files tracked"
+} else {
+    if ($trackedFiles.Output) { Write-Host $trackedFiles.Output }
+    Write-Fail "No databases, keys, Python scripts or .env files tracked"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"
