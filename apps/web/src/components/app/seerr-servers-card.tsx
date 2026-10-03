@@ -18,6 +18,7 @@ import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListT
 import { Select } from "../ui/select";
 import { Switch, SwitchRow } from "../ui/switch";
 import { ConnectionVersionBeside } from "./connection-version";
+import { toneSortValue } from "../../lib/status-tones";
 import { useConnectionVersions, versionKey } from "../../lib/connection-versions";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
@@ -329,16 +330,18 @@ export function SeerrServersCard({
           <ListEmpty title="No Seerr server" description="Add Jellyseerr or Overseerr so retention rules can read who requested a title, and so a title a rule removes stops showing as available there." />
         ) : (
           <ListTable
+            listId="seerr-servers"
+            items={servers}
             columns={[
-              { label: "Server" },
-              { label: "Address" },
-              { label: "Reports itself as" },
-              { label: "Last test" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+              { id: "server", label: "Server", sort: (server) => server.name.toLowerCase() },
+              { id: "address", label: "Address", sort: (server) => server.baseUrl.toLowerCase() },
+              { id: "reports", label: "Reports itself as", sort: (server) => (server.serverName ?? "").toLowerCase() },
+              { id: "lastTest", label: "Last test", sort: (server) => (server.lastHealthTestUtc ? new Date(server.lastHealthTestUtc) : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (server) => { const chip = healthChip(server); return toneSortValue(chip.tone, chip.label); } },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (server) => server.isEnabled }
             ]}
           >
-            {servers.map((server) => {
+            {(rows) => rows.map((server) => {
               const chip = healthChip(server);
               const waiting = cleanups.filter((cleanup) => cleanup.serverId === server.id);
               return (

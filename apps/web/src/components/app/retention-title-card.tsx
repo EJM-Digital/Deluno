@@ -109,7 +109,17 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
   return (
     <>
       <ListCard title="Retention" count={`${rows} ${rows === 1 ? "item" : "items"}`}>
-        <ListTable chevron={false} columns={[{ label: "Rule" }, { label: "Why" }, { label: "When" }, { label: "", width: "240px", align: "end", mobile: true, srOnly: true }]}>
+        {/* Held marks, keeps and removed episodes share this table, so the columns move but the rows are not re-sorted. */}
+        <ListTable
+          chevron={false}
+          listId="retention-title"
+          columns={[
+            { id: "rule", label: "Rule" },
+            { id: "why", label: "Why" },
+            { id: "when", label: "When" },
+            { id: "actions", label: "", width: "240px", align: "end", mobile: true, srOnly: true }
+          ]}
+        >
           {status.marks.map((mark) => (
             <ListRow key={`${mark.ruleId}:${mark.entityId}`}>
               <ListNameCell name={`“${mark.ruleName}”`} sub={mark.level === "movie" || mark.level === "show" ? undefined : mark.title} />

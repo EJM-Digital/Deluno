@@ -141,16 +141,18 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
       ) : (
         <ListTable
           chevron={false}
+          listId="movie-files"
+          items={files}
           columns={[
-            { label: "File" },
-            { label: "Kind", mobile: true },
-            { label: "Size" },
-            { label: "Quality / language", mobile: true },
-            { label: "Media info" },
-            { label: "Actions", width: "220px" }
+            { id: "file", label: "File", sort: (item) => (item.path.split(/[\\/]/).pop() ?? item.path).toLowerCase() },
+            { id: "kind", label: "Kind", mobile: true, sort: (item) => kindLabel(item.kind) },
+            { id: "size", label: "Size", sort: (item) => item.sizeBytes },
+            { id: "qualityLanguage", label: "Quality / language", mobile: true, sort: (item) => ((item.kind === "video" ? item.quality : item.language) ?? "").toLowerCase() },
+            { id: "mediaInfo", label: "Media info", sort: (item) => [item.videoCodec, item.audioCodec].filter(Boolean).join(" · ").toLowerCase() },
+            { id: "actions", label: "Actions", width: "220px", movable: false, sortable: false }
           ]}
         >
-          {files.map((item) => {
+          {(rows) => rows.map((item) => {
             const editing = editingPath === item.path;
             const canEdit = (item.kind === "video" || item.kind === "subtitle") && (!item.libraryName || item.libraryId === primaryLibraryId);
             const fileName = item.path.split(/[\\/]/).pop() ?? item.path;

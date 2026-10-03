@@ -143,7 +143,9 @@ export function AcquisitionBlockersCard({
       >
         <ListTable
           chevron={false}
-          columns={[{ label: "Reason" }, { label: "Where", width: LIST_TRACK.action, align: "end", mobile: true }]}
+          // Listed in the order the engine checks them, so the columns move but the rows are not re-sorted.
+          listId="acquisition-blockers"
+          columns={[{ id: "reason", label: "Reason" }, { id: "where", label: "Where", width: LIST_TRACK.action, align: "end", mobile: true }]}
         >
           {blockers.blockers.map((blocker) => (
             <ListRow key={`${blocker.kind}:${blocker.source}`}>
