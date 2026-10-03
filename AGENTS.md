@@ -57,12 +57,13 @@ another), and says which step failed with the tail of its log.
 
 Changes land on `main` directly, and each push runs CI once (`ci.yml`). Every
 run costs Actions minutes, so batch the work: push once, after the local gates
-and, for anything the rig can show, the rig proof. Nothing on GitHub guards
-`main`: the repository is private on a personal Free plan, where branch
-protection and rulesets are unavailable. Collaborators on a personal private
-repository can only hold Write access, so any collaborator could push to
-`main` or push a `v*` tag, and a tag publishes a public container image and
-GitHub release. A local pre-push hook is available; enable it once with:
+and, for anything the rig can show, the rig proof. The account is on GitHub
+Pro (James, 3 Oct 2026), so branch protection and rulesets are available on
+this private repository, but none is set up yet: until it is, nothing on GitHub
+guards `main`. Collaborators on a personal repository can only hold Write
+access, so any collaborator could push to `main` or push a `v*` tag, and a tag
+publishes a public container image and GitHub release. A local pre-push hook is
+available; enable it once with:
 
 ```powershell
 git config core.hooksPath .githooks
