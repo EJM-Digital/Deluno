@@ -664,6 +664,16 @@ describe("Activity is one list with status chips (#1114)", () => {
     expect(screen.queryByText("Back up the database")).not.toBeInTheDocument();
   });
 
+  it("lists a failed manual import even though its job names no title: an import is always about one", async () => {
+    loaderData.failedJobs = [
+      job({ id: "job-manual-import", jobType: "filesystem.import.execute", label: "Import a file by hand", status: "dead-letter", attempts: 3, relatedEntityType: null, relatedEntityId: null, lastError: "The file was not found." })
+    ] as never;
+    renderActivity("/activity?status=failed");
+
+    expect(screen.getByRole("radio", { name: "Failed 2" })).toBeInTheDocument();
+    expect(screen.getByText("Import a file by hand")).toBeInTheDocument();
+  });
+
   it("lists on each chip what that chip is for", async () => {
     renderActivity("/activity?status=in-progress");
     expect(screen.getByText("Search for Arrival")).toBeInTheDocument();
