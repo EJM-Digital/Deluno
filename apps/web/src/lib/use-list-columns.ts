@@ -3,8 +3,9 @@ import { useCallback, useMemo, useState } from "react";
 /**
  * Column order and sort for one list, remembered per list in this browser
  * (#1119). The list's own order is the default; the person can drag columns
- * into a new order and click a header to sort (ascending, descending, back to
- * the list's own order).
+ * into a new order and click a header to sort (ascending, then descending, and
+ * they alternate; the list's own order comes back only through Reset columns),
+ * the same as Weir's lists.
  *
  * Pinned columns (action buttons, switches, anything with no label) keep
  * their slot; the movable columns are permuted among the remaining slots.
@@ -192,10 +193,7 @@ export function useListColumns<T>(
   const toggleSort = useCallback(
     (id: string) => {
       const current = stored.sort;
-      let next: ColumnSortState | null;
-      if (!current || current.id !== id) next = { id, direction: "asc" };
-      else if (current.direction === "asc") next = { id, direction: "desc" };
-      else next = null;
+      const next: ColumnSortState = { id, direction: current?.id === id && current.direction === "asc" ? "desc" : "asc" };
       persist({ order: stored.order, sort: next });
     },
     [persist, stored]

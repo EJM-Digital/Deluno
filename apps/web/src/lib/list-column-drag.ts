@@ -11,8 +11,13 @@ import { flushSync } from "react-dom";
  * pointer) slides everything back.
  */
 
-export const COLUMN_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+export const COLUMN_EASE = "ease";
+/** The other columns slide out of the way, and slide home on Escape, over this long. */
 export const COLUMN_MOVE_MS = 180;
+/** A dropped column settles into its place over this long before the new order is saved. */
+export const COLUMN_SETTLE_MS = 150;
+/** The class the page's root carries while a column is held: the pointer reads as holding it and nothing is selected. */
+export const DRAGGING_CLASS = "deluno-column-dragging";
 const MOUSE_THRESHOLD = 5;
 const TOUCH_HOLD_MS = 200;
 const TOUCH_SLOP = 8;
@@ -68,6 +73,10 @@ export function dropOrder(order: string[], movableIds: string[], visibleIds: str
   return order.map((candidate) => (movable.has(candidate) ? nextMovable[next++] : candidate));
 }
 
+const LIFT_Z_INDEX = "3";
+const LIFT_BACKGROUND = "hsl(var(--surface-2))";
+const LIFT_SHADOW = "var(--shadow-md)";
+
 let busy = false;
 
 export function trackColumnDrag(event: { button: number; pointerType: string; clientX: number; clientY: number }, id: string, deps: ColumnDragDeps): void {
@@ -99,9 +108,9 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
   let lefts: Record<string, number> = {};
   let target = deps.order;
   let scrollDirection = 0;
-  const savedBody = { userSelect: "", cursor: "" };
 
-  const transition = `transform ${duration}ms ${COLUMN_EASE}, box-shadow ${duration}ms ${COLUMN_EASE}`;
+  const transitionFor = (ms: number) => `transform ${ms}ms ${COLUMN_EASE}`;
+  const transition = transitionFor(duration);
 
   function findScroller(): HTMLElement | null {
     let node: HTMLElement | null = deps.headerRow.parentElement;
@@ -140,9 +149,8 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
     scrollStart = scroller?.scrollLeft ?? 0;
   }
 
-  function shift(slot: Slot, x: number, extra?: { lift?: boolean }) {
-    const lift = extra?.lift ?? false;
-    slot.header.style.transform = lift ? `translate3d(${x}px,0,0) scale(1.02)` : `translate3d(${x}px,0,0)`;
+  function shift(slot: Slot, x: number) {
+    slot.header.style.transform = `translate3d(${x}px,0,0)`;
     for (const cell of slot.cells) cell.style.transform = `translate3d(${x}px,0,0)`;
   }
 
@@ -169,32 +177,29 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
       finish(false);
       return;
     }
-    savedBody.userSelect = document.body.style.userSelect;
-    savedBody.cursor = document.body.style.cursor;
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "grabbing";
+    document.documentElement.classList.add(DRAGGING_CLASS);
     for (const slot of slots) {
       slot.header.style.willChange = "transform";
       if (slot.id !== id) setTransition(slot, transition);
     }
-    dragged.header.style.transition = "box-shadow 120ms ease-out";
-    dragged.header.style.zIndex = "5";
+    // The lifted column is a full-height band raised on the surface-2 background with the popover shadow: no scale, no tint.
+    dragged.header.style.transition = "none";
     dragged.header.style.position = "relative";
-    dragged.header.style.cursor = "grabbing";
-    // The lifted column is a full-height band, not just the height of its text.
+    dragged.header.style.zIndex = LIFT_Z_INDEX;
     dragged.header.style.alignSelf = "stretch";
     dragged.header.style.display = "flex";
     dragged.header.style.alignItems = "center";
-    dragged.header.style.boxShadow = "0 8px 22px -6px hsl(0 0% 0% / 0.45), 0 0 0 1px hsl(var(--primary) / 0.45)";
-    dragged.header.style.backgroundColor = "color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--card)))";
+    dragged.header.style.boxShadow = LIFT_SHADOW;
+    dragged.header.style.backgroundColor = LIFT_BACKGROUND;
     for (const cell of dragged.cells) {
       cell.style.position = "relative";
       cell.style.alignSelf = "stretch";
       cell.style.display = "flex";
       cell.style.flexDirection = "column";
       cell.style.justifyContent = "center";
-      cell.style.zIndex = "4";
-      cell.style.backgroundColor = "color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--card)))";
+      cell.style.zIndex = LIFT_Z_INDEX;
+      cell.style.boxShadow = LIFT_SHADOW;
+      cell.style.backgroundColor = LIFT_BACKGROUND;
     }
     schedule();
   }
@@ -213,7 +218,7 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
     const scrolled = scroller ? scroller.scrollLeft - scrollStart : 0;
     const raw = latestX - startX + scrolled;
     const dx = Math.min(Math.max(raw, rowLeft - dragged.left), rowRight - (dragged.left + dragged.width));
-    shift(dragged, dx, { lift: true });
+    shift(dragged, dx);
 
     const centre = dragged.left + dragged.width / 2 + dx;
     const visibleIds = slots.map((slot) => slot.id);
@@ -271,10 +276,7 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
       clearStyles(slot.header);
       for (const cell of slot.cells) clearStyles(cell);
     }
-    if (started) {
-      document.body.style.userSelect = savedBody.userSelect;
-      document.body.style.cursor = savedBody.cursor;
-    }
+    if (started) document.documentElement.classList.remove(DRAGGING_CLASS);
     busy = false;
   }
 
@@ -290,12 +292,13 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
     swallowNextClick();
     const finalOrder = commit ? target : deps.order;
     const finalLefts = layoutLefts(finalOrder);
+    // A drop settles in 150ms; Escape and a lost pointer slide everything home the way the others slid aside.
+    const settle = reduced ? 0 : commit ? COLUMN_SETTLE_MS : COLUMN_MOVE_MS;
     for (const slot of slots) {
-      setTransition(slot, transition);
+      setTransition(slot, transitionFor(settle));
       const x = (finalLefts[slot.id] ?? lefts[slot.id]) - lefts[slot.id];
       shift(slot, commit ? x : 0);
     }
-    dragged.header.style.boxShadow = "none";
     const done = () => {
       if (commit && !sameOrder(finalOrder, deps.order)) {
         // Commit and clear in the same frame: the cells land where the transforms left them, so nothing jumps.
@@ -303,8 +306,8 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
       }
       resetEverything();
     };
-    if (duration === 0) done();
-    else setTimeout(done, duration + 20);
+    if (settle === 0) done();
+    else setTimeout(done, settle + 20);
   }
 
   function onUp() {

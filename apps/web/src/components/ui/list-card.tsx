@@ -11,11 +11,18 @@
  * On narrow screens only the first cell and cells marked `mobile` remain.
  */
 import * as React from "react";
-import { ChevronDown, ChevronRight, ChevronUp, GripVertical, RotateCcw, Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { titleCaseLabel } from "../../lib/title-case";
 import { COLUMN_EASE, COLUMN_MOVE_MS, prefersReducedMotion, trackColumnDrag } from "../../lib/list-column-drag";
 import { isColumnMovable, isColumnSortable, useListColumns, type ListColumnSpec, type ListColumnsState } from "../../lib/use-list-columns";
 import { cn } from "../../lib/utils";
+import { ColumnsAnnouncements, ColumnsButton, type ColumnsControls } from "./columns-menu";
+
+/** A ListTable inside a ListCard hands its Columns controls up to the card, which draws the button last in its header. */
+interface ListCardContextValue {
+  register: (id: string, controls: ColumnsControls | null) => void;
+}
+const ListCardContext = React.createContext<ListCardContextValue | null>(null);
 
 /* ---------------------------------------------------------------- card */
 
@@ -34,6 +41,20 @@ interface ListCardProps {
 export function ListCard({ title, count, titleCase = true, filter, actions, className, children }: ListCardProps) {
   const filterId = React.useId();
   const titleId = React.useId();
+  const [tables, setTables] = React.useState<Record<string, ColumnsControls>>({});
+  const register = React.useCallback((id: string, controls: ColumnsControls | null) => {
+    setTables((current) => {
+      if (!controls) {
+        if (!(id in current)) return current;
+        const rest = { ...current };
+        delete rest[id];
+        return rest;
+      }
+      return { ...current, [id]: controls };
+    });
+  }, []);
+  const registered = Object.values(tables);
+  const contextValue = React.useMemo(() => ({ register }), [register]);
   return (
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
       <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
@@ -55,13 +76,31 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
           </label>
         ) : null}
         {actions}
+        {registered.length ? (
+          <>
+            <ColumnsButton onReset={() => registered.forEach((entry) => entry.reset())} />
+            <ColumnsAnnouncements controls={registered} />
+          </>
+        ) : null}
       </header>
-      {children}
+      <ListCardContext.Provider value={contextValue}>{children}</ListCardContext.Provider>
     </section>
   );
 }
 
 /* --------------------------------------------------------------- table */
+
+const ARROW_UP = "M5 8.5v-6M2.5 5 5 2.5 7.5 5";
+const ARROW_DOWN = "M5 1.5v6M2.5 5 5 7.5 7.5 5";
+
+/** The thin line arrow beside the sorted column's name, the same as Weir's. */
+function SortArrow({ direction }: { direction: "asc" | "desc" }) {
+  return (
+    <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
+      <path d={direction === "asc" ? ARROW_UP : ARROW_DOWN} />
+    </svg>
+  );
+}
 
 export interface ListColumn<T = never> extends Omit<ListColumnSpec<T>, "label" | "srOnly"> {
   label: React.ReactNode;
@@ -126,6 +165,20 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
   const bodyRef = React.useRef<HTMLDivElement>(null);
   const flipRef = React.useRef<Record<string, number> | null>(null);
   const [announcement, setAnnouncement] = React.useState("");
+  const card = React.useContext(ListCardContext);
+  const hintId = React.useId();
+  const hasControls = enabled && state.columns.some((entry) => isColumnMovable(entry.column));
+  const sortableTable = enabled && state.columns.some((entry) => isColumnSortable(entry.column));
+  const controls: ColumnsControls = { hintId, sortable: sortableTable, announcement, reset: state.reset };
+  const register = card?.register;
+  const controlsKey = `${hasControls}|${sortableTable}|${announcement}`;
+  React.useEffect(() => {
+    if (!register || !hasControls) return;
+    register(hintId, controls);
+    return () => register(hintId, null);
+    // `controls` is new every render; what matters is its key and the stable reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [register, hintId, controlsKey, state.reset]);
 
   const visual = state.columns.map((entry) => entry.originalIndex);
   const displayOrder = state.columns.map((entry) => entry.id);
@@ -234,10 +287,10 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                 key={id}
                 role="columnheader"
                 data-col-id={id}
-                aria-sort={sortable ? (active ? (active.direction === "asc" ? "ascending" : "descending") : "none") : undefined}
+                aria-sort={active ? (active.direction === "asc" ? "ascending" : "descending") : undefined}
                 tabIndex={movable && !sortable ? 0 : undefined}
                 aria-keyshortcuts={movable ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
-                title={movable ? "Drag to move this column. Alt with the left or right arrow also moves it." : undefined}
+                aria-describedby={movable && !sortable ? hintId : undefined}
                 onPointerDown={movable ? (event) => startDrag(event, id) : undefined}
                 onKeyDown={
                   movable
@@ -250,24 +303,23 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     : undefined
                 }
                 className={cn(
-                  "group relative min-w-0 rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "relative min-w-0 rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   movable && "cursor-grab touch-pan-y select-none",
+                  active && "text-foreground",
                   col.align === "end" && "text-right",
                   originalIndex !== 0 && !col.mobile && "hidden md:block",
                   col.srOnly && "sr-only"
                 )}
               >
-                {movable ? (
-                  <GripVertical aria-hidden className="pointer-events-none absolute -left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-50" />
-                ) : null}
                 {sortable ? (
                   <button
                     type="button"
                     onClick={() => state.toggleSort(id)}
-                    className={cn("inline-flex max-w-full cursor-[inherit] items-center gap-1 truncate uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}
+                    aria-describedby={movable ? hintId : undefined}
+                    className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-[0.1em] text-inherit hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <span className="truncate">{col.label}</span>
-                    {active ? active.direction === "asc" ? <ChevronUp aria-hidden className="h-3 w-3 shrink-0" /> : <ChevronDown aria-hidden className="h-3 w-3 shrink-0" /> : null}
+                    {active ? <SortArrow direction={active.direction} /> : null}
                   </button>
                 ) : (
                   <span className="block truncate">{col.label}</span>
@@ -276,23 +328,13 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
             );
           })}
           {chevron ? <span aria-hidden /> : null}
-          {enabled && state.changed ? (
-            <button
-              type="button"
-              aria-label="Reset columns"
-              title="Reset columns"
-              onClick={state.reset}
-              className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
+          {hasControls && !card ? <ColumnsButton onReset={state.reset} className="absolute right-1.5 top-1/2 -translate-y-1/2" /> : null}
         </div>
         <ListTableContext.Provider value={{ template, mobileTemplate, chevron, visual, reordered }}>
           <div ref={bodyRef} role="rowgroup">{typeof children === "function" ? children(state.items) : children}</div>
         </ListTableContext.Provider>
       </div>
-      <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
+      {hasControls && !card ? <ColumnsAnnouncements controls={[controls]} /> : null}
     </>
   );
 }

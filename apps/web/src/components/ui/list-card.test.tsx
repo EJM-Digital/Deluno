@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ListCell, ListRow, ListTable, type ListColumn } from "./list-card";
+import { ListCard, ListCell, ListRow, ListTable, type ListColumn } from "./list-card";
 import { useListColumns } from "../../lib/use-list-columns";
 import { dropOrder } from "../../lib/list-column-drag";
 
@@ -41,6 +41,21 @@ function Demo({ listId = "demo" }: { listId?: string }) {
   );
 }
 
+/** Chooses Reset columns from the Columns menu. */
+async function resetColumns(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Columns" }));
+  await user.click(screen.getByRole("menuitem", { name: "Reset columns" }));
+}
+
+function InCard({ listId = "demo" }: { listId?: string }) {
+  return (
+    <ListCard title="Things" actions={<button type="button">Add</button>}>
+      <Demo listId={listId} />
+    </ListCard>
+  );
+}
+
+const localStorageEmpty = () => window.localStorage.getItem("deluno:list-columns:demo") === null;
 const rowOrder = () => screen.getAllByTestId(/^row-/).map((row) => row.dataset.testid);
 const headerOrder = () => screen.getAllByRole("columnheader").map((header) => header.dataset.colId);
 
@@ -83,15 +98,16 @@ afterEach(() => {
 });
 
 describe("ListTable column sorting (#1119)", () => {
-  it("cycles ascending, descending, then back to the list's own order, and announces it with aria-sort", async () => {
+  it("sorts ascending, then reverses, and alternates: there is no third click back to the list's own order, and aria-sort is only on the sorted column", async () => {
     const user = userEvent.setup();
     render(<Demo />);
     const header = screen.getByRole("columnheader", { name: /^Name/ });
-    expect(header).toHaveAttribute("aria-sort", "none");
+    expect(header).not.toHaveAttribute("aria-sort");
     expect(rowOrder()).toEqual(["row-b", "row-a", "row-c"]);
 
     await user.click(within(header).getByRole("button"));
     expect(header).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByRole("columnheader", { name: /^Size/ })).not.toHaveAttribute("aria-sort");
     expect(rowOrder()).toEqual(["row-a", "row-b", "row-c"]);
 
     await user.click(within(header).getByRole("button"));
@@ -99,8 +115,32 @@ describe("ListTable column sorting (#1119)", () => {
     expect(rowOrder()).toEqual(["row-c", "row-b", "row-a"]);
 
     await user.click(within(header).getByRole("button"));
-    expect(header).toHaveAttribute("aria-sort", "none");
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+    expect(rowOrder()).toEqual(["row-a", "row-b", "row-c"]);
+
+    // Only Reset columns brings the list's own order back.
+    await resetColumns(user);
+    expect(header).not.toHaveAttribute("aria-sort");
     expect(rowOrder()).toEqual(["row-b", "row-a", "row-c"]);
+  });
+
+  it("draws a thin line arrow on the sorted column only", async () => {
+    const user = userEvent.setup();
+    render(<Demo />);
+    const header = screen.getByRole("columnheader", { name: /^Name/ });
+    expect(header.querySelector("svg")).toBeNull();
+    await user.click(within(header).getByRole("button"));
+    expect(header.querySelector("svg path")).toHaveAttribute("d", "M5 8.5v-6M2.5 5 5 2.5 7.5 5");
+    await user.click(within(header).getByRole("button"));
+    expect(header.querySelector("svg path")).toHaveAttribute("d", "M5 1.5v6M2.5 5 5 7.5 7.5 5");
+    expect(screen.getByRole("columnheader", { name: /^Size/ }).querySelector("svg")).toBeNull();
+  });
+
+  it("has no grip icon on a movable heading, only a grab cursor", () => {
+    render(<Demo />);
+    const header = screen.getByRole("columnheader", { name: /^Name/ });
+    expect(header.querySelector("svg")).toBeNull();
+    expect(header.className).toContain("cursor-grab");
   });
 
   it("sorts numbers by value and keeps rows with nothing to compare last in both directions", async () => {
@@ -131,15 +171,49 @@ describe("ListTable column sorting (#1119)", () => {
     const user = userEvent.setup();
     const { unmount } = render(<Demo />);
     await user.click(within(screen.getByRole("columnheader", { name: /^Name/ })).getByRole("button"));
-    expect(screen.getByRole("button", { name: "Reset columns" })).toBeInTheDocument();
     unmount();
 
     render(<Demo />);
     expect(rowOrder()).toEqual(["row-a", "row-b", "row-c"]);
-    await user.click(screen.getByRole("button", { name: "Reset columns" }));
+    await resetColumns(user);
     expect(rowOrder()).toEqual(["row-b", "row-a", "row-c"]);
-    expect(screen.queryByRole("button", { name: "Reset columns" })).toBeNull();
     expect(window.localStorage.getItem("deluno:list-columns:demo")).toBeNull();
+  });
+
+  it("always offers a Columns button with one item, Reset columns, and it is not a visible item until opened", async () => {
+    const user = userEvent.setup();
+    render(<Demo />);
+    const button = screen.getByRole("button", { name: "Columns" });
+    expect(button).toHaveAttribute("aria-haspopup", "menu");
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    await user.click(button);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Reset columns"]);
+  });
+
+  it("tells a screen reader how to move and sort a column", () => {
+    render(<Demo />);
+    expect(screen.getByText(/Drag a heading to move its column, or press Alt with the left or right arrow on it\./)).toHaveTextContent("Click a heading to sort by it, and click again to reverse.");
+  });
+
+  it("inside a ListCard the Columns button is the last thing in the card header, with no per-page change", () => {
+    render(<InCard />);
+    const header = screen.getByRole("banner", { hidden: true }) as HTMLElement;
+    const buttons = within(header).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Add", "Columns"]);
+    expect(screen.getAllByRole("button", { name: "Columns" })).toHaveLength(1);
+  });
+
+  it("offers no Columns button on a table with nothing to move or sort", () => {
+    render(
+      <ListCard title="Plain">
+        <ListTable columns={[{ label: "Name" }]} chevron={false}>
+          <ListRow>
+            <ListCell primary="a" />
+          </ListRow>
+        </ListTable>
+      </ListCard>
+    );
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull();
   });
 
   it("keeps different lists apart", async () => {
@@ -172,7 +246,29 @@ describe("ListTable column order (#1119)", () => {
     expect(headerOrder()).toEqual(["size", "name", "when", "actions"]);
     const cells = within(screen.getByTestId("row-b")).getAllByRole("cell").map((cell) => cell.textContent);
     expect(cells).toEqual(["30", "Bravo", "2026-01-02", "x"]);
-    expect(screen.getByRole("button", { name: "Reset columns" })).toBeInTheDocument();
+    // A held column sits at rest again once it is dropped.
+    expect(screen.getByRole("columnheader", { name: /^Size/ }).style.zIndex).toBe("");
+  });
+
+  it("lifts the held column on the raised surface with the popover shadow: no scale and no tint, and the page shows a grabbing cursor", () => {
+    mockLayout();
+    render(<Demo />);
+    const header = screen.getByRole("columnheader", { name: /^Name/ });
+    pointer("pointerdown", 50, header);
+    pointer("pointermove", 60);
+    pointer("pointermove", 90);
+    expect(document.documentElement.classList.contains("deluno-column-dragging")).toBe(true);
+    for (const held of [header, within(screen.getByTestId("row-b")).getAllByRole("cell")[0]]) {
+      expect(held.style.position).toBe("relative");
+      expect(held.style.zIndex).toBe("3");
+      expect(held.style.backgroundColor).toBe("hsl(var(--surface-2))");
+      expect(held.style.boxShadow).toBe("var(--shadow-md)");
+      expect(held.style.transform).not.toContain("scale");
+    }
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(document.documentElement.classList.contains("deluno-column-dragging")).toBe(false);
   });
 
   it("does not take a click as a drag: a small movement still sorts", async () => {
@@ -207,7 +303,7 @@ describe("ListTable column order (#1119)", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     });
     expect(headerOrder()).toEqual(["name", "size", "when", "actions"]);
-    expect(screen.queryByRole("button", { name: "Reset columns" })).toBeNull();
+    expect(localStorageEmpty()).toBe(true);
   });
 
   it("moves a column from the keyboard with Alt and the arrow keys, and says where it went", async () => {
@@ -235,7 +331,7 @@ describe("ListTable column order (#1119)", () => {
     render(<Demo />);
     drag(screen.getByRole("columnheader", { name: /^Name/ }), 50, 160);
     await user.click(within(screen.getByRole("columnheader", { name: /^Size/ })).getByRole("button"));
-    await user.click(screen.getByRole("button", { name: "Reset columns" }));
+    await resetColumns(user);
     expect(headerOrder()).toEqual(["name", "size", "when", "actions"]);
     expect(rowOrder()).toEqual(["row-b", "row-a", "row-c"]);
   });

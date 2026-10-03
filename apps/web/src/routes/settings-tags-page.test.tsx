@@ -102,8 +102,9 @@ describe("Tags page (#1039)", () => {
 
     renderPage();
     expect(screen.getByRole("columnheader", { name: /^Name/ })).toHaveAttribute("aria-sort", "descending");
-    await userEvent.click(screen.getByRole("button", { name: "Reset columns" }));
-    expect(screen.getByRole("columnheader", { name: /^Name/ })).toHaveAttribute("aria-sort", "none");
+    await userEvent.click(screen.getByRole("button", { name: "Columns" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Reset columns" }));
+    expect(screen.getByRole("columnheader", { name: /^Name/ })).not.toHaveAttribute("aria-sort");
     window.localStorage.clear();
   });
 

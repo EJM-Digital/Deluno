@@ -1645,3 +1645,10 @@ html .text-\[64px\] {
     transform: translateY(1.75px);
   }
 }
+
+/* A column is held (lib/list-column-drag.ts): the pointer reads as holding it everywhere, and nothing is selected. */
+html.deluno-column-dragging,
+html.deluno-column-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
