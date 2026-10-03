@@ -13,6 +13,7 @@
       section yet, so a release doesn't ship without notes (#870).
     -->
     <Version>1.0.0-rc.28</Version>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Deluno.Contracts' and '$(MSBuildProjectName)' != 'Deluno.Host' and '$(MSBuildProjectName)' != 'Deluno.Tray'">

@@ -15,8 +15,6 @@ It runs on Windows and in Docker. It is for one person, and your data stays on y
 > or just ugly, [tell us](https://github.com/jampat000/Deluno/issues). That is the
 > most useful thing you can do right now, and every report gets read.
 
-<!-- Screenshots below are from an earlier build and will be retaken after the current live test. -->
-
 <img src="screenshots/dashboard.png" width="49%"> <img src="screenshots/movies.png" width="49%">
 
 *Dashboard, and the Movies library*
@@ -258,4 +256,8 @@ Contributors working with an AI assistant should start at [AGENTS.md](AGENTS.md)
 
 ## Licence
 
-MIT.
+Deluno is free software under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). Copyright (C) 2026 jampat000 and the Deluno contributors. You can use it, change it and share it, and if you share a changed version, or run one for other people over a network, you must share your changes under the same licence.
+
+## Security
+
+Found a security problem? Please report it privately, not in a public issue. [SECURITY.md](SECURITY.md) says how.
