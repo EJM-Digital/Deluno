@@ -17,7 +17,7 @@ import { activityLinkForTitle } from "../lib/activity-history";
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, ArrowUpDown, LoaderCircle, Pencil, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
+import { ArrowLeft, LoaderCircle, Pencil, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
@@ -52,16 +52,14 @@ import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/e
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import {
-  type CandidateSortKey,
-  defaultSortDirection,
+  candidateSortValue,
   filterCandidates,
   formatGrabs,
   formatProtocol,
   formatReleaseAge,
-  formatSeedersAndLeechers,
-  sortCandidates,
-  type SortDirection
+  formatSeedersAndLeechers
 } from "../lib/release-candidate-columns";
+import { toneSortValue } from "../lib/status-tones";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -242,7 +240,6 @@ export function ShowDetailPage() {
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   // #753: sort/filter state for the candidates table, reset each fresh search.
-  const [candidateSort, setCandidateSort] = useState<{ key: CandidateSortKey; direction: SortDirection } | null>(null);
   const [candidateProtocolFilter, setCandidateProtocolFilter] = useState("");
   const [candidateIndexerFilter, setCandidateIndexerFilter] = useState("");
   // Which episode the candidates below belong to, when they came from an
@@ -1051,21 +1048,12 @@ export function ShowDetailPage() {
     }
   }
 
-  // #753: sort/filter the candidates table without touching the fetched
-  // order the server returned (still the default when nothing is chosen).
-  function toggleCandidateSort(key: CandidateSortKey) {
-    setCandidateSort((current) =>
-      current?.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: defaultSortDirection(key) }
-    );
-  }
+  // #753: filter the candidates table without touching the fetched order the
+  // server returned. The column headers sort it (#1119); the server's ranking
+  // is what shows until one is chosen.
   const candidateIndexerOptions = [...new Set(releaseCandidates.map((candidate) => candidate.indexerName))];
   const candidateProtocolOptions = [...new Set(releaseCandidates.map((candidate) => candidate.indexerProtocol).filter((value): value is string => Boolean(value)))];
-  const visibleCandidates = (() => {
-    const filtered = filterCandidates(releaseCandidates, { protocol: candidateProtocolFilter, indexerName: candidateIndexerFilter });
-    return candidateSort ? sortCandidates(filtered, candidateSort.key, candidateSort.direction) : filtered;
-  })();
+  const visibleCandidates = filterCandidates(releaseCandidates, { protocol: candidateProtocolFilter, indexerName: candidateIndexerFilter });
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-[var(--page-gap)]">
@@ -1399,18 +1387,21 @@ export function ShowDetailPage() {
               actions={<ReleaseFilterMenus protocols={candidateProtocolOptions} protocol={candidateProtocolFilter} onProtocolChange={setCandidateProtocolFilter} indexers={candidateIndexerOptions} indexer={candidateIndexerFilter} onIndexerChange={setCandidateIndexerFilter} />}
             >
               <ListTable
+                // The server's ranking is the order until a header is clicked.
+                listId="show-release-candidates"
+                items={visibleCandidates}
                 columns={[
-                  { label: "Release" },
-                  { label: "Quality", mobile: true },
-                  { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("protocol")} /> },
-                  { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("age")} /> },
-                  { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("seeders")} /> },
-                  { label: <SortHeader label="Grabs" active={candidateSort?.key === "grabs"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("grabs")} /> },
-                  { label: <SortHeader label="Size" active={candidateSort?.key === "size"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("size")} /> },
-                  { label: "Decision", width: LIST_TRACK.status, mobile: true }
+                  { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },
+                  { id: "quality", label: "Quality", mobile: true, sort: (candidate) => candidate.quality.toLowerCase() },
+                  { id: "protocol", label: "Protocol", sort: (candidate) => candidateSortValue(candidate, "protocol") },
+                  { id: "age", label: "Age", sort: (candidate) => candidateSortValue(candidate, "age") },
+                  { id: "seeders", label: "Seeders/Leechers", sort: (candidate) => candidateSortValue(candidate, "seeders") },
+                  { id: "grabs", label: "Grabs", sort: (candidate) => candidateSortValue(candidate, "grabs") },
+                  { id: "size", label: "Size", sort: (candidate) => candidateSortValue(candidate, "size") },
+                  { id: "decision", label: "Decision", width: LIST_TRACK.status, mobile: true, sort: (candidate) => toneSortValue(candidateTone(candidate), candidateLabel(candidate)) }
                 ]}
               >
-                {visibleCandidates.map((candidate, index) => (
+                {(rows) => rows.map((candidate) => (
                   <ListRow
                     key={`${candidate.indexerName}:${candidate.releaseName}`}
                     onClick={() => {
@@ -1425,7 +1416,7 @@ export function ShowDetailPage() {
                   >
                     <ListNameCell
                       name={candidate.releaseName}
-                      sub={`${index === 0 && canWinSearch(candidate) ? "Best match · " : ""}${candidate.indexerName}`}
+                      sub={`${candidate === visibleCandidates[0] && canWinSearch(candidate) ? "Best match · " : ""}${candidate.indexerName}`}
                     />
                     <ListCell primary={candidate.quality} mobile />
                     <ListCell primary={formatProtocol(candidate.indexerProtocol)} />
@@ -1497,12 +1488,14 @@ export function ShowDetailPage() {
                 // imported" — the Status cell two columns along, in different
                 // words, on every row. Status says which of the four rungs the
                 // episode is on, which is strictly more.
+                // Grouped by season, so the columns move but the rows are not re-sorted.
+                listId="show-episodes"
                 columns={[
-                  { label: "Episode" },
-                  { label: "Aired" },
-                  { label: "Last search" },
-                  { label: "Status", width: LIST_TRACK.status },
-                  { label: "On", width: LIST_TRACK.toggle, mobile: true }
+                  { id: "episode", label: "Episode" },
+                  { id: "aired", label: "Aired" },
+                  { id: "lastSearch", label: "Last search" },
+                  { id: "status", label: "Status", width: LIST_TRACK.status },
+                  { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true }
                 ]}
               >
                 {visibleSeasons.map((season) => (
@@ -1644,8 +1637,16 @@ export function ShowDetailPage() {
               title="Indexers and download clients"
               count={`${[...usedIndexers, ...usedDownloadClients].filter((entry) => entry.used).length} of ${usedIndexers.length + usedDownloadClients.length} used`}
             >
-              <ListTable chevron={false} columns={[{ label: "Connection" }, { label: "Why", width: "minmax(0,2fr)", mobile: true }]}>
-                {[...usedIndexers, ...usedDownloadClients].map((entry) => (
+              <ListTable
+                chevron={false}
+                listId="show-connections"
+                items={[...usedIndexers, ...usedDownloadClients]}
+                columns={[
+                  { id: "connection", label: "Connection", sort: (entry) => entry.name.toLowerCase() },
+                  { id: "why", label: "Why", width: "minmax(0,2fr)", mobile: true, sort: (entry) => `${entry.used ? 0 : 1}-${entry.reason.toLowerCase()}` }
+                ]}
+              >
+                {(rows) => rows.map((entry) => (
                   <ListRow key={entry.id}>
                     <ListNameCell name={entry.name} />
                     <ListCell mobile>
@@ -1734,8 +1735,17 @@ export function ShowDetailPage() {
 
           {origins.length ? (
             <ListCard title="How this show was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
-              <ListTable chevron={false} columns={[{ label: "Source" }, { label: "Provider", mobile: true }, { label: "First seen" }]}>
-                {origins.map((origin) => (
+              <ListTable
+                chevron={false}
+                listId="show-origins"
+                items={origins}
+                columns={[
+                  { id: "source", label: "Source", sort: (origin) => origin.sourceName.toLowerCase() },
+                  { id: "provider", label: "Provider", mobile: true, sort: (origin) => origin.provider.toLowerCase() },
+                  { id: "firstSeen", label: "First seen", sort: (origin) => new Date(origin.firstSeenUtc) }
+                ]}
+              >
+                {(rows) => rows.map((origin) => (
                   <ListRow key={origin.id}>
                     <ListNameCell name={origin.sourceName} sub="Removing the list never removes this show or its files." />
                     <ListCell primary={origin.provider} mobile />
@@ -1752,8 +1762,17 @@ export function ShowDetailPage() {
         <>
           {importCases.length ? (
             <ListCard title="Import issues" count={`${importCases.length} open`}>
-              <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
-                {importCases.map((item) => {
+              <ListTable
+                chevron={false}
+                listId="show-import-issues"
+                items={importCases}
+                columns={[
+                  { id: "issue", label: "Issue", sort: (item) => formatFailureKind(item.failureKind).toLowerCase() },
+                  { id: "whatToDo", label: "What to do", width: "minmax(0,1.4fr)", sort: (item) => (item.recommendedAction ?? "").toLowerCase() },
+                  { id: "action", label: "Action", width: LIST_TRACK.action, align: "end", mobile: true, movable: false, sortable: false }
+                ]}
+              >
+                {(rows) => rows.map((item) => {
                   // #930, #957: a file missing or unmatched from a processor's
                   // output whose own name resolved to a canonical episode
                   // carries that episode's id, so Search can act on it
@@ -1823,15 +1842,18 @@ export function ShowDetailPage() {
               />
             ) : (
               <ListTable
+                // Sorts the latest 12 shown, not the whole history.
+                listId="show-searches"
+                items={historyFilteredSearches.slice(0, 12)}
                 columns={[
-                  { label: "Release" },
-                  { label: "Scope", mobile: true },
-                  { label: "Trigger" },
-                  { label: "When" },
-                  { label: "Outcome", width: LIST_TRACK.status }
+                  { id: "release", label: "Release", sort: (item) => (item.releaseName ?? "").toLowerCase() },
+                  { id: "scope", label: "Scope", mobile: true, sort: (item) => formatSearchScope(item).toLowerCase() },
+                  { id: "trigger", label: "Trigger", sort: (item) => formatTriggerKind(item.triggerKind).toLowerCase() },
+                  { id: "when", label: "When", sort: (item) => new Date(item.createdUtc) },
+                  { id: "outcome", label: "Outcome", width: LIST_TRACK.status, sort: (item) => toneSortValue(searchOutcomeTone(item.outcome), formatSearchOutcome(item.outcome)) }
                 ]}
               >
-                {historyFilteredSearches.slice(0, 12).map((item) => (
+                {(rows) => rows.map((item) => (
                   <ListRow key={item.id} onClick={() => setOpenSearchId(item.id)} selected={openSearchId === item.id}>
                     <ListNameCell name={item.releaseName ?? "No release selected"} sub={item.indexerName ?? "No source yet"} />
                     <ListCell primary={formatSearchScope(item)} mobile />
@@ -1865,8 +1887,17 @@ export function ShowDetailPage() {
                 description="Releases Deluno hands to a download client are listed here, with what the client said back."
               />
             ) : (
-              <ListTable columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
-                {seriesDispatches.slice(0, 8).map((item) => (
+              <ListTable
+                listId="show-dispatches"
+                items={seriesDispatches.slice(0, 8)}
+                columns={[
+                  { id: "release", label: "Release", sort: (item) => item.releaseName.toLowerCase() },
+                  { id: "client", label: "Client", mobile: true, sort: (item) => item.downloadClientName.toLowerCase() },
+                  { id: "when", label: "When", sort: (item) => new Date(item.createdUtc) },
+                  { id: "status", label: "Status", width: LIST_TRACK.status, sort: (item) => toneSortValue(dispatchTone(item.status), formatDispatchStatus(item.status)) }
+                ]}
+              >
+                {(rows) => rows.map((item) => (
                   <ListRow key={item.id} onClick={() => setOpenDispatchId(item.id)} selected={openDispatchId === item.id}>
                     <ListNameCell name={item.releaseName} sub={item.indexerName} />
                     <ListCell primary={item.downloadClientName} mobile />
@@ -1892,8 +1923,17 @@ export function ShowDetailPage() {
             {activity.length === 0 ? (
               <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this show shows up here." />
             ) : (
-              <ListTable chevron={false} columns={[{ label: "Event" }, { label: "Category", mobile: true }, { label: "When" }]}>
-                {activity.slice(0, 10).map((item) => (
+              <ListTable
+                chevron={false}
+                listId="show-activity"
+                items={activity.slice(0, 10)}
+                columns={[
+                  { id: "event", label: "Event", sort: (item) => item.message.toLowerCase() },
+                  { id: "category", label: "Category", mobile: true, sort: (item) => eventLabel(item).toLowerCase() },
+                  { id: "when", label: "When", sort: (item) => new Date(item.createdUtc) }
+                ]}
+              >
+                {(rows) => rows.map((item) => (
                   <ListRow key={item.id}>
                     <ListNameCell name={item.message} />
                     <ListCell primary={eventLabel(item)} mobile />
@@ -2061,15 +2101,17 @@ export function ShowDetailPage() {
               <DrawerSection title="Subtitles" aside={`${episodeSubtitles[openEpisode.episodeId]!.length} on disk`}>
                 <ListTable
                   chevron={false}
+                  listId="show-episode-subtitles"
+                  items={episodeSubtitles[openEpisode.episodeId]!}
                   columns={[
-                    { label: "Language" },
-                    { label: "Type" },
-                    { label: "Source", mobile: true },
-                    { label: "Timing", mobile: true },
-                    { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
+                    { id: "language", label: "Language", sort: (subtitle) => subtitle.language.toLowerCase() },
+                    { id: "type", label: "Type", sort: (subtitle) => subtitleTypeLabel(subtitle).toLowerCase() },
+                    { id: "source", label: "Source", mobile: true, sort: (subtitle) => (subtitle.provider ?? subtitleSourceLabel(subtitle.source)).toLowerCase() },
+                    { id: "timing", label: "Timing", mobile: true, sort: (subtitle) => timingStatusLabel(subtitle).toLowerCase() },
+                    { id: "action", label: "Action", width: LIST_TRACK.action, align: "end", mobile: true, movable: false, sortable: false }
                   ]}
                 >
-                  {episodeSubtitles[openEpisode.episodeId]!.map((subtitle, index) => (
+                  {(rows) => rows.map((subtitle, index) => (
                     <ListRow key={`${subtitle.language}-${subtitle.forced}-${subtitle.hearingImpaired}-${index}`}>
                       <ListNameCell name={subtitle.language.toUpperCase()} />
                       <ListCell primary={subtitleTypeLabel(subtitle)} />
@@ -2107,14 +2149,16 @@ export function ShowDetailPage() {
               <DrawerSection title="Subtitle search history" aside={`Last ${episodeSubtitleHistory[openEpisode.episodeId]!.length}`}>
                 <ListTable
                   chevron={false}
+                  listId="show-episode-subtitle-history"
+                  items={episodeSubtitleHistory[openEpisode.episodeId]!}
                   columns={[
-                    { label: "Language" },
-                    { label: "Provider", mobile: true },
-                    { label: "What happened" },
-                    { label: "Score", mobile: true }
+                    { id: "language", label: "Language", sort: (entry) => entry.language.toLowerCase() },
+                    { id: "provider", label: "Provider", mobile: true, sort: (entry) => (entry.provider ?? "").toLowerCase() },
+                    { id: "whatHappened", label: "What happened", sort: (entry) => entry.outcome.toLowerCase() },
+                    { id: "score", label: "Score", mobile: true, sort: (entry) => entry.score }
                   ]}
                 >
-                  {episodeSubtitleHistory[openEpisode.episodeId]!.map((entry, index) => (
+                  {(rows) => rows.map((entry, index) => (
                     <ListRow key={`${entry.language}-${entry.attemptedUtc}-${index}`}>
                       <ListNameCell name={entry.language.toUpperCase()} sub={new Date(entry.attemptedUtc).toLocaleString()} />
                       <ListCell primary={entry.provider ?? "—"} mobile />
@@ -2600,21 +2644,6 @@ function candidateRequiresForce(candidate: SearchPlanCandidate): boolean {
   const isPreferred = (candidate.decisionStatus ?? "").toLowerCase() === "preferred";
   const safe = isPreferred && candidate.meetsCutoff && (candidate.qualityDelta ?? 0) >= 0;
   return !safe;
-}
-
-/** #753: a clickable column header for the candidates table, showing which column (if any) currently sorts it and which way. */
-function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction?: SortDirection; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => { event.stopPropagation(); onClick(); }}
-      className="flex items-center gap-1 uppercase tracking-[0.1em] text-muted-foreground hover:text-foreground"
-      aria-label={`Sort by ${label}`}
-    >
-      {label}
-      <ArrowUpDown aria-hidden className={cn("h-3 w-3", active && (direction === "asc" ? "rotate-180" : ""))} />
-    </button>
-  );
 }
 
 function normalizeSearchCandidate(value: Record<string, unknown>): SearchPlanCandidate {

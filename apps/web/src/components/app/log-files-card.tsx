@@ -113,8 +113,18 @@ export function LogFilesCard() {
       ) : files.length === 0 ? (
         <ListEmpty title="No log files yet" description={folderPath ? `Files will appear under ${folderPath}.` : undefined} />
       ) : (
-        <ListTable columns={[{ label: "File" }, { label: "Size", width: "120px" }, { label: "Last written" }, { label: "Actions", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-          {files.map((file) => (
+        <ListTable
+          listId="log-files"
+          items={files}
+          columns={[
+            { id: "file", label: "File", sort: (file) => file.name.toLowerCase() },
+            { id: "size", label: "Size", width: "120px", sort: (file) => file.sizeBytes },
+            { id: "lastWritten", label: "Last written", sort: (file) => new Date(file.lastWrittenUtc) },
+            { id: "actions", label: "Actions", width: LIST_TRACK.status, mobile: true, movable: false, sortable: false }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((file) => (
             <ListRow key={file.name}>
               <ListNameCell name={file.name} />
               <ListCell numeric primary={formatSize(file.sizeBytes)} />

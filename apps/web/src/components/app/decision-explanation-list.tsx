@@ -33,11 +33,13 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
           />
         ) : (
           <ListTable
+            // A trail: its order is the story, so the columns move but the rows are not re-sorted.
+            listId="decision-trail"
             columns={[
-              { label: "Decision" },
-              { label: "Scope", mobile: true },
-              { label: "When" },
-              { label: "Status", width: LIST_TRACK.status }
+              { id: "decision", label: "Decision" },
+              { id: "scope", label: "Scope", mobile: true },
+              { id: "when", label: "When" },
+              { id: "status", label: "Status", width: LIST_TRACK.status }
             ]}
           >
             {shown.map((item) => (

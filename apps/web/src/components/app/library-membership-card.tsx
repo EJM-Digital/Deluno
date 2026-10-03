@@ -109,8 +109,17 @@ export function LibraryMembershipCard({
         count={memberships.length > 1 ? `in ${memberships.length}` : undefined}
         actions={canKeepElsewhere ? <Button type="button" variant="outline" size="sm" onClick={() => open({ kind: "keep" })} disabled={busy}>Keep in another library…</Button> : undefined}
       >
-        <ListTable chevron={false} columns={[{ label: "Library" }, { label: "Copy" }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }]}>
-          {memberships.map((membership) => {
+        <ListTable
+          chevron={false}
+          listId="library-membership"
+          items={memberships}
+          columns={[
+            { id: "library", label: "Library", sort: (membership) => membership.libraryName.toLowerCase() },
+            { id: "copy", label: "Copy", sort: (membership) => (membership.notWantedHere ? 2 : membership.hasFile ? 0 : 1) },
+            { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }
+          ]}
+        >
+          {(rows) => rows.map((membership) => {
             const chip = membership.hasFile ? STATUS_PRESENTATION["transfer.imported"] : { tone: "idle" as const, label: "No file" };
             const stoppedHere = membership.notWantedHere === true;
             return (
