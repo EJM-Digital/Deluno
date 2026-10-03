@@ -4,7 +4,7 @@ The owner, 3 October 2026: "start from a fresh install I think would be the ulti
 as an issue in the backlog", "we have to replicate it from a users perspective", and "testing needs to be done
 properly end to end with different ranges of quality titles and a wide date range of titles and sizes".
 
-This replaces the lab-driven [E2E-full-product-test.md](E2E-full-product-test.md) for this run. No fixture indexer,
+This replaces the earlier lab-driven end-to-end plan. No fixture indexer,
 no `deploy-lab.ps1`, no pre-made settings: a person installs the released build and uses it.
 
 ## Rules for the run

@@ -39,7 +39,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 ## Execution Plans
 
 - `exec-plans/active/`: checked-in plans for larger in-flight work.
-- `exec-plans/active/HANDOVER-CLAUDE-2026-09-25.md`: current handoff for live verification and the duplicate-series data repair.
+- `exec-plans/active/E2E-live-test-rc28-2026-10-03.md`: the current live test plan: a fresh install of the released build, used the way a person would use it.
 - `exec-plans/completed/`: completed plan history.
 - `exec-plans/templates/`: starting points for large feature work and post-merge cleanup.
 - `exec-plans/tech-debt-tracker.md`: recurring cleanup queue.
@@ -47,16 +47,21 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 Current note:
 
 - `agent-first-realignment.md` is completed work and now belongs under `exec-plans/completed/`.
-- **`exec-plans/active/HANDOVER-new-rig-2026-09-06.md` is where to start.** The
-  Hyper-V VM was destroyed on 6 September and the rig moved to a physical server
-  with a NAS-hosted library. That note carries the current state, the four
-  things waiting on the owner, and the decisions already made so they are not
-  re-litigated.
-- `exec-plans/active/E2E-full-product-test.md` is the plan the new rig exists to
-  run. Phases 9.4-9.9 and 10-13 have never been walked.
-- Earlier `HANDOVER-*` notes and `E2E-full-product-test-run-*` ledgers are dated
-  records of what was true at the time. They name the retired VM's address; that
-  is history, not a live target.
+- Finished handovers and dated test-run ledgers are deleted once their findings are in the backlog; git history keeps them.
+
+## Repository map
+
+- `apps/web/`: the web app (React and TypeScript). `apps/windows-tray/`: the Windows tray app.
+- `src/`: the .NET backend, one project per module (host, API, worker, platform, movies, series, media, jobs, integrations, security, companions, shared contracts and the rest).
+- `tests/`: the backend test projects, one per module, plus shared test support.
+- `docs/`: product, architecture and API documents (this index); plans are in `docs/exec-plans/`.
+- `scripts/`: the push gate, the guard checks, packaging and release scripts; `scripts/lab/` provisions and checks the real-client test rig.
+- `services/`: the metadata gateway, a small separate service the metadata broker talks to.
+- `sdk/`: the TypeScript client for Deluno's API.
+- `integrations/`: ready-made setups for other tools (Home Assistant).
+- `installer/`: the Windows installer's bundled-component list and icon.
+- `screenshots/`: the pictures the README shows.
+- `.github/` and `.githooks/`: CI workflows and the local pre-push hook.
 
 ## Source Of Truth Rules
 

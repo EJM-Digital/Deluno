@@ -22,6 +22,7 @@ This file is the small entry point for agent work. It is a map, not the full man
   acceptance line. The list is the whole contract; do not add to it. The burden
   is on leaving an issue open, not on closing it.
 - **The bar, and the standing check every change is measured against: `docs/PRODUCT_NORTH_STAR.md`.** Read it first. It records what Deluno replaces and what "better, not merely present" means; it is where [#194](https://github.com/jampat000/Deluno/issues/194) lives now that the issue is closed.
+- What each top-level folder is: the Repository map in `docs/README.md`
 - Product scope: `docs/deluno-capability-map.md`
 - Architecture boundaries: `docs/ARCHITECTURE.md`
 - Frontend/backend map: `docs/deluno-frontend-backend-map.md`
