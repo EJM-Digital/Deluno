@@ -1,12 +1,25 @@
+# Deluno CI: the backend build and tests, the web app, the browser smoke tests and the Docker image. Triggers: push
+# to main, pull_request, workflow_dispatch.
+#
+# This is the shared CI standard (docs/ci-standard.md): `changes` turns the paths a change touches into one run_*
+# flag per job, and each job runs only when its flag is true; a manual run runs everything. `ci-passed` needs every
+# job and passes only when each job that was due passed and each job that was not due was skipped
+# (scripts/ci-passed.mjs). It is the one check main's branch protection requires, and the one the release asks for
+# on the tagged commit (scripts/verify-ci-for-release.mjs). scripts/check-release-workflow-gates.mjs checks that
+# ci-passed needs every job here.
+#
+#   docs only (*.md, docs/**)   nothing but repo-checks runs
+#   web only                    web-dist, web, e2e-smoke; no backend build or tests, no image
+#   anything else               backend, web-dist, e2e-smoke (the smoke tests drive the real backend), and web-dist
+#                               builds for them; web's own checks run when the web app changed
+#   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
+#
+# Work lands on main directly (James, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
+# each push to main the one run. A pull request, if one is ever opened, is still checked; "Run workflow" re-runs by
+# hand and runs every job.
 name: CI
 
 on:
-  # Work lands on main directly (James, 22 Sep 2026: one person works on
-  # Deluno, so no feature branches), which makes each push to main the one
-  # run. Before, a change ran on its pull request and again on the merge to
-  # main, and the second run was a third of all the Actions minutes. A pull
-  # request, if one is ever opened, is still checked; "Run workflow" re-runs by
-  # hand.
   push:
     branches:
       - main
@@ -15,39 +28,149 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 concurrency:
-  # A newer push supersedes a run still going: its tree contains the older one.
+  # A newer push supersedes a run still going: its tree contains the older one. Deluno's repository is private, so
+  # a run nobody will read is minutes billed for nothing.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
 jobs:
-  agent-readiness:
-    name: Agent readiness
+  changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run_backend: ${{ steps.flags.outputs.run_backend }}
+      run_web_dist: ${{ steps.flags.outputs.run_web_dist }}
+      run_web: ${{ steps.flags.outputs.run_web }}
+      run_e2e_smoke: ${{ steps.flags.outputs.run_e2e_smoke }}
+      run_docker: ${{ steps.flags.outputs.run_docker }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # some-with-excludes: a file counts for a filter when it matches one of the filter's patterns and none of its
+      # `!` patterns. `code` is therefore "a change that is not a document"; `web` is "a web-app change that is not
+      # a document", so `web_count == code_count` means every code change was in the web app.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          predicate-quantifier: some-with-excludes
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+            notes:
+              # Shipped inside the build (Deluno.Api embeds it), so it is not a document to the backend.
+              - 'RELEASE_NOTES.md'
+            web:
+              - 'apps/web/**'
+              - 'sdk/typescript/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '!**/*.md'
+              - '!docs/**'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'compose.yaml'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'scripts/test-docker-recovery.sh'
+              - 'scripts/test-readme-docker-examples.sh'
+              # The README's install examples are run against the image (test-readme-docker-examples.sh).
+              - 'README.md'
+              - 'src/**/Migrations/**'
+              - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/**'
+
+      - name: Work out which jobs are due
+        id: flags
+        env:
+          EVENT: ${{ github.event_name }}
+          CODE: ${{ steps.filter.outputs.code }}
+          CODE_COUNT: ${{ steps.filter.outputs.code_count }}
+          NOTES: ${{ steps.filter.outputs.notes }}
+          WEB: ${{ steps.filter.outputs.web }}
+          WEB_COUNT: ${{ steps.filter.outputs.web_count }}
+          DOCKER: ${{ steps.filter.outputs.docker }}
+          WORKFLOWS: ${{ steps.filter.outputs.workflows }}
+        run: |
+          set -euo pipefail
+          backend=false; web=false; smoke=false; docker=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            backend=true; web=true; smoke=true; docker=true
+          else
+            # Anything in the change that is not the web app (or a document) reaches the backend side: source,
+            # tests, scripts, the tray, build props, the workflows themselves.
+            if [ "$NOTES" = "true" ] || [ "${CODE_COUNT:-0}" -gt "${WEB_COUNT:-0}" ]; then backend=true; fi
+            if [ "$WEB" = "true" ] || [ "$WORKFLOWS" = "true" ]; then web=true; fi
+            if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then smoke=true; fi
+            if [ "$DOCKER" = "true" ] || [ "$WORKFLOWS" = "true" ]; then docker=true; fi
+          fi
+          # The smoke shards and the web checks both want the production web build.
+          web_dist=false
+          if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
+          {
+            echo "run_backend=$backend"
+            echo "run_web_dist=$web_dist"
+            echo "run_web=$web"
+            echo "run_e2e_smoke=$smoke"
+            echo "run_docker=$docker"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
+  repo-checks:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Actions are pinned, and every workflow has permissions and timeouts
+        run: |
+          node scripts/check-github-action-pins.mjs
+          node scripts/check-workflow-hygiene.mjs
+
+      - name: Release workflow gates and the ci-passed verdict
+        run: |
+          node scripts/check-release-workflow-gates.mjs
+          node --test scripts/ci-passed.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
         run: ./scripts/validate-agent-readiness.ps1
 
+      - name: Nothing private is in a file outsiders read
+        shell: pwsh
+        run: ./scripts/check-public-exposure.ps1
+
   backend:
     name: Backend build and tests
+    needs: changes
+    if: ${{ needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-
+    # Observed 23 to 34 minutes (3 Oct 2026), about 31 of them the tests.
+    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
@@ -61,25 +184,31 @@ jobs:
         shell: pwsh
         run: ./scripts/test-dotnet-serial.ps1
 
+      - name: Summarize backend test results
+        if: always()
+        run: node scripts/summarize-test-results.mjs trx tests "Backend tests"
+
       - name: Upload backend test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: backend-test-results
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
-  frontend-quality:
-    name: Frontend quality
+  # The production web build, made once: the web checks and both smoke shards use this one (the smoke suite used to
+  # build it again on every shard, and its web server built it a third time).
+  web-dist:
+    name: Web build
+    needs: changes
+    if: ${{ needs.changes.outputs.run_web_dist == 'true' }}
     runs-on: ubuntu-latest
+    # Observed about 2.5 minutes.
     timeout-minutes: 10
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -87,15 +216,40 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Lint frontend
-        run: npm --workspace apps/web run lint
+      # Runs the web app's lint and its UI primitive, spacing, status and typography checks first (the `prebuild`
+      # script), then the type check and the production bundle.
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Upload web build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-dist
+          path: apps/web/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  web:
+    name: Frontend quality
+    needs: changes
+    if: ${{ needs.changes.outputs.run_web == 'true' }}
+    runs-on: ubuntu-latest
+    # Observed about 6 minutes, 5 of them the unit tests.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
 
       - name: Check for orphaned frontend modules
         working-directory: apps/web
         run: npm run check:orphans
-
-      - name: Build frontend
-        run: npm run build:web
 
       - name: Typecheck supported TypeScript SDK
         run: npm run typecheck:sdk
@@ -103,13 +257,15 @@ jobs:
       - name: Run frontend unit tests
         run: npm run test:unit:web
 
-  frontend-smoke:
-    # Two shards, not four: each shard repeats about 75 seconds of setup, and
-    # the suite is two-thirds of a pull request's minutes. A run takes a few
-    # minutes longer for it.
+  e2e-smoke:
+    # Two shards, not four: each shard repeats about 75 seconds of setup, and the suite is two-thirds of a pull
+    # request's minutes. A run takes a few minutes longer for it.
     name: Frontend smoke (${{ matrix.shard_id }}/2)
+    needs: [changes, web-dist]
+    if: ${{ needs.changes.outputs.run_e2e_smoke == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Observed 9 to 15 minutes per shard.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -119,24 +275,26 @@ jobs:
             shard: "1/2"
           - shard_id: 2
             shard: "2/2"
+    env:
+      # The suite's web server skips its own build and serves the one web-dist made (apps/web/playwright.config.ts).
+      DELUNO_SMOKE_PREBUILT: "1"
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/playwright-results-${{ matrix.shard_id }}.json
+      PLAYWRIGHT_HTML_OPEN: never
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -151,16 +309,115 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      - name: Build frontend
-        run: npm run build:web
+      # The host serves apps/web/dist as its wwwroot, so this lands before `dotnet run` builds it.
+      - name: Download web build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: apps/web/dist
 
       - name: Run frontend smoke tests
-        run: npm --workspace apps/web run test:smoke -- --shard=${{ matrix.shard }}
+        run: npm --workspace apps/web run test:smoke -- --shard=${{ matrix.shard }} --reporter=dot,json,html
+
+      - name: Summarize smoke test results
+        if: always()
+        run: node scripts/summarize-test-results.mjs playwright "$PLAYWRIGHT_JSON_OUTPUT_NAME" "Frontend smoke (${{ matrix.shard_id }}/2)"
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report-${{ matrix.shard_id }}
-          path: apps/web/playwright-report/
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
           if-no-files-found: ignore
+
+  docker:
+    name: Container image
+    needs: changes
+    if: ${{ needs.changes.outputs.run_docker == 'true' }}
+    runs-on: ubuntu-latest
+    # Observed 1 to 7 minutes for the image; the proofs below add a few more.
+    timeout-minutes: 25
+    env:
+      IMAGE: deluno-ci:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The recovery proof builds the declared historical baseline below.
+          # Keep its commit resolvable as main advances; a shallow fixed depth
+          # silently expires this required upgrade/recovery test after enough
+          # ordinary merges.
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Validate Compose contract
+        run: docker compose config --quiet
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+
+      # A known CRITICAL vulnerability with a fix already available blocks the change. ignore-unfixed, because
+      # failing on something no upstream fix exists for yet would make every run wait on an unrelated CVE.
+      - name: Trivy scan of the image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Build populated-schema baseline image
+        env:
+          BASELINE_REVISION: 38e5ae8
+        run: |
+          set -euo pipefail
+          git cat-file -e "${BASELINE_REVISION}^{commit}"
+          baseline_context="$(mktemp -d)"
+          trap 'rm -rf "$baseline_context"' EXIT
+          git archive "$BASELINE_REVISION" | tar -x -C "$baseline_context"
+          cp Dockerfile "$baseline_context/Dockerfile"
+          cp .dockerignore "$baseline_context/.dockerignore"
+          # The baseline predates the supported SDK workspace. Its production
+          # host/web sources are otherwise built through the same Dockerfile.
+          sed -i '/^COPY sdk\/typescript\/package\.json /d' "$baseline_context/Dockerfile"
+          # It also predates embedding the release notes (#1037).
+          sed -i '/^COPY RELEASE_NOTES\.md /d' "$baseline_context/Dockerfile"
+          baseline_image="deluno-schema-baseline:${GITHUB_RUN_ID}"
+          docker build --tag "$baseline_image" "$baseline_context"
+          echo "DOCKER_BASELINE_IMAGE=$baseline_image" >> "$GITHUB_ENV"
+
+      - name: Verify persistent data and failed-replacement recovery
+        run: bash scripts/test-docker-recovery.sh "$DOCKER_BASELINE_IMAGE" "$IMAGE"
+
+      # The README's docker run line and docker-compose.yml are taken from the README itself, pointed at this
+      # image, started, waited on until /api/health/ready answers, and taken down again.
+      - name: Prove the README install examples
+        timeout-minutes: 10
+        run: bash scripts/test-readme-docker-examples.sh "$IMAGE"
+
+  # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
+  ci-passed:
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Every job that was due passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-passed.mjs

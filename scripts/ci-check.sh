@@ -82,6 +82,18 @@ else
 fi
 rm -f "$web_log"
 
+# ── Workflows ─────────────────────────────────────────────────────────────────
+echo ""
+echo "▶  Workflows"
+
+# The same checks CI's repo-checks job runs (#1124).
+workflow_log=$(mktemp)
+if node scripts/check-github-action-pins.mjs >"$workflow_log" 2>&1    && node scripts/check-workflow-hygiene.mjs >>"$workflow_log" 2>&1    && node scripts/check-release-workflow-gates.mjs >>"$workflow_log" 2>&1    && node --test scripts/ci-passed.test.mjs scripts/verify-ci-for-release.test.mjs >>"$workflow_log" 2>&1; then
+  ok "workflows pinned, least-privilege, release gated on ci-passed"
+else
+  cat "$workflow_log"; fail "workflow checks"
+fi
+
 # ── Agent readiness ───────────────────────────────────────────────────────────
 echo ""
 echo "▶  Agent readiness"
