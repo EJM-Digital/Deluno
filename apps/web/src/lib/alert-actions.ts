@@ -10,7 +10,7 @@ import type { DownloadQueueItem, JobQueueItem, NoReleaseRow, ProcessorHandoffIte
 import { activityLinkForStatus } from "./activity-history";
 import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
 import { connectionLink, dismissPath } from "./connection-updates";
-import { canTryAgain, isVanished, type RecoveryCaseRow } from "./needs-action";
+import { canTryAgain, isProcessorFault, isVanished, type RecoveryCaseRow } from "./needs-action";
 
 /** The longest label that fits the one button width the bell and Health share ("Open Transfers"). */
 export const ALERT_LABEL_MAX = 14;
@@ -35,6 +35,8 @@ export interface AlertAction {
   quiet?: boolean;
   /** Runs a request. */
   request?: AlertRequest;
+  /** Asks first, in these words, where the button is pressed in Activity's drawer. */
+  confirm?: { title: string; description: string; confirmLabel: string };
   /** Or goes to a screen. */
   to?: string;
 }
@@ -120,33 +122,69 @@ export function stuckDownloadActions(item: DownloadQueueItem): AlertActions {
   ];
 }
 
-/** An import that needs a look: retry it (or search again when the download has vanished), or dismiss it. */
-export function recoveryActions(item: RecoveryCaseRow): AlertActions {
+/** The buttons of one import case, defined once; the bell and Activity's drawer both draw from these. */
+function recoveryButtons(item: RecoveryCaseRow) {
   const collection = item.mediaType === "movie" ? "movies" : "series";
   const base = `/api/${collection}/import-recovery/${encodeURIComponent(item.id)}`;
   const dismissAction = dismiss(`recovery-dismiss:${item.id}`, { method: "POST", path: `${base}/dismiss`, done: `${item.title} dismissed`, failure: "That case could not be dismissed." });
+  const retry: AlertAction = isVanished(item)
+    ? {
+        id: `recovery-search:${item.id}`,
+        label: "Search now",
+        hint: "The download client no longer lists it. Searches again for another copy of this title. Your library is not touched.",
+        request: { method: "POST", path: `${base}/retry`, done: `Searching again for ${item.title}`, failure: "That could not be searched again." }
+      }
+    : {
+        id: `recovery-retry:${item.id}`,
+        label: "Retry",
+        hint: "Tries to finish this import again from the same download. Nothing is deleted.",
+        request: { method: "POST", path: `${base}/retry`, done: `${item.title} is being tried again.`, failure: "That could not be tried again." }
+      };
+  const stopWanting: AlertAction = {
+    id: `recovery-stop-wanting:${item.id}`,
+    label: "Stop wanting",
+    hint: `Stops Deluno looking for ${item.title}. Your library and its files are not touched.`,
+    request: { method: "POST", path: `${base}/stop-wanting`, done: `Deluno stopped wanting ${item.title}.`, failure: "That could not be stopped." },
+    confirm: { title: `Stop wanting ${item.title}?`, description: "Deluno stops looking for it. Your library and its files are not touched.", confirmLabel: "Stop wanting" }
+  };
+  const importOriginal: AlertAction = {
+    id: `recovery-import-original:${item.id}`,
+    label: "Import original",
+    hint: "Brings in the original download, without what the processor did to it.",
+    request: { method: "POST", path: `${base}/import-original`, done: `${item.title} will be imported unprocessed.`, failure: "The original could not be imported." }
+  };
+  const searchAgain: AlertAction = {
+    id: `recovery-search-again:${item.id}`,
+    label: "Search again",
+    hint: "Looks for another release of this title. This release is not blocklisted.",
+    request: { method: "POST", path: `${base}/search-again`, done: `Searching for another release for ${item.title}.`, failure: "Deluno could not search for another release." }
+  };
+  return { dismissAction, retry, stopWanting, importOriginal, searchAgain };
+}
+
+/** An import that needs a look: retry it (or search again when the download has vanished), or dismiss it. */
+export function recoveryActions(item: RecoveryCaseRow): AlertActions {
+  const { dismissAction, retry } = recoveryButtons(item);
   if (!canTryAgain(item)) {
     return [open(`recovery-review:${item.id}`, "Review", "/queue", "Opens Transfers where this import can be settled by hand. Nothing is changed."), dismissAction];
   }
-  return isVanished(item)
-    ? [
-        {
-          id: `recovery-search:${item.id}`,
-          label: "Search now",
-          hint: "The download client no longer lists it. Searches again for another copy of this title. Your library is not touched.",
-          request: { method: "POST", path: `${base}/retry`, done: `Searching again for ${item.title}`, failure: "That could not be searched again." }
-        },
-        dismissAction
-      ]
-    : [
-        {
-          id: `recovery-retry:${item.id}`,
-          label: "Retry",
-          hint: "Tries to finish this import again from the same download. Nothing is deleted.",
-          request: { method: "POST", path: `${base}/retry`, done: `${item.title} is being tried again.`, failure: "That could not be tried again." }
-        },
-        dismissAction
-      ];
+  return [retry, dismissAction];
+}
+
+/**
+ * Every decision an import case offers where it is opened (Activity's drawer, #1114), by its failure kind.
+ * Retry (Search now when the download has vanished) when Deluno can act on it; a vanished download also offers
+ * Stop wanting; a processor fault also offers Import original and Search again; every case can be dismissed.
+ * Stop wanting and Dismiss ask first.
+ */
+export function recoveryDecisions(item: RecoveryCaseRow): AlertAction[] {
+  const { dismissAction, retry, stopWanting, importOriginal, searchAgain } = recoveryButtons(item);
+  const decisions: AlertAction[] = [];
+  if (canTryAgain(item)) decisions.push(retry);
+  if (isVanished(item)) decisions.push(stopWanting);
+  if (isProcessorFault(item)) decisions.push(importOriginal, searchAgain);
+  decisions.push({ ...dismissAction, confirm: { title: `Dismiss ${item.title}?`, description: "Deluno stops showing this. Nothing is deleted.", confirmLabel: "Dismiss" } });
+  return decisions;
 }
 
 /** A failed import job: try it again, or dismiss it. */

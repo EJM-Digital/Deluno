@@ -8,6 +8,7 @@ import {
   healthProblemActions,
   noReleaseActions,
   recoveryActions,
+  recoveryDecisions,
   stuckDownloadActions,
   updateReadyActions,
   type AlertActions
@@ -132,5 +133,27 @@ describe("alert buttons (#1098)", () => {
     const snooze = healthProblemActions({ id: "system:clock" })[1]!;
     expect(snooze.request).toMatchObject({ method: "POST", path: "/api/system/health/system%3Aclock/snooze", body: { hours: 24 } });
     expect(snooze.hint).toMatch(/not fixed or changed/);
+  });
+});
+
+describe("recoveryDecisions (#1114)", () => {
+  const caseOf = (failureKind: string, detailsJson: string | null = JSON.stringify({ DispatchId: "d1" })) =>
+    ({ id: "c1", mediaType: "series", title: "Show", failureKind, detailsJson }) as never;
+  const labels = (kind: string, details?: string | null) => recoveryDecisions(caseOf(kind, details)).map((action) => action.label);
+
+  it("offers each failure kind its own decisions, and Dismiss always", () => {
+    expect(labels("importFailed")).toEqual(["Retry", "Dismiss"]);
+    expect(labels("vanished-downloading")).toEqual(["Search now", "Stop wanting", "Dismiss"]);
+    expect(labels("processedFileIsLess")).toEqual(["Retry", "Import original", "Search again", "Dismiss"]);
+    expect(labels("noVideoStream", null)).toEqual(["Dismiss"]);
+  });
+
+  it("uses the bell's requests and asks first before the stronger ones", () => {
+    const decisions = recoveryDecisions(caseOf("vanished-downloading"));
+    expect(decisions[0]!.request).toEqual(recoveryActions(caseOf("vanished-downloading"))[0]!.request);
+    expect(decisions[1]!.request?.path).toBe("/api/series/import-recovery/c1/stop-wanting");
+    expect(decisions[1]!.confirm).toBeDefined();
+    expect(decisions[2]!.confirm).toBeDefined();
+    expect(decisions[0]!.confirm).toBeUndefined();
   });
 });
