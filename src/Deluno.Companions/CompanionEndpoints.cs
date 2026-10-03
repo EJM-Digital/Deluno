@@ -18,7 +18,7 @@ public static class CompanionModule
         services.AddSingleton<ICompanionDownloader, CompanionDownloader>();
         // #1117: where a processor connection that reports a version finds its newest release.
         services.AddSingleton<Deluno.Connections.Versions.ReleaseFeed>(
-            new Deluno.Connections.Versions.GitHubReleasesFeed(Deluno.Connections.Versions.ConnectionProjects.Weir, CompanionCatalog.WeirRepository));
+            new Deluno.Connections.Versions.GitHubReleasesFeed(Deluno.Connections.Versions.ConnectionProjects.Weir, CompanionCatalog.WeirRepository, IncludePreReleases: true));
         services.AddSingleton<ICompanionSystem, WindowsCompanionSystem>();
         services.AddSingleton<ICompanionLoginCleanup, SqliteCompanionLoginCleanup>();
         services.TryAddSingleton<IInstalledClientLogins, NoInstalledClientLogins>();

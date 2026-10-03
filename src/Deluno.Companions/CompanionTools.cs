@@ -590,12 +590,14 @@ public sealed class WeirCompanion(
         var http = httpClientFactory.CreateClient(CompanionDownloader.ClientName);
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{CompanionCatalog.WeirRepository}/releases/latest");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{CompanionCatalog.WeirRepository}/releases?per_page=100");
             request.Headers.UserAgent.ParseAdd("Deluno");
             using var response = await http.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
-            using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            var assets = release.RootElement.GetProperty("assets").EnumerateArray().ToArray();
+            // The newest release by version order, release candidates included, drafts never (#1123).
+            var newest = Deluno.Contracts.ReleaseVersions.NewestGitHubRelease(await response.Content.ReadAsStringAsync(cancellationToken))
+                ?? throw new CompanionStepException($"{Name} has no published release for Deluno to install.");
+            var assets = newest.GetProperty("assets").EnumerateArray().ToArray();
             var setup = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirSetupAsset);
             var sums = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirChecksumsAsset);
             if (setup.ValueKind != JsonValueKind.Object || sums.ValueKind != JsonValueKind.Object)

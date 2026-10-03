@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Deluno.Contracts;
@@ -7,15 +8,18 @@ namespace Deluno.Contracts;
 /// A version number read from a connection or a release feed (#1117): its numeric parts, and whether it
 /// is a beta, release candidate or development build.
 /// </summary>
-public sealed record ParsedVersion(IReadOnlyList<int> Parts, bool IsPreRelease);
+/// <param name="PreReleaseLabel">The text after the numbers of a pre-release ("rc.2" for "1.0.0-rc.2"); null for a stable build.</param>
+public sealed record ParsedVersion(IReadOnlyList<int> Parts, bool IsPreRelease, string? PreReleaseLabel = null);
 
 /// <summary>
-/// Compares the version a connection runs with the newest stable release of its project (#1117).
+/// Compares the version a connection runs with the newest release of its project (#1117, #1123).
 ///
-/// <para>Only the dotted numbers count. A leading "v", build suffixes such as "-ls123" or a Plex
-/// "-e5521bd8c" hash, and "+build" metadata are ignored. A beta, release candidate or development
-/// build is never called out of date, and a version equal to or newer than the latest stable is up
-/// to date: Deluno names an update only when it is sure there is one.</para>
+/// <para>Only the dotted numbers and a pre-release label count. A leading "v", build suffixes such as
+/// "-ls123" or a Plex "-e5521bd8c" hash, and "+build" metadata are ignored. A stable build is compared
+/// only with a stable release, so a beta of its project never nags it. A beta, release candidate or
+/// development build is out of date when any newer release exists, rc or stable (1.0.0-rc.2 is newer
+/// than 1.0.0-rc.1, and 1.0.0 is newer than 1.0.0-rc.9). A version equal to or newer than the latest is
+/// up to date: Deluno names an update only when it is sure there is one.</para>
 /// </summary>
 public static partial class ReleaseVersions
 {
@@ -59,7 +63,121 @@ public static partial class ReleaseVersions
         }
 
         var rest = value[numbers.Length..];
-        return new ParsedVersion(parts, rest.Length > 0 && PreReleaseSuffix().IsMatch(rest));
+        var preRelease = rest.Length > 0 && PreReleaseSuffix().IsMatch(rest);
+        string? label = null;
+        if (preRelease)
+        {
+            label = rest.TrimStart('-', '.', '_', ' ');
+            var plus = label.IndexOf('+');
+            if (plus >= 0)
+            {
+                label = label[..plus];
+            }
+        }
+
+        return new ParsedVersion(parts, preRelease, label);
+    }
+
+    [GeneratedRegex(@"\d+|[A-Za-z]+", RegexOptions.CultureInvariant)]
+    private static partial Regex LabelToken();
+
+    /// <summary>
+    /// Version order, pre-releases included: the numbers first, then a stable build is newer than any
+    /// pre-release of the same numbers, and pre-release labels compare piece by piece ("rc.2" over "rc.1";
+    /// a number sorts below a word, as semver does).
+    /// </summary>
+    public static int ComparePrecedence(ParsedVersion left, ParsedVersion right)
+    {
+        var numbers = Compare(left, right);
+        if (numbers != 0)
+        {
+            return numbers;
+        }
+
+        if (left.IsPreRelease != right.IsPreRelease)
+        {
+            return left.IsPreRelease ? -1 : 1;
+        }
+
+        if (!left.IsPreRelease)
+        {
+            return 0;
+        }
+
+        var a = LabelToken().Matches(left.PreReleaseLabel ?? string.Empty).Select(match => match.Value).ToArray();
+        var b = LabelToken().Matches(right.PreReleaseLabel ?? string.Empty).Select(match => match.Value).ToArray();
+        for (var index = 0; index < Math.Min(a.Length, b.Length); index++)
+        {
+            var x = a[index];
+            var y = b[index];
+            var xNumber = char.IsDigit(x[0]);
+            var yNumber = char.IsDigit(y[0]);
+            int result;
+            if (xNumber && yNumber)
+            {
+                var xt = x.TrimStart('0');
+                var yt = y.TrimStart('0');
+                result = xt.Length != yt.Length ? xt.Length.CompareTo(yt.Length) : string.CompareOrdinal(xt, yt);
+            }
+            else if (xNumber != yNumber)
+            {
+                result = xNumber ? -1 : 1;
+            }
+            else
+            {
+                result = string.Compare(x, y, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+
+        return a.Length.CompareTo(b.Length);
+    }
+
+    /// <summary>
+    /// The newest release in a GitHub <c>/releases</c> answer (a JSON array), pre-releases included and
+    /// drafts never, by version order rather than by date (#1123). Null when none has a readable tag.
+    /// Shared by the installer's component picker, Update now and the version check so they agree.
+    /// </summary>
+    /// <returns>A detached copy of the release object, safe to use after the call.</returns>
+    public static JsonElement? NewestGitHubRelease(string releasesJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(releasesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            JsonElement? best = null;
+            ParsedVersion? bestVersion = null;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object
+                    || (item.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True)
+                    || !item.TryGetProperty("tag_name", out var tag) || tag.ValueKind != JsonValueKind.String
+                    || Parse(tag.GetString()) is not { } version)
+                {
+                    continue;
+                }
+
+                if (bestVersion is null || ComparePrecedence(version, bestVersion) > 0)
+                {
+                    bestVersion = version;
+                    best = item.Clone();
+                }
+            }
+
+            return best;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Compares the numbers only, missing parts counting as zero ("4.6" equals "4.6.0").</summary>
@@ -80,14 +198,19 @@ public static partial class ReleaseVersions
     }
 
     /// <summary>
-    /// True only when <paramref name="running"/> is a stable build older than <paramref name="latestStable"/>.
-    /// False when either cannot be read, when the running build is a beta or development build, and when it
-    /// equals or is newer than the latest stable release.
+    /// True when <paramref name="running"/> is older than <paramref name="latest"/>: a stable build is compared
+    /// only with a stable release; a pre-release build with any release, rc or stable. False when either cannot
+    /// be read, and when the running build equals or is newer than the latest.
     /// </summary>
-    public static bool IsOutOfDate(string? running, string? latestStable)
+    public static bool IsOutOfDate(string? running, string? latest)
     {
         var current = Parse(running);
-        var latest = Parse(latestStable);
-        return current is { IsPreRelease: false } && latest is { IsPreRelease: false } && Compare(current, latest) < 0;
+        var newest = Parse(latest);
+        if (current is null || newest is null)
+        {
+            return false;
+        }
+
+        return (current.IsPreRelease || !newest.IsPreRelease) && ComparePrecedence(current, newest) < 0;
     }
 }

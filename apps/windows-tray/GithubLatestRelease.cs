@@ -35,8 +35,11 @@ public static class GithubLatestRelease
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
-            var release = await http.GetFromJsonAsync<GithubRelease>(
-                $"https://api.github.com/repos/{spec.GithubRepo}/releases/latest", cancellationToken);
+            // The newest release by version order, release candidates included and
+            // drafts never (#1123): /releases/latest would skip Weir's pre-releases.
+            var releasesJson = await http.GetStringAsync(
+                $"https://api.github.com/repos/{spec.GithubRepo}/releases?per_page=100", cancellationToken);
+            var release = PickRelease(releasesJson);
             if (release?.Assets is null)
             {
                 return null;
@@ -79,6 +82,12 @@ public static class GithubLatestRelease
         }
     }
 
+    /// <summary>The newest release in a GitHub <c>/releases</c> answer: highest version, pre-releases included, drafts never.</summary>
+    public static GithubRelease? PickRelease(string releasesJson)
+        => Deluno.Contracts.ReleaseVersions.NewestGitHubRelease(releasesJson) is { } newest
+            ? System.Text.Json.JsonSerializer.Deserialize<GithubRelease>(newest.GetRawText())
+            : null;
+
     /// <summary>Reads a `sha256  filename` line from a standard SHA256SUMS.txt, falling back to NZBGet's own per-release signature file shape (see <see cref="ParseJsonpSignature"/>) when no line matches.</summary>
     public static string? ParseChecksum(string sumsFileContent, string fileName)
     {
@@ -120,13 +129,13 @@ public static class GithubLatestRelease
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    private sealed class GithubRelease
+    public sealed class GithubRelease
     {
         [JsonPropertyName("assets")]
         public List<GithubAsset>? Assets { get; set; }
     }
 
-    private sealed class GithubAsset
+    public sealed class GithubAsset
     {
         [JsonPropertyName("name")]
         public string? Name { get; set; }

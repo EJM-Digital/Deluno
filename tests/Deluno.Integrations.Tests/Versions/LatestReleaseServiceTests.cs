@@ -177,6 +177,58 @@ public sealed class LatestReleaseServiceTests
         Assert.Equal(0, handler.Calls);
     }
 
+    private const string WeirReleases = """
+        [{"tag_name":"v1.0.0-rc.1","draft":false,"prerelease":true,"html_url":"https://github.com/w/weir/releases/tag/v1.0.0-rc.1"},
+         {"tag_name":"v1.0.0-rc.2","draft":false,"prerelease":true,"html_url":"https://github.com/w/weir/releases/tag/v1.0.0-rc.2"},
+         {"tag_name":"v9.0.0","draft":true,"prerelease":false,"html_url":"https://github.com/w/weir/releases/tag/v9.0.0"}]
+        """;
+
+    [Fact]
+    public void A_feed_that_includes_pre_releases_takes_the_highest_version_not_the_newest_date_and_skips_drafts()
+    {
+        var release = ReleaseFeedParsers.FromGitHubReleaseList(WeirReleases);
+
+        Assert.Equal("1.0.0-rc.2", release!.Version);
+        Assert.Equal("https://github.com/w/weir/releases/tag/v1.0.0-rc.2", release.Url);
+    }
+
+    [Fact]
+    public void A_repository_with_only_a_pre_release_resolves_to_it()
+        => Assert.Equal("1.0.0-rc.1", ReleaseFeedParsers.FromGitHubReleaseList("""[{"tag_name":"v1.0.0-rc.1","prerelease":true}]""")!.Version);
+
+    [Fact]
+    public void A_stable_release_beats_every_rc_of_the_same_numbers()
+        => Assert.Equal("1.0.0", ReleaseFeedParsers.FromGitHubReleaseList("""[{"tag_name":"v1.0.0-rc.9"},{"tag_name":"v1.0.0"},{"tag_name":"v1.0.0-rc.10"}]""")!.Version);
+
+    [Theory]
+    [InlineData("""[{"tag_name":"v1.0.0","draft":true}]""")]
+    [InlineData("[]")]
+    [InlineData("""{"message":"Not Found"}""")]
+    [InlineData("not json")]
+    public void No_usable_release_in_the_list_is_no_release(string body)
+        => Assert.Null(ReleaseFeedParsers.FromGitHubReleaseList(body));
+
+    [Fact]
+    public void Only_the_feed_that_asks_for_pre_releases_lists_them_and_the_others_stay_on_latest()
+    {
+        var weir = new GitHubReleasesFeed("weir", "w/weir", IncludePreReleases: true);
+        var sab = new GitHubReleasesFeed("sabnzbd", "sabnzbd/sabnzbd");
+
+        Assert.Contains("/releases?", weir.RequestUri.AbsoluteUri);
+        Assert.EndsWith("/releases/latest", sab.RequestUri.AbsoluteUri);
+        Assert.Equal("1.0.0-rc.2", weir.Pick(WeirReleases)!.Version);
+        Assert.Null(sab.Pick("""{"tag_name":"v5.2.0-rc1","draft":false,"prerelease":false}"""));
+        Assert.Null(sab.Pick("""{"tag_name":"v5.2.0","draft":false,"prerelease":true}"""));
+    }
+
+    [Fact]
+    public void A_weir_on_rc1_hears_of_rc2_and_of_the_stable_release_after_it()
+    {
+        Assert.True(Deluno.Contracts.ReleaseVersions.IsOutOfDate("1.0.0-rc.1", ReleaseFeedParsers.FromGitHubReleaseList(WeirReleases)!.Version));
+        Assert.True(Deluno.Contracts.ReleaseVersions.IsOutOfDate("1.0.0-rc.2", "1.0.0"));
+        Assert.False(Deluno.Contracts.ReleaseVersions.IsOutOfDate("1.0.0-rc.2", ReleaseFeedParsers.FromGitHubReleaseList(WeirReleases)!.Version));
+    }
+
     private static bool ReleaseVersions_IsOutOfDate(string running, string latest) => Deluno.Contracts.ReleaseVersions.IsOutOfDate(running, latest);
 
     private static LatestReleaseService Service(CountingHandler handler, Clock clock)
