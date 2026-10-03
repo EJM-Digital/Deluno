@@ -80,7 +80,6 @@ GET /api/dashboard/metrics
 GET /api/dashboard/summary
 GET /api/decisions
 GET /api/destination-rules/
-GET /api/diagnostics/secrets-backend
 GET /api/discover/
 GET /api/diskspace
 GET /api/download-clients/
@@ -113,7 +112,6 @@ GET /api/integrations/external/activity
 GET /api/integrations/external/health
 GET /api/integrations/external/manifest
 GET /api/integrations/external/queue
-GET /api/integrations/external/snapshot
 GET /api/integrations/outbound-throttle
 GET /api/integrations/processors/connections
 GET /api/integrations/processors/connections/{id}/path-mappings
@@ -147,7 +145,6 @@ GET /api/monitoring/dashboard
 GET /api/monitoring/diagnostics
 GET /api/monitoring/export/influx
 GET /api/monitoring/export/prometheus
-GET /api/monitoring/machine
 GET /api/movie-collections/
 GET /api/movie-collections/{id}
 GET /api/movie-collections/{id}/members
@@ -266,7 +263,6 @@ GET /api/v1/guides/trash/inventory
 GET /api/v1/guides/trash/package
 GET /api/v1/guides/trash/profiles/{profileId}/compile
 GET /api/v1/guides/trash/rule-migration
-GET /api/v1/guides/trash/source-inventory
 GET /api/v1/guides/trash/update-check
 GET /api/v1/guides/trash/versions
 GET /api/v1/guides/trash/versions/{version:int}

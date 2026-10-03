@@ -358,11 +358,6 @@ export interface MachineTelemetrySample {
   diskWriteBytesPerSecond: number | null;
 }
 
-export interface MachineTelemetryWindow {
-  hours: number;
-  samples: MachineTelemetrySample[];
-}
-
 export interface MonitoringDashboardSnapshot {
   generatedUtc: string;
   readiness: MonitoringReadinessSummary;

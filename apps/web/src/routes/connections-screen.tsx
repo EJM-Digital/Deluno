@@ -1024,7 +1024,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                     const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
                     return (
                       <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
-                        <ListNameCell name={<>{item.name}<ConnectionVersionBeside info={versions.get(versionKey("indexer", item.id))} /></>} sub={<span className="font-mono">{item.baseUrl}</span>} />
+                        <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
                         {selectMode ? (
                           <ListCell mobile>
                             <Checkbox

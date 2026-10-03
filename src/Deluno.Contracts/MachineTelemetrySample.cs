@@ -42,12 +42,3 @@ public sealed record MachineTelemetrySample(
         ? Math.Round(MemoryBytes / (double)TotalMemoryBytes.Value * 100, 1)
         : null;
 }
-
-/// <summary>
-/// A stored window of machine readings.
-/// </summary>
-/// <param name="Hours">The window actually served, after clamping.</param>
-/// <param name="Samples">Readings oldest first. Empty until the sampler has run.</param>
-public sealed record MachineTelemetryWindow(
-    int Hours,
-    IReadOnlyList<MachineTelemetrySample> Samples);

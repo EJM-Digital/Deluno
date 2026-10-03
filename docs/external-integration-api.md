@@ -375,6 +375,31 @@ Commands are remembered in memory for the last 100 asked since Deluno started.
 | `400` | No `name`, or a name Deluno does not run. |
 | `403` | The key lacks the scope in the table. |
 
+### Activity stats (one address for a dashboard widget)
+
+`GET /api/stats?window=24h|7d|30d` (#827) is the counts a dashboard
+widget such as Homepage or Homarr shows: what Deluno did in a time window. It
+counts the same events the Activity feed writes in plain words. Deluno is
+single-user, so every count is everything this instance logged in the window.
+`window` is optional and defaults to `24h` when omitted or not one of the three
+values. Response:
+
+```json
+{
+  "sinceUtc": "2026-09-26T12:00:00Z",
+  "generatedUtc": "2026-09-27T12:00:00Z",
+  "windowHours": 24,
+  "searchesRun": 12,
+  "downloadsStarted": 3,
+  "importsCompleted": 3,
+  "cleanupRemovals": 1,
+  "retentionRemovals": 0
+}
+```
+
+`windowHours` is 24, 168 or 720. The Dashboard's own "Live activity" summary reads
+the same endpoint.
+
 ### System status (one address for a dashboard)
 
 `GET /api/system/status` (`read` scope) is what a dashboard such as Homepage
