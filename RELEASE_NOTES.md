@@ -9,6 +9,37 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.28
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Lists
+
+- Activity now sorts by Title, What happened or When across your whole
+  history, not just the page on screen. Click a heading to sort by it, and
+  click it again to reverse the order. Newest first is still the default.
+- Delivery history on Settings › Notifications sorts and rearranges its
+  columns like every other list, with the same Columns button.
+
+### Filters
+
+- System › Audit timeline filters with the same chips and picker as every
+  other page, in its card's title line: a category chip with a count, a
+  Severity picker and a search. The number of events is the card's count.
+- The Dashboard's Health areas use the same chips too. Each area keeps its
+  red, amber or green dot and how many of its checks pass. Point at an area
+  for the full count.
+
+### Fixes
+
+- A manual import that failed is now listed on Activity under Failed, so the
+  count on the sidebar can be cleared from the page it opens.
+- Four API addresses that nothing used are removed. The stats address that
+  dashboards such as Homepage or Homarr read stays, and is now documented
+  for outside tools.
+
 ## 1.0.0-rc.27
 
 Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
