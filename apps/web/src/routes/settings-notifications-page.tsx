@@ -557,8 +557,19 @@ export function SettingsNotificationsPage() {
         {deliveries.length === 0 ? (
           <ListEmpty title="No delivery history yet" description="Deluno will keep a bounded record after the first matching event or test." />
         ) : (
-          <ListTable columns={[{ label: "Event" }, { label: "Webhook" }, { label: "Attempts" }, { label: "Last result" }, { label: "Action", width: "minmax(8rem,auto)", mobile: true }]} chevron={false}>
-            {deliveries.map((delivery) => (
+          <ListTable
+            chevron={false}
+            listId="notification-deliveries"
+            items={deliveries}
+            columns={[
+              { id: "event", label: "Event", sort: (delivery) => delivery.title.toLowerCase() },
+              { id: "webhook", label: "Webhook", sort: (delivery) => (webhooks.find((webhook) => webhook.id === delivery.webhookId)?.name ?? delivery.webhookId).toLowerCase() },
+              { id: "attempts", label: "Attempts", sort: (delivery) => delivery.attemptCount },
+              { id: "result", label: "Last result", sort: (delivery) => delivery.status },
+              { id: "action", label: "Action", width: "minmax(8rem,auto)", mobile: true }
+            ]}
+          >
+            {(rows) => rows.map((delivery) => (
               <ListRow key={delivery.id}>
                 <ListNameCell name={delivery.title} sub={delivery.eventCategory} />
                 <ListCell mono primary={webhooks.find((webhook) => webhook.id === delivery.webhookId)?.name ?? delivery.webhookId} />
