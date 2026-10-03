@@ -52,3 +52,6 @@ vendor/rig-installers/
 # Runtime data (databases, protection keys, backups) is created by a running
 # Deluno and never belongs in git; scripts/check-tracked-files.ps1 enforces it.
 /data/
+
+# The real rig address and NAS paths. Merged over scripts/lab/rig.json by Get-Rig.ps1.
+scripts/lab/rig.local.json

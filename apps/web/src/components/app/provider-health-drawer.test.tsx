@@ -44,7 +44,7 @@ describe("ProviderHealthDrawer", () => {
     expect(screen.getByText("Download client · qbittorrent")).toBeVisible();
     expect(screen.getByText("unreachable")).toBeVisible();
     expect(screen.getByText("qBittorrent did not accept Deluno's connection.")).toBeVisible();
-    expect(screen.getByText(/Connection refused by 10\.1\.1\.142:8080\./)).toBeVisible();
+    expect(screen.getByText(/Connection refused by 192.168.1.142:8080\./)).toBeVisible();
     expect(screen.getByText("Retry scheduled")).toBeVisible();
     expect(screen.getByText("Deluno will retry automatically when the next eligible time arrives.")).toBeVisible();
     expect(screen.getByText("Check that qBittorrent is running and reachable, then test the connection again.")).toBeVisible();

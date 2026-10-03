@@ -21,10 +21,10 @@ Set-Location $Root
 
 # Fails in user-facing files.
 $userFacingPatterns = [ordered]@{
-    "a LAN address (192.168.1.x)"      = '10\.1\.1\.'
-    "the NAS name"                  = 'nas'
-    "the rig's machine name"        = 'MEDIA-SERVER'
-    "the workstation's name"        = 'WORKSTATION'
+    "a LAN address on the home network" = ('10' + '\.1\.1\.')
+    "the NAS name"                  = ('storage' + '-city')
+    "the rig's machine name"        = ('WIN-MJCOV' + 'DR5C88')
+    "the workstation's name"        = ('SPARE' + '-PC')
     "a lab password"                = ('Deluno-Lab-' + '2026')
     # Any address, unless it is a noreply one (checked below).
     "an e-mail address"             = '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
