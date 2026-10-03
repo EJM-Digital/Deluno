@@ -381,7 +381,7 @@ jobs:
 
       - name: Build populated-schema baseline image
         env:
-          BASELINE_REVISION: 38e5ae8
+          BASELINE_REVISION: 9f25f13
         run: |
           set -euo pipefail
           git cat-file -e "${BASELINE_REVISION}^{commit}"
