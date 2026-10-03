@@ -101,6 +101,7 @@ public static class ActivityEventLabels
             ["release.blocked"] = "Release blocked",
             ["release.block.proposed"] = "Release suggested for blocking",
             ["release.block-lifted"] = "Release unblocked",
+            ["connection.updated"] = "App update",
 
             // Download clients
             ["download.client.connectivity-retry-scheduled"] = "Will retry the download client shortly",
