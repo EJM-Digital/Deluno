@@ -32,19 +32,22 @@ Artifacts:
 - Last backup/restore drill result:
 - Restore validation notes:
 
-### 14-day Soak (#82)
-- Run ID:
-- Candidate commit:
-- Day 0 baseline and backup:
-- Daily evidence: `artifacts/soak/<run-id>/daily.md`
+### Live test from a fresh install
+- Plan: the dated live test plan in `docs/exec-plans/active/`, e.g. `E2E-live-test-rc28-2026-10-03.md`
+- Candidate version and commit:
+- Machine state before install: phase 0 of the plan
+- Automatic upgrade-hunting proven live, once per media type (#639):
 
-| Day | Date | Ready | Critical alerts | Jobs failed | API error % | Free storage % | Workflow/filesystem notes | Result |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 0 | YYYY-MM-DD | 1/0 | 0 | n | n | n | Baseline and backup ID | PASS/FAIL |
-| 1–14 | YYYY-MM-DD | 1/0 | 0 | n | n | n | Link to daily snapshot and operator notes | PASS/FAIL |
+| Phase | Rows passed | Rows failed (issue numbers) | Untested, and why |
+| --- | ---: | --- | --- |
+| 1 Install | n | | |
+| 2 Setup | n | | |
+| 3 Title matrix | n | | |
+| 4 Behaviour | n | | |
+| 5 Every screen | n | | |
 
 - Defects: list each linked issue, severity, resolution, and evidence.
-- Soak recommendation: GO / NO-GO
+- Live test recommendation: GO / NO-GO
 
 ### Decision
 - Recommendation: GO / NO-GO

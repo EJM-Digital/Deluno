@@ -11,7 +11,7 @@ Execution artifacts:
 - `docs/windows-rc-validation-matrix.md`
 - `docs/release-evidence-template.md`
 - `scripts/run-ga-regression.ps1` (invokable via `npm run ga:regression`)
-- `docs/soak-plan.md` and `scripts/collect-soak-snapshot.ps1` (invokable via `npm run soak:snapshot`)
+- [The live test from a fresh install](exec-plans/active/E2E-live-test-rc28-2026-10-03.md): real indexers, real clients and real downloads, with every finding filed as an issue. On 24 Sep 2026 it and #639 (automatic upgrade-hunting proven live, once per media type) replaced the 14-day soak (#82), and the soak tools were removed on 3 Oct 2026.
 
 ## Promotion Stages
 
@@ -103,23 +103,23 @@ Exit criteria:
 
 - [x] RC1 defects are fixed and linked in issue [#78](https://github.com/jampat000/Deluno/issues/78). — four found by running the installer, all fixed and re-verified (#400–#403), plus packaging (#404).
 - [x] Installer/upgrade/rollback matrix is rerun and passes ([#81](https://github.com/jampat000/Deluno/issues/81)). — ten of twelve lines met; the two outstanding both want a signed installer, which is the decision above.
-- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md). — **not started, and the collector was not ready either.** `npm run soak:snapshot` had never once taken a reading on Windows PowerShell 5.1: it recorded every endpoint as down and exited 0 ([#461](https://github.com/jampat000/Deluno/issues/461)). It works now, decides six of the seven daily checks itself, and can schedule its own run. What remains is wall-clock time on a machine holding a real library — and the plan's own restart rule means the clock should not start until the end-to-end pass has settled the build.
+- [ ] The live test from a fresh install passes, and automatic upgrade-hunting is proven live once per media type ([#639](https://github.com/jampat000/Deluno/issues/639)). Both replaced the 14-day soak ([#82](https://github.com/jampat000/Deluno/issues/82), closed 24 Sep 2026).
 - [x] Backup/restore drill succeeds on a second machine profile ([#83](https://github.com/jampat000/Deluno/issues/83)). — Rollback C on the lab VM; the first attempt failed and the recovery path was repaired (#403).
 - [ ] RC2 release notes draft exists and matches shipped behavior. — the draft exists (`release-notes-1.0.0-draft.md`, last touched 2026-09-02); **whether it still matches is unverified**, and behaviour has moved since.
 
 Exit criteria:
 
 - No unresolved critical regressions from RC1 scope.
-- Soak has no unresolved `P0`/`P1` defects.
+- The live test has no unresolved `P0`/`P1` defects.
 
 ## GA Checklist (`1.0.0`)
 
-- [ ] Soak completion summary is posted and approved ([#82](https://github.com/jampat000/Deluno/issues/82)). — follows the soak.
+- [ ] The live test's summary is posted and approved, with every finding filed and resolved.
 - [x] Backup/restore runbook is published and linked ([#83](https://github.com/jampat000/Deluno/issues/83)). — `backup-restore-runbook.md`, linked from `docs/README.md` and the root README.
 - [x] Regression evidence is posted for GA candidate commit ([#85](https://github.com/jampat000/Deluno/issues/85)). — commit `b73a8ae`: 1,598 backend tests and 304 browser checks, posted on [#81](https://github.com/jampat000/Deluno/issues/81).
 - [x] User-facing upgrade notes are published ([#86](https://github.com/jampat000/Deluno/issues/86)). — `upgrade-guide-0x-to-1x.md`, linked from `docs/README.md` and the root README.
-- [ ] Final release decision log is filled and attached (template below). — nothing to decide on until the soak reports.
-- [ ] Final sign-off is recorded in issue [#78](https://github.com/jampat000/Deluno/issues/78) and child issues are closed. — [#82](https://github.com/jampat000/Deluno/issues/82) is the only child still open.
+- [ ] Final release decision log is filled and attached (template below). — nothing to decide on until the live test reports.
+- [ ] Final sign-off is recorded in issue [#78](https://github.com/jampat000/Deluno/issues/78) and child issues are closed.
 
 Exit criteria:
 
@@ -177,7 +177,7 @@ Gate summary:
 - Signing:
   Note whether binaries were signed for this candidate.
 - Install/upgrade/rollback matrix:
-- Soak:
+- Live test from a fresh install:
 - Regression suite:
 - Backup/restore:
 - User docs:
