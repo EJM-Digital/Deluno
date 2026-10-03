@@ -110,7 +110,7 @@ export function span(ms: number): string {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-/** The host and port of an address ("http://192.168.1.51:5099/" gives 192.168.1.51 and 5099). */
+/** The host and port of an address ("http://192.168.1.10:5099/" gives 192.168.1.10 and 5099). */
 export function splitAddress(address: string | null | undefined): { host: string; port: string | null } {
   const raw = (address ?? "").trim().replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
   const match = /^(.*):(\d+)$/.exec(raw);

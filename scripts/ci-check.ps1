@@ -305,6 +305,17 @@ if ($releaseNotes.ExitCode -eq 0) {
     Write-Warn "RELEASE_NOTES.md has no section for the version being built yet"
 }
 
+# Nothing private to the maintainer's own network may sit in a file a stranger
+# reads (README, release notes, user-facing docs, the web app's source), and the
+# lab password may sit in no tracked file (#1122).
+$publicExposure = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-public-exposure.ps1")
+if ($publicExposure.ExitCode -eq 0) {
+    Write-Ok "No private addresses, names or passwords in public files"
+} else {
+    if ($publicExposure.Output) { Write-Host $publicExposure.Output }
+    Write-Fail "No private addresses, names or passwords in public files"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"
