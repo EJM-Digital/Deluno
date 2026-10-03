@@ -58,7 +58,7 @@ if (-not $Password)        { $Password = $rig.password }
 if (-not $Password)        { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 if (-not $DelunoUrl)       { $DelunoUrl = $rig.deluno.url }
 if (-not $DelunoUser)      { $DelunoUser = $rig.deluno.userName }
-if (-not $DelunoPassword)  { $DelunoPassword = $rig.deluno.password }
+if (-not $DelunoPassword)  { $DelunoPassword = Get-RigAppPassword }
 if (-not $DesktopAddress)  { $DesktopAddress = $rig.fixtures.host }
 if (-not $NntpPort)        { $NntpPort = $rig.fixtures.nntpPort }
 if (-not $NzbPort)         { $NzbPort = $rig.fixtures.nzbPort }

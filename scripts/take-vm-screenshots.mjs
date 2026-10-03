@@ -15,8 +15,11 @@ const rig = JSON.parse(
 const BASE = process.env.DELUNO_URL ?? rig.deluno.url;
 const CREDS = {
   username: process.env.DELUNO_E2E_USERNAME ?? rig.deluno.userName,
-  password: process.env.DELUNO_E2E_PASSWORD ?? rig.deluno.password
+  password: process.env.DELUNO_E2E_PASSWORD ?? process.env.DELUNO_LAB_APP_PASSWORD
 };
+if (!CREDS.password) {
+  throw new Error("Set DELUNO_E2E_PASSWORD or DELUNO_LAB_APP_PASSWORD; the rig sign-in is not stored in the repository.");
+}
 const outDir = process.argv[2] ?? "screenshots";
 
 const browser = await chromium.launch({ headless: true });

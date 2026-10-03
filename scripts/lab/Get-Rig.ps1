@@ -52,3 +52,16 @@ function Get-RigCredential {
     return New-Object System.Management.Automation.PSCredential(
         $Rig.userName, (ConvertTo-SecureString $password -AsPlainText -Force))
 }
+
+function Get-RigAppPassword {
+    [CmdletBinding()]
+    param()
+
+    # The rig's Deluno sign-in is not stored in the repository. Set it in the
+    # environment of whoever runs the lab scripts.
+    if (-not $env:DELUNO_LAB_APP_PASSWORD) {
+        throw 'Set DELUNO_LAB_APP_PASSWORD to the rig''s Deluno sign-in password; it is not stored in rig.json.'
+    }
+
+    return $env:DELUNO_LAB_APP_PASSWORD
+}

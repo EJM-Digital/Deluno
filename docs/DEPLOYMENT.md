@@ -54,7 +54,7 @@ https://github.com/jampat000/Deluno/releases
 Then:
 
 - run the latest `*Setup*.exe`
-- open `http://127.0.0.1:5099`
+- open `http://127.0.0.1:7879`
 - use `System > Updates` for update checks/download/apply flow
 
 For advanced/manual source runs, publish and run from the repo root:

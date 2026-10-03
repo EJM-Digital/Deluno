@@ -51,7 +51,7 @@ $ErrorActionPreference = 'Stop'
 $rig = if ($RigPath) { Get-Rig -Path $RigPath } else { Get-Rig }
 if (-not $DelunoUrl) { $DelunoUrl = $rig.deluno.url }
 if (-not $DelunoUser) { $DelunoUser = $rig.deluno.userName }
-if (-not $DelunoPassword) { $DelunoPassword = $rig.deluno.password }
+if (-not $DelunoPassword) { $DelunoPassword = Get-RigAppPassword }
 if (-not $QbittorrentUrl) { $QbittorrentUrl = $rig.services.qbittorrent }
 
 $boundary = $rig.mediaBoundary

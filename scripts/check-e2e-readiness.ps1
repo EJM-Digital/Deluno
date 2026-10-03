@@ -15,7 +15,7 @@ $rig = Get-Rig
 $b = $rig.deluno.url
 
 $auth = (Invoke-RestMethod -Uri "$b/api/auth/login" -Method Post `
-    -Body (@{ username = $rig.deluno.userName; password = $rig.deluno.password } | ConvertTo-Json) `
+    -Body (@{ username = $rig.deluno.userName; password = (Get-RigAppPassword) } | ConvertTo-Json) `
     -ContentType "application/json").accessToken
 $h = @{ Authorization = "Bearer $auth" }
 

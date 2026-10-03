@@ -29,7 +29,7 @@ clean Windows machine.
 
 ### Current Environment
 
-- Lab VM: `192.168.1.142`, Windows Server, reached over WinRM
+- Lab VM: `192.168.1.10`, Windows Server, reached over WinRM
 - Install root: `%LocalAppData%\Deluno`
 - Data root: `%LocalAppData%\DelunoData`
 - Listening port: `7879` (the packaged default; the lab's own scheduled-task
