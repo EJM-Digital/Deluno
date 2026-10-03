@@ -477,7 +477,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       tab: "system",
       tone: "warn",
       title: updateNoticeTitle(entry),
-      text: entry.message,
+      text: entry.mode === "updateNow" ? "Open it to read the release notes or update now." : entry.message,
       to: connectionLink(entry.kind, entry.id),
       action: "Open"
     });
