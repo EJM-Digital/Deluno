@@ -7,10 +7,9 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api/types/settings";
 import { authedFetch } from "../lib/use-auth";
 
 /**
- * #839: none of Deluno's subtitle outcomes (downloaded/upgraded/failed) had
- * a toggle anywhere on screen, even though the backend already gated and
- * fired all three. This covers the new "Subtitle notifications" section
- * reading and saving /api/notification-preferences.
+ * Notification preference switches that gate something outbound: import,
+ * lifecycle and recovery rows (#856, #858, #965, #966). The switches that did
+ * nothing were removed (#1116).
  */
 
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
@@ -19,19 +18,9 @@ vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefi
 const webhooks: NotificationWebhookItem[] = [];
 const deliveries: NotificationWebhookDeliveryItem[] = [];
 const preferences: NotificationPreferences = {
-  searchCompletionEnabled: true,
-  downloadStartedEnabled: true,
-  downloadProgressEnabled: true,
-  downloadCompletedEnabled: true,
-  importStartedEnabled: true,
   importCompletedEnabled: true,
   importFailedEnabled: true,
-  automationErrorEnabled: true,
-  systemWarningsEnabled: true,
   providerHealthChangedEnabled: true,
-  subtitleDownloadedEnabled: true,
-  subtitleUpgradedEnabled: true,
-  subtitleFailedEnabled: false,
   upgradeEnabled: false,
   renameEnabled: false,
   fileDeletedEnabled: false,
@@ -45,12 +34,7 @@ const preferences: NotificationPreferences = {
   forcedImportEnabled: false,
   strikesPurgedEnabled: false,
   cleanupClearedEnabled: false,
-  unmatchedImportGivenUpEnabled: false,
-  inAppNotificationsEnabled: true,
-  emailNotificationsEnabled: false,
-  webhookNotificationsEnabled: false,
-  emailAddress: null,
-  webhookUrl: null
+  unmatchedImportGivenUpEnabled: false
 };
 
 const loaderData = { settings: emptyPlatformSettingsSnapshot, webhooks, deliveries, preferences };
@@ -71,61 +55,20 @@ function renderPage() {
   );
 }
 
-describe("subtitle notification preferences (#839)", () => {
+describe("import notification preferences (#965)", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows the three subtitle events with their saved on/off state", () => {
+  it("shows both import rows and none of the removed do-nothing switches", () => {
     renderPage();
 
-    expect(screen.getByText("Subtitle downloaded")).toBeTruthy();
-    expect(screen.getByText("Subtitle upgraded")).toBeTruthy();
-    expect(screen.getByText("Subtitle search failed")).toBeTruthy();
-
-    const downloadedSwitch = screen.getByRole("switch", { name: "Subtitle downloaded" });
-    const failedSwitch = screen.getByRole("switch", { name: "Subtitle search failed" });
-    expect(downloadedSwitch.getAttribute("aria-checked")).toBe("true");
-    expect(failedSwitch.getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("PUTs the full preferences object with only the toggled field changed", async () => {
-    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 200 }));
-    renderPage();
-
-    fireEvent.click(screen.getByRole("switch", { name: "Subtitle search failed" }));
-
-    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
-      "/api/notification-preferences",
-      expect.objectContaining({ method: "PUT" })
-    ));
-
-    const [, init] = vi.mocked(authedFetch).mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.subtitleFailedEnabled).toBe(true);
-    expect(body.subtitleDownloadedEnabled).toBe(true);
-  });
-});
-
-describe("search, download and import notification preferences (#965)", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("shows every search/download/import row with its saved on/off state", () => {
-    renderPage();
-
-    expect(screen.getByText("Search completed")).toBeTruthy();
-    expect(screen.getByText("Download started")).toBeTruthy();
-    expect(screen.getByText("Download progress")).toBeTruthy();
-    expect(screen.getByText("Download completed")).toBeTruthy();
-    expect(screen.getByText("Import started")).toBeTruthy();
     expect(screen.getByText("Import completed")).toBeTruthy();
     expect(screen.getByText("Import failed")).toBeTruthy();
-    expect(screen.getByText("Automation error")).toBeTruthy();
-    expect(screen.getByText("System warning")).toBeTruthy();
+    for (const gone of ["Search completed", "Download started", "Download progress", "Download completed", "Import started", "Automation error", "System warning", "Subtitle downloaded", "Subtitle upgraded", "Subtitle search failed"]) {
+      expect(screen.queryByText(gone)).toBeNull();
+    }
 
-    expect(screen.getByRole("switch", { name: "Search completed" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("switch", { name: "Import failed" }).getAttribute("aria-checked")).toBe("true");
   });
 

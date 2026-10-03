@@ -69,41 +69,17 @@ interface LoaderData {
 }
 
 /**
- * One row per subtitle notification kind (#839). Nothing else in Deluno
- * fired for subtitle activity before this, so this section only ever grows
- * when a new subtitle event kind ships alongside it.
+ * Import outcomes (#965): both already fire and are gated in the backend
+ * (ImportPipelineService). On by default, matching what every install has
+ * always done.
  */
-const SUBTITLE_PREFERENCE_ROWS: Array<{
+const IMPORT_PREFERENCE_ROWS: Array<{
   key: keyof NotificationPreferences;
   name: string;
   description: string;
 }> = [
-  { key: "subtitleDownloadedEnabled", name: "Subtitle downloaded", description: "A subtitle was found and saved for a language that had none yet." },
-  { key: "subtitleUpgradedEnabled", name: "Subtitle upgraded", description: "A better-scoring subtitle replaced one already held." },
-  { key: "subtitleFailedEnabled", name: "Subtitle search failed", description: "A wanted language could not be found after trying every provider." }
-];
-
-/**
- * Search, download and import (#965): these nine already fire and are
- * already gated in the backend (NotificationEventPublisher,
- * ImportPipelineService) but had no row on any screen, so they could only
- * ever be changed through the API. On by default, matching what every
- * install has always done.
- */
-const SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS: Array<{
-  key: keyof NotificationPreferences;
-  name: string;
-  description: string;
-}> = [
-  { key: "searchCompletionEnabled", name: "Search completed", description: "A search for a title finished and returned its results." },
-  { key: "downloadStartedEnabled", name: "Download started", description: "A release began downloading at a client." },
-  { key: "downloadProgressEnabled", name: "Download progress", description: "A download crossed a quarter of its progress." },
-  { key: "downloadCompletedEnabled", name: "Download completed", description: "A download finished at the client." },
-  { key: "importStartedEnabled", name: "Import started", description: "Deluno began importing a finished download into the library." },
   { key: "importCompletedEnabled", name: "Import completed", description: "A file was added to the library." },
-  { key: "importFailedEnabled", name: "Import failed", description: "An import could not finish." },
-  { key: "automationErrorEnabled", name: "Automation error", description: "A scheduled or automatic job hit an error." },
-  { key: "systemWarningsEnabled", name: "System warning", description: "Deluno itself has something to flag." }
+  { key: "importFailedEnabled", name: "Import failed", description: "An import could not finish." }
 ];
 
 /**
@@ -490,10 +466,10 @@ export function SettingsNotificationsPage() {
         </ListTable>
       </ListCard>
 
-      <ListCard title="Search, download & import" count="Independently toggleable · on by default, matching what every install has always done">
+      <ListCard title="Import notifications" count="Independently toggleable · on by default, matching what every install has always done">
         <ListTable
-          listId="notification-events-search"
-          items={SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS}
+          listId="notification-events-import"
+          items={IMPORT_PREFERENCE_ROWS}
           columns={[
             { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
             { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
@@ -552,35 +528,6 @@ export function SettingsNotificationsPage() {
         <ListTable
           listId="notification-events-recovery"
           items={RECOVERY_CLEANUP_PREFERENCE_ROWS}
-          columns={[
-            { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
-            { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
-            { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (row) => Boolean(preferences[row.key]) }
-          ]}
-          chevron={false}
-        >
-          {(rows) => rows.map((row) => (
-            <ListRow key={row.key}>
-              <ListNameCell name={row.name} />
-              <ListCell primary={row.description} />
-              <ListCell mobile>
-                <Switch
-                  size="sm"
-                  aria-label={row.name}
-                  checked={Boolean(preferences[row.key])}
-                  disabled={busyPreference === row.key}
-                  onCheckedChange={(checked) => void togglePreference(row.key, checked)}
-                />
-              </ListCell>
-            </ListRow>
-          ))}
-        </ListTable>
-      </ListCard>
-
-      <ListCard title="Subtitle notifications" count="Independently toggleable, like every other notification kind below">
-        <ListTable
-          listId="notification-events-subtitles"
-          items={SUBTITLE_PREFERENCE_ROWS}
           columns={[
             { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
             { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
