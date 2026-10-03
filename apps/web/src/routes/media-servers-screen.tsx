@@ -1,7 +1,7 @@
 import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import type { IntegrationFailure, LibraryItem, QualityProfileItem } from "../lib/api/types";
@@ -22,6 +22,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { healthChip, relative } from "./connections/format";
 import { ConnectionVersionBeside } from "../components/app/connection-version";
+import { ConnectionUpdatePanel } from "../components/app/connection-update-panel";
 import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { SeerrServersCard, type SeerrCleanup, type SeerrServer } from "../components/app/seerr-servers-card";
 
@@ -143,6 +144,9 @@ export function MediaServersPage() {
   };
   const { versions } = useConnectionVersions();
   const revalidator = useRevalidator();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const connectionParam = new URLSearchParams(location.search).get("connection");
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [form, setForm] = useState<ServerForm>(formFrom(null));
@@ -192,6 +196,17 @@ export function MediaServersPage() {
     }
   }
 
+  // A notice about a newer version opens this connection (#1118).
+  useEffect(() => {
+    if (drawer.open) return;
+    const id = new URLSearchParams(location.search).get("connection");
+    if (!id) return;
+    const found = servers.find((item) => item.id === id);
+    if (!found) return;
+    open(found);
+    navigate("/indexers/media-servers", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawer.open, servers, location.search, navigate]);
   function close() {
     setDrawer({ open: false, id: null });
     setConfirmDiscard(false);
@@ -407,7 +422,7 @@ export function MediaServersPage() {
         )}
       </ListCard>
 
-      <SeerrServersCard servers={seerrServers} cleanups={seerrCleanups} libraries={libraries} qualityProfiles={qualityProfiles} onChanged={() => revalidator.revalidate()} />
+      <SeerrServersCard openId={connectionParam} onOpened={() => navigate("/indexers/media-servers", { replace: true })} servers={seerrServers} cleanups={seerrCleanups} libraries={libraries} qualityProfiles={qualityProfiles} onChanged={() => revalidator.revalidate()} />
 
       <Drawer
         open={drawer.open}
@@ -429,6 +444,7 @@ export function MediaServersPage() {
         }
       >
         <SecretUnreadableNotice item={editing} />
+        {editing ? <ConnectionUpdatePanel kind="mediaServer" id={editing.id} /> : null}
         <DrawerSection title="Basics">
           <FieldRow>
             <Field label="Server" error={errors.kind}>

@@ -12,6 +12,7 @@
 import type { DashboardAttention } from "../routes/dashboard/attention";
 import {
   connectionDownActions,
+  connectionUpdateActions,
   failedImportActions,
   handoffActions,
   healthProblemActions,
@@ -333,6 +334,11 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
     if (item.tab !== "system" || handled.has(item.id) || item.id.startsWith("health:") && item.id !== "health:more") continue;
     if (item.id === "update") {
       deluno.push({ key: "update", section: "deluno", kind: "update", tone: "warn", title: item.title, text: item.text, to: "/system/updates", actions: updateReadyActions(), sinceUtc: null, count: 1 });
+      continue;
+    }
+    if (item.id.startsWith("connection-update:")) {
+      const [, kind, id] = item.id.split(":");
+      deluno.push({ key: item.id, section: "deluno", kind: "connection-update", tone: "warn", title: item.title, text: item.text, to: item.to, actions: connectionUpdateActions(kind, id), sinceUtc: null, count: 1 });
       continue;
     }
     if (item.id === "failed-title-jobs") {

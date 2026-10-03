@@ -9,6 +9,7 @@
 import type { DownloadQueueItem, JobQueueItem, NoReleaseRow, ProcessorHandoffItem } from "./api";
 import { activityLinkForStatus } from "./activity-history";
 import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
+import { connectionLink, dismissPath } from "./connection-updates";
 import { canTryAgain, isVanished, type RecoveryCaseRow } from "./needs-action";
 
 /** The longest label that fits the one button width the bell and Health share ("Open Transfers"). */
@@ -340,4 +341,15 @@ export function screenLinkActions(label: string, to: string, id = `open:${to}`):
 /** An update is ready: look at it. (A pending update is not a problem to snooze.) */
 export function updateReadyActions(): AlertActions {
   return [open("open-updates", "Open Updates", "/system/updates", "Opens Updates, where you choose when to install. Nothing is installed until you say so.")];
+}
+
+/**
+ * A newer version of a connected app (#1118): open that app's connection (release notes, and Update now where
+ * Deluno can do it safely), or dismiss this version. Dismissing nothing is installed or changed.
+ */
+export function connectionUpdateActions(kind: string, id: string): AlertActions {
+  return [
+    open(`open-update:${kind}:${id}`, "Open", connectionLink(kind, id), "Opens this connection, where the release notes are and, when Deluno can do it safely, Update now. Nothing is installed."),
+    dismiss(`dismiss-update:${kind}:${id}`, { method: "POST", path: dismissPath(kind, id), done: "Dismissed this version", failure: "That could not be dismissed." }, "Stops showing this version. It comes back only for a newer one. Nothing is installed.")
+  ];
 }

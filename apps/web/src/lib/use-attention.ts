@@ -174,6 +174,8 @@ export function useAttention(pollMs = 45000) {
         readFresh(attentionSources.processors, force).catch(() => undefined),
         // Wanted titles no search could satisfy (#1098).
         readFresh(attentionSources.noRelease, force).catch(() => undefined),
+        // A newer version of a connected app (#1118).
+        readFresh(attentionSources.connectionUpdates, force).catch(() => undefined),
         ...Object.values(setupSources).map((source) => readFresh(source as RouteSource<unknown>, force).catch(() => undefined))
       ]);
 

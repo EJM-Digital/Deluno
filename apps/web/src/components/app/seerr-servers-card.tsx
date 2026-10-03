@@ -19,6 +19,7 @@ import { Select } from "../ui/select";
 import { Switch, SwitchRow } from "../ui/switch";
 import { ConnectionVersionBeside } from "./connection-version";
 import { toneSortValue } from "../../lib/status-tones";
+import { ConnectionUpdatePanel } from "./connection-update-panel";
 import { useConnectionVersions, versionKey } from "../../lib/connection-versions";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
@@ -147,13 +148,18 @@ export function SeerrServersCard({
   cleanups,
   libraries,
   qualityProfiles,
-  onChanged
+  onChanged,
+  openId,
+  onOpened
 }: {
   servers: SeerrServer[];
   cleanups: SeerrCleanup[];
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   onChanged: () => void;
+  /** A connection to open as soon as it is listed (from a notice about its newer version, #1118). */
+  openId?: string | null;
+  onOpened?: () => void;
 }) {
   const { versions } = useConnectionVersions();
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -191,6 +197,15 @@ export function SeerrServersCard({
     setCopied(null);
   }
 
+  // A notice about a newer version opens this Seerr server (#1118).
+  useEffect(() => {
+    if (!openId || drawer.open) return;
+    const found = servers.find((item) => item.id === openId);
+    if (!found) return;
+    open(found);
+    onOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, drawer.open, servers]);
   function close() {
     setDrawer({ open: false, id: null });
     setConfirmDiscard(false);
@@ -389,6 +404,7 @@ export function SeerrServersCard({
         }
       >
         <SecretUnreadableNotice item={editing} />
+        {editing ? <ConnectionUpdatePanel kind="requests" id={editing.id} /> : null}
         <DrawerSection title="Basics">
           <Field label="Address" error={errors.baseUrl} help="Including the port, for example http://192.168.1.20:5055.">
             <Input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="http://192.168.1.20:5055" autoComplete="off" className="font-mono" />
