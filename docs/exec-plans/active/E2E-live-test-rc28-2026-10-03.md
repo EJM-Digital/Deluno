@@ -22,7 +22,10 @@ no `deploy-lab.ps1`, no pre-made settings: a person installs the released build 
     emptied.
 - **Media boundary:** the real `\\nas\media\Movies` and `\TV` are never chosen, never imported, never
   written.
-- **Weir:** Weir is not installed by Deluno's picker. Weir 4.0.0 is already on the rig (the Weir session installed it).
+- **Weir:** Deluno's component picker installs Weir too (the owner, 3 Oct: a true end-to-end test). The old Weir was
+  retired (task disabled, `C:\Deluno\Weir3` renamed `Weir3-retired-20261003`, data backed up), and Setup waits
+  until Weir 4.0.0 is published, because the picker takes the latest Weir release. The Weir session live-tests the
+  Weir that Deluno installs.
 - **Copyright:** not a concern for title choice ([[feedback-deluno-copyright-not-a-concern]]).
 - **Done:** "done" means every row has an outcome; an untested row is said to be untested.
 
@@ -32,7 +35,7 @@ no `deploy-lab.ps1`, no pre-made settings: a person installs the released build 
 |---|---|---|
 | 0.1 | The lab Deluno is gone: no "Deluno Host" task, no `C:\Deluno\App` or `\Data` | |
 | 0.2 | qBittorrent, SABnzbd, Deluge, NZBGet and Transmission are uninstalled, with their settings and downloads deleted | |
-| 0.3 | Weir 4.0.0 runs (task "Weir", port 9347); `E:\Weir\Temp` and `E:\Weir\Ready` are empty | |
+| 0.3 | No Weir runs (port 9347 free); Weir 4.0.0 is the latest published release; `E:\Weir\Temp` and `E:\Weir\Ready` are empty | |
 | 0.3a | The documented folders on C:, D: and E: exist and are empty, and so are the test share's Movies and TV | |
 | 0.4 | No pending Windows restart | |
 
@@ -42,7 +45,7 @@ no `deploy-lab.ps1`, no pre-made settings: a person installs the released build 
 |---|---|---|---|
 | 1.1 | Download `Deluno-rc-Setup.exe` from the rc.28 release and run it | SmartScreen shows "More info, Run anyway"; nothing else blocks it | |
 | 1.2 | First run | One firewall prompt, then the component picker. Each component shows what it is and its licence | |
-| 1.3 | Tick qBittorrent, SABnzbd, Deluge, NZBGet, Transmission; leave Weir unticked | Each downloads, passes its checksum or signature check, installs, starts and is wired into Deluno with no typing | |
+| 1.3 | Tick qBittorrent, SABnzbd, Deluge, NZBGet, Transmission and Weir | Each downloads, passes its checksum or signature check, installs, starts and is wired into Deluno with no typing; Weir is 4.0.0, checked against its SHA256SUMS | |
 | 1.4 | The browser opens on Deluno | It asks to create an account, not to sign in | |
 | 1.5 | Create the account | It lands on setup, not on an empty dashboard pretending all is well | |
 | 1.6 | Read the Dashboard before finishing setup | Nothing automatic is on; each off thing says so (#936) | |
@@ -58,6 +61,7 @@ no `deploy-lab.ps1`, no pre-made settings: a person installs the released build 
 | 2.4 | Each setup question that turns on automatic behaviour | Asked as a plain Yes/No; answering No leaves it off | |
 | 2.5 | Quality: choose the plain choices (no numbers) | One-sentence reasons; TRaSH points stay behind them (#938) | |
 | 2.6 | Indexers: add the public trackers and the Usenet indexers (nzbgeek, nzbplanet, althub) | Each tests green or says why in words | |
+| 2.6a | A tracker behind Cloudflare (e.g. 1337x) | Deluno says it needs a FlareSolverr proxy and how to add one; after a user installs FlareSolverr and adds it, the tracker tests green. (The lab's FlareSolverr was removed on 3 Oct for the fresh start.) | |
 | 2.7 | Connect Weir as the processor for Movies and TV, refine before import | Weir's version shows beside its name; Weir says which folder it watches | |
 | 2.8 | Routing: torrents and Usenet each to more than one client (see the client column below) | Saved; each library shows where its downloads go | |
 | 2.8a | Client folders | Each installed client saves to `C:\Downloads\Completed\<category>` and downloads into `D:\Incomplete\<client>`, or setup lets these be chosen | |
