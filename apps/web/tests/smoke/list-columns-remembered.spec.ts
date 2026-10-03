@@ -33,8 +33,11 @@ test.describe("list columns", () => {
   }
 
   const headerOrder = (page: Page) => page.getByRole("columnheader").evaluateAll((headers) => headers.map((header) => (header as HTMLElement).dataset.colId));
-  const firstColumnNames = (page: Page) =>
-    page.locator('#main-content [role="rowgroup"] [role="row"]').evaluateAll((rows) => rows.map((row) => row.querySelector('[role="cell"]')?.textContent ?? ""));
+  // The Name cells, wherever the Name column has been moved to.
+  const nameCells = async (page: Page) => {
+    const index = (await headerOrder(page)).indexOf("name");
+    return page.locator('#main-content [role="rowgroup"] [role="row"]').evaluateAll((rows, at) => rows.map((row) => row.querySelectorAll('[role="cell"]')[at]?.textContent ?? ""), index);
+  };
 
   async function dragHeader(page: Page, from: string, onto: string) {
     const source = await page.locator(`[role="columnheader"][data-col-id="${from}"]`).boundingBox();
@@ -69,11 +72,11 @@ test.describe("list columns", () => {
     const nameSort = page.locator('[role="columnheader"][data-col-id="name"]').getByRole("button");
     await nameSort.click();
     await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "ascending");
-    const ascending = (await firstColumnNames(page)).filter((text) => text.includes(`${stamp}`));
+    const ascending = (await nameCells(page)).filter((text) => text.includes(`${stamp}`));
     expect(ascending.length).toBe(2);
     await nameSort.click();
     await expect(page.locator('[role="columnheader"][data-col-id="name"]')).toHaveAttribute("aria-sort", "descending");
-    const descending = (await firstColumnNames(page)).filter((text) => text.includes(`${stamp}`));
+    const descending = (await nameCells(page)).filter((text) => text.includes(`${stamp}`));
     expect(descending).toEqual([...ascending].reverse());
 
     // Remembered across a reload.
