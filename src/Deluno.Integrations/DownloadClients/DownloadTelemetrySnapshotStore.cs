@@ -184,7 +184,13 @@ public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotS
     /// How long the very first request after a start may wait for the first
     /// capture. Only ever applies before any capture exists.
     /// </summary>
-    internal static readonly TimeSpan ColdWait = TimeSpan.FromMilliseconds(1500);
+    internal static readonly TimeSpan DefaultColdWait = TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>
+    /// <see cref="DefaultColdWait"/> in the product. A test that is about readers sharing one pass, not about this
+    /// budget, sets it long, so a slow machine cannot turn a shared pass into a cold-wait timeout.
+    /// </summary>
+    internal TimeSpan ColdWait { get; set; } = DefaultColdWait;
 
     private readonly SingleFlightSnapshot<DownloadTelemetryCapture> cell;
 
@@ -336,7 +342,7 @@ public sealed class OrphanedDownloadCache
 
     /// <summary>The held list at once; one older than <paramref name="maxAge"/> re-scans in the background.</summary>
     public async Task<IReadOnlyList<OrphanedDownloadItem>> GetLatestAsync(TimeSpan maxAge, CancellationToken cancellationToken)
-        => (await cell.LatestAsync(maxAge, DownloadTelemetrySnapshotStore.ColdWait, cancellationToken))?.Value ?? [];
+        => (await cell.LatestAsync(maxAge, DownloadTelemetrySnapshotStore.DefaultColdWait, cancellationToken))?.Value ?? [];
 
     public Task<SnapshotEntry<IReadOnlyList<OrphanedDownloadItem>>> RefreshAsync(CancellationToken cancellationToken)
         => cell.RefreshAsync(TimeSpan.FromTicks(-1), cancellationToken);

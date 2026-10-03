@@ -67,6 +67,9 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
     public async Task Concurrent_latest_reads_before_the_first_capture_also_share_one_pass()
     {
         using var world = await World.CreateAsync();
+        // This is about sharing one pass, not about the 1.5 s cold-wait budget: on a loaded machine (the full gate runs
+        // the web tests alongside) the first pass took longer than that, and the readers timed out with an empty answer.
+        ((DownloadTelemetrySnapshotStore)world.Store).ColdWait = TimeSpan.FromSeconds(60);
         // Start the first pass, then read while it is in flight: the readers join it rather than start their own.
         var first = world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
 
