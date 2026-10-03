@@ -37,10 +37,29 @@ if ((Read-Host "Delete these $($doomed.Count) runs and their logs for good? Type
     return
 }
 
+# One call per run, and the hourly GitHub allowance (5,000) is shared by every session, script and agent on this
+# login. Keep a reserve so the other sessions can still push and release: check what is left every 50 deletions,
+# and when it falls to the reserve, wait for the hourly reset instead of running it dry (3 Oct 2026, when a bulk
+# clean-up emptied the allowance and blocked Weir's release).
+$reserve = 1500
 $i = 0
 foreach ($run in $doomed) {
-    gh api -X DELETE "repos/$Repo/actions/runs/$($run.Id)" --silent
+    if ($i % 50 -eq 0) {
+        $core = gh api rate_limit --jq '.resources.core' | ConvertFrom-Json
+        if ($core.remaining -le $reserve) {
+            $resetAt = [DateTimeOffset]::FromUnixTimeSeconds($core.reset).LocalDateTime
+            Write-Host "  $($core.remaining) GitHub calls left this hour; pausing until $($resetAt.ToString('HH:mm')) so other work is not blocked."
+            Start-Sleep -Seconds ([Math]::Max(30, [int]($resetAt - (Get-Date)).TotalSeconds + 30))
+        }
+        if ($i -gt 0) { Write-Host "  $i of $($doomed.Count)" }
+    }
+    $deleted = $false
+    foreach ($wait in 0, 5, 30, 120) {
+        if ($wait) { Start-Sleep -Seconds $wait }
+        gh api -X DELETE "repos/$Repo/actions/runs/$($run.Id)" --silent 2>$null
+        if ($LASTEXITCODE -eq 0) { $deleted = $true; break }
+    }
+    if (-not $deleted) { Write-Host "  Could not delete run $($run.Id) after retrying; it is left as it was." }
     $i++
-    if ($i % 50 -eq 0) { Write-Host "  $i of $($doomed.Count)" }
 }
-Write-Host "Deleted $i runs."
+Write-Host "Done: $i runs processed."
