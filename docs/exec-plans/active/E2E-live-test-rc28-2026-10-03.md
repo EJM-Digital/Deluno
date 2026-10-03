@@ -49,6 +49,7 @@ no `deploy-lab.ps1`, no pre-made settings: a person installs the released build 
 | 1.4 | The browser opens on Deluno | It asks to create an account, not to sign in | |
 | 1.5 | Create the account | It lands on setup, not on an empty dashboard pretending all is well | |
 | 1.6 | Read the Dashboard before finishing setup | Nothing automatic is on; each off thing says so (#936) | |
+| 1.6a | Open Transfers and the Dashboard within seconds of Deluno starting, before it has read the download clients once | They say they are still reading the clients, never "no downloads" or an empty client list, and fill in when the first reading arrives (a screen waits at most 1.5 s for that first reading) | |
 | 1.7 | Reboot the rig | Deluno and the five clients come back by themselves, with no one signed in to Windows | |
 
 ## Phase 2: setup, as a user
