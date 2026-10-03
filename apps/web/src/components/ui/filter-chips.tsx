@@ -3,8 +3,12 @@ import { cn } from "../../lib/utils";
 export interface FilterChipOption<T extends string> {
   value: T;
   label: string;
-  /** Shown after the label; left off where the number is not known. */
-  count?: number;
+  /** Shown after the label; left off where the number is not known. A "3/4" reads as passed of all. */
+  count?: number | string;
+  /** A status colour, drawn as a dot before the label (the Dashboard's Health areas: red, amber, green). */
+  dot?: string;
+  /** Said on hover, where the chip is short for something longer. */
+  title?: string;
 }
 
 /**
@@ -47,6 +51,7 @@ export function FilterChips<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
+            title={option.title}
             aria-label={option.count !== undefined ? `${option.label} ${option.count}` : option.label}
             onClick={(event) => {
               onValueChange(option.value);
@@ -60,6 +65,7 @@ export function FilterChips<T extends string>({
               active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             )}
           >
+            {option.dot ? <span aria-hidden="true" className="mr-[5px] h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: option.dot }} /> : null}
             {option.label}
             {option.count !== undefined ? <span className={cn("ml-[5px] tabular-nums", active ? "opacity-80" : "text-muted-foreground/70")}>{option.count}</span> : null}
           </button>

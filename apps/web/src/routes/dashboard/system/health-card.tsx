@@ -114,7 +114,13 @@ export function HealthCard({ model, hasChecks, jump, now }: { model: HealthModel
           value={filter ?? ""}
           // Pressing the chosen area again goes back to the problems, as the ribbon always did.
           onValueChange={(key) => setFilter((current) => (current === key ? null : (key as HealthArea)))}
-          options={model.tallies.map((tally) => ({ value: tally.key, label: `${tally.name} ${tally.ok}/${tally.total}` }))}
+          options={model.tallies.map((tally) => ({
+            value: tally.key,
+            label: tally.name,
+            count: `${tally.ok}/${tally.total}`,
+            dot: TONE_VAR[tally.tone],
+            title: `${tally.name}: ${tally.ok} of ${tally.total} pass`
+          }))}
         />
       </div>
       <ul className="sy-checklist sy-scroll" ref={list}>
