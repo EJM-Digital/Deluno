@@ -110,12 +110,6 @@ if (Should 'preflight') {
     Step "$($facts.FreeGB) GB free on C:"
     if ($facts.FreeGB -lt 60) { Warn "Under 60 GB free. Downloads, refined output and the app want room." }
     if ($facts.AlreadyHere) { Warn "This machine already has some of the rig on it. Stages are idempotent, but check you meant this." }
-
-    # The fixtures live on the developer machine, so the rig has to reach it.
-    $fixtureHost = $rig.fixtures.host
-    $reachable = Rig { param($h, $p) (Test-NetConnection -ComputerName $h -Port $p -WarningAction SilentlyContinue).TcpTestSucceeded } @($fixtureHost, $rig.fixtures.torznabPort)
-    if ($reachable) { Step "can reach the torznab fixture on ${fixtureHost}:$($rig.fixtures.torznabPort)" }
-    else { Warn "cannot reach ${fixtureHost}:$($rig.fixtures.torznabPort) - start the fixture, or the acquisition phases have no indexer" }
 }
 
 # ------------------------------------------------------------------ stage

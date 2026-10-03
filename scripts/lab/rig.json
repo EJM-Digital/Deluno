@@ -57,17 +57,5 @@
     "qbittorrent": "http://192.168.1.51:8080",
     "weir": "http://192.168.1.51:8788",
     "sabnzbd": "http://192.168.1.51:8085"
-  },
-
-  "$fixtures": [
-    "The torznab indexer and the NNTP/NZB fixture run on the developer desktop,",
-    "not on the rig, because there is no Python on the rig. The rig has to be",
-    "able to reach this address."
-  ],
-  "fixtures": {
-    "host": "192.168.1.102",
-    "torznabPort": 9117,
-    "nntpPort": 1119,
-    "nzbPort": 1180
   }
 }
