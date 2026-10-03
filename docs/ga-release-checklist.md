@@ -50,6 +50,8 @@ without a signature.
   stays private ([#870](https://github.com/jampat000/Deluno/issues/870)), so
   this file, embedded into the build, is the only place an install can read
   what changed; the Updates card shows it for every version applied.
+  The early-days notice opens every section; the GitHub release body takes the
+  same wording from `.github/release-notice.md`, so change it there.
   `npm run ci:check` warns (does not fail) when the version currently in
   `Directory.Build.props` has no section yet — treat that warning as a real
   step for a release build, not one to wave through with the rest.
