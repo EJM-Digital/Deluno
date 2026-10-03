@@ -9,6 +9,48 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.29
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### A README and a licence for newcomers
+
+- The README is rewritten for someone trying Deluno for the first time: what
+  it does, how to install it on Windows or in Docker, a worked example of a
+  shared folder, and screenshots of the current screens.
+- Deluno is now free software under the GNU Affero General Public License
+  (AGPL-3.0), the same as Weir. The licence is in the LICENSE file. You can
+  use it, change it and share it; if you share a changed version, or run one
+  for other people over a network, you share your changes too.
+- There is a SECURITY.md that says how to report a security problem
+  privately through GitHub, rather than in a public issue.
+
+### Works with Weir release candidates
+
+- Deluno finds, installs and offers updates for a Weir that publishes release
+  candidates, and takes the newest release by its version order, so a newer
+  candidate is no longer passed over.
+
+### Faster checks
+
+- The checks that run behind every change are quicker, so fixes reach you
+  sooner.
+
+### A safer release process
+
+- Releases go through more checks before they are published, including one
+  that stops private details from leaking into files that anyone can read.
+  Every release now carries the early-days notice above.
+
 ## 1.0.0-rc.28
 
 Deluno is not code-signed, so Windows SmartScreen shows "Windows protected

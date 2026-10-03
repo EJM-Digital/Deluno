@@ -586,6 +586,31 @@ jobs:
             release-assets/RELEASES*
             release-assets/SHA256SUMS.txt
 
+      - name: Write the release body
+        run: |
+          {
+            echo "## Deluno ${{ steps.version.outputs.tag }}"
+            echo
+            # The same early-days notice goes into every release (.github/release-notice.md).
+            cat .github/release-notice.md
+            echo
+            cat <<'EOF'
+          ### Windows
+
+          Download and run the Velopack setup executable. Existing installs update in-place with delta packages.
+          If Setup is blocked in your environment, use the portable zip build and verify SHA256SUMS.txt.
+          If Microsoft Defender reports a false positive, submit the file URL for review: https://www.microsoft.com/en-us/wdsi/AppRepSubmission
+
+          EOF
+            echo "### Docker"
+            echo
+            echo "\`${{ steps.image.outputs.name }}:${{ steps.version.outputs.version }}\`"
+            echo
+            echo "### What's changed"
+            echo
+            echo "See [commit history](https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})."
+          } > release-body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -593,22 +618,7 @@ jobs:
           name: Deluno ${{ steps.version.outputs.tag }}
           draft: false
           prerelease: ${{ startsWith(steps.version.outputs.version, '0.') || contains(steps.version.outputs.tag, '-') }}
-          body: |
-            ## Deluno ${{ steps.version.outputs.tag }}
-
-            ### Windows
-
-            Download and run the Velopack setup executable. Existing installs update in-place with delta packages.
-            If Setup is blocked in your environment, use the portable zip build and verify SHA256SUMS.txt.
-            If Microsoft Defender reports a false positive, submit the file URL for review: https://www.microsoft.com/en-us/wdsi/AppRepSubmission
-
-            ### Docker
-
-            `${{ steps.image.outputs.name }}:${{ steps.version.outputs.version }}`
-
-            ### What's changed
-
-            See [commit history](https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.tag }}).
+          body_path: release-body.md
           files: |
             release-assets/*.exe
             release-assets/*.nupkg
