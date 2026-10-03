@@ -29,6 +29,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 - External integrations: `docs/external-integration-api.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
+- CI and release standard (shared with Weir): `docs/ci-standard.md`
 - GA release checklist and sign-off flow: `docs/ga-release-checklist.md`
 - Active execution plans: `docs/exec-plans/active/`
 
@@ -57,13 +58,38 @@ another), and says which step failed with the tail of its log.
 
 Changes land on `main` directly, and each push runs CI once (`ci.yml`). Every
 run costs Actions minutes, so batch the work: push once, after the local gates
-and, for anything the rig can show, the rig proof. The account is on GitHub
-Pro (James, 3 Oct 2026), so branch protection and rulesets are available on
-this private repository, but none is set up yet: until it is, nothing on GitHub
-guards `main`. Collaborators on a personal repository can only hold Write
-access, so any collaborator could push to `main` or push a `v*` tag, and a tag
-publishes a public container image and GitHub release. A local pre-push hook is
-available; enable it once with:
+and, for anything the rig can show, the rig proof. CI is path-filtered: a push
+that changes only documents runs only the repository checks, a web-only change
+skips the backend build, tests and image, and a backend change also runs the
+browser smoke tests. A manual run (`gh workflow run ci.yml`) runs everything.
+Its last job, `ci-passed`, is the one verdict: it is the single check branch
+protection will require (`docs/ci-standard.md` is the standard, shared with
+Weir). Run `node scripts/check-github-action-pins.mjs`, `node scripts/check-workflow-hygiene.mjs`
+and `node scripts/check-release-workflow-gates.mjs` after touching a workflow;
+`npm run ci:check` runs them too. Every action is pinned to a commit SHA with a
+release comment, every workflow has `permissions` and every job a timeout.
+
+## Releases
+
+- **A tag is made only after CI is green on that commit** (James, 3 Oct 2026).
+  The release's first job checks it (`scripts/verify-ci-for-release.mjs`) and
+  does not wait: tag while CI is still running and the release fails at once.
+  A green push run on a documents-only commit proves little, so tag a commit
+  whose own run ran the jobs, or run `ci.yml` by hand on it first.
+- **One workflow, `release.yml`, publishes.** It builds Windows and the Docker
+  image side by side, and only when both are built does a single `publish` job
+  push the image, create the GitHub Release and, last, move the moving image
+  tags. There is no separate Docker publish workflow (`docker.yml` is gone), so
+  the image can no longer go public for a release whose Windows build failed.
+- After tagging, confirm the Release run is green, the GitHub Release has its
+  assets and the image pulls by its version tag before saying it is released.
+- The account is on GitHub Pro (James, 3 Oct 2026), so branch protection and
+  rulesets are available on this private repository; require the `ci-passed`
+  check on `main` and restrict who can create a `v*` tag. Until that is set up,
+  nothing on GitHub guards `main`, and any collaborator (Write access is the
+  most a personal repository gives) could push to it or push a tag, which
+  publishes a public container image and GitHub release. A local pre-push hook is
+  available; enable it once with:
 
 ```powershell
 git config core.hooksPath .githooks

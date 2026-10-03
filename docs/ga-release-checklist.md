@@ -53,6 +53,8 @@ without a signature.
   `npm run ci:check` warns (does not fail) when the version currently in
   `Directory.Build.props` has no section yet — treat that warning as a real
   step for a release build, not one to wave through with the rest.
+- CI is green on the exact commit that will be tagged: `ci.yml` has a push (or manual) run for that commit whose `ci-passed` job passed. **Tag only after that.** The release workflow's first job (`ci-passed`, `scripts/verify-ci-for-release.mjs`) checks it and fails at once if not. If the commit's own push run only skipped jobs because the change was documents, run `ci.yml` by hand on the commit first (`gh workflow run ci.yml --ref <commit>`).
+- The single `release.yml` run succeeded end to end: `windows` and `docker` built, `publish` pushed the image, created the GitHub Release with its assets and `SHA256SUMS.txt`, and moved the moving image tags last. Open the run, the GitHub Release and `docker pull ghcr.io/jampat000/deluno:<version>` to see it; do not report a release done on the tag alone.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
   - `dotnet test Deluno.slnx --configuration Release`
@@ -68,6 +70,21 @@ without a signature.
   sat silent on `Deluno.Persistence.Tests` for nineteen minutes and was
   cancelled, and the same commit passed on a plain re-run. A cancelled gate is
   not a failed gate, and neither is evidence.
+
+## How a release is built
+
+`release.yml` runs on a `v*` tag and is the only workflow that publishes (the separate Docker workflow is gone). Its jobs:
+
+| Job | What it does |
+|---|---|
+| `ci-passed` | Fails unless `ci.yml` already passed on the tagged commit. Does not wait. |
+| `windows` | Packs the Velopack installer, portable zip and update packages, bundles pinned FFmpeg and UnRAR (SHA-256 checked), signs when a certificate exists, writes `SHA256SUMS.txt`. |
+| `docker` | Builds the amd64 image unpushed, scans it with Trivy (fails on a fixable CRITICAL) and starts it. |
+| `publish` | Needs the three above. Pushes the image with provenance and an SBOM, starts the pushed digest, creates the GitHub Release (prerelease and the `rc` channel for `0.x` and `-rc` tags), then moves `major.minor` and `latest`. |
+
+`ci-passed` in `ci.yml` is the one check branch protection requires. The standard is `docs/ci-standard.md`.
+
+Signed build-provenance attestations are off until the repository is public (set the repository variable `ATTEST_PROVENANCE` to `true` then); they are not available on a private repository outside GitHub Enterprise Cloud.
 
 ## RC1 Checklist
 

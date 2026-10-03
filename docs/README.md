@@ -25,6 +25,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
 - `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.
+- `ci-standard.md`: the CI and release standard shared with Weir: the `ci-passed` check, job names, path filters, pinning, permissions, timeouts, the one release workflow and Dependabot.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
 - `windows-rc-validation-matrix.md`: clean-machine install/upgrade/rollback execution matrix for RC validation.
 - `soak-plan.md`: production-like 14-day soak workload, daily checks, thresholds, and closure evidence.
