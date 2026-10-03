@@ -43,13 +43,15 @@ test("a stopped background job is listed on System and can be dismissed there; a
   await page.goto("/system");
 
   await expect(page.getByRole("button", { name: "Retry failed jobs" })).toBeEnabled();
-  await expect(page.getByText("Refresh all metadata")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Background jobs" }).getByText("Refresh all metadata")).toBeVisible();
   await expect(page.getByText("Search for Sintel")).toHaveCount(0);
 
   await page.getByText("Refresh all metadata").click();
   await expect(page.getByRole("dialog").getByText("The metadata source did not answer.")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Dismiss", exact: true }).click();
 
-  await expect(page.getByText("Refresh all metadata")).toHaveCount(0);
+  // Read inside the card: anything else on the page that names the job (the toast saying it was dismissed, or the
+  // shared CI backend's own metadata refresh) is not the row this test dismissed.
+  await expect(page.getByRole("region", { name: "Background jobs" }).getByText("Refresh all metadata")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Retry failed jobs" })).toHaveCount(0);
 });
