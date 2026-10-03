@@ -42,7 +42,10 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Validation
 
-Run the smallest relevant checks while working. Before every push, run the full gate:
+Run the smallest relevant checks while working. Before the first push of a batch, run the full gate. If one step then
+fails and the fix stays inside one area, re-run only the steps that fix can affect: `npm run test:web` for a web-only
+fix, a Release build plus the affected test projects for a backend-only fix. Run the whole gate again only when a fix
+crosses areas: backend and web, a migration, or a shared contract (James, 3 Oct 2026). The full gate is:
 
 ```powershell
 npm run gate
