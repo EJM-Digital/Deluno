@@ -195,6 +195,97 @@ public sealed class ActivityHistoryApiTests
         Assert.Equal(25, seen.Distinct().Count());
     }
 
+    // The Activity list's column sort (#1119): the server sorts before it pages, so the whole history is in order.
+    private static async Task SeedForSortAsync(ApplicationTestHost app)
+    {
+        var feed = app.Services.GetRequiredService<IActivityFeedRepository>();
+        var at = DateTimeOffset.Parse("2026-09-30T10:00:00+00:00");
+        string[] titles = ["Sintel", "moon", "Arrival", "Brazil", "sintel", null!, "Zodiac"];
+        string[] kinds = ["filesystem.import.completed", "movie.release.grabbed", "download.client.failed"];
+        await feed.RecordActivityBatchAsync(
+            Enumerable.Range(0, 31).Select(i =>
+            {
+                var title = titles[i % titles.Length];
+                return new Deluno.Jobs.Contracts.ActivityEventItem(
+                    $"id{i:D2}", kinds[i % kinds.Length], $"Step {(i * 7) % 10} for {title ?? "nothing"}.",
+                    title is null ? null : $$"""{"title":"{{title}}"}""", null, null, null,
+                    // Pairs share a minute, so the ties are real.
+                    at.AddMinutes(i / 2));
+            }).ToArray(),
+            CancellationToken.None);
+    }
+
+    private static async Task<List<JsonElement>> WalkAsync(ApplicationTestHost app, string query, int pageSize, int maxPages = 20)
+    {
+        var all = new List<JsonElement>();
+        string? token = null;
+        var pages = 0;
+        do
+        {
+            var response = await app.Client.GetAsync($"/api/activity?pageSize={pageSize}{query}" + (token is null ? string.Empty : "&pageToken=" + Uri.EscapeDataString(token)));
+            var root = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            all.AddRange(root.GetProperty("items").EnumerateArray().Select(item => item.Clone()));
+            token = root.TryGetProperty("nextPageToken", out var next) && next.ValueKind == JsonValueKind.String ? next.GetString() : null;
+            pages++;
+        }
+        while (token is not null && pages < maxPages);
+        Assert.True(pages >= 2, "The test needs at least two pages.");
+        return all;
+    }
+
+    private static string TitleOf(JsonElement item)
+        => item.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String ? title.GetString()! : item.GetProperty("label").GetString()!;
+
+    [Theory]
+    [InlineData("title", "asc")]
+    [InlineData("title", "desc")]
+    [InlineData("what", "asc")]
+    [InlineData("what", "desc")]
+    [InlineData("when", "asc")]
+    [InlineData("when", "desc")]
+    public async Task A_sort_orders_the_whole_history_across_pages_without_repeats_or_gaps(string sortBy, string sortDir)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await SeedForSortAsync(app);
+
+        var all = await WalkAsync(app, $"&sortBy={sortBy}&sortDir={sortDir}", pageSize: 8);
+
+        var ids = all.Select(item => item.GetProperty("id").GetString()!).ToArray();
+        Assert.Equal(31, ids.Length);
+        Assert.Equal(31, ids.Distinct().Count());
+
+        // Ties keep newest first (and, on a time sort, the id decides), so the whole order is known.
+        var everything = (await ListAsync(app)).ToArray();
+        var newestFirst = everything.OrderByDescending(item => item.GetProperty("createdUtc").GetDateTimeOffset()).ThenByDescending(item => item.GetProperty("id").GetString(), StringComparer.Ordinal).ToArray();
+        var desc = sortDir == "desc";
+        IEnumerable<JsonElement> expected = sortBy switch
+        {
+            "title" => desc
+                ? newestFirst.OrderByDescending(TitleOf, StringComparer.OrdinalIgnoreCase)
+                : newestFirst.OrderBy(TitleOf, StringComparer.OrdinalIgnoreCase),
+            "what" => desc
+                ? newestFirst.OrderByDescending(item => item.GetProperty("message").GetString(), StringComparer.OrdinalIgnoreCase)
+                : newestFirst.OrderBy(item => item.GetProperty("message").GetString(), StringComparer.OrdinalIgnoreCase),
+            _ => desc ? newestFirst : newestFirst.Reverse()
+        };
+        Assert.Equal(expected.Select(item => item.GetProperty("id").GetString()), ids);
+    }
+
+    [Fact]
+    public async Task With_no_sort_the_history_is_newest_first_as_before_and_a_sort_it_does_not_know_is_ignored()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await SeedForSortAsync(app);
+
+        var plain = (await WalkAsync(app, string.Empty, pageSize: 8)).Select(item => item.GetProperty("id").GetString()).ToArray();
+        Assert.Equal(Enumerable.Range(0, 31).Select(i => $"id{30 - i:D2}"), plain);
+
+        var unknown = (await WalkAsync(app, "&sortBy=nonsense&sortDir=asc", pageSize: 8)).Select(item => item.GetProperty("id").GetString()).ToArray();
+        Assert.Equal(plain, unknown);
+        var explicitDefault = (await WalkAsync(app, "&sortBy=when&sortDir=desc", pageSize: 8)).Select(item => item.GetProperty("id").GetString()).ToArray();
+        Assert.Equal(plain, explicitDefault);
+    }
+
     [Fact]
     public async Task The_filter_words_are_served_for_the_screen()
     {

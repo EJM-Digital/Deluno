@@ -190,8 +190,38 @@ export function resolveUntil(token: string, now: Date = new Date()): Date | null
   return day ? addLocalDays(day, 1) : null;
 }
 
-/** The query string `GET /api/activity` is asked, for these filters. */
-export function activityQueryString(filters: ActivityFilters, pageSize: number, pageToken?: string, now: Date = new Date()): string {
+/** Which column the Activity list is sorted by, and which way. The server sorts before it pages (#1119). */
+export interface ActivitySort {
+  id: "title" | "what" | "when";
+  direction: "asc" | "desc";
+}
+
+/** What the list is sorted by until a heading is chosen: when it happened, newest first. */
+export const ACTIVITY_DEFAULT_SORT: ActivitySort = { id: "when", direction: "desc" };
+
+/** The sort a remembered column sort means for Activity; anything it has no column for is the default. */
+export function activitySortFrom(sort: { id: string; direction: "asc" | "desc" } | null | undefined): ActivitySort {
+  return sort && (sort.id === "title" || sort.id === "what" || sort.id === "when") ? { id: sort.id, direction: sort.direction } : ACTIVITY_DEFAULT_SORT;
+}
+
+/**
+ * The rows built in the browser (open work, live steps) in the order the list is sorted. The history's own rows
+ * arrive already in order from the server and are not touched. Ties keep newest first, as the server does.
+ */
+export function sortActivityRows<T extends { title: string; detail?: string; whenUtc: string }>(rows: readonly T[], sort: ActivitySort): T[] {
+  const sign = sort.direction === "asc" ? 1 : -1;
+  const text = (row: T) => (sort.id === "title" ? row.title : row.detail ?? "").toLowerCase();
+  const time = (row: T) => new Date(row.whenUtc).getTime();
+  return [...rows].sort((a, b) => {
+    if (sort.id === "when") return sign * (time(a) - time(b));
+    const a1 = text(a);
+    const b1 = text(b);
+    return sign * (a1 < b1 ? -1 : a1 > b1 ? 1 : 0) || time(b) - time(a);
+  });
+}
+
+/** The query string GET /api/activity is asked, for these filters. Newest first is the server's own order, so it is not asked for. */
+export function activityQueryString(filters: ActivityFilters, pageSize: number, pageToken?: string, now: Date = new Date(), sort: ActivitySort = ACTIVITY_DEFAULT_SORT): string {
   const params = new URLSearchParams();
   params.set("pageSize", String(pageSize));
   if (filters.type) params.set("type", filters.type);
@@ -208,6 +238,10 @@ export function activityQueryString(filters: ActivityFilters, pageSize: number, 
   if (since) params.set("since", since.toISOString());
   const until = resolveUntil(filters.until, now);
   if (until) params.set("until", until.toISOString());
+  if (sort.id !== ACTIVITY_DEFAULT_SORT.id || sort.direction !== ACTIVITY_DEFAULT_SORT.direction) {
+    params.set("sortBy", sort.id);
+    params.set("sortDir", sort.direction);
+  }
   if (pageToken) params.set("pageToken", pageToken);
   return params.toString();
 }

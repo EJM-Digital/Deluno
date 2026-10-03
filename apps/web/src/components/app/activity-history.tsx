@@ -1,6 +1,6 @@
 /**
  * The Activity history's data and filters (#1100, #1114): everything that happens to a title, a release
- * or a file, newest first, filterable by title, file, kind of event, where it came from, how it went and when.
+ * or a file, newest first unless a heading sorts it, filterable by title, file, kind of event, where it came from, how it went and when.
  *
  * Every filter lives in the address (`/activity?type=turned-down&since=today&reason=language`), so a
  * filtered view is a link: Live's Turned down card, a title's page and a file's page all open it. The
@@ -14,6 +14,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { fetchJson, fetchPage, type ActivityEventItem, type ActivityFilterChoices } from "../../lib/api";
 import {
+  ACTIVITY_DEFAULT_SORT,
   ACTIVITY_SINCE_CHOICES,
   activityQueryString,
   emptyActivityFilters,
@@ -21,7 +22,8 @@ import {
   hasActivityFilters,
   isQuickSince,
   paramsFromFilters,
-  type ActivityFilters
+  type ActivityFilters,
+  type ActivitySort
 } from "../../lib/activity-history";
 import { isLiveStep, LIVE_STEPS } from "../../lib/activity-live-steps";
 import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-format";
@@ -67,7 +69,7 @@ export function useActivityFilterChoices() {
 }
 
 /** The filters in the address, how to change them, and the history they ask for (read only while `enabled`). */
-export function useActivityHistory({ enabled, onOpenEvent }: { enabled: boolean; onOpenEvent: (event: ActivityEventItem) => void }) {
+export function useActivityHistory({ enabled, onOpenEvent, sort = ACTIVITY_DEFAULT_SORT }: { enabled: boolean; onOpenEvent: (event: ActivityEventItem) => void; sort?: ActivitySort }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
 
@@ -76,8 +78,9 @@ export function useActivityHistory({ enabled, onOpenEvent }: { enabled: boolean;
   const clearFilters = () => setSearchParams((current) => paramsFromFilters(emptyActivityFilters, current), { replace: true });
 
   const history = useInfiniteQuery({
-    queryKey: ["activity-history", filters],
-    queryFn: ({ pageParam }) => fetchPage<ActivityEventItem>(`/api/activity?${activityQueryString(filters, PAGE_SIZE, pageParam)}`),
+    // The sort is part of the question, so choosing another starts again from the first page, sorted on the server (#1119).
+    queryKey: ["activity-history", filters, sort.id, sort.direction],
+    queryFn: ({ pageParam }) => fetchPage<ActivityEventItem>(`/api/activity?${activityQueryString(filters, PAGE_SIZE, pageParam, undefined, sort)}`),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => (page.hasMore ? page.nextPageToken ?? undefined : undefined),
     refetchInterval: 10_000,

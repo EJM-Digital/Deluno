@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVITY_DEFAULT_SORT,
   activityLink,
+  activitySortFrom,
+  sortActivityRows,
   activityLinkForStatus,
   activityStatusFromParams,
   paramsWithStatus,
@@ -122,6 +125,33 @@ describe("the Activity history's filters live in the address (#1100)", () => {
       pageToken: "token-1"
     });
     expect(activityQueryString(emptyActivityFilters, 25, undefined, NOW)).toBe("pageSize=25");
+  });
+});
+
+describe("Activity's sort (#1119)", () => {
+  it("asks the server for a sort only when it is not newest first", () => {
+    expect(activityQueryString(emptyActivityFilters, 25, undefined, NOW, ACTIVITY_DEFAULT_SORT)).toBe("pageSize=25");
+    expect(activityQueryString(emptyActivityFilters, 25, "t", NOW, { id: "what", direction: "desc" })).toBe("pageSize=25&sortBy=what&sortDir=desc&pageToken=t");
+    expect(activityQueryString(emptyActivityFilters, 25, undefined, NOW, { id: "when", direction: "asc" })).toBe("pageSize=25&sortBy=when&sortDir=asc");
+  });
+
+  it("falls back to newest first for a column it does not sort by", () => {
+    expect(activitySortFrom(null)).toEqual(ACTIVITY_DEFAULT_SORT);
+    expect(activitySortFrom({ id: "nope", direction: "asc" })).toEqual(ACTIVITY_DEFAULT_SORT);
+    expect(activitySortFrom({ id: "title", direction: "asc" })).toEqual({ id: "title", direction: "asc" });
+  });
+
+  it("sorts the rows built in the browser the way the server sorts the history", () => {
+    const rows = [
+      { title: "sintel", detail: "b", whenUtc: "2026-10-01T10:00:00Z" },
+      { title: "Arrival", detail: "A", whenUtc: "2026-10-01T11:00:00Z" },
+      { title: "Sintel", detail: "c", whenUtc: "2026-10-01T12:00:00Z" }
+    ];
+    expect(sortActivityRows(rows, { id: "title", direction: "asc" }).map((row) => row.detail)).toEqual(["A", "c", "b"]);
+    expect(sortActivityRows(rows, { id: "title", direction: "desc" }).map((row) => row.detail)).toEqual(["c", "b", "A"]);
+    expect(sortActivityRows(rows, { id: "what", direction: "asc" }).map((row) => row.detail)).toEqual(["A", "b", "c"]);
+    expect(sortActivityRows(rows, ACTIVITY_DEFAULT_SORT).map((row) => row.detail)).toEqual(["c", "A", "b"]);
+    expect(sortActivityRows(rows, { id: "when", direction: "asc" }).map((row) => row.detail)).toEqual(["b", "A", "c"]);
   });
 });
 

@@ -100,6 +100,8 @@ public static class JobsEndpointRouteBuilderExtensions
             string? since,
             string? until,
             string? reason,
+            string? sortBy,
+            string? sortDir,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -114,7 +116,8 @@ public static class JobsEndpointRouteBuilderExtensions
                 UntilUtc: ParseInstant(until),
                 ReasonGroup: Clean(reason),
                 RelatedEntityType: Clean(relatedEntityType),
-                RelatedEntityId: Clean(relatedEntityId));
+                RelatedEntityId: Clean(relatedEntityId),
+                Sort: ActivitySort.Parse(sortBy, sortDir));
             var page = await repository.ListActivityPageAsync(
                 new PageRequest(pageSize ?? 50, pageToken),
                 query,
