@@ -16,7 +16,6 @@
     "ci:check": "node scripts/run-powershell.mjs scripts/ci-check.ps1",
     "ga:regression": "node scripts/run-powershell.mjs scripts/run-ga-regression.ps1",
     "coverage:inventory": "node scripts/coverage-inventory.mjs",
-    "soak:snapshot": "node scripts/run-powershell.mjs scripts/collect-soak-snapshot.ps1",
     "validate:agents": "node scripts/run-powershell.mjs scripts/validate-agent-readiness.ps1",
     "gate": "node scripts/run-powershell.mjs scripts/gate.ps1"
   }
