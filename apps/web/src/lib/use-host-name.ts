@@ -11,7 +11,7 @@ export interface HostNameInfo {
 /** The same key and fetch System's "This installation" card reads, so the two share one cache entry. */
 export const SYSTEM_INFO_KEY = ["src", "system-info"] as const;
 
-/** The browser tab's title: "Deluno · WORKSTATION" once the name is known, plain "Deluno" before. */
+/** The browser tab's title: "Deluno · MY-PC" once the name is known, plain "Deluno" before. */
 export function hostTitle(hostName: string | null | undefined): string {
   const name = hostName?.trim();
   return name ? `Deluno · ${name}` : "Deluno";
