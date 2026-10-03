@@ -65,6 +65,8 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { eventLabel } from "../lib/activity-format";
+import { recoveryDecisions, type AlertAction } from "../lib/alert-actions";
+import { send } from "./dashboard/downloads-kit";
 import { ActivityFilterTokens, ActivityFilters, useActivityFilterChoices, useActivityHistory } from "../components/app/activity-history";
 import {
   activityLinkForFile,
@@ -179,6 +181,8 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
   const [openLive, setOpenLive] = useState<LiveStepEntry | null>(null);
   const [busy, setBusy] = useState(false);
+  const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
+  const [confirmingDecision, setConfirmingDecision] = useState<AlertAction | null>(null);
   const [confirmingLeftoverDelete, setConfirmingLeftoverDelete] = useState(false);
   const [deletingLeftovers, setDeletingLeftovers] = useState(false);
   const { preferences } = useDisplayPreferences();
@@ -437,6 +441,24 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       toast.error(error instanceof Error ? error.message : "Those leftover files could not be deleted.");
     } finally {
       setDeletingLeftovers(false);
+    }
+  }
+
+  /** Runs one decision on an import case through the same requests and words the bell uses, then asks the sources again. */
+  async function runDecision(action: AlertAction) {
+    const request = action.request;
+    if (!request) return;
+    setDecisionBusy(action.id);
+    try {
+      const result = await send(request.path, request.failure, { method: request.method, body: request.body });
+      toast.success(result?.message ?? request.done);
+      setConfirmingDecision(null);
+      setOpenImportCaseId(null);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : request.failure);
+    } finally {
+      setDecisionBusy(null);
     }
   }
 
@@ -718,6 +740,25 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               <p className="text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">{openImportCase.recommendedAction}</p>
             </DrawerSection>
 
+            <DrawerSection title="Decide">
+              <div className="flex flex-wrap gap-2">
+                {recoveryDecisions({ ...openImportCase, mediaType: openImportCase.mediaLabel === "Movie" ? "movie" : "series" }).map((action) => (
+                  <Button
+                    key={action.id}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    title={action.hint}
+                    aria-label={`${action.label}: ${openImportCase.title}`}
+                    disabled={decisionBusy !== null}
+                    onClick={() => (action.confirm ? setConfirmingDecision(action) : void runDecision(action))}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            </DrawerSection>
+
             {openImportCase.detailsJson ? (
               <DrawerSection title="Evidence">
                 <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
@@ -728,6 +769,19 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           </>
         ) : null}
       </Drawer>
+
+      <ConfirmDialog
+        open={confirmingDecision !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmingDecision(null);
+        }}
+        title={confirmingDecision?.confirm?.title ?? ""}
+        description={confirmingDecision?.confirm?.description ?? ""}
+        confirmLabel={confirmingDecision?.confirm?.confirmLabel ?? "Confirm"}
+        presentation="default"
+        busy={decisionBusy !== null}
+        onConfirm={() => confirmingDecision && void runDecision(confirmingDecision)}
+      />
 
       <ConfirmDialog
         open={confirmingLeftoverDelete}

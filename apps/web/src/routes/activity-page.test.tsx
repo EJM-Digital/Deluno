@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "../lib/api";
 
 const authedFetchMock = vi.fn();
@@ -416,6 +416,77 @@ describe("Import issues show the specific rejection reason (#798)", () => {
     expect(within(dialog).getByText("No video stream was detected in this file.")).toBeInTheDocument();
     expect(within(dialog).getByText(/Choose a valid video file/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Arrival\.mkv/)).toBeInTheDocument();
+  });
+});
+
+/** #1114: an import case is decided where it is seen, with the same buttons and words the bell offers. */
+describe("An import case is decided from its drawer (#1114)", () => {
+  const cases = loaderData.movieRecovery.recentCases;
+  const addCase = (id: string, title: string, failureKind: string) =>
+    cases.push({ ...cases[0], id, title, failureKind, detailsJson: JSON.stringify({ DispatchId: "d1" }) });
+  beforeEach(() => revalidateMock.mockReset());
+  afterEach(() => { cases.splice(1); });
+
+  const buttonsIn = (dialog: HTMLElement) => within(dialog).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
+
+  it("offers the buttons that fit the kind of failure", async () => {
+    addCase("vanished-1", "Sintel", "vanished-downloading");
+    addCase("fault-1", "Tangerine", "processedFileIsLess");
+    renderActivity("/activity?status=needs-decision");
+
+    await userEvent.click(screen.getByText("Sintel"));
+    let buttons = buttonsIn(screen.getByRole("dialog"));
+    expect(buttons).toEqual(expect.arrayContaining(["Search now: Sintel", "Stop wanting: Sintel", "Dismiss: Sintel"]));
+    expect(buttons).not.toContain("Import original: Sintel");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("Tangerine"));
+    buttons = buttonsIn(screen.getByRole("dialog"));
+    expect(buttons).toEqual(expect.arrayContaining(["Retry: Tangerine", "Import original: Tangerine", "Search again: Tangerine", "Dismiss: Tangerine"]));
+    expect(buttons).not.toContain("Stop wanting: Tangerine");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // A file that needs a person's choice (no video in it) can only be dismissed.
+    await userEvent.click(screen.getByText("Arrival"));
+    const plain = buttonsIn(screen.getByRole("dialog"));
+    expect(plain).toContain("Dismiss: Arrival");
+    expect(plain).not.toContain("Retry: Arrival");
+  });
+
+  it("retries through the shared route, says what happened and asks the sources again", async () => {
+    addCase("retry-1", "Sintel", "importFailed");
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/movies/import-recovery/retry-1/retry" ? jsonResponse({ message: "Sintel is being tried again." }) : answerActivityApi(path));
+    renderActivity("/activity?status=needs-decision");
+
+    await userEvent.click(screen.getByText("Sintel"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Retry: Sintel" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/retry-1/retry", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("asks before dismissing, and does nothing if it is cancelled", async () => {
+    addCase("dismiss-1", "Sintel", "importFailed");
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/movies/import-recovery/dismiss-1/dismiss" ? jsonResponse({}) : answerActivityApi(path));
+    renderActivity("/activity?status=needs-decision");
+
+    await userEvent.click(screen.getByText("Sintel"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss: Sintel" }));
+    const confirm = screen.getByRole("dialog", { name: "Dismiss Sintel?" });
+    expect(authedFetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/dismiss"), expect.anything());
+
+    await userEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(authedFetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/dismiss"), expect.anything());
+
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss: Sintel" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Dismiss Sintel?" })).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/dismiss-1/dismiss", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
   });
 });
 
