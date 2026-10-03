@@ -44,7 +44,7 @@ interface Slot {
   width: number;
 }
 
-const TOUCHED_PROPS = ["transform", "transition", "zIndex", "position", "boxShadow", "backgroundColor", "willChange", "cursor"] as const;
+const TOUCHED_PROPS = ["transform", "transition", "zIndex", "position", "boxShadow", "backgroundColor", "willChange", "cursor", "alignSelf", "display", "flexDirection", "alignItems", "justifyContent"] as const;
 
 function clearStyles(el: HTMLElement) {
   for (const prop of TOUCHED_PROPS) el.style[prop] = "";
@@ -181,10 +181,18 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
     dragged.header.style.zIndex = "5";
     dragged.header.style.position = "relative";
     dragged.header.style.cursor = "grabbing";
+    // The lifted column is a full-height band, not just the height of its text.
+    dragged.header.style.alignSelf = "stretch";
+    dragged.header.style.display = "flex";
+    dragged.header.style.alignItems = "center";
     dragged.header.style.boxShadow = "0 8px 22px -6px hsl(0 0% 0% / 0.45), 0 0 0 1px hsl(var(--primary) / 0.45)";
     dragged.header.style.backgroundColor = "color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--card)))";
     for (const cell of dragged.cells) {
       cell.style.position = "relative";
+      cell.style.alignSelf = "stretch";
+      cell.style.display = "flex";
+      cell.style.flexDirection = "column";
+      cell.style.justifyContent = "center";
       cell.style.zIndex = "4";
       cell.style.backgroundColor = "color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--card)))";
     }
