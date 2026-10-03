@@ -61,5 +61,8 @@ foreach ($run in $doomed) {
     }
     if (-not $deleted) { Write-Host "  Could not delete run $($run.Id) after retrying; it is left as it was." }
     $i++
+    # A second apart: a burst of writes trips GitHub's secondary limit, which refuses calls even while rate_limit
+    # still shows thousands left (3 Oct 2026).
+    Start-Sleep -Seconds 1
 }
 Write-Host "Done: $i runs processed."
