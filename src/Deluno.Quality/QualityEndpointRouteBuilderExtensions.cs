@@ -49,13 +49,6 @@ public static class QualityEndpointRouteBuilderExtensions
             // 1.5 MB provenance payload on every visit.
             return Results.Json(package with { SourceInventory = null }, ReleasePreferenceJson.Options);
         });
-        guideEndpoints.MapGet("/trash/source-inventory", async (
-            IGuidePackageStore store,
-            CancellationToken cancellationToken) =>
-        {
-            var source = (await store.GetCurrentAsync(cancellationToken)).Package.SourceInventory;
-            return source is null ? Results.NotFound() : Results.Json(source, ReleasePreferenceJson.Options);
-        });
         guideEndpoints.MapGet("/trash/inventory", async (
             IGuidePackageStore store,
             CancellationToken cancellationToken) => Results.Json(

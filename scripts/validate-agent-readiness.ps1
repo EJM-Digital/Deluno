@@ -180,7 +180,7 @@ if (Test-Path -LiteralPath $sharedMapPath -PathType Leaf) {
     # A spot-check that the map still carries the groups whose absence was
     # invisible from the outside: reads answered by the fallback, writes 405.
     foreach ($required in @(
-        "MapDelunoSecretsDiagnostics", "MapDelunoLibraries", "MapDelunoConnections",
+        "MapDelunoLibraries", "MapDelunoConnections",
         "MapDelunoQuality", "MapDelunoAutomationEndpoints")) {
         if (-not $sharedMap.Contains($required)) {
             Add-Failure "Host-wiring parity: shared endpoint map is missing required call '$required'."

@@ -27,13 +27,6 @@ const NOW = "2026-09-30T10:00:00Z";
 const check = (over: Record<string, unknown>) => ({ id: "c", category: "system", name: "A check", status: "ok", message: "It is fine.", cause: null, fix: null, detailsJson: null, lastRunUtc: NOW, problemSinceUtc: null, snoozedUntilUtc: null, ...over });
 
 function seedBusy() {
-  lists["/api/monitoring/machine"] = {
-    hours: 6,
-    samples: [0, 1, 2, 3].map((n) => ({
-      capturedUtc: `2026-09-30T09:5${n}:00Z`, cpuPercent: 5 + n, memoryBytes: 3.9e9, totalMemoryBytes: 32e9, memoryPercent: 12,
-      processReadBytesPerSecond: 1.5e6, processWriteBytesPerSecond: 0.5e6, diskBusyPercent: 10 + n, diskReadBytesPerSecond: 5e6, diskWriteBytesPerSecond: 1e6
-    }))
-  };
   lists["/api/monitoring/dashboard"] = { performance: { apiLatency: { requestCount: 120, errorCount: 2, errorRatePercent: 1.6, averageMs: 14.2, p95Ms: 61 } } };
   lists["/api/system/health/summary"] = { problemCount: 4, unsnoozedProblemCount: 3, unknownCount: 1, suggestionCount: 1, lastRunUtc: NOW };
   lists["/api/system/health"] = {

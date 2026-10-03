@@ -11,7 +11,7 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 567 | 351 | **216** |
+| API routes | 564 | 351 | **213** |
 | Web screens | 78 | 67 | **11** |
 
 ## API routes no test mentions
@@ -33,7 +33,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/backups/settings` |
 | GET | `/api/backups/{id}/download` |
 | GET | `/api/connections/checks` |
-| GET | `/api/diagnostics/secrets-backend` |
 | GET | `/api/download-clients/throughput` |
 | GET | `/api/download-health/content-blocklist/qbittorrent-sync-status` |
 | GET | `/api/download-health/ignore-list` |
@@ -44,7 +43,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/integrations/external/activity` |
 | GET | `/api/integrations/external/health` |
 | GET | `/api/integrations/external/queue` |
-| GET | `/api/integrations/external/snapshot` |
 | GET | `/api/integrations/processors/download-destinations` |
 | GET | `/api/intelligent-routing/anomalies` |
 | GET | `/api/intelligent-routing/snapshot` |
@@ -108,7 +106,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/v1/guides/trash/inventory` |
 | GET | `/api/v1/guides/trash/profiles/{profileId}/compile` |
 | GET | `/api/v1/guides/trash/rule-migration` |
-| GET | `/api/v1/guides/trash/source-inventory` |
 | GET | `/api/v1/guides/trash/update-check` |
 | GET | `/api/v1/guides/trash/versions` |
 | GET | `/api/v1/guides/trash/versions/{version:int}` |

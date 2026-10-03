@@ -30,8 +30,9 @@ loaded from the backend assembly; it is never fetched while deciding whether to
 acquire or replace a release.
 
 The normal package endpoint intentionally omits that 1.5 MB source payload so
-ordinary setup screens remain quick. `GET /api/v1/guides/trash/source-inventory`
-returns it on demand for audit, export, and package-review tooling.
+ordinary setup screens remain quick. The inventory stays in the backend assembly
+and in the stored package, for the update check and the rule-migration code; no
+route serves it.
 
 The package is deliberately a Deluno adaptation of TRaSH Guides, not a
 Recyclarr input or a verbatim Radarr/Sonarr export. Deluno uses the guide as
