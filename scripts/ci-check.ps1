@@ -235,6 +235,29 @@ if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTvdbSyntax.ExitCode -eq 0 -and $g
 }
 
 Write-Host ""
+Write-Host "Workflows"
+
+# The same checks CI's repo-checks job runs, so the two cannot drift. Every
+# action pinned to a commit SHA with a release comment, every workflow
+# least-privilege with a timeout on every job, the release publishing only from
+# its one publish job, and the CI verdict and release gate tests (#1124).
+$workflowChecks = @(
+    @{ Label = "every GitHub Action is pinned to a commit SHA"; Args = @("scripts/check-github-action-pins.mjs") },
+    @{ Label = "every workflow has least-privilege permissions and job timeouts"; Args = @("scripts/check-workflow-hygiene.mjs") },
+    @{ Label = "release workflow publishes only from its publish job, and ci-passed judges every CI job"; Args = @("scripts/check-release-workflow-gates.mjs") },
+    @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs") }
+)
+foreach ($check in $workflowChecks) {
+    $result = Invoke-LoggedCommand -FilePath $nodePath -Arguments $check.Args
+    if ($result.ExitCode -eq 0) {
+        Write-Ok $check.Label
+    } else {
+        if ($result.Output) { Write-Host $result.Output }
+        Write-Fail $check.Label
+    }
+}
+
+Write-Host ""
 Write-Host "Agent readiness"
 
 $agents = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/validate-agent-readiness.ps1")
