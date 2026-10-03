@@ -67,7 +67,9 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
   }, [open]);
 
   return (
-    <div ref={rootRef} className={cn("relative shrink-0", className)}>
+    // From md up only: on a phone the lists collapse to their first columns and there is nothing to rearrange, and the
+    // button pushed a card header past the screen's edge (settings-routes-fit-a-phone, /system at 390px).
+    <div ref={rootRef} className={cn("relative hidden shrink-0 md:block", className)}>
       <button
         type="button"
         ref={triggerRef}
