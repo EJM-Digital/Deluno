@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Profile-guided tiering instruments every method it compiles. A test run starts hundreds of short-lived hosts and never gets the payback, so it only adds time (#1121). -->
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>
