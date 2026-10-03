@@ -21,6 +21,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { ConnectionVersionBeside } from "../components/app/connection-version";
+import { ConnectionUpdatePanel } from "../components/app/connection-update-panel";
 import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -787,6 +788,17 @@ function ProcessingWorkflowPage() {
     openLibrary(library);
     navigate("/settings/processing", { replace: true });
   }, [drawer.kind, libraries, location.search, navigate]);
+  // A notice about a newer version opens that processor (#1118).
+  useEffect(() => {
+    if (drawer.kind !== "closed") return;
+    const id = new URLSearchParams(location.search).get("connection");
+    if (!id) return;
+    const connection = processorConnections.find((item) => item.id === id);
+    if (!connection) return;
+    openEditCallback(connection);
+    navigate("/settings/processing", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawer.kind, processorConnections, location.search, navigate]);
   function openEditCallback(connection: ProcessorConnectionItem) {
     const form: CallbackForm = {
       provider: connection.provider,
@@ -1162,6 +1174,7 @@ function ProcessingWorkflowPage() {
         {drawer.kind === "callback" ? (
           <>
             <SecretUnreadableNotice item={drawer.editId ? processorConnections.find((connection) => connection.id === drawer.editId) : null} />
+            {drawer.editId ? <ConnectionUpdatePanel kind="processor" id={drawer.editId} /> : null}
             <div className="rounded-[10px] border border-info/25 bg-info/[0.05] px-3 py-2.5">
               <p className="text-[length:var(--type-caption)] font-medium text-foreground">Two directions are involved</p>
               <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">

@@ -1,4 +1,5 @@
 import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
+import { ConnectionUpdatePanel } from "../../components/app/connection-update-panel";
 import { useEffect, useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -107,6 +108,7 @@ export function ClientDrawerBody({
   return (
     <>
       <SecretUnreadableNotice item={editing} />
+      {editing ? <ConnectionUpdatePanel kind="downloadClient" id={editing.id} /> : null}
       <DrawerSection title="Basics">
         <FieldRow>
           <Field label="Client" help={unusableProtocol ? "Deluno cannot send downloads to this kind of client. Pick the one you actually run." : editing ? undefined : preset?.setupHint}>

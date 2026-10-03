@@ -648,6 +648,17 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     openRouting(library);
     navigate("/indexers/library-routing", { replace: true });
   }, [drawer.kind, libraries, location.search, navigate, openRouting, section]);
+  // A notice about a newer version opens that download client (#1118).
+  useEffect(() => {
+    if (section !== "clients" || drawer.kind !== "closed") return;
+    const id = new URLSearchParams(location.search).get("connection");
+    if (!id) return;
+    const client = clients.find((item) => item.id === id);
+    if (!client) return;
+    openClient(client);
+    navigate("/indexers/download-clients", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, drawer.kind, clients, location.search, navigate]);
   function closeDrawer() {
     setDrawer({ kind: "closed" });
     setConfirmDiscard(false);

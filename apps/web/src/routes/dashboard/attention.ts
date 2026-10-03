@@ -46,6 +46,7 @@ import { sharedSources } from "../../lib/shared-sources";
 import { plural } from "./format";
 import { SYSTEM_BACKGROUND_JOBS_LINK, splitStoppedJobs } from "../../lib/background-jobs";
 import { activityLinkForStatus } from "../../lib/activity-history";
+import { connectionLink, connectionUpdatesSource, updateNoticeTitle, type ConnectionUpdate } from "../../lib/connection-updates";
 
 /** Two tabs (#1087): Live is what is moving, System is the plumbing. */
 export type DashboardTab = "live" | "system";
@@ -72,7 +73,9 @@ export const attentionSources = defineSources({
     key: ["src", "attention-no-release"],
     label: "Titles with no acceptable release",
     fetch: () => fetchJson<NoReleaseRow[]>("/api/attention/no-release")
-  }
+  },
+  // A newer version of a connected app, one notice per app and version (#1118).
+  connectionUpdates: connectionUpdatesSource
 });
 
 export interface AttentionLists {
@@ -87,6 +90,7 @@ export interface AttentionLists {
   orphans?: OrphanedDownloadItem[];
   healthSummary?: HealthCheckSummary | null;
   noRelease?: NoReleaseRow[];
+  connectionUpdates?: ConnectionUpdate[];
 }
 
 export interface SetupNeed {
@@ -138,6 +142,8 @@ export interface DashboardAttention {
   };
   /** Wanted titles whose newest search found nothing acceptable (#1098). */
   noRelease: NoReleaseRow[];
+  /** Connected apps with a newer stable version out that nobody has dismissed (#1118): one notice each. */
+  connectionUpdates: ConnectionUpdate[];
   /** A newer Deluno is ready to install (#1098). */
   updateReady: boolean;
   /** Jobs that gave up, not counting failed imports (those are on Downloads). */
@@ -463,6 +469,20 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     count: updateReady ? 1 : 0
   });
 
+  // A newer version of a connected app: one notice per app and version, until it is dismissed or a check sees it (#1118).
+  const connectionUpdates = (lists.connectionUpdates ?? []).filter((entry) => entry.notice);
+  for (const entry of connectionUpdates) {
+    add({
+      id: `connection-update:${entry.kind}:${entry.id}`,
+      tab: "system",
+      tone: "warn",
+      title: updateNoticeTitle(entry),
+      text: entry.message,
+      to: connectionLink(entry.kind, entry.id),
+      action: "Open"
+    });
+  }
+
   const counts: Record<DashboardTab, number> = { live: 0, system: 0 };
   for (const item of items) counts[item.tab] += item.count;
 
@@ -482,6 +502,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     titleJobsGaveUp,
     failingLanes,
     noRelease,
+    connectionUpdates,
     updateReady
   };
 }
