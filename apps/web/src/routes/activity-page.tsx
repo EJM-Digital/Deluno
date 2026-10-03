@@ -57,8 +57,10 @@ import {
   ListEmpty,
   ListNameCell,
   ListRow,
-  ListTable
+  ListTable,
+  type ListColumn
 } from "../components/ui/list-card";
+import { useListColumns } from "../lib/use-list-columns";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -69,12 +71,15 @@ import { recoveryDecisions, type AlertAction } from "../lib/alert-actions";
 import { send } from "./dashboard/downloads-kit";
 import { ActivityFilterTokens, ActivityFilters, useActivityFilterChoices, useActivityHistory } from "../components/app/activity-history";
 import {
+  ACTIVITY_DEFAULT_SORT,
   activityLinkForFile,
   activityLinkForTitle,
+  activitySortFrom,
   activityStatusFromParams,
   paramsWithStatus,
   resolveSince,
   resolveUntil,
+  sortActivityRows,
   type ActivityStatus
 } from "../lib/activity-history";
 import {
@@ -143,6 +148,13 @@ interface ActivityRow {
   selected: boolean;
 }
 
+/** The list pages a screenful at a time, so each heading sorts on the server: the whole history is in order, not only the rows on screen (#1119). */
+const ACTIVITY_COLUMNS: Array<ListColumn<ActivityRow>> = [
+  { id: "title", label: "Title", width: "minmax(0,1.2fr)", sort: "title" },
+  { id: "what", label: "What happened", width: "minmax(0,2fr)", mobile: true, sort: "what" },
+  { id: "when", label: "When", width: "120px", sort: "when" }
+];
+
 const STATUS_CHIPS: readonly { value: ActivityStatus; label: string }[] = [
   { value: "all", label: "All" },
   { value: "in-progress", label: "In progress" },
@@ -188,7 +200,11 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const { preferences } = useDisplayPreferences();
 
   const historyOn = status === "all" || status === "done";
-  const { filters, setFilters, clearFilters, history, events: historyEvents, folded: foldedActivity, filtered } = useActivityHistory({ enabled: historyOn, onOpenEvent: setOpenEvent });
+  // Newest first until a heading is chosen. The history is sorted by the server; the rows built here are sorted below.
+  const columnsList = useListColumns<ActivityRow>("activity", ACTIVITY_COLUMNS, undefined, { serverSort: true });
+  const sort = activitySortFrom(columnsList.sort);
+  const list = { ...columnsList, sort: columnsList.sort ?? ACTIVITY_DEFAULT_SORT };
+  const { filters, setFilters, clearFilters, history, events: historyEvents, folded: foldedActivity, filtered } = useActivityHistory({ enabled: historyOn, onOpenEvent: setOpenEvent, sort });
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();
@@ -384,7 +400,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     [foldedActivity, openEvent]
   );
 
-  const sortedOpen = (list: ActivityRow[]) => [...list].sort((a, b) => new Date(b.whenUtc).getTime() - new Date(a.whenUtc).getTime());
+  const sortedOpen = (rowsToSort: ActivityRow[]) => sortActivityRows(rowsToSort, sort);
   const rows: ActivityRow[] =
     liveStep ? sortedOpen(status === "all" ? liveRows : liveRows.filter((row) => row.status === status))
     : status === "all" ? [...sortedOpen(matchingOpen), ...historyRows]
@@ -540,14 +556,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           )
         ) : (
           <>
-            <ListTable
-              listId="activity"
-              columns={[
-                { label: "Title", width: "minmax(0,1.2fr)" },
-                { label: "What happened", width: "minmax(0,2fr)", mobile: true },
-                { label: "When", width: "120px" }
-              ]}
-            >
+            <ListTable list={list}>
               {rows.map((row) => (
                 <ListRow key={row.key} onClick={row.open} selected={row.selected}>
                   <ListNameCell name={row.title} sub={row.step} />

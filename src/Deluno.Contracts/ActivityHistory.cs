@@ -217,7 +217,8 @@ public sealed record ActivityQuery(
     DateTimeOffset? UntilUtc = null,
     string? ReasonGroup = null,
     string? RelatedEntityType = null,
-    string? RelatedEntityId = null)
+    string? RelatedEntityId = null,
+    ActivitySort? Sort = null)
 {
     /// <summary>
     /// Turned-down releases are written by the hundred, so the plain newest-first list leaves them out;
@@ -230,4 +231,27 @@ public sealed record ActivityQuery(
         || !string.IsNullOrWhiteSpace(ReasonGroup)
         || !string.IsNullOrWhiteSpace(SourceName)
         || !string.IsNullOrWhiteSpace(RelatedEntityId);
+}
+
+/// <summary>
+/// The column the Activity list is sorted by (#1119). The server sorts before it cuts the pages, so the order holds
+/// across "Show more", not just in the rows on screen. No sort means newest first.
+/// </summary>
+public sealed record ActivitySort(string Field, bool Descending)
+{
+    public const string Title = "title";
+    public const string What = "what";
+    public const string When = "when";
+
+    /// <summary>Reads the query-string form; a field the screen has no column for is ignored, so a stale link falls back to newest first.</summary>
+    public static ActivitySort? Parse(string? field, string? direction)
+    {
+        var normalised = field?.Trim().ToLowerInvariant();
+        if (normalised is not (Title or What or When))
+        {
+            return null;
+        }
+
+        return new ActivitySort(normalised, string.Equals(direction?.Trim(), "desc", StringComparison.OrdinalIgnoreCase));
+    }
 }

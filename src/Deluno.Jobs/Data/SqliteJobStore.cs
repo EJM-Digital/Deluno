@@ -3353,12 +3353,30 @@ public sealed class SqliteJobStore(
         CancellationToken cancellationToken)
     {
         var pageSize = request.BoundedPageSize;
-        var token = DelunoPageToken.Decode(request.PageToken, 2);
+        // The default (newest first) keeps its two-part token; a sort by title or by what happened carries the sort key too (#1119).
+        var sort = query.Sort;
+        var keyed = sort is not null && sort.Field != ActivitySort.When;
+        var descending = sort?.Descending ?? true;
+        var token = DelunoPageToken.Decode(request.PageToken, keyed ? 3 : 2);
         var events = new List<ActivityEventItem>(pageSize + 1);
+        var sortKeys = new List<string>(pageSize + 1);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
+
+        // The Title column shows the event's title or, failing that, its kind in plain words; sorting by it needs the same words.
+        if (sort?.Field == ActivitySort.Title && connection is SqliteConnection sqlite)
+        {
+            sqlite.CreateFunction("deluno_event_label", (string? category) => ActivityEventLabels.For(category), isDeterministic: true);
+        }
+
+        var sortKey = sort?.Field switch
+        {
+            ActivitySort.Title => "COALESCE(NULLIF(title, ''), deluno_event_label(category))",
+            ActivitySort.What => "message",
+            _ => null
+        };
 
         // Only the conditions that apply are written, so SQLite can seek the
         // (related_entity_type, created_utc) or (category, created_utc) index instead of scanning (#1081, #1100).
@@ -3445,7 +3463,25 @@ public sealed class SqliteJobStore(
             parameters.Add(("@untilUtc", until.ToUniversalTime().ToString("O")));
         }
 
-        if (token is not null) conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))");
+        if (token is not null)
+        {
+            if (keyed)
+            {
+                var keyOp = descending ? "<" : ">";
+                conditions.Add($"(({sortKey}) COLLATE NOCASE {keyOp} @sortKey OR (({sortKey}) COLLATE NOCASE = @sortKey AND (created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))))");
+            }
+            else
+            {
+                var op = descending ? "<" : ">";
+                conditions.Add($"(created_utc {op} @createdUtc OR (created_utc = @createdUtc AND id {op} @id))");
+            }
+        }
+
+        var direction = descending ? "DESC" : "ASC";
+        // Ties on a title or on what happened keep newest first, so the order is the same on every page.
+        var orderBy = keyed
+            ? $"ORDER BY ({sortKey}) COLLATE NOCASE {direction}, created_utc DESC, id DESC"
+            : $"ORDER BY created_utc {direction}, id {direction}";
         var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
 
         using var command = connection.CreateCommand();
@@ -3453,10 +3489,10 @@ public sealed class SqliteJobStore(
             $"""
             SELECT
                 id, category, message, CASE WHEN octet_length(details_json) <= 65536 THEN details_json END, related_job_id, related_entity_type, related_entity_id, created_utc,
-                title, file_path, source_name, reason_group
+                title, file_path, source_name, reason_group{(keyed ? $", {sortKey}" : string.Empty)}
             FROM activity_events
             {where}
-            ORDER BY created_utc DESC, id DESC
+            {orderBy}
             LIMIT @take;
             """;
 
@@ -3468,14 +3504,17 @@ public sealed class SqliteJobStore(
 
         if (token is not null)
         {
-            AddParameter(command, "@createdUtc", token[0]);
-            AddParameter(command, "@id", token[1]);
+            var at = keyed ? 1 : 0;
+            if (keyed) AddParameter(command, "@sortKey", token[0] ?? string.Empty);
+            AddParameter(command, "@createdUtc", token[at]);
+            AddParameter(command, "@id", token[at + 1]);
         }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             events.Add(ReadActivity(reader));
+            if (keyed) sortKeys.Add(reader.IsDBNull(12) ? string.Empty : reader.GetString(12));
         }
 
         var hasMore = events.Count > pageSize;
@@ -3485,7 +3524,9 @@ public sealed class SqliteJobStore(
         }
 
         var nextPageToken = hasMore
-            ? DelunoPageToken.Encode(events[^1].CreatedUtc.ToString("O"), events[^1].Id)
+            ? keyed
+                ? DelunoPageToken.Encode(sortKeys[events.Count - 1], events[^1].CreatedUtc.ToString("O"), events[^1].Id)
+                : DelunoPageToken.Encode(events[^1].CreatedUtc.ToString("O"), events[^1].Id)
             : null;
         return Page<ActivityEventItem>.Of(events, nextPageToken);
     }
