@@ -8,6 +8,10 @@ import { ColorModeProvider } from "./lib/use-color-mode";
 import { router } from "./router";
 import { installStaleBuildRecovery } from "./lib/stale-build";
 import { installHiddenPageMotionGuard } from "./lib/page-motion";
+// The two font files come in here, not through index.css: Tailwind 4 reads a stylesheet's @import itself and leaves the
+// fonts' url() paths unrewritten, so the files were never found.
+import "@fontsource-variable/inter/index.css";
+import "@fontsource-variable/jetbrains-mono/index.css";
 import "./index.css";
 
 // A screen that fails because the tab predates an update is the page being
