@@ -40,7 +40,7 @@ RUN dotnet publish src/Deluno.Host/Deluno.Host.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl ffmpeg \
+    && apt-get install --yes --no-install-recommends ca-certificates curl ffmpeg tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

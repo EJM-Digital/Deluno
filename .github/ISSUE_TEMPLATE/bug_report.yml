@@ -1,0 +1,50 @@
+name: Something is not working
+description: Tell us what went wrong so we can fix it.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us. A few plain answers below are all we need. If it is a security problem, please do not use this form; see the security link on the previous page.
+  - type: input
+    id: version
+    attributes:
+      label: Deluno version
+      description: System on the Dashboard shows it, for example 1.0.0-rc.28.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run Deluno?
+      options:
+        - Windows (the installed app)
+        - Docker
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: did
+    attributes:
+      label: What did you do?
+      description: The steps, in order, as best you remember them.
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or a screenshot
+      description: Paste the lines from System, then Log, around the time it went wrong. Please remove anything private first, such as addresses, API keys, passwords, usernames and folder names.
+      render: text
