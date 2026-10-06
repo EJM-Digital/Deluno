@@ -12,6 +12,7 @@
   ],
   "ignoreDependencies": [
     "@fontsource-variable/inter",
+    "tailwindcss",
     "@fontsource-variable/jetbrains-mono",
     "eslint",
     "ts-node",
