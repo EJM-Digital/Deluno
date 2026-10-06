@@ -1,4 +1,7 @@
+using Deluno.Filesystem;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -15,7 +18,11 @@ public sealed class ManualImportExecuteBatchApiTests
     [Fact]
     public async Task Executing_a_batch_imports_the_good_rows_and_reports_the_bad_one()
     {
-        await using var app = await ApplicationTestHost.StartAsync();
+        // The files written below are a few bytes, not real video. With ffprobe on the machine (it is on the PATH of
+        // the workstation, and the publish bundles one) the real probe rightly calls them corrupt and refuses the
+        // import, so the result depended on what was installed. This test is about the batch, not the probe.
+        await using var app = await ApplicationTestHost.StartAsync(
+            replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
 
         var downloadsPath = Path.Combine(app.DataRoot, "downloads");
         var movieRootPath = Path.Combine(app.DataRoot, "movies");
@@ -121,5 +128,21 @@ public sealed class ManualImportExecuteBatchApiTests
         // The row that succeeded actually landed in the library; the one that
         // failed left nothing behind for Deluno to have silently misplaced.
         Assert.True(Directory.Exists(Path.Combine(movieRootPath, "Arrival (2016)")));
+    }
+
+    /// <summary>Every file reads as a two-hour 1080p H.264 film, the way a real download would.</summary>
+    private sealed class ReadableVideoProbe : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(new MediaProbeInfo(
+                Status: "succeeded",
+                Tool: "test",
+                Message: null,
+                DurationSeconds: 7200,
+                Container: "matroska",
+                Bitrate: 12_000_000,
+                VideoStreams: [new MediaVideoStreamInfo(0, "h264", "High", 1920, 1080, "yuv420p", 23.976, 10_000_000, "eng")],
+                AudioStreams: [],
+                SubtitleStreams: []));
     }
 }
