@@ -91,7 +91,9 @@ public sealed record BundledComponentSpec(
     /// <summary>The publisher name the installer's signing certificate must carry (a piece of its subject) when it is verified by signature rather than a pinned checksum.</summary>
     [property: JsonPropertyName("expectedPublisher")] string? ExpectedPublisher = null,
     /// <summary>Whether the installer is run with administrator rights, which means it is run from a fresh folder only administrators can write, checked on the exact copy that runs (#1061). False only for an installer that installs for the signed-in person alone (Weir's Setup): Deluno does not raise it, so there is nothing to protect by raising it.</summary>
-    [property: JsonPropertyName("runsElevated")] bool RunsElevated = true)
+    [property: JsonPropertyName("runsElevated")] bool RunsElevated = true,
+    /// <summary>Whether the newest GitHub release may be a pre-release (a release candidate). True only for Weir, which is published as release candidates and is its own product (#1123); every other component takes the vendor's latest stable release.</summary>
+    [property: JsonPropertyName("includePreReleases")] bool IncludePreReleases = false)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]

@@ -147,4 +147,62 @@ public sealed class DirectoryListingLatestReleaseTests
 
         Assert.Null(picked);
     }
+
+    // #1123: pre-releases are for Weir only. A component without the flag keeps GitHub's own "latest release".
+    private sealed class FakeGitHub(string stable, string all) : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request.RequestUri!.PathAndQuery);
+            var body = request.RequestUri.AbsolutePath.EndsWith("/releases/latest", StringComparison.Ordinal) ? stable : all;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) });
+        }
+    }
+
+    private const string Stable = """{"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"}]}""";
+    private const string StableAndNewerPreRelease = """
+        [{"tag_name":"v22.0-testing","prerelease":true,"assets":[{"name":"nzbget-22.0-bin-windows-setup.exe","browser_download_url":"https://x.test/22.0/nzbget-22.0-bin-windows-setup.exe"}]},
+         {"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"}]}]
+        """;
+
+    [Fact]
+    public async Task A_component_without_the_flag_takes_the_latest_stable_release_even_when_a_newer_pre_release_exists()
+    {
+        var nzbget = BundledComponents.Load().Single(s => s.Kind == "nzbget");
+        Assert.False(nzbget.IncludePreReleases);
+        var github = new FakeGitHub(Stable, StableAndNewerPreRelease);
+
+        var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github);
+
+        Assert.Equal("https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe", resolved!.AssetUrl);
+        Assert.Single(github.Requests);
+        Assert.EndsWith("/releases/latest", github.Requests[0]);
+    }
+
+    [Fact]
+    public async Task Weir_takes_the_newest_release_including_a_pre_release()
+    {
+        var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
+        Assert.True(weir.IncludePreReleases);
+        var github = new FakeGitHub(
+            """{"tag_name":"v2.0.0","assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"}]}""",
+            """
+            [{"tag_name":"v2.1.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.1.0-rc.1/Weir-win-Setup.exe"}]},
+             {"tag_name":"v2.0.0","prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"}]}]
+            """);
+
+        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, github);
+
+        Assert.Equal("https://x.test/2.1.0-rc.1/Weir-win-Setup.exe", resolved!.AssetUrl);
+    }
+
+    [Fact]
+    public void Only_Weir_includes_pre_releases_in_the_shipped_manifest()
+    {
+        var flagged = BundledComponents.Load().Where(s => s.IncludePreReleases).Select(s => s.Kind).ToArray();
+
+        Assert.Equal(["weir"], flagged);
+    }
 }

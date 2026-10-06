@@ -21,7 +21,7 @@ public sealed record ResolvedGithubAsset(string AssetUrl, string? Sha256);
 /// </summary>
 public static class GithubLatestRelease
 {
-    public static async Task<ResolvedGithubAsset?> ResolveAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    public static async Task<ResolvedGithubAsset?> ResolveAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null)
     {
         var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
         if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
@@ -31,15 +31,27 @@ public static class GithubLatestRelease
 
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+            http.Timeout = TimeSpan.FromSeconds(30);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
-            // The newest release by version order, release candidates included and
-            // drafts never (#1123): /releases/latest would skip Weir's pre-releases.
-            var releasesJson = await http.GetStringAsync(
-                $"https://api.github.com/repos/{spec.GithubRepo}/releases?per_page=100", cancellationToken);
-            var release = PickRelease(releasesJson);
+            // Weir alone may be a pre-release (#1123): it is published as release candidates, so its newest
+            // release by version order is taken, drafts never. Every other component keeps GitHub's own
+            // "latest release", which is the newest stable one and never a pre-release.
+            GithubRelease? release;
+            if (spec.IncludePreReleases)
+            {
+                var releasesJson = await http.GetStringAsync(
+                    $"https://api.github.com/repos/{spec.GithubRepo}/releases?per_page=100", cancellationToken);
+                release = PickRelease(releasesJson);
+            }
+            else
+            {
+                var latestJson = await http.GetStringAsync(
+                    $"https://api.github.com/repos/{spec.GithubRepo}/releases/latest", cancellationToken);
+                release = System.Text.Json.JsonSerializer.Deserialize<GithubRelease>(latestJson);
+            }
             if (release?.Assets is null)
             {
                 return null;
