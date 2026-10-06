@@ -185,6 +185,7 @@
     "mustBeSigned": false,
     "silentArgs": "--silent",
     "runsElevated": false,
+    "includePreReleases": true,
     "defaultPort": 9347,
     "uninstallDisplayNameHint": "Weir",
     "postInstallCommand": "%LocalAppData%\\Weir\\current\\Weir.exe",
