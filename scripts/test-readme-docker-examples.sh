@@ -73,7 +73,11 @@ cleanup() {
   fi
   docker compose -f "$compose_file" -p readme-proof down -v --remove-orphans >/dev/null 2>&1 || true
   docker rm --force deluno >/dev/null 2>&1 || true
-  rm -rf "$work"
+  # The containers wrote their config folders as their own users, which the runner cannot delete, so the folders
+  # are emptied from inside a throwaway container (as root) first. A tidy-up that fails must never fail a proof
+  # that passed.
+  docker run --rm --user 0 -v "$work:/work" --entrypoint sh "$image" -c 'rm -rf /work/* /work/.[!.]*; true' >/dev/null 2>&1 || true
+  rm -rf "$work" 2>/dev/null || true
   trap - EXIT
   exit "$result"
 }
