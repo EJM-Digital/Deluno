@@ -18,6 +18,7 @@
     "ga:regression": "node scripts/run-powershell.mjs scripts/run-ga-regression.ps1",
     "coverage:inventory": "node scripts/coverage-inventory.mjs",
     "validate:agents": "node scripts/run-powershell.mjs scripts/validate-agent-readiness.ps1",
-    "gate": "node scripts/run-powershell.mjs scripts/gate.ps1"
+    "gate": "node scripts/run-powershell.mjs scripts/gate.ps1",
+    "build:icon": "node scripts/build-windows-icon.mjs"
   }
 }

@@ -348,6 +348,16 @@ if ($trackedFiles.ExitCode -eq 0) {
     Write-Fail "No databases, keys, Python scripts or .env files tracked"
 }
 
+# The Windows icon (installer, tray, taskbar, Start menu) is built from the brand logo; it may never fall behind it
+# again (#1129: the installer kept the old logo for five months after the brand changed).
+$windowsIcon = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("scripts/check-windows-icon.mjs")
+if ($windowsIcon.ExitCode -eq 0) {
+    Write-Ok "The Windows icon is built from the current logo"
+} else {
+    if ($windowsIcon.Output) { Write-Host $windowsIcon.Output }
+    Write-Fail "The Windows icon is built from the current logo"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"

@@ -160,6 +160,13 @@ jobs:
         shell: pwsh
         run: ./scripts/check-public-exposure.ps1
 
+      - name: No databases, keys, Python or .env files are tracked
+        shell: pwsh
+        run: ./scripts/check-tracked-files.ps1
+
+      - name: The Windows icon is built from the current logo
+        run: node scripts/check-windows-icon.mjs
+
   backend:
     name: Backend build and tests
     needs: changes
