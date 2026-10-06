@@ -13,7 +13,7 @@ export async function serveLiveBusy(page: Page) {
   const now = Date.now();
   const at = (ms: number) => new Date(now + ms).toISOString();
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-  const host = " on WIN-7K3";
+  const host = " on MEDIA-SERVER";
   const count = { total: 184, monitored: 180, unmonitored: 4, missing: 12, upgradable: 9, qualityMet: 130, upcoming: 3, downloading: 4, airing: 0, fileBytes: 1e12 };
   const clients = [
     { id: "c1", name: `Deluge${host}`, protocol: "torrent", reachable: true, paused: false, version: "2.1", warnings: 0, freeSpaceBytes: 2e12, healthStatus: "healthy", active: 3, queued: 2 },
