@@ -95,6 +95,25 @@ function dress(item: Record<string, unknown>) {
   };
 }
 
+const PRIVATE = /10\.1\.1\.|C:\Users\|WORKSTATION|WIN-|nas/i;
+
+/** Every string a person could read in the picture: the text, the title, aria labels, tooltips, placeholders and field values. */
+async function assertNothingPrivate(page: Page, name: string) {
+  const seen = await page.evaluate(() => {
+    const out: string[] = [document.title, document.body.innerText];
+    for (const el of Array.from(document.querySelectorAll("*"))) {
+      for (const attribute of ["aria-label", "title", "placeholder", "alt", "aria-description", "href"]) {
+        const value = el.getAttribute(attribute);
+        if (value) out.push(value);
+      }
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) out.push(el.value);
+    }
+    return out;
+  });
+  const found = seen.filter((text) => PRIVATE.test(text)).map((text) => text.slice(0, 120));
+  if (found.length > 0) throw new Error(`${name}: private details would show in the screenshot: ${JSON.stringify(found)}`);
+}
+
 test.describe("README screenshots", () => {
   test.skip(!process.env.README_SCREENSHOTS, "Only run to retake the README screenshots.");
 
@@ -141,6 +160,33 @@ test.describe("README screenshots", () => {
       const body = await response.json();
       await route.fulfill({ response, json: { ...body, hostName: "MEDIA-SERVER", hostLooksLikeContainerId: false } });
     });
+    // The machine's readings: an ordinary home server, not this workstation. The pushed reading is switched off
+    // (the live connection passes everything else on) so the page keeps asking for this one.
+    await page.routeWebSocket(/\/hubs\//, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((message) => server.send(message));
+      server.onMessage((message) => {
+        if (typeof message === "string" && message.includes("SystemOverviewChanged")) return;
+        ws.send(message);
+      });
+    });
+    await page.route(/\/api\/system\/overview/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      const wave = (base: number, swing: number, seed: number) => Array.from({ length: 60 }, (_, n) => Math.max(0, Math.round((base + swing * Math.sin((n + seed) / 5) + ((n * 7 + seed) % 5)) * 10) / 10));
+      const GB = 1024 ** 3;
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          instance: { ...body.instance, address: "http://192.168.1.20:5099", cpuPercent: 4, memoryBytes: 231 * 1024 * 1024, startedUtc: new Date(Date.now() - 55 * 60_000).toISOString() },
+          machine: { os: "Windows 11 Pro (10.0.22631)", uptimeSeconds: 3 * 86_400 + 4 * 3_600, rebootPending: null, cpuTemperatureC: null, cpuPercent: 14, cores: 8, memoryUsedBytes: 9.6 * GB, memoryTotalBytes: 32 * GB, diskReadBytesPerSec: 2.0e6, diskWriteBytesPerSec: 6.5e6, diskIops: 140 },
+          network: { adapter: "Ethernet", linkMbps: 1000, ip: "192.168.1.20", inBytesPerSec: 3.1e6, outBytesPerSec: 0.4e6, internet: true, dnsLookupMs: 8, nasMs: null, nasName: null, metadataMs: 50, clockInSync: true },
+          drives: [{ name: "Deluno data", path: "D:\\Deluno\\data", totalBytes: 2 * 1024 * GB, freeBytes: 1.4 * 1024 * GB, delunoBytes: 11 * GB, fullInDays: null, readBytesPerSec: 2.0e6, writeBytesPerSec: 6.5e6, iops: 140, busyPercent: 6, health: "good", healthNote: null }],
+          history: { cpu: wave(12, 6, 0), memory: wave(28, 2, 3), disk: wave(8, 5, 7), netIn: wave(3, 2, 11) }
+        }
+      });
+    });
     await page.addInitScript(() => {
       try {
         const raw = localStorage.getItem("deluno-auth-user");
@@ -166,6 +212,7 @@ test.describe("README screenshots", () => {
       await page.goto(url);
       await page.getByText(ready).first().waitFor({ timeout: 20_000 });
       await page.waitForTimeout(1800);
+      await assertNothingPrivate(page, name);
       await page.screenshot({ path: path.join(outDir, `${name}.png`) });
     };
 
