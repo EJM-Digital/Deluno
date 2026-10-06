@@ -81,6 +81,14 @@ public sealed class MigrationRunnerTests
         Assert.Equal(1, await ReadScalarAsync<int>(connection, "SELECT apply_count FROM migration_probe WHERE id = 1;"));
     }
 
+    // V0028's SQL must stay exactly as every older build in the rewritten history ran it: the history rewrite of
+    // 3 Oct 2026 turned its comment's old product name into "Weir", so an install built from any earlier commit
+    // recorded this checksum. Rewording the comment again stopped the upgrade proof's baseline from starting
+    // ("migration 28 was already applied with a different definition"). Change V0028 and every such install breaks.
+    [Fact]
+    public void V0028_keeps_the_checksum_that_every_build_in_the_rewritten_history_recorded()
+        => Assert.Equal("bdbac113beb8d7b1d0ab0762f4e2883ede450165d9b1fb214cbfe7d633d70bc5", new V0028SubtitleProviders().Checksum);
+
     [Theory]
     [InlineData(typeof(V0028SubtitleProviders), "885748222ee60ca53149604c38b3b3bcd5bcda347b3ad7b11c33ba089b8a7f00")]
     [InlineData(typeof(V0065CompanionToolWeir), "715f8f482a35a1c1068207cd1e5395af42c5eb583d13fc9028b37e02180ac118")]

@@ -60,7 +60,7 @@ public sealed class V0028SubtitleProviders : SqliteSqlMigration
 
         -- One row per provider. Configuring the same source twice would give it
         -- two sets of credentials, two health states and two places to disable
-        -- it — and another tool's registry shipped OpenSubtitles as two entries
+        -- it — and Weir's registry shipped OpenSubtitles as two entries
         -- backed by one handler, which is what that looks like when nothing
         -- stops it.
         CREATE UNIQUE INDEX IF NOT EXISTS ix_subtitle_providers_key
