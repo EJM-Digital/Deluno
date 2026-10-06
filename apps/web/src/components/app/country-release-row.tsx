@@ -24,9 +24,9 @@ export function CountryReleaseRow({ facts, preferences, highlighted }: CountryRe
 
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-1.5", highlighted && "bg-primary/10")}>
-      <span className="min-w-[3rem] font-mono text-xs font-semibold uppercase text-foreground">{facts.country}</span>
+      <span className="min-w-12 font-mono text-xs font-semibold uppercase text-foreground">{facts.country}</span>
       {facts.certification ? (
-        <span className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide">{facts.certification}</span>
+        <span className="rounded-sm border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide">{facts.certification}</span>
       ) : null}
       {dates.length ? (
         <span className="text-xs text-muted-foreground">{dates.join(" · ")}</span>

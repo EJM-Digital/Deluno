@@ -99,7 +99,7 @@ export function CompanionToolsPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={TABS}
         actions={
@@ -111,9 +111,9 @@ export function CompanionToolsPage() {
 
       <ListCard title={`${data.tools.filter((tool) => tool.state === "connected").length} of ${data.tools.length} connected`} titleCase={false}>
         {!data.availability.available ? (
-          <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-warning">{data.availability.reason}</p>
+          <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-warning">{data.availability.reason}</p>
         ) : message ? (
-          <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-destructive" role="alert">{message}</p>
+          <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-destructive" role="alert">{message}</p>
         ) : null}
         {data.tools.length === 0 ? (
           <ListEmpty title="No companion tools" description="This build offers none." />
@@ -154,7 +154,7 @@ export function CompanionToolsPage() {
             })}
           </ListTable>
         )}
-        <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-muted-foreground">{data.uninstallNote}</p>
+        <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-muted-foreground">{data.uninstallNote}</p>
       </ListCard>
 
       <Drawer
@@ -172,14 +172,14 @@ export function CompanionToolsPage() {
         {open ? (
           <>
             <DrawerSection title="Status" aside={stateChip(open).label}>
-              <p className="text-[length:var(--type-body-sm)] text-foreground">
+              <p className="text-(length:--type-body-sm) text-foreground">
                 {open.job?.message ?? (open.state === "connected" ? `Connected to Deluno as “${open.connectionName}”.` : open.state === "installed" ? "Installed on this computer but not connected to Deluno yet. Tick it and set it up to connect it." : "Not installed. Tick it and set it up.")}
               </p>
               {open.job?.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Working" /> : null}
             </DrawerSection>
             {open.id === "weir" ? (
               <DrawerSection title="Your Weir account">
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="text-(length:--type-caption) text-muted-foreground">
                   Weir asks you to create your account in Deluno's Connect step, or the first time you open it.
                 </p>
                 {open.url ? (

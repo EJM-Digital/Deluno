@@ -494,7 +494,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <ActivityFilters
         filters={filters}
         setFilters={setFilters}
@@ -561,19 +561,19 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               {rows.map((row) => (
                 <ListRow key={row.key} onClick={row.open} selected={row.selected}>
                   <ListNameCell name={row.title} sub={row.step} />
-                  <ListCell mobile className="max-md:max-w-[9.5rem]">
+                  <ListCell mobile className="max-md:max-w-38">
                     <div className="flex min-w-0 items-center gap-2">
                       <Chip tone={row.pill.tone}>{row.pill.label}</Chip>
                       <span className="min-w-0 truncate text-foreground">{row.detail ?? "—"}</span>
                     </div>
-                    {row.detailSub ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{row.detailSub}</span> : null}
+                    {row.detailSub ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{row.detailSub}</span> : null}
                   </ListCell>
                   <ListCell primary={formatPreferenceDateTime(row.whenUtc, preferences)} />
                 </ListRow>
               ))}
             </ListTable>
             {historyOn && !liveStep && historyBroken ? (
-              <div className="flex items-center justify-center gap-3 border-t border-hairline p-3 text-[length:var(--type-caption)] text-muted-foreground">
+              <div className="flex items-center justify-center gap-3 border-t border-hairline p-3 text-(length:--type-caption) text-muted-foreground">
                 The history could not be read just now.
                 <Button type="button" variant="outline" size="sm" onClick={() => void (liveQuery ?? history).refetch()}>
                   Try again
@@ -611,11 +611,11 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         {openLive ? (
           <>
             <DrawerSection title="What happened">
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openLive.detail}</p>
+              <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">{openLive.detail}</p>
             </DrawerSection>
             <DrawerSection title="Details">
               <DrawerFacts items={openLive.facts} />
-              <Link to="/queue" onClick={() => setOpenLive(null)} className="mt-2 inline-block text-[length:var(--type-caption)] font-semibold text-primary hover:underline">
+              <Link to="/queue" onClick={() => setOpenLive(null)} className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline">
                 Open Transfers
               </Link>
             </DrawerSection>
@@ -638,9 +638,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         {openEvent ? (
           <>
             <DrawerSection title="What happened">
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openEvent.message}</p>
+              <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">{openEvent.message}</p>
               {openEvent.detail ? (
-                <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{openEvent.detail}</p>
+                <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{openEvent.detail}</p>
               ) : null}
             </DrawerSection>
 
@@ -666,7 +666,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                   <Link
                     to={activityLinkForTitle(openEvent.title, openEvent.relatedEntityType, openEvent.relatedEntityId)}
                     onClick={() => setOpenEvent(null)}
-                    className="mt-2 inline-block text-[length:var(--type-caption)] font-semibold text-primary hover:underline"
+                    className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline"
                   >
                     Everything about {openEvent.title}
                   </Link>
@@ -678,9 +678,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               <DrawerSection title="What didn't match" aside={`${openEventLeftovers.length} file${openEventLeftovers.length === 1 ? "" : "s"}`}>
                 <ul className="flex flex-col gap-2">
                   {openEventLeftovers.map((file) => (
-                    <li key={file.sourcePath} className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">
+                    <li key={file.sourcePath} className="text-(length:--type-body-sm) leading-relaxed text-foreground">
                       <span className="font-medium">{fileNameFromPath(file.sourcePath)}</span>
-                      <span className="block text-[length:var(--type-caption)] text-muted-foreground">{file.reason}</span>
+                      <span className="block text-(length:--type-caption) text-muted-foreground">{file.reason}</span>
                     </li>
                   ))}
                 </ul>
@@ -700,7 +700,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 
             {openEvent.detailsJson ? (
               <DrawerSection title="Detail">
-                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
                   {prettyJson(openEvent.detailsJson)}
                 </pre>
               </DrawerSection>
@@ -710,9 +710,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               <DrawerSection title="The rest of this run">
                 <ul className="flex flex-col gap-2">
                   {openEventFoldedFrom.map((step) => (
-                    <li key={step.id} className="text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                    <li key={step.id} className="text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                       <span className="text-foreground">{step.message}</span>
-                      <span className="ml-1.5 text-[length:var(--type-caption)]">
+                      <span className="ml-1.5 text-(length:--type-caption)">
                         {formatPreferenceDateTime(step.createdUtc, preferences)}
                       </span>
                     </li>
@@ -743,11 +743,11 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               never has to stand for the actual reason on its own.
             */}
             <DrawerSection title="Why this needs a decision">
-              <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openImportCase.summary}</p>
+              <p className="whitespace-pre-wrap text-(length:--type-body-sm) leading-relaxed text-foreground">{openImportCase.summary}</p>
             </DrawerSection>
 
             <DrawerSection title="What Deluno recommends">
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">{openImportCase.recommendedAction}</p>
+              <p className="text-(length:--type-body-sm) leading-relaxed text-muted-foreground">{openImportCase.recommendedAction}</p>
             </DrawerSection>
 
             <DrawerSection title="Decide">
@@ -771,7 +771,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 
             {openImportCase.detailsJson ? (
               <DrawerSection title="Evidence">
-                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
                   {prettyJson(openImportCase.detailsJson)}
                 </pre>
               </DrawerSection>

@@ -39,7 +39,7 @@ const PAGE_SIZE = 50;
 
 
 /** The height of the chips box in the header (Weir: `.mm-header__slot .mm-segmented`), shared by the search and the dropdowns. */
-const CONTROL_HEIGHT = "h-[2.375rem]";
+const CONTROL_HEIGHT = "h-9.5";
 /** How wide each stage of the group is, in rem, for deciding which stage the title line can hold (#1115). */
 const SEARCH_OPEN_REM = 11;
 const MAGNIFIER_REM = 2.375;
@@ -47,7 +47,7 @@ const SCOPE_FULL_REM = 18.5;
 const SCOPE_COMPACT_REM = 15.5;
 const CHIPS_SCROLL_REM = 9;
 
-const MENU_TRIGGER = `${CONTROL_HEIGHT} rounded-[12px] border border-hairline bg-card px-3 text-[length:var(--type-control)] font-medium text-muted-foreground hover:text-foreground`;
+const MENU_TRIGGER = `${CONTROL_HEIGHT} rounded-xl border border-hairline bg-card px-3 text-(length:--type-control) font-medium text-muted-foreground hover:text-foreground`;
 
 function useDebouncedWrite(value: string, urlValue: string, write: (next: string) => void) {
   useEffect(() => {
@@ -206,7 +206,7 @@ export function ActivityFilters({
       <div
         className={cn(
           "relative min-w-0 shrink-0 transition-[width] duration-150 motion-reduce:transition-none",
-          magnifier ? (searchOpen ? "w-[11rem]" : "w-[2.375rem]") : "w-auto flex-[0_100_260px] max-lg:max-w-[22rem] max-lg:flex-[1_1_12rem]"
+          magnifier ? (searchOpen ? "w-44" : "w-9.5") : "w-auto flex-[0_100_260px] max-lg:max-w-88 max-lg:flex-[1_1_12rem]"
         )}
       >
         {magnifier ? <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> : null}
@@ -222,7 +222,7 @@ export function ActivityFilters({
           onKeyDown={(event) => {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
-          className={cn(CONTROL_HEIGHT, "rounded-[12px]", magnifier ? "cursor-pointer pl-9 pr-2 focus:cursor-text" : "min-w-[6.5rem]", magnifier && !searchOpen && "placeholder:text-transparent")}
+          className={cn(CONTROL_HEIGHT, "rounded-xl", magnifier ? "cursor-pointer pl-9 pr-2 focus:cursor-text" : "min-w-26", magnifier && !searchOpen && "placeholder:text-transparent")}
         />
       </div>
       <div data-activity-chips className="flex min-w-0 shrink items-center max-lg:order-3 max-lg:basis-full">
@@ -234,7 +234,7 @@ export function ActivityFilters({
           value={filters.type}
           onChange={(value) => setFilters({ type: value })}
           options={typeOptions}
-          className={compact ? "w-[7.5rem]" : "w-[9rem]"}
+          className={compact ? "w-30" : "w-36"}
           triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
         />
         <MenuSelect
@@ -242,7 +242,7 @@ export function ActivityFilters({
           value={filters.since}
           onChange={(value) => setFilters({ since: value, until: "" })}
           options={sinceOptions}
-          className={compact ? "w-[7.5rem]" : "w-[9rem]"}
+          className={compact ? "w-30" : "w-36"}
           triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
         />
       </div>
@@ -277,15 +277,15 @@ export function ActivityFilterTokens({
   if (filters.until) tokens.push({ key: "until", text: `Until: ${filters.until}`, clear: { until: "" } });
   if (tokens.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2" role="group" aria-label="Filters set by a link">
+    <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-(--card-pad-x) py-2" role="group" aria-label="Filters set by a link">
       {tokens.map((token) => (
-        <span key={token.key} className="inline-flex h-[var(--control-height-sm)] max-w-full items-center gap-1 rounded-full border border-hairline bg-surface-1 pl-3 pr-1 text-[length:var(--type-caption)] font-medium text-foreground">
+        <span key={token.key} className="inline-flex h-(--control-height-sm) max-w-full items-center gap-1 rounded-full border border-hairline bg-surface-1 pl-3 pr-1 text-(length:--type-caption) font-medium text-foreground">
           <span className="truncate">{token.text}</span>
           <button
             type="button"
             aria-label={`Remove filter ${token.text}`}
             onClick={() => setFilters(token.clear)}
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X aria-hidden className="h-3 w-3" />
           </button>

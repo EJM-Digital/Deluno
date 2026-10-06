@@ -63,7 +63,7 @@ export function MetadataProviderIssueNotice({
 
   return (
     <Card as="section" aria-labelledby={headingId} className="border-hairline bg-surface-1">
-      <CardContent className="flex flex-col gap-[var(--grid-gap)] p-[var(--tile-pad)] sm:flex-row sm:items-center sm:justify-between">
+      <CardContent className="flex flex-col gap-(--grid-gap) p-(--tile-pad) sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">

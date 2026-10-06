@@ -386,7 +386,7 @@ export function SettingsWorkspaceLayout() {
  */
 export function SystemWorkspaceLayout() {
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <PageToolbar tabs={systemHealthNavItems} />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
@@ -409,10 +409,10 @@ export function SettingsShell({
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
-      <div className="flex max-w-4xl items-start justify-between gap-[var(--grid-gap)]">
-        <p className="max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
+      <div className="flex max-w-4xl items-start justify-between gap-(--grid-gap)">
+        <p className="max-w-3xl text-(length:--section-subtitle-size) leading-relaxed text-muted-foreground">
           {description}
         </p>
         <button
@@ -426,7 +426,7 @@ export function SettingsShell({
         </button>
       </div>
 
-      <div className="min-w-0 space-y-[var(--page-gap)]">
+      <div className="min-w-0 space-y-(--page-gap)">
         {children}
       </div>
     </div>
@@ -452,9 +452,9 @@ function SettingsNavLink({
       className={({ isActive }) =>
         cn(
           "group relative flex items-center rounded-xl border border-transparent font-semibold transition-all duration-200",
-          compact ? "min-h-[calc(var(--shell-pill-height)*0.78)]" : "min-h-[var(--shell-pill-height)]",
+          compact ? "min-h-[calc(var(--shell-pill-height)*0.78)]" : "min-h-(--shell-pill-height)",
           "text-muted-foreground hover:bg-surface-1 hover:text-foreground",
-          isActive && "border-primary/30 bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+          isActive && "border-primary/30 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
         )
       }
       style={{
@@ -504,5 +504,5 @@ function SectionSubnav({
  * SystemWorkspaceLayout owns the toolbar; the page supplies only its content.
  */
 export function SystemShell({ children }: { title?: string; description?: string; children: ReactNode }) {
-  return <div className="flex flex-col gap-[var(--page-gap)]">{children}</div>;
+  return <div className="flex flex-col gap-(--page-gap)">{children}</div>;
 }

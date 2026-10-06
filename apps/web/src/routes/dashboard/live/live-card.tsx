@@ -32,15 +32,15 @@ export function LiveCard({ title, count, controls, description, aside, to, toLab
       {/* The mockup's card header, rule for rule: 14/18/10 padding, baseline-aligned, a 15px semibold title on a 15px line, 12px between title and count, the count and link on Weir's 1.52 lines (Weir's header, 2 Oct 2026),
           the link 13px at the right with its arrow. No rule under it. */}
       <header className="flex min-h-[44px] shrink-0 items-baseline gap-[12px] whitespace-nowrap px-[18px] pb-[10px] pt-[14px]">
-        <h2 id={id} className="m-0 shrink-0 text-[length:var(--type-card-title)] font-semibold leading-[15px] text-foreground">{title}</h2>
+        <h2 id={id} className="m-0 shrink-0 text-(length:--type-card-title) font-semibold leading-[15px] text-foreground">{title}</h2>
         {controls ? (
           <div className="flex min-w-0 flex-1 self-center -m-2">{controls}</div>
         ) : (
-          <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] leading-[1.52] text-muted-foreground">{count}</span>
+          <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
         )}
         {aside}
         {to ? (
-          <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`} className={cn("ml-auto shrink-0 rounded-sm text-[length:var(--button-font-size-sm)] font-medium leading-[17px] text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--ring))]", iconOnly && "self-center")}>
+          <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`} className={cn("ml-auto shrink-0 rounded-xs text-(length:--button-font-size-sm) font-medium leading-[17px] text-primary hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--ring))]", iconOnly && "self-center")}>
             {iconOnly ? null : `${toLabel ?? "Open"} `}
             <span aria-hidden>→</span>
           </Link>

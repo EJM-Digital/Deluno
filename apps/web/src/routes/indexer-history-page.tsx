@@ -181,7 +181,7 @@ export function IndexerHistoryPage() {
   }
 
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <PageToolbar
         tabs={TABS}
         actions={
@@ -227,7 +227,7 @@ export function IndexerHistoryPage() {
         )}
 
         {nextPageToken ? (
-          <div className="flex justify-center p-[var(--card-pad-x)]">
+          <div className="flex justify-center p-(--card-pad-x)">
             <Button type="button" variant="outline" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
               <RefreshCw aria-hidden className={`h-3.5 w-3.5 ${loadingMore ? "animate-spin" : ""}`} />
               {loadingMore ? "Loading…" : "Load more"}
@@ -252,7 +252,7 @@ export function IndexerHistoryPage() {
                 ? [{ label: "Related to", value: `${selected.relatedEntityType} ${selected.relatedEntityId ?? ""}` }]
                 : []),
               ...(selected.detailsJson
-                ? [{ label: "Request/response detail", value: <pre className="whitespace-pre-wrap break-words text-[length:var(--type-caption)]">{formatDetails(selected.detailsJson)}</pre>, mono: true }]
+                ? [{ label: "Request/response detail", value: <pre className="whitespace-pre-wrap wrap-break-word text-(length:--type-caption)">{formatDetails(selected.detailsJson)}</pre>, mono: true }]
                 : [])
             ]}
           />

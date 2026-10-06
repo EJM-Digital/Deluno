@@ -24,7 +24,7 @@ export function PanelLink({ to, children }: { to: string; children: ReactNode })
   return (
     <Link
       to={to}
-      className="whitespace-nowrap text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="whitespace-nowrap text-(length:--type-caption) font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children} <span aria-hidden>{"→"}</span>
     </Link>
@@ -51,20 +51,20 @@ export function Panel({
   return (
     <ListCard title={title} count={count} actions={<PanelLink to={to}>{linkLabel}</PanelLink>} className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-      {footer ? <div className="border-t border-hairline px-[var(--card-pad-x)] py-2 text-[length:var(--type-caption)] text-muted-foreground">{footer}</div> : null}
+      {footer ? <div className="border-t border-hairline px-(--card-pad-x) py-2 text-(length:--type-caption) text-muted-foreground">{footer}</div> : null}
     </ListCard>
   );
 }
 
 /** One plain sentence inside a panel that has nothing to list. */
 export function PanelNote({ children }: { children: ReactNode }) {
-  return <p className="px-[var(--card-pad-x)] py-4 text-[length:var(--type-body-sm)] text-muted-foreground">{children}</p>;
+  return <p className="px-(--card-pad-x) py-4 text-(length:--type-body-sm) text-muted-foreground">{children}</p>;
 }
 
 /** A label and a value on one line, for the small facts panels. */
 export function FactRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] py-1.5 text-[length:var(--type-body-sm)]">
+    <div className="flex items-baseline justify-between gap-3 px-(--card-pad-x) py-1.5 text-(length:--type-body-sm)">
       <span className="shrink-0 whitespace-nowrap text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right font-medium text-foreground">{children}</span>
     </div>
@@ -113,10 +113,10 @@ export async function send(path: string, failure: string, init: { method?: strin
  * box and only softens its text. Every card and row lines its buttons up in the same
  * columns, and because this is the one class everything shares, they cannot drift.
  */
-export const UNIFORM_BUTTON = "h-7 w-[7.5rem] shrink-0 justify-center whitespace-nowrap px-1.5";
+export const UNIFORM_BUTTON = "h-7 w-30 shrink-0 justify-center whitespace-nowrap px-1.5";
 
 /** The one size of button on a card of the Live board: every card puts two side by side in the same place, so they must all be the same box. */
-export const CARD_BUTTON = "h-[calc(var(--type-caption)*2)] w-[5.25rem] shrink-0 justify-center px-1 text-[length:var(--type-caption)]";
+export const CARD_BUTTON = "h-[calc(var(--type-caption)*2)] w-21 shrink-0 justify-center px-1 text-(length:--type-caption)";
 
 /** A small button with its own busy spinner and a unique accessible name. */
 export function ActionButton({

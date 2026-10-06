@@ -130,7 +130,7 @@ export function SubtitleManualSearchDialog({
         <Dialog.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2",
-            "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/[0.08]",
+            "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/8",
             "data-[state=open]:animate-fade-in-stable"
           )}
           aria-describedby="subtitle-manual-search-description"
@@ -138,10 +138,10 @@ export function SubtitleManualSearchDialog({
           <div className="max-h-[80vh] overflow-y-auto p-8 sm:p-9">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <Dialog.Title className="text-[length:var(--type-title-md)] font-semibold tracking-[-0.02em] text-foreground">
+                <Dialog.Title className="text-(length:--type-title-md) font-semibold tracking-[-0.02em] text-foreground">
                   Search {language.toUpperCase()} subtitles by hand
                 </Dialog.Title>
-                <p id="subtitle-manual-search-description" className="mt-1 max-w-prose text-[length:var(--type-body)] text-muted-foreground leading-relaxed">
+                <p id="subtitle-manual-search-description" className="mt-1 max-w-prose text-(length:--type-body) text-muted-foreground leading-relaxed">
                   Every candidate Deluno's providers found, ranked. Pick one to download it now, or blacklist one you know is wrong.
                 </p>
               </div>
@@ -154,14 +154,14 @@ export function SubtitleManualSearchDialog({
 
             <div className="mt-5 flex flex-col gap-2">
               {loadFailed ? (
-                <p className="text-[length:var(--type-body-sm)] text-destructive">{loadFailed}</p>
+                <p className="text-(length:--type-body-sm) text-destructive">{loadFailed}</p>
               ) : candidates === null ? (
                 <div className="flex items-center gap-2 py-6 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Searching every provider…
                 </div>
               ) : candidates.length === 0 ? (
-                <p className="py-6 text-[length:var(--type-body-sm)] text-muted-foreground">
+                <p className="py-6 text-(length:--type-body-sm) text-muted-foreground">
                   No provider offered a {language.toUpperCase()} subtitle. Upload your own below.
                 </p>
               ) : (
@@ -173,10 +173,10 @@ export function SubtitleManualSearchDialog({
                       className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1 px-4 py-3"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">
+                        <p className="truncate text-(length:--type-body-sm) font-semibold text-foreground">
                           {candidate.releaseName ?? candidate.providerName}
                         </p>
-                        <p className="truncate text-[length:var(--type-caption)] text-muted-foreground">
+                        <p className="truncate text-(length:--type-caption) text-muted-foreground">
                           {candidate.providerName} · {candidate.matchDescription}
                           {candidate.hearingImpaired ? " · Hearing-impaired" : ""}
                           {candidate.downloadCount !== null ? ` · ${candidate.downloadCount} downloads` : ""}
@@ -205,8 +205,8 @@ export function SubtitleManualSearchDialog({
             </div>
 
             <div className="mt-6 border-t border-hairline pt-5">
-              <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Or upload your own</p>
-              <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-body-sm) font-semibold text-foreground">Or upload your own</p>
+              <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
                 A .srt or .ass file, written through the same policy a fetched subtitle gets.
               </p>
               <div className="mt-3">

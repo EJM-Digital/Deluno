@@ -55,9 +55,9 @@ export function ProviderHealthDrawer({
             <>
               <DrawerSection title="Why it needs attention" aside={retryLabel(failure.retryState)}>
                 <div className="grid gap-2">
-                  <p className="text-[length:var(--type-body-sm)] font-medium leading-relaxed text-foreground">{failure.summary || failure.message}</p>
-                  {failure.message && failure.message !== failure.summary ? <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{failure.message}</p> : null}
-                  {failure.upstreamDetail ? <p className="whitespace-pre-wrap text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Provider detail: {failure.upstreamDetail}</p> : null}
+                  <p className="text-(length:--type-body-sm) font-medium leading-relaxed text-foreground">{failure.summary || failure.message}</p>
+                  {failure.message && failure.message !== failure.summary ? <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{failure.message}</p> : null}
+                  {failure.upstreamDetail ? <p className="whitespace-pre-wrap text-(length:--type-caption) leading-relaxed text-muted-foreground">Provider detail: {failure.upstreamDetail}</p> : null}
                 </div>
                 <DrawerFacts items={[
                   { label: "Failure type", value: failureKindLabel(failure.kind) },
@@ -71,18 +71,18 @@ export function ProviderHealthDrawer({
               </DrawerSection>
 
               <DrawerSection title="What happens next">
-                <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{retryExplanation(failure)}</p>
-                <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{failure.nextAction || "Open the provider connection and test it again after correcting the issue."}</p>
+                <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">{retryExplanation(failure)}</p>
+                <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{failure.nextAction || "Open the provider connection and test it again after correcting the issue."}</p>
               </DrawerSection>
             </>
           ) : (
             <DrawerSection title="What happens next">
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">
+              <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">
                 {provider.lastHealthMessage ?? (provider.lastHealthTestUtc
                   ? "The last check did not record a typed failure."
                   : "Deluno has not recorded a test result for this provider yet.")}
               </p>
-              <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+              <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
                 Open the provider connection to run a new test or update its settings.
               </p>
             </DrawerSection>

@@ -185,14 +185,14 @@ export function IndexerBulkBar({
 }) {
   if (count === 0) return null;
   return (
-    <div role="toolbar" aria-label="Bulk indexer actions" className="flex flex-wrap items-center gap-2 border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)] py-2">
-      <span className="text-[length:var(--type-caption)] font-medium text-foreground">{count} selected</span>
+    <div role="toolbar" aria-label="Bulk indexer actions" className="flex flex-wrap items-center gap-2 border-b border-hairline bg-surface-2/40 px-(--card-pad-x) py-2">
+      <span className="text-(length:--type-caption) font-medium text-foreground">{count} selected</span>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onEnable}>Enable</Button>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onPause}>Pause</Button>
       <Select
         aria-label="Change used-for scope for selected indexers"
         chrome
-        className="h-[var(--control-height-sm)] w-auto text-[length:var(--type-caption)]"
+        className="h-(--control-height-sm) w-auto text-(length:--type-caption)"
         value=""
         disabled={busy}
         onChange={(event) => {

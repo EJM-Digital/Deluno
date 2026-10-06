@@ -75,21 +75,21 @@ const lifecycle = [
 
 export function SystemDocsPage() {
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <ListCard title={<span className="flex items-center gap-2"><BookOpenText className="h-5 w-5 text-primary" />
             Deluno Operating Model</span>} count={<>This is the plain-English guide for how Deluno should work once a user has moved past first setup.</>}>
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x) md:grid-cols-2 xl:grid-cols-4">
           {workflowSections.map((section) => {
             const Icon = section.icon;
             return (
-              <div key={section.title} className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
+              <div key={section.title} className="rounded-2xl border border-hairline bg-surface-1 p-(--tile-pad)">
                 <div className="flex items-start justify-between gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                     <Icon className="h-5 w-5" />
                   </span>
                   <Badge variant="default">{section.badge}</Badge>
                 </div>
-                <p className="mt-4 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+                <p className="mt-4 font-display text-(length:--type-card-title) font-semibold tracking-tight text-foreground">
                   {section.title}
                 </p>
                 <p className="mt-2 density-help leading-relaxed text-muted-foreground">{section.body}</p>
@@ -114,12 +114,12 @@ export function SystemDocsPage() {
       </ListCard>
 
       <ListCard title={<span className="flex items-center gap-2">Media Lifecycle</span>} count={<>Every major screen and automation should support this sequence without making the user guess.</>}>
-        <div className="p-[var(--card-pad-x)]">
+        <div className="p-(--card-pad-x)">
           <div className="grid gap-3 lg:grid-cols-7">
             {lifecycle.map((item, index) => (
               <div key={item} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-                <span className="text-[length:var(--type-caption)] font-bold tabular-nums text-primary">{String(index + 1).padStart(2, "0")}</span>
-                <p className="mt-2 text-[length:var(--type-body)] font-medium leading-snug text-foreground">{item}</p>
+                <span className="text-(length:--type-caption) font-bold tabular-nums text-primary">{String(index + 1).padStart(2, "0")}</span>
+                <p className="mt-2 text-(length:--type-body) font-medium leading-snug text-foreground">{item}</p>
               </div>
             ))}
           </div>

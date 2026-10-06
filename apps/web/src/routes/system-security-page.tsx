@@ -31,7 +31,7 @@ export function SystemSecurityPage() {
   const revalidator = useRevalidator();
 
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <AllowedHostsCard overview={allowedHosts} onSaved={() => revalidator.revalidate()} />
       <LocalNetworkAuthCard overview={localNetworkAuth} onSaved={() => revalidator.revalidate()} />
       <SignInCard />
@@ -128,7 +128,7 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
             Without this, Deluno answers a request no matter which address it was sent to -- which is how a web page open in your browser can be tricked into talking to it. Tick the addresses you actually use, and Deluno refuses the rest.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-[var(--page-gap)]">
+        <CardContent className="space-y-(--page-gap)">
           <SwitchRow
             label="Only answer on the addresses you choose"
             description="Off is exactly what Deluno has always done: answer on any address."
@@ -268,7 +268,7 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
             Off, every device signs in, exactly as Deluno has always done. On, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) is already signed in -- no password needed on your own network.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-[var(--page-gap)]">
+        <CardContent className="space-y-(--page-gap)">
           <SwitchRow
             label="Skip sign-in on the local network"
             description="Counts as local: private network addresses (10.x, 172.16-31.x, 192.168.x), this machine (loopback), link-local addresses, and IPv6 private (ULA) addresses."

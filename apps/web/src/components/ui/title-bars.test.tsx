@@ -275,7 +275,7 @@ describe("every label is coloured for the ground it sits on", () => {
 describe("the bars are pinned to the artwork's edges", () => {
   it("positions them absolutely, at top and bottom", () => {
     // **This is the test that was missing.** The first build laid the bars out in
-    // normal flow. The artwork box is `relative aspect-[2/3] overflow-hidden`
+    // normal flow. The artwork box is `relative aspect-2/3 overflow-hidden`
     // with the image at `h-full w-full`, so an in-flow bar is pushed below a
     // full-height image and clipped away — the card rendered with NO BARS AT
     // ALL, and every other assertion still passed because the elements existed

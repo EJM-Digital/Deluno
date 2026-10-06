@@ -177,7 +177,7 @@ export function ConnectInstalledApps({
           </Button>
         ) : null}
       </div>
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="text-(length:--type-caption) text-muted-foreground">
         Deluno connects nothing by itself. Press Connect for each app, or Connect all.
       </p>
       <ul className="grid gap-2">
@@ -205,7 +205,7 @@ export function ConnectInstalledApps({
                 ) : null}
               </div>
               {message ? (
-                <p className={message.healthy ? "text-[length:var(--type-caption)] text-success" : "text-[length:var(--type-caption)] text-destructive"} role={message.healthy ? "status" : "alert"}>
+                <p className={message.healthy ? "text-(length:--type-caption) text-success" : "text-(length:--type-caption) text-destructive"} role={message.healthy ? "status" : "alert"}>
                   {message.message}
                   {!message.healthy && message.needsSignIn ? (
                     onNeedsSignIn ? (
@@ -222,7 +222,7 @@ export function ConnectInstalledApps({
               ) : null}
               {app.kind === WEIR_KIND && weirOpen && !app.connected ? (
                 <form onSubmit={(event) => void submitWeir(event)} className="grid gap-2 rounded-md border border-hairline bg-card p-3" aria-label="Your Weir account">
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     {creating
                       ? "Weir has no account yet. Choose your own username and password. Deluno uses them once to set Weir up and never keeps them."
                       : "Weir already has an account. Sign in with it. Deluno uses it once to connect and never keeps it."}
@@ -238,7 +238,7 @@ export function ConnectInstalledApps({
                       <Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" />
                     </Field>
                   ) : null}
-                  {weirError ? <p className="text-[length:var(--type-caption)] text-destructive" role="alert">{weirError}</p> : null}
+                  {weirError ? <p className="text-(length:--type-caption) text-destructive" role="alert">{weirError}</p> : null}
                   <Button type="submit" size="sm" className="w-max" disabled={busy !== null}>
                     {creating ? "Create Weir account and connect" : "Sign in to Weir and connect"}
                   </Button>
@@ -248,7 +248,7 @@ export function ConnectInstalledApps({
           );
         })}
       </ul>
-      {weirError && !weirOpen ? <p className="text-[length:var(--type-caption)] text-destructive" role="alert">{weirError}</p> : null}
+      {weirError && !weirOpen ? <p className="text-(length:--type-caption) text-destructive" role="alert">{weirError}</p> : null}
     </section>
   );
 }

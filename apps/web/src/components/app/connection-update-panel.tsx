@@ -29,7 +29,7 @@ export function ConnectionUpdatePanel({ kind, id }: { kind: string; id: string }
 
 function ResultLine({ result }: { result: ConnectionUpdateResult }) {
   return (
-    <p role="status" className={result.outcome === "failed" ? "text-[length:var(--type-caption)] text-destructive" : "text-[length:var(--type-caption)] text-success"}>
+    <p role="status" className={result.outcome === "failed" ? "text-(length:--type-caption) text-destructive" : "text-(length:--type-caption) text-success"}>
       {result.message}
     </p>
   );
@@ -73,8 +73,8 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
   return (
     <DrawerSection title="New version">
       <div className="space-y-2.5" data-testid="connection-update-panel">
-        <p className="text-[length:var(--type-body-sm)] text-foreground">{updateNoticeTitle(item)}</p>
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">{item.message}</p>
+        <p className="text-(length:--type-body-sm) text-foreground">{updateNoticeTitle(item)}</p>
+        <p className="text-(length:--type-caption) text-muted-foreground">{item.message}</p>
         {result ? <ResultLine result={result} /> : null}
         <div className="flex flex-wrap items-center gap-2">
           {item.releaseUrl ? (
@@ -97,7 +97,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
           ) : null}
         </div>
         {!item.notice ? (
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             You dismissed {item.dismissedVersion ?? item.latestVersion}. The notice comes back only for a newer version.
           </p>
         ) : null}

@@ -86,7 +86,7 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
     <BandCard
       bodyRef={bodyRef}
       label="Working on now"
-      aside={more > 0 ? <Link to={activityLinkForStatus("in-progress")} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
+      aside={more > 0 ? <Link to={activityLinkForStatus("in-progress")} className="focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
       figure={
         <>
           <span>{operations.length.toLocaleString("en-AU")}</span>
@@ -100,7 +100,7 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
             const { icon: Icon, colour } = OP_ICON[op.kind];
             return (
               <li key={op.key}>
-                <Link to={op.to} data-fit="" className="lb-op focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ "--c": colour } as CSSProperties}>
+                <Link to={op.to} data-fit="" className="lb-op focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" style={{ "--c": colour } as CSSProperties}>
                   <span aria-hidden className="lb-ico"><Icon /></span>
                   <span className="lb-txt">{op.lead}{op.name ? <> <b>{op.name}</b></> : null}</span>
                   <span className="lb-right">{op.right}</span>
@@ -158,7 +158,7 @@ function NextCard({ items, now, across }: { items: NextItem[]; now: number; acro
           <ul className="lb-then">
             {rest.slice(0, 3).map((item) => (
               <li key={item.key} data-fit="">
-                <Link to={item.to} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
+                <Link to={item.to} className="focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
                 <span>{whenText(item.at, now)}</span>
               </li>
             ))}

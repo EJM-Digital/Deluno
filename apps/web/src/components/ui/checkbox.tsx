@@ -32,8 +32,8 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           aria-invalid={props["aria-invalid"] ?? (field?.invalid ? true : undefined)}
           onChange={(event) => onCheckedChange(event.target.checked)}
           className={cn(
-            "peer h-4 w-4 appearance-none rounded border border-hairline bg-surface-1 shadow-none",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+            "peer h-4 w-4 appearance-none rounded-sm border border-hairline bg-surface-1 shadow-none",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
             "checked:border-primary checked:bg-primary indeterminate:border-primary indeterminate:bg-primary",
             "disabled:cursor-not-allowed disabled:opacity-60",
             className
@@ -67,11 +67,11 @@ export function CheckboxRow({
   const generatedId = React.useId();
   const id = providedId ?? generatedId;
   return (
-    <div className={cn("flex min-h-[var(--control-height)] items-start gap-2", className)}>
+    <div className={cn("flex min-h-(--control-height) items-start gap-2", className)}>
       <Checkbox id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
       <label htmlFor={id} className="min-w-0 cursor-pointer">
-        <span className="block text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{label}</span>
-        {description ? <span className="mt-0.5 block text-[length:var(--type-caption)] leading-snug text-muted-foreground">{description}</span> : null}
+        <span className="block text-(length:--type-body-sm) font-medium leading-tight text-foreground">{label}</span>
+        {description ? <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">{description}</span> : null}
       </label>
     </div>
   );

@@ -14,7 +14,7 @@ import { cn } from "../../lib/utils";
  * (Badge remains for small square-ish tags such as media type.)
  */
 const chipVariants = cva(
-  "inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[length:var(--type-caption)] font-semibold leading-none",
+  "inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-(length:--type-caption) font-semibold leading-none",
   {
     variants: {
       tone: {

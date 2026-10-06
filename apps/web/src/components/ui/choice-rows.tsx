@@ -83,11 +83,11 @@ export function ChoiceRows<T extends string>({
               }
             }}
             className={cn(
-              "flex w-full items-start gap-[var(--grid-gap)] rounded-[10px] border px-[var(--field-pad-x)] py-2 text-left transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              "flex w-full items-start gap-(--grid-gap) rounded-[10px] border px-(--field-pad-x) py-2 text-left transition-colors",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               "disabled:cursor-not-allowed disabled:opacity-50",
               active
-                ? "border-primary/60 bg-primary/[0.08]"
+                ? "border-primary/60 bg-primary/8"
                 : "border-hairline bg-surface-1 hover:bg-surface-2/60"
             )}
           >
@@ -101,11 +101,11 @@ export function ChoiceRows<T extends string>({
               <span className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-primary" : "bg-transparent")} />
             </span>
             <span className="min-w-0">
-              <span className="block text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">
+              <span className="block text-(length:--type-body-sm) font-medium leading-tight text-foreground">
                 {option.label}
               </span>
               {option.description ? (
-                <span className="mt-0.5 block text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">
                   {option.description}
                 </span>
               ) : null}

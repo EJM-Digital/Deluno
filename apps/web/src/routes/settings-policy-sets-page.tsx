@@ -531,7 +531,7 @@ export function SettingsPolicySetsPage() {
       : `Library Profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${describeUsage(usedByCount(editingPlan?.id ?? ""))}`;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={PLAN_TABS}
         actions={<PageToolbarAction onClick={openCreate}>New library profile</PageToolbarAction>}
@@ -625,7 +625,7 @@ export function SettingsPolicySetsPage() {
         }
       >
         <div className="grid gap-3 py-3">
-        <DrawerSection title="Profile details" className="min-w-0 rounded-[12px] border border-primary/20 bg-primary/5 px-4 !py-4 border-b-0">
+        <DrawerSection title="Profile details" className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-4 py-4! border-b-0">
           <FieldRow>
             <Field label="Name" error={nameError}>
               <Input
@@ -665,7 +665,7 @@ export function SettingsPolicySetsPage() {
             const scenario = mediaPlanScenarios.find((item) => item.id === scenarioId);
             const variant = scenario?.variants.find((item) => item.mediaType === form.mediaType);
             return scenario && variant ? (
-              <div className="rounded-[10px] border border-primary/20 bg-surface-2/60 px-3 py-2 text-[length:var(--type-caption)] text-muted-foreground">
+              <div className="rounded-[10px] border border-primary/20 bg-surface-2/60 px-3 py-2 text-(length:--type-caption) text-muted-foreground">
                 <p className="font-medium text-foreground">{scenario.name} · {variant.sizeTierName} size tier</p>
                 <p className="mt-0.5">{variant.summary}</p>
                 <p className="mt-0.5">{scenario.requirements.join(" ")}</p>
@@ -689,7 +689,7 @@ export function SettingsPolicySetsPage() {
             ) : null;
           })() : null}
           {form.automationIntent ? (
-            <div className="grid gap-2 rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-[length:var(--type-caption)]">
+            <div className="grid gap-2 rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-(length:--type-caption)">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium text-foreground">Captured automation intent</span>
                 <Chip tone="info">
@@ -733,8 +733,8 @@ export function SettingsPolicySetsPage() {
           </Field>
         </DrawerSection>
 
-        <DrawerSection title="Settings to use" className="min-w-0 rounded-[12px] border border-success/20 bg-success/5 px-4 !py-4 border-b-0">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <DrawerSection title="Settings to use" className="min-w-0 rounded-xl border border-success/20 bg-success/5 px-4 py-4! border-b-0">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Select the settings you created in the tabs above. This page only combines them into one profile for your libraries.
           </p>
           <Field label="Quality Profile" help="Choose the quality, cutoff and file-size behaviour this profile should use.">
@@ -749,15 +749,15 @@ export function SettingsPolicySetsPage() {
               aria-invalid={qualityProfileError ? "true" : undefined}
             />
           </Field>
-          {qualityProfileError ? <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{qualityProfileError}</p> : null}
+          {qualityProfileError ? <p role="alert" className="text-(length:--type-caption) text-destructive">{qualityProfileError}</p> : null}
           {form.qualityProfileId ? (
-            <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="-mt-1 text-(length:--type-caption) text-muted-foreground">
               {qualityProfiles.find((profile) => profile.id === form.qualityProfileId)?.cutoffQuality
                 ? `Stops at ${qualityProfiles.find((profile) => profile.id === form.qualityProfileId)?.cutoffQuality}. Size Rules are applied automatically.`
                 : "This Quality Profile controls the accepted quality and cutoff."}
             </p>
           ) : null}
-          <div className="rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2 text-[length:var(--type-caption)] text-muted-foreground">
+          <div className="rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2 text-(length:--type-caption) text-muted-foreground">
             Size Rules are shared by Deluno and are applied through the selected Quality Profile. Edit them from the Size Rules tab.
           </div>
           <Field label="Release Preferences" optional help="Choose the release rules created under Release Preferences. You can select more than one.">
@@ -768,7 +768,7 @@ export function SettingsPolicySetsPage() {
                   if (!format) return null;
                   return (
                     <div key={id} role="listitem" className="flex items-center justify-between gap-2 rounded-[9px] border border-hairline bg-surface-2 px-2.5 py-2">
-                      <span className="min-w-0 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{format.name}</span>
+                      <span className="min-w-0 truncate text-(length:--type-body-sm) font-medium text-foreground">{format.name}</span>
                       <Button type="button" size="sm" variant="ghost" onClick={() => removeReleasePreference(id)}>Remove</Button>
                     </div>
                   );
@@ -793,8 +793,8 @@ export function SettingsPolicySetsPage() {
           </Field>
         </DrawerSection>
 
-        <DrawerSection title="Select libraries to use this profile" aside={targetLibraryIds.length ? describeUsage(targetLibraryIds.length) : "None selected"} className="min-w-0 rounded-[12px] border border-info/25 bg-info/5 px-4 !py-4 border-b-0">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <DrawerSection title="Select libraries to use this profile" aside={targetLibraryIds.length ? describeUsage(targetLibraryIds.length) : "None selected"} className="min-w-0 rounded-xl border border-info/25 bg-info/5 px-4 py-4! border-b-0">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Choose the libraries that should use this profile. Their library rows will show the profile in Media Management.
           </p>
           {matchingLibraries.length ? (
@@ -805,10 +805,10 @@ export function SettingsPolicySetsPage() {
                   ? policySets.find((plan) => plan.id === library.defaultPolicySetId)?.name
                   : null;
                 return (
-                  <div key={library.id} className={cn("flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border px-[var(--field-pad-x)] py-2 transition-colors", on ? "border-info/35 bg-info/10" : "border-hairline bg-surface-2/30 hover:border-info/25")}>
+                  <div key={library.id} className={cn("flex min-h-10 items-center justify-between gap-(--grid-gap) rounded-[10px] border px-(--field-pad-x) py-2 transition-colors", on ? "border-info/35 bg-info/10" : "border-hairline bg-surface-2/30 hover:border-info/25")}>
                     <label htmlFor={`use-${library.id}`} className="min-w-0 cursor-pointer">
-                      <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{library.name}</span>
-                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                      <span className="block truncate text-(length:--type-body-sm) font-medium text-foreground">{library.name}</span>
+                      <span className="block truncate text-(length:--type-caption) text-muted-foreground">
                         {library.rootPath}
                         {otherPlan ? ` · currently uses ${otherPlan}` : ""}
                       </span>
@@ -819,15 +819,15 @@ export function SettingsPolicySetsPage() {
               })}
             </div>
           ) : (
-            <p className="mt-3 text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="mt-3 text-(length:--type-caption) text-muted-foreground">
               No {form.mediaType === "tv" ? "TV" : "movie"} libraries yet. Create one under Media Management first.
             </p>
           )}
         </DrawerSection>
 
         {mode.kind === "edit" ? (
-          <DrawerSection title="Plan history" aside={planVersionsBusy ? "Loading…" : planVersions.length ? `${planVersions.length} immutable ${planVersions.length === 1 ? "version" : "versions"}` : "No history yet"} className="min-w-0 !py-4">
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <DrawerSection title="Plan history" aside={planVersionsBusy ? "Loading…" : planVersions.length ? `${planVersions.length} immutable ${planVersions.length === 1 ? "version" : "versions"}` : "No history yet"} className="min-w-0 py-4!">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               Every saved change is retained as a version. Rollback creates a new version, so the audit trail is never rewritten.
             </p>
             {planVersions.length ? (
@@ -835,11 +835,11 @@ export function SettingsPolicySetsPage() {
                 {planVersions.slice(0, 8).map((version, index) => (
                   <div key={`${version.planId}-${version.version}`} className="flex items-center justify-between gap-3 rounded-[10px] border border-hairline bg-surface-2/30 px-3 py-2">
                     <div className="min-w-0">
-                      <p className="truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      <p className="truncate text-(length:--type-body-sm) font-medium text-foreground">
                         Version {version.version} · {formatChangeKind(version.changeKind)}
                         {index === 0 ? <span className="ml-1.5 text-success">· current</span> : null}
                       </p>
-                      <p className="truncate font-mono text-[length:var(--type-micro)] text-muted-foreground" title={version.planHash}>
+                      <p className="truncate font-mono text-(length:--type-micro) text-muted-foreground" title={version.planHash}>
                         {version.planHash.slice(0, 12)}
                       </p>
                     </div>
@@ -852,7 +852,7 @@ export function SettingsPolicySetsPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">History starts when this profile is next saved.</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">History starts when this profile is next saved.</p>
             )}
             {dirty ? (
               <div className="grid gap-2">
@@ -861,11 +861,11 @@ export function SettingsPolicySetsPage() {
                 </Button>
                 {preview ? (
                   <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2">
-                    <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                    <p className="text-(length:--type-body-sm) font-medium text-foreground">
                       {preview.hasChanges ? `${preview.changes.length} change${preview.changes.length === 1 ? "" : "s"} will create the next version.` : "No effective changes."}
                     </p>
                     {preview.changes.length ? (
-                      <ul className="mt-1 grid gap-1 text-[length:var(--type-caption)] text-muted-foreground">
+                      <ul className="mt-1 grid gap-1 text-(length:--type-caption) text-muted-foreground">
                         {preview.changes.map((change) => <li key={change.field}>{formatField(change.field)}: {change.currentValue ?? "none"} → {change.proposedValue ?? "none"}</li>)}
                       </ul>
                     ) : null}
@@ -877,7 +877,7 @@ export function SettingsPolicySetsPage() {
         ) : null}
 
         {mode.kind === "edit" ? (
-          <DrawerSection className="min-w-0 !py-4 border-b-0">
+          <DrawerSection className="min-w-0 py-4! border-b-0">
             <DrawerDanger
               title="Delete this Library Profile"
               description="Libraries using it will need another Library Profile."

@@ -55,7 +55,7 @@ export function LibraryOverview({
   }, [isComplete, onEndReached, items.length]);
 
   return (
-    <div className="space-y-[var(--grid-gap)]">
+    <div className="space-y-(--grid-gap)">
       {items.map((item) => (
         <OverviewRow
           key={item.id}
@@ -86,7 +86,7 @@ function OverviewRow({
   return (
     <div
       className={cn(
-        "group relative flex gap-[var(--grid-gap)] overflow-hidden rounded-xl border bg-card p-[var(--tile-pad)] transition",
+        "group relative flex gap-(--grid-gap) overflow-hidden rounded-xl border bg-card p-(--tile-pad) transition",
         "hover:border-primary/35 hover:bg-surface-2",
         selected ? "border-primary/70 ring-1 ring-inset ring-primary/40" : "border-hairline"
       )}
@@ -116,10 +116,10 @@ function OverviewRow({
       <button
         type="button"
         onClick={(event) => (event.metaKey || event.ctrlKey ? onToggle(item.id) : onSelect(item))}
-        className="relative w-[5.5rem] shrink-0 overflow-hidden rounded-lg sm:w-[7rem]"
+        className="relative w-22 shrink-0 overflow-hidden rounded-lg sm:w-28"
         aria-label={`Open ${item.title}`}
       >
-        <PosterArtwork src={item.poster} title={item.title} className="aspect-[2/3] h-full w-full" />
+        <PosterArtwork src={item.poster} title={item.title} className="aspect-2/3 h-full w-full" />
       </button>
 
       <div className="relative min-w-0 flex-1">
@@ -130,11 +130,11 @@ function OverviewRow({
               onClick={(event) => (event.metaKey || event.ctrlKey ? onToggle(item.id) : onSelect(item))}
               className="text-left"
             >
-              <p className="line-clamp-1 font-display text-[length:var(--type-title-sm)] font-semibold text-foreground">
+              <p className="line-clamp-1 font-display text-(length:--type-title-sm) font-semibold text-foreground">
                 {item.localizedTitle ?? item.title}
               </p>
             </button>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[length:var(--type-body-sm)] text-muted-foreground">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-(length:--type-body-sm) text-muted-foreground">
               <span className="tabular">{item.year}</span>
               <span className="text-foreground/20">·</span>
               <span className="inline-flex items-center gap-1">
@@ -161,7 +161,7 @@ function OverviewRow({
 
           <div className="flex shrink-0 items-center gap-1.5">
             {item.quality ? (
-              <Badge className="whitespace-nowrap bg-surface-2 px-1.5 py-0 text-[length:var(--type-caption)] font-bold text-foreground">
+              <Badge className="whitespace-nowrap bg-surface-2 px-1.5 py-0 text-(length:--type-caption) font-bold text-foreground">
                 {item.quality}
               </Badge>
             ) : null}
@@ -174,7 +174,7 @@ function OverviewRow({
           and the whole thing is a wall — and a title with no synopsis says so
           rather than leaving a gap the eye reads as a loading state.
         */}
-        <p className="mt-2 line-clamp-3 text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+        <p className="mt-2 line-clamp-3 text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
           {item.overview?.trim()
             || "No synopsis has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
         </p>
@@ -184,7 +184,7 @@ function OverviewRow({
             {item.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
-                className="rounded-full border border-hairline px-2 py-0.5 text-[length:var(--type-caption)] text-muted-foreground"
+                className="rounded-full border border-hairline px-2 py-0.5 text-(length:--type-caption) text-muted-foreground"
               >
                 {genre}
               </span>
@@ -196,7 +196,7 @@ function OverviewRow({
       <Link
         to={href}
         onClick={(event) => event.stopPropagation()}
-        className="relative hidden shrink-0 items-center gap-1 self-center rounded-lg bg-primary px-3 py-1.5 text-[length:var(--type-caption)] font-bold text-primary-foreground opacity-0 transition group-hover:opacity-100 sm:inline-flex"
+        className="relative hidden shrink-0 items-center gap-1 self-center rounded-lg bg-primary px-3 py-1.5 text-(length:--type-caption) font-bold text-primary-foreground opacity-0 transition group-hover:opacity-100 sm:inline-flex"
       >
         <Play className="h-3 w-3" fill="currentColor" />
         Open

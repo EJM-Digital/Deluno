@@ -77,7 +77,7 @@ export function LibraryResults({
       without a placeholder flash in between.
     */}
     {(!hasLoadedOnce || isQueryLoading) && items.length === 0 ? (
-      <GlassTile className="p-[var(--tile-pad)]"><LibraryGridSkeleton count={20} /></GlassTile>
+      <GlassTile className="p-(--tile-pad)"><LibraryGridSkeleton count={20} /></GlassTile>
     ) : items.length === 0 && hasActiveFilter ? (
       <EmptyState
         variant="search"

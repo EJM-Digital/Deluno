@@ -39,7 +39,7 @@ export function SubtitleLanguagePicker({
   // control with no explanation under it.
   if (options.length === 0) {
     return (
-      <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
         Deluno could not load the list of languages. Reload the page; if it keeps happening, check that Deluno is reachable.
       </p>
     );
@@ -51,7 +51,7 @@ export function SubtitleLanguagePicker({
         <ul className="flex flex-wrap items-center gap-1.5">
           {languages.map((code, index) => (
             <li key={code}>
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-hairline bg-surface-2 pl-2.5 pr-1 text-[length:var(--type-caption)] font-semibold text-foreground">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-hairline bg-surface-2 pl-2.5 pr-1 text-(length:--type-caption) font-semibold text-foreground">
                 {mode === "first" ? <span className="text-muted-foreground tabular-nums">{index + 1}</span> : null}
                 {nameOf(code)}
                 <button
@@ -94,7 +94,7 @@ export function SubtitleLanguagePicker({
         />
       ) : null}
 
-      <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
         {describe(languages.map(nameOf), mode)}
       </p>
     </div>

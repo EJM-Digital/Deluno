@@ -28,7 +28,7 @@ interface SourceMarkProps {
 /** Brand colours, and the word each one actually writes. */
 const MARKS: Record<string, { text: string; className: string }> = {
   // TMDb's own palette: the teal-to-cyan sweep from its wordmark.
-  tmdb: { text: "TMDB", className: "bg-gradient-to-r from-[#0d253f] via-[#01b4e4] to-[#90cea1] text-white" },
+  tmdb: { text: "TMDB", className: "bg-linear-to-r/srgb from-[#0d253f] via-[#01b4e4] to-[#90cea1] text-white" },
   imdb: { text: "IMDb", className: "bg-[#f5c518] text-black" },
   rotten_tomatoes: { text: "RT", className: "bg-[#fa320a] text-white" },
   metacritic: { text: "MC", className: "bg-[#ffcc33] text-black" }
@@ -39,7 +39,7 @@ export function SourceMark({ source, label, className }: SourceMarkProps) {
 
   if (!mark) {
     return (
-      <span className={cn("text-[length:var(--type-caption)] font-bold uppercase tracking-[0.12em] text-muted-foreground", className)}>
+      <span className={cn("text-(length:--type-caption) font-bold uppercase tracking-[0.12em] text-muted-foreground", className)}>
         {label}
       </span>
     );
@@ -52,7 +52,7 @@ export function SourceMark({ source, label, className }: SourceMarkProps) {
       title={label}
       className={cn(
         "inline-flex shrink-0 select-none items-center rounded-[0.2em] px-[0.45em] py-[0.1em]",
-        "text-[length:var(--type-caption)] font-black leading-none tracking-tight",
+        "text-(length:--type-caption) font-black leading-none tracking-tight",
         mark.className,
         className
       )}

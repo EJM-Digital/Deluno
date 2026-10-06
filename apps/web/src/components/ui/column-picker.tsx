@@ -83,7 +83,7 @@ export function ColumnPicker({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-[var(--control-height-sm)] items-center gap-1.5 rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-[length:var(--type-caption)] font-semibold text-muted-foreground transition hover:text-foreground"
+        className="flex h-(--control-height-sm) items-center gap-1.5 rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-(length:--type-caption) font-semibold text-muted-foreground transition hover:text-foreground"
       >
         <Columns3 aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
         {label}
@@ -96,7 +96,7 @@ export function ColumnPicker({
           role="menu"
           aria-label={`${label}: choose which columns to show`}
           style={{ position: "fixed", top: anchor.top, right: anchor.right }}
-          className="z-[80] min-w-[220px] overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]"
+          className="z-80 min-w-[220px] overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]"
         >
           {columns.map((column) => {
             const checked = isVisible(column.key);
@@ -108,8 +108,8 @@ export function ColumnPicker({
                 aria-checked={checked}
                 onClick={() => onToggle(column.key)}
                 className={cn(
-                  "flex min-h-[var(--control-height-sm)] w-full items-center justify-between gap-3 rounded-lg px-3 text-left",
-                  "text-[length:var(--shell-nav-size)] font-medium text-foreground transition hover:bg-muted/45"
+                  "flex min-h-(--control-height-sm) w-full items-center justify-between gap-3 rounded-lg px-3 text-left",
+                  "text-(length:--shell-nav-size) font-medium text-foreground transition hover:bg-muted/45"
                 )}
               >
                 <span className="truncate">{column.label}</span>

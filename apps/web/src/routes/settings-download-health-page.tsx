@@ -169,14 +169,14 @@ function DryRunCard({ settings }: { settings: PlatformSettingsSnapshot }) {
 
   return (
     <ListCard title="Dry run" count="Sandbox mode for every rule above">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <SwitchRow
           label="Dry run"
           description="Every rule still watches and still counts strikes, but nothing is removed, blocklisted, searched for, or reclaimed. Each action it would have taken is logged to Activity as a preview instead."
           checked={enabled}
           onCheckedChange={(checked) => void onChange(checked)}
         />
-        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+        {saveState === "error" ? <p className="text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
       </div>
     </ListCard>
   );
@@ -213,16 +213,16 @@ function StrikeInactivityCard({ settings }: { settings: PlatformSettingsSnapshot
 
   return (
     <ListCard title="Strike inactivity window" count="When a quiet download's strikes clear entirely">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-end">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x) sm:grid-cols-[1fr_auto] sm:items-end">
         <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Separate from any rule's own timer - a download that goes this long without tripping any rule again starts from zero.">
           <div className="flex items-center gap-2">
-            <Input type="number" min="1" max="720" step="1" value={hours} onChange={(event) => setHours(event.target.value)} className="max-w-[8rem]" />
-            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+            <Input type="number" min="1" max="720" step="1" value={hours} onChange={(event) => setHours(event.target.value)} className="max-w-32" />
+            <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
           </div>
         </Field>
         <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
       </div>
-      {saveState === "error" ? <p className="px-[var(--card-pad-x)] pb-[var(--card-pad-x)] text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      {saveState === "error" ? <p className="px-(--card-pad-x) pb-(--card-pad-x) text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
     </ListCard>
   );
 }
@@ -266,25 +266,25 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
 
   return (
     <ListCard title="Timing" count="How often Deluno checks in">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <FieldRow>
           <Field label="Strike pacing outside the rules above" error={errors.window} help="Only applies to a finding no rule above covers, such as the client itself reporting stalled or errored. A rule's own timer above is unaffected.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="1440" step="1" value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
           </Field>
           <Field label="Speed chart sampling" error={errors.sampler} help="How often Deluno records a throughput sample for the speed chart.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="60" step="1" value={samplerMinutes} onChange={(event) => setSamplerMinutes(event.target.value)} />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
           </Field>
         </FieldRow>
         <div>
           <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save timing</Button>
         </div>
-        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+        {saveState === "error" ? <p className="text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
       </div>
     </ListCard>
   );
@@ -331,18 +331,18 @@ function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot
 
   return (
     <ListCard title="History retention" count="How long Deluno keeps its own records">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <FieldRow>
           <Field label="Keep Activity and strike history for" error={errors.history} help="Deluno's own record of what it did and when - never a title's files or its own retention, which stays under System -> Recycle bin.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="3650" step="1" value={days} onChange={(event) => setDays(event.target.value)} />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">days</span>
             </div>
           </Field>
           <Field label="Keep unresolved import-recovery cases for" error={errors.importRecovery} help="How long a manual-import case (a completed download Deluno could not place on its own) is kept before it is cleared away unresolved.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" step="1" value={importRecoveryDays} onChange={(event) => setImportRecoveryDays(event.target.value)} />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">days</span>
             </div>
           </Field>
         </FieldRow>
@@ -350,7 +350,7 @@ function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot
           <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
         </div>
       </div>
-      {saveState === "error" ? <p className="px-[var(--card-pad-x)] pb-[var(--card-pad-x)] text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      {saveState === "error" ? <p className="px-(--card-pad-x) pb-(--card-pad-x) text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
     </ListCard>
   );
 }
@@ -409,7 +409,7 @@ function ConnectivityCheckCard({
 
   return (
     <ListCard title="Connectivity check" count="A reachability guard before every pass">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <SwitchRow
           label="Check before every pass"
           description="Before the strike/blocklist pass, the seeding-reclaim pass, and evaluating strikes at all, Deluno sends a GET to each URL below. If none answer, the pass is skipped entirely - nothing struck, blocklisted, or reclaimed - and it's said in Activity."
@@ -422,8 +422,8 @@ function ConnectivityCheckCard({
             <Button type="button" size="sm" onClick={() => void saveUrls()} disabled={!dirty || saveState === "saving"}>Save</Button>
           </div>
         </Field>
-        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[length:var(--type-body-sm)] text-muted-foreground">
+        {saveState === "error" ? <p className="text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-(length:--type-body-sm) text-muted-foreground">
           <span>
             {lastSkip
               ? `Last skipped a pass ${formatEventAge(lastSkip.createdUtc, preferences)}, ${recentSkipCount} time${recentSkipCount === 1 ? "" : "s"} in the last 24 hours.`
@@ -688,7 +688,7 @@ export function SettingsDownloadHealthPage() {
   const kindCopy = RULE_KIND_COPY[form.kind];
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={automationNavItems} actions={<PageToolbarAction onClick={() => openRule(null)}>New rule</PageToolbarAction>} />
 
       <ListCard
@@ -725,11 +725,11 @@ export function SettingsDownloadHealthPage() {
       </ListCard>
 
       <ListCard title="Ignored downloads" count={ignoreEntries.length ? `${ignoreEntries.length} entry${ignoreEntries.length === 1 ? "" : "ies"}` : undefined}>
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             A download matching any of these is exempt from every rule above - never struck, whatever it does.
           </p>
-          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-[var(--grid-gap)] sm:grid-cols-4">
+          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-(--grid-gap) sm:grid-cols-4">
             <Input placeholder="Hash" value={ignoreDraft.hash} onChange={(event) => setIgnoreDraft((current) => ({ ...current, hash: event.target.value }))} />
             <Input placeholder="Client category" value={ignoreDraft.category} onChange={(event) => setIgnoreDraft((current) => ({ ...current, category: event.target.value }))} />
             <Input placeholder="Tracker/indexer domain" value={ignoreDraft.trackerDomain} onChange={(event) => setIgnoreDraft((current) => ({ ...current, trackerDomain: event.target.value }))} />
@@ -776,8 +776,8 @@ export function SettingsDownloadHealthPage() {
       <ConnectivityCheckCard settings={settings} skips={connectivityCheckSkips} />
 
       <ListCard title="Strikes">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x) sm:grid-cols-[1fr_auto] sm:items-center">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             Clear every recorded strike for every download, across every rule. This does not change any rule; it only forgets what has been counted so far. It cannot be undone.
           </p>
           <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmPurge(true)}>Purge all strikes</Button>
@@ -812,7 +812,7 @@ export function SettingsDownloadHealthPage() {
             <Field label={kindCopy.thresholdLabel} error={errors.threshold} help={kindCopy.thresholdHelp}>
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.threshold} onChange={(event) => setForm((current) => ({ ...current, threshold: event.target.value }))} />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">{kindCopy.thresholdUnit}</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">{kindCopy.thresholdUnit}</span>
               </div>
             </Field>
           ) : null}
@@ -821,13 +821,13 @@ export function SettingsDownloadHealthPage() {
               <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has spent this many minutes in the queue in total, this rule trips whatever its current speed - leave blank for no ceiling.">
                 <div className="flex items-center gap-2">
                   <Input type="number" min="1" step="1" placeholder="No ceiling" value={form.tooSlowMaxTotalMinutes} onChange={(event) => setForm((current) => ({ ...current, tooSlowMaxTotalMinutes: event.target.value }))} />
-                  <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+                  <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
                 </div>
               </Field>
               <Field label="Ignore above this size" error={errors.ignoreAboveSizeMb} help="Optional. A download larger than this never trips this rule - a large release is expected to take longer. Leave blank for no ceiling.">
                 <div className="flex items-center gap-2">
                   <Input type="number" min="0" step="1" placeholder="No ceiling" value={form.ignoreAboveSizeMb} onChange={(event) => setForm((current) => ({ ...current, ignoreAboveSizeMb: event.target.value }))} />
-                  <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+                  <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
                 </div>
               </Field>
               <SwitchRow
@@ -848,7 +848,7 @@ export function SettingsDownloadHealthPage() {
             <Field label="Timer" error={errors.timerMinutes} help="How often, in minutes, a further strike can be added while the problem continues.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="1" max="1440" step="1" value={form.timerMinutes} onChange={(event) => setForm((current) => ({ ...current, timerMinutes: event.target.value }))} />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
               </div>
             </Field>
           </FieldRow>
@@ -862,7 +862,7 @@ export function SettingsDownloadHealthPage() {
             <Field label="Minimum progress to reset" error={errors.resetStrikesMinimumProgressMb} help="Optional. A gain smaller than this does not reset the spell - leave blank to let any amount of progress reset it, as above.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" placeholder="Any amount" value={form.resetStrikesMinimumProgressMb} onChange={(event) => setForm((current) => ({ ...current, resetStrikesMinimumProgressMb: event.target.value }))} />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
               </div>
             </Field>
           ) : null}
@@ -883,7 +883,7 @@ export function SettingsDownloadHealthPage() {
               <Input type="number" min="0" max="100" step="1" value={form.maxCompletionPercent} onChange={(event) => setForm((current) => ({ ...current, maxCompletionPercent: event.target.value }))} />
             </Field>
           </FieldRow>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Two enabled rules of the same kind may never cover the same protocol and completion range - saving one that would is refused with the exact rule it overlaps.
           </p>
         </DrawerSection>
@@ -896,7 +896,7 @@ export function SettingsDownloadHealthPage() {
               options={Object.entries(ACTION_COPY).map(([value, copy]) => ({ value, label: copy.label }))}
             />
           </Field>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             {ACTION_COPY[form.actionPreset]?.description}
           </p>
         </DrawerSection>

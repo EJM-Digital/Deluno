@@ -162,7 +162,7 @@ export function SettingsTagsPage() {
   const editingUsage = editing ? usageById.get(editing.id) : undefined;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={librarySetupNavItems}
         actions={
@@ -204,7 +204,7 @@ export function SettingsTagsPage() {
               <ListRow key={tag.id} onClick={() => open(tag)} selected={mode.kind === "edit" && mode.id === tag.id}>
                 <div role="cell" className="flex min-w-0 items-center gap-2.5">
                   <span aria-hidden className={cn("h-2.5 w-2.5 shrink-0 rounded-full", dotClass(tag.color))} />
-                  <span className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tag.name}</span>
+                  <span className="truncate text-(length:--type-body-sm) font-semibold text-foreground">{tag.name}</span>
                 </div>
                 <ListCell primary={capitalise(tag.color)} />
                 <ListCell primary={describeTagUsage(usageById.get(tag.id))} />
@@ -243,24 +243,24 @@ export function SettingsTagsPage() {
             {editingUsage?.users.length ? (
               <ul className="grid gap-1.5" aria-label="Settings that use this tag">
                 {editingUsage.users.map((user) => (
-                  <li key={`${user.kind}-${user.id}`} className="flex items-center justify-between gap-3 text-[length:var(--type-body-sm)]">
+                  <li key={`${user.kind}-${user.id}`} className="flex items-center justify-between gap-3 text-(length:--type-body-sm)">
                     <Link to={user.link} className="truncate font-medium text-foreground underline-offset-2 hover:underline">{user.name}</Link>
                     <span className="shrink-0 text-muted-foreground">{tagUserKindLabel(user.kind)}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">No indexer, download client, notification, library or rule uses this tag.</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">No indexer, download client, notification, library or rule uses this tag.</p>
             )}
             {editingUsage?.totalCount ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{describeTagUsage({ ...editingUsage, users: [] })} carry this tag.</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">{describeTagUsage({ ...editingUsage, users: [] })} carry this tag.</p>
             ) : null}
           </DrawerSection>
         ) : null}
         {editing ? (
           <DrawerSection>
             {editingUsage && !editingUsage.isUnused ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+              <p className="text-(length:--type-body-sm) text-muted-foreground">
                 In use by {describeTagInUse(editingUsage)} — remove it from those first, then it can be deleted.
               </p>
             ) : (
@@ -288,7 +288,7 @@ export function SettingsTagsPage() {
         confirmLabel="Delete unused tags"
         busy={busy}
         onConfirm={() => void handleRemoveUnused()}
-        extraContent={<p className="text-[length:var(--type-body-sm)]">{unused.map((tag) => tag.name).join(", ")}</p>}
+        extraContent={<p className="text-(length:--type-body-sm)">{unused.map((tag) => tag.name).join(", ")}</p>}
       />
       <ConfirmDialog
         open={confirmDiscard}

@@ -88,5 +88,5 @@ export function Field({ label, help, error, hideLabel = false, optional = false,
 
 /** Two fields side by side on wide screens, stacked on narrow ones. */
 export function FieldRow({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid gap-[var(--grid-gap)] sm:grid-cols-2", className)}>{children}</div>;
+  return <div className={cn("grid gap-(--grid-gap) sm:grid-cols-2", className)}>{children}</div>;
 }

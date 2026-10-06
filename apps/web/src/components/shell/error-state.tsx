@@ -31,7 +31,7 @@ export function ErrorState({
     <div
       role="alert"
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-destructive/20 bg-destructive/[0.03] dark:bg-destructive/[0.04]",
+        "relative overflow-hidden rounded-2xl border border-destructive/20 bg-destructive/3 dark:bg-destructive/4",
         size === "compact" ? "px-6 py-10" : "px-8 py-14",
         "flex flex-col items-center justify-center text-center",
         className
@@ -64,12 +64,12 @@ export function ErrorState({
         >
           {title}
         </h3>
-        <p className="text-balance text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+        <p className="text-balance text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
           {message}
         </p>
         {code ? (
           <div className="pt-1">
-          <code className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-2 py-0.5 font-mono text-[length:var(--type-micro)] text-muted-foreground">
+          <code className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-2 py-0.5 font-mono text-(length:--type-micro) text-muted-foreground">
               <span className="h-1 w-1 rounded-full bg-destructive" />
               {code}
             </code>

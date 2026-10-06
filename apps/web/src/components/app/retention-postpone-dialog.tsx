@@ -58,14 +58,14 @@ export function RetentionPostponeDialog({ open, onOpenChange, title, removeAfter
               </span>
               <div>
                 <Dialog.Title className="font-semibold text-foreground">Postpone {title}?</Dialog.Title>
-                <Dialog.Description id="retention-postpone-description" className="mt-1 text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                <Dialog.Description id="retention-postpone-description" className="mt-1 text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                   Its day moves back. It is not kept, so on the new day the rule still acts on it if it still matches. One already past its day counts from today.
                 </Dialog.Description>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] p-6">
+          <div className="grid gap-(--grid-gap) p-6">
             <Field
               label="Days to postpone"
               help={newDay ? `Its new day is ${formatDateTime(newDay, preferences)}.` : undefined}

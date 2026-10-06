@@ -167,11 +167,11 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
         </HeaderTabsPortal>
       ) : null}
       {actionsInHeader ? <HeaderTabsPortal slot={actionSlot}>{actions}</HeaderTabsPortal> : null}
-      <div className={cn("flex min-h-[var(--toolbar-height)] min-w-0 max-w-full flex-wrap items-center justify-between gap-[var(--grid-gap)] border-b border-hairline/80 dark:border-white/[0.08] sm:h-[var(--toolbar-height)] sm:flex-nowrap", rowEmpty && "hidden", className)} style={accentStyle}>
+      <div className={cn("flex min-h-(--toolbar-height) min-w-0 max-w-full flex-wrap items-center justify-between gap-(--grid-gap) border-b border-hairline/80 dark:border-white/8 sm:h-(--toolbar-height) sm:flex-nowrap", rowEmpty && "hidden", className)} style={accentStyle}>
         {hasTabs && !tabsInHeader ? (
           <nav
             aria-label="Sections"
-            className="no-scrollbar flex h-[var(--toolbar-height)] min-w-0 flex-1 items-stretch overflow-x-auto bg-transparent"
+            className="no-scrollbar flex h-(--toolbar-height) min-w-0 flex-1 items-stretch overflow-x-auto bg-transparent"
           >
             <div className="flex h-full min-w-max items-stretch gap-[18px]">
               {(tabs ?? []).map((tab) => {
@@ -192,10 +192,10 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
                       line. The weight never changes between tabs, so the row does not shift as you move along it.
                     */
                     className={cn(
-                      "group relative flex h-full shrink-0 items-center text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
-                      "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group relative flex h-full shrink-0 items-center text-(length:--type-body-sm) font-medium leading-none transition-colors duration-200",
+                      "focus-visible:z-10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "text-[var(--toolbar-accent)]"
+                        ? "text-(--toolbar-accent)"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -203,7 +203,7 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
                       aria-hidden
                       className={cn(
                         "absolute inset-x-0 bottom-0 h-[2px] rounded-full transition-colors",
-                        isActive ? "bg-[var(--toolbar-accent)]" : "bg-transparent"
+                        isActive ? "bg-(--toolbar-accent)" : "bg-transparent"
                       )}
                     />
                     <span className="whitespace-nowrap">{tabLabel ?? tab.label}</span>

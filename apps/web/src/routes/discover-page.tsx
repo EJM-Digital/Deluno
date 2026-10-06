@@ -182,7 +182,7 @@ export function DiscoverPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       {/* Movies / TV are a page-wide filter, so they are chips on the title line (Activity's mechanism); where the header has no slot, a row of their own. */}
       {slot ? (
         <HeaderTabsPortal slot={slot}>
@@ -193,16 +193,16 @@ export function DiscoverPage() {
       )}
 
       <Card as="section" className="dark:border-white/[0.07]">
-        <header className="flex min-h-[var(--list-header-height)] items-center gap-2 border-b border-hairline px-[var(--card-pad-x)]">
+        <header className="flex min-h-(--list-header-height) items-center gap-2 border-b border-hairline px-(--card-pad-x)">
           <Compass className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">Popular on TMDb</h2>
+          <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">Popular on TMDb</h2>
           {data ? (
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">{data.popular.length} titles</span>
+            <span className="text-(length:--type-caption) text-muted-foreground">{data.popular.length} titles</span>
           ) : null}
         </header>
 
         {isLoading ? (
-          <div className="p-[var(--tile-pad)]"><LibraryGridSkeleton count={12} /></div>
+          <div className="p-(--tile-pad)"><LibraryGridSkeleton count={12} /></div>
         ) : error ? (
           <EmptyState
             variant="offline"
@@ -216,7 +216,7 @@ export function DiscoverPage() {
             description="The popular list could not be loaded just now. Deluno will try again when you open this page."
           />
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(var(--library-card-sm),1fr))] gap-[var(--library-grid-gap)] p-[var(--tile-pad)]">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(var(--library-card-sm),1fr))] gap-(--library-grid-gap) p-(--tile-pad)">
             {/* The Movies page's poster size (its small cards, its gap): as many across as fit, never a sixth of the page each. */}
             {data.popular.map((item) => (
               <DiscoverPosterCard
@@ -244,11 +244,11 @@ export function DiscoverPage() {
                       </ListCell>
                       <ListCell align="end">
                         {entry.inLibrary ? (
-                          <span className="inline-flex items-center gap-1 text-[length:var(--type-caption)] text-success">
+                          <span className="inline-flex items-center gap-1 text-(length:--type-caption) text-success">
                             <ShieldCheck className="h-3.5 w-3.5" /> Held
                           </span>
                         ) : entry.excluded ? (
-                          <span className="inline-flex items-center gap-1 text-[length:var(--type-caption)] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 text-(length:--type-caption) text-muted-foreground">
                             <CircleSlash className="h-3.5 w-3.5" /> Excluded
                           </span>
                         ) : (
@@ -297,29 +297,29 @@ function ListEntryStatusBadge({ entry }: { entry: DiscoverListEntry }) {
 function DiscoverPosterCard({ item, onAdd }: { item: DiscoverItem; onAdd: () => void }) {
   return (
     <div className="group relative overflow-hidden rounded-[10px] border border-hairline bg-surface-1">
-      <div className="aspect-[2/3] w-full overflow-hidden bg-surface-2">
+      <div className="aspect-2/3 w-full overflow-hidden bg-surface-2">
         {item.posterUrl ? (
           <ArtworkImage src={item.posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-[length:var(--type-caption)] text-muted-foreground">No art</div>
+          <div className="flex h-full w-full items-center justify-center text-(length:--type-caption) text-muted-foreground">No art</div>
         )}
       </div>
       {item.inLibrary || item.excluded ? (
         <div className="absolute inset-x-0 top-0 flex justify-end p-1.5">
           {item.inLibrary ? (
-            <Badge variant="success" className="shadow">
+            <Badge variant="success" className="shadow-sm">
               <ShieldCheck className="h-3 w-3" /> In library
             </Badge>
           ) : (
-            <Badge variant="default" className="shadow">
+            <Badge variant="default" className="shadow-sm">
               <CircleSlash className="h-3 w-3" /> Excluded
             </Badge>
           )}
         </div>
       ) : null}
       <div className="p-2">
-        <p className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground" title={item.title}>{item.title}</p>
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="truncate text-(length:--type-body-sm) font-semibold text-foreground" title={item.title}>{item.title}</p>
+        <p className="text-(length:--type-caption) text-muted-foreground">
           {item.year ?? "Unknown year"}
           {item.rating ? ` · ${item.rating.toFixed(1)}` : ""}
         </p>

@@ -80,7 +80,7 @@ export function SiteListPanel({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-[var(--radius-control)] border border-hairline p-3 text-[length:var(--type-body-sm)]">
+    <div className="flex flex-col gap-1.5 rounded-(--radius-control) border border-hairline p-3 text-(length:--type-body-sm)">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 text-muted-foreground">
           Sites come from the public Prowlarr repository.{" "}
@@ -90,7 +90,7 @@ export function SiteListPanel({ onDone }: { onDone: () => void }) {
           {busy ? "Checking…" : "Check for newer site files"}
         </Button>
       </div>
-      {message ? <p role="status" className="text-[length:var(--type-caption)] text-muted-foreground">{message}</p> : null}
+      {message ? <p role="status" className="text-(length:--type-caption) text-muted-foreground">{message}</p> : null}
     </div>
   );
 }
@@ -118,12 +118,12 @@ export function TrackerPicker({ trackers, error, onPick, onRefresh }: { trackers
           <Select value={kind} onChange={(event) => setKind(event.target.value as TrackerKind)} aria-label="Which kind of tracker" options={[{ value: "all", label: "Any kind" }, { value: "public", label: "Public" }, { value: "semi-private", label: "Semi-private" }, { value: "private", label: "Private" }]} />
           <Select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label="Which language" options={[{ value: "", label: "Any language" }, ...languages]} />
         </div>
-        <ul role="listbox" aria-label="Trackers" className="max-h-72 overflow-y-auto rounded-[var(--radius-control)] border border-hairline">
-          {shown.length === 0 ? <li className="px-3 py-2 text-[length:var(--type-body-sm)] text-muted-foreground">No tracker matches these words.</li> : null}
+        <ul role="listbox" aria-label="Trackers" className="max-h-72 overflow-y-auto rounded-(--radius-control) border border-hairline">
+          {shown.length === 0 ? <li className="px-3 py-2 text-(length:--type-body-sm) text-muted-foreground">No tracker matches these words.</li> : null}
           {visible.map((tracker, index) => (
             <li key={tracker.id}>
               {index === firstUnsupported ? (
-                <p className="border-b border-hairline bg-surface-2 px-3 py-1.5 text-[length:var(--type-caption)] font-medium text-muted-foreground">Deluno cannot use these yet</p>
+                <p className="border-b border-hairline bg-surface-2 px-3 py-1.5 text-(length:--type-caption) font-medium text-muted-foreground">Deluno cannot use these yet</p>
               ) : null}
               <button
                 type="button"
@@ -132,19 +132,19 @@ export function TrackerPicker({ trackers, error, onPick, onRefresh }: { trackers
                 disabled={tracker.unsupported != null}
                 onClick={() => onPick(tracker)}
                 title={tracker.unsupported ?? tracker.description}
-                className={cn("flex w-full flex-col gap-0.5 border-b border-hairline px-3 py-2 text-left text-[length:var(--type-body-sm)] last:border-b-0", tracker.unsupported ? "cursor-not-allowed opacity-70" : "hover:bg-surface-2")}
+                className={cn("flex w-full flex-col gap-0.5 border-b border-hairline px-3 py-2 text-left text-(length:--type-body-sm) last:border-b-0", tracker.unsupported ? "cursor-not-allowed opacity-70" : "hover:bg-surface-2")}
               >
                 <span className="flex w-full items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-medium text-foreground">{tracker.name}</span>
-                  <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{[languageName(tracker.language), tracker.movies ? "Films" : null, tracker.tv ? "Series" : null].filter(Boolean).join(" · ")}</span>
+                  <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{[languageName(tracker.language), tracker.movies ? "Films" : null, tracker.tv ? "Series" : null].filter(Boolean).join(" · ")}</span>
                   <Chip tone={tracker.unsupported ? "idle" : tracker.privacy === "public" ? "info" : "warn"}>{privacyWords(tracker.privacy)}</Chip>
                 </span>
-                {tracker.unsupported ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{unsupportedWords(tracker.unsupported)}</span> : null}
+                {tracker.unsupported ? <span className="text-(length:--type-caption) text-muted-foreground">{unsupportedWords(tracker.unsupported)}</span> : null}
               </button>
             </li>
           ))}
         </ul>
-        {shown.length > SHOWN_AT_MOST ? <p className="text-[length:var(--type-caption)] text-muted-foreground">Showing {SHOWN_AT_MOST} of {shown.length}. Type part of a name, or pick a kind or language, to narrow the list.</p> : null}
+        {shown.length > SHOWN_AT_MOST ? <p className="text-(length:--type-caption) text-muted-foreground">Showing {SHOWN_AT_MOST} of {shown.length}. Type part of a name, or pick a kind or language, to narrow the list.</p> : null}
       </div>
     </Field>
   );

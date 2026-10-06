@@ -54,7 +54,7 @@ export function ProfileSizeSteps({ mediaType, allowed, rules, tiers, onChange }:
 
   if (allowed.length === 0) {
     return (
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="text-(length:--type-caption) text-muted-foreground">
         Answer the first question and the tiers you chose appear here, each with its own size.
       </p>
     );
@@ -101,8 +101,8 @@ export function ProfileSizeSteps({ mediaType, allowed, rules, tiers, onChange }:
           return (
             <li key={quality} className="grid gap-1">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[length:var(--type-body-sm)] font-medium">{quality}</span>
-                <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                <span className="text-(length:--type-body-sm) font-medium">{quality}</span>
+                <span className="text-(length:--type-caption) tabular-nums text-muted-foreground">
                   {format(min)}–{max > 0 ? format(max) : "no limit"}
                 </span>
               </div>
@@ -123,7 +123,7 @@ export function ProfileSizeSteps({ mediaType, allowed, rules, tiers, onChange }:
                 maxLabel={`${quality} largest file this profile accepts`}
                 onChange={(next) => set(quality, next)}
               />
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 {describe(quality, min, max, isFilm, isFilm ? typical.minGb : typical.minMb, isFilm ? typical.maxGb : typical.maxMb)}
               </p>
             </li>

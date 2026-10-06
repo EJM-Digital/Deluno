@@ -416,7 +416,7 @@ export function SeerrServersCard({
         </DrawerSection>
 
         <DrawerSection title="Turning approvals into downloads" aside="#851">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             In Seerr, add a Webhook notification agent pointed at the URL below, and paste the secret into its Authorization Header field. An approved request is placed by Deluno's own destination rules (genre, anime, original language, "requested in 4K", …) on the Destination Rules page, evaluated against the title. The library below is only the fallback — used when no rule matches.
           </p>
           {editing ? (
@@ -447,7 +447,7 @@ export function SeerrServersCard({
               </Field>
             </div>
           ) : (
-            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">…save this server first…</p>
+            <p className="text-(length:--type-body-sm) text-muted-foreground">…save this server first…</p>
           )}
           <FieldRow>
             <Field label="Fallback movie library" optional help="Used only when no destination rule matches. Blank uses the first movie library.">
@@ -499,7 +499,7 @@ export function SeerrServersCard({
 
         <DrawerSection title="Health">
           {editing?.lastHealthTestUtc ? (
-            <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+            <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
               <dt className="text-muted-foreground">Last test</dt>
               <dd className="flex items-center gap-2">
                 <Chip tone={healthChip(editing).tone}>{healthChip(editing).label}</Chip>
@@ -509,7 +509,7 @@ export function SeerrServersCard({
             </dl>
           ) : null}
           {testResult && !editing?.lastHealthTestUtc ? (
-            <p className={`text-[length:var(--type-body-sm)] ${testResult.ok ? "text-success" : "text-destructive"}`} role="status">{testResult.message}</p>
+            <p className={`text-(length:--type-body-sm) ${testResult.ok ? "text-success" : "text-destructive"}`} role="status">{testResult.message}</p>
           ) : null}
           <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void test()} disabled={busy !== null}>
             {busy === "test" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
@@ -519,13 +519,13 @@ export function SeerrServersCard({
 
         {editing && owed.length ? (
           <DrawerSection title="Still to clear" aside={`${owed.length} ${owed.length === 1 ? "title" : "titles"}`}>
-            <dl className="grid grid-cols-[160px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+            <dl className="grid grid-cols-[160px_1fr] gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
               {owed.map((cleanup) => (
                 <div key={cleanup.entityId} className="contents">
                   <dt className="text-foreground">{cleanup.title}</dt>
                   <dd className="text-destructive">
                     {cleanup.problem ?? "Waiting"}
-                    <span className="block text-[length:var(--type-caption)] text-muted-foreground">Removed by a retention rule. Tried {cleanup.attempts} {cleanup.attempts === 1 ? "time" : "times"}, last {relative(cleanup.attemptedUtc)}; tried again at the next check.</span>
+                    <span className="block text-(length:--type-caption) text-muted-foreground">Removed by a retention rule. Tried {cleanup.attempts} {cleanup.attempts === 1 ? "time" : "times"}, last {relative(cleanup.attemptedUtc)}; tried again at the next check.</span>
                   </dd>
                 </div>
               ))}
@@ -608,16 +608,16 @@ function RecentAcquisitionsSection({ connectionId }: { connectionId: string }) {
   return (
     <DrawerSection title="Recent acquisitions" aside={items ? `${items.length}` : undefined}>
       {items === null ? (
-        <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Loading…</p>
+        <p className="text-(length:--type-body-sm) text-muted-foreground">Loading…</p>
       ) : (
-        <dl className="grid grid-cols-[1fr_auto] items-baseline gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+        <dl className="grid grid-cols-[1fr_auto] items-baseline gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
           {items.map((item) => {
             const status = ACQUISITION_LABELS[item.status] ?? { label: item.status, tone: "idle" as const };
             return (
               <div key={item.id} className="contents">
                 <dt className="text-foreground">
                   {item.title}
-                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">
+                  <span className="block text-(length:--type-caption) text-muted-foreground">
                     {relative(item.createdUtc)}
                     {item.requestedBy ? ` · requested by ${item.requestedBy}` : ""}
                     {item.ruleName ? ` · placed by the “${item.ruleName}” rule` : item.status === "added" || item.status === "available" ? " · placed by the fallback library" : ""}

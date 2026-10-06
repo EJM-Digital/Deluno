@@ -920,7 +920,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
   /* -------------------------------------------------------------- render */
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <PageToolbar
         actions={
           <>
@@ -961,7 +961,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           />
         }
       >
-        <p className="border-b border-hairline px-[var(--card-pad-x)] py-2 text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="border-b border-hairline px-(--card-pad-x) py-2 text-(length:--type-caption) text-muted-foreground">
           Deluno only shows downloads it sent.
         </p>
         {queue.length === 0 ? (
@@ -1008,14 +1008,14 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                     {transferring ? (
                       <>
                         <ProgressBar value={item.progress} />
-                        <span className="mt-1 block truncate text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                        <span className="mt-1 block truncate text-(length:--type-caption) tabular-nums text-muted-foreground">
                           {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
                         </span>
                       </>
                     ) : (
                       // Finished, queued or stalled: a bar would say "in
                       // progress" about something that is not.
-                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                      <span className="block truncate text-(length:--type-caption) text-muted-foreground">
                         {formatBytes(item.sizeBytes)}
                       </span>
                     )}
@@ -1057,7 +1057,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           count={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active · ${processorConnections.length} configured` : `${processorConnections.length} configured · latest ${processorHandoffs.length}`}
         >
           {processorConnections.length ? (
-            <div className="flex flex-wrap gap-2 border-b border-hairline px-[var(--card-pad-x)] py-3">
+            <div className="flex flex-wrap gap-2 border-b border-hairline px-(--card-pad-x) py-3">
               {processorConnections.map((connection) => (
                 <Chip key={connection.id} tone={processorConnectionTone(connection)}>
                   {connection.name} · {processorConnectionStatus(connection)}
@@ -1224,7 +1224,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   secondary={attentionEvidence(item)}
                 />
                 <ListCell mobile align="end">
-                  <span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span>
+                  <span className="text-(length:--type-caption) text-muted-foreground">Open to fix</span>
                 </ListCell>
               </ListRow>
             ))}
@@ -1245,7 +1245,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               <ListRow key={`processor-failure:${handoff.id}`} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })}>
                 <ListNameCell name={handoff.releaseName} sub={handoff.processorName ?? "Processing connector"} />
                 <ListCell primary={handoff.failureMessage ?? `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
-                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span></ListCell>
+                <ListCell mobile align="end"><span className="text-(length:--type-caption) text-muted-foreground">Open to fix</span></ListCell>
               </ListRow>
             ))}
             {failedDownloads.map(({ dispatch, attempts }) => (
@@ -1255,7 +1255,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   primary={dispatchActivityDetail(dispatch)}
                   secondary={attempts > 1 ? `${attempts} attempts · ${dispatchFailureDetail(dispatch)}` : dispatchFailureDetail(dispatch)}
                 />
-                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open transfer details</span></ListCell>
+                <ListCell mobile align="end"><span className="text-(length:--type-caption) text-muted-foreground">Open transfer details</span></ListCell>
               </ListRow>
             ))}
             {orphanedDownloads.map((orphan) => (
@@ -1292,8 +1292,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         title="Cleanup guardrails"
         count={cleanupPolicyLabel(settings)}
       >
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <p className="max-w-3xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+          <p className="max-w-3xl text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
             Transfers records why media failed, was blocked, or was removed. Deluno will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1372,11 +1372,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             {openQueueItem.errorMessage || openQueueItem.failure || visibleFindings(openQueueItem).length ? (
               <DrawerSection title="Health">
                 {openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
-                {openQueueItem.errorMessage ? <p className="text-[length:var(--type-body-sm)] text-destructive">{openQueueItem.errorMessage}</p> : null}
+                {openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
                 {visibleFindings(openQueueItem).map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-[length:var(--type-body-sm)] text-foreground">{finding.summary}</span>
+                      <span className="text-(length:--type-body-sm) text-foreground">{finding.summary}</span>
                       {/* #981: unlinked-from-library is a live fact mirrored
                           from the sharing pass, not a per-item strike record -
                           there is nothing here to ignore for a week. Its own
@@ -1398,11 +1398,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                         when the next strike or action is due - a finding
                         outside the rule engine (client-stalled, and so on)
                         has no ruleId and shows only its strike count. */}
-                    <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                    <span className="text-(length:--type-caption) text-muted-foreground">
                       {healthFindingRuleSummary(finding, preferences)}
                     </span>
                     {finding.recommendedAction ? (
-                      <span className="text-[length:var(--type-caption)] text-muted-foreground">{finding.recommendedAction}</span>
+                      <span className="text-(length:--type-caption) text-muted-foreground">{finding.recommendedAction}</span>
                     ) : null}
                   </div>
                 ))}
@@ -1418,7 +1418,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   neither, and Queue import is closed to a failed hand-off. */}
               {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed ? (
                 <div className="grid gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
-                  <p className="text-[length:var(--type-body-sm)] text-foreground">
+                  <p className="text-(length:--type-body-sm) text-foreground">
                     {openQueueHandoff.failureMessage ?? `${openQueueHandoff.processorName ?? "The processor"} did not finish this download.`}
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -1427,13 +1427,13 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                       Import original
                     </Button>
                   </div>
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">Brings the download in as it is, without processing.</p>
+                  <p className="text-(length:--type-caption) text-muted-foreground">Brings the download in as it is, without processing.</p>
                 </div>
               ) : null}
               {importPreviews[openQueueItem.id] ? (
                 <ImportPreviewFacts preview={importPreviews[openQueueItem.id]!} />
               ) : (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="text-(length:--type-caption) text-muted-foreground">
                   Preview shows exactly where the file would land and what it would be renamed to, before anything moves.
                 </p>
               )}
@@ -1483,7 +1483,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   // independently confirmed this session (closed-source, no
                   // public source repo), so the control is hidden rather than
                   // guessed at — with a plain reason rather than nothing.
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground basis-full">
+                  <p className="text-(length:--type-caption) text-muted-foreground basis-full">
                     Reordering the queue is not available for {openQueueItem.clientName}.
                   </p>
                 )}
@@ -1523,7 +1523,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   <Fact label="Allowed" value={cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`]!.removalAllowed ? "Yes" : "Needs review first"} />
                 </div>
               ) : null}
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 Deluno asks the client to act. The client owns its own payload — nothing in your media library is touched from here.
               </p>
             </DrawerSection>
@@ -1618,7 +1618,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               {manualPreview ? (
                 <ImportPreviewFacts preview={manualPreview} />
               ) : (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">Preview first — it shows the destination path and the new name without writing anything.</p>
+                <p className="text-(length:--type-caption) text-muted-foreground">Preview first — it shows the destination path and the new name without writing anything.</p>
               )}
               <div>
                 <Button type="button" variant="outline" size="sm" onClick={() => void manualRun("preview")} disabled={busyKey !== null || !manualImport.sourcePath.trim()}>
@@ -1666,10 +1666,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                 </Button>
               </div>
               {folderScanMessage ? (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">{folderScanMessage}</p>
+                <p className="text-(length:--type-caption) text-muted-foreground">{folderScanMessage}</p>
               ) : null}
               {folderScanIssues.length > 0 ? (
-                <ul className="list-inside list-disc text-[length:var(--type-caption)] text-warning">
+                <ul className="list-inside list-disc text-(length:--type-caption) text-warning">
                   {folderScanIssues.map((issue) => <li key={issue}>{issue}</li>)}
                 </ul>
               ) : null}
@@ -1694,11 +1694,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                           }
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-[length:var(--type-caption)] text-muted-foreground" title={row.fileName}>
+                          <p className="truncate font-mono text-(length:--type-caption) text-muted-foreground" title={row.fileName}>
                             {row.fileName}
                           </p>
                           {!row.matched ? (
-                            <p className="mt-0.5 text-[length:var(--type-caption)] font-medium text-warning">
+                            <p className="mt-0.5 text-(length:--type-caption) font-medium text-warning">
                               Deluno could not guess a title — fill it in and re-check before including this row.
                             </p>
                           ) : null}
@@ -1730,7 +1730,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                               {row.checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                               Re-check
                             </Button>
-                            <span className="truncate text-[length:var(--type-caption)] text-muted-foreground" title={row.preview.destinationPath}>
+                            <span className="truncate text-(length:--type-caption) text-muted-foreground" title={row.preview.destinationPath}>
                               {row.preview.destinationPath}
                             </span>
                           </div>
@@ -1843,15 +1843,15 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   {openDispatchDetail.timeline.map((event) => (
                     <div key={event.id} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{timelineEventLabel(event.eventType)}</span>
-                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{formatAgo(event.timestamp, preferences)}</span>
+                        <span className="text-(length:--type-body-sm) font-medium text-foreground">{timelineEventLabel(event.eventType)}</span>
+                        <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{formatAgo(event.timestamp, preferences)}</span>
                       </div>
-                      {timelineEventDetail(event) ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{timelineEventDetail(event)}</span> : null}
+                      {timelineEventDetail(event) ? <span className="text-(length:--type-caption) text-muted-foreground">{timelineEventDetail(event)}</span> : null}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">The client has not reported any additional transfer events yet.</p>
+                <p className="text-(length:--type-caption) text-muted-foreground">The client has not reported any additional transfer events yet.</p>
               )}
             </DrawerSection>
           </>
@@ -1929,7 +1929,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         ) : null}
         {openHandoff && canImportOriginal(openHandoff.status) ? (
           <DrawerSection title="Use the original" aside={processorStageLabel(openHandoff.status)}>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               The processor did not finish this file. Deluno can import the download as it is, unprocessed, with the same naming as any other import, keep waiting a while longer, or ask the processor about it again.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -2021,7 +2021,7 @@ function ProcessorOutcomeSection({
         <Fact label="Deluno said" value={summary.said} />
         <Fact label="Heard" value={summary.heard} />
       </div>
-      {summary.detail ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{summary.detail}</p> : null}
+      {summary.detail ? <p className="text-(length:--type-caption) text-muted-foreground">{summary.detail}</p> : null}
       {summary.canSendAgain ? (
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onSendAgain} disabled={busy}>
@@ -2037,8 +2037,8 @@ function ProcessorOutcomeSection({
 function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
-      <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{label}</span>
-      <span className={`min-w-0 truncate text-right text-[length:var(--type-caption)] text-foreground ${mono ? "font-mono" : ""}`} title={value}>
+      <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{label}</span>
+      <span className={`min-w-0 truncate text-right text-(length:--type-caption) text-foreground ${mono ? "font-mono" : ""}`} title={value}>
         {value}
       </span>
     </div>
@@ -2064,15 +2064,15 @@ function IntegrationFailureDetails({
   ].filter((fact): fact is { label: string; value: string; mono?: boolean } => fact !== null);
 
   return (
-    <div className="grid gap-2 rounded-[var(--radius-sm)] border border-border bg-muted/30 p-3">
+    <div className="grid gap-2 rounded-sm border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={integrationFailureTone(failure)}>{integrationFailureKindLabel(failure.kind)}</Chip>
-        <span className="text-[length:var(--type-caption)] text-muted-foreground">{retryLabel}</span>
+        <span className="text-(length:--type-caption) text-muted-foreground">{retryLabel}</span>
       </div>
       <div className="grid gap-0.5">
-        <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{failure.summary || failure.message}</p>
-        {failure.message && failure.message !== failure.summary ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{failure.message}</p> : null}
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">{failure.nextAction}</p>
+        <p className="text-(length:--type-body-sm) font-medium text-foreground">{failure.summary || failure.message}</p>
+        {failure.message && failure.message !== failure.summary ? <p className="text-(length:--type-caption) text-muted-foreground">{failure.message}</p> : null}
+        <p className="text-(length:--type-caption) text-muted-foreground">{failure.nextAction}</p>
       </div>
       {technicalFacts.length ? (
         <div className="grid gap-0.5 border-t border-border/70 pt-1.5">
@@ -2093,7 +2093,7 @@ export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse
       <Fact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not found on disk"} />
       {preview.destinationExists ? <Fact label="Careful" value="Something already exists at the destination" /> : null}
       {preview.pack ? (
-        <div className="grid gap-1 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="Season pack import preview">
+        <div className="grid gap-1 rounded-sm border border-border/70 bg-muted/20 p-2" role="region" aria-label="Season pack import preview">
           <Fact label="Season pack" value={`${preview.pack.sourceFileCount} files · ${preview.pack.episodeCount} episodes`} />
           <Fact label="Readiness" value={preview.pack.alreadyCommitted ? "Already imported as this exact pack" : preview.pack.canExecute ? "Every file and episode is resolved" : "Needs recovery review"} />
           {preview.pack.files.map((file) => (
@@ -2120,7 +2120,7 @@ export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse
 export function MediaInfoDetail({ probe }: { probe: MediaProbeInfo }) {
   if (probe.status !== "succeeded") {
     return (
-      <div className="grid gap-0.5 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
+      <div className="grid gap-0.5 rounded-sm border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
         <Fact label="MediaInfo" value={probe.message ?? "Not probed"} />
       </div>
     );
@@ -2128,7 +2128,7 @@ export function MediaInfoDetail({ probe }: { probe: MediaProbeInfo }) {
 
   const unavailable = "Unavailable";
   return (
-    <div className="grid gap-1.5 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
+    <div className="grid gap-1.5 rounded-sm border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
       {probe.videoStreams.map((stream) => (
         <div key={`video-${stream.index}`} className="grid gap-0.5">
           <Fact label="Video" value={[stream.codec, stream.width && stream.height ? `${stream.width}x${stream.height}` : null].filter(Boolean).join(" · ") || unavailable} />
@@ -2456,7 +2456,7 @@ function cleanupPolicyLabel(settings: PlatformSettingsSnapshot) {
 function PolicyFact({ label, enabled }: { label: string; enabled: boolean }) {
   return (
     <div className="rounded-lg border border-hairline bg-surface-1 px-3 py-2">
-      <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
+      <span className="block text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
       <span className={enabled ? "text-success" : "text-muted-foreground"}>{enabled ? "Enabled" : "Off"}</span>
     </div>
   );

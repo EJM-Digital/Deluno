@@ -552,7 +552,7 @@ describe("arrived today", () => {
   ];
   const shelf = (extra: object = {}) => withRouter(<Shelf items={arrivals()} titles={NO_TITLES} newest={new Set(["1"])} heading="3 arrived today" library={section} {...extra} />);
 
-  it("shows every arrival on one shelf, nothing on the art but the picture and the library's tag, and the state in the status line below; the newest has the ring", () => {
+  it("shows every arrival on one shelf, nothing on the art but the picture and the library's tag, and the state in the status line below; the newest has the ring-3", () => {
     shelf();
     expect(screen.queryByRole("region", { name: "TV Shows" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Movies" })).toBeNull();

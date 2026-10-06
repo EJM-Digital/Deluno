@@ -48,7 +48,7 @@ export function RoutingDrawerBody({
   return (
     <>
       <div className="mb-4 rounded-[10px] border border-hairline bg-surface-2/40 px-3 py-2.5">
-        <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+        <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
           Choose where this library searches and which download client receives approved releases. A category or label is optional: use one only when the client has different folders or processing rules for different libraries. Deluno sends the label, but it does not create the matching rule inside the client.
         </p>
       </div>
@@ -58,10 +58,10 @@ export function RoutingDrawerBody({
             {relevantIndexers.map((item) => {
               const chip = healthChip(item);
               return (
-                <div key={item.id} className="rounded-[10px] border border-hairline px-[var(--field-pad-x)]"><div className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)]">
+                <div key={item.id} className="rounded-[10px] border border-hairline px-(--field-pad-x)"><div className="flex min-h-10 items-center justify-between gap-(--grid-gap)">
                   <label htmlFor={`route-src-${item.id}`} className="min-w-0 cursor-pointer">
-                    <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.name}</span>
-                    <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{protocolLabel(item.protocol)} · priority {item.priority}</span>
+                    <span className="block truncate text-(length:--type-body-sm) font-medium text-foreground">{item.name}</span>
+                    <span className="block truncate text-(length:--type-caption) text-muted-foreground">{protocolLabel(item.protocol)} · priority {item.priority}</span>
                   </label>
                   <span className="flex items-center gap-3">
                     <Chip tone={chip.tone}>{chip.label}</Chip>
@@ -71,11 +71,11 @@ export function RoutingDrawerBody({
                 {sources.includes(item.id) ? (
                   <div className="grid gap-3 border-t border-hairline py-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
-                      <span className="text-[length:var(--type-caption)] font-medium text-foreground">Only for titles tagged (optional)</span>
+                      <span className="text-(length:--type-caption) font-medium text-foreground">Only for titles tagged (optional)</span>
                       <TagPicker label={`Required tags for ${item.name}`} value={sourceTags[item.id]?.required ?? ""} onChange={(required) => onSourceTagsChange(item.id, { required })} />
                     </div>
                     <div className="grid gap-1.5">
-                      <span className="text-[length:var(--type-caption)] font-medium text-foreground">Never for titles tagged (optional)</span>
+                      <span className="text-(length:--type-caption) font-medium text-foreground">Never for titles tagged (optional)</span>
                       <TagPicker label={`Excluded tags for ${item.name}`} value={sourceTags[item.id]?.excluded ?? ""} onChange={(excluded) => onSourceTagsChange(item.id, { excluded })} />
                     </div>
                   </div>
@@ -85,9 +85,9 @@ export function RoutingDrawerBody({
             })}
           </div>
         ) : (
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">No {isTv ? "TV" : "movie"}-capable indexers yet. Add one under Indexers.</p>
+          <p className="text-(length:--type-caption) text-muted-foreground">No {isTv ? "TV" : "movie"}-capable indexers yet. Add one under Indexers.</p>
         )}
-        {sources.length === 0 && relevantIndexers.length ? <p className="text-[length:var(--type-caption)] text-warning">No indexers selected — Deluno can't look for releases for this library.</p> : null}
+        {sources.length === 0 && relevantIndexers.length ? <p className="text-(length:--type-caption) text-warning">No indexers selected — Deluno can't look for releases for this library.</p> : null}
       </DrawerSection>
       <DrawerSection title="Download clients" aside={`${targets.length} of ${clients.length}`}>
         {clients.length ? (
@@ -99,10 +99,10 @@ export function RoutingDrawerBody({
               const category = routeCategory || defaultCategory;
               return (
                 <div key={item.id} className="rounded-[10px] border border-hairline p-3">
-                  <div className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)]">
+                  <div className="flex min-h-10 items-center justify-between gap-(--grid-gap)">
                     <label htmlFor={`route-cli-${item.id}`} className="min-w-0 cursor-pointer">
-                      <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.name}</span>
-                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                      <span className="block truncate text-(length:--type-body-sm) font-medium text-foreground">{item.name}</span>
+                      <span className="block truncate text-(length:--type-caption) text-muted-foreground">
                         {protocolLabel(item.protocol)}{category ? ` · ${routeCategory ? "library label" : "client default"} ${category}` : ""}
                       </span>
                     </label>
@@ -113,7 +113,7 @@ export function RoutingDrawerBody({
                   </div>
                   {targets.includes(item.id) ? (
                     <div className="mt-3 grid gap-1.5 border-t border-hairline pt-3">
-                      <label htmlFor={`route-category-${item.id}`} className="text-[length:var(--type-caption)] font-medium text-foreground">Optional category sent to the download client</label>
+                      <label htmlFor={`route-category-${item.id}`} className="text-(length:--type-caption) font-medium text-foreground">Optional category sent to the download client</label>
                       <Input
                         id={`route-category-${item.id}`}
                         value={categories[item.id] ?? ""}
@@ -124,11 +124,11 @@ export function RoutingDrawerBody({
                         <Chip tone={routeCategory ? "info" : "idle"}>
                           {routeCategory ? `Library category: ${routeCategory}` : "Using client default"}
                         </Chip>
-                        <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                        <span className="text-(length:--type-caption) text-muted-foreground">
                           {routeCategory ? "This label must also exist in the download app." : `Deluno will use the client’s normal ${isTv ? "TV" : "movie"} category.`}
                         </span>
                       </div>
-                      <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
                         This is the label, not the folder path. First create the matching category or rule in {item.name}. For example, create a <span className="font-medium text-foreground">family-movies</span> category there and point it to the matching downloads folder, then enter <span className="font-medium text-foreground">family-movies</span> here. Deluno sends the label with the download and uses it again when the file finishes. Leave it empty to use the client’s normal {isTv ? "TV" : "movie"} category.
                       </p>
                       <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -147,7 +147,7 @@ export function RoutingDrawerBody({
                           </Chip>
                         ) : null}
                       </div>
-                      {categoryChecks[item.id] ? <p role="status" className="text-[length:var(--type-caption)] text-muted-foreground">{categoryChecks[item.id].message}</p> : null}
+                      {categoryChecks[item.id] ? <p role="status" className="text-(length:--type-caption) text-muted-foreground">{categoryChecks[item.id].message}</p> : null}
                     </div>
                   ) : null}
                 </div>
@@ -155,9 +155,9 @@ export function RoutingDrawerBody({
             })}
           </div>
         ) : (
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">No download clients yet. Add one under Download clients.</p>
+          <p className="text-(length:--type-caption) text-muted-foreground">No download clients yet. Add one under Download clients.</p>
         )}
-        {targets.length === 0 && sources.length > 0 && clients.length ? <p className="text-[length:var(--type-caption)] text-warning">No download client selected — approved releases have nowhere to go.</p> : null}
+        {targets.length === 0 && sources.length > 0 && clients.length ? <p className="text-(length:--type-caption) text-warning">No download client selected — approved releases have nowhere to go.</p> : null}
       </DrawerSection>
       <FolderChainSection libraryId={library.id} refreshKey={folderCheckKey} />
     </>

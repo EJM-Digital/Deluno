@@ -149,19 +149,19 @@ function StepRow({
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={() => onOpenChange(!open)}
-        className="flex w-full items-start gap-3 px-[var(--field-pad-x)] py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full items-start gap-3 px-(--field-pad-x) py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span
           aria-hidden
-          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[length:var(--type-caption)] font-medium text-muted-foreground"
+          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-(length:--type-caption) font-medium text-muted-foreground"
         >
           {step.number}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[length:var(--type-body)] font-medium">{step.question}</span>
+          <span className="block text-(length:--type-body) font-medium">{step.question}</span>
           {/* The answer, always. A step you have not opened still tells you
               what it decided on your behalf. */}
-          <span className="mt-0.5 flex items-center gap-1.5 text-[length:var(--type-caption)] text-muted-foreground">
+          <span className="mt-0.5 flex items-center gap-1.5 text-(length:--type-caption) text-muted-foreground">
             <Check aria-hidden className="h-3.5 w-3.5 text-success" />
             {answer}
           </span>
@@ -173,8 +173,8 @@ function StepRow({
       </button>
 
       {open ? (
-        <div id={bodyId} className="grid gap-[var(--grid-gap)] border-t border-hairline px-[var(--field-pad-x)] py-3">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">{step.purpose}</p>
+        <div id={bodyId} className="grid gap-(--grid-gap) border-t border-hairline px-(--field-pad-x) py-3">
+          <p className="text-(length:--type-caption) text-muted-foreground">{step.purpose}</p>
 
           {step.id === "quality" ? props.renderQualityControls() : null}
           {step.id === "size" ? props.renderSizeControls() : null}
@@ -191,7 +191,7 @@ function StepRow({
                     aria-checked={on}
                     onClick={() => toggle(format.id)}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "rounded-full border px-2.5 py-1 text-(length:--type-caption) transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       on
                         ? "border-ring bg-ring/15 text-foreground"
                         : "border-hairline text-muted-foreground hover:border-ring/50 hover:text-foreground"
@@ -263,12 +263,12 @@ function CustomRulesRow({
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={() => onOpenChange(!open)}
-        className="flex w-full items-start gap-3 px-[var(--field-pad-x)] py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full items-start gap-3 px-(--field-pad-x) py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[length:var(--type-caption)] font-medium text-muted-foreground">+</span>
+        <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-(length:--type-caption) font-medium text-muted-foreground">+</span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[length:var(--type-body)] font-medium">How should your own rules affect a choice?</span>
-          <span className="mt-0.5 flex items-center gap-1.5 text-[length:var(--type-caption)] text-muted-foreground">
+          <span className="block text-(length:--type-body) font-medium">How should your own rules affect a choice?</span>
+          <span className="mt-0.5 flex items-center gap-1.5 text-(length:--type-caption) text-muted-foreground">
             <Check aria-hidden className="h-3.5 w-3.5 text-success" />
             {answer}
           </span>
@@ -277,8 +277,8 @@ function CustomRulesRow({
       </button>
 
       {open ? (
-        <div id={bodyId} className="grid gap-[var(--grid-gap)] border-t border-hairline px-[var(--field-pad-x)] py-3">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <div id={bodyId} className="grid gap-(--grid-gap) border-t border-hairline px-(--field-pad-x) py-3">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             These are your exact matchers, separate from guide categories. Deluno keeps each match result with the original release title when it renames the file.
           </p>
           <div role="group" aria-label="Your custom release rules" className="flex flex-wrap gap-1.5">
@@ -292,7 +292,7 @@ function CustomRulesRow({
                   aria-checked={on}
                   onClick={() => toggle(format.id)}
                   className={cn(
-                    "rounded-full border px-2.5 py-1 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "rounded-full border px-2.5 py-1 text-(length:--type-caption) transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                     on ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:border-ring/50 hover:text-foreground"
                   )}
                 >
@@ -341,13 +341,13 @@ function RuleIntentPicker({
         const suggested = INTENT_CHOICES.find((choice) => choice.value === suggestion);
         return (
           <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[length:var(--type-caption)]">
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-(length:--type-caption)">
               {friendlyRuleName(format.name)}
               {intent === OFF && suggestion !== OFF && suggested ? (
                 <button
                   type="button"
                   onClick={() => onFormatIntentChange(formatId, suggestion)}
-                  className="text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label={`Use the guide's suggestion for ${friendlyRuleName(format.name)}: ${suggested.label}`}
                 >
                   Guide suggests {suggested.label}
@@ -364,7 +364,7 @@ function RuleIntentPicker({
                   title={choice.help}
                   onClick={() => onFormatIntentChange(formatId, choice.value)}
                   className={cn(
-                    "rounded-md border px-2 py-0.5 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "rounded-md border px-2 py-0.5 text-(length:--type-caption) transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                     intent === choice.value ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -453,7 +453,7 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
   return (
     <div className="grid gap-2 rounded-[10px] border border-hairline bg-surface-1 p-3">
       <label className="grid gap-1.5">
-        <span className="text-[length:var(--type-caption)] font-medium">Try a release against these answers</span>
+        <span className="text-(length:--type-caption) font-medium">Try a release against these answers</span>
         <Input
           value={releaseName}
           onChange={(event) => setReleaseName(event.target.value)}
@@ -463,13 +463,13 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
       </label>
 
       {failed ? (
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           Deluno could not judge that just now. Change an answer to try again.
         </p>
       ) : verdict ? (
         <div className="grid gap-1.5">
           <Chip tone={tone}>{refusal ? "Deluno would not take this" : verdictWords(status)}</Chip>
-          <ul className="grid gap-1 text-[length:var(--type-caption)] text-muted-foreground">
+          <ul className="grid gap-1 text-(length:--type-caption) text-muted-foreground">
             {refusal ? (
               <li>{refusal}</li>
             ) : (
@@ -480,7 +480,7 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
           </ul>
         </div>
       ) : (
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           Type a release name and Deluno will say what it would do with it.
         </p>
       )}

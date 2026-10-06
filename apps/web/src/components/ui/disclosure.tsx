@@ -25,12 +25,12 @@ export function Disclosure({ title, summary, open, onOpenChange, children, class
         aria-expanded={open}
         aria-controls={id}
         onClick={() => onOpenChange(!open)}
-        className="flex min-h-[52px] w-full items-center justify-between gap-[var(--grid-gap)] px-[var(--field-pad-x)] py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex min-h-[52px] w-full items-center justify-between gap-(--grid-gap) px-(--field-pad-x) py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span className="min-w-0">
-          <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">{title}</span>
+          <span className="block text-(length:--type-body-sm) font-medium text-foreground">{title}</span>
           {summary ? (
-            <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{summary}</span>
+            <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{summary}</span>
           ) : null}
         </span>
         <ChevronDown
@@ -39,7 +39,7 @@ export function Disclosure({ title, summary, open, onOpenChange, children, class
         />
       </button>
       {open ? (
-        <div id={id} className="grid gap-[var(--grid-gap)] border-t border-hairline bg-card p-[var(--field-pad-x)]">
+        <div id={id} className="grid gap-(--grid-gap) border-t border-hairline bg-card p-(--field-pad-x)">
           {children}
         </div>
       ) : null}

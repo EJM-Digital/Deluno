@@ -79,7 +79,7 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
         onClick={() => setOpen((current) => !current)}
         className={cn(
           "h-[calc(28px*var(--ui-scale))] rounded-[8px] border border-hairline bg-transparent px-[10px] text-[length:calc(13px*var(--font-scale))] font-medium text-muted-foreground transition-colors",
-          "hover:bg-surface-2 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          "hover:bg-surface-2 hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           open && "bg-surface-2 text-foreground"
         )}
       >
@@ -93,7 +93,7 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
               role="menu"
               aria-label="Columns"
               style={{ position: "fixed", top: anchor.top, right: anchor.right }}
-              className="z-[80] min-w-[160px] overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]"
+              className="z-80 min-w-[160px] overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]"
             >
               <button
                 type="button"
@@ -104,7 +104,7 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
                   onReset();
                   triggerRef.current?.focus();
                 }}
-                className="flex min-h-[var(--control-height-sm)] w-full items-center rounded-lg px-3 text-left text-[length:var(--shell-nav-size)] font-medium text-foreground transition hover:bg-muted/45 focus-visible:bg-muted/45 focus-visible:outline-none"
+                className="flex min-h-(--control-height-sm) w-full items-center rounded-lg px-3 text-left text-(length:--shell-nav-size) font-medium text-foreground transition hover:bg-muted/45 focus-visible:bg-muted/45 focus-visible:outline-hidden"
               >
                 Reset columns
               </button>

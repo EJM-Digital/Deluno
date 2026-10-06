@@ -13,9 +13,9 @@ export function NavigationProgress() {
     <div
       role="progressbar"
       aria-label="Opening the next screen"
-      className="pointer-events-none fixed inset-x-0 top-0 z-[120] h-0.5 overflow-hidden bg-transparent"
+      className="pointer-events-none fixed inset-x-0 top-0 z-120 h-0.5 overflow-hidden bg-transparent"
     >
-      <div className="h-full w-1/3 animate-navigation-progress rounded-r-full bg-[var(--nav-accent,hsl(var(--primary)))]" />
+      <div className="h-full w-1/3 animate-navigation-progress rounded-r-full bg-(--nav-accent,hsl(var(--primary)))" />
     </div>
   );
 }

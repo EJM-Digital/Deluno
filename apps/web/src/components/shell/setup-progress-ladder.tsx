@@ -27,21 +27,21 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
   return (
     <section
       aria-label="Setup progress"
-      className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-4 shadow-card dark:border-white/[0.06] sm:p-5"
+      className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-4 shadow-card dark:border-white/6 sm:p-5"
     >
       <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-[80px]" />
       <div className="relative">
         <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <div className="min-w-0">
-            <p className="flex items-center gap-2 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="flex items-center gap-2 text-(length:--type-caption) font-bold uppercase tracking-[0.18em] text-primary">
               <Sparkles className="h-3.5 w-3.5" />
               Setup progress
             </p>
-            <h2 className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground">{heading}</h2>
-            <p className="mt-1 max-w-3xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">{status.summary}</p>
+            <h2 className="mt-0.5 font-display text-(length:--type-title-sm) font-semibold leading-tight tracking-tight text-foreground">{heading}</h2>
+            <p className="mt-1 max-w-3xl text-(length:--type-body-sm) leading-relaxed text-muted-foreground">{status.summary}</p>
           </div>
           <span className="flex items-center gap-2 justify-self-start sm:justify-self-end">
-            <span className="tabular whitespace-nowrap rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-[length:var(--type-caption)] font-semibold text-muted-foreground">
+            <span className="tabular whitespace-nowrap rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-(length:--type-caption) font-semibold text-muted-foreground">
               {count}
             </span>
           </span>
@@ -53,31 +53,31 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
             const leadsToCurrent = Boolean(nextStep && step.complete && nextStep.id === currentStepId);
 
             return (
-            <li key={step.id} className="flex min-w-0 flex-col items-stretch 2xl:min-w-[11.5rem] 2xl:flex-1 2xl:flex-row first:pl-0 last:pr-0">
+            <li key={step.id} className="flex min-w-0 flex-col items-stretch 2xl:min-w-46 2xl:flex-1 2xl:flex-row first:pl-0 last:pr-0">
               <Link
                 to={step.to}
                 aria-label={`${step.number}. ${step.title}: ${stepStateLabel(step)}`}
                 className={cn(
-                  "group relative flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-[background-color,border-color,box-shadow] duration-200 dark:bg-white/[0.02]",
+                  "group relative flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-[background-color,border-color,box-shadow] duration-200 dark:bg-white/2",
                   step.state === "complete"
-                    ? "border-success/30 bg-success/[0.06] hover:border-success/50 hover:bg-success/[0.1]"
+                    ? "border-success/30 bg-success/6 hover:border-success/50 hover:bg-success/10"
                     : step.state === "failed"
-                      ? "border-destructive/30 bg-destructive/[0.05] hover:border-destructive/50 hover:bg-destructive/[0.09]"
+                      ? "border-destructive/30 bg-destructive/5 hover:border-destructive/50 hover:bg-destructive/9"
                       : step.id === currentStepId
-                        ? "border-primary/35 bg-primary/[0.07] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)] hover:border-primary/55 hover:bg-primary/[0.1]"
-                        : "border-hairline bg-surface-1/70 hover:border-primary/35 hover:bg-primary/[0.05]"
+                        ? "border-primary/35 bg-primary/[0.07] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)] hover:border-primary/55 hover:bg-primary/10"
+                        : "border-hairline bg-surface-1/70 hover:border-primary/35 hover:bg-primary/5"
                 )}
               >
                 <StepStateIcon step={step} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{step.number}. {step.title}</span>
+                  <span className="block truncate text-(length:--type-body-sm) font-semibold text-foreground">{step.number}. {step.title}</span>
                   <span className={cn(
-                    "mt-0.5 block truncate text-[length:var(--type-caption)] leading-snug",
+                    "mt-0.5 block truncate text-(length:--type-caption) leading-snug",
                     step.state === "failed" ? "text-destructive" : step.state === "complete" ? "text-success" : "text-muted-foreground"
                   )}>
                     {step.optional && step.state !== "complete" ? "Optional · " : ""}{stepStateLabel(step)}
                   </span>
-                  <span className="mt-1 flex items-center gap-1 truncate text-[length:var(--type-micro)] font-bold uppercase tracking-[0.12em] text-primary">
+                  <span className="mt-1 flex items-center gap-1 truncate text-(length:--type-micro) font-bold uppercase tracking-[0.12em] text-primary">
                     {step.action}
                     <ArrowRight className="h-3 w-3 shrink-0 transition-transform group-hover:translate-x-0.5" />
                   </span>

@@ -268,7 +268,7 @@ export function SettingsAutoTaggingPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={librarySetupNavItems}
         actions={
@@ -362,12 +362,12 @@ export function SettingsAutoTaggingPage() {
             </DrawerSection>
 
             <DrawerSection title="Conditions" aside="Any one of a kind · all kinds">
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 Conditions of the same kind are alternatives, so any one will do. Conditions of different kinds must all be met. “Is not” turns a condition around.
               </p>
-              {errors.specifications ? <p className="text-[length:var(--type-caption)] text-destructive">{errors.specifications}</p> : null}
+              {errors.specifications ? <p className="text-(length:--type-caption) text-destructive">{errors.specifications}</p> : null}
               {form.specifications.map((condition, index) => (
-                <div key={index} className="grid gap-2 rounded-[var(--radius-control)] border border-border p-[var(--card-pad-x)]">
+                <div key={index} className="grid gap-2 rounded-(--radius-control) border border-border p-(--card-pad-x)">
                   <div className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
                     <Select
                       aria-label={`Condition ${index + 1} kind`}
@@ -387,7 +387,7 @@ export function SettingsAutoTaggingPage() {
                   </div>
                   {valueControl(condition, index)}
                   {isAddTimeOnlyCondition(condition.type) ? (
-                    <p className="text-[length:var(--type-caption)] text-muted-foreground">Only checked when a title is added. A later edit or refresh leaves the tags this rule gave as they are.</p>
+                    <p className="text-(length:--type-caption) text-muted-foreground">Only checked when a title is added. A later edit or refresh leaves the tags this rule gave as they are.</p>
                   ) : null}
                 </div>
               ))}

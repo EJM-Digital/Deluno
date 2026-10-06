@@ -96,7 +96,7 @@ export function RemoveMediaDialog({
             {hasImportedFiles ? (
               <div className="rounded-lg border border-hairline bg-surface-0 px-4 py-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">Affected library location{removalPreview.folderPaths.length === 1 ? "" : "s"}</p>
-                <div className="mt-1 space-y-1 font-mono text-[length:var(--type-caption)] leading-relaxed">
+                <div className="mt-1 space-y-1 font-mono text-(length:--type-caption) leading-relaxed">
                   {(removalPreview.folderPaths.length ? removalPreview.folderPaths : removalPreview.filePaths).slice(0, 3).map((path) => (
                     <p key={path} className="break-all">{path}</p>
                   ))}

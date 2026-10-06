@@ -318,13 +318,13 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
         <SlidersHorizontal className="h-3.5 w-3.5" />
         Options
       </Button>
-      <Button type="button" size="sm" variant="outline" className="w-[var(--control-height-sm)] px-0" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
+      <Button type="button" size="sm" variant="outline" className="w-(--control-height-sm) px-0" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <Button type="button" size="sm" variant="outline" onClick={() => setOffset(0)}>
         Today
       </Button>
-      <Button type="button" size="sm" variant="outline" className="w-[var(--control-height-sm)] px-0" aria-label={`Next ${scope}`} onClick={() => setOffset((value) => value + 1)}>
+      <Button type="button" size="sm" variant="outline" className="w-(--control-height-sm) px-0" aria-label={`Next ${scope}`} onClick={() => setOffset((value) => value + 1)}>
         <ChevronRight className="h-4 w-4" />
       </Button>
     </>
@@ -335,7 +335,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
     : "Nothing has a date yet. Air dates and release dates come from the metadata provider — link a show or movie to its provider record and its schedule appears here.";
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         sections={{
           label: "Range",
@@ -377,9 +377,9 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
 
       {effectiveView === "grid" ? (
         <Card as="section" className="dark:border-white/[0.07]">
-          <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
-            <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{range.label}</h2>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">
+          <header className="flex min-h-(--list-header-height) items-center gap-3 border-b border-hairline px-(--card-pad-x)">
+            <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{range.label}</h2>
+            <span className="text-(length:--type-caption) text-muted-foreground">
               {visible.length} {visible.length === 1 ? "thing" : "things"}
             </span>
             <div className="ml-auto flex shrink-0 items-center gap-2">{cardActions}</div>
@@ -389,7 +389,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
             {weekHeaders.map((day, index) => (
               <span
                 key={`${day}-${index}`}
-                className="px-2 py-2 text-center text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+                className="px-2 py-2 text-center text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground"
               >
                 {day}
               </span>
@@ -401,22 +401,22 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
               <div
                 key={cell.key}
                 className={cn(
-                  "min-h-[112px] border-b border-r border-hairline p-1.5 last:border-r-0 [&:nth-child(7n)]:border-r-0",
+                  "min-h-[112px] border-b border-r border-hairline p-1.5 last:border-r-0 nth-[7n]:border-r-0",
                   !cell.inRange && "bg-surface-2/30",
-                  cell.isToday && "bg-primary/[0.06]"
+                  cell.isToday && "bg-primary/6"
                 )}
               >
                 <div className="flex items-baseline justify-between gap-1 px-1">
                   <span
                     className={cn(
-                      "text-[length:var(--type-caption)] tabular-nums",
+                      "text-(length:--type-caption) tabular-nums",
                       cell.isToday ? "font-semibold text-primary" : cell.inRange ? "text-foreground" : "text-muted-foreground/50"
                     )}
                   >
                     {cell.date.getDate()}
                   </span>
                   {cell.entries.length > 2 ? (
-                    <span className="text-[length:var(--type-micro)] text-muted-foreground">{cell.entries.length}</span>
+                    <span className="text-(length:--type-micro) text-muted-foreground">{cell.entries.length}</span>
                   ) : null}
                 </div>
 
@@ -428,8 +428,8 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
                       onClick={() => navigate(entry.href)}
                       title={`${entry.name} · ${entry.detail}`}
                       className={cn(
-                        "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-[length:var(--type-micro)] leading-tight transition-colors",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-(length:--type-micro) leading-tight transition-colors",
+                        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                         "border-hairline bg-surface-2 text-foreground hover:bg-surface-3",
                         options.highlightCutoffUnmet && entry.mark.wantedStatus === "upgrade" && "ring-1 ring-inset ring-warning/70"
                       )}
@@ -444,7 +444,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
                     </button>
                   ))}
                   {cell.entries.length > 3 ? (
-                    <span className="px-1.5 text-[length:var(--type-micro)] text-muted-foreground">
+                    <span className="px-1.5 text-(length:--type-micro) text-muted-foreground">
                       +{cell.entries.length - 3} more
                     </span>
                   ) : null}
@@ -455,7 +455,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
 
           {visible.length === 0 ? (
             // A grid of empty cells explains nothing on its own.
-            <p className="border-t border-hairline px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+            <p className="border-t border-hairline px-(--card-pad-x) py-3 text-(length:--type-caption) leading-relaxed text-muted-foreground">
               {nothingHere}
             </p>
           ) : null}
@@ -494,7 +494,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
                     onClick={() => navigate(entry.href)}
                     className={
                       options.highlightCutoffUnmet && entry.mark.wantedStatus === "upgrade"
-                        ? "bg-warning/[0.06]"
+                        ? "bg-warning/6"
                         : undefined
                     }
                   >

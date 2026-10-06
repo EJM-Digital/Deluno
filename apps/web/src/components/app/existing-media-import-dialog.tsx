@@ -116,12 +116,12 @@ export function ExistingMediaImportDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-[hsl(222_44%_3%/0.62)] backdrop-blur-[3px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[60] flex max-h-[min(88dvh,860px)] w-[min(1040px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card text-foreground shadow-2xl focus:outline-none">
-          <header className="flex shrink-0 items-start justify-between gap-[var(--grid-gap)] border-b border-hairline px-6 py-5">
+        <Dialog.Overlay className="fixed inset-0 z-60 bg-[hsl(222_44%_3%/0.62)] backdrop-blur-[3px]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-60 flex max-h-[min(88dvh,860px)] w-[min(1040px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card text-foreground shadow-2xl focus:outline-hidden">
+          <header className="flex shrink-0 items-start justify-between gap-(--grid-gap) border-b border-hairline px-6 py-5">
             <div className="min-w-0">
-              <Dialog.Title className="font-display text-[length:var(--type-title-sm)] font-semibold leading-tight">Review existing media</Dialog.Title>
-              <Dialog.Description className="mt-1 max-w-3xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+              <Dialog.Title className="font-display text-(length:--type-title-sm) font-semibold leading-tight">Review existing media</Dialog.Title>
+              <Dialog.Description className="mt-1 max-w-3xl text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                 Deluno checks the library folder first. Nothing is added until you select the files or folders you want to bring in.
               </Dialog.Description>
             </div>
@@ -131,44 +131,44 @@ export function ExistingMediaImportDialog({
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            <div className="grid gap-[var(--grid-gap)]">
+            <div className="grid gap-(--grid-gap)">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-info/25 bg-info/5 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">{library?.name ?? "Library"}</p>
-                  <p className="truncate text-[length:var(--type-caption)] text-muted-foreground">{library?.rootPath ?? "Choose a library folder first."}</p>
+                  <p className="text-(length:--type-body-sm) font-semibold text-foreground">{library?.name ?? "Library"}</p>
+                  <p className="truncate text-(length:--type-caption) text-muted-foreground">{library?.rootPath ?? "Choose a library folder first."}</p>
                 </div>
                 <Chip tone="info">Review before import</Chip>
               </div>
 
-              {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-[length:var(--type-body-sm)] text-destructive">{error}</div> : null}
+              {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-(length:--type-body-sm) text-destructive">{error}</div> : null}
 
               <div className="overflow-hidden rounded-xl border border-hairline">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface-2/40 px-4 py-3">
-                  <label className="inline-flex items-center gap-2 text-[length:var(--type-body-sm)] font-medium">
+                  <label className="inline-flex items-center gap-2 text-(length:--type-body-sm) font-medium">
                     <Checkbox checked={pageSelected} onCheckedChange={togglePage} disabled={loading || importableCount === 0} />
                     Select all on this page
                   </label>
-                  <span className="text-[length:var(--type-caption)] text-muted-foreground">{loading ? "Reading folder…" : `${page?.items.length ?? 0} items shown`}</span>
+                  <span className="text-(length:--type-caption) text-muted-foreground">{loading ? "Reading folder…" : `${page?.items.length ?? 0} items shown`}</span>
                 </div>
 
                 {loading ? (
-                  <div className="flex min-h-48 items-center justify-center gap-2 text-[length:var(--type-body-sm)] text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Reading the next page</div>
+                  <div className="flex min-h-48 items-center justify-center gap-2 text-(length:--type-body-sm) text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Reading the next page</div>
                 ) : page?.items.length ? (
                   <div className="divide-y divide-hairline">
                     {page.items.map((item) => <CandidateRow key={item.sourcePath} item={item} checked={selected.has(item.sourcePath)} onCheckedChange={(checked) => togglePath(item.sourcePath, checked)} />)}
                   </div>
                 ) : (
-                  <div className="flex min-h-48 items-center justify-center px-5 text-center text-[length:var(--type-body-sm)] text-muted-foreground">No supported files or folders were found in this library folder.</div>
+                  <div className="flex min-h-48 items-center justify-center px-5 text-center text-(length:--type-body-sm) text-muted-foreground">No supported files or folders were found in this library folder.</div>
                 )}
               </div>
 
               {lastResult ? (
-                <div className="rounded-xl border border-success/25 bg-success/5 px-4 py-3 text-[length:var(--type-body-sm)]">
+                <div className="rounded-xl border border-success/25 bg-success/5 px-4 py-3 text-(length:--type-body-sm)">
                   <p className="flex items-center gap-2 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4 text-success" />{lastResult.importedCount} selected item{lastResult.importedCount === 1 ? "" : "s"} added</p>
                   {lastResult.issues.length ? (
                     <div className="mt-1 text-muted-foreground">
                       <p>{lastResult.issues.length} warning{lastResult.issues.length === 1 ? "" : "s"} or skipped item{lastResult.issues.length === 1 ? "" : "s"} need review.</p>
-                      <ul className="mt-2 grid gap-1 text-[length:var(--type-caption)]">
+                      <ul className="mt-2 grid gap-1 text-(length:--type-caption)">
                         {lastResult.issues.slice(0, 5).map((issue) => <li key={`${issue.sourcePath}:${issue.kind}`}><span className="font-medium text-foreground">{issue.sourcePath}</span> — {issue.detail}</li>)}
                       </ul>
                     </div>
@@ -179,7 +179,7 @@ export function ExistingMediaImportDialog({
           </div>
 
           <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-hairline bg-surface-2/40 px-6 py-4">
-            <div className="text-[length:var(--type-caption)] text-muted-foreground">{selectedImportableCount} selected on this page</div>
+            <div className="text-(length:--type-caption) text-muted-foreground">{selectedImportableCount} selected on this page</div>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void goPrevious()} disabled={loading || history.length === 0}><ArrowLeft className="h-3.5 w-3.5" />Previous</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => void goNext()} disabled={loading || !page?.hasMore}>Next<ArrowRight className="h-3.5 w-3.5" /></Button>
@@ -198,11 +198,11 @@ function CandidateRow({ item, checked, onCheckedChange }: { item: ExistingLibrar
       <Checkbox checked={checked} onCheckedChange={onCheckedChange} disabled={!item.canImport} aria-label={`Select ${item.title}`} />
       {item.isDirectory ? <Folder className="h-4 w-4 text-info" /> : <FileVideo className="h-4 w-4 text-muted-foreground" />}
       <span className="min-w-0">
-        <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}{item.year ? ` (${item.year})` : ""}</span>
-        <span className="block truncate font-mono text-[length:var(--type-caption)] text-muted-foreground" title={item.sourcePath}>{item.relativePath}</span>
-        {item.issueDetail ? <span className="mt-1 flex items-start gap-1 text-[length:var(--type-caption)] text-warning"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{item.issueDetail}</span> : null}
+        <span className="block truncate text-(length:--type-body-sm) font-semibold text-foreground">{item.title}{item.year ? ` (${item.year})` : ""}</span>
+        <span className="block truncate font-mono text-(length:--type-caption) text-muted-foreground" title={item.sourcePath}>{item.relativePath}</span>
+        {item.issueDetail ? <span className="mt-1 flex items-start gap-1 text-(length:--type-caption) text-warning"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{item.issueDetail}</span> : null}
       </span>
-      <span className="text-right text-[length:var(--type-caption)] text-muted-foreground">{item.detectedQuality ?? "Quality unknown"}<br />{formatBytes(item.fileSizeBytes)}</span>
+      <span className="text-right text-(length:--type-caption) text-muted-foreground">{item.detectedQuality ?? "Quality unknown"}<br />{formatBytes(item.fileSizeBytes)}</span>
     </label>
   );
 }

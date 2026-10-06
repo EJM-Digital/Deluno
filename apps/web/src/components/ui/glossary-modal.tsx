@@ -107,7 +107,7 @@ export function GlossaryModal({ open, onOpenChange }: GlossaryModalProps) {
         </div>
 
         <div className="overflow-auto flex-1">
-          <div className="space-y-[var(--page-gap)] p-6">
+          <div className="space-y-(--page-gap) p-6">
             {GLOSSARY.map((item) => (
               <div key={item.term} className="space-y-1.5">
                 <p className="font-semibold text-foreground">{item.term}</p>

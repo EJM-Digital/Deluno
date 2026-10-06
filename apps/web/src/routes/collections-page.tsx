@@ -200,7 +200,7 @@ export function CollectionsPage() {
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <PageToolbar
         actions={<PageToolbarAction onClick={() => setAddOpen((value) => !value)}>Follow collection</PageToolbarAction>}
       />
@@ -218,7 +218,7 @@ export function CollectionsPage() {
             <h2 className="font-display text-base font-semibold text-foreground">Follow a TMDb collection</h2>
             <p className="text-sm text-muted-foreground">Paste the numeric id from a TMDb collection URL. Deluno will show every member, then the normal movie automation cycle can add new ones.</p>
           </div>
-          <div className="mt-5 grid gap-[var(--grid-gap)] md:grid-cols-2">
+          <div className="mt-5 grid gap-(--grid-gap) md:grid-cols-2">
             <label className="space-y-1.5 text-sm font-medium text-foreground">
               TMDb collection id
               <Input value={providerId} onChange={(event) => setProviderId(event.target.value)} placeholder="645" inputMode="numeric" autoFocus />
@@ -246,7 +246,7 @@ export function CollectionsPage() {
       ) : null}
 
       {selected.length > 0 ? (
-        <Card className="flex flex-col gap-[var(--grid-gap)] px-4 py-3">
+        <Card className="flex flex-col gap-(--grid-gap) px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-semibold text-foreground">{selected.length} selected</span>
             <div className="flex gap-2">
@@ -276,7 +276,7 @@ export function CollectionsPage() {
           <Button className="mt-5" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" />Follow collection</Button>
         </Card>
       ) : (
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid gap-(--grid-gap) xl:grid-cols-2">
           {collections.map((collection) => {
             const members = membersByCollection[collection.id] ?? [];
             const isBusy = busy === collection.id;
@@ -285,7 +285,7 @@ export function CollectionsPage() {
             const excludePrefix = `exclude:${collection.id}:`;
             return (
               <Card key={collection.id} className="flex min-h-[250px] flex-col">
-                <div className="flex gap-[var(--grid-gap)] p-4">
+                <div className="flex gap-(--grid-gap) p-4">
                   <Checkbox
                     aria-label={`Select ${collection.name}`}
                     checked={selected.includes(collection.id)}
@@ -332,7 +332,7 @@ export function CollectionsPage() {
                 />
 
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-4 py-3">
-                  <div className="flex items-center gap-[var(--grid-gap)] text-xs text-muted-foreground">
+                  <div className="flex items-center gap-(--grid-gap) text-xs text-muted-foreground">
                     <SwitchRow label="Monitor" checked={collection.monitored} onCheckedChange={(value) => updateCollection(collection, { monitored: value })} disabled={isBusy || isRefreshing} />
                     <SwitchRow label="Add missing" checked={collection.monitorMovies} onCheckedChange={(value) => updateCollection(collection, { monitorMovies: value })} disabled={isBusy || isRefreshing} />
                   </div>
@@ -504,7 +504,7 @@ export function CollectionBulkEditor({ count, qualityProfiles, libraries, disabl
 
   return (
     <div className="space-y-3 border-t border-hairline pt-3">
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-(--grid-gap) md:grid-cols-3 xl:grid-cols-5">
         <label className="space-y-1.5 text-sm font-medium text-foreground">
           Quality profile
           <Select value={profile} onChange={(event) => setProfile(event.target.value)} placeholder="Leave as it is" options={qualityProfiles.map((item) => ({ value: item.id, label: item.name }))} />

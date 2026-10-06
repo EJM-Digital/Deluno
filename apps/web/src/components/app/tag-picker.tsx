@@ -146,7 +146,7 @@ export function TagPicker({
               <li
                 key={key(name)}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-[length:var(--type-caption)] font-medium",
+                  "inline-flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-(length:--type-caption) font-medium",
                   unused ? "border-warning/40 bg-warning/10 text-warning" : "border-primary/20 bg-primary/10 text-primary"
                 )}
               >
@@ -156,7 +156,7 @@ export function TagPicker({
                   disabled={disabled}
                   aria-label={`Remove ${name} from ${label}`}
                   onClick={() => remove(name)}
-                  className="rounded-full p-0.5 hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+                  className="rounded-full p-0.5 hover:bg-foreground/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
                 >
                   <X className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -189,7 +189,7 @@ export function TagPicker({
             }}
           />
           {open && !disabled && (matches.length > 0 || (trimmed !== "" && !exactExists)) ? (
-            <div className="absolute z-20 mt-1 grid w-full gap-0.5 rounded-[12px] border border-hairline bg-surface-1 p-1 shadow-lg" role="group" aria-label={`${label} choices`}>
+            <div className="absolute z-20 mt-1 grid w-full gap-0.5 rounded-xl border border-hairline bg-surface-1 p-1 shadow-lg" role="group" aria-label={`${label} choices`}>
               {matches.map((tag) => (
                 <button
                   key={tag.id}
@@ -197,10 +197,10 @@ export function TagPicker({
                   aria-label={`Add ${tag.name} to ${label}`}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => pick(tag.name)}
-                  className="flex items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-[length:var(--type-body-sm)] text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-(length:--type-body-sm) text-foreground hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span>{tag.name}</span>
-                  <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <span className="text-(length:--type-caption) text-muted-foreground">
                     {titleCount(tag.name) === 0 ? "No titles yet" : `${titleCount(tag.name)} ${titleCount(tag.name) === 1 ? "title" : "titles"}`}
                   </span>
                 </button>
@@ -212,7 +212,7 @@ export function TagPicker({
                   aria-label={`Create new tag ${trimmed} for ${label}`}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => void create()}
-                  className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[length:var(--type-body-sm)] font-medium text-primary hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-(length:--type-body-sm) font-medium text-primary hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                   Create new tag &ldquo;{trimmed}&rdquo;
@@ -222,9 +222,9 @@ export function TagPicker({
           ) : null}
         </div>
       ) : null}
-      {error ? <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-(length:--type-caption) text-destructive">{error}</p> : null}
       {unusedNames.length > 0 ? (
-        <p role="status" className="text-[length:var(--type-caption)] text-warning">
+        <p role="status" className="text-(length:--type-caption) text-warning">
           {unusedNames.map((name) => `"${name}"`).join(", ")} {unusedNames.length === 1 ? "is" : "are"} not on any title yet, so nothing matches {unusedNames.length === 1 ? "it" : "them"} until a title is given {unusedNames.length === 1 ? "that tag" : "those tags"}.
         </p>
       ) : null}

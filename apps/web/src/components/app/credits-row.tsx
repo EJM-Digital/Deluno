@@ -84,9 +84,9 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
   return (
     <section className={cn("border-t border-white/10 pt-5", className)}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">{heading}</p>
+        <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.18em] text-muted-foreground">{heading}</p>
         <div className="flex items-center gap-2">
-          <span className="text-[length:var(--type-caption)] text-muted-foreground">{people.length} credited</span>
+          <span className="text-(length:--type-caption) text-muted-foreground">{people.length} credited</span>
           <ScrollArrow direction="left" enabled={overflow.left} heading={heading} onClick={() => page(-1)} />
           <ScrollArrow direction="right" enabled={overflow.right} heading={heading} onClick={() => page(1)} />
         </div>
@@ -114,20 +114,20 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
  */
 function CreditCard({ person }: { person: CreditedPerson }) {
   const portrait = person.profileUrl
-    ? <ArtworkImage src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg transition group-hover/credit:border-primary/50" fallback={<div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>} />
-    : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>;
+    ? <ArtworkImage src={person.profileUrl} alt="" loading="lazy" className="aspect-2/3 w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg transition group-hover/credit:border-primary/50" fallback={<div className="flex aspect-2/3 w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-(length:--type-caption) text-muted-foreground">No photo</div>} />
+    : <div className="flex aspect-2/3 w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-(length:--type-caption) text-muted-foreground">No photo</div>;
 
   const caption = (
     <figcaption className="mt-2 leading-tight">
       <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
       {person.role
-        ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground" title={person.role}>{person.role}</span>
+        ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground" title={person.role}>{person.role}</span>
         : null}
     </figcaption>
   );
 
   if (!person.personId) {
-    return <figure className="w-[7.5rem] shrink-0">{portrait}{caption}</figure>;
+    return <figure className="w-30 shrink-0">{portrait}{caption}</figure>;
   }
 
   return (
@@ -136,7 +136,7 @@ function CreditCard({ person }: { person: CreditedPerson }) {
       target="_blank"
       rel="noreferrer"
       title={`${person.name} on IMDb`}
-      className="group/credit w-[7.5rem] shrink-0 no-underline"
+      className="group/credit w-30 shrink-0 no-underline"
     >
       <figure>{portrait}{caption}</figure>
     </a>

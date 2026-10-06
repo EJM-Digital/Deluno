@@ -298,7 +298,7 @@ export function SettingsDestinationRulesPage() {
   const matchOptions = form.matchKind === "tag" ? tagOptions : MATCH_VALUE_OPTIONS[form.matchKind] ?? [];
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={librarySetupNavItems}
         actions={
@@ -391,7 +391,7 @@ export function SettingsDestinationRulesPage() {
               </Field>
               <FieldRow>
                 <Field label="Folder name format" optional help="Optional. Leave blank to use the library's naming. Tokens: {Title}, {Year}, {Genre}, {Tag}.">
-                  <Input value={form.folderTemplate} onChange={(event) => setForm((current) => ({ ...current, folderTemplate: event.target.value }))} placeholder="{Title} ({Year})" className="font-mono text-[length:var(--type-caption)]" />
+                  <Input value={form.folderTemplate} onChange={(event) => setForm((current) => ({ ...current, folderTemplate: event.target.value }))} placeholder="{Title} ({Year})" className="font-mono text-(length:--type-caption)" />
                 </Field>
                 <Field label="Rule order" help="If more than one rule matches, the lower number runs first.">
                   <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom order" customPlaceholder="1–1000" />
@@ -411,7 +411,7 @@ export function SettingsDestinationRulesPage() {
             </DrawerSection>
             {editing ? (
               <DrawerSection title="Library impact" aside={librariesByRule.get(editing.id)?.length ? `${librariesByRule.get(editing.id)!.length} libraries` : "Not assigned"}>
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">This exception only applies to libraries whose Library Profile uses it.</p>
+                <p className="text-(length:--type-caption) text-muted-foreground">This exception only applies to libraries whose Library Profile uses it.</p>
                 <LibraryImpactLinks libraries={librariesByRule.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
               </DrawerSection>
             ) : null}
@@ -453,10 +453,10 @@ export function SettingsDestinationRulesPage() {
             </DrawerSection>
             <DrawerSection title="Source file">
               <Field label="Source path" help="A real path lets Deluno check whether the source and destination can share one set of file data through a single-copy link (hardlink).">
-                <Input value={testForm.sourcePath} onChange={(event) => setTestForm((current) => ({ ...current, sourcePath: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={testForm.sourcePath} onChange={(event) => setTestForm((current) => ({ ...current, sourcePath: event.target.value }))} className="font-mono text-(length:--type-caption)" />
               </Field>
               <Field label="File name" optional>
-                <Input value={testForm.fileName} onChange={(event) => setTestForm((current) => ({ ...current, fileName: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={testForm.fileName} onChange={(event) => setTestForm((current) => ({ ...current, fileName: event.target.value }))} className="font-mono text-(length:--type-caption)" />
               </Field>
             </DrawerSection>
             {testResult ? (
@@ -466,22 +466,22 @@ export function SettingsDestinationRulesPage() {
                   <Chip tone={testResult.preferredTransferMode === "hardlink" ? "info" : "idle"}>{testResult.preferredTransferMode === "hardlink" ? "Single-copy link" : testResult.preferredTransferMode}</Chip>
                   <Chip tone={testResult.hardlinkAvailable ? "ok" : "warn"}>{testResult.hardlinkAvailable ? "Single-copy link available" : "Copy required"}</Chip>
                 </div>
-                <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{testResult.explanation}</p>
-                <dl className="grid grid-cols-[110px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+                <p className="text-(length:--type-body-sm) text-muted-foreground">{testResult.explanation}</p>
+                <dl className="grid grid-cols-[110px_1fr] gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
                   <dt className="text-muted-foreground">Source</dt>
-                  <dd className="break-all font-mono text-[length:var(--type-caption)]">{testResult.sourcePath}</dd>
+                  <dd className="break-all font-mono text-(length:--type-caption)">{testResult.sourcePath}</dd>
                   <dt className="text-muted-foreground">Destination</dt>
-                  <dd className="break-all font-mono text-[length:var(--type-caption)]">{testResult.destinationPath}</dd>
+                  <dd className="break-all font-mono text-(length:--type-caption)">{testResult.destinationPath}</dd>
                 </dl>
                 {testResult.decisionSteps.length ? (
-                  <ol className="grid list-decimal gap-1 pl-5 text-[length:var(--type-caption)] text-muted-foreground">
+                  <ol className="grid list-decimal gap-1 pl-5 text-(length:--type-caption) text-muted-foreground">
                     {testResult.decisionSteps.map((step, index) => (
                       <li key={index}>{step}</li>
                     ))}
                   </ol>
                 ) : null}
                 {testResult.warnings.map((warning) => (
-                  <p key={warning} className="text-[length:var(--type-caption)] text-warning">{warning}</p>
+                  <p key={warning} className="text-(length:--type-caption) text-warning">{warning}</p>
                 ))}
               </DrawerSection>
             ) : null}

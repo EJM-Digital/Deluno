@@ -88,7 +88,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const drawSection = (label: string, list: BellRow[]) =>
     list.length === 0 ? null : (
       <section aria-label={label} key={label}>
-        <p className="px-4 pb-0.5 pt-2 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{label}</p>
+        <p className="px-4 pb-0.5 pt-2 text-(length:--type-micro) font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{label}</p>
         <ul>{list.map((row) => bellRowElement(row, action))}</ul>
       </section>
     );
@@ -237,7 +237,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
       >
         <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
         {total > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-[length:var(--type-micro)] font-bold tabular-nums leading-none text-background shadow-[0_0_0_1.5px_hsl(var(--background))]">
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-(length:--type-micro) font-bold tabular-nums leading-none text-background shadow-[0_0_0_1.5px_hsl(var(--background))]">
             {total > 99 ? "99+" : total}
           </span>
         ) : null}
@@ -251,19 +251,19 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
           aria-labelledby={headingId}
           tabIndex={-1}
           style={{ position: "fixed", top: anchor.top, right: anchor.right, width: anchor.width }}
-          className="z-[80] overflow-hidden rounded-xl border border-hairline/80 bg-popover shadow-lg dark:border-white/[0.07]"
+          className="z-80 overflow-hidden rounded-xl border border-hairline/80 bg-popover shadow-lg dark:border-white/[0.07]"
         >
-          <p id={headingId} className="border-b border-hairline px-4 py-3 text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p id={headingId} className="border-b border-hairline px-4 py-3 text-(length:--type-caption) font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Notifications
           </p>
 
           <section aria-label="Needs you" className="border-b border-hairline">
-            <p className="flex items-center gap-2 px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="flex items-center gap-2 px-4 pb-1 pt-3 text-(length:--type-micro) font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Needs you
               {total > 0 ? <span className="tabular-nums text-warning">{total}</span> : null}
             </p>
             {nothingNeedsYou ? (
-              <p className="px-4 pb-3 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing needs you right now.</p>
+              <p className="px-4 pb-3 text-(length:--type-body-sm) text-muted-foreground">Nothing needs you right now.</p>
             ) : (
               // A link in a row goes to the screen that clears it, so the panel closes behind it.
               <div
@@ -278,7 +278,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
             )}
             {leftovers + suggestions > 0 ? (
               <div
-                className="border-t border-hairline px-4 py-2 text-[length:var(--type-caption)] text-muted-foreground"
+                className="border-t border-hairline px-4 py-2 text-(length:--type-caption) text-muted-foreground"
                 onClick={(event) => {
                   if ((event.target as HTMLElement).closest("a")) close(false);
                 }}
@@ -288,9 +288,9 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
             ) : null}
           </section>
 
-          {loaded && events.length === 0 ? null : <p className="px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent</p>}
+          {loaded && events.length === 0 ? null : <p className="px-4 pb-1 pt-3 text-(length:--type-micro) font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent</p>}
           {!loaded ? (
-            <p className="px-4 py-4 text-center text-[length:var(--type-body-sm)] text-muted-foreground">Loading…</p>
+            <p className="px-4 py-4 text-center text-(length:--type-body-sm) text-muted-foreground">Loading…</p>
           ) : events.length === 0 ? null : (
             <div className="max-h-[240px] overflow-y-auto">
               {events.map((event, index) => (
@@ -305,7 +305,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                   className="flex w-full min-w-0 flex-col items-start gap-0.5 border-b border-hairline px-4 py-2.5 text-left transition last:border-b-0 hover:bg-muted/45"
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
-                    <span title={event.message} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-foreground">
+                    <span title={event.message} className="min-w-0 flex-1 truncate text-(length:--type-body-sm) text-foreground">
                       {event.message}
                     </span>
                     {needsAttention(event.severity) ? (
@@ -314,7 +314,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                       </Chip>
                     ) : null}
                   </span>
-                  <span className="block truncate text-[length:var(--type-micro)] text-muted-foreground">
+                  <span className="block truncate text-(length:--type-micro) text-muted-foreground">
                     {eventLabel(event)} · {formatEventAge(event.createdUtc, preferences)}
                   </span>
                 </button>
@@ -328,7 +328,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
               navigate(activityLinkForStatus());
               close(false);
             }}
-            className="block w-full border-t border-hairline px-4 py-3 text-center text-[length:var(--type-body-sm)] font-semibold text-primary transition hover:bg-muted/45"
+            className="block w-full border-t border-hairline px-4 py-3 text-center text-(length:--type-body-sm) font-semibold text-primary transition hover:bg-muted/45"
           >
             Show all activity
           </button>

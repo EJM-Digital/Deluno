@@ -122,11 +122,11 @@ export function RadialGauge({
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-        <span className="text-[length:var(--type-body-sm)] font-semibold tabular-nums leading-none text-foreground">
+        <span className="text-(length:--type-body-sm) font-semibold tabular-nums leading-none text-foreground">
           {label}
         </span>
         {caption ? (
-          <span className="mt-1 max-w-full truncate px-2 text-[length:var(--type-micro)] text-muted-foreground">
+          <span className="mt-1 max-w-full truncate px-2 text-(length:--type-micro) text-muted-foreground">
             {caption}
           </span>
         ) : null}

@@ -158,8 +158,8 @@ export function AcquisitionBlockersCard({
         </ListTable>
 
         {blockers.canForce ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-[var(--card-pad-x)] py-3">
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">{blockers.summary}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-(--card-pad-x) py-3">
+            <p className="text-(length:--type-caption) text-muted-foreground">{blockers.summary}</p>
             <Button
               type="button"
               size="sm"

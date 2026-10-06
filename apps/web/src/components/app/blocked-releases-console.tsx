@@ -173,7 +173,7 @@ export function BlockedReleasesConsole({
   }
 
   return (
-    <div className="grid gap-[var(--grid-gap)]">
+    <div className="grid gap-(--grid-gap)">
       {proposed.length ? (
         <ListCard
           title="Waiting for you"
@@ -271,7 +271,7 @@ export function BlockedReleasesConsole({
                   <Chip tone="idle">{reasonWords(release.reasonCode)}</Chip>
                   <Chip tone={release.origin === "manual" ? "info" : "idle"}>{originLabel(release)}</Chip>
                 </div>
-                <div role="cell" className="text-[length:var(--type-caption)] text-muted-foreground">
+                <div role="cell" className="text-(length:--type-caption) text-muted-foreground">
                   {new Date(release.blockedUtc).toLocaleDateString(undefined, {
                     day: "numeric",
                     month: "short",

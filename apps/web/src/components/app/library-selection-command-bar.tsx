@@ -37,7 +37,7 @@ export function LibrarySelectionCommandBar({
     )}>
       <div className={cn(
         "flex items-center overflow-hidden rounded-2xl",
-        "border border-white/[0.1] dark:border-white/[0.08]",
+        "border border-white/10 dark:border-white/8",
         "bg-[hsl(226_24%_10%/0.97)] dark:bg-[hsl(226_24%_8%/0.98)]",
         "shadow-[0_24px_60px_hsl(0_0%_0%/0.45),0_8px_20px_hsl(0_0%_0%/0.3),inset_0_1px_0_hsl(0_0%_100%/0.06)]",
         "backdrop-blur-2xl"
@@ -45,13 +45,13 @@ export function LibrarySelectionCommandBar({
         <div className="flex items-center gap-2.5 border-r border-white/[0.07] px-4 py-3">
           <span className={cn(
             "flex h-6 min-w-6 items-center justify-center rounded-full px-2",
-            "bg-gradient-to-br from-primary to-[hsl(var(--primary-2))]",
-            "text-[length:var(--library-badge-size)] font-bold text-primary-foreground",
+            "bg-linear-to-br/srgb from-primary to-[hsl(var(--primary-2))]",
+            "text-(length:--library-badge-size) font-bold text-primary-foreground",
             "shadow-[0_2px_8px_hsl(var(--primary-deep)/0.5),inset_0_1px_0_hsl(0_0%_100%/0.2)]"
           )}>
             {count}
           </span>
-          <span className="whitespace-nowrap text-[length:var(--library-toolbar-size)] font-medium text-[hsl(var(--media-muted-foreground))]">
+          <span className="whitespace-nowrap text-(length:--library-toolbar-size) font-medium text-[hsl(var(--media-muted-foreground))]">
             {count === 1 ? "item" : "items"} selected
           </span>
         </div>
@@ -70,11 +70,11 @@ export function LibrarySelectionCommandBar({
           <button
             type="button"
             onClick={onClear}
-            className="flex min-h-[var(--library-toolbar-height)] items-center gap-1.5 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium text-[hsl(var(--media-muted-foreground)/0.65)] transition hover:bg-white/[0.06] hover:text-[hsl(var(--media-foreground))]"
+            className="flex min-h-(--library-toolbar-height) items-center gap-1.5 rounded-xl px-3 text-(length:--library-toolbar-size) font-medium text-[hsl(var(--media-muted-foreground)/0.65)] transition hover:bg-white/6 hover:text-[hsl(var(--media-foreground))]"
             aria-label="Clear selection"
           >
             Clear
-            <kbd className="rounded border border-white/10 bg-white/[0.05] px-1 font-mono text-[length:var(--library-badge-size)] text-[hsl(var(--media-muted-foreground)/0.5)]">Esc</kbd>
+            <kbd className="rounded-sm border border-white/10 bg-white/5 px-1 font-mono text-(length:--library-badge-size) text-[hsl(var(--media-muted-foreground)/0.5)]">Esc</kbd>
           </button>
         </div>
       </div>

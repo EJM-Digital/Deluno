@@ -17,10 +17,10 @@ interface RatingStripProps {
  * yellow-green.
  */
 const SOURCE_TONES: Record<string, string> = {
-  tmdb: "border-sky-400/30 bg-gradient-to-br from-sky-500/15 via-surface-1 to-surface-1",
-  imdb: "border-amber-400/30 bg-gradient-to-br from-amber-500/15 via-surface-1 to-surface-1",
-  rotten_tomatoes: "border-red-400/30 bg-gradient-to-br from-red-500/15 via-surface-1 to-surface-1",
-  metacritic: "border-lime-400/30 bg-gradient-to-br from-lime-500/15 via-surface-1 to-surface-1"
+  tmdb: "border-sky-400/30 bg-linear-to-br/srgb from-sky-500/15 via-surface-1 to-surface-1",
+  imdb: "border-amber-400/30 bg-linear-to-br/srgb from-amber-500/15 via-surface-1 to-surface-1",
+  rotten_tomatoes: "border-red-400/30 bg-linear-to-br/srgb from-red-500/15 via-surface-1 to-surface-1",
+  metacritic: "border-lime-400/30 bg-linear-to-br/srgb from-lime-500/15 via-surface-1 to-surface-1"
 };
 
 export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
@@ -28,7 +28,7 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
 
   if (visibleRatings.length === 0) {
     return (
-      <div className="rounded-xl border border-hairline bg-surface-1 p-3 text-[length:var(--type-body-sm)] text-muted-foreground">
+      <div className="rounded-xl border border-hairline bg-surface-1 p-3 text-(length:--type-body-sm) text-muted-foreground">
         No ratings stored yet. Refresh metadata after provider setup to add rating sources.
       </div>
     );
@@ -49,7 +49,7 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
               {value}
             </p>
             {rating.voteCount ? (
-              <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
                 {rating.voteCount.toLocaleString()} votes
               </p>
             ) : null}

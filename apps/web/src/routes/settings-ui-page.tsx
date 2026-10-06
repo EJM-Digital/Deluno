@@ -125,11 +125,11 @@ export function SettingsUiPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar tabs={systemSettingsNavItems} />
 
       <ListCard title="Appearance" count="How Deluno should feel on your display">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <Field label="Theme" help="Follow the device, or pin Deluno to dark or light." className="max-w-[24rem]">
             <SegmentedControl<string>
               aria-label="Theme"
@@ -157,7 +157,7 @@ export function SettingsUiPage() {
               ]}
             />
           </Field>
-          <Field label="Interface language" help="Controls Deluno's labels and display formatting. Metadata language is configured separately under Media management." className="max-w-[30rem]">
+          <Field label="Interface language" help="Controls Deluno's labels and display formatting. Metadata language is configured separately under Media management." className="max-w-120">
             <SegmentedControl<string>
               aria-label="Interface language"
               value={form.uiLanguage}
@@ -172,7 +172,7 @@ export function SettingsUiPage() {
       </ListCard>
 
       <ListCard title="Calendar" count="Choose how dates and week columns read across Deluno">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="First day of week" help="Changes calendar column order and week grouping.">
               <SegmentedControl<string>
@@ -202,7 +202,7 @@ export function SettingsUiPage() {
       </ListCard>
 
       <ListCard title="Formats" count="The same preferences are used in lists, details, activity and the dashboard">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="Runtime" help="How movie and episode runtimes are written.">
               <SegmentedControl<string>
@@ -253,22 +253,22 @@ export function SettingsUiPage() {
             </Field>
           </FieldRow>
           <Field label="Relative dates" help="Show Today, Yesterday and Tomorrow when the exact date is not needed.">
-            <div className="flex min-h-[var(--control-height)] items-center gap-3">
+            <div className="flex min-h-(--control-height) items-center gap-3">
               <Switch
                 checked={form.showRelativeDates}
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, showRelativeDates: checked }))}
               />
-              <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Use relative labels where they improve scanning</span>
+              <span className="text-(length:--type-body-sm) text-muted-foreground">Use relative labels where they improve scanning</span>
             </div>
           </Field>
           <Field label="Anime episode numbers" help="For anime, write each episode with its absolute number beside the season and episode, like S01E05 (105). Other shows are unchanged.">
-            <div className="flex min-h-[var(--control-height)] items-center gap-3">
+            <div className="flex min-h-(--control-height) items-center gap-3">
               <Switch
                 aria-label="Show absolute numbers for anime"
                 checked={form.showAbsoluteEpisodeNumbers}
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, showAbsoluteEpisodeNumbers: checked }))}
               />
-              <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Show absolute numbers for anime</span>
+              <span className="text-(length:--type-body-sm) text-muted-foreground">Show absolute numbers for anime</span>
             </div>
           </Field>
           {/*
@@ -279,7 +279,7 @@ export function SettingsUiPage() {
             rather than showing UTC.
           */}
           <Field label="Timezone" help="Converts episode air times to when they actually air for you. Leave blank to use this browser's timezone.">
-            <div className="flex max-w-[28rem] items-center gap-2">
+            <div className="flex max-w-md items-center gap-2">
               <Input
                 aria-label="Timezone"
                 placeholder="e.g. Australia/Sydney"
@@ -304,7 +304,7 @@ export function SettingsUiPage() {
       </ListCard>
 
       <ListCard title="Default views" count="How a library opens before you change its view">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <Field label="Movies" help="Grid leads with poster art; List leads with details." className="max-w-[24rem]">
             <SegmentedControl<string>
               aria-label="Default movies view"

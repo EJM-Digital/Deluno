@@ -163,7 +163,7 @@ describe("notifications bell (#907)", () => {
       expect(actions.children[0].children.length).toBe(1);
       expect(actions.children[1].children.length).toBeLessThanOrEqual(1);
       for (const control of actions.querySelectorAll("button, a")) {
-        expect(control.className).toContain("w-[7.5rem]");
+        expect(control.className).toContain("w-30");
         expect(control.className).toContain("h-7");
         expect(control.className).toContain("whitespace-nowrap");
       }

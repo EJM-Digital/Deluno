@@ -40,7 +40,7 @@ export function LibrarySelectAllToggle({
         caption for a hundred-title page — "Showing 100 loaded of 6,000" — which
         was true and told a reader nothing they could act on.
       */}
-      <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
+      <p className="text-(length:--library-toolbar-size) font-medium text-muted-foreground">
         {isQueryLoading ? (
           <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {filteredCount === 1 ? "title" : "titles"} shown <span className="animate-pulse">— updating</span></>
         ) : isLoadingMore && totalCount > loadedCount ? (
@@ -55,10 +55,10 @@ export function LibrarySelectAllToggle({
         type="button"
         onClick={onToggle}
         className={cn(
-          "group flex min-h-[var(--library-toolbar-height)] items-center gap-2 rounded-xl px-3 py-1.5 text-[length:var(--library-toolbar-size)] font-medium transition-all duration-200 select-none",
+          "group flex min-h-(--library-toolbar-height) items-center gap-2 rounded-xl px-3 py-1.5 text-(length:--library-toolbar-size) font-medium transition-all duration-200 select-none",
           selectedCount > 0
             ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 hover:bg-primary/15"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:hover:bg-white/[0.05]"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:hover:bg-white/5"
         )}
       >
         <span className={cn(
@@ -67,7 +67,7 @@ export function LibrarySelectAllToggle({
             ? "border-primary bg-primary text-primary-foreground shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
             : selectedCount > 0
               ? "border-primary/60 bg-primary/15"
-              : "border-hairline bg-background group-hover:border-primary/40 dark:bg-white/[0.04]"
+              : "border-hairline bg-background group-hover:border-primary/40 dark:bg-white/4"
         )}>
           {allVisibleSelected ? (
             <svg width="9" height="7" viewBox="0 0 9 7" fill="none">

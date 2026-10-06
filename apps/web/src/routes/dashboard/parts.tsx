@@ -76,13 +76,13 @@ export function Line({
   const body = (
     <>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">{label}</span>
-        {hint ? <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{hint}</span> : null}
+        <span className="block truncate text-(length:--type-body-sm) text-foreground">{label}</span>
+        {hint ? <span className="block truncate text-(length:--type-caption) text-muted-foreground">{hint}</span> : null}
       </span>
       {value !== undefined ? (
         <span
           className={cn(
-            "shrink-0 text-right text-[length:var(--type-body-sm)] font-medium tabular-nums",
+            "shrink-0 text-right text-(length:--type-body-sm) font-medium tabular-nums",
             tone === "warn" ? "text-warning" : tone === "bad" ? "text-destructive" : tone === "ok" ? "text-success" : "text-foreground"
           )}
         >
@@ -91,9 +91,9 @@ export function Line({
       ) : null}
     </>
   );
-  const className = "flex min-h-8 items-center gap-3 border-b border-hairline px-[var(--card-pad-x)] py-1.5 last:border-b-0";
+  const className = "flex min-h-8 items-center gap-3 border-b border-hairline px-(--card-pad-x) py-1.5 last:border-b-0";
   return to ? (
-    <Link to={to} {...rest} className={cn(className, "transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}>
+    <Link to={to} {...rest} className={cn(className, "transition-colors hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}>
       {body}
     </Link>
   ) : (
@@ -103,13 +103,13 @@ export function Line({
 
 /** A sentence that says something true where a list has nothing to list. */
 export function Plain({ children }: { children: ReactNode }) {
-  return <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-body-sm)] text-muted-foreground">{children}</p>;
+  return <p className="px-(--card-pad-x) py-3 text-(length:--type-body-sm) text-muted-foreground">{children}</p>;
 }
 
 /** A small caption above a group of lines. */
 export function Group({ children, ...rest }: { children: ReactNode; "data-fit-row"?: string }) {
   return (
-    <p {...rest} className="px-[var(--card-pad-x)] pb-1 pt-2.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+    <p {...rest} className="px-(--card-pad-x) pb-1 pt-2.5 text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">
       {children}
     </p>
   );
@@ -246,7 +246,7 @@ export function FitList({
       {hiddenCount > 0 && fit !== null ? (
         <Link
           to={to}
-          className="flex h-9 shrink-0 items-center gap-1 border-t border-hairline px-[var(--card-pad-x)] text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="flex h-9 shrink-0 items-center gap-1 border-t border-hairline px-(--card-pad-x) text-(length:--type-caption) font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {moreLabel(hiddenCount)}
           <ArrowRight aria-hidden className="h-3 w-3" />

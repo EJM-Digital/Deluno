@@ -5,9 +5,9 @@ import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
   [
-    "inline-flex min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-sans text-[length:var(--button-font-size)] font-medium leading-none",
+    "inline-flex min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-sans text-(length:--button-font-size) font-medium leading-none",
     "transition-all duration-150 ease-out",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     "disabled:pointer-events-none disabled:opacity-40 active:scale-[0.975]"
   ].join(" "),
   {
@@ -20,26 +20,26 @@ const buttonVariants = cva(
         // setup) fall back to the global primary gradient.
         default: [
           "relative overflow-hidden",
-          "bg-[image:var(--page-accent-image,linear-gradient(to_bottom,hsl(var(--primary)),hsl(var(--primary-2))))]",
-          "text-[color:var(--page-accent-foreground,hsl(var(--primary-foreground)))]",
+          "bg-(image:--page-accent-image,linear-gradient(to_bottom,hsl(var(--primary)),hsl(var(--primary-2))))",
+          "text-(--page-accent-foreground,hsl(var(--primary-foreground)))",
           "shadow-[0_1px_2px_hsl(var(--primary-deep)/0.35),inset_0_1px_0_hsl(0_0%_100%/0.12)]",
           "hover:brightness-110"
         ].join(" "),
         secondary:
-          "bg-secondary text-secondary-foreground border border-hairline shadow-[var(--shadow-card)] hover:bg-surface-3",
+          "bg-secondary text-secondary-foreground border border-hairline hover:bg-surface-3",
         ghost: "text-muted-foreground hover:bg-secondary hover:text-foreground",
         outline:
-          "border border-hairline bg-transparent text-foreground shadow-[var(--shadow-card)] hover:bg-secondary",
+          "border border-hairline bg-transparent text-foreground hover:bg-secondary",
         destructive:
-          "border border-destructive/35 bg-transparent text-destructive shadow-[var(--shadow-card)] hover:bg-destructive/10",
+          "border border-destructive/35 bg-transparent text-destructive hover:bg-destructive/10",
         "destructive-solid":
           "bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(var(--destructive)/0.35)] hover:brightness-110"
       },
       size: {
-        default: "h-[var(--control-height)] px-4 py-2",
-        sm: "h-[var(--control-height-sm)] px-3 text-[length:var(--button-font-size-sm)]",
-        lg: "h-[var(--control-height-lg)] px-6",
-        icon: "h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0"
+        default: "h-(--control-height) px-4 py-2",
+        sm: "h-(--control-height-sm) px-3 text-(length:--button-font-size-sm)",
+        lg: "h-(--control-height-lg) px-6",
+        icon: "h-(--control-height-icon) w-(--control-height-icon) shrink-0"
       }
     },
     defaultVariants: {

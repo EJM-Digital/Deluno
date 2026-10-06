@@ -483,7 +483,7 @@ export function SearchCyclesPage() {
   const paused = !settings.autoStartJobs;
 
   return (
-    <form onSubmit={submitCleanup} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={submitCleanup} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar
         tabs={automationNavItems}
         actions={
@@ -509,7 +509,7 @@ export function SearchCyclesPage() {
 
       {view === "upgrades" ? (
         <ListCard title="Upgrade searches" count="When Deluno should keep looking for a better release">
-          <div className="p-[var(--card-pad-x)]">
+          <div className="p-(--card-pad-x)">
             <SwitchRow
               label="Stop searching once the cutoff is met"
               description="Deluno keeps the title monitored, but stops looking for a better release after it reaches the quality level you chose."
@@ -562,7 +562,7 @@ export function SearchCyclesPage() {
           title="When a download finishes"
           count={sharing.mode === "share-then-tidy" ? "Shares, then tidies up" : sharing.mode === "tidy-now" ? "Tidies up straight away" : "Left alone"}
         >
-          <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
             {/* The whole beginner decision is this one control. The dials below
                 only exist once they can apply, so nobody configures a ratio for
                 a mode that never waits. */}
@@ -602,7 +602,7 @@ export function SearchCyclesPage() {
 
             {sharing.mode === "share-then-tidy" ? (
               <>
-                <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+                <div className="grid gap-(--grid-gap) sm:grid-cols-2">
                   <Field label="Keep sharing for" help="Leave blank to ignore time and use the ratio alone.">
                     <PresetField
                       inputType="number"
@@ -633,7 +633,7 @@ export function SearchCyclesPage() {
                   </Field>
                 </div>
 
-                <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+                <div className="grid gap-(--grid-gap) sm:grid-cols-2">
                   <Field label="If it can never get there" help="A download with nobody to share to will never reach a ratio.">
                     <SegmentedControl
                       aria-label="If it can never get there"
@@ -682,13 +682,13 @@ export function SearchCyclesPage() {
             ) : null}
 
             {sharing.mode === "tidy-now" ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+              <p className="text-(length:--type-body-sm) text-muted-foreground">
                 Deluno reclaims the space as soon as the import is verified. Some sites expect you to keep sharing and may penalise an account that does not.
               </p>
             ) : null}
 
             {sharing.mode === "leave-alone" ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+              <p className="text-(length:--type-body-sm) text-muted-foreground">
                 Deluno never removes anything from your download client. You decide what to keep and when to delete it.
               </p>
             ) : null}
@@ -707,8 +707,8 @@ export function SearchCyclesPage() {
       ) : null}
 
       {view === "failed" ? <ListCard title="Download health" count="What counts as stuck, before it is struck">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             What counts as stuck, and what Deluno does about it, moved to its own page (#905): each rule now has its own strikes, its own timer and its own action, instead of one flat switch shared by every kind. Nothing changed for this installation until you open it and edit a rule there. A tracker the client itself says is unregistered feeds the same Dead torrent rule there, and is otherwise handled separately (Downloading: torrents) — removed and replaced as soon as it is seen, once removal is turned on.
           </p>
           <div>
@@ -717,14 +717,14 @@ export function SearchCyclesPage() {
             </Button>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
             <SwitchRow
               label="Hourly search cap"
               description="Stop after this many total searches per hour, across every indexer combined — not a per-indexer limit. Off until a ceiling makes sense for your own indexers."
               checked={cleanup.maxSearchesPerHourEnabled}
               onCheckedChange={(checked) => setCleanup((current) => ({ ...current, maxSearchesPerHourEnabled: checked }))}
             />
-            <Field label="Searches per hour" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+            <Field label="Searches per hour" className="max-w-48 sm:pl-(--grid-gap)">
               <PresetField
                 inputType="number"
                 value={cleanup.maxSearchesPerHour}
@@ -741,14 +741,14 @@ export function SearchCyclesPage() {
             </Field>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
             <SwitchRow
               label="Pause automatic searching while downloads pile up"
               description="Skip the routine film and TV searches while more than this many of your downloads are still waiting, and start again by yourself when the queue shrinks. Deluno says so in Activity and on Health. Searches you start yourself always run. Off until you turn it on."
               checked={cleanup.pauseSearchWhenQueueLongEnabled}
               onCheckedChange={(checked) => setCleanup((current) => ({ ...current, pauseSearchWhenQueueLongEnabled: checked }))}
             />
-            <Field label="Pause above this many waiting" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+            <Field label="Pause above this many waiting" className="max-w-48 sm:pl-(--grid-gap)">
               <PresetField
                 inputType="number"
                 value={cleanup.pauseSearchWhenQueueLongThreshold}
@@ -765,14 +765,14 @@ export function SearchCyclesPage() {
             </Field>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
             <SwitchRow
               label="Download integrity check"
               description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again. Off until you turn it on."
               checked={cleanup.downloadIntegrityCheckEnabled}
               onCheckedChange={(checked) => setCleanup((current) => ({ ...current, downloadIntegrityCheckEnabled: checked }))}
             />
-            <Field label="Minimum runtime" help="A file running under this share of the known length is treated as a sample or a cut-off copy." className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+            <Field label="Minimum runtime" help="A file running under this share of the known length is treated as a sample or a cut-off copy." className="max-w-48 sm:pl-(--grid-gap)">
               <PresetField
                 inputType="number"
                 value={cleanup.downloadIntegrityMinimumRuntimePercent}
@@ -792,14 +792,14 @@ export function SearchCyclesPage() {
       </ListCard> : null}
 
       {view === "failed" ? <ListCard title="Content blocklist" count="Checks the files inside a download, not just its name">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <SwitchRow
             label="Check files inside downloads"
             description="Match every file actually inside a download against the patterns below, instead of only its release name."
             checked={contentBlocklist.enabled}
             onCheckedChange={(checked) => setContentBlocklist((current) => ({ ...current, enabled: checked }))}
           />
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+          <div className="grid gap-(--grid-gap) sm:grid-cols-2">
             <Field label="Mode" help="Blacklist blocks a matching file. Whitelist blocks everything except a matching file.">
               <SegmentedControl
                 value={contentBlocklist.mode}
@@ -828,7 +828,7 @@ export function SearchCyclesPage() {
           <Field label="Custom remote list URL" help="Optional. Refetched periodically and combined with the patterns above.">
             <input
               type="url"
-              className="h-9 w-full rounded-[var(--radius-md)] border border-hairline bg-transparent px-[var(--space-sm)] text-[length:var(--type-body-sm)]"
+              className="h-9 w-full rounded-md border border-hairline bg-transparent px-(--space-sm) text-(length:--type-body-sm)"
               value={contentBlocklist.remoteUrl}
               onChange={(event) => setContentBlocklist((current) => ({ ...current, remoteUrl: event.target.value }))}
               placeholder="https://example.com/blocklist.txt"
@@ -844,15 +844,15 @@ export function SearchCyclesPage() {
       </ListCard> : null}
 
       {view === "failed" ? <ListCard title="When strikes run out" titleCase={false}>
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             Strikes, timers and per-kind conditions now live on their own rules in Settings -&gt; Download health. What happens once a rule's strikes run out, for anything still using this platform-wide default, is set below.
           </p>
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+          <div className="grid gap-(--grid-gap) sm:grid-cols-2">
             <SwitchRow label="Block this release" description="Refuse it on the blocklist, so searches pick another release. It can be lifted there." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
-            <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} className="sm:border-l sm:border-hairline sm:pl-(--grid-gap)" />
             <SwitchRow label="Remove the client entry" description="Remove the failed item from its download client when the client supports it." checked={cleanup.removeClientEntry} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, removeClientEntry: checked }))} />
-            <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} className="sm:border-l sm:border-hairline sm:pl-(--grid-gap)" />
           </div>
         </div>
       </ListCard> : null}
@@ -903,10 +903,10 @@ export function SearchCyclesPage() {
         footer={<DrawerFooter state={drawerFooterState} message={drawerMessage} saveLabel="Save schedule" onCancel={() => setDrawerId(null)} disabled={busy !== null} />}
       >
         <DrawerSection title="What to search for">
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-3">
+          <div className="grid gap-(--grid-gap) sm:grid-cols-3">
             <SwitchRow label="Search automatically" description="Turn off to keep this library manual — you can still run a search from here." checked={form.autoSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
-            <SwitchRow label="Missing titles" description="Look for files this library does not have yet." checked={form.missingSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, missingSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
-            <SwitchRow label="Upgrades" description="Look for better releases for files already imported, until the profile cutoff." checked={form.upgradeSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Missing titles" description="Look for files this library does not have yet." checked={form.missingSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, missingSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-(--grid-gap)" />
+            <SwitchRow label="Upgrades" description="Look for better releases for files already imported, until the profile cutoff." checked={form.upgradeSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-(--grid-gap)" />
           </div>
         </DrawerSection>
 
@@ -984,9 +984,9 @@ export function SearchCyclesPage() {
                 {busy === `skip:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />}
                 Skip next cycle
               </Button>
-              {drawerDirty ? <span className="self-center text-[length:var(--type-caption)] text-muted-foreground">Save your changes first.</span> : null}
+              {drawerDirty ? <span className="self-center text-(length:--type-caption) text-muted-foreground">Save your changes first.</span> : null}
             </div>
-            {stateByLibrary.get(editing.id)?.lastError ? <p className="text-[length:var(--type-caption)] text-destructive">{stateByLibrary.get(editing.id)!.lastError}</p> : null}
+            {stateByLibrary.get(editing.id)?.lastError ? <p className="text-(length:--type-caption) text-destructive">{stateByLibrary.get(editing.id)!.lastError}</p> : null}
           </DrawerSection>
         ) : null}
       </Drawer>

@@ -954,7 +954,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     ) : null;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={TABS} actions={toolbarAction} />
 
       {section === "scoreboard" ? <IndexerScoreboard snapshot={scoreboard} /> : null}
@@ -1164,7 +1164,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             title={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : "0 mappings"}
             titleCase={false}
           >
-            <p className="px-[var(--card-pad-x)] pb-3 text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="px-(--card-pad-x) pb-3 text-(length:--type-caption) text-muted-foreground">
               Only needed when a download client reports a path Deluno cannot use directly — for example a container reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping applies to every download client at its host (#809), so it only needs adding once per host, however many clients share it.
             </p>
             {clients.length === 0 ? (
@@ -1210,7 +1210,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
               </ListTable>
             )}
             {clients.length > 0 ? (
-              <div className="flex flex-col gap-2 border-t border-hairline px-[var(--card-pad-x)] py-3">
+              <div className="flex flex-col gap-2 border-t border-hairline px-(--card-pad-x) py-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <Select
                     aria-label="Download client this mapping is filed under"
@@ -1223,21 +1223,21 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                     value={sharedMappingForm.host}
                     onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, host: event.target.value })}
                     placeholder="Host (defaults to the client's own)"
-                    className="font-mono text-[length:var(--type-caption)]"
+                    className="font-mono text-(length:--type-caption)"
                   />
                   <Input
                     aria-label="Client path"
                     value={sharedMappingForm.remotePath}
                     onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, remotePath: event.target.value })}
                     placeholder="/downloads/complete"
-                    className="font-mono text-[length:var(--type-caption)]"
+                    className="font-mono text-(length:--type-caption)"
                   />
                   <Input
                     aria-label="Deluno path"
                     value={sharedMappingForm.localPath}
                     onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, localPath: event.target.value })}
                     placeholder="D:\Downloads\complete"
-                    className="font-mono text-[length:var(--type-caption)]"
+                    className="font-mono text-(length:--type-caption)"
                   />
                   <div className="flex items-center gap-2">
                     <Button

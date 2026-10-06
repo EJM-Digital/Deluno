@@ -111,7 +111,7 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
       {url ? (
         <DrawerSection title="Your calendar link" aside="shown once">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-            <code className="min-w-0 flex-1 overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-foreground">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-foreground">
               {url}
             </code>
             <Button type="button" variant="outline" className="shrink-0" onClick={() => void handleCopy()}>

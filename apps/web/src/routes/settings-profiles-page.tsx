@@ -489,7 +489,7 @@ export function SettingsProfilesPage() {
   const recommendedCount = recommendedFormatsFor(starterId, guide).length;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={TABS}
         actions={<PageToolbarAction onClick={openCreate}>New quality profile</PageToolbarAction>}
@@ -549,7 +549,7 @@ export function SettingsProfilesPage() {
             <Field label="Choose a template" help="A predefined starting point based on TRaSH Guide recommendations. Everything below stays editable.">
               <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Create a custom Quality Profile" }, ...profileStarters.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
             </Field>
-            {starterId ? <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">{profileStarters.find((starter) => starter.id === starterId)?.summary}</p> : null}
+            {starterId ? <p className="-mt-1 text-(length:--type-caption) text-muted-foreground">{profileStarters.find((starter) => starter.id === starterId)?.summary}</p> : null}
             {recommendedCount ? (
               <SwitchRow
                 label="Add the recommended formats"
@@ -573,7 +573,7 @@ export function SettingsProfilesPage() {
         </DrawerSection>
 
         <DrawerSection title="Build this profile">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Seven questions. Each one already has an answer, so straight through gives you a
             good profile — open the ones you want to change.
           </p>
@@ -592,15 +592,15 @@ export function SettingsProfilesPage() {
             onFormatIntentChange={(formatId, intent) =>
               setForm((current) => ({ ...current, formatIntents: { ...current.formatIntents, [formatId]: intent } }))}
             renderQualityControls={() => (
-              <div className="grid gap-[var(--grid-gap)]">
+              <div className="grid gap-(--grid-gap)">
           {allowedForDisplay.length ? (
             <ul className="grid gap-2">
               {allowedForDisplay.map((name, index) => {
                 const tier = tiers.find((candidate) => candidate.name === name);
                 return (
-                  <li key={name} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)]">
-                    <span className="w-5 shrink-0 text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{index + 1}</span>
-                    <span className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
+                  <li key={name} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-(--field-pad-x)">
+                    <span className="w-5 shrink-0 text-(length:--type-caption) tabular-nums text-muted-foreground">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-(length:--type-body-sm) font-medium text-foreground">
                       {name}
                       {tier ? <span className="ml-2 font-normal text-muted-foreground">rank {tier.rank}</span> : <span className="ml-2 font-normal text-warning">not in the quality model</span>}
                     </span>
@@ -618,7 +618,7 @@ export function SettingsProfilesPage() {
               })}
             </ul>
           ) : null}
-          {errors.allowed ? <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{errors.allowed}</p> : null}
+          {errors.allowed ? <p role="alert" className="text-(length:--type-caption) text-destructive">{errors.allowed}</p> : null}
           <FieldRow>
             <Field label="Add a tier" help="Most preferred at the top.">
               <Select value="" onChange={(event) => addTier(event.target.value)} placeholder={unusedTiers.length ? "Choose a tier" : "All tiers allowed"} options={unusedTiers.map((tier) => ({ value: tier.name, label: `${tier.name} · rank ${tier.rank}` }))} disabled={!unusedTiers.length} />
@@ -722,7 +722,7 @@ export function SettingsProfilesPage() {
             )}
             renderStepExtras={(step: QualityStep) =>
               step.id === "groups" ? (
-                <div className="grid gap-[var(--grid-gap)]">
+                <div className="grid gap-(--grid-gap)">
                   <Field
                     label="Only take releases naming"
                     help="Any one of these words must appear in the release name. Separate with commas. A pattern between slashes, like /NTb|FLUX/i, works too."
@@ -823,13 +823,13 @@ export function SettingsProfilesPage() {
             aside={planLoading ? "Loading…" : planCompilation ? `${planCompilation.plan.families.length} typed families` : undefined}
           >
             {planLoading ? (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Compiling the saved profile into the typed decision plan…</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Compiling the saved profile into the typed decision plan…</p>
             ) : planError ? (
-              <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{planError}</p>
+              <p role="alert" className="text-(length:--type-caption) text-destructive">{planError}</p>
              ) : planCompilation ? (
                <div className="grid gap-3">
                  {editing.releasePreferencePlan ? (
-                   <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-[length:var(--type-caption)]">
+                   <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-(length:--type-caption)">
                      <div className="flex flex-wrap items-center justify-between gap-2">
                        <span className="font-medium text-foreground">Pinned immutable plan</span>
                        <Chip tone="info">{editing.releasePreferencePlan.version}</Chip>
@@ -837,13 +837,13 @@ export function SettingsProfilesPage() {
                      <p className="mt-1 text-muted-foreground">
                        This profile uses the persisted typed plan it was migrated or compiled from. Editing the quality policy clears this reference until the profile is compiled again.
                      </p>
-                     <p className="mt-1 truncate font-mono text-[length:var(--type-micro)] text-muted-foreground" title={editing.releasePreferencePlan.planHash}>
+                     <p className="mt-1 truncate font-mono text-(length:--type-micro) text-muted-foreground" title={editing.releasePreferencePlan.planHash}>
                        {editing.releasePreferencePlan.planId} · {editing.releasePreferencePlan.planHash}
                      </p>
                    </div>
                  ) : null}
                  {dirty ? (
-                   <p className="rounded-[10px] border border-warning/30 bg-warning/8 px-3 py-2 text-[length:var(--type-caption)] text-warning">
+                   <p className="rounded-[10px] border border-warning/30 px-3 py-2 text-(length:--type-caption) text-warning">
                      This preview reflects the last saved profile. Save the current edits to recompile it.
                   </p>
                 ) : null}
@@ -857,10 +857,10 @@ export function SettingsProfilesPage() {
                     {planCompilation.plan.families.map((family) => (
                       <div key={family.id} className="rounded-[10px] border border-hairline px-3 py-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{humanizePreferenceFamily(family.dimension)}</span>
-                          <span className="text-[length:var(--type-caption)] text-muted-foreground">{preferenceIntentLabel(family.intent)}{family.upgradeDriving ? " · upgrade-driving" : " · tie-break"}</span>
+                          <span className="text-(length:--type-body-sm) font-medium text-foreground">{humanizePreferenceFamily(family.dimension)}</span>
+                          <span className="text-(length:--type-caption) text-muted-foreground">{preferenceIntentLabel(family.intent)}{family.upgradeDriving ? " · upgrade-driving" : " · tie-break"}</span>
                         </div>
-                        <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                        <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
                           {/*
                             A quality family holds every tier at or above the
                             cutoff so a file better than the profile's allowed
@@ -876,25 +876,25 @@ export function SettingsProfilesPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">No typed preference families are active yet. Add formats or start from a guide template.</p>
+                  <p className="text-(length:--type-caption) text-muted-foreground">No typed preference families are active yet. Add formats or start from a guide template.</p>
                 )}
                 {planCompilation.advancedRules.length ? (
                   <Disclosure title="Advanced review" summary={`${planCompilation.advancedRules.length} compatibility rule${planCompilation.advancedRules.length === 1 ? "" : "s"} retained with provenance`} open={advancedPlanOpen} onOpenChange={setAdvancedPlanOpen}>
                     <div className="grid gap-2">
-                      <p className="text-[length:var(--type-caption)] text-muted-foreground">These rules remain available for compatibility and migration review. They are not the normal typed decision value.</p>
+                      <p className="text-(length:--type-caption) text-muted-foreground">These rules remain available for compatibility and migration review. They are not the normal typed decision value.</p>
                       {planCompilation.advancedRules.map((rule) => (
                         <div key={rule.ruleId} className="rounded-[10px] border border-hairline px-3 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{rule.name}</span>
+                            <span className="text-(length:--type-body-sm) font-medium text-foreground">{rule.name}</span>
                             <Chip tone={rule.requiresReview ? "warn" : "idle"}>{rule.requiresReview ? "Review" : "Mapped"}</Chip>
                           </div>
-                          <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{rule.explanation}</p>
+                          <p className="mt-1 text-(length:--type-caption) text-muted-foreground">{rule.explanation}</p>
                           {/*
                             The rule and the value it carried, not just its
                             name. "Retained with provenance" is only true if
                             you can read the provenance.
                           */}
-                          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[length:var(--type-caption)] sm:grid-cols-[auto_minmax(0,1fr)]">
+                          <dl className="mt-2 grid gap-x-3 gap-y-1 text-(length:--type-caption) sm:grid-cols-[auto_minmax(0,1fr)]">
                             <dt className="text-muted-foreground">Legacy value</dt>
                             <dd className="font-mono text-foreground">{rule.originalScore}</dd>
                             <dt className="text-muted-foreground">Rule</dt>
@@ -921,14 +921,14 @@ export function SettingsProfilesPage() {
                     onOpenChange={setPlanSourcesOpen}
                   >
                     <div className="grid gap-2" aria-label="Preference provenance">
-                      <p className="text-[length:var(--type-caption)] text-muted-foreground">Every typed preference above traces to one of these. The legacy value is what the rule carried before translation; it is not the value Deluno decides with.</p>
+                      <p className="text-(length:--type-caption) text-muted-foreground">Every typed preference above traces to one of these. The legacy value is what the rule carried before translation; it is not the value Deluno decides with.</p>
                       {planCompilation.plan.sources.map((source) => (
                         <div key={`${source.sourceKind}:${source.sourceId}:${source.layer ?? ""}`} className="rounded-[10px] border border-hairline px-3 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-[length:var(--type-caption)] break-all text-foreground">{source.ruleName ?? source.sourceId}</span>
+                            <span className="text-(length:--type-caption) break-all text-foreground">{source.ruleName ?? source.sourceId}</span>
                             <Chip tone="idle">{source.sourceKind}</Chip>
                           </div>
-                          <dl className="mt-1 grid gap-x-3 gap-y-1 text-[length:var(--type-caption)] sm:grid-cols-[auto_minmax(0,1fr)]">
+                          <dl className="mt-1 grid gap-x-3 gap-y-1 text-(length:--type-caption) sm:grid-cols-[auto_minmax(0,1fr)]">
                             {source.originalScore !== null ? (
                               <>
                                 <dt className="text-muted-foreground">Legacy value</dt>
@@ -981,13 +981,13 @@ export function SettingsProfilesPage() {
                   </Disclosure>
                 ) : null}
                 {planCompilation.warnings.length ? (
-                  <ul className="grid gap-1 text-[length:var(--type-caption)] text-warning" aria-label="Preference plan warnings">
+                  <ul className="grid gap-1 text-(length:--type-caption) text-warning" aria-label="Preference plan warnings">
                     {planCompilation.warnings.map((warning) => <li key={warning}>{warning}</li>)}
                   </ul>
                 ) : null}
               </div>
             ) : (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">The typed preference plan is not available for this saved profile yet.</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">The typed preference plan is not available for this saved profile yet.</p>
             )}
           </DrawerSection>
         ) : null}
@@ -997,24 +997,24 @@ export function SettingsProfilesPage() {
             {usedBy.length ? (
               <div className="grid gap-2">
                 {usedBy.map((library) => (
-                  <div key={library.id} className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-body-sm)]">
+                  <div key={library.id} className="flex min-h-10 items-center justify-between gap-(--grid-gap) rounded-[10px] border border-hairline px-(--field-pad-x) text-(length:--type-body-sm)">
                     <span className="truncate font-medium text-foreground">{library.name}</span>
-                    <span className="truncate text-[length:var(--type-caption)] text-muted-foreground">{library.defaultPolicySetName ? `via ${library.defaultPolicySetName}` : "direct assignment"}</span>
+                    <span className="truncate text-(length:--type-caption) text-muted-foreground">{library.defaultPolicySetName ? `via ${library.defaultPolicySetName}` : "direct assignment"}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Not assigned yet. A Library Profile normally chooses a Quality Profile for each library.</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Not assigned yet. A Library Profile normally chooses a Quality Profile for each library.</p>
             )}
           </DrawerSection>
         ) : null}
 
         {editing ? (
           <DrawerSection title="Make your own version">
-            <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">
+            <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap) rounded-[10px] border border-hairline px-(--field-pad-x) py-2">
               <div className="min-w-0">
-                <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Duplicate this profile</p>
-                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Opens a copy with the same tiers, sizes, rules and answers for you to change. This one stays as it is.</p>
+                <p className="text-(length:--type-body-sm) font-medium text-foreground">Duplicate this profile</p>
+                <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">Opens a copy with the same tiers, sizes, rules and answers for you to change. This one stays as it is.</p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => openDuplicate(form)} disabled={busy || dirty} title={dirty ? "Save or discard your changes first." : undefined}>Duplicate</Button>
             </div>
@@ -1382,8 +1382,8 @@ function humanizeLevel(family: ReleasePreferencePlanCompilation["plan"]["familie
 function PlanSummary({ label, value, detail, tone = "idle" }: { label: string; value: number; detail: string; tone?: "idle" | "warn" | "ok" }) {
   return (
     <div className="rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">{label}</p>
-      <p className={cn("mt-0.5 text-[length:var(--type-body-sm)] font-semibold", tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-foreground")}>
+      <p className="text-(length:--type-caption) text-muted-foreground">{label}</p>
+      <p className={cn("mt-0.5 text-(length:--type-body-sm) font-semibold", tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-foreground")}>
         {value} <span className="font-normal text-muted-foreground">{detail}</span>
       </p>
     </div>

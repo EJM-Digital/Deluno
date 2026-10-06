@@ -194,7 +194,7 @@ export function SettingsMigrationPage() {
   }
 
   return (
-    <form id={MIGRATION_FORM_ID} onSubmit={(event) => void handlePreview(event)} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form id={MIGRATION_FORM_ID} onSubmit={(event) => void handlePreview(event)} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar
         tabs={systemSettingsNavItems}
         actions={
@@ -212,7 +212,7 @@ export function SettingsMigrationPage() {
       />
 
       <ListCard title="Import source" count="Nothing existing is overwritten — a preview always comes first">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="Exported from" help="The application this snapshot came out of.">
               <Select
@@ -234,22 +234,22 @@ export function SettingsMigrationPage() {
               onChange={(event) => setPayloadJson(event.target.value)}
               spellCheck={false}
               placeholder={SAMPLE_PAYLOAD}
-              className="min-h-[18rem] font-mono"
+              className="min-h-72 font-mono"
             />
           </Field>
           <Disclosure title="What migration will and will not do" summary="Four rules that make this safe to run twice" open={safetyOpen} onOpenChange={setSafetyOpen}>
             <ul className="grid gap-2">
               {SAFETY_NOTES.map((note) => (
-                <li key={note} className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                <li key={note} className="text-(length:--type-body-sm) text-muted-foreground">
                   {note}
                 </li>
               ))}
             </ul>
           </Disclosure>
-          <div className="flex items-center justify-between gap-[var(--grid-gap)] rounded-[var(--radius-control)] border border-hairline bg-surface-muted px-3 py-2.5">
+          <div className="flex items-center justify-between gap-(--grid-gap) rounded-(--radius-control) border border-hairline bg-surface-muted px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Keep opaque rules as Advanced legacy input</p>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Stores their exact matcher for review/export; it does not add legacy numbers to typed decisions.</p>
+              <p className="text-(length:--type-body-sm) font-medium text-foreground">Keep opaque rules as Advanced legacy input</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Stores their exact matcher for review/export; it does not add legacy numbers to typed decisions.</p>
             </div>
             <Switch
               aria-label="Keep opaque rules as Advanced legacy input"
@@ -350,7 +350,7 @@ export function SettingsMigrationPage() {
                         onCheckedChange={(checked) => toggleOperation(operation, checked)}
                       />
                     ) : (
-                      <span className="text-[length:var(--type-caption)] text-muted-foreground">—</span>
+                      <span className="text-(length:--type-caption) text-muted-foreground">—</span>
                     )}
                   </ListCell>
                 </ListRow>
@@ -443,10 +443,10 @@ export function SettingsMigrationPage() {
         {openOperation ? (
           <>
             <DrawerSection title="Why">
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{openOperation.reason}</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">{openOperation.reason}</p>
               {isSelectable(openOperation) ? (
-                <div className="flex items-center justify-between gap-[var(--grid-gap)]">
-                  <span className="text-[length:var(--type-body-sm)] text-foreground">Apply this change</span>
+                <div className="flex items-center justify-between gap-(--grid-gap)">
+                  <span className="text-(length:--type-body-sm) text-foreground">Apply this change</span>
                   <Switch
                     aria-label={`Apply ${openOperation.name}`}
                     checked={selectedIds.has(openOperation.id)}
@@ -454,7 +454,7 @@ export function SettingsMigrationPage() {
                   />
                 </div>
               ) : (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">This one is review-only — Deluno will not write it.</p>
+                <p className="text-(length:--type-caption) text-muted-foreground">This one is review-only — Deluno will not write it.</p>
               )}
             </DrawerSection>
 
@@ -465,8 +465,8 @@ export function SettingsMigrationPage() {
                     .filter(([, value]) => value)
                     .map(([key, value]) => (
                       <div key={key} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
-                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{key}</span>
-                        <span className="min-w-0 truncate text-right font-mono text-[length:var(--type-caption)] text-foreground" title={value ?? undefined}>
+                        <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{key}</span>
+                        <span className="min-w-0 truncate text-right font-mono text-(length:--type-caption) text-foreground" title={value ?? undefined}>
                           {value}
                         </span>
                       </div>
@@ -479,7 +479,7 @@ export function SettingsMigrationPage() {
               <DrawerSection title="Warnings">
                 <div className="grid gap-1.5">
                   {openOperation.warnings.map((warning) => (
-                    <p key={warning} className="text-[length:var(--type-body-sm)] text-warning">
+                    <p key={warning} className="text-(length:--type-body-sm) text-warning">
                       {warning}
                     </p>
                   ))}

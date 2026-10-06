@@ -53,7 +53,7 @@ export function LibraryActions({
         Add {singular}
       </Button>
       {showSeasonPassLink ? (
-        <Button asChild size="sm" variant="outline" className="w-[var(--library-toolbar-height)] gap-2 px-0 min-[2100px]:w-auto min-[2100px]:px-3">
+        <Button asChild size="sm" variant="outline" className="w-(--library-toolbar-height) gap-2 px-0 min-[2100px]:w-auto min-[2100px]:px-3">
           {/*
             The label hides below 2100px and the icon carries it alone with
             the tooltip, a square the height of every button beside it, like
@@ -73,7 +73,7 @@ export function LibraryActions({
         type="button"
         size="sm"
         variant="secondary"
-        className="min-w-[10.5rem] gap-2"
+        className="min-w-42 gap-2"
         onClick={onSearchShown}
         disabled={shownCount === 0 || isSearchingShown || !onSearchShown}
         title={

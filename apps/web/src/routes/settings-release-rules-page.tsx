@@ -104,17 +104,17 @@ function RuleModeCard({ mode, onChanged }: { mode: ReleaseRuleMode; onChanged: (
 
   return (
     <ListCard title="When more than one rule matches" count="How a title's rules are used">
-      <div className="grid gap-3 p-[var(--card-pad-x)]">
+      <div className="grid gap-3 p-(--card-pad-x)">
         <Select
           aria-label="When more than one rule matches"
           value={value}
           onChange={(event) => void change(event.target.value as ReleaseRuleMode)}
           options={RULE_MODE_OPTIONS.map(({ value: optionValue, label }) => ({ value: optionValue, label }))}
         />
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           {RULE_MODE_OPTIONS.find((option) => option.value === value)?.description}
         </p>
-        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+        {saveState === "error" ? <p className="text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
       </div>
     </ListCard>
   );
@@ -140,16 +140,16 @@ function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) 
 
   return (
     <ListCard title="Proper &amp; Repack" count="How a corrected re-release affects acquisition">
-      <div className="grid gap-3 p-[var(--card-pad-x)]">
+      <div className="grid gap-3 p-(--card-pad-x)">
         <Select
           value={mode}
           onChange={(event) => onChange(event.target.value)}
           options={PROPER_REPACK_OPTIONS.map(({ value, label }) => ({ value, label }))}
         />
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           {PROPER_REPACK_OPTIONS.find((option) => option.value === mode)?.description}
         </p>
-        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+        {saveState === "error" ? <p className="text-(length:--type-caption) text-destructive">Could not save. Try again.</p> : null}
       </div>
     </ListCard>
   );
@@ -299,7 +299,7 @@ export function SettingsReleaseRulesPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={TABS} actions={<PageToolbarAction onClick={() => openProfile(null)}>New acquisition rule</PageToolbarAction>} />
 
       <ProperRepackCard settings={settings} />
@@ -404,14 +404,14 @@ export function SettingsReleaseRulesPage() {
           />
           <Field label="Indexers" optional help="Leave every indexer unchecked to apply this rule everywhere. Check one or more to scope it to just those indexers.">
             {indexers.length === 0 ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">No indexers configured yet.</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">No indexers configured yet.</p>
             ) : (
               <div className="grid gap-1.5">
                 {indexers.map((indexer) => {
                   const id = `release-rule-indexer-${indexer.id}`;
                   const checked = form.indexerIds.includes(indexer.id);
                   return (
-                    <label key={indexer.id} htmlFor={id} className="flex cursor-pointer items-center gap-2 text-[length:var(--type-body-sm)] text-foreground">
+                    <label key={indexer.id} htmlFor={id} className="flex cursor-pointer items-center gap-2 text-(length:--type-body-sm) text-foreground">
                       <Checkbox
                         id={id}
                         checked={checked}
@@ -434,13 +434,13 @@ export function SettingsReleaseRulesPage() {
         <DrawerSection title="Protocol timing">
           <FieldRow>
             <Field label="Usenet delay" error={errors.usenetDelayMinutes} help="Hold matching results for this many minutes after they appear.">
-              <div className="flex items-center gap-2"><Input type="number" min="0" step="1" value={form.usenetDelayMinutes} onChange={(event) => setForm((current) => ({ ...current, usenetDelayMinutes: event.target.value }))} placeholder="0" /><span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span></div>
+              <div className="flex items-center gap-2"><Input type="number" min="0" step="1" value={form.usenetDelayMinutes} onChange={(event) => setForm((current) => ({ ...current, usenetDelayMinutes: event.target.value }))} placeholder="0" /><span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span></div>
             </Field>
             <Field label="Torrent delay" error={errors.torrentDelayMinutes} help="Hold matching results for this many minutes after they appear.">
-              <div className="flex items-center gap-2"><Input type="number" min="0" step="1" value={form.torrentDelayMinutes} onChange={(event) => setForm((current) => ({ ...current, torrentDelayMinutes: event.target.value }))} placeholder="0" /><span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span></div>
+              <div className="flex items-center gap-2"><Input type="number" min="0" step="1" value={form.torrentDelayMinutes} onChange={(event) => setForm((current) => ({ ...current, torrentDelayMinutes: event.target.value }))} placeholder="0" /><span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span></div>
             </Field>
           </FieldRow>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">The largest applicable delay wins. A held result stays visible with the reason and becomes eligible when the timing window clears.</p>
+          <p className="text-(length:--type-caption) text-muted-foreground">The largest applicable delay wins. A held result stays visible with the reason and becomes eligible when the timing window clears.</p>
           <SwitchRow
             label="Skip the delay for the best quality"
             description="Off by default. On: a release that is already the best quality its title's quality profile allows is grabbed right away over the preferred protocol, instead of waiting out the delay above."

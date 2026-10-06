@@ -151,7 +151,7 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
       </ListTable>
 
       <div className="border-t border-hairline">
-        <div className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-muted-foreground">
+        <div className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-muted-foreground">
           These are system maintenance jobs. They run in the background and do not change your library files.
         </div>
         <ListTable

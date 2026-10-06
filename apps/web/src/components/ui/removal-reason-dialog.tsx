@@ -56,16 +56,16 @@ export function RemovalReasonDialog({ open, onOpenChange, title, busyReason, onC
         <Dialog.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2",
-            "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/[0.08]",
+            "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/8",
             "data-[state=open]:animate-fade-in-stable"
           )}
           aria-describedby="removal-reason-description"
         >
           <div className="p-8 sm:p-9">
-            <Dialog.Title className="text-[length:var(--type-title-md)] font-semibold tracking-[-0.02em] text-foreground">
+            <Dialog.Title className="text-(length:--type-title-md) font-semibold tracking-[-0.02em] text-foreground">
               Why remove “{title}”?
             </Dialog.Title>
-            <p id="removal-reason-description" className="mt-1 max-w-prose text-[length:var(--type-body)] text-muted-foreground leading-relaxed">
+            <p id="removal-reason-description" className="mt-1 max-w-prose text-(length:--type-body) text-muted-foreground leading-relaxed">
               Every choice removes it from the Queue. What Deluno does next depends on why.
             </p>
 
@@ -79,13 +79,13 @@ export function RemovalReasonDialog({ open, onOpenChange, title, busyReason, onC
                   aria-label={`Remove “${title}”: ${choice.label}`}
                   disabled={busy}
                   onClick={() => onChoose(choice.reason)}
-                  className="h-auto min-h-[var(--control-height-lg)] w-full flex-col items-start gap-1 whitespace-normal px-5 py-3 text-left"
+                  className="h-auto min-h-(--control-height-lg) w-full flex-col items-start gap-1 whitespace-normal px-5 py-3 text-left"
                 >
-                  <span className="flex w-full items-center gap-2 text-[length:var(--type-body)] font-semibold">
+                  <span className="flex w-full items-center gap-2 text-(length:--type-body) font-semibold">
                     {busyReason === choice.reason ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                     {choice.label}
                   </span>
-                  <span className="w-full text-[length:var(--type-caption)] font-normal opacity-80">
+                  <span className="w-full text-(length:--type-caption) font-normal opacity-80">
                     {choice.description}
                   </span>
                 </Button>

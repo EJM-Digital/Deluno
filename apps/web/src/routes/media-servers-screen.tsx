@@ -371,7 +371,7 @@ export function MediaServersPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={TABS}
         actions={
@@ -462,7 +462,7 @@ export function MediaServersPage() {
 
         <DrawerSection title="Health">
           {editing?.lastHealthTestUtc ? (
-            <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+            <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
               <dt className="text-muted-foreground">Last test</dt>
               <dd className="flex items-center gap-2">
                 <Chip tone={healthChip(editing).tone}>{healthChip(editing).label}</Chip>
@@ -475,7 +475,7 @@ export function MediaServersPage() {
           {/* A saved server's test lands in the facts above once it reloads;
               only a draft, which has nowhere else to say it, shows it here. */}
           {testResult && !editing?.lastHealthTestUtc ? (
-            <p className={`text-[length:var(--type-body-sm)] ${testResult.ok ? "text-success" : "text-destructive"}`} role="status">
+            <p className={`text-(length:--type-body-sm) ${testResult.ok ? "text-success" : "text-destructive"}`} role="status">
               {testResult.message}
             </p>
           ) : null}
@@ -492,7 +492,7 @@ export function MediaServersPage() {
             open={mappingOpen}
             onOpenChange={setMappingOpen}
           >
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               Use this only when {editing.name} sees a folder under a different path than Deluno does — the usual case when they run in separate Docker containers or mount the same share differently. For example, Deluno reads <code className="font-mono">D:\Media\Movies</code> while {editing.name} sees the same files at <code className="font-mono">/data/Movies</code>.
             </p>
             {mappings.length ? (
@@ -501,7 +501,7 @@ export function MediaServersPage() {
                   const result = mappingResults[mapping.id];
                   return (
                     <div key={mapping.id} className="grid gap-1">
-                      <div className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] font-mono text-[length:var(--type-caption)]">
+                      <div className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-(--field-pad-x) font-mono text-(length:--type-caption)">
                         <span className="min-w-0 flex-1 truncate text-muted-foreground" title={mapping.delunoPath}>{mapping.delunoPath}</span>
                         <span aria-hidden className="text-primary">→</span>
                         <span className="min-w-0 flex-1 truncate text-foreground" title={mapping.serverPath}>{mapping.serverPath}</span>
@@ -514,7 +514,7 @@ export function MediaServersPage() {
                         </Button>
                       </div>
                       {result ? (
-                        <p className={`font-sans text-[length:var(--type-caption)] ${result.found ? "text-success" : "text-destructive"}`} role="status">
+                        <p className={`font-sans text-(length:--type-caption) ${result.found ? "text-success" : "text-destructive"}`} role="status">
                           {result.message}
                         </p>
                       ) : null}
@@ -525,10 +525,10 @@ export function MediaServersPage() {
             ) : null}
             <FieldRow>
               <Field label="Path as Deluno sees it">
-                <Input value={newMapping.delunoPath} onChange={(event) => setNewMapping({ ...newMapping, delunoPath: event.target.value })} placeholder="D:\Media\Movies" className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={newMapping.delunoPath} onChange={(event) => setNewMapping({ ...newMapping, delunoPath: event.target.value })} placeholder="D:\Media\Movies" className="font-mono text-(length:--type-caption)" />
               </Field>
               <Field label={`Same path as ${editing.name} sees it`}>
-                <Input value={newMapping.serverPath} onChange={(event) => setNewMapping({ ...newMapping, serverPath: event.target.value })} placeholder="/data/Movies" className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={newMapping.serverPath} onChange={(event) => setNewMapping({ ...newMapping, serverPath: event.target.value })} placeholder="/data/Movies" className="font-mono text-(length:--type-caption)" />
               </Field>
             </FieldRow>
             <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void addMapping()} disabled={busy !== null || !newMapping.delunoPath.trim() || !newMapping.serverPath.trim()}>
@@ -541,7 +541,7 @@ export function MediaServersPage() {
         {editing ? (
           <DrawerSection title="Leaving soon" aside={editingCollections.length ? undefined : "nothing leaving"}>
             {editingCollections.length ? (
-              <dl className="grid grid-cols-[120px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+              <dl className="grid grid-cols-[120px_1fr] gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
                 {editingCollections.map((collection) => (
                   <div key={collection.mediaType} className="contents">
                     <dt className="text-muted-foreground">{collection.mediaType === "tv" ? "TV collection" : "Movie collection"}</dt>
@@ -549,13 +549,13 @@ export function MediaServersPage() {
                       {collection.problem
                         ? `${collection.problem} Tried ${relative(collection.attemptedUtc)}; tried again at the next check.`
                         : `${collection.members === 0 ? "Removed, nothing is leaving" : `${collection.members} ${collection.members === 1 ? "title" : "titles"}`} · updated ${relative(collection.syncedUtc ?? collection.attemptedUtc)}`}
-                      {collection.skipped > 0 ? <span className="block text-[length:var(--type-caption)] text-muted-foreground">{collection.skipped} seasons or episodes cannot sit in a Plex show collection.</span> : null}
+                      {collection.skipped > 0 ? <span className="block text-(length:--type-caption) text-muted-foreground">{collection.skipped} seasons or episodes cannot sit in a Plex show collection.</span> : null}
                     </dd>
                   </div>
                 ))}
               </dl>
             ) : (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">When a retention rule reading this server marks a title, it appears in a Leaving soon collection here.</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">When a retention rule reading this server marks a title, it appears in a Leaving soon collection here.</p>
             )}
             <SwitchRow
               label="Show on home"

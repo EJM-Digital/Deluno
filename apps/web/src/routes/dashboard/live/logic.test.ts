@@ -21,7 +21,7 @@ describe("countdown maths", () => {
     expect(formatCountdown(0)).toBe("now");
   });
 
-  it("says how far through the gap between two runs it is, for the ring", () => {
+  it("says how far through the gap between two runs it is, for the ring-3", () => {
     const halfway = countdown(iso(30 * 60_000), iso(-30 * 60_000), NOW);
     expect(halfway).toMatchObject({ text: "30:00", due: false });
     expect(halfway?.fraction).toBeCloseTo(0.5, 5);

@@ -66,7 +66,7 @@ export function HeroBackdrop({ url }: HeroBackdropProps) {
         }}
       />
       {/* A band, not a wash: it blends the card's bottom edge and nothing more. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-linear-to-t/srgb from-card to-transparent" />
     </>
   );
 }

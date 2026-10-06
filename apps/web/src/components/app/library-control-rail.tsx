@@ -269,12 +269,12 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     setOpenPanel((current) => (current === panel ? null : panel));
 
   return (
-    <div className="sticky top-[var(--topbar-height-mobile)] z-20 lg:top-topbar">
+    <div className="sticky top-(--topbar-height-mobile) z-20 lg:top-topbar">
       <div
         className={cn(
           "relative overflow-hidden rounded-2xl",
           "border border-hairline/60 dark:border-white/[0.07]",
-          "bg-background/80 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/72",
+          "bg-background/80 backdrop-blur-2xl",
           "dark:bg-[hsl(226_24%_7%/0.88)]",
           "shadow-[0_2px_16px_hsl(0_0%_0%/0.06),0_1px_3px_hsl(0_0%_0%/0.04)]",
           "dark:shadow-[0_4px_24px_hsl(0_0%_0%/0.28),0_1px_4px_hsl(0_0%_0%/0.2)]"
@@ -294,9 +294,9 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               // and Movies and TV Shows (which has an extra Season pass action)
               // drew it at different widths. Below sm it still fills the line.
               "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200 sm:w-[clamp(15rem,17vw,26rem)] sm:flex-none",
-              "min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] dark:bg-white/[0.05]",
-              "ring-1 ring-inset ring-hairline/60 dark:ring-white/[0.06]",
-              "focus-within:bg-foreground/[0.06] focus-within:ring-primary/35",
+              "min-h-(--library-toolbar-height) bg-foreground/4 dark:bg-white/5",
+              "ring-1 ring-inset ring-hairline/60 dark:ring-white/6",
+              "focus-within:bg-foreground/6 focus-within:ring-primary/35",
               "focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.09)]"
             )}>
               <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-colors duration-200 group-focus-within:text-primary/70" strokeWidth={2} />
@@ -304,7 +304,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={`Search ${label}…`}
-                className="h-full border-0 bg-transparent px-0 text-[length:var(--library-toolbar-size)] shadow-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                className="h-full border-0 bg-transparent px-0 text-(length:--library-toolbar-size) shadow-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
               />
               {query ? (
                 <button
@@ -313,10 +313,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   aria-label="Clear"
                   className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted-foreground/20 text-muted-foreground transition hover:bg-foreground/15 hover:text-foreground"
                 >
-                  <span className="text-[length:var(--type-micro)] font-bold leading-none">×</span>
+                  <span className="text-(length:--type-micro) font-bold leading-none">×</span>
                 </button>
               ) : (
-                <kbd className="hidden shrink-0 rounded border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-[length:var(--library-badge-size)] text-muted-foreground/40 group-focus-within:hidden sm:block">
+                <kbd className="hidden shrink-0 rounded-sm border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-(length:--library-badge-size) text-muted-foreground/40 group-focus-within:hidden sm:block">
                   /
                 </kbd>
               )}
@@ -342,7 +342,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               `sm` up there is room for it beside the search box again, so it
               reverts to the original wrapping, auto-width run.
             */}
-            <div className="flex w-full min-w-0 flex-nowrap items-center gap-x-2 gap-y-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:w-auto sm:min-w-0 sm:shrink-0 sm:flex-wrap sm:overflow-visible">
+            <div className="flex w-full min-w-0 flex-nowrap items-center gap-x-2 gap-y-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden sm:w-auto sm:min-w-0 sm:shrink-0 sm:flex-wrap sm:overflow-visible">
               <MenuSelect
                 label="Library"
                 value={libraryId ?? ""}
@@ -351,8 +351,8 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   { value: "", label: "All libraries" },
                   ...libraries.map((library) => ({ value: library.id, label: library.name }))
                 ]}
-                className="min-w-[10rem]"
-                triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+                className="min-w-40"
+                triggerClassName="min-h-(--library-toolbar-height) bg-foreground/4 px-2.5 text-(length:--library-toolbar-size) font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/5 dark:ring-white/6 dark:hover:bg-white/8"
               />
 
               <ToolbarMenuButton
@@ -401,7 +401,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 zero-width ancestor and landed on the View button drawn where
                 Sort's layout box happened to be).
               */}
-              <div className="flex h-[var(--library-toolbar-height)] shrink-0 items-stretch gap-px overflow-hidden rounded-xl bg-foreground/[0.04] ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
+              <div className="flex h-(--library-toolbar-height) shrink-0 items-stretch gap-px overflow-hidden rounded-xl bg-foreground/4 ring-1 ring-inset ring-hairline/60 dark:bg-white/5 dark:ring-white/6">
                 <MenuSelect
                   label="Sort"
                   value={sortField}
@@ -414,15 +414,15 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   align="end"
                   menuWidth="16rem"
                   leading={<ArrowUpDown className="h-3.5 w-3.5 shrink-0" />}
-                  className="min-w-[8.5rem]"
-                  triggerClassName="h-full rounded-none bg-transparent px-2.5 text-[length:var(--library-toolbar-size)] font-semibold hover:bg-foreground/[0.05] dark:hover:bg-white/[0.05]"
+                  className="min-w-34"
+                  triggerClassName="h-full rounded-none bg-transparent px-2.5 text-(length:--library-toolbar-size) font-semibold hover:bg-foreground/5 dark:hover:bg-white/5"
                 />
                 <button
                   type="button"
                   onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
                   aria-label={sortDirection === "asc" ? "Ascending — switch to descending" : "Descending — switch to ascending"}
                   title={sortDirection === "asc" ? "A–Z, oldest first, lowest value" : "Z–A, newest first, highest value"}
-                  className="flex w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground dark:hover:bg-white/[0.05]"
+                  className="flex w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground dark:hover:bg-white/5"
                 >
                   {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                 </button>
@@ -455,8 +455,8 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
             */}
             <div className={cn(
               "ml-auto flex shrink-0 flex-wrap items-center gap-2",
-              "[&_:is(button,a)]:h-[var(--library-toolbar-height)]",
-              "[&_button[data-slot=icon-action]]:w-[var(--library-toolbar-height)]"
+              "[&_:is(button,a)]:h-(--library-toolbar-height)",
+              "[&_button[data-slot=icon-action]]:w-(--library-toolbar-height)"
             )}>{actions}</div>
           </div>
 
@@ -478,13 +478,13 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
             #327 fixed (no stray rule at the start of a line). On a phone the row
             scrolls sideways instead of wrapping.
           */}
-          <div className="mt-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:overflow-hidden">
-          <div className="-ml-[13px] flex flex-nowrap items-center gap-x-3 gap-y-1.5 sm:flex-wrap">
+          <div className="mt-2.5 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden sm:overflow-hidden">
+          <div className="ml-[-13px] flex flex-nowrap items-center gap-x-3 gap-y-1.5 sm:flex-wrap">
             <div ref={pillTrackRef} className="relative flex shrink-0 flex-nowrap items-center gap-0.5 border-l border-hairline pl-3 sm:shrink sm:flex-wrap">
               {pill.ready ? (
                 <div
                   aria-hidden
-                  className="absolute rounded-lg bg-foreground/[0.07] dark:bg-white/[0.09]"
+                  className="absolute rounded-lg bg-foreground/[0.07] dark:bg-white/9"
                   style={{
                     left: pill.left,
                     width: pill.width,
@@ -527,7 +527,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                       ? "Monitored titles with no acceptable file. Unmonitored titles are counted under Unmonitored."
                       : undefined}
                     className={cn(
-                      "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
+                      "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-(length:--library-toolbar-size) select-none",
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -554,12 +554,12 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                         // A reserved width: the pill must not resize when a
                         // count goes from 9 to 10 or a click changes which pill
                         // is selected (#1048).
-                        "tabular min-w-[3ch] rounded-md px-1.5 py-px text-center text-[length:var(--library-badge-size)] font-bold leading-tight",
+                        "tabular min-w-[3ch] rounded-md px-1.5 py-px text-center text-(length:--library-badge-size) font-bold leading-tight",
                         chip.mark
                           ? cn(TITLE_MARK_PRESENTATION[chip.mark].tint, TITLE_MARK_PRESENTATION[chip.mark].text)
                           : active
                             ? "bg-primary/15 text-primary dark:bg-primary/20"
-                            : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
+                            : "bg-foreground/6 text-muted-foreground dark:bg-white/[0.07]"
                       )}
                     >
                       {counts[chip.key] ?? 0}
@@ -603,7 +603,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   aria-pressed={unmonitoredActive}
                   title="Titles Deluno is not watching, whatever state their file is in. They are counted here and in no other pill."
                   className={cn(
-                    "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
+                    "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-(length:--library-toolbar-size) select-none",
                     unmonitoredActive
                       ? "font-semibold text-foreground"
                       : "font-medium text-muted-foreground hover:text-foreground"
@@ -615,7 +615,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     style={{ background: "hsl(var(--mark-unmonitored))" }}
                   />
                   <span>Unmonitored</span>
-                  <span className="tabular min-w-[3ch] rounded-md bg-foreground/[0.06] px-1.5 text-center py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
+                  <span className="tabular min-w-[3ch] rounded-md bg-foreground/6 px-1.5 text-center py-px text-(length:--library-badge-size) font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
                     {facets?.unmonitored ?? 0}
                   </span>
               </button>
@@ -675,7 +675,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
         title="Filter"
         description={`Pick a saved filter, or build one from ${controlSet.filterFields.length} fields — including the file you actually hold, which Radarr states in its own dialog that it cannot ask about.`}
       >
-        <div className="space-y-[var(--grid-gap)] py-[var(--grid-gap)]">
+        <div className="space-y-(--grid-gap) py-(--grid-gap)">
           {/*
             A list of named filters first, then the questions the current one
             asks. That order is the point: Radarr's control is a list you pick
@@ -689,8 +689,8 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 {savedPresets.map((preset) => (
                   <div key={preset.id} className="flex items-center justify-between gap-2 rounded-xl border border-hairline bg-background/40 px-3 py-2">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => applyPreset(preset)}>
-                      <p className="truncate text-[length:var(--type-caption)] font-semibold text-foreground">{preset.name}</p>
-                      <p className="truncate text-[length:var(--type-micro)] text-muted-foreground">
+                      <p className="truncate text-(length:--type-caption) font-semibold text-foreground">{preset.name}</p>
+                      <p className="truncate text-(length:--type-micro) text-muted-foreground">
                         {preset.libraryId ? `${libraries.find((library) => library.id === preset.libraryId)?.name ?? "Library"} · ` : "All libraries · "}
                         {preset.conditions.length > 0
                           ? preset.conditions
@@ -708,20 +708,20 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                         { value: "search", label: "Search on cycle", hint: "Use this saved narrowing for scheduled searches." }
                       ]}
                       className="shrink-0"
-                      triggerClassName="h-8 min-w-[9rem] bg-foreground/[0.04] px-2 text-[length:var(--type-micro)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+                      triggerClassName="h-8 min-w-36 bg-foreground/4 px-2 text-(length:--type-micro) font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/5 dark:ring-white/6 dark:hover:bg-white/8"
                     />
                     <Button type="button" size="sm" variant="ghost" onClick={() => deletePreset(preset.id)}>Remove</Button>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 Nothing saved yet. Build a filter below, name it, and it comes back in one click — with its order and
                 its layout, because a view that restores half of what you saved is worse than one that restores none.
               </p>
             )}
             <div className="flex gap-2">
-              <Input value={newPresetName} onChange={(event) => setNewPresetName(event.target.value)} placeholder="Name this filter" className="h-[var(--control-height-sm)]" />
+              <Input value={newPresetName} onChange={(event) => setNewPresetName(event.target.value)} placeholder="Name this filter" className="h-(--control-height-sm)" />
               <Button type="button" size="sm" onClick={saveCurrentPreset} disabled={isSavingPreset}>
                 {isSavingPreset ? "Saving…" : "Save"}
               </Button>
@@ -750,7 +750,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
         title="View"
         description="The layout, its size, and what each poster carries. Remembered separately for movies and TV."
       >
-        <div className="space-y-[var(--grid-gap)] py-[var(--grid-gap)]">
+        <div className="space-y-(--grid-gap) py-(--grid-gap)">
           <div>
             <SectionLabel>Layout</SectionLabel>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -777,11 +777,11 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 <SectionLabel>List columns</SectionLabel>
                 <Button type="button" size="sm" variant="ghost" onClick={resetListColumnOrder}>Reset</Button>
               </div>
-              <p className="mt-2 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+              <p className="mt-2 text-(length:--type-caption) leading-relaxed text-muted-foreground">
                 Drag the column headers in the list to reorder them. Selection and Title stay fixed.
               </p>
               <p
-                className="mt-2 rounded-lg border border-hairline bg-background/45 px-3 py-2 text-[length:var(--type-caption)] font-medium text-foreground"
+                className="mt-2 rounded-lg border border-hairline bg-background/45 px-3 py-2 text-(length:--type-caption) font-medium text-foreground"
                 aria-label="Current list column order"
               >
                 {listColumnOrder.map(listColumnLabel).join(" · ")}
@@ -841,11 +841,11 @@ function ToolbarMenuButton({
       onClick={onClick}
       aria-expanded={active}
       className={cn(
-        "inline-flex h-[var(--library-toolbar-height)] items-center gap-1.5 rounded-xl px-2.5 text-left",
-        "text-[length:var(--library-toolbar-size)] font-semibold transition-colors",
+        "inline-flex h-(--library-toolbar-height) items-center gap-1.5 rounded-xl px-2.5 text-left",
+        "text-(length:--library-toolbar-size) font-semibold transition-colors",
         active
           ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25"
-          : "bg-foreground/[0.04] text-foreground ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+          : "bg-foreground/4 text-foreground ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/5 dark:ring-white/6 dark:hover:bg-white/8"
       )}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -856,7 +856,7 @@ function ToolbarMenuButton({
       <span className={cn(
         // A fixed width, not max: "none" becoming "1 narrowing" when a pill is
         // clicked used to resize this button and, with it, the search bar (#1048).
-        "hidden w-[7.5rem] truncate font-medium md:block",
+        "hidden w-30 truncate font-medium md:block",
         active ? "text-primary/70" : "text-muted-foreground"
       )}>
         {meta}
@@ -874,10 +874,10 @@ function PosterSizeChoice({ size, selected, onClick }: { size: CardSize; selecte
   };
   const item = labels[size];
   return (
-    <button type="button" onClick={onClick} className={cn("rounded-lg border px-2 py-2 text-center transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-muted-foreground hover:border-primary/25")}>
+    <button type="button" onClick={onClick} className={cn("rounded-lg border px-2 py-2 text-center transition", selected ? "border-primary/35 bg-primary/9 text-primary" : "border-hairline bg-background/45 text-muted-foreground hover:border-primary/25")}>
       <span className={cn("mx-auto block w-7 rounded-md border", item.height, selected ? "border-primary/45 bg-primary/20" : "border-hairline bg-muted/50")} />
-      <span className="mt-1.5 block text-[length:var(--type-caption)] font-semibold">{POSTER_SIZE_LABEL[size]}</span>
-      <span className="block text-[length:var(--type-micro)] opacity-75">{item.detail}</span>
+      <span className="mt-1.5 block text-(length:--type-caption) font-semibold">{POSTER_SIZE_LABEL[size]}</span>
+      <span className="block text-(length:--type-micro) opacity-75">{item.detail}</span>
     </button>
   );
 }
@@ -886,20 +886,20 @@ function LayoutChoice({
   icon: Icon, label, description, selected, onClick
 }: { icon: typeof LayoutGrid; label: string; description: string; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cn("rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/[0.09]" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
+    <button type="button" onClick={onClick} className={cn("rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/9" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
       <div className="flex items-center justify-between gap-3">
         <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}><Icon className="h-4 w-4" /></span>
-        {selected ? <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-bold text-primary">Selected</span> : null}
+        {selected ? <span className="rounded-full bg-primary/15 px-2 py-0.5 text-(length:--type-micro) font-bold text-primary">Selected</span> : null}
       </div>
       <p className="mt-3 text-sm font-semibold text-foreground">{label}</p>
-      <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{description}</p>
+      <p className="mt-1 text-(length:--type-caption) leading-relaxed text-muted-foreground">{description}</p>
     </button>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+    <p className="text-(length:--type-caption) font-semibold uppercase tracking-[0.18em] text-muted-foreground">
       {children}
     </p>
   );

@@ -67,7 +67,7 @@ export function FailureRulesConsole({ rules, onChanged }: FailureRulesConsolePro
   }
 
   return (
-    <div className="grid gap-[var(--grid-gap)]">
+    <div className="grid gap-(--grid-gap)">
       {FAILURE_CATEGORIES.map((category) => {
         const inCategory = rules.filter((rule) => rule.category === category.id);
         if (!inCategory.length) return null;
@@ -75,25 +75,25 @@ export function FailureRulesConsole({ rules, onChanged }: FailureRulesConsolePro
         return (
           <section key={category.id} className="grid gap-2">
             <div>
-              <h3 className="text-[length:var(--type-body-sm)] font-medium text-foreground">{category.title}</h3>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">{category.blurb}</p>
+              <h3 className="text-(length:--type-body-sm) font-medium text-foreground">{category.title}</h3>
+              <p className="text-(length:--type-caption) text-muted-foreground">{category.blurb}</p>
             </div>
 
             <div className="grid gap-2">
               {inCategory.map((rule) => (
                 <div
                   key={rule.reasonCode}
-                  className="grid items-center gap-2 rounded-[10px] border border-hairline bg-surface-1 px-[var(--field-pad-x)] py-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                  className="grid items-center gap-2 rounded-[10px] border border-hairline bg-surface-1 px-(--field-pad-x) py-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-[length:var(--type-body-sm)] text-foreground">
+                    <p className="truncate text-(length:--type-body-sm) text-foreground">
                       {reasonWords(rule.reasonCode)}
                     </p>
-                    <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                    <p className="text-(length:--type-caption) text-muted-foreground">
                       {rule.isOverridden ? `Deluno ships with "${labelFor(rule.defaultDecision)}"` : "Deluno's own answer"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 sm:w-[22rem]">
+                  <div className="flex items-center gap-2 sm:w-88">
                     <SegmentedControl<BlockDecision>
                       aria-label={`What Deluno does when: ${reasonWords(rule.reasonCode)}`}
                       value={rule.decision}
