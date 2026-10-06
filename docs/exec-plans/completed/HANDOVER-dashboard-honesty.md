@@ -51,7 +51,7 @@ Run them. **Never while `Deluno.Host` is up** — `ci:check` builds the whole so
 Real end-to-end. Not mocks — real qBittorrent doing real transfers with real hash checks.
 
 - **qBittorrent v5.2.1** on `127.0.0.1:8080`, `WebUI\LocalHostAuth=false`. Original config backed up at `%APPDATA%\qBittorrent\qBittorrent.ini.deluno-e2e-backup`.
-- **Torznab feed + webseed host** on 9117: `torznab_seed.py`, now copied into this session's scratchpad. Run with `python -u torznab_seed.py`. It serves **Big Buck Bunny, Sintel and Breaking Bad S01E01/S01E02 only** — Tears of Steel and Elephants Dream are in the library but have no releases, so they stay permanently missing. That is the rig, not a bug.
+- **Torznab feed + webseed host** on 9117, a lab fixture (a small script run by hand, since removed from the repository). It served **Big Buck Bunny, Sintel and Breaking Bad S01E01/S01E02 only** — Tears of Steel and Elephants Dream are in the library but have no releases, so they stay permanently missing. That is the rig, not a bug.
 - Test media at `C:\Deluno\e2e`. Library roots `C:\Deluno\Movies` and `C:\Deluno\TV Shows`. Downloads land in `C:\Deluno\Downloads-Complete`.
 - All four ports must listen: 5099 / 5173 / 8080 / 9117.
 - **The Movies library now has cleanup set to "Remove after import"** — deliberately, because that is the setting that used to be dangerous and is now safe. Leave it on; it is the interesting state.
