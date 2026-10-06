@@ -350,6 +350,8 @@ jobs:
           # silently expires this required upgrade/recovery test after enough
           # ordinary merges.
           fetch-depth: 0
+          # The baseline is named by a tag (baseline/schema-upgrade-...), so tags must come too.
+          fetch-tags: true
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -381,7 +383,7 @@ jobs:
 
       - name: Build populated-schema baseline image
         env:
-          BASELINE_REVISION: 9f25f13
+          BASELINE_REVISION: baseline/schema-upgrade-2026-08-30
         run: |
           set -euo pipefail
           git cat-file -e "${BASELINE_REVISION}^{commit}"
