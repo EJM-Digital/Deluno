@@ -77,7 +77,7 @@ export function fitHeaderTabs(widths: readonly number[], room: number, moreWidth
 }
 
 const TAB_CLASS =
-  "relative whitespace-nowrap rounded-sm text-[length:var(--type-body-sm)] font-medium leading-none after:absolute after:inset-x-0 after:-bottom-[7px] after:h-[2px] after:rounded-full after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "relative whitespace-nowrap rounded-xs text-(length:--type-body-sm) font-medium leading-none after:absolute after:inset-x-0 after:bottom-[-7px] after:h-[2px] after:rounded-full after:content-[''] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 function tabTone(selected: boolean) {
   return selected ? "text-primary after:bg-primary hover:text-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground";
@@ -240,7 +240,7 @@ export function HeaderTabs({ items, label, role }: {
       onClick={() => setOpen((value) => !value)}
       onKeyDown={(event) => { if (event.key === "ArrowDown" && !open) { event.preventDefault(); setOpen(true); } }}
       // Never drawn as chosen: only the chosen tab is underlined.
-      className="relative h-auto gap-1 rounded-sm bg-transparent p-0 text-[length:var(--type-body-sm)] font-medium leading-none text-muted-foreground hover:bg-transparent hover:text-foreground"
+      className="relative h-auto gap-1 rounded-xs bg-transparent p-0 text-(length:--type-body-sm) font-medium leading-none text-muted-foreground hover:bg-transparent hover:text-foreground"
     >
       More
       <ChevronDown aria-hidden="true" className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
@@ -296,7 +296,7 @@ export function HeaderTabs({ items, label, role }: {
           // The text is drawn from an attribute so the page holds no second copy of a tab's words.
           <span key={item.key} data-label={item.label} className={cn(TAB_CLASS, "inline-flex before:content-[attr(data-label)]")} />
         ))}
-        <span data-label="More" className="inline-flex items-center gap-1 text-[length:var(--type-body-sm)] font-medium leading-none before:content-[attr(data-label)]">
+        <span data-label="More" className="inline-flex items-center gap-1 text-(length:--type-body-sm) font-medium leading-none before:content-[attr(data-label)]">
           <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
         </span>
       </div>
@@ -309,11 +309,11 @@ export function HeaderTabs({ items, label, role }: {
               aria-label={`More ${label.toLowerCase()}`}
               onKeyDown={onMenuKeyDown}
               style={{ top: anchor.top, left: anchor.left }}
-              className="fixed z-50 min-w-[11rem] rounded-xl border border-hairline bg-card p-1 shadow-[var(--shadow-card)]"
+              className="fixed z-50 min-w-44 rounded-xl border border-hairline bg-card p-1"
             >
               {folded.map((index) => {
                 const item = items[index]!;
-                const classes = "flex w-full items-center rounded-lg px-3 py-2 text-left text-[length:var(--type-body-sm)] font-medium text-muted-foreground outline-none hover:bg-secondary hover:text-foreground focus-visible:bg-secondary focus-visible:text-foreground";
+                const classes = "flex w-full items-center rounded-lg px-3 py-2 text-left text-(length:--type-body-sm) font-medium text-muted-foreground outline-hidden hover:bg-secondary hover:text-foreground focus-visible:bg-secondary focus-visible:text-foreground";
                 return item.to ? (
                   <NavLink key={item.key} to={item.to} end={item.end} role="menuitem" aria-label={item.ariaLabel} onClick={() => setOpen(false)} className={classes}>
                     {item.label}

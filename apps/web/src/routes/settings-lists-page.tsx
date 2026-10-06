@@ -472,7 +472,7 @@ export function SettingsListsPage() {
   const providerLabel = (value: string) => PROVIDERS.find((provider) => provider.value === value)?.label ?? value;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         actions={
           <PageToolbarAction onClick={openCreate}>New list</PageToolbarAction>
@@ -483,8 +483,8 @@ export function SettingsListsPage() {
         title="Trakt"
         count={traktStatus.connected ? (traktStatus.needsReconnect ? "Needs reconnect" : "Connected") : "Not connected"}
       >
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Connect a Trakt account to reach private lists and Trakt&rsquo;s own Trending, Popular, Anticipated, Top Watched and Recommended lists — none of which have a public RSS feed.
           </p>
           {!traktStatus.clientConfigured ? (
@@ -504,7 +504,7 @@ export function SettingsListsPage() {
               </Button>
             ) : traktDevice ? (
               <>
-                <span className="text-[length:var(--type-caption)]">
+                <span className="text-(length:--type-caption)">
                   Open <a className="underline" href={traktDevice.verificationUrl} target="_blank" rel="noreferrer">{traktDevice.verificationUrl}</a> and enter code <strong className="font-mono">{traktDevice.userCode}</strong>
                 </span>
                 <Button type="button" size="sm" variant="outline" disabled={traktBusy} onClick={() => void checkTraktConnect()}>
@@ -529,7 +529,7 @@ export function SettingsListsPage() {
             )}
           </div>
           {traktStatus.needsReconnect && !traktDevice ? (
-            <p className="text-[length:var(--type-caption)] text-destructive">Trakt stopped renewing its own connection. Reconnect to keep Trakt lists working.</p>
+            <p className="text-(length:--type-caption) text-destructive">Trakt stopped renewing its own connection. Reconnect to keep Trakt lists working.</p>
           ) : null}
         </div>
       </ListCard>
@@ -647,7 +647,7 @@ export function SettingsListsPage() {
             </Field>
           </FieldRow>
           <Field label={form.provider === "tmdb-person" ? "Person" : "List URL"} help={listAddressHelp(form.provider)} error={errors.feedUrl}>
-            <Input value={form.feedUrl} onChange={(event) => { setErrors((current) => ({ ...current, feedUrl: undefined })); setForm((current) => ({ ...current, feedUrl: event.target.value })); }} placeholder={form.provider === "tmdb-person" ? "https://www.themoviedb.org/person/…" : "https://…"} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+            <Input value={form.feedUrl} onChange={(event) => { setErrors((current) => ({ ...current, feedUrl: undefined })); setForm((current) => ({ ...current, feedUrl: event.target.value })); }} placeholder={form.provider === "tmdb-person" ? "https://www.themoviedb.org/person/…" : "https://…"} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
           </Field>
           <FieldRow>
             <Field label="Media type">
@@ -673,13 +673,13 @@ export function SettingsListsPage() {
 
         {form.provider === "tmdb-person" ? (
           <DrawerSection title="Credits" aside={form.personCreditTypes.length ? `${form.personCreditTypes.length} selected` : "choose at least one"}>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Follow titles where this person has one or more of these credits.</p>
+            <p className="text-(length:--type-caption) text-muted-foreground">Follow titles where this person has one or more of these credits.</p>
             <div className="grid gap-2">
               {TMDB_PERSON_CREDIT_TYPES.map((credit) => {
                 const checked = form.personCreditTypes.includes(credit.value);
                 const id = `tmdb-person-${credit.value}`;
                 return (
-                  <label key={credit.value} htmlFor={id} className={cn("flex cursor-pointer items-start gap-3 rounded-[10px] border px-[var(--field-pad-x)] py-2.5 transition", checked ? "border-primary/30 bg-primary/[0.06]" : "border-hairline bg-card")}>
+                  <label key={credit.value} htmlFor={id} className={cn("flex cursor-pointer items-start gap-3 rounded-[10px] border px-(--field-pad-x) py-2.5 transition", checked ? "border-primary/30 bg-primary/6" : "border-hairline bg-card")}>
                     <Checkbox
                       id={id}
                       checked={checked}
@@ -694,14 +694,14 @@ export function SettingsListsPage() {
                       }}
                     />
                     <span className="grid gap-0.5">
-                      <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{credit.label}</span>
-                      <span className="text-[length:var(--type-caption)] text-muted-foreground">{credit.description}</span>
+                      <span className="text-(length:--type-body-sm) font-medium text-foreground">{credit.label}</span>
+                      <span className="text-(length:--type-caption) text-muted-foreground">{credit.description}</span>
                     </span>
                   </label>
                 );
               })}
             </div>
-            {errors.creditTypes ? <p className="text-[length:var(--type-caption)] text-destructive">{errors.creditTypes}</p> : null}
+            {errors.creditTypes ? <p className="text-(length:--type-caption) text-destructive">{errors.creditTypes}</p> : null}
           </DrawerSection>
         ) : null}
 
@@ -740,7 +740,7 @@ export function SettingsListsPage() {
           </Field>
           <FieldRow>
             <SwitchRow label="Search when a title is added" description="Turn off to add titles without downloading anything yet." checked={form.searchOnAdd} onCheckedChange={(checked) => setForm((current) => ({ ...current, searchOnAdd: checked }))} />
-            <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-(--grid-gap)" />
           </FieldRow>
           {form.mediaType === "movies" ? (
             <FieldRow>
@@ -814,7 +814,7 @@ export function SettingsListsPage() {
 
         {editing ? (
         <DrawerSection title="Preview & sync" aside={editing.lastSyncUtc ? `last sync ${relative(editing.lastSyncUtc, preferences)} · ${editing.lastSyncStatus}` : "never synced"}>
-            {editing.lastSyncSummary ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{editing.lastSyncSummary}</p> : null}
+            {editing.lastSyncSummary ? <p className="text-(length:--type-caption) text-muted-foreground">{editing.lastSyncSummary}</p> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" title="Preview without adding titles" onClick={() => void loadPreview()} disabled={busy !== null || dirty}>
                 {busy === "preview" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
@@ -824,9 +824,9 @@ export function SettingsListsPage() {
                 {busy === "sync" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
                 Sync now
               </Button>
-              {dirty ? <span className="self-center text-[length:var(--type-caption)] text-muted-foreground">Save your changes first.</span> : null}
+              {dirty ? <span className="self-center text-(length:--type-caption) text-muted-foreground">Save your changes first.</span> : null}
             </div>
-            {previewNote ? <p role="status" className="text-[length:var(--type-caption)] text-foreground">{previewNote}</p> : null}
+            {previewNote ? <p role="status" className="text-(length:--type-caption) text-foreground">{previewNote}</p> : null}
             {preview ? (
               <ImportListPreview
                 preview={preview}
@@ -897,14 +897,14 @@ function ImportListPreview({
   const wouldAdd = preview.items.filter((item) => item.action === "would add").length;
   const existing = preview.items.filter((item) => item.action === "already in library").length;
   return (
-    <div className="grid gap-[var(--grid-gap)] rounded-[10px] border border-hairline bg-surface-2/50 p-[var(--field-pad-x)]">
+    <div className="grid gap-(--grid-gap) rounded-[10px] border border-hairline bg-surface-2/50 p-(--field-pad-x)">
       <div>
-        <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Read-only preview</p>
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-body-sm) font-medium text-foreground">Read-only preview</p>
+        <p className="text-(length:--type-caption) text-muted-foreground">
           {preview.fetchedCount} found · {wouldAdd} would add · {existing} already in library{preview.targetLibraryName ? ` · adds to ${preview.targetLibraryName}` : " · no library chosen"}
         </p>
         {preview.warnings.map((warning) => (
-          <p key={warning} className="mt-1 text-[length:var(--type-caption)] text-warning">{warning}</p>
+          <p key={warning} className="mt-1 text-(length:--type-caption) text-warning">{warning}</p>
         ))}
       </div>
       <div className="grid max-h-72 gap-2 overflow-y-auto">
@@ -913,16 +913,16 @@ function ImportListPreview({
           const selectable = entry.action === "would add";
           const id = `preview-${index}`;
           return (
-            <div key={`${entry.title}-${entry.year ?? "unknown"}-${index}`} className={cn("rounded-[10px] border px-[var(--field-pad-x)] py-2", selectable && selectedKeys.includes(key) ? "border-primary/30 bg-primary/[0.06]" : "border-hairline bg-card")}>
+            <div key={`${entry.title}-${entry.year ?? "unknown"}-${index}`} className={cn("rounded-[10px] border px-(--field-pad-x) py-2", selectable && selectedKeys.includes(key) ? "border-primary/30 bg-primary/6" : "border-hairline bg-card")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label htmlFor={selectable ? id : undefined} className="flex items-center gap-2 text-[length:var(--type-body-sm)] font-medium text-foreground">
+                <label htmlFor={selectable ? id : undefined} className="flex items-center gap-2 text-(length:--type-body-sm) font-medium text-foreground">
                   {selectable ? <Checkbox id={id} checked={selectedKeys.includes(key)} onCheckedChange={(checked) => onSelectionChange(key, checked)} /> : null}
                   {entry.title}
                   {entry.year ? ` (${entry.year})` : ""}
                 </label>
                 <Chip tone={entry.action === "would add" ? "ok" : entry.action === "excluded" ? "idle" : "info"}>{entry.action}</Chip>
               </div>
-              <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{entry.reason} · {entry.matchConfidence} confidence</p>
+              <p className="mt-1 text-(length:--type-caption) text-muted-foreground">{entry.reason} · {entry.matchConfidence} confidence</p>
               {selectable ? (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => onExclude(entry, 7)}>Ignore 7 days</Button>
@@ -1158,8 +1158,8 @@ export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; ta
 
   return (
     <ListCard title="Titles that leave every list" count={enabled ? "On" : "Off"}>
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           Deluno never removes a title because it dropped off a list. Turn this on to tag it instead, so you can find it later or let a tag rule decide what happens to it. A title still on another list is left alone.
         </p>
         <SwitchRow label="Tag titles that are no longer on any list" description="Off by default. Checked after each successful list sync." checked={on} onCheckedChange={setOn} />

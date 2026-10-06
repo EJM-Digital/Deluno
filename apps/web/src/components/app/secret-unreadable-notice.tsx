@@ -12,9 +12,9 @@ export function SecretUnreadableNotice({ item }: { item: { secretUnreadable?: bo
   const text = secretUnreadableText(item);
   if (!text) return null;
   return (
-    <div role="alert" className="rounded-[10px] border border-warning/30 bg-warning/[0.06] px-3 py-2.5">
-      <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Enter the saved key again</p>
-      <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{text}</p>
+    <div role="alert" className="rounded-[10px] border border-warning/30 bg-warning/6 px-3 py-2.5">
+      <p className="text-(length:--type-body-sm) font-medium text-foreground">Enter the saved key again</p>
+      <p className="mt-1 text-(length:--type-caption) leading-relaxed text-muted-foreground">{text}</p>
     </div>
   );
 }

@@ -50,14 +50,14 @@ export function RetentionKeepDialog({ open, onOpenChange, title, ruleName, busy 
               </span>
               <div>
                 <Dialog.Title className="font-semibold text-foreground">Keep {title}?</Dialog.Title>
-                <Dialog.Description id="retention-keep-description" className="mt-1 text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                <Dialog.Description id="retention-keep-description" className="mt-1 text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                   It leaves Leaving soon now and stays until you undo the keep.
                 </Dialog.Description>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] p-6">
+          <div className="grid gap-(--grid-gap) p-6">
             <Field label="Keep it from" help={scope === "rule" ? `It stays off that rule's list, even while the rule still matches it. Another rule can still mark it later.` : "No rule will mark it while it is kept."}>
               <SegmentedControl
                 value={scope}

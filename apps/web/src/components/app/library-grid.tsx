@@ -56,7 +56,7 @@ const GRID_MIN_BY_SIZE: Record<CardSize, string> = {
 };
 
 const TITLE_CLASS_BY_SIZE: Record<CardSize, string> = {
-  sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]"
+  sm: "text-(length:--library-title-sm)", md: "text-(length:--library-title-md)", lg: "text-(length:--library-title-lg)"
 };
 
 const SHOW_META: Record<CardSize, boolean> = { sm: false, md: true, lg: true };
@@ -180,7 +180,7 @@ export function ProgressiveGrid({
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
-              <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${safeColumns}, minmax(${gridMin}, 1fr))` }}>
+              <div className="stagger grid gap-(--library-grid-gap) pb-(--library-grid-gap)" style={{ gridTemplateColumns: `repeat(${safeColumns}, minmax(${gridMin}, 1fr))` }}>
                 {items.slice(row.index * safeColumns, (row.index + 1) * safeColumns).map((item) => (
                   <PosterCard key={item.id} item={item} size={cardSize} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
                 ))}
@@ -266,7 +266,7 @@ function PosterCard({
           size === "sm" ? "h-5 w-5" : "h-6 w-6",
           selected
             ? [
-                "bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-primary-foreground",
+                "bg-linear-to-br/srgb from-primary to-[hsl(var(--primary-2))] text-primary-foreground",
                 "opacity-100 scale-100",
                 "shadow-[0_0_0_2px_hsl(0_0%_0%/0.4),0_0_12px_hsl(var(--primary)/0.6),inset_0_1px_0_hsl(0_0%_100%/0.25)]"
               ].join(" ")
@@ -300,11 +300,11 @@ function PosterCard({
           type="button"
           onClick={onSelect}
           aria-label={`Open ${item.title}`}
-          className="absolute inset-0 z-[1] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute inset-0 z-1 rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div
           className={cn(
-            "pointer-events-none relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition-all duration-300",
+            "pointer-events-none relative aspect-2/3 overflow-hidden rounded-xl bg-muted transition-all duration-300",
             "shadow-card group-hover:-translate-y-1 group-hover:shadow-lg",
             // `ring-inset`, so selection paints *inside* the poster.
             //
@@ -326,7 +326,7 @@ function PosterCard({
         >
           {/* Selected scrim overlay */}
           {selected && (
-            <div className="pointer-events-none absolute inset-0 z-[5] bg-gradient-to-b from-primary/15 to-transparent" />
+            <div className="pointer-events-none absolute inset-0 z-5 bg-linear-to-b/srgb from-primary/15 to-transparent" />
           )}
           <PosterArtwork
             src={item.poster}
@@ -489,7 +489,7 @@ function PosterCard({
             {actionResult ? (
               <span
                 role="status"
-                className="pointer-events-none absolute inset-x-2 bottom-3 truncate text-center text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-white"
+                className="pointer-events-none absolute inset-x-2 bottom-3 truncate text-center text-(length:--library-badge-size) font-bold uppercase tracking-wider text-white"
               >
                 {actionResult}
               </span>
@@ -532,7 +532,7 @@ function PosterCard({
           // The full name is in the tooltip, and the title is also the card's
           // accessible label, so nothing is lost to the ellipsis.
           <p
-            className={cn("h-[1lh] truncate font-semibold leading-tight text-foreground", titleCls)}
+            className={cn("h-lh truncate font-semibold leading-tight text-foreground", titleCls)}
             title={item.localizedTitle ?? item.title}
           >
             {item.localizedTitle ?? item.title}
@@ -623,7 +623,7 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
         return (
           <div
             key={row.option}
-            className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
+            className="flex h-lh min-w-0 items-center justify-center gap-1 leading-tight text-(length:--library-meta-size) text-muted-foreground"
             title={value ? `${row.label}: ${value}` : `${row.label}: nothing known for this title`}
           >
             {/* An icon rather than a word. "Cinemas Nov 10, 2016" spends half a
@@ -688,9 +688,9 @@ function PosterAction({
 }) {
   const className = cn(
     "pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-full",
-    "bg-black/55 text-white ring-1 ring-inset ring-white/25 backdrop-blur-sm",
+    "bg-black/55 text-white ring-1 ring-inset ring-white/25 backdrop-blur-xs",
     "transition hover:bg-primary hover:text-primary-foreground hover:ring-primary",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
     busy && "opacity-60"
   );
 

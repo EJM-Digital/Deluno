@@ -52,13 +52,13 @@ export function ConfirmDialog({
             "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2",
             isDecision ? "max-w-xl" : "max-w-sm",
             "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl",
-            "dark:border-white/[0.08]",
+            "dark:border-white/8",
             isDecision ? "data-[state=open]:animate-fade-in-stable" : "data-[state=open]:animate-fade-in"
           )}
           aria-describedby="confirm-description"
         >
           <div className={cn("p-6", isDecision && "p-8 sm:p-9")}>
-            <div className={cn("mb-4 flex items-start gap-[var(--grid-gap)]", isDecision && "mb-8")}>
+            <div className={cn("mb-4 flex items-start gap-(--grid-gap)", isDecision && "mb-8")}>
               {confirmVariant === "destructive" && (
                 <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10">
                   <AlertTriangle className="h-4 w-4 text-destructive" />
@@ -70,7 +70,7 @@ export function ConfirmDialog({
                 <Dialog.Title
                   className={cn(
                     "font-semibold text-foreground",
-                    isDecision && "text-[length:var(--type-title-md)] tracking-[-0.02em]"
+                    isDecision && "text-(length:--type-title-md) tracking-[-0.02em]"
                   )}
                 >
                   {title}
@@ -79,7 +79,7 @@ export function ConfirmDialog({
                   id="confirm-description"
                   className={cn(
                     "mt-1 text-sm text-muted-foreground leading-relaxed",
-                    isDecision && "max-w-prose text-[length:var(--type-body)]"
+                    isDecision && "max-w-prose text-(length:--type-body)"
                   )}
                 >
                   {description}
@@ -101,7 +101,7 @@ export function ConfirmDialog({
                   className={cn(
                     "w-full",
                     !isDecision && "sm:w-auto",
-                    isDecision && "order-3 h-auto min-h-[var(--control-height-lg)] justify-center whitespace-normal px-5 py-3 text-center"
+                    isDecision && "order-3 h-auto min-h-(--control-height-lg) justify-center whitespace-normal px-5 py-3 text-center"
                   )}
                   disabled={busy}
                 >
@@ -115,7 +115,7 @@ export function ConfirmDialog({
                   className={cn(
                     "w-full",
                     !isDecision && "sm:w-auto",
-                    isDecision && "order-2 h-auto min-h-[var(--control-height-lg)] justify-center whitespace-normal px-5 py-3 text-center"
+                    isDecision && "order-2 h-auto min-h-(--control-height-lg) justify-center whitespace-normal px-5 py-3 text-center"
                   )}
                   disabled={busy}
                   onClick={onSecondary}
@@ -128,7 +128,7 @@ export function ConfirmDialog({
                 className={cn(
                   "w-full",
                   !isDecision && "sm:w-auto",
-                  isDecision && "order-1 h-auto min-h-[var(--control-height-lg)] justify-center whitespace-normal px-5 py-3 text-center"
+                  isDecision && "order-1 h-auto min-h-(--control-height-lg) justify-center whitespace-normal px-5 py-3 text-center"
                 )}
                 disabled={busy}
                 onClick={onConfirm}

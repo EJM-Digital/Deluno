@@ -37,8 +37,8 @@ export function ConnectionSelectAll({ ids, selected, noun, onChange }: { ids: st
 export function ConnectionSelectionBar({ count, noun, onTags, onClear }: { count: number; noun: string; onTags: () => void; onClear: () => void }) {
   if (count === 0) return null;
   return (
-    <div role="toolbar" aria-label={`Bulk ${noun} actions`} className="flex flex-wrap items-center gap-2 border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)] py-2">
-      <span className="text-[length:var(--type-caption)] font-medium text-foreground">{count} selected</span>
+    <div role="toolbar" aria-label={`Bulk ${noun} actions`} className="flex flex-wrap items-center gap-2 border-b border-hairline bg-surface-2/40 px-(--card-pad-x) py-2">
+      <span className="text-(length:--type-caption) font-medium text-foreground">{count} selected</span>
       <Button type="button" variant="outline" size="sm" aria-label={`Change tags on the selected ${noun}`} onClick={onTags}>
         <Tags className="h-3.5 w-3.5" />
         Tags
@@ -111,7 +111,7 @@ export function ConnectionTagsDialog({
           className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-hairline bg-card shadow-2xl data-[state=open]:animate-fade-in"
           aria-describedby="connection-tags-description"
         >
-          <div className="space-y-[var(--page-gap)] px-6 py-5">
+          <div className="space-y-(--page-gap) px-6 py-5">
             <div>
               <Dialog.Title className="font-semibold text-foreground">Change tags: {heading}</Dialog.Title>
               <Dialog.Description id="connection-tags-description" className="mt-1 text-sm text-muted-foreground">

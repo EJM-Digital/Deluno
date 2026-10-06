@@ -78,8 +78,8 @@ export function ListGroupHeader({
     <div
       role="row"
       className={cn(
-        "sticky top-0 z-10 flex h-[var(--list-group-height)] items-center gap-2 border-y border-hairline bg-surface-3 px-[var(--card-pad-x)]",
-        "text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.12em] text-foreground"
+        "sticky top-0 z-10 flex h-(--list-group-height) items-center gap-2 border-y border-hairline bg-surface-3 px-(--card-pad-x)",
+        "text-(length:--type-caption) font-semibold uppercase tracking-[0.12em] text-foreground"
       )}
     >
       <span role="columnheader">{label}</span>

@@ -25,7 +25,7 @@ export function CategoryPicker({ value, onChange, scope }: { value: string; onCh
     <div className="flex flex-col gap-3" role="group" aria-label="Categories">
       {groups.map((group) => (
         <div key={group.title}>
-          <p className="mb-1 text-[length:var(--type-caption)] font-semibold text-muted-foreground">{group.title}</p>
+          <p className="mb-1 text-(length:--type-caption) font-semibold text-muted-foreground">{group.title}</p>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
             {group.items.map((category) => {
               const checked = categoryIdSelected(value, category.id);
@@ -33,8 +33,8 @@ export function CategoryPicker({ value, onChange, scope }: { value: string; onCh
               return (
                 <label key={category.id} htmlFor={id} className="flex cursor-pointer items-center gap-1.5">
                   <Checkbox id={id} checked={checked} onCheckedChange={() => onChange(toggleCategoryId(value, category.id))} />
-                  <span className="text-[length:var(--type-body-sm)] text-foreground">{category.name}</span>
-                  <span className="font-mono text-[length:var(--type-caption)] text-muted-foreground">{category.id}</span>
+                  <span className="text-(length:--type-body-sm) text-foreground">{category.name}</span>
+                  <span className="font-mono text-(length:--type-caption) text-muted-foreground">{category.id}</span>
                 </label>
               );
             })}
@@ -43,7 +43,7 @@ export function CategoryPicker({ value, onChange, scope }: { value: string; onCh
       ))}
       {custom.length > 0 ? (
         <div>
-          <p className="mb-1 text-[length:var(--type-caption)] font-semibold text-muted-foreground">Custom</p>
+          <p className="mb-1 text-(length:--type-caption) font-semibold text-muted-foreground">Custom</p>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
             {custom.map((id) => {
               const checkboxId = `category-custom-${id}`;
@@ -55,8 +55,8 @@ export function CategoryPicker({ value, onChange, scope }: { value: string; onCh
               return (
                 <label key={id} htmlFor={checkboxId} className="flex cursor-pointer items-center gap-1.5">
                   <Checkbox id={checkboxId} checked onCheckedChange={() => onChange(toggleCategoryId(value, id))} />
-                  <span className="font-mono text-[length:var(--type-body-sm)] text-foreground">{id}</span>
-                  <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <span className="font-mono text-(length:--type-body-sm) text-foreground">{id}</span>
+                  <span className="text-(length:--type-caption) text-muted-foreground">
                     {nearest ? `(custom, near ${nearest.name} ${nearest.id})` : "(custom)"}
                   </span>
                 </label>

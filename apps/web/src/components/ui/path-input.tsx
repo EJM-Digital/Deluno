@@ -265,10 +265,10 @@ export function PathInput({
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex max-w-2xl flex-col gap-0 p-0" aria-label={browseTitle}>
-          <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.85)]">
-            <div className="flex items-start justify-between gap-[var(--grid-gap)] pr-10">
+          <div className="border-b border-hairline px-(--tile-pad) py-[calc(var(--tile-pad)*0.85)]">
+            <div className="flex items-start justify-between gap-(--grid-gap) pr-10">
               <div className="space-y-1">
-                <p className="text-[length:var(--type-caption)] uppercase tracking-[0.18em] text-muted-foreground">Filesystem</p>
+                <p className="text-(length:--type-caption) uppercase tracking-[0.18em] text-muted-foreground">Filesystem</p>
                 <h2 className="font-display text-xl font-semibold tracking-tight text-foreground">
                   {browseTitle}
                 </h2>
@@ -289,7 +289,7 @@ export function PathInput({
             ) : null}
           </div>
 
-          <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
+          <div className="border-b border-hairline px-(--tile-pad) py-[calc(var(--tile-pad)*0.7)]">
             <div className="mb-3 grid gap-2 md:grid-cols-3">
               <PathModeCard
                 icon={Server}
@@ -387,7 +387,7 @@ export function PathInput({
             ) : null}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-[var(--tile-pad)] py-[var(--tile-pad)]">
+          <div className="flex-1 overflow-y-auto px-(--tile-pad) py-(--tile-pad)">
             {loading ? (
               <div className="flex h-full min-h-56 items-center justify-center rounded-2xl border border-dashed border-hairline bg-surface-1 text-sm text-muted-foreground">
                 <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -519,7 +519,7 @@ function DiagnosticBadge({ label, ok }: { label: string; ok: boolean }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 text-[length:var(--type-caption)]",
+        "rounded-full border px-2 py-0.5 text-(length:--type-caption)",
         ok
           ? "border-success/25 bg-success/10 text-success"
           : "border-hairline bg-surface-2 text-muted-foreground"

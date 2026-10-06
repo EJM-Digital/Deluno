@@ -377,7 +377,7 @@ export function SettingsNotificationsPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={systemSettingsNavItems}
         actions={
@@ -646,37 +646,37 @@ export function SettingsNotificationsPage() {
           </Field>
           {providerNeedsUrl(form.provider) ? (
             <Field label={providerUrlLabel(form.provider)} error={urlError} help={form.provider === "generic" ? "Deluno sends a JSON body; no authentication headers are added." : undefined}>
-              <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder={providerUrlPlaceholder(form.provider)} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder={providerUrlPlaceholder(form.provider)} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
             </Field>
           ) : null}
           {form.provider === "telegram" ? (
             <FieldRow>
               <Field label="Bot token" help="From @BotFather.">
-                <Input value={form.config.botToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, botToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={form.config.botToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, botToken: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
               <Field label="Chat ID">
-                <Input value={form.config.chatId ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, chatId: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={form.config.chatId ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, chatId: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
             </FieldRow>
           ) : null}
           {form.provider === "pushover" ? (
             <FieldRow>
               <Field label="App token">
-                <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
               <Field label="User key">
-                <Input value={form.config.userKey ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, userKey: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={form.config.userKey ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, userKey: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
             </FieldRow>
           ) : null}
           {form.provider === "gotify" ? (
             <Field label="App token">
-              <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
             </Field>
           ) : null}
           {form.provider === "ntfy" ? (
             <Field label="Access token" help="Only needed for a protected topic.">
-              <Input value={form.config.accessToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, accessToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              <Input value={form.config.accessToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, accessToken: event.target.value } }))} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
             </Field>
           ) : null}
           <SwitchRow label="Enabled" description="Paused webhooks stay configured but never fire." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
@@ -684,13 +684,13 @@ export function SettingsNotificationsPage() {
 
         {editing ? (
           <DrawerSection title="Delivery" aside={editing.lastFiredUtc ? `last fired ${relative(editing.lastFiredUtc)}` : "never fired"}>
-            {editing.lastError ? <p className="text-[length:var(--type-caption)] text-destructive">{editing.lastError}</p> : null}
-            {!settings.enableNotifications ? <p className="text-[length:var(--type-caption)] text-warning">Notifications are paused for the whole install, so this webhook will not fire.</p> : null}
+            {editing.lastError ? <p className="text-(length:--type-caption) text-destructive">{editing.lastError}</p> : null}
+            {!settings.enableNotifications ? <p className="text-(length:--type-caption) text-warning">Notifications are paused for the whole install, so this webhook will not fire.</p> : null}
             <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void sendTest()} disabled={busy !== null || dirty}>
               {busy === "test" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Send a test event
             </Button>
-            {dirty ? <p className="text-[length:var(--type-caption)] text-muted-foreground">Save your changes first.</p> : null}
+            {dirty ? <p className="text-(length:--type-caption) text-muted-foreground">Save your changes first.</p> : null}
           </DrawerSection>
         ) : null}
 

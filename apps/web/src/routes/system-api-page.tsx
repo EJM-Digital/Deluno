@@ -114,18 +114,18 @@ export function SystemApiPage() {
   }
 
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <ListCard
         title="Generate an API key"
         count="Shown once — Deluno stores only a hash, so copy it before you leave"
         actions={<SaveStatus state={save.state} message={save.message} />}
       >
-        <div className="grid grid-cols-1 gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid grid-cols-1 gap-(--grid-gap) p-(--card-pad-x)">
           {createdKey ? (
-            <div className="rounded-2xl border border-primary/35 bg-primary/10 p-[var(--tile-pad)]">
+            <div className="rounded-2xl border border-primary/35 bg-primary/10 p-(--tile-pad)">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="flex items-center gap-2 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+                  <p className="flex items-center gap-2 font-display text-(length:--type-card-title) font-semibold tracking-tight text-foreground">
                     <ShieldCheck className="h-5 w-5 text-primary" />
                     Key created
                   </p>
@@ -136,7 +136,7 @@ export function SystemApiPage() {
                 <Badge variant="success">one-time secret</Badge>
               </div>
               <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row">
-                <code className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 font-mono text-[length:var(--type-body)] text-foreground">
+                <code className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 font-mono text-(length:--type-body) text-foreground">
                   {createdKey.apiKey}
                 </code>
                 <Button type="button" variant="outline" onClick={() => void handleCopy(createdKey.apiKey)}>
@@ -147,7 +147,7 @@ export function SystemApiPage() {
             </div>
           ) : null}
 
-            <form className="grid grid-cols-1 gap-[var(--grid-gap)]" onSubmit={handleCreate}>
+            <form className="grid grid-cols-1 gap-(--grid-gap)" onSubmit={handleCreate}>
               <Field
                 label="Key name"
                 help="Use a human name that tells you where the key is used. Example: dashboard, mobile app, Home Assistant, backup script."
@@ -181,7 +181,7 @@ export function SystemApiPage() {
               </Field>
 
               <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-                <p className="font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+                <p className="font-display text-(length:--type-card-title) font-semibold tracking-tight text-foreground">
                   How integrations authenticate
                 </p>
                 <p className="mt-2 density-help leading-relaxed text-muted-foreground">
@@ -191,7 +191,7 @@ export function SystemApiPage() {
               </div>
 
               <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-                <p className="font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+                <p className="font-display text-(length:--type-card-title) font-semibold tracking-tight text-foreground">
                   Integration endpoints
                 </p>
                 <p className="mt-2 density-help leading-relaxed text-muted-foreground">
@@ -227,13 +227,13 @@ export function SystemApiPage() {
                     ["write", "GET|POST|PUT|DELETE", "/api/notification-webhooks"]
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">
-                      <span className="font-mono text-[length:var(--type-caption)] font-bold text-primary">{method}</span>
-                      <code className="overflow-x-auto font-mono text-[length:var(--type-caption)] text-foreground">{path}</code>
-                      <span className="text-[length:var(--type-caption)] text-muted-foreground">scope: {scope}</span>
+                      <span className="font-mono text-(length:--type-caption) font-bold text-primary">{method}</span>
+                      <code className="overflow-x-auto font-mono text-(length:--type-caption) text-foreground">{path}</code>
+                      <span className="text-(length:--type-caption) text-muted-foreground">scope: {scope}</span>
                     </div>
                   ))}
                 </div>
-                <pre className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 text-[length:var(--type-caption)] text-muted-foreground">
+                <pre className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 text-(length:--type-caption) text-muted-foreground">
 {`curl -H "X-Api-Key: deluno_..." http://127.0.0.1:5099/api/integrations/external/health
 
 curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integrations/external/queue?take=25`}
@@ -318,7 +318,7 @@ function ApiKeyStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-hairline bg-background/35 p-3">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words text-[length:var(--type-body)] font-semibold text-foreground">{value}</p>
+      <p className="mt-1 wrap-break-word text-(length:--type-body) font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -326,7 +326,7 @@ function ApiKeyStat({ label, value }: { label: string; value: string }) {
 function ApiGuideCard({ body, title }: { body: string; title: string }) {
   return (
     <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-      <p className="flex items-center gap-2 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+      <p className="flex items-center gap-2 font-display text-(length:--type-card-title) font-semibold tracking-tight text-foreground">
         <BookOpenText className="h-4 w-4 text-primary" />
         {title}
       </p>

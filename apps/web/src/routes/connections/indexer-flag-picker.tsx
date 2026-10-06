@@ -19,8 +19,8 @@ export function IndexerFlagPicker({ value, onChange }: { value: string; onChange
             aria-pressed={selected}
             onClick={() => onChange(toggleIndexerFlag(value, flag))}
             className={cn(
-              "inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 text-[length:var(--type-caption)] font-semibold leading-none transition-colors",
-              selected ? "border-primary/60 bg-primary/[0.12] text-primary" : "border-hairline bg-surface-2 text-muted-foreground hover:bg-surface-3"
+              "inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 text-(length:--type-caption) font-semibold leading-none transition-colors",
+              selected ? "border-primary/60 bg-primary/12 text-primary" : "border-hairline bg-surface-2 text-muted-foreground hover:bg-surface-3"
             )}
           >
             {flag}

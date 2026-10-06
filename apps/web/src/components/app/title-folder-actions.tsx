@@ -179,17 +179,17 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
           <Dialog.Content
             className={cn(
               "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2",
-              "max-h-[85vh] overflow-y-auto rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/[0.08]",
+              "max-h-[85vh] overflow-y-auto rounded-2xl border border-hairline bg-card shadow-2xl dark:border-white/8",
               "data-[state=open]:animate-fade-in-stable"
             )}
             aria-describedby="title-folder-description"
           >
             {panel?.kind === "rescan" ? (
               <div className="p-6 sm:p-8">
-                <Dialog.Title className="text-[length:var(--type-title-md)] font-semibold tracking-[-0.02em] text-foreground">
+                <Dialog.Title className="text-(length:--type-title-md) font-semibold tracking-[-0.02em] text-foreground">
                   Folder rescanned
                 </Dialog.Title>
-                <p id="title-folder-description" className="mt-2 text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
+                <p id="title-folder-description" className="mt-2 text-(length:--type-body) leading-relaxed text-muted-foreground">
                   {panel.result.summary}
                 </p>
                 {panel.result.outcome === "library-unreachable" || panel.result.outcome === "library-unknown" ? (
@@ -201,7 +201,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
                 ) : null}
                 {panel.result.missing.length > 0 ? (
                   <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">No longer on disk</p>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">No longer on disk</p>
                     <ul className="mt-1 space-y-1 text-sm text-foreground">
                       {panel.result.missing.map((file) => (
                         <li key={file.path} className="truncate font-mono text-xs" title={file.path}>{file.fileName}</li>
@@ -211,7 +211,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
                 ) : null}
                 {panel.result.untracked.length > 0 ? (
                   <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Videos Deluno is not tracking</p>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Videos Deluno is not tracking</p>
                     <ul className="mt-1 space-y-2">
                       {panel.result.untracked.slice(0, 20).map((file) => (
                         <li key={file.path} className="flex items-center justify-between gap-3">
@@ -236,20 +236,20 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
               </div>
             ) : panel?.kind === "rename" ? (
               <div className="p-6 sm:p-8">
-                <Dialog.Title className="text-[length:var(--type-title-md)] font-semibold tracking-[-0.02em] text-foreground">
+                <Dialog.Title className="text-(length:--type-title-md) font-semibold tracking-[-0.02em] text-foreground">
                   Rename preview
                 </Dialog.Title>
-                <p id="title-folder-description" className="mt-2 text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
+                <p id="title-folder-description" className="mt-2 text-(length:--type-body) leading-relaxed text-muted-foreground">
                   {panel.preview.message}
                 </p>
                 {panel.preview.willChange ? (
                   <dl className="mt-4 space-y-2 text-sm">
                     <div>
-                      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Folder now</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Folder now</dt>
                       <dd className="break-all font-mono text-xs text-foreground">{panel.preview.currentFolder}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Folder after</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Folder after</dt>
                       <dd className="break-all font-mono text-xs text-foreground">{panel.preview.proposedFolder}</dd>
                     </div>
                   </dl>

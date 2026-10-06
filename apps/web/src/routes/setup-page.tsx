@@ -56,8 +56,8 @@ export function SetupPage() {
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center bg-background px-4">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-60 left-1/3 h-[600px] w-[600px] rounded-full bg-primary/[0.09] blur-[200px]" />
-        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-primary/[0.05] blur-[160px]" />
+        <div className="absolute -top-60 left-1/3 h-[600px] w-[600px] rounded-full bg-primary/9 blur-[200px]" />
+        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[160px]" />
       </div>
 
       <div className="w-full max-w-[440px]">
@@ -67,7 +67,7 @@ export function SetupPage() {
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
               Set up Deluno
             </h1>
-            <p className="mt-1 text-[length:var(--type-body-sm)] text-muted-foreground">
+            <p className="mt-1 text-(length:--type-body-sm) text-muted-foreground">
               Create the first user account for this Deluno install.
             </p>
           </div>
@@ -76,10 +76,10 @@ export function SetupPage() {
         <Card
           as="form"
           onSubmit={(event) => void handleSubmit(event)}
-          className="space-y-3 bg-card/80 p-6 shadow-lg backdrop-blur dark:border-white/[0.06]"
+          className="space-y-3 bg-card/80 p-6 shadow-lg backdrop-blur-sm dark:border-white/6"
         >
           {error ? (
-            <div className="flex items-start gap-2.5 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-3 text-[length:var(--type-body-sm)] text-destructive dark:bg-destructive/12">
+            <div className="flex items-start gap-2.5 rounded-xl border border-destructive/25 px-3.5 py-3 text-(length:--type-body-sm) text-destructive">
               <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -89,7 +89,7 @@ export function SetupPage() {
           ) : null}
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-display-name" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-display-name" className="text-(length:--type-caption) font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Display name
             </label>
             <Input
@@ -99,13 +99,13 @@ export function SetupPage() {
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Your name"
-              className="h-[var(--control-height-lg)]"
+              className="h-(--control-height-lg)"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-username" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-username" className="text-(length:--type-caption) font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Username
             </label>
             <Input
@@ -115,13 +115,13 @@ export function SetupPage() {
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               placeholder="your-name"
-              className="h-[var(--control-height-lg)]"
+              className="h-(--control-height-lg)"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-password" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-password" className="text-(length:--type-caption) font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Password
             </label>
             <div className="relative">
@@ -132,7 +132,7 @@ export function SetupPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
-                className="h-[var(--control-height-lg)] pr-11"
+                className="h-(--control-height-lg) pr-11"
                 required
               />
               <button
@@ -151,7 +151,7 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-confirm-password" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-confirm-password" className="text-(length:--type-caption) font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Confirm password
             </label>
             <Input
@@ -161,14 +161,14 @@ export function SetupPage() {
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               placeholder="••••••••"
-              className="h-[var(--control-height-lg)]"
+              className="h-(--control-height-lg)"
               required
             />
           </div>
 
           <Button
             type="submit"
-            className="mt-1 h-[var(--control-height-lg)] w-full gap-2 text-[length:var(--type-body-sm)] font-semibold"
+            className="mt-1 h-(--control-height-lg) w-full gap-2 text-(length:--type-body-sm) font-semibold"
             disabled={
               busy ||
               !displayName.trim() ||
@@ -186,7 +186,7 @@ export function SetupPage() {
           </Button>
         </Card>
 
-        <p className="mt-5 text-center text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="mt-5 text-center text-(length:--type-caption) text-muted-foreground">
           After this step, Deluno will require sign-in for every session.
         </p>
       </div>

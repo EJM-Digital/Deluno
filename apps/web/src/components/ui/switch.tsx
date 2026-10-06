@@ -31,7 +31,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         }}
         className={cn(
           "relative inline-flex shrink-0 items-center rounded-full border transition-colors duration-150",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:cursor-not-allowed disabled:opacity-50",
           sm ? "h-[18px] w-[30px]" : "h-5 w-[34px]",
           checked ? "border-primary bg-primary" : "border-hairline bg-surface-3",
@@ -76,11 +76,11 @@ export function SwitchRow({
 }) {
   const id = React.useId();
   return (
-    <div className={cn("flex min-h-[var(--control-height)] items-center justify-between gap-[var(--grid-gap)]", className)}>
+    <div className={cn("flex min-h-(--control-height) items-center justify-between gap-(--grid-gap)", className)}>
       <label htmlFor={id} className="min-w-0 cursor-pointer">
-        <span className="block text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{label}</span>
+        <span className="block text-(length:--type-body-sm) font-medium leading-tight text-foreground">{label}</span>
         {description ? (
-          <span className="mt-0.5 block text-[length:var(--type-caption)] leading-snug text-muted-foreground">{description}</span>
+          <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">{description}</span>
         ) : null}
       </label>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />

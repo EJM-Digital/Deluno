@@ -197,48 +197,48 @@ function FileHandlingPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar tabs={librarySetupNavItems} />
 
       <ListCard title="Naming" count="The titles people see in your library">
         <div className="grid md:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)]">
           <div className="divide-y divide-hairline">
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
               <div className="grid content-start gap-1.5">
-                <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Movie folders</p>
-                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno creates or renames a movie folder.</p>
+                <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Movie folders</p>
+                <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used when Deluno creates or renames a movie folder.</p>
               </div>
               <NamingFormatField kind="movie-folder" value={form.movieFolderFormat} onChange={(value) => setForm((current) => ({ ...current, movieFolderFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("movie-folder", active, draftValue, previousValue)} placeholder="{Movie Title} ({Release Year})" showExamples={false} />
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
               <div className="grid content-start gap-1.5">
-                <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Movie files</p>
+                <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Movie files</p>
                 {/*
                   A movie had no file-name pattern at all, so every import was
                   named "Title (Year)" and the quality and the guide formats
                   Deluno matched were lost the moment the file landed.
                 */}
-                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno renames an imported movie. Quality and custom formats come from the release Deluno chose, not from the old file name.</p>
+                <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used when Deluno renames an imported movie. Quality and custom formats come from the release Deluno chose, not from the old file name.</p>
               </div>
               <NamingFormatField kind="movie-file" value={form.movieFileFormat} onChange={(value) => setForm((current) => ({ ...current, movieFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("movie-file", active, draftValue, previousValue)} placeholder="{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]" showExamples={false} />
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
-              <div className="grid content-start gap-[var(--grid-gap)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x) md:grid-cols-2">
+              <div className="grid content-start gap-(--grid-gap)">
                 <div className="grid content-start gap-1.5">
-                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">TV show folders</p>
-                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno creates or renames a show folder.</p>
+                  <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">TV show folders</p>
+                  <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used when Deluno creates or renames a show folder.</p>
                 </div>
                 <NamingFormatField kind="series-folder" value={form.seriesFolderFormat} onChange={(value) => setForm((current) => ({ ...current, seriesFolderFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("series-folder", active, draftValue, previousValue)} placeholder="{Series Title} ({Series Year})" showExamples={false} />
               </div>
-              <div className="grid content-start gap-[var(--grid-gap)]">
+              <div className="grid content-start gap-(--grid-gap)">
                 <div className="grid content-start gap-1.5">
-                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Episode files</p>
-                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno renames imported episode files.</p>
+                  <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Episode files</p>
+                  <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used when Deluno renames imported episode files.</p>
                 </div>
                 <NamingFormatField kind="episode-file" value={form.episodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, episodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" showExamples={false} />
               </div>
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
               <Field label="Multi-episode style" help="How a file that covers more than one episode (a double episode, a combined premiere) gets its combined season/episode name.">
                 <Select
                   value={form.multiEpisodeStyle}
@@ -247,7 +247,7 @@ function FileHandlingPage() {
                 />
               </Field>
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
               <SwitchRow
                 label="Split shows into season subfolders"
                 description="Adds a Season 01 folder (and a separate one for specials) inside each show's folder instead of one flat show folder."
@@ -264,7 +264,7 @@ function FileHandlingPage() {
                 }}
               />
               {seasonSubfoldersEnabled ? (
-                <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+                <div className="grid gap-(--grid-gap) md:grid-cols-2">
                   <Field label="Season folder" help="Tokens: {Season:00} for a zero-padded number, {Season} for a plain one.">
                     <Input value={form.seasonFolderFormat} onChange={(event) => setForm((current) => ({ ...current, seasonFolderFormat: event.target.value }))} placeholder="Season {Season:00}" />
                   </Field>
@@ -274,23 +274,23 @@ function FileHandlingPage() {
                 </div>
               ) : null}
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
-              <div className="grid content-start gap-[var(--grid-gap)]">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x) md:grid-cols-2">
+              <div className="grid content-start gap-(--grid-gap)">
                 <div className="grid content-start gap-1.5">
-                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Daily episode files</p>
-                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used for dated shows (news, talk shows) instead of the episode format above.</p>
+                  <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Daily episode files</p>
+                  <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used for dated shows (news, talk shows) instead of the episode format above.</p>
                 </div>
                 <NamingFormatField kind="daily-episode-file" value={form.dailyEpisodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, dailyEpisodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("daily-episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - {Air-Date} - {Episode Title}" showExamples={false} />
               </div>
-              <div className="grid content-start gap-[var(--grid-gap)]">
+              <div className="grid content-start gap-(--grid-gap)">
                 <div className="grid content-start gap-1.5">
-                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Anime episode files</p>
-                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used for absolute-numbered shows instead of the episode format above.</p>
+                  <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Anime episode files</p>
+                  <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Used for absolute-numbered shows instead of the episode format above.</p>
                 </div>
                 <NamingFormatField kind="anime-episode-file" value={form.animeEpisodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, animeEpisodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("anime-episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - {absolute:000} - {Episode Title}" showExamples={false} />
               </div>
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
+            <div className="grid gap-(--grid-gap) p-(--card-pad-x) md:grid-cols-2">
               <SwitchRow
                 label="Replace illegal characters"
                 description="On, a character a file system can't store (such as : or ?) becomes a dash. Off, Deluno removes it instead."
@@ -308,17 +308,17 @@ function FileHandlingPage() {
               ) : null}
             </div>
           </div>
-          <aside className="border-t border-hairline bg-surface-1/20 p-[var(--card-pad-x)] lg:border-l lg:border-t-0">
-            <div className="grid gap-[var(--grid-gap)]">
+          <aside className="border-t border-hairline bg-surface-1/20 p-(--card-pad-x) lg:border-l lg:border-t-0">
+            <div className="grid gap-(--grid-gap)">
               <div className="grid gap-1">
-                <p className="text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">Live preview</p>
-                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">See how Deluno will name new and imported media.</p>
+                <p className="text-(length:--type-body-sm) font-semibold leading-tight text-foreground">Live preview</p>
+                <p className="text-(length:--type-caption) leading-snug text-muted-foreground">See how Deluno will name new and imported media.</p>
               </div>
-              <div className="grid gap-[var(--grid-gap)]">
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+              <div className="grid gap-(--grid-gap)">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Movie folder" value={`Movies\\${previewNamingFormat(form.movieFolderFormat || "{Movie Title} ({Release Year})")}`} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview
                     label="TV show folder"
                     value={
@@ -329,32 +329,32 @@ function FileHandlingPage() {
                   />
                 </div>
                 {seasonSubfoldersEnabled ? (
-                  <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                  <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                     <NamingPreview
                       label="Specials folder"
                       value={`TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}\\${previewSeasonFormat(form.specialsFolderFormat || "Specials", 0)}`}
                     />
                   </div>
                 ) : null}
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Movie file" value={previewNamingFormat(form.movieFileFormat || "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]")} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Multi-episode file" value={previewMultiEpisodeFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}", form.multiEpisodeStyle)} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Daily episode file" value={previewNamingFormat(form.dailyEpisodeFileFormat || "{Series Title} - {Air-Date} - {Episode Title}")} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Anime episode file" value={previewNamingFormat(form.animeEpisodeFileFormat || "{Series Title} - {absolute:000} - {Episode Title}")} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                <div className="grid gap-(--grid-gap) border-b border-hairline pb-(--grid-gap) last:border-b-0 last:pb-0">
                   <NamingPreview label="Illegal characters" value={sanitizeIllegalCharacters("Show? Special Edition", form.replaceIllegalCharacters)} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] pb-[var(--grid-gap)] last:pb-0">
+                <div className="grid gap-(--grid-gap) pb-(--grid-gap) last:pb-0">
                   <NamingPreview label="Colon replacement" value={sanitizeIllegalCharacters("Series: Title", form.replaceIllegalCharacters, form.colonReplacementMode as ColonReplacementMode)} />
                 </div>
               </div>
@@ -448,7 +448,7 @@ function ImportPolicyPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar tabs={librarySetupNavItems} />
 
       <ListCard title="After a download finishes" titleCase={false}>
@@ -494,16 +494,16 @@ function ImportPolicyFields({
   return (
     <>
       <div className="grid divide-y divide-hairline md:grid-cols-3 md:divide-x md:divide-y-0">
-      <div className="p-[var(--card-pad-x)]">
+      <div className="p-(--card-pad-x)">
         <SwitchRow label="Rename files when imported" description="Apply the naming choices from Media Naming as the file enters the library." checked={form.renameOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameOnImport: checked }))} />
       </div>
-      <div className="p-[var(--card-pad-x)]">
+      <div className="p-(--card-pad-x)">
         {/* #764: independent of the file switch above -- a movie/series folder
             can be renamed to Deluno's naming choice while the file inside it
             keeps its original name, or the other way around. */}
         <SwitchRow label="Rename folders when imported" description="On, the movie or show folder is renamed to match Media Naming, the same way the file switch renames the file. Off, a folder Deluno was handed (from a download client or processor) keeps the name it arrived with; a brand-new title still gets a named folder either way." checked={form.renameFoldersOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameFoldersOnImport: checked }))} />
       </div>
-      <div className="p-[var(--card-pad-x)]">
+      <div className="p-(--card-pad-x)">
         <SwitchRow label="Keep seeding without a second copy" description="Use a hardlink when the drives support it, so the download client and library share one set of file data." checked={form.useHardlinks} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, useHardlinks: checked }))} />
       </div>
       </div>
@@ -516,42 +516,42 @@ function ImportPolicyFields({
         still need the per-library switch to win, and that switch already
         exists per library.
       */}
-      <p className="border-t border-hairline p-[var(--card-pad-x)] text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="border-t border-hairline p-(--card-pad-x) text-(length:--type-caption) text-muted-foreground">
         Whether Deluno removes folders left empty by an import is set per library, in Processing -&gt; that library's workflow.
       </p>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Storage safety</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Deluno checks every library's free space on the health schedule (#909). Below the warn line it flags a problem but keeps working; at or below the pause line it stops that library's grabs and imports until space is freed, the same way an unreachable folder does.</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Storage safety</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Deluno checks every library's free space on the health schedule (#909). Below the warn line it flags a problem but keeps working; at or below the pause line it stops that library's grabs and imports until space is freed, the same way an unreachable folder does.</p>
         </div>
         <FieldRow>
           <Field label="Warn when a library has less than" help="Percent of the drive free. Deluno flags the problem on Health, the Dashboard tile and the bell, but keeps grabbing and importing.">
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={50} value={form.libraryFreeSpaceWarnPercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpaceWarnPercent: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">% free</span>
+              <Input type="number" min={1} max={50} value={form.libraryFreeSpaceWarnPercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpaceWarnPercent: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">% free</span>
             </div>
           </Field>
           <Field label="Pause imports when a library has less than" error={thresholdError && form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent ? thresholdError : undefined} help={thresholdError && form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent ? undefined : "At or below this, Deluno pauses the library's grabs and imports until space is freed."}>
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={50} value={form.libraryFreeSpacePausePercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpacePausePercent: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">% free</span>
+              <Input type="number" min={1} max={50} value={form.libraryFreeSpacePausePercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpacePausePercent: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">% free</span>
             </div>
           </Field>
         </FieldRow>
         <FieldRow>
           <Field label="Minimum free space" help="Deluno blocks an import that would leave the destination volume below this, with a dismissable Activity entry saying why (#765).">
             <div className="flex items-center gap-2">
-              <Input type="number" min={0} value={form.minimumFreeSpaceMb} onChange={(event) => onFormChange((current) => ({ ...current, minimumFreeSpaceMb: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+              <Input type="number" min={0} value={form.minimumFreeSpaceMb} onChange={(event) => onFormChange((current) => ({ ...current, minimumFreeSpaceMb: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
             </div>
           </Field>
         </FieldRow>
         <SwitchRow label="Skip free space check" description="Only for a filesystem that cannot report free space at all. Lower the minimum above instead of turning this on just to allow a tighter margin." checked={form.skipFreeSpaceCheck} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, skipFreeSpaceCheck: checked }))} />
       </div>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Leftover downloads</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list on Queue always offers Keep/Remove by hand either way.</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Leftover downloads</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list on Queue always offers Keep/Remove by hand either way.</p>
         </div>
         <Field label="Never count these as leftovers" help="Names to skip, one per line or separated by commas. * matches any run of characters and ? one character, so *.nfo skips every .nfo and Thumbs.db skips that file. Checked against each file or folder name at the top of the download folder. Empty by default.">
           <Textarea
@@ -563,47 +563,47 @@ function ImportPolicyFields({
         </Field>
         <Field label="Count as a leftover after" help="How long something must sit unclaimed in a download folder before it is listed at all. A download that has only just finished can appear a moment before its client lists it, so this is 2 hours unless you change it.">
           <div className="flex items-center gap-2">
-            <Input type="number" min={1} max={8760} value={form.leftoverMinAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverMinAgeHours: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+            <Input type="number" min={1} max={8760} value={form.leftoverMinAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverMinAgeHours: Number(event.target.value || 0) }))} className="max-w-28" />
+            <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
           </div>
         </Field>
         <SwitchRow label="Delete leftover download files automatically" description="Deluno checks for these on its own schedule and writes every deletion to Activity, saying why it counted as a leftover." checked={form.leftoverDownloadCleanupEnabled} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupEnabled: checked }))} />
         {form.leftoverDownloadCleanupEnabled ? (
           <Field label="After" help="How long a leftover must have sat, untouched, before Deluno deletes it.">
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={8760} value={form.leftoverDownloadCleanupAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupAgeHours: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+              <Input type="number" min={1} max={8760} value={form.leftoverDownloadCleanupAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupAgeHours: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
             </div>
           </Field>
         ) : null}
       </div>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Force import</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Off for a new install. When on, Deluno imports a download anyway after its import has already stopped once for one minor reason, and only this one: Deluno could not read the file to check it (a share that dropped, a lock, or a slow disk), so nothing was found wrong with it. It never goes past a file Deluno read and found wrong, a title it cannot identify, or a file that would replace one you already have. Because Deluno could not read the file, it cannot tell a sample by looking inside, so a file whose name looks like a sample, or that is smaller than the size below, stays stopped. Every forced import is written to Activity.</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Force import</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Off for a new install. When on, Deluno imports a download anyway after its import has already stopped once for one minor reason, and only this one: Deluno could not read the file to check it (a share that dropped, a lock, or a slow disk), so nothing was found wrong with it. It never goes past a file Deluno read and found wrong, a title it cannot identify, or a file that would replace one you already have. Because Deluno could not read the file, it cannot tell a sample by looking inside, so a file whose name looks like a sample, or that is smaller than the size below, stays stopped. Every forced import is written to Activity.</p>
         </div>
         <SwitchRow label="Import files Deluno could not check" description="Only after the first stop, and only into a gap. If the file turns out to be damaged, remove it from the title's page and search again." checked={form.forceImportEnabled} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, forceImportEnabled: checked }))} />
         {form.forceImportEnabled ? (
           <Field label="Tries per download" help="How many times Deluno will force the import of one download before it leaves it stopped for you.">
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={25} value={form.forceImportMaxTries} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMaxTries: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">tries</span>
+              <Input type="number" min={1} max={25} value={form.forceImportMaxTries} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMaxTries: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">tries</span>
             </div>
           </Field>
         ) : null}
         {form.forceImportEnabled ? (
           <Field label="Smallest file to force" help="Files smaller than this are never force-imported, so samples and trailers stay out. Leave it empty to use 100 MB.">
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={100000} value={form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : ""} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMinimumMegabytes: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+              <Input type="number" min={1} max={100000} value={form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : ""} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMinimumMegabytes: Number(event.target.value || 0) }))} className="max-w-28" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
             </div>
           </Field>
         ) : null}
       </div>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Unmatched imports</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">What Deluno does with a file it downloaded but could not match to a title or episode — the same choice applies when a processor hands back a file that no longer matches.</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Unmatched imports</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">What Deluno does with a file it downloaded but could not match to a title or episode — the same choice applies when a processor hands back a file that no longer matches.</p>
         </div>
         <Field label="When a download cannot be matched" help="Hold keeps it on Transfers for you to match by hand, for as long as it takes. The other two act on their own.">
           <SegmentedControl<"hold" | "give-up-after-days" | "retry-once-then-bad">
@@ -630,30 +630,30 @@ function ImportPolicyFields({
                 max={365}
                 value={form.unmatchedImportGiveUpDays}
                 onChange={(event) => onFormChange((current) => ({ ...current, unmatchedImportGiveUpDays: Number(event.target.value || 0) }))}
-                className="max-w-[7rem]"
+                className="max-w-28"
               />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">days</span>
             </div>
           </Field>
         ) : null}
       </div>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Still-packed archives</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason on Search &amp; Cycles -&gt; Failure and blocklist). Removing and deleting it from the download client is your call (#887).</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Still-packed archives</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason on Search &amp; Cycles -&gt; Failure and blocklist). Removing and deleting it from the download client is your call (#887).</p>
         </div>
         <SwitchRow label="Remove and delete still-packed archives from the download client" description="Off keeps the packed files in the client, using disk space, the same as today." checked={form.removeAndDeletePackedArchivesFromClient} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, removeAndDeletePackedArchivesFromClient: checked }))} />
       </div>
-      <div className="border-t border-hairline p-[var(--card-pad-x)]">
-        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
-          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Permissions</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Set file mode and group ownership when Deluno imports a file. This only takes effect when Deluno's own process owns the file — the same limit Radarr and Sonarr document for their Permissions section.</p>
+      <div className="border-t border-hairline p-(--card-pad-x)">
+        <div className="grid content-start gap-1.5 pb-(--grid-gap)">
+          <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Permissions</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Set file mode and group ownership when Deluno imports a file. This only takes effect when Deluno's own process owns the file — the same limit Radarr and Sonarr document for their Permissions section.</p>
         </div>
         <SwitchRow label="Set permissions on import" description="Apply the chmod and group below to every media file Deluno imports." checked={form.setPermissionsOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, setPermissionsOnImport: checked }))} />
         {form.setPermissionsOnImport ? (
           <FieldRow>
             <Field label="Chmod" help="Octal file mode, such as 755 or 0644.">
-              <Input value={form.folderChmod ?? ""} onChange={(event) => onFormChange((current) => ({ ...current, folderChmod: event.target.value }))} placeholder="755" className="max-w-[7rem]" />
+              <Input value={form.folderChmod ?? ""} onChange={(event) => onFormChange((current) => ({ ...current, folderChmod: event.target.value }))} placeholder="755" className="max-w-28" />
             </Field>
             <Field label="Chown group" help="Group name or GID applied to imported files. Leave blank to leave group ownership unchanged.">
               <Input value={form.chownGroup ?? ""} onChange={(event) => onFormChange((current) => ({ ...current, chownGroup: event.target.value }))} placeholder="media" />
@@ -698,8 +698,8 @@ function previewMultiEpisodeFormat(episodeFileFormat: string, style: string) {
 function NamingPreview({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1.5">
-      <span className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">{label}</span>
-      <code className="break-words rounded-md border border-hairline bg-surface-1 px-2.5 py-2 text-[length:var(--type-caption)] leading-snug text-foreground">{value}</code>
+      <span className="text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">{label}</span>
+      <code className="wrap-break-word rounded-md border border-hairline bg-surface-1 px-2.5 py-2 text-(length:--type-caption) leading-snug text-foreground">{value}</code>
     </div>
   );
 }
@@ -956,7 +956,7 @@ function ProcessingWorkflowPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={librarySetupNavItems} actions={<PageToolbarAction variant="outline" onClick={openCallback}>Connect processor</PageToolbarAction>} />
 
       <ListCard title="Finished download workflow" count="Select a library to choose what happens next">
@@ -1030,7 +1030,7 @@ function ProcessingWorkflowPage() {
                   <Chip tone={healthTone(connection.healthStatus)}>{connection.healthStatus}</Chip>
                 </ListCell>
                 {/* Its own fixed-width track on wide screens; on a phone it drops to a full-width line under the name, and the buttons wrap instead of overlapping. */}
-                <ListCell align="end" className="max-md:col-span-full max-md:!block">
+                <ListCell align="end" className="max-md:col-span-full max-md:block!">
                   <span className="flex flex-wrap justify-end gap-2">
                     <Button type="button" variant="outline" size="sm" className="h-7 px-2" disabled={busy !== null} onClick={() => void testCallback(connection)}>
                       {busy === `test:${connection.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
@@ -1053,13 +1053,13 @@ function ProcessingWorkflowPage() {
         )}
         {mappingConnectionId ? (
           <div className="mt-3 grid gap-2 rounded-[10px] border border-hairline bg-surface-1/40 px-3 py-3">
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               Only needed when {processorConnections.find((connection) => connection.id === mappingConnectionId)?.name ?? "this processor"} runs in a container or on another machine and reports a path Deluno cannot use directly — for example the processor reports <code className="font-mono">/data/refined</code> while Deluno reads <code className="font-mono">D:\Refined</code>. With no pairs set here, paths are sent and read back exactly as they are today.
             </p>
             {mappings.length ? (
               <div className="grid gap-2">
                 {mappings.map((mapping) => (
-                  <div key={mapping.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] font-mono text-[length:var(--type-caption)]">
+                  <div key={mapping.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-(--field-pad-x) font-mono text-(length:--type-caption)">
                     <span className="min-w-0 flex-1 truncate text-foreground" title={mapping.delunoPath}>{mapping.delunoPath}</span>
                     <span aria-hidden className="text-primary">↔</span>
                     <span className="min-w-0 flex-1 truncate text-muted-foreground" title={mapping.processorPath}>{mapping.processorPath}</span>
@@ -1072,10 +1072,10 @@ function ProcessingWorkflowPage() {
             ) : null}
             <FieldRow>
               <Field label="Path as Deluno sees it">
-                <Input value={newProcessorMapping.delunoPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, delunoPath: event.target.value }))} placeholder="D:\Refined" className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={newProcessorMapping.delunoPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, delunoPath: event.target.value }))} placeholder="D:\Refined" className="font-mono text-(length:--type-caption)" />
               </Field>
               <Field label="Same path as the processor sees it">
-                <Input value={newProcessorMapping.processorPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, processorPath: event.target.value }))} placeholder="/data/refined" className="font-mono text-[length:var(--type-caption)]" />
+                <Input value={newProcessorMapping.processorPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, processorPath: event.target.value }))} placeholder="/data/refined" className="font-mono text-(length:--type-caption)" />
               </Field>
             </FieldRow>
             <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void addProcessorMapping()} disabled={busy !== null || !newProcessorMapping.delunoPath.trim() || !newProcessorMapping.processorPath.trim()}>
@@ -1108,8 +1108,8 @@ function ProcessingWorkflowPage() {
                 />
               </Field>
               <div className="rounded-[10px] border border-hairline bg-surface-1/40 px-3 py-2.5">
-                <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{isRefined ? "Deluno will wait for the cleaned file" : "Deluno will import the finished download"}</p>
-                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{isRefined ? "The file is not sent to your library until the output folder contains a matching processed file." : "Deluno places the finished file in this library, applies its naming rules, and then refreshes its details."}</p>
+                <p className="text-(length:--type-body-sm) font-medium text-foreground">{isRefined ? "Deluno will wait for the cleaned file" : "Deluno will import the finished download"}</p>
+                <p className="mt-1 text-(length:--type-caption) leading-relaxed text-muted-foreground">{isRefined ? "The file is not sent to your library until the output folder contains a matching processed file." : "Deluno places the finished file in this library, applies its naming rules, and then refreshes its details."}</p>
               </div>
             </DrawerSection>
             {isRefined ? (
@@ -1145,7 +1145,7 @@ function ProcessingWorkflowPage() {
                     {!workflow.processorConnectionId && workflow.processorName && !selectedProcessor ? <option value={UNMATCHED_PROCESSOR}>{workflow.processorName} (existing)</option> : null}
                   </Select>
                 </Field>
-                {hasProcessor && !selectedProcessor?.isEnabled ? <p className="text-[length:var(--type-caption)] text-warning">This processor connection is disabled or missing. Enable it, choose folder watching, or select another connection before saving.</p> : null}
+                {hasProcessor && !selectedProcessor?.isEnabled ? <p className="text-(length:--type-caption) text-warning">This processor connection is disabled or missing. Enable it, choose folder watching, or select another connection before saving.</p> : null}
                 </DrawerSection>
               ) : null}
             <DrawerSection title="Source cleanup">
@@ -1163,7 +1163,7 @@ function ProcessingWorkflowPage() {
                   was still sharing is what broke seeding (#287). Each now has a
                   domain, said once, where the choice is being made. */}
               {workflow.cleanupMode === "remove-source-after-import" ? (
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="text-(length:--type-caption) text-muted-foreground">
                   This covers files Deluno found on disk. Anything it downloaded through a search source is handled by your sharing rule under Automation &amp; Recovery instead, so a download still being shared is never deleted out from under its client.
                 </p>
               ) : null}
@@ -1175,9 +1175,9 @@ function ProcessingWorkflowPage() {
           <>
             <SecretUnreadableNotice item={drawer.editId ? processorConnections.find((connection) => connection.id === drawer.editId) : null} />
             {drawer.editId ? <ConnectionUpdatePanel kind="processor" id={drawer.editId} /> : null}
-            <div className="rounded-[10px] border border-info/25 bg-info/[0.05] px-3 py-2.5">
-              <p className="text-[length:var(--type-caption)] font-medium text-foreground">Two directions are involved</p>
-              <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+            <div className="rounded-[10px] border border-info/25 bg-info/5 px-3 py-2.5">
+              <p className="text-(length:--type-caption) font-medium text-foreground">Two directions are involved</p>
+              <p className="mt-1 text-(length:--type-caption) leading-relaxed text-muted-foreground">
                 Deluno sends a job to the processor URL below. When the cleaned file is ready, the processor sends an event back to Deluno using the callback path included in that job. For the return message, create a Deluno API key with <span className="font-medium text-foreground">Media automation</span> access under <Link to="/system/api" className="text-info underline underline-offset-2">System → API</Link>.
               </p>
             </div>
@@ -1186,10 +1186,10 @@ function ProcessingWorkflowPage() {
                 <Select value={callback.provider} onChange={(event) => setCallback((current) => ({ ...current, provider: event.target.value }))} options={[{ value: "generic-webhook", label: "Generic processor webhook" }, { value: "fileflows-webhook", label: "FileFlows webhook" }]} />
               </Field>
               <Field label="Processor job URL" help="Deluno sends a job here when a download needs processing. Your processor reports back to Deluno when the cleaned file is ready.">
-                <Input value={callback.submissionUrl} onChange={(event) => setCallback((current) => ({ ...current, submissionUrl: event.target.value }))} placeholder="https://processor.example/webhooks/deluno" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={callback.submissionUrl} onChange={(event) => setCallback((current) => ({ ...current, submissionUrl: event.target.value }))} placeholder="https://processor.example/webhooks/deluno" className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
               <Field label="Health check address" optional help="An address Deluno can ask to see whether the processor is up; a normal answer means healthy. Leave empty and the test can only confirm the job URL answers.">
-                <Input value={callback.healthCheckUrl} onChange={(event) => setCallback((current) => ({ ...current, healthCheckUrl: event.target.value }))} placeholder="https://processor.example/health" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+                <Input value={callback.healthCheckUrl} onChange={(event) => setCallback((current) => ({ ...current, healthCheckUrl: event.target.value }))} placeholder="https://processor.example/health" className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
               </Field>
             </DrawerSection>
             <DrawerSection title="Authentication">

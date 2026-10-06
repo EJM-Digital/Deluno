@@ -63,7 +63,7 @@ export function OutageBanner() {
   return (
     <div
       role="status"
-      className="flex items-center justify-center gap-2 border-b border-warning/40 bg-warning/15 px-4 py-2 text-center text-[length:var(--type-body-sm)] font-medium text-warning-foreground"
+      className="flex items-center justify-center gap-2 border-b border-warning/40 bg-warning/15 px-4 py-2 text-center text-(length:--type-body-sm) font-medium text-warning-foreground"
     >
       <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
       <span>

@@ -49,7 +49,7 @@ export function ProxyDrawerBody({
           error={errors.address}
           help={form.proxyType === "flaresolverr" ? "The FlareSolverr or Byparr API address, e.g. http://localhost:8191." : "The proxy address, e.g. socks5://192.168.1.1:1080 or http://proxy.example.test:8080."}
         >
-          <Input value={form.address} onChange={(event) => { clearError("address"); setForm((current) => ({ ...current, address: event.target.value })); }} className="font-mono text-[length:var(--type-caption)]" placeholder="socks5://192.168.1.1:1080" autoComplete="off" spellCheck={false} />
+          <Input value={form.address} onChange={(event) => { clearError("address"); setForm((current) => ({ ...current, address: event.target.value })); }} className="font-mono text-(length:--type-caption)" placeholder="socks5://192.168.1.1:1080" autoComplete="off" spellCheck={false} />
         </Field>
         {form.proxyType !== "flaresolverr" ? (
           <FieldRow>
@@ -66,7 +66,7 @@ export function ProxyDrawerBody({
 
       {editing ? (
         <DrawerSection title="Used by">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
             {editing.assignedIndexerNames.length
               ? `${editing.assignedIndexerNames.length} indexer${editing.assignedIndexerNames.length === 1 ? "" : "s"}: ${editing.assignedIndexerNames.join(", ")}`
               : "No indexer is assigned to this proxy yet. Assign it from that indexer's own drawer."}

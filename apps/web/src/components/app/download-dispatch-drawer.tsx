@@ -85,25 +85,25 @@ export function DownloadDispatchDrawer({
 
           {dispatch.failure ? (
             <DrawerSection title="Why it failed" aside={integrationRetryLabel(dispatch.failure.retryState)}>
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-destructive">{dispatch.failure.summary}</p>
-              <p className="mt-2 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+              <p className="text-(length:--type-body-sm) leading-relaxed text-destructive">{dispatch.failure.summary}</p>
+              <p className="mt-2 text-(length:--type-caption) leading-relaxed text-muted-foreground">
                 {dispatch.failure.serviceName} · {formatOperation(dispatch.failure.operation)}
               </p>
               {dispatch.failure.upstreamDetail ? (
-                <p className="mt-2 whitespace-pre-wrap text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                <p className="mt-2 whitespace-pre-wrap text-(length:--type-caption) leading-relaxed text-muted-foreground">
                   Client detail: {dispatch.failure.upstreamDetail}
                 </p>
               ) : null}
-              <p className="mt-3 text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{dispatch.failure.nextAction}</p>
+              <p className="mt-3 text-(length:--type-body-sm) leading-relaxed text-foreground">{dispatch.failure.nextAction}</p>
               {nextEligibleUtc ? (
-                <p className="mt-2 text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="mt-2 text-(length:--type-caption) text-muted-foreground">
                   Next eligible attempt: {formatDateTime(nextEligibleUtc, preferences)}
                 </p>
               ) : null}
             </DrawerSection>
           ) : dispatch.importFailureMessage ? (
             <DrawerSection title="Why import failed">
-              <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-destructive">{dispatch.importFailureMessage}</p>
+              <p className="whitespace-pre-wrap text-(length:--type-body-sm) leading-relaxed text-destructive">{dispatch.importFailureMessage}</p>
             </DrawerSection>
           ) : null}
 

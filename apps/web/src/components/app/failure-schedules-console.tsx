@@ -90,7 +90,7 @@ export function FailureSchedulesConsole({ settings, recycleBin, onChanged }: Fai
   }
 
   return (
-    <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+    <div className="grid gap-(--grid-gap) sm:grid-cols-2">
       <Field
         label="Check my files every"
         help="How often Deluno looks at whether the files it thinks you have are still on disk. A local pool can afford hourly; a NAS that spins up to answer should not be woken every hour to be asked."

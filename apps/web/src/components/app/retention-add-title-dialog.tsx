@@ -116,16 +116,16 @@ export function RetentionAddTitleDialog({ open, onOpenChange, rules, onAdded }: 
               </span>
               <div>
                 <Dialog.Title className="font-semibold text-foreground">Add a title by hand</Dialog.Title>
-                <Dialog.Description id="retention-add-description" className="mt-1 text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                <Dialog.Description id="retention-add-description" className="mt-1 text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                   It joins the rule's Leaving soon list marked Manual and waits the rule's days. The rule's steps no longer decide whether it stays; keeping it, or taking it off, does.
                 </Dialog.Description>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-[var(--grid-gap)] p-6">
+          <div className="grid gap-(--grid-gap) p-6">
             {usable.length === 0 ? (
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Turn a rule on first. Only a rule that is on has a list.</p>
+              <p className="text-(length:--type-body-sm) text-muted-foreground">Turn a rule on first. Only a rule that is on has a list.</p>
             ) : (
               <>
                 <Field label="Add it to">
@@ -134,16 +134,16 @@ export function RetentionAddTitleDialog({ open, onOpenChange, rules, onAdded }: 
                 <Field label="Find a title" help="Movies, shows, seasons or episodes, whichever the rule cleans out. Only titles Deluno holds files for.">
                   <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Start typing a name" autoComplete="off" />
                 </Field>
-                {problem ? <p className="text-[length:var(--type-caption)] text-warning" role="alert">{problem}</p> : null}
-                {searching ? <p className="text-[length:var(--type-caption)] text-muted-foreground">Looking…</p> : null}
+                {problem ? <p className="text-(length:--type-caption) text-warning" role="alert">{problem}</p> : null}
+                {searching ? <p className="text-(length:--type-caption) text-muted-foreground">Looking…</p> : null}
                 {!searching && query.trim().length >= 2 && found.length === 0 ? (
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">Nothing with files matches that.</p>
+                  <p className="text-(length:--type-caption) text-muted-foreground">Nothing with files matches that.</p>
                 ) : null}
                 {found.length > 0 ? (
                   <ul className="grid max-h-64 gap-1 overflow-y-auto">
                     {found.map((item) => (
                       <li key={item.entityId} className="flex items-center justify-between gap-3 rounded-lg border border-hairline px-3 py-2">
-                        <span className="min-w-0 truncate text-[length:var(--type-body-sm)] text-foreground">
+                        <span className="min-w-0 truncate text-(length:--type-body-sm) text-foreground">
                           {item.title}
                           {item.year && item.level === "movie" ? ` (${item.year})` : ""}
                         </span>

@@ -32,12 +32,12 @@ const bodyClassName = "flex h-full min-h-0 flex-col";
 export function Drawer({ open, onOpenChange, title, description, children, footer, onSubmit, className }: DrawerProps) {
   const body = (
     <>
-      <header className="flex min-h-[var(--drawer-header-height)] shrink-0 items-center justify-between gap-[var(--grid-gap)] border-b border-hairline px-6">
+      <header className="flex min-h-(--drawer-header-height) shrink-0 items-center justify-between gap-(--grid-gap) border-b border-hairline px-6">
         <div className="min-w-0">
-          <Dialog.Title className="truncate text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-[-0.01em]">
+          <Dialog.Title className="truncate text-(length:--type-title-sm) font-semibold leading-tight tracking-[-0.01em]">
             {title}
           </Dialog.Title>
-          <Dialog.Description className={cn("mt-0.5 truncate text-[length:var(--type-caption)] text-muted-foreground", !description && "sr-only")}>
+          <Dialog.Description className={cn("mt-0.5 truncate text-(length:--type-caption) text-muted-foreground", !description && "sr-only")}>
             {description ?? "Edit the details and save."}
           </Dialog.Description>
         </div>
@@ -53,8 +53,8 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
       {footer ? (
         <footer
           className={cn(
-            "flex min-h-[var(--drawer-footer-height)] shrink-0 flex-col items-stretch gap-2 border-t border-hairline bg-surface-2/40 px-6 py-3",
-            "sm:h-[var(--drawer-footer-height)] sm:flex-row sm:items-center sm:justify-between sm:gap-[var(--grid-gap)] sm:py-0"
+            "flex min-h-(--drawer-footer-height) shrink-0 flex-col items-stretch gap-2 border-t border-hairline bg-surface-2/40 px-6 py-3",
+            "sm:h-(--drawer-footer-height) sm:flex-row sm:items-center sm:justify-between sm:gap-(--grid-gap) sm:py-0"
           )}
         >
           {footer}
@@ -72,7 +72,7 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
             "fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-hairline bg-card text-foreground shadow-lg",
             "sm:w-[min(var(--drawer-width),100vw)]",
             "data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out",
-            "focus:outline-none",
+            "focus:outline-hidden",
             className
           )}
           onOpenAutoFocus={(event) => {
@@ -125,9 +125,9 @@ export function DrawerSection({
   className?: string;
 }) {
   return (
-    <section className={cn("grid min-w-0 gap-[var(--grid-gap)] border-b border-hairline py-5 last:border-b-0", className)}>
+    <section className={cn("grid min-w-0 gap-(--grid-gap) border-b border-hairline py-5 last:border-b-0", className)}>
       {title ? (
-        <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-[var(--grid-gap)] gap-y-1 text-[length:var(--type-caption)] font-semibold uppercase leading-tight tracking-[0.1em] text-muted-foreground">
+        <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-(--grid-gap) gap-y-1 text-(length:--type-caption) font-semibold uppercase leading-tight tracking-widest text-muted-foreground">
           <span className="min-w-0">{title}</span>
           {aside ? <span className="max-w-full font-normal normal-case leading-tight tracking-normal">{aside}</span> : null}
         </h3>
@@ -149,11 +149,11 @@ export function DrawerFacts({ items }: { items: Array<{ label: React.ReactNode; 
     <dl className="grid gap-1.5">
       {items.map((item, index) => (
         <div key={index} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
-          <dt className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{item.label}</dt>
+          <dt className="shrink-0 text-(length:--type-caption) text-muted-foreground">{item.label}</dt>
           <dd
             className={cn(
-              "min-w-0 truncate text-right text-[length:var(--type-body-sm)] text-foreground",
-              item.mono && "font-mono text-[length:var(--type-caption)]"
+              "min-w-0 truncate text-right text-(length:--type-body-sm) text-foreground",
+              item.mono && "font-mono text-(length:--type-caption)"
             )}
             title={typeof item.value === "string" ? item.value : undefined}
           >
@@ -177,10 +177,10 @@ export function DrawerDanger({
   action: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-destructive/30 px-[var(--field-pad-x)] py-2">
+    <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap) rounded-[10px] border border-destructive/30 px-(--field-pad-x) py-2">
       <div className="min-w-0">
-        <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{title}</p>
-        {description ? <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">{description}</p> : null}
+        <p className="text-(length:--type-body-sm) font-medium text-foreground">{title}</p>
+        {description ? <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -249,7 +249,7 @@ export function DrawerFooter({
       <span
         role="status"
         aria-live="polite"
-        className={cn("flex min-w-0 items-center gap-1.5 text-[length:var(--type-caption)] sm:inline-flex", status?.tone)}
+        className={cn("flex min-w-0 items-center gap-1.5 text-(length:--type-caption) sm:inline-flex", status?.tone)}
       >
         {status && StatusIcon ? (
           <>

@@ -174,9 +174,9 @@ export function SearchPage() {
   }
 
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
+    <div className="flex flex-col gap-(--page-gap)">
       <ListCard title="Search every indexer at once" count="No title required">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <Field label="Query">
             <div className="flex gap-2">
               <Input
@@ -296,7 +296,7 @@ export function SearchPage() {
         }
       >
         {grabTarget ? (
-          <div className="grid gap-[var(--grid-gap)]">
+          <div className="grid gap-(--grid-gap)">
             <DrawerFacts
               items={[
                 { label: "Size", value: grabTarget.sizeBytes ? formatBytes(grabTarget.sizeBytes) : "—" },
@@ -304,7 +304,7 @@ export function SearchPage() {
                 { label: "Protocol", value: formatProtocol(grabTarget.indexerProtocol) }
               ]}
             />
-            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+            <p className="text-(length:--type-body-sm) text-muted-foreground">
               There is no title here to route through a library, so Deluno sends this the same way it would route a{" "}
               {grabTarget.searchType === "tv" || searchType === "tv" ? "TV" : "movie"} library's own grab: to whichever
               linked download client is set up to take it.
@@ -337,11 +337,11 @@ function IndexerChecklist({
   onChange: (next: Set<string>) => void;
 }) {
   if (indexers === null) {
-    return <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Loading indexers…</p>;
+    return <p className="text-(length:--type-body-sm) text-muted-foreground">Loading indexers…</p>;
   }
 
   if (indexers.length === 0) {
-    return <p className="text-[length:var(--type-body-sm)] text-muted-foreground">No indexers configured yet. Add one under Find &amp; Download.</p>;
+    return <p className="text-(length:--type-body-sm) text-muted-foreground">No indexers configured yet. Add one under Find &amp; Download.</p>;
   }
 
   return (
@@ -375,7 +375,7 @@ function CategoryChecklist({
   onChange: (next: Set<number>) => void;
 }) {
   if (categories === null) {
-    return <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Loading categories…</p>;
+    return <p className="text-(length:--type-body-sm) text-muted-foreground">Loading categories…</p>;
   }
 
   const relevant = categories.filter((category) => {

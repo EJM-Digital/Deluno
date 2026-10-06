@@ -86,20 +86,20 @@ export function TitleTagsEditor({
   return (
     <div
       className={cn(
-        "mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-sm xl:mt-2 xl:shrink-0 xl:py-1",
+        "mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-xs xl:mt-2 xl:shrink-0 xl:py-1",
         // Only the editor needs the full row: it holds a text field that wants
         // room. Reading a title's tags - most often none at all - was drawing a
         // full-width bar to hold three short words and a button.
         editing ? "w-full" : "w-fit max-w-full",
       )}
     >
-      <span className="flex items-center gap-1.5 text-[length:var(--type-micro)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-(length:--type-micro) font-bold uppercase tracking-[0.14em] text-muted-foreground">
         <Tag className="h-3.5 w-3.5" aria-hidden="true" />
         Tags
       </span>
       {editing ? (
         <>
-          <div className="min-w-[14rem] flex-1"><TagPicker label="Title tags" value={draft} onChange={setDraft} warnUnused={false} /></div>
+          <div className="min-w-56 flex-1"><TagPicker label="Title tags" value={draft} onChange={setDraft} warnUnused={false} /></div>
           <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save

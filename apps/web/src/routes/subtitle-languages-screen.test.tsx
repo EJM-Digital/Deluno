@@ -231,7 +231,7 @@ describe("Subtitle languages: permission control lives in this screen too (#838)
     expect(JSON.parse(init.body as string)).toEqual({ setPermissionsOnImport: true, folderChmod: "", chownGroup: "" });
   });
 
-  it("saves a typed chmod value on blur", async () => {
+  it("saves a typed chmod value on blur-sm", async () => {
     Object.assign(loaderData, {
       libraries: [],
       languages: [],

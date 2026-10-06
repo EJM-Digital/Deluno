@@ -133,7 +133,7 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
       {error ? (
         <ListEmpty title="Could not load files" description={error} />
       ) : files === null ? (
-        <div className="flex items-center gap-2 px-[var(--card-pad-x)] py-6 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 px-(--card-pad-x) py-6 text-sm text-muted-foreground">
           <LoaderCircle className="h-4 w-4 animate-spin" /> Reading files from disk…
         </div>
       ) : files.length === 0 ? (

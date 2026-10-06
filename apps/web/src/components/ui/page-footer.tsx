@@ -57,16 +57,16 @@ export function PageFooter({
 
   return (
     <>
-      <div aria-hidden className="h-[var(--drawer-footer-height)]" />
+      <div aria-hidden className="h-(--drawer-footer-height)" />
       <div
         className={cn(
-          "fixed inset-x-0 bottom-[var(--mobile-tabbar-height)] z-30 flex min-h-[var(--drawer-footer-height)] items-center justify-between gap-[var(--grid-gap)]",
-          "border-t border-hairline bg-card/95 px-[var(--content-pad-inline)] backdrop-blur supports-[backdrop-filter]:bg-card/85",
-          "lg:bottom-0 lg:left-[var(--sidebar-width)]",
+          "fixed inset-x-0 bottom-(--mobile-tabbar-height) z-30 flex min-h-(--drawer-footer-height) items-center justify-between gap-(--grid-gap)",
+          "border-t border-hairline bg-card/95 px-(--content-pad-inline) backdrop-blur-sm supports-backdrop-filter:bg-card/85",
+          "lg:bottom-0 lg:left-(--sidebar-width)",
           className
         )}
       >
-        <span role="status" aria-live="polite" className={cn("inline-flex min-w-0 items-center gap-1.5 text-[length:var(--type-caption)]", status?.tone)}>
+        <span role="status" aria-live="polite" className={cn("inline-flex min-w-0 items-center gap-1.5 text-(length:--type-caption)", status?.tone)}>
           {status && StatusIcon ? (
             <>
               <StatusIcon className={cn("h-3 w-3 shrink-0", status.spin && "animate-spin")} strokeWidth={2.5} />

@@ -112,7 +112,7 @@ export function LibraryFilterPanel({
   }
 
   return (
-    <div className="space-y-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)]">
+    <div className="space-y-(--grid-gap) p-[calc(var(--tile-pad)*0.8)]">
       <Group
         label="Monitoring"
         hint="Whether Deluno acts on the title. Its own axis, so it narrows together with everything below rather than instead of it."
@@ -127,14 +127,14 @@ export function LibraryFilterPanel({
             { value: "unmonitored", label: `Unmonitored (${unmonitoredCount})` }
           ]}
           className="w-full sm:max-w-xs"
-          triggerClassName="min-h-[var(--control-height-sm)] w-full bg-background/50 px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60"
+          triggerClassName="min-h-(--control-height-sm) w-full bg-background/50 px-2.5 text-(length:--library-toolbar-size) font-semibold ring-1 ring-inset ring-hairline/60"
         />
       </Group>
 
       <div className="space-y-2">
         <SectionLabel>What this filter asks</SectionLabel>
         {conditions.length === 0 ? (
-          <p className="flex items-center gap-1.5 text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-(length:--type-caption) text-muted-foreground">
             <Filter className="h-3.5 w-3.5" />
             Nothing is being narrowed. The shelf is showing everything the row above selects.
           </p>
@@ -165,7 +165,7 @@ export function LibraryFilterPanel({
               value={fieldSearch}
               onChange={(event) => setFieldSearch(event.target.value)}
               placeholder="Search fields — codec, certification, last searched…"
-              className="h-[var(--control-height-sm)] border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              className="h-(--control-height-sm) border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />
             <button
               type="button"
@@ -183,20 +183,20 @@ export function LibraryFilterPanel({
               if (inGroup.length === 0) return null;
               return (
                 <div key={group.key}>
-                  <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {group.label}
                   </p>
-                  <p className="text-[length:var(--type-micro)] text-muted-foreground/70">{group.blurb}</p>
+                  <p className="text-(length:--type-micro) text-muted-foreground/70">{group.blurb}</p>
                   <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
                     {inGroup.map((field) => (
                       <button
                         key={field.id}
                         type="button"
                         onClick={() => add(field)}
-                        className="rounded-lg px-2.5 py-1.5 text-left transition hover:bg-foreground/[0.06] dark:hover:bg-white/[0.06]"
+                        className="rounded-lg px-2.5 py-1.5 text-left transition hover:bg-foreground/6 dark:hover:bg-white/6"
                       >
-                        <span className="block text-[length:var(--type-caption)] font-semibold text-foreground">{field.label}</span>
-                        <span className="block truncate text-[length:var(--type-micro)] text-muted-foreground">{field.hint}</span>
+                        <span className="block text-(length:--type-caption) font-semibold text-foreground">{field.label}</span>
+                        <span className="block truncate text-(length:--type-micro) text-muted-foreground">{field.hint}</span>
                       </button>
                     ))}
                   </div>
@@ -204,7 +204,7 @@ export function LibraryFilterPanel({
               );
             })}
             {matches.length === 0 ? (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 Nothing here is called that. Every field is a real column Deluno stores, so if it is not listed it is not
                 something this library records yet.
               </p>
@@ -217,7 +217,7 @@ export function LibraryFilterPanel({
             <Plus className="h-3.5 w-3.5" />
             Add a field
           </Button>
-          <span className="text-[length:var(--type-micro)] text-muted-foreground">
+          <span className="text-(length:--type-micro) text-muted-foreground">
             {fields.length} to choose from.
           </span>
           {conditions.length > 0 ? (
@@ -259,7 +259,7 @@ function ConditionRow({
     // gone says so rather than narrowing by something invisible.
     return (
       <div className="flex items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/[0.07] px-3 py-2">
-        <p className="text-[length:var(--type-caption)] text-foreground">
+        <p className="text-(length:--type-caption) text-foreground">
           This filter asks for “{condition.field}”, which this library no longer records.
         </p>
         <RemoveButton onClick={onRemove} />
@@ -275,15 +275,15 @@ function ConditionRow({
   return (
     <div className="rounded-xl border border-hairline bg-background/40 px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[length:var(--type-caption)] font-semibold text-foreground">{field.label}</span>
+        <span className="text-(length:--type-caption) font-semibold text-foreground">{field.label}</span>
 
         <MenuSelect
           label={`How ${field.label} is compared`}
           value={condition.operator}
           onChange={(value) => onChange({ ...condition, operator: value as FilterOperator, values: [] })}
           options={field.operators.map((operator) => ({ value: operator, label: OPERATOR_LABELS[operator] }))}
-          className="min-w-[9rem]"
-          triggerClassName="min-h-[var(--control-height-sm)] bg-background/60 px-2.5 text-[length:var(--library-toolbar-size)] ring-1 ring-inset ring-hairline/60"
+          className="min-w-36"
+          triggerClassName="min-h-(--control-height-sm) bg-background/60 px-2.5 text-(length:--library-toolbar-size) ring-1 ring-inset ring-hairline/60"
         />
 
         <ValueControl field={field} condition={condition} options={options} onChange={onChange} />
@@ -297,7 +297,7 @@ function ConditionRow({
         shelf looks like it is not.
       */}
       <p className={cn(
-        "mt-1 text-[length:var(--type-micro)]",
+        "mt-1 text-(length:--type-micro)",
         isCompleteCondition(condition) ? "text-muted-foreground" : "text-warning"
       )}>
         {isCompleteCondition(condition)
@@ -326,7 +326,7 @@ function ValueControl({
   if (isMultiValue(field, condition.operator)) {
     if (options.length === 0) {
       return (
-        <span className="text-[length:var(--type-caption)] text-muted-foreground">
+        <span className="text-(length:--type-caption) text-muted-foreground">
           Nothing in this library has one yet. They arrive with metadata.
         </span>
       );
@@ -349,10 +349,10 @@ function ValueControl({
               onClick={() => toggle(value)}
               aria-pressed={active}
               className={cn(
-                "rounded-lg px-2.5 py-1 text-[length:var(--library-toolbar-size)] font-medium transition-colors",
+                "rounded-lg px-2.5 py-1 text-(length:--library-toolbar-size) font-medium transition-colors",
                 active
                   ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/30"
-                  : "bg-foreground/[0.05] text-muted-foreground ring-1 ring-inset ring-hairline/60 hover:text-foreground dark:bg-white/[0.05]"
+                  : "bg-foreground/5 text-muted-foreground ring-1 ring-inset ring-hairline/60 hover:text-foreground dark:bg-white/5"
               )}
             >
               {value}
@@ -371,8 +371,8 @@ function ValueControl({
         value={condition.values[0] ?? "true"}
         onChange={single}
         options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]}
-        className="min-w-[6rem]"
-        triggerClassName="min-h-[var(--control-height-sm)] bg-background/60 px-2.5 text-[length:var(--library-toolbar-size)] ring-1 ring-inset ring-hairline/60"
+        className="min-w-24"
+        triggerClassName="min-h-(--control-height-sm) bg-background/60 px-2.5 text-(length:--library-toolbar-size) ring-1 ring-inset ring-hairline/60"
       />
     );
   }
@@ -402,9 +402,9 @@ function ValueControl({
         placeholder={relative ? "30" : field.valueKind === "text" ? "Type a value" : "Any"}
         onChange={(event) => single(event.target.value)}
         aria-label={field.label}
-        className={cn("h-[var(--control-height-sm)]", type === "text" ? "w-44" : "w-32")}
+        className={cn("h-(--control-height-sm)", type === "text" ? "w-44" : "w-32")}
       />
-      {unit ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{unit}</span> : null}
+      {unit ? <span className="text-(length:--type-caption) text-muted-foreground">{unit}</span> : null}
     </div>
   );
 }
@@ -429,7 +429,7 @@ function Group({ label, hint, children }: { label: string; hint: string; childre
   return (
     <div className="space-y-1.5">
       <SectionLabel>{label}</SectionLabel>
-      <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground/80">{hint}</p>
+      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground/80">{hint}</p>
       <div className="pt-1">{children}</div>
     </div>
   );
@@ -437,7 +437,7 @@ function Group({ label, hint, children }: { label: string; hint: string; childre
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+    <p className="text-(length:--type-caption) font-bold uppercase tracking-widest text-muted-foreground">
       {children}
     </p>
   );

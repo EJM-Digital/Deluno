@@ -170,8 +170,8 @@ export function MetricChart({
         className
       )}
     >
-      <header className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] pt-3">
-        <span className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+      <header className="flex items-baseline justify-between gap-3 px-(--card-pad-x) pt-3">
+        <span className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">
           {label}
         </span>
         {compare ? (
@@ -180,7 +180,7 @@ export function MetricChart({
           // problems at a glance, which is the opposite of what they mean.
           <span
             className={cn(
-              "text-[length:var(--type-caption)] font-medium",
+              "text-(length:--type-caption) font-medium",
               // A stated value is a legend for the second line, so it always
               // carries that line's colour. A running total only earns it when
               // there is actually something to report.
@@ -192,19 +192,19 @@ export function MetricChart({
         ) : null}
       </header>
 
-      <div className="px-[var(--card-pad-x)]">
-        <span className="block text-[length:var(--type-title-md)] font-semibold tabular-nums leading-tight text-foreground">
+      <div className="px-(--card-pad-x)">
+        <span className="block text-(length:--type-title-md) font-semibold tabular-nums leading-tight text-foreground">
           {value}
         </span>
         {help ? (
-          <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{help}</span>
+          <span className="block truncate text-(length:--type-caption) text-muted-foreground">{help}</span>
         ) : null}
       </div>
 
       {hasEnoughReadings && !nothingHappened ? (
         <div
           ref={plotRef}
-          className="relative mt-2 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="relative mt-2 cursor-crosshair focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           tabIndex={0}
           role="group"
           aria-label={`${label} readings. Use the arrow keys to step through days.`}
@@ -319,7 +319,7 @@ export function MetricChart({
                   first or last day is worse than no readout. */}
               <span
                 aria-hidden
-                className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-hairline bg-popover px-1.5 py-0.5 text-[length:var(--type-micro)] tabular-nums text-foreground shadow-md"
+                className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-hairline bg-popover px-1.5 py-0.5 text-(length:--type-micro) tabular-nums text-foreground shadow-md"
                 style={{ left: `${Math.min(88, Math.max(12, (activeX / WIDTH) * 100))}%` }}
               >
                 <span className="font-semibold">{readValue(active.value)}</span>
@@ -336,7 +336,7 @@ export function MetricChart({
           className="mt-2 flex items-center justify-center border-t border-hairline"
           style={{ height }}
         >
-          <span className="text-[length:var(--type-micro)] text-muted-foreground">
+          <span className="text-(length:--type-micro) text-muted-foreground">
             {hasEnoughReadings
               ? emptyLabel ?? `No ${label.toLowerCase()} in the last ${points.length} ${unitNoun}`
               : "not enough history yet"}
@@ -350,13 +350,13 @@ export function MetricChart({
         {active ? `${formatPoint(active.date)}: ${readValue(active.value)}` : ""}
       </span>
 
-      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
+      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-hairline px-(--card-pad-x) py-1.5">
         {footer ? (
-          <span className="truncate text-[length:var(--type-micro)] text-muted-foreground">{footer}</span>
+          <span className="truncate text-(length:--type-micro) text-muted-foreground">{footer}</span>
         ) : (
           <>
-            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatPoint(points[0]?.date)}</span>
-            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatPoint(points[points.length - 1]?.date)}</span>
+            <span className="text-(length:--type-micro) text-muted-foreground">{formatPoint(points[0]?.date)}</span>
+            <span className="text-(length:--type-micro) text-muted-foreground">{formatPoint(points[points.length - 1]?.date)}</span>
           </>
         )}
       </footer>

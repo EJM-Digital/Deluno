@@ -211,7 +211,7 @@ export function MenuSelect({
             minWidth: anchor.width
           }}
           className={cn(
-            "z-[80] overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]",
+            "z-80 overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]",
             menuWidth
           )}
         >
@@ -230,17 +230,17 @@ export function MenuSelect({
                 }}
                 onKeyDown={(event) => onOptionKeyDown(event, index)}
                 className={cn(
-                  "flex min-h-[var(--control-height-sm)] w-full items-center justify-between gap-3 rounded-lg px-3 text-left",
-                  "text-[length:var(--shell-nav-size)] font-semibold transition",
+                  "flex min-h-(--control-height-sm) w-full items-center justify-between gap-3 rounded-lg px-3 text-left",
+                  "text-(length:--shell-nav-size) font-semibold transition",
                   isSelected
-                    ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20"
+                    ? "text-foreground ring-1 ring-inset ring-primary/20"
                     : "text-muted-foreground hover:bg-muted/45 hover:text-foreground"
                 )}
               >
                 <span className="min-w-0">
                   <span className="block truncate">{option.label}</span>
                   {option.hint ? (
-                    <span className="block truncate text-[length:var(--type-micro)] font-normal text-muted-foreground">
+                    <span className="block truncate text-(length:--type-micro) font-normal text-muted-foreground">
                       {option.hint}
                     </span>
                   ) : null}

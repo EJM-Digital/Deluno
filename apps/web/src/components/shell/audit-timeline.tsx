@@ -88,7 +88,7 @@ const SEV_CONFIG: Record<Severity, { icon: React.ComponentType<{ className?: str
   info: { icon: Info, text: "text-info", bg: "bg-info/10 border-info/20" },
   success: { icon: CheckCircle2, text: "text-success", bg: "bg-success/10 border-success/20" },
   warning: { icon: AlertTriangle, text: "text-warning", bg: "bg-warning/10 border-warning/20" },
-  error: { icon: XCircle, text: "text-destructive", bg: "bg-destructive/8 border-destructive/20" }
+  error: { icon: XCircle, text: "text-destructive", bg: "border-destructive/20" }
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -254,7 +254,7 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
   }
 
   return (
-    <div className="flex flex-col gap-[var(--grid-gap)]">
+    <div className="flex flex-col gap-(--grid-gap)">
       {/* Timeline */}
       <div ref={topRef} className="relative">
         {/* Vertical rail */}
@@ -273,7 +273,7 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
               <li
                 key={event.id}
                 className={cn(
-                  "relative flex gap-[var(--grid-gap)] pb-5",
+                  "relative flex gap-(--grid-gap) pb-5",
                   isFirst && "animate-[reveal-item_0.3s_ease_both]"
                 )}
               >
@@ -281,7 +281,7 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
                 <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center">
                   <div
                     className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-full border border-hairline bg-card shadow-sm",
+                      "flex h-7 w-7 items-center justify-center rounded-full border border-hairline bg-card shadow-xs",
                     )}
                   >
                     <CatIcon className={cn("h-3.5 w-3.5", cat.icon_colour)} />
@@ -291,13 +291,13 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
                 {/* Content */}
                 <div className="min-w-0 flex-1 pt-1">
                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-0.5">
-                    <p className="text-[length:var(--type-body-sm)] font-medium leading-snug text-foreground">
+                    <p className="text-(length:--type-body-sm) font-medium leading-snug text-foreground">
                       {event.message}
                     </p>
                     <div className="flex shrink-0 items-center gap-2">
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-wider",
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-(length:--type-micro) font-semibold uppercase tracking-wider",
                           sev.bg, sev.text
                         )}
                       >
@@ -307,20 +307,20 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
                     </div>
                   </div>
 
-                  <div className="mt-0.5 flex items-center gap-2 text-[length:var(--type-caption)] text-muted-foreground">
+                  <div className="mt-0.5 flex items-center gap-2 text-(length:--type-caption) text-muted-foreground">
                     <span className="rounded-full border border-hairline px-1.5 py-0.5">
                       {event.label ?? eventLabel({ category: event.category })}
                     </span>
                     <span title={absoluteTime(event.createdUtc)}>{relativeTime(event.createdUtc)}</span>
                     <span className="opacity-50">·</span>
-                    <span className="text-[length:var(--type-micro)] tabular-nums">{absoluteTime(event.createdUtc)}</span>
+                    <span className="text-(length:--type-micro) tabular-nums">{absoluteTime(event.createdUtc)}</span>
                   </div>
 
                   {event.detail ? (
                     <button
                       type="button"
                       onClick={() => toggleExpand(event.id)}
-                      className="mt-1.5 flex items-center gap-1 text-[length:var(--type-caption)] text-muted-foreground hover:text-foreground"
+                      className="mt-1.5 flex items-center gap-1 text-(length:--type-caption) text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown
                         className={cn("h-3 w-3 transition-transform", isExp && "rotate-180")}
@@ -330,7 +330,7 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
                   ) : null}
 
                   {isExp && event.detail ? (
-                    <pre className="mt-2 rounded-xl border border-hairline bg-surface-2 p-3 font-mono text-[length:var(--type-caption)] text-foreground/80 whitespace-pre-wrap">
+                    <pre className="mt-2 rounded-xl border border-hairline bg-surface-2 p-3 font-mono text-(length:--type-caption) text-foreground/80 whitespace-pre-wrap">
                       {event.detail}
                     </pre>
                   ) : null}
@@ -351,7 +351,7 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
           <button
             type="button"
             onClick={timeline.showMore}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-hairline py-3 text-[length:var(--type-caption)] text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-hairline py-3 text-(length:--type-caption) text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
           >
             <ChevronDown className="h-4 w-4" />
             Load {Math.min(50, filtered.length - showCount)} more events

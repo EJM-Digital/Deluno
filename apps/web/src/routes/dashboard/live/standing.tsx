@@ -26,19 +26,19 @@ export function QualityRing({ summary }: { summary: DashboardSummary | undefined
   const share = qualityShare(summary);
   if (!share) return null;
   return (
-    <div className="flex items-center gap-3 border-b border-hairline px-[var(--card-pad-x)] py-2">
+    <div className="flex items-center gap-3 border-b border-hairline px-(--card-pad-x) py-2">
       <span className="relative flex h-11 w-11 shrink-0 items-center justify-center" role="img" aria-label={`${share.percent} per cent of your library meets its quality goal`}>
         <svg viewBox="0 0 40 40" className="h-11 w-11 -rotate-90">
           <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" className="stroke-surface-3" />
           <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" strokeLinecap="round" className="live-ring-arc stroke-success" strokeDasharray={RING} strokeDashoffset={RING * (1 - share.percent / 100)} />
         </svg>
-        <span className="absolute text-[length:var(--type-caption)] font-semibold tabular-nums text-foreground">
+        <span className="absolute text-(length:--type-caption) font-semibold tabular-nums text-foreground">
           <CountUp value={share.percent} format={(value) => `${Math.round(value)}%`} />
         </span>
       </span>
       <span className="min-w-0 leading-tight">
-        <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">Meets its quality goal</span>
-        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{share.met.toLocaleString("en-AU")} of {share.total.toLocaleString("en-AU")} titles</span>
+        <span className="block text-(length:--type-body-sm) font-medium text-foreground">Meets its quality goal</span>
+        <span className="block text-(length:--type-caption) text-muted-foreground">{share.met.toLocaleString("en-AU")} of {share.total.toLocaleString("en-AU")} titles</span>
       </span>
     </div>
   );

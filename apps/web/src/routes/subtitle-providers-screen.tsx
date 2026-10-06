@@ -186,7 +186,7 @@ export function SubtitleProvidersPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={TABS} />
 
       <ListCard
@@ -245,7 +245,7 @@ export function SubtitleProvidersPage() {
         description={editing?.description}
         footer={
           <>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">
+            <span className="text-(length:--type-caption) text-muted-foreground">
               {editing?.configured ? `Last result: ${editing.configured.lastHealthMessage ?? "not tested yet"}` : "Not set up yet."}
             </span>
             <div className="flex gap-2">
@@ -265,13 +265,13 @@ export function SubtitleProvidersPage() {
           <DrawerSection title="Account">
             <SecretUnreadableNotice item={editing.configured} />
             {!editing.needsUsername && !editing.needsPassword && !editing.needsApiKey ? (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 {editing.displayName} needs no account at all. Turn it on and Deluno will start asking it.
               </p>
             ) : (
               <>
                 {editing.credentialsOptional ? (
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     Optional. {editing.displayName} answers without an account and answers more often with one.
                   </p>
                 ) : null}
@@ -308,7 +308,7 @@ export function SubtitleProvidersPage() {
             )}
 
             {editing.configured?.lastHealthFailure ? (
-              <div className="rounded-[var(--radius-sm)] border border-border bg-muted/30 p-3 text-[length:var(--type-caption)]">
+              <div className="rounded-sm border border-border bg-muted/30 p-3 text-(length:--type-caption)">
                 <p className="font-medium text-foreground">Last typed failure</p>
                 <p className="mt-1 text-muted-foreground">{editing.configured.lastHealthFailure.message}</p>
                 <p className="mt-1 text-muted-foreground">{editing.configured.lastHealthFailure.nextAction}</p>

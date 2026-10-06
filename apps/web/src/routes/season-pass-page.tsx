@@ -78,7 +78,7 @@ export function SeasonPassPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         actions={
           <Button asChild type="button" variant="outline">

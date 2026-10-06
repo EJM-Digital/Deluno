@@ -178,7 +178,7 @@ export function DashboardPage() {
   const bar = <TabBar active={tab} onSelect={select} />;
 
   return (
-    <div ref={setRoot} className="flex flex-col gap-[var(--grid-gap)]">
+    <div ref={setRoot} className="flex flex-col gap-(--grid-gap)">
       {slot ? <HeaderTabsPortal slot={slot}>{bar}</HeaderTabsPortal> : bar}
       {/* The tabs are drawn at the approved mockup's own sizes on every screen (see `.dash-mockup-size` in index.css). */}
       <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="dash-mockup-size min-h-0 flex-1 lg:relative">

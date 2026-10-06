@@ -114,7 +114,7 @@ export function SettingsGeneralPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar tabs={systemSettingsNavItems} />
 
 
@@ -125,18 +125,18 @@ export function SettingsGeneralPage() {
       <ConnectionChecksCard settings={settings} />
 
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
             <Input value={form.cloudflareHelperUrl} onChange={(event) => { setHelperResult(null); setForm((current) => ({ ...current, cloudflareHelperUrl: event.target.value })); }} placeholder="http://127.0.0.1:8191" className="font-mono" autoComplete="off" spellCheck={false} />
           </Field>
           <Field label="Helper timeout" optional help="How long Deluno waits for the helper to solve a check before giving up, in seconds (1-180)." error={settingsMutation.fieldErrors.cloudflareHelperTimeoutSeconds}>
             <div className="flex items-center gap-2">
-              <Input type="number" min="1" max="180" step="1" value={form.cloudflareHelperTimeoutSeconds} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperTimeoutSeconds: event.target.value }))} placeholder="60" className="max-w-[8rem]" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seconds</span>
+              <Input type="number" min="1" max="180" step="1" value={form.cloudflareHelperTimeoutSeconds} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperTimeoutSeconds: event.target.value }))} placeholder="60" className="max-w-32" />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">seconds</span>
             </div>
           </Field>
           <Field label="Helper kind" optional help="FlareSolverr and Byparr answer almost the same way, but Byparr cannot send a POST or route through a proxy -- it stays quiet about it instead of refusing. Leave this on Auto-detect unless Deluno guesses wrong." error={settingsMutation.fieldErrors.cloudflareHelperKind}>
-            <Select value={form.cloudflareHelperKind} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperKind: event.target.value }))} options={cloudflareHelperKindOptions} className="max-w-[12rem]" />
+            <Select value={form.cloudflareHelperKind} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperKind: event.target.value }))} options={cloudflareHelperKindOptions} className="max-w-48" />
           </Field>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => void testHelper()} disabled={helperBusy || !form.cloudflareHelperUrl.trim()}>
@@ -210,7 +210,7 @@ function ReachabilityCard() {
           <ListCell numeric align="end" primary={status ? reachabilityLabel : loadFailed ? "Unavailable" : "Loading…"} />
         </ListRow>
       </ListTable>
-      <p className="p-[var(--card-pad-x)] pt-0 text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="p-(--card-pad-x) pt-0 text-(length:--type-caption) text-muted-foreground">
         The port and LAN access are set where Deluno starts, not in this page: the <code>Server:Port</code> and{" "}
         <code>Server:AllowLan</code> environment variables (<code>Server__Port</code> / <code>Server__AllowLan</code> in
         Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
@@ -300,8 +300,8 @@ function TrackerDefinitionsCard() {
 
   return (
     <ListCard title="Tracker definitions" count="Keeps native tracker definitions current on their own">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-        <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+        <p className="text-(length:--type-body-sm) text-muted-foreground">
           Deluno comes with hundreds of tracker sites, taken from the public Prowlarr repository on GitHub. Turning this
           on checks that repository for newer site files on the schedule below and writes them to the data folder's
           trackers directory. Off by default; "Check for newer site files" when adding an indexer does the same once,
@@ -310,8 +310,8 @@ function TrackerDefinitionsCard() {
         </p>
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">
-            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">Update definitions automatically</span>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">Every change is written to Activity, naming what was updated.</span>
+            <span className="text-(length:--type-body-sm) font-medium text-foreground">Update definitions automatically</span>
+            <span className="text-(length:--type-caption) text-muted-foreground">Every change is written to Activity, naming what was updated.</span>
           </div>
           <Switch
             checked={state?.isEnabled ?? false}
@@ -332,9 +332,9 @@ function TrackerDefinitionsCard() {
                 onChange={(event) => setIntervalInput(event.target.value)}
                 onBlur={() => void saveSettings(true, Number(intervalInput) || 24)}
                 disabled={busy}
-                className="max-w-[8rem]"
+                className="max-w-32"
               />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
             </div>
           </Field>
         ) : null}
@@ -383,11 +383,11 @@ function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot
 
   return (
     <ListCard title="Connection checks" count="Keeps what System says about your connections true">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">
-            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">Check connections regularly</span>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">Every 15 minutes, Deluno tests any indexer, download client, processor, media server, Seerr, metadata service or list that nothing has used in that time, so the time shown as checked is true. It only reads; nothing is changed. A change in the answer is written to Activity.</span>
+            <span className="text-(length:--type-body-sm) font-medium text-foreground">Check connections regularly</span>
+            <span className="text-(length:--type-caption) text-muted-foreground">Every 15 minutes, Deluno tests any indexer, download client, processor, media server, Seerr, metadata service or list that nothing has used in that time, so the time shown as checked is true. It only reads; nothing is changed. A change in the answer is written to Activity.</span>
           </div>
           <Switch
             checked={checkRegularly}
@@ -398,8 +398,8 @@ function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot
         </div>
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">
-            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">Keep this computer awake</span>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.</span>
+            <span className="text-(length:--type-body-sm) font-medium text-foreground">Keep this computer awake</span>
+            <span className="text-(length:--type-caption) text-muted-foreground">While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.</span>
           </div>
           <Switch
             checked={keepAwake}

@@ -830,9 +830,9 @@ export function SetupGuidePage() {
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
-      <section className="relative overflow-hidden rounded-3xl border border-hairline bg-card p-[var(--tile-pad)] shadow-sm">
-        <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+    <div className="space-y-(--page-gap)">
+      <section className="relative overflow-hidden rounded-3xl border border-hairline bg-card p-(--tile-pad) shadow-xs">
+        <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-linear-to-r/srgb from-transparent via-primary/70 to-transparent" />
         {/*
           The readiness table used to sit here as a second column. A six-row
           table is far taller than the intro beside it, so the hero stretched
@@ -841,7 +841,7 @@ export function SetupGuidePage() {
         */}
         <div>
           <div>
-            <p className="flex items-center gap-2 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="flex items-center gap-2 text-(length:--type-caption) font-bold uppercase tracking-[0.18em] text-primary">
               <Sparkles className="h-4 w-4" />
               Guided setup
             </p>
@@ -849,7 +849,7 @@ export function SetupGuidePage() {
             <p className="mt-2 max-w-5xl font-display text-[clamp(2rem,2.4vw,3.15rem)] font-semibold leading-[0.98] tracking-tight text-foreground">
               Get Deluno working first. Tune it later.
             </p>
-            <p className="mt-3 max-w-4xl text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
+            <p className="mt-3 max-w-4xl text-(length:--type-body) leading-relaxed text-muted-foreground">
               This sets up the essentials: where your media lives, the quality you want, and how releases are chosen.
               Connecting a search source and a download client is part of the guide but not required to finish — the
               dashboard keeps that step waiting until you do. Advanced users can skip straight to the full settings.
@@ -867,7 +867,7 @@ export function SetupGuidePage() {
         </div>
       </section>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="grid gap-(--grid-gap) xl:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="space-y-2">
           {/*
             #1034: the rail shows both stages, not a flat list -- Stage 1
@@ -877,7 +877,7 @@ export function SetupGuidePage() {
           */}
           {([1, 2] as const).map((stage) => (
             <div key={stage} className="space-y-2">
-              <p className="px-1 pt-1 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="px-1 pt-1 text-(length:--type-caption) font-bold uppercase tracking-[0.16em] text-muted-foreground">
                 Stage {stage} &middot; {SETUP_STAGE_LABELS[stage]}
               </p>
               {STEPS.map((step, index) => {
@@ -917,15 +917,15 @@ export function SetupGuidePage() {
           */}
           <div className="rounded-2xl border border-hairline bg-card p-4">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Readiness</span>
-              <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+              <span className="text-(length:--type-body-sm) font-semibold text-foreground">Readiness</span>
+              <span className="text-(length:--type-caption) tabular-nums text-muted-foreground">
                 {completion.filter((item) => item.done).length} of {completion.length} done
               </span>
             </div>
             <ul className="mt-3 grid gap-2">
               {completion.map((item) => (
                 <li key={item.label} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 text-[length:var(--type-caption)] leading-snug text-muted-foreground">{item.label}</span>
+                  <span className="min-w-0 text-(length:--type-caption) leading-snug text-muted-foreground">{item.label}</span>
                   <Chip tone={item.done ? "ok" : "idle"}>{item.done ? "Done" : "Waiting"}</Chip>
                 </li>
               ))}
@@ -933,8 +933,8 @@ export function SetupGuidePage() {
           </div>
         </aside>
 
-        <form onSubmit={(event) => void handleFinish(event)} className="rounded-3xl border border-hairline bg-card shadow-sm">
-          <div className="border-b border-hairline p-[var(--tile-pad)]">
+        <form onSubmit={(event) => void handleFinish(event)} className="rounded-3xl border border-hairline bg-card shadow-xs">
+          <div className="border-b border-hairline p-(--tile-pad)">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">{current.label}</h2>
@@ -944,7 +944,7 @@ export function SetupGuidePage() {
             </div>
           </div>
 
-          <div className="min-h-[180px] p-[var(--tile-pad)]">
+          <div className="min-h-[180px] p-(--tile-pad)">
             {current.id === "account" ? <AccountStep user={user} /> : null}
             {current.id === "timeRegion" ? <TimeRegionStep form={form} patch={patch} /> : null}
             {current.id === "signIn" ? (
@@ -995,7 +995,7 @@ export function SetupGuidePage() {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline p-[var(--tile-pad)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline p-(--tile-pad)">
             <Button type="button" variant="outline" onClick={() => (stepIndex === 0 ? skipWizard() : moveToStep(stepIndex - 1))} disabled={busy}>
               {stepIndex === 0 ? <Settings2 className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
               {stepIndex === 0 ? "Skip to advanced" : "Back"}
@@ -1097,7 +1097,7 @@ export function SetupGuidePage() {
 
 function ModeStep({ form, patch, onSkip }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void; onSkip: () => void }) {
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
+    <div className="grid gap-(--grid-gap) lg:grid-cols-2">
       <ChoiceCard
         active={form.mode === "simple"}
         icon={Rocket}
@@ -1128,7 +1128,7 @@ function ModeStep({ form, patch, onSkip }: { form: GuideForm; patch: (patchValue
 
 function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <div className="grid gap-3 sm:grid-cols-3">
         {(["both", "movies", "tv"] as const).map((value) => (
           <button
@@ -1154,7 +1154,7 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
         </p>
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
+      <div className="grid gap-(--grid-gap) lg:grid-cols-2">
         {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="Movies root" copy="Where movie folders should live. UNC, Docker mount, mapped drives, and local paths are supported.">
             <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\\Media\\Movies or /media/movies" browseTitle="Choose movies root" />
@@ -1175,7 +1175,7 @@ function QualityStep({ form, guide, patch }: { form: GuideForm; guide: GuidePack
   const selectedBundle = form.formatGoal ? getFormatBundle(guide, form.formatGoal) : null;
 
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <section>
         <div className="mb-3">
           <p className="text-sm font-semibold text-foreground">Picture quality</p>
@@ -1183,7 +1183,7 @@ function QualityStep({ form, guide, patch }: { form: GuideForm; guide: GuidePack
             Choose a preset and Deluno handles the details. You can fine-tune everything later.
           </p>
         </div>
-        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
+        <div className="grid gap-(--grid-gap) lg:grid-cols-2">
           {Object.entries(QUALITY_PRESETS).map(([id, preset]) => (
             <ChoiceCard
               key={id}
@@ -1264,7 +1264,7 @@ function ServicesStep({
   onTestClient: () => void;
 }) {
   return (
-    <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+    <div className="grid gap-(--grid-gap) xl:grid-cols-2">
       <FieldShell icon={RadioTower} label="Search source" copy="Required for operational readiness. Connect and test the source Deluno will use to find releases.">
         <div className="grid gap-3">
           <PresetRadioGroup
@@ -1306,7 +1306,7 @@ function ServicesStep({
       <FieldShell icon={DownloadCloud} label="Download client" copy="Required for operational readiness. The external client owns downloading; Deluno orchestrates, observes, and imports.">
         <div className="grid gap-3">
           {/* #506: the first-run offer to install one, rather than find, install and wire it by hand. */}
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Not installed yet? <Link className="font-medium text-primary hover:underline" to="/indexers/companion-tools">Let Deluno install and connect SABnzbd, qBittorrent or Weir</Link>, then come back.
           </p>
           <PresetRadioGroup
@@ -1387,12 +1387,12 @@ export function ConnectAppsStep({
           <Button type="button" variant="outline" size="sm" onClick={onSkip} disabled={skipped}>
             Skip connecting for now
           </Button>
-          <span className="text-[length:var(--type-caption)] text-muted-foreground">
+          <span className="text-(length:--type-caption) text-muted-foreground">
             {skipped ? "Skipped. You can connect them later from Connections." : "Skipping does not stop you finishing setup."}
           </span>
         </div>
       ) : (
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           The installer did not put any download client or processor on this computer, so there is nothing to connect here.
         </p>
       )}
@@ -1424,7 +1424,7 @@ function AutomationStep({
             <div key={item.key} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="max-w-xl">
                 <p className="font-medium text-foreground">{item.question}</p>
-                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">{item.help}</p>
+                <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">{item.help}</p>
               </div>
               {/* Unique accessible names per row: plain "Yes"/"No" would repeat
                   across eight rows and break assistive tech and the smoke tests. */}
@@ -1481,7 +1481,7 @@ function AccountStep({ user }: { user: { displayName: string; username: string }
  */
 function TimeRegionStep({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
   return (
-    <div className="space-y-[var(--grid-gap)]">
+    <div className="space-y-(--grid-gap)">
       <FieldShell icon={Globe} label="Language" copy="Controls Deluno's labels and display formatting.">
         <SegmentedControl<string>
           aria-label="Interface language"
@@ -1495,7 +1495,7 @@ function TimeRegionStep({ form, patch }: { form: GuideForm; patch: (patchValue: 
       </FieldShell>
 
       <FieldShell icon={Clock} label="Timezone" copy="Converts episode air times to when they actually air for you.">
-        <div className="flex max-w-[28rem] items-center gap-2">
+        <div className="flex max-w-md items-center gap-2">
           <Input
             aria-label="Timezone"
             placeholder="e.g. Australia/Sydney"
@@ -1881,7 +1881,7 @@ function FinishStep({
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <SummaryStrip
         cells={[
           { label: "Libraries", value: form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies" },
@@ -1908,7 +1908,7 @@ function FinishStep({
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {buildImportPreviewRows(form).map((row) => (
             <div key={row.label} className="rounded-xl border border-hairline bg-background/35 p-3">
-              <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{row.label}</p>
+              <p className="text-(length:--type-caption) font-bold uppercase tracking-[0.16em] text-muted-foreground">{row.label}</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{row.value}</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{row.copy}</p>
             </div>
@@ -1968,7 +1968,7 @@ function FinishStep({
             placeholder="Year"
             inputMode="numeric"
           />
-          <label className="flex h-[var(--control-height)] items-center gap-2 rounded-xl border border-hairline bg-surface-2 px-3 text-sm font-semibold text-foreground">
+          <label className="flex h-(--control-height) items-center gap-2 rounded-xl border border-hairline bg-surface-2 px-3 text-sm font-semibold text-foreground">
             <Checkbox
               checked={form.firstTitleMonitored}
               onCheckedChange={(firstTitleMonitored) => patch({ firstTitleMonitored })}
@@ -2021,14 +2021,14 @@ function FinishStep({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
-                  {item.rating ? <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
+                  {item.rating ? <span className="mt-1 block text-(length:--type-caption) tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
                   {/*
                     The same silence the Add screen had (#424). Setup normally
                     runs against an empty library, but this page is a route like
                     any other - walk it again later and the first-title picker
                     will happily offer something already on the shelf.
                   */}
-                  {item.libraryEntryId ? <span className="mt-1 block text-[length:var(--type-caption)] font-semibold text-success">Already in your library</span> : null}
+                  {item.libraryEntryId ? <span className="mt-1 block text-(length:--type-caption) font-semibold text-success">Already in your library</span> : null}
                 </span>
               </button>
             ))}
@@ -2062,7 +2062,7 @@ function FinishStep({
 
 function SetupComplete({ result }: { result: SetupCompletion }) {
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-(--page-gap)">
       <div className="rounded-2xl border border-success/25 bg-success/10 p-5">
         <p className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight text-foreground">
           <CheckCircle2 className="h-5 w-5 text-success" />

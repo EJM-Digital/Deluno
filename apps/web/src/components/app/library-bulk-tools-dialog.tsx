@@ -64,13 +64,13 @@ export function LibraryBulkToolsDialog({
   if (!open) return null;
   const selectedTitleLabel = `${selectedCount} selected title${selectedCount === 1 ? "" : "s"}`;
 
-  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
-    <div className="w-full max-w-2xl space-y-[var(--page-gap)] rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
+  return <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-xs">
+    <div className="w-full max-w-2xl space-y-(--page-gap) rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3">
-        <div><p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Bulk workflow</p><h3 className="font-display text-xl font-semibold text-foreground">{selectedTitleLabel}</h3></div>
+        <div><p className="text-(length:--type-caption) font-semibold uppercase tracking-[0.16em] text-muted-foreground">Bulk workflow</p><h3 className="font-display text-xl font-semibold text-foreground">{selectedTitleLabel}</h3></div>
         <Button type="button" variant="ghost" onClick={onClose} disabled={isUpdating}>Close</Button>
       </div>
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+      <div className="grid gap-(--grid-gap) md:grid-cols-2">
         <Field label="Operation" help="Choose the bulk action to run.">
           <Select value={operation} onChange={(event) => onOperationChange(event.target.value as BulkWorkflowOperation)}>
           <option value="monitoring">Monitor or unmonitor</option><option value="quality">Set quality profile</option>{variant === "movies" ? <option value="minimumAvailability">Set minimum availability</option> : null}<option value="reassignLibrary">Assign library/root</option><option value="tags">Apply tags</option><option value="search">Search now</option><option value="renamePreview">Rename preview</option>

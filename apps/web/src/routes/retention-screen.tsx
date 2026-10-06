@@ -493,7 +493,7 @@ export function RetentionPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar
         tabs={automationNavItems}
         actions={<PageToolbarAction type="button" onClick={() => open(null)}>New rule</PageToolbarAction>}
@@ -510,7 +510,7 @@ export function RetentionPage() {
           ) : undefined
         }
       >
-        {pageMessage ? <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-foreground" role="status">{pageMessage}</p> : null}
+        {pageMessage ? <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-foreground" role="status">{pageMessage}</p> : null}
         {marks.length === 0 ? (
           <ListEmpty title="Nothing is leaving soon" description="When a rule matches a title, it waits here for the rule's days before it goes, and anyone can keep it." />
         ) : (
@@ -676,25 +676,25 @@ export function RetentionPage() {
             noun={LEVELS.find((level) => level.value === form.level)?.noun ?? "title"}
           />
           {trial && !trial.problems.length && trial.matchedCount > 0 ? (
-            <p className="text-[length:var(--type-caption)] text-foreground">
+            <p className="text-(length:--type-caption) text-foreground">
               {trial.matchedCount === 1 ? "This title" : `These ${trial.matchedCount} titles`}, on {trial.matchedCount === 1 ? "its" : "their"} day: {trial.expiryDescription}
             </p>
           ) : null}
           {trial?.problems.length ? (
-            <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-warning" role="alert">
+            <ul className="grid gap-0.5 text-(length:--type-caption) text-warning" role="alert">
               {trial.problems.map((problem) => <li key={problem}>{problem}</li>)}
             </ul>
           ) : null}
           {trial?.unreachableServers.length ? (
-            <p className="text-[length:var(--type-caption)] text-warning">Nothing would be selected: {trial.unreachableServers.join("; ")}.</p>
+            <p className="text-(length:--type-caption) text-warning">Nothing would be selected: {trial.unreachableServers.join("; ")}.</p>
           ) : null}
           {trial && trial.undecidedCount > 0 ? (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               {trial.undecidedCount} {trial.undecidedCount === 1 ? "title" : "titles"} could not be decided — a server could not answer a step — and would be left alone.
             </p>
           ) : null}
           {trial && trial.unmanaged.length > 0 ? (
-            <details className="text-[length:var(--type-caption)] text-muted-foreground">
+            <details className="text-(length:--type-caption) text-muted-foreground">
               <summary className="cursor-pointer">
                 {trial.unmanaged.length} on your servers but not in Deluno. They are never touched.
               </summary>
@@ -720,7 +720,7 @@ export function RetentionPage() {
 
         <DrawerSection title="Media servers" aside={servers.length ? undefined : "none connected"}>
           {servers.length === 0 ? (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Connect Plex, Jellyfin or Emby under Find &amp; Download → Media Servers to use what they know.</p>
+            <p className="text-(length:--type-caption) text-muted-foreground">Connect Plex, Jellyfin or Emby under Find &amp; Download → Media Servers to use what they know.</p>
           ) : (
             servers.map((server) => (
               <SwitchRow
@@ -792,12 +792,12 @@ export function RetentionPage() {
               Run now
             </Button>
             {history.length > 0 ? (
-              <dl className="grid grid-cols-[150px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+              <dl className="grid grid-cols-[150px_1fr] gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
                 {history.map((run) => (
                   <div key={run.id} className="contents">
                     <dt className="text-muted-foreground">
                       {formatDateTime(run.startedUtc, preferences)}
-                      <span className="block text-[length:var(--type-caption)]">{run.kind === "confirmed" ? "Confirmed" : run.trigger === "schedule" ? "Scheduled" : run.kind === "check" ? "Run now" : "Earlier version"}</span>
+                      <span className="block text-(length:--type-caption)">{run.kind === "confirmed" ? "Confirmed" : run.trigger === "schedule" ? "Scheduled" : run.kind === "check" ? "Run now" : "Earlier version"}</span>
                     </dt>
                     <dd className="text-foreground">{run.summary}</dd>
                   </div>

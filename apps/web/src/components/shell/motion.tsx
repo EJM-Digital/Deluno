@@ -113,7 +113,7 @@ export function StaggerItem({ children, className, ...rest }: StaggerItemProps) 
   return (
     <motion.div
       variants={shouldReduce ? itemVariantsReduced : itemVariants}
-      className={`flex flex-col [&>*]:flex-1 [&>*]:min-h-0${className ? ` ${className}` : ""}`}
+      className={`flex flex-col *:flex-1 [&>*]:min-h-0${className ? ` ${className}` : ""}`}
       {...rest}
     >
       {children}

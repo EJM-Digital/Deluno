@@ -151,7 +151,7 @@ interface BuilderProps {
 export function RetentionStepBuilder({ steps, onChange, fields, serverKinds, counts, considered, noun }: BuilderProps) {
   return (
     <div className="grid gap-2">
-      <div className="flex items-baseline justify-between gap-2 text-[length:var(--type-caption)] text-muted-foreground">
+      <div className="flex items-baseline justify-between gap-2 text-(length:--type-caption) text-muted-foreground">
         <span>Start with every {noun} Deluno holds</span>
         <span className="tabular-nums">{considered ?? "…"}</span>
       </div>
@@ -251,7 +251,7 @@ function StepList({ steps, onChange, fields, serverKinds, counts, label, nested 
                 onRemove={() => replace(index, null)}
               />
             )}
-            <span className={cn("justify-self-end text-[length:var(--type-caption)] tabular-nums text-muted-foreground", nested && "pr-1")}>
+            <span className={cn("justify-self-end text-(length:--type-caption) tabular-nums text-muted-foreground", nested && "pr-1")}>
               {shown}
             </span>
           </li>
@@ -264,7 +264,7 @@ function StepList({ steps, onChange, fields, serverKinds, counts, label, nested 
 function OpSelect({ index, value, fixed, label, onChange }: { index: number; value: string; fixed?: string; label: string; onChange: (op: RetentionStep["op"]) => void }) {
   if (fixed) {
     // The first step always starts from the whole library, so there is nothing to choose.
-    return <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{fixed}</span>;
+    return <span className="text-(length:--type-body-sm) font-medium text-foreground">{fixed}</span>;
   }
 
   return (

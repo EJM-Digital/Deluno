@@ -40,7 +40,7 @@ function DismissAllToasts() {
     <button
       type="button"
       onClick={() => sonnerToast.dismiss()}
-      className="fixed bottom-3 right-4 z-[9999] inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card/95 px-3 py-1 text-[length:var(--type-caption)] font-medium text-muted-foreground shadow-lg backdrop-blur transition hover:text-foreground dark:border-white/[0.06]"
+      className="fixed bottom-3 right-4 z-9999 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card/95 px-3 py-1 text-(length:--type-caption) font-medium text-muted-foreground shadow-lg backdrop-blur-sm transition hover:text-foreground dark:border-white/6"
     >
       <X className="h-3.5 w-3.5" aria-hidden="true" />
       Clear all {toasts.length}
@@ -70,17 +70,17 @@ export function Toaster() {
       toastOptions={{
         className: cn(
           "rounded-xl border border-hairline bg-card text-foreground shadow-lg",
-          "dark:border-white/[0.06]"
+          "dark:border-white/6"
         ),
         classNames: {
           toast:
-            "group flex w-full items-start gap-3 rounded-xl border border-hairline bg-card/95 p-3 pr-8 text-sm text-foreground shadow-lg backdrop-blur dark:border-white/[0.06] dark:bg-card/90",
-          title: "text-[length:var(--type-body-sm)] font-semibold leading-snug tracking-tight text-foreground",
-          description: "mt-0.5 text-[length:var(--type-caption)] leading-snug text-muted-foreground",
+            "group flex w-full items-start gap-3 rounded-xl border border-hairline bg-card/95 p-3 pr-8 text-sm text-foreground shadow-lg backdrop-blur-sm dark:border-white/6 dark:bg-card/90",
+          title: "text-(length:--type-body-sm) font-semibold leading-snug tracking-tight text-foreground",
+          description: "mt-0.5 text-(length:--type-caption) leading-snug text-muted-foreground",
           actionButton:
-            "ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-[length:var(--type-caption)] font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90",
+            "ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-(length:--type-caption) font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90",
           cancelButton:
-          "inline-flex h-7 items-center rounded-md border border-hairline bg-card px-2.5 text-[length:var(--type-caption)] font-medium text-muted-foreground transition hover:text-foreground",
+          "inline-flex h-7 items-center rounded-md border border-hairline bg-card px-2.5 text-(length:--type-caption) font-medium text-muted-foreground transition hover:text-foreground",
           closeButton:
             "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-muted/60 hover:text-foreground"
         }

@@ -87,8 +87,8 @@ export function SubtitleOverrideCard({
       title="Subtitle languages for this title"
       count={hasOverride ? "Overridden" : "Follows library"}
     >
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-        <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+        <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
           {hasOverride
             ? "This title asks for its own subtitle languages instead of its library's."
             : libraryLanguages.length > 0

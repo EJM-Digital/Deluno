@@ -202,7 +202,7 @@ export function MovieEditDrawer({
     >
       <DrawerSection>
         <Field label="Monitored" help="Deluno keeps searching for an upgrade only while a title is monitored.">
-          <div className="flex min-h-[var(--library-toolbar-height)] items-center gap-2">
+          <div className="flex min-h-(--library-toolbar-height) items-center gap-2">
             <Switch checked={formMonitored} onCheckedChange={(checked) => { setFormMonitored(checked); edit(); }} />
             <span className="text-sm text-foreground">{formMonitored ? "Monitored" : "Unmonitored"}</span>
           </div>

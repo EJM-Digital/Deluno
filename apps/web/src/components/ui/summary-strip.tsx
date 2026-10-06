@@ -55,19 +55,19 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
       {cells.map((cell, index) => {
         const body = (
           <>
-            <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="block text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">
               {cell.label}
             </span>
             <span
               className={cn(
-                "mt-1 block text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-tight",
+                "mt-1 block text-(length:--type-title-sm) font-semibold tabular-nums leading-tight",
                 cell.tone ? toneClass[cell.tone] : "text-foreground"
               )}
             >
               {cell.value}
             </span>
             {cell.help !== undefined ? (
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cell.help}</span>
+              <span className="block truncate text-(length:--type-caption) text-muted-foreground">{cell.help}</span>
             ) : null}
             {cell.fill !== undefined ? (
               <span aria-hidden className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-surface-3">
@@ -81,7 +81,7 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
         );
 
         const cellClass = cn(
-          "border-hairline px-[var(--card-pad-x)] py-3",
+          "border-hairline px-(--card-pad-x) py-3",
           // Cells divide left-to-right on wide screens and form a grid on narrow ones,
           // so the trailing edges never draw a border against the card edge.
           "border-b border-r last:border-r-0 md:border-b-0",
@@ -94,7 +94,7 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
             to={cell.href}
             className={cn(
               cellClass,
-              "block transition-colors hover:bg-primary/[0.06] focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              "block transition-colors hover:bg-primary/6 focus-visible:relative focus-visible:z-10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             )}
           >
             {body}

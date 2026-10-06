@@ -116,7 +116,7 @@ export function SettingsQualityPage() {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar
         tabs={TABS}
         actions={
@@ -154,7 +154,7 @@ export function SettingsQualityPage() {
       )}
 
       <ListCard title="Same-quality upgrades" count="How Deluno chooses between equally ranked releases">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <SwitchRow
             label="Require a preference improvement at the same quality"
             description="Only replace an equally ranked release when its typed preference outcome is better."
@@ -193,7 +193,7 @@ function niceCeiling(value: number) {
  * so every one of them lines up. `pr-2` on the numeric columns matches the number
  * inputs' own padding, which is what keeps a header label over its own digits.
  */
-const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem_5.5rem] items-center gap-[var(--grid-gap)] px-[var(--card-pad-x)]";
+const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem_5.5rem] items-center gap-(--grid-gap) px-(--card-pad-x)";
 
 function SizeCard({
   scope,
@@ -248,13 +248,13 @@ function SizeCard({
       }
     >
       <div className="overflow-x-auto">
-        <div className="min-w-[58rem]">
-          <div className={cn(SIZE_GRID, "h-[var(--list-thead-height)] border-b border-hairline bg-surface-2/40")}>
+        <div className="min-w-232">
+          <div className={cn(SIZE_GRID, "h-(--list-thead-height) border-b border-hairline bg-surface-2/40")}>
             {["Quality tier", "Accepted range", `Min (${unit})`, `Preferred (${unit})`, `Max (${unit})`].map((label, index) => (
               <span
                 key={label}
                 className={cn(
-                  "truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
+                  "truncate text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground",
                   index >= 2 && "pr-2 text-right"
                 )}
               >
@@ -283,21 +283,21 @@ function SizeCard({
                     SIZE_GRID,
                     // Same weight as ListGroupHeader: a heading for the rows under it,
                     // not another hairline between them.
-                    "sticky top-0 z-10 h-[var(--list-group-height)] w-full border-y border-hairline bg-surface-3 text-left",
-                    "transition-colors hover:bg-surface-3/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    "sticky top-0 z-10 h-(--list-group-height) w-full border-y border-hairline bg-surface-3 text-left",
+                    "transition-colors hover:bg-surface-3/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   )}
                 >
-                  <span className="flex min-w-0 items-center gap-2 text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.12em] text-foreground">
+                  <span className="flex min-w-0 items-center gap-2 text-(length:--type-caption) font-semibold uppercase tracking-[0.12em] text-foreground">
                     <ChevronRight aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
                     <span className="truncate">{band.label}</span>
                   </span>
                   <span />
                   {/* The band summary sits in the Min and Max columns, over the numbers it summarises. Preferred is per-tier, not per-band. */}
-                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                  <span className="pr-2 text-right text-(length:--type-caption) tabular-nums text-muted-foreground">
                     {band.unruled ? "—" : format(band.spanMin)}
                   </span>
                   <span />
-                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                  <span className="pr-2 text-right text-(length:--type-caption) tabular-nums text-muted-foreground">
                     {band.unruled ? "—" : formatMax(band.spanMax)}
                   </span>
                 </button>
@@ -309,10 +309,10 @@ function SizeCard({
                       const preferred = Number(tier[preferredKey]);
                       const unset = low === 0 && high === 0;
                       return (
-                        <div key={tier.name} className={cn(SIZE_GRID, "min-h-[var(--list-row-height)] border-b border-hairline last:border-b-0")}>
+                        <div key={tier.name} className={cn(SIZE_GRID, "min-h-(--list-row-height) border-b border-hairline last:border-b-0")}>
                           <div className="min-w-0">
-                            <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{tier.name}</span>
-                            <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                            <span className="block truncate text-(length:--type-body-sm) font-medium text-foreground">{tier.name}</span>
+                            <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">
                               Rank {tier.rank}
                               {unset ? " · any size" : ""}
                             </span>

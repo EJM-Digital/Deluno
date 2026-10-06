@@ -57,9 +57,9 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
   const contextValue = React.useMemo(() => ({ register }), [register]);
   return (
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
-      <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
-        <h2 id={titleId} className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
-        {count ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{count}</span> : null}
+      <header className="flex min-h-(--list-header-height) items-center gap-3 border-b border-hairline px-(--card-pad-x)">
+        <h2 id={titleId} className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
+        {count ? <span className="text-(length:--type-caption) text-muted-foreground">{count}</span> : null}
         <span className="flex-1" />
         {filter ? (
           <label htmlFor={filterId} className="relative hidden sm:block">
@@ -70,7 +70,7 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
               value={filter.value}
               onChange={(event) => filter.onChange(event.target.value)}
               placeholder={filter.placeholder ?? "Filter"}
-              className="h-[var(--control-height-sm)] w-56 rounded-[8px] border border-hairline bg-surface-1 pl-8 pr-2 text-[length:var(--type-caption)] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-(--control-height-sm) w-56 rounded-[8px] border border-hairline bg-surface-1 pl-8 pr-2 text-(length:--type-caption) text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <span className="sr-only">{filter.placeholder ?? "Filter"}</span>
           </label>
@@ -275,7 +275,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
           ref={headerRowRef}
           role="row"
           style={{ "--list-cols": template, "--list-cols-mobile": mobileTemplate } as React.CSSProperties}
-          className="relative grid h-[var(--list-thead-height)] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)] [grid-template-columns:var(--list-cols-mobile)] md:[grid-template-columns:var(--list-cols)]"
+          className="relative grid h-(--list-thead-height) items-center gap-(--grid-gap) border-b border-hairline bg-surface-2/40 px-(--card-pad-x) grid-cols-(--list-cols-mobile) md:grid-cols-(--list-cols)"
         >
           {state.columns.map(({ column, id, originalIndex }) => {
             const col = column as ListColumn<T>;
@@ -303,7 +303,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     : undefined
                 }
                 className={cn(
-                  "relative min-w-0 rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  "relative min-w-0 rounded-xs text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   movable && "cursor-grab touch-pan-y select-none",
                   active && "text-foreground",
                   col.align === "end" && "text-right",
@@ -316,7 +316,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     type="button"
                     onClick={() => state.toggleSort(id)}
                     aria-describedby={movable ? hintId : undefined}
-                    className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-[0.1em] text-inherit hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-widest text-inherit hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <span className="truncate">{col.label}</span>
                     {active ? <SortArrow direction={active.direction} /> : null}
@@ -386,10 +386,10 @@ export function ListRow({ onClick, selected = false, className, children, ...pro
       }}
       style={{ "--list-cols": table.template, "--list-cols-mobile": table.mobileTemplate } as React.CSSProperties}
       className={cn(
-        "grid min-h-[var(--list-row-height)] items-center gap-[var(--grid-gap)] border-b border-hairline px-[var(--card-pad-x)] last:border-b-0",
-        "[grid-template-columns:var(--list-cols-mobile)] md:[grid-template-columns:var(--list-cols)]",
-        interactive && "cursor-pointer transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:bg-surface-2/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        selected && "bg-primary/[0.08] hover:bg-primary/[0.1]",
+        "grid min-h-(--list-row-height) items-center gap-(--grid-gap) border-b border-hairline px-(--card-pad-x) last:border-b-0",
+        "grid-cols-(--list-cols-mobile) md:grid-cols-(--list-cols)",
+        interactive && "cursor-pointer transition-colors hover:bg-surface-2/60 focus-visible:outline-hidden focus-visible:bg-surface-2/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        selected && "bg-primary/8 hover:bg-primary/10",
         className
       )}
       {...props}
@@ -427,7 +427,7 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
     <div
       role="cell"
       className={cn(
-        "min-w-0 text-[length:var(--list-row-text)] leading-tight",
+        "min-w-0 text-(length:--list-row-text) leading-tight",
         // The page's first column always shows on a phone, wherever the person has moved it to.
         !mobile && (originalIndex === null ? "hidden md:block first:block" : originalIndex === 0 ? "" : "hidden md:block"),
         align === "end" && "text-right",
@@ -438,10 +438,10 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
       {children ?? (
         <>
           {primary !== undefined ? (
-            <span className={cn("block truncate text-foreground", mono && "font-mono text-[length:var(--type-caption)]")}>{primary}</span>
+            <span className={cn("block truncate text-foreground", mono && "font-mono text-(length:--type-caption)")}>{primary}</span>
           ) : null}
           {secondary !== undefined ? (
-            <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{secondary}</span>
+            <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{secondary}</span>
           ) : null}
         </>
       )}
@@ -453,8 +453,8 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
 export function ListNameCell({ name, sub, className }: { name: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
     <div role="cell" className={cn("min-w-0 leading-tight", className)}>
-      <span className="block truncate text-[length:var(--list-row-text)] font-semibold text-foreground">{name}</span>
-      {sub !== undefined ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{sub}</span> : null}
+      <span className="block truncate text-(length:--list-row-text) font-semibold text-foreground">{name}</span>
+      {sub !== undefined ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{sub}</span> : null}
     </div>
   );
 }
@@ -471,9 +471,9 @@ export function ListEmpty({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-[112px] flex-col items-center justify-center gap-1.5 px-[var(--card-pad-x)] py-[var(--card-pad-y)] text-center">
-      <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">{title}</p>
-      {description ? <p className="max-w-[52ch] text-[length:var(--type-caption)] text-muted-foreground">{description}</p> : null}
+    <div className="flex min-h-[112px] flex-col items-center justify-center gap-1.5 px-(--card-pad-x) py-(--card-pad-y) text-center">
+      <p className="text-(length:--type-body-sm) font-semibold text-foreground">{title}</p>
+      {description ? <p className="max-w-[52ch] text-(length:--type-caption) text-muted-foreground">{description}</p> : null}
       {actions ? <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">{actions}</div> : null}
     </div>
   );

@@ -12,7 +12,7 @@ export function ConnectionTestResult({ result }: { result: ConnectionTestOutcome
   const chip = healthChip({ isEnabled: true, healthStatus: result.healthStatus });
   return (
     <DrawerSection title="Test">
-      <p role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-[length:var(--type-body-sm)]">
+      <p role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-(length:--type-body-sm)">
         <Chip tone={chip.tone}>{chip.label}</Chip>
         <span className="text-foreground">{result.message}</span>
       </p>

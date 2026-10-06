@@ -50,7 +50,7 @@ export function EmptyState({
       ) : variant === "offline" ? (
         <OfflineArt size={illoSize} />
       ) : Icon ? (
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-[hsl(var(--primary-2))/0.12] text-primary ring-1 ring-primary/15">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br/srgb from-primary/15 to-[hsl(var(--primary-2))/0.12] text-primary ring-1 ring-primary/15">
           <Icon className="h-6 w-6" />
         </div>
       ) : null
@@ -59,7 +59,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-dashed border-hairline/80 bg-card/40 dark:bg-white/[0.015]",
+        "relative overflow-hidden rounded-2xl border border-dashed border-hairline/80 bg-card/40 dark:bg-white/1.5",
         size === "sm" ? "px-4 py-6" : isSmall ? "px-6 py-10" : "px-8 py-14",
         "flex flex-col items-center justify-center text-center",
         className
@@ -89,7 +89,7 @@ export function EmptyState({
           {title}
         </h3>
         {description ? (
-          <p className="text-balance text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+          <p className="text-balance text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -103,7 +103,7 @@ export function EmptyState({
       ) : null}
 
       {learnMore ? (
-        <div className="relative z-10 mt-3 text-[length:var(--type-caption)] text-muted-foreground/80">
+        <div className="relative z-10 mt-3 text-(length:--type-caption) text-muted-foreground/80">
           {learnMore}
         </div>
       ) : null}

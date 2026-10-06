@@ -94,18 +94,18 @@ export function IndexerDrawerBody({
         ) : (
         <>
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
-          <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+          <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
         </Field>
         {form.protocol === "newznab" || form.protocol === "torznab" ? (
           <Field label="API path" help="Only needed if this indexer's API does not live at the default /api.">
-            <Input value={form.apiPath} onChange={(event) => setForm((current) => ({ ...current, apiPath: event.target.value }))} placeholder="/api" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+            <Input value={form.apiPath} onChange={(event) => setForm((current) => ({ ...current, apiPath: event.target.value }))} placeholder="/api" className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
           </Field>
         ) : null}
         {preset.requiresApiKey || form.apiKey ? (
           <Field label="API key" error={errors.apiKey} help={editing ? "Stored encrypted. Leave empty to keep the current key; paste a new one to rotate it." : "From your indexer's account or settings page."}>
             <span className="relative block">
               <Input type={showKey ? "text" : "password"} value={form.apiKey} onChange={(event) => { clearError("apiKey"); setForm((current) => ({ ...current, apiKey: event.target.value })); }} placeholder={editing ? "••••••••••••  (unchanged)" : "Paste your API key"} className="pr-16 font-mono" autoComplete="off" spellCheck={false} />
-              <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[length:var(--type-caption)] font-medium text-primary hover:underline">
+              <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-(length:--type-caption) font-medium text-primary hover:underline">
                 {showKey ? "Hide" : "Reveal"}
               </button>
             </span>
@@ -159,7 +159,7 @@ export function IndexerDrawerBody({
             <Field label="Seed time" help="This tracker's published minimum seed time.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.sharingSeedHours} onChange={(event) => setForm((current) => ({ ...current, sharingSeedHours: event.target.value }))} placeholder="e.g. 336" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
               </div>
             </Field>
             <Field label="Seed ratio" help="This tracker's published minimum ratio.">
@@ -167,7 +167,7 @@ export function IndexerDrawerBody({
             </Field>
           </FieldRow>
         ) : null}
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           {form.sharingRule === "strict"
             ? describeStrictSharingRule()
             : form.sharingRule === "custom"
@@ -179,10 +179,10 @@ export function IndexerDrawerBody({
             <Field label="Season-pack seed time" help="Only for whole-season downloads from this source. Leave blank to use the seed time above for season packs too.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.seasonPackSeedForHours} onChange={(event) => setForm((current) => ({ ...current, seasonPackSeedForHours: event.target.value }))} placeholder="Same as normal" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
               </div>
             </Field>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               {describeSeasonPackSeedTime(
                 form.seasonPackSeedForHours.trim() ? Number(form.seasonPackSeedForHours) : null,
                 form.sharingRule === "strict" ? STRICT_SHARING.forHours : (form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null)
@@ -201,11 +201,11 @@ export function IndexerDrawerBody({
             </Button>
           )}
           <Field label="Category ids" help="A number your indexer uses that the picker above doesn't know a name for yet. Comma-separated; ticking a box above edits this too.">
-            <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
+            <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-(length:--type-caption)" placeholder="2000,2040,5000,5040" />
           </Field>
           {form.scope === "tv" || form.scope === "both" ? (
             <Field label="Anime categories" help="This indexer's own category numbers for anime, if it catalogues anime separately from normal TV. Leave blank to use the categories above for anime too.">
-              <Input value={form.animeCategories} onChange={(event) => setForm((current) => ({ ...current, animeCategories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="5070" />
+              <Input value={form.animeCategories} onChange={(event) => setForm((current) => ({ ...current, animeCategories: event.target.value }))} className="font-mono text-(length:--type-caption)" placeholder="5070" />
             </Field>
           ) : null}
           {form.scope === "tv" || form.scope === "both" ? (
@@ -226,10 +226,10 @@ export function IndexerDrawerBody({
           <Field label="Request interval" error={errors.requestIntervalSeconds} help="Deluno will not query this indexer more often than this. Private trackers usually publish a limit; leave this alone if you are not sure.">
             <div className="flex items-center gap-2">
               <Input type="number" min="2" max="60" step="1" value={form.requestIntervalSeconds} onChange={(event) => { clearError("requestIntervalSeconds"); setForm((current) => ({ ...current, requestIntervalSeconds: event.target.value })); }} placeholder="Deluno default (2 seconds)" />
-              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seconds</span>
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">seconds</span>
             </div>
           </Field>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.</p>
+          <p className="text-(length:--type-caption) text-muted-foreground">Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.</p>
           <FieldRow>
             <Field label="Query limit" error={errors.queryLimit} help="A cap on searches sent to this indexer, in addition to the request interval above.">
               <Input type="number" min="0" step="1" value={form.queryLimit} onChange={(event) => { clearError("queryLimit"); setForm((current) => ({ ...current, queryLimit: event.target.value })); }} placeholder="No cap" />
@@ -249,7 +249,7 @@ export function IndexerDrawerBody({
           ) : null}
           {form.protocol === "newznab" || form.protocol === "torznab" ? (
             <Field label="Additional parameters" help="Extra query parameters some indexers require, such as a site-specific token or flag.">
-              <Input value={form.additionalParameters} onChange={(event) => setForm((current) => ({ ...current, additionalParameters: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="token=abc123" autoComplete="off" spellCheck={false} />
+              <Input value={form.additionalParameters} onChange={(event) => setForm((current) => ({ ...current, additionalParameters: event.target.value }))} className="font-mono text-(length:--type-caption)" placeholder="token=abc123" autoComplete="off" spellCheck={false} />
             </Field>
           ) : null}
           {/* #975: the backend applies this setting to movies too
@@ -271,7 +271,7 @@ export function IndexerDrawerBody({
       </DrawerSection>
 
       <DrawerSection title="Acquisition policy">
-        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        <p className="text-(length:--type-caption) text-muted-foreground">
           These rules decide which feed results Deluno can use. An empty limit keeps the indexer unrestricted.
         </p>
         <Disclosure title="Timing, limits, and flags" summary="Applied before a release can be sent to a download client." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
@@ -279,13 +279,13 @@ export function IndexerDrawerBody({
             <Field label="Minimum age" error={errors.minimumAgeMinutes} help="Wait for a Usenet or torrent post to propagate before grabbing it.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.minimumAgeMinutes} onChange={(event) => { clearError("minimumAgeMinutes"); setForm((current) => ({ ...current, minimumAgeMinutes: event.target.value })); }} placeholder="No minimum" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
               </div>
             </Field>
             <Field label="Retention" error={errors.retentionDays} help="Reject releases older than the number of days your provider keeps.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.retentionDays} onChange={(event) => { clearError("retentionDays"); setForm((current) => ({ ...current, retentionDays: event.target.value })); }} placeholder="No limit" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">days</span>
               </div>
             </Field>
           </FieldRow>
@@ -293,13 +293,13 @@ export function IndexerDrawerBody({
             <Field label="Maximum size" error={errors.maximumSizeMb} help="Reject releases larger than this, in megabytes.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.maximumSizeMb} onChange={(event) => { clearError("maximumSizeMb"); setForm((current) => ({ ...current, maximumSizeMb: event.target.value })); }} placeholder="No limit" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
               </div>
             </Field>
             <Field label="Availability delay" error={errors.availabilityDelayDays} help="Hold a title for this many days after its known availability date.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.availabilityDelayDays} onChange={(event) => { clearError("availabilityDelayDays"); setForm((current) => ({ ...current, availabilityDelayDays: event.target.value })); }} placeholder="No delay" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">days</span>
               </div>
             </Field>
           </FieldRow>
@@ -307,7 +307,7 @@ export function IndexerDrawerBody({
             <Field label="Minimum seeders" error={errors.minimumSeeders} help="Reject a torrent with fewer seeders than this before it can be grabbed.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" value={form.minimumSeeders} onChange={(event) => { clearError("minimumSeeders"); setForm((current) => ({ ...current, minimumSeeders: event.target.value })); }} placeholder="No minimum" />
-                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seeders</span>
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">seeders</span>
               </div>
             </Field>
           ) : null}
@@ -326,7 +326,7 @@ export function IndexerDrawerBody({
               <Input value={form.ignoredWords} onChange={(event) => { clearError("ignoredWords"); setForm((current) => ({ ...current, ignoredWords: event.target.value })); }} placeholder="e.g. cam, korsub" />
             </Field>
           </FieldRow>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
+          <p className="text-(length:--type-caption) text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
         </Disclosure>
         <div className="flex flex-col gap-2">
           {form.protocol !== "newznab" ? (
@@ -354,7 +354,7 @@ export function IndexerDrawerBody({
               </Button>
             </div>
           ) : null}
-          <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+          <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>

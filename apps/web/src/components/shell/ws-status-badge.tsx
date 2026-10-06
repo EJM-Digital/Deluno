@@ -46,7 +46,7 @@ const STATUS_CONFIG: Record<SignalRStatus, Config> = {
   disconnected: {
     dot: "bg-destructive",
     label: "Offline",
-    ring: "border-destructive/25 bg-destructive/8 text-destructive",
+    ring: "border-destructive/25 text-destructive",
     animate: false,
     visible: true
   }
@@ -64,7 +64,7 @@ export function WsStatusBadge({ className }: { className?: string }) {
       aria-live="polite"
       aria-label={`WebSocket: ${cfg.label}`}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[length:var(--shell-subtle-size)] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-(length:--shell-subtle-size) font-medium",
         cfg.ring,
         className
       )}
@@ -95,7 +95,7 @@ export function WsStatusDot({ className }: { className?: string }) {
       role="status"
       aria-live="polite"
       aria-label={`Connection: ${status}`}
-      className={cn("h-2 w-2 rounded-full shadow-sm", colors[status], className)}
+      className={cn("h-2 w-2 rounded-full shadow-xs", colors[status], className)}
     />
   );
 }

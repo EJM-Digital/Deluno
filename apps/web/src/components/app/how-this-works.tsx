@@ -81,14 +81,14 @@ export function HowThisWorks({
   // children out on `--page-gap`, so a margin here made the gap under the panel
   // nearly double every other gap on the page.
   return (
-    <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]", className)}>
+    <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-info/20 bg-info/4", className)}>
       <h2 id={titleId}>
         <button
           type="button"
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           onClick={() => setCollapsed(!collapsed)}
-          className="flex w-full items-center gap-3 px-[var(--card-pad-x)] py-3 text-left transition-colors hover:bg-info/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center gap-3 px-(--card-pad-x) py-3 text-left transition-colors hover:bg-info/8 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {/* Nothing without aria-hidden may go in here: the button is the
               heading's content, so anything readable becomes part of the
@@ -96,7 +96,7 @@ export function HowThisWorks({
           <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-info/25 bg-info/10 text-info">
             <Info className="h-4 w-4" />
           </span>
-          <span className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</span>
+          <span className="text-(length:--type-card-title) font-semibold text-foreground">How this works</span>
           <ChevronDown aria-hidden className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
         </button>
       </h2>
@@ -104,7 +104,7 @@ export function HowThisWorks({
           collapsed panel is one clean row and not a row with a line hanging
           off it. */}
       <div id={bodyId} hidden={collapsed} className="border-t border-info/15">
-        <p className="max-w-4xl px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{lead}</p>
+        <p className="max-w-4xl px-(--card-pad-x) py-3 text-(length:--type-caption) leading-relaxed text-muted-foreground">{lead}</p>
         {steps.length > 0 ? (
           <ol
             className={cn(
@@ -116,14 +116,14 @@ export function HowThisWorks({
               <li
                 key={step.title}
                 className={cn(
-                  "border-info/15 px-[var(--card-pad-x)] py-3",
+                  "border-info/15 px-(--card-pad-x) py-3",
                   index < steps.length - 1 && "md:border-r"
                 )}
               >
-                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">
+                <p className="text-(length:--type-caption) font-semibold text-foreground">
                   {index + 1}. {step.title}
                 </p>
-                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{step.body}</p>
+                <p className="mt-1 text-(length:--type-caption) leading-relaxed text-muted-foreground">{step.body}</p>
               </li>
             ))}
           </ol>

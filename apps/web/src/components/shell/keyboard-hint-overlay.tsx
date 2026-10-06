@@ -36,12 +36,12 @@ export function KeyboardHintOverlay({
       <Dialog.Portal>
         <Dialog.Overlay
           className={cn(
-            "fixed inset-0 z-[70] bg-background/70 backdrop-blur-sm animate-fade-in"
+            "fixed inset-0 z-70 bg-background/70 backdrop-blur-xs animate-fade-in"
           )}
         />
         <Dialog.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-[71] w-[min(92vw,640px)] -translate-x-1/2 -translate-y-1/2",
+            "fixed left-1/2 top-1/2 z-71 w-[min(92vw,640px)] -translate-x-1/2 -translate-y-1/2",
             "rounded-2xl border border-hairline bg-card shadow-lg animate-slide-up"
           )}
         >
@@ -58,10 +58,10 @@ export function KeyboardHintOverlay({
             </Dialog.Close>
           </div>
           <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
-            <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+            <div className="grid gap-(--grid-gap) sm:grid-cols-2">
               {groups.map(([group, list]) => (
                 <div key={group} className="space-y-2">
-                  <p className="text-[length:var(--type-caption)] uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-(length:--type-caption) uppercase tracking-[0.18em] text-muted-foreground">
                     {group}
                   </p>
                   <ul className="space-y-1.5">

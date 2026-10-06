@@ -38,7 +38,7 @@ export function TrackerFields({
   const chosen = trackers.data?.find((item) => item.id === form.definitionId) ?? null;
 
   if (trackers.isLoading) {
-    return <p className="flex items-center gap-2 text-[length:var(--type-body-sm)] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading the trackers Deluno knows…</p>;
+    return <p className="flex items-center gap-2 text-(length:--type-body-sm) text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading the trackers Deluno knows…</p>;
   }
 
   if (!chosen) {
@@ -68,19 +68,19 @@ export function TrackerFields({
   const secretsSet = new Set(editing?.definitionSecretsSet ?? []);
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 text-[length:var(--type-body-sm)]">
+      <div className="flex flex-wrap items-center gap-2 text-(length:--type-body-sm)">
         <span className="font-medium text-foreground">{chosen.name}</span>
         <Chip tone={chosen.privacy === "public" ? "info" : "warn"}>{privacyWords(chosen.privacy)}</Chip>
         <span className="text-muted-foreground">{languageName(chosen.language)}</span>
         {editing ? null : (
-          <button type="button" className="ml-auto text-[length:var(--type-caption)] font-medium text-primary hover:underline" onClick={() => setForm((current) => ({ ...current, definitionId: "", trackerSettings: {}, trackerSecrets: {} }))}>
+          <button type="button" className="ml-auto text-(length:--type-caption) font-medium text-primary hover:underline" onClick={() => setForm((current) => ({ ...current, definitionId: "", trackerSettings: {}, trackerSecrets: {} }))}>
             Choose another
           </button>
         )}
       </div>
-      {chosen.description ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{chosen.description}</p> : null}
+      {chosen.description ? <p className="text-(length:--type-caption) text-muted-foreground">{chosen.description}</p> : null}
       {chosen.mayNeedCloudflareHelp ? (
-        <p className="text-[length:var(--type-caption)] text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr) set under Settings, General. Without one, try another of its addresses.</p>
+        <p className="text-(length:--type-caption) text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr) set under Settings, General. Without one, try another of its addresses.</p>
       ) : null}
       {chosen.links.length > 1 ? (
         <Field label="Address" error={errors.baseUrl} help="The site's addresses change; Deluno tries the others if this one does not answer.">
@@ -104,7 +104,7 @@ export function TrackerFields({
 
 function TrackerSettingField({ setting, value, saved, onChange }: { setting: TrackerSettingSummary; value: string; saved: boolean; onChange: (value: string) => void }) {
   if (setting.type === "info") {
-    return setting.default ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{plainText(setting.default)}</p> : null;
+    return setting.default ? <p className="text-(length:--type-caption) text-muted-foreground">{plainText(setting.default)}</p> : null;
   }
 
   if (setting.type === "checkbox") {

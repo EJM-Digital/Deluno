@@ -171,7 +171,7 @@ export function LibraryMembershipCard({
                   <Dialog.Title className="font-semibold text-foreground">
                     {pending?.kind === "move" ? `Move out of ${pending.from.libraryName}?` : `Keep this ${noun} in another library too?`}
                   </Dialog.Title>
-                  <Dialog.Description id="library-membership-description" className="mt-1 text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                  <Dialog.Description id="library-membership-description" className="mt-1 text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
                     {pending?.kind === "move"
                       ? `Its searches and downloads will go through the library you choose. It holds no file in ${pending.from.libraryName}, so nothing on disk moves.`
                       : "It will be wanted there as a separate copy, with that library's quality, indexers and download clients."}
@@ -179,7 +179,7 @@ export function LibraryMembershipCard({
                 </div>
               </div>
             </div>
-            <div className="grid gap-[var(--grid-gap)] p-6">
+            <div className="grid gap-(--grid-gap) p-6">
               <Field label="Library">
                 <Select value={target} onChange={(event) => setTarget(event.target.value)} options={others.map((library) => ({ value: library.id, label: library.name }))} />
               </Field>

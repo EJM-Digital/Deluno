@@ -278,7 +278,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           </div>
         }
       >
-        <div className="space-y-2 p-[var(--card-pad-x)]">
+        <div className="space-y-2 p-(--card-pad-x)">
           <SaveStatus state={activityStatus.state} message={activityStatus.message} />
           <AuditTimeline timeline={timeline} />
         </div>
@@ -381,8 +381,8 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           </ListRow>
         ))}
       </ListTable>
-      <div role="group" aria-label="Credits" className="flex flex-col gap-1.5 border-t border-hairline px-[var(--card-pad-x)] py-[var(--card-pad-y)]">
-        <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Credits</p>
+      <div role="group" aria-label="Credits" className="flex flex-col gap-1.5 border-t border-hairline px-(--card-pad-x) py-(--card-pad-y)">
+        <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.18em] text-muted-foreground">Credits</p>
         <TmdbAttribution full />
         <TvdbAttribution />
       </div>
@@ -847,7 +847,7 @@ function RecycleBinCard({
           </CardTitle>
           <CardDescription>Library removals and replaced files stay recoverable until their retention window expires.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-[var(--page-gap)]">
+        <CardContent className="space-y-(--page-gap)">
           {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label="Retention days">
@@ -980,7 +980,7 @@ function AutomationCard({
           Scheduled searches for missing and upgradeable titles.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-[var(--page-gap)]">
+      <CardContent className="space-y-(--page-gap)">
         <div className="grid grid-cols-3 gap-2">
           <AutomationMetric label="Active" value={running} />
           <AutomationMetric label="Runs" value={cycles.length} />
@@ -1012,14 +1012,14 @@ function AutomationCard({
 
         {retryWindows.length ? (
           <div className="space-y-2">
-            <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">Searches held back until</p>
+            <p className="text-(length:--type-caption) font-bold uppercase tracking-[0.16em] text-muted-foreground">Searches held back until</p>
             {retryWindows.slice(0, 4).map((item) => (
               <div key={`${item.entityType}:${item.entityId}:${item.actionKind}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
+                  <p className="text-(length:--type-caption) text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
                 </div>
-                <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc, preferences)}</span>
+                <span className="text-(length:--type-caption) tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc, preferences)}</span>
               </div>
             ))}
           </div>
@@ -1027,12 +1027,12 @@ function AutomationCard({
 
         {automation.length ? (
           <div className="space-y-2">
-            <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">Libraries</p>
+            <p className="text-(length:--type-caption) font-bold uppercase tracking-[0.16em] text-muted-foreground">Libraries</p>
             {automation.slice(0, 5).map((item) => (
               <div key={item.libraryId} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-foreground">{item.libraryName}</p>
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc, preferences)}` : ""}
                   </p>
                 </div>
@@ -1059,7 +1059,7 @@ function AutomationCard({
 function AutomationMetric({ label, value, compact = false }: { label: string; value: number | string; compact?: boolean }) {
   return (
     <div className="rounded-lg border border-hairline bg-background/35 px-3 py-2">
-      <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <p className={`${compact ? "text-lg" : "text-xl"} tabular font-display font-semibold text-foreground`}>{value}</p>
     </div>
   );
@@ -1902,7 +1902,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[length:var(--type-caption)]"
+                            className="h-6 px-2 text-(length:--type-caption)"
                             disabled={busyId === check.id}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -1915,7 +1915,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[length:var(--type-caption)] text-destructive"
+                          className="h-6 px-2 text-(length:--type-caption) text-destructive"
                           disabled={busyId === check.id}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -1931,7 +1931,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[length:var(--type-caption)] text-destructive"
+                            className="h-6 px-2 text-(length:--type-caption) text-destructive"
                             aria-label={`These files really are gone: ${check.name}`}
                             disabled={busyId === check.id}
                             onClick={(event) => {
@@ -1945,7 +1945,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          className="h-6 px-2 text-(length:--type-caption)"
                           aria-label={`Clear: ${check.name}`}
                           disabled={busyId === check.id}
                           onClick={(event) => {
@@ -1961,7 +1961,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          className="h-6 px-2 text-(length:--type-caption)"
                           aria-label={`Try again: ${check.name}`}
                           disabled={busyId === check.id}
                           onClick={(event) => {
@@ -1974,7 +1974,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          className="h-6 px-2 text-(length:--type-caption)"
                           aria-label={`Clear: ${check.name}`}
                           disabled={busyId === check.id}
                           onClick={(event) => {
@@ -1991,7 +1991,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[length:var(--type-caption)]"
+                            className="h-6 px-2 text-(length:--type-caption)"
                             aria-label={`Show: ${check.name}`}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -2004,7 +2004,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          className="h-6 px-2 text-(length:--type-caption)"
                           disabled={busyId === check.id}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -2052,7 +2052,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 px-2 text-[length:var(--type-caption)]"
+                      className="h-6 px-2 text-(length:--type-caption)"
                       aria-label={`${action.label}: ${check.name}`}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -2107,7 +2107,7 @@ function MonitoringCard({ monitoring }: { monitoring: MonitoringDashboardSnapsho
           Health, alert rules, performance trends, and export endpoints for external dashboards.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-[var(--page-gap)]">
+      <CardContent className="space-y-(--page-gap)">
         <div className="grid grid-cols-2 gap-2">
           <AutomationMetric label="Health checks" value={`${readiness.totalChecks - readiness.failedChecks}/${readiness.totalChecks}`} compact />
           <AutomationMetric label="Open alerts" value={alerts.length} compact />
@@ -2224,16 +2224,16 @@ function HealthRow({ label, status }: { label: string; status: string }) {
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
-      <p className="text-[length:var(--type-body-sm)] text-foreground">{label}</p>
+      <p className="text-(length:--type-body-sm) text-foreground">{label}</p>
       <span
         className={[
-          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[length:var(--type-caption)] font-medium",
+          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-(length:--type-caption) font-medium",
           isHealthy
             ? "border-success/20 bg-success/10 text-success"
             : isDegraded
               ? "border-warning/20 bg-warning/10 text-warning"
               : isOffline
-                ? "border-destructive/20 bg-destructive/8 text-destructive"
+                ? "border-destructive/20 text-destructive"
                 : "border-hairline text-muted-foreground"
         ].join(" ")}
       >
@@ -2253,7 +2253,7 @@ function JobStatusBadge({ status }: { status: string }) {
   return (
     <span
       className={[
-        "rounded-full border px-2.5 py-0.5 text-[length:var(--type-micro)] font-medium uppercase tracking-wide",
+        "rounded-full border px-2.5 py-0.5 text-(length:--type-micro) font-medium uppercase tracking-wide",
         isRunning
           ? "border-primary/20 bg-primary/10 text-primary"
           : isQueued
@@ -2261,7 +2261,7 @@ function JobStatusBadge({ status }: { status: string }) {
             : isDone
               ? "border-success/20 bg-success/10 text-success"
               : isFailed
-                ? "border-destructive/20 bg-destructive/8 text-destructive"
+                ? "border-destructive/20 text-destructive"
                 : "border-hairline text-muted-foreground"
       ].join(" ")}
     >

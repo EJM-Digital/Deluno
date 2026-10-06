@@ -83,12 +83,12 @@ export function CommandPalette({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[85] bg-background/60 backdrop-blur-sm animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-85 bg-background/60 backdrop-blur-xs animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
           className={cn(
-            "fixed left-1/2 top-[min(12vh,120px)] z-[86] w-[min(92vw,560px)] -translate-x-1/2",
-            "rounded-2xl border border-hairline bg-popover/95 p-0 shadow-lg backdrop-blur animate-slide-down"
+            "fixed left-1/2 top-[min(12vh,120px)] z-86 w-[min(92vw,560px)] -translate-x-1/2",
+            "rounded-2xl border border-hairline bg-popover/95 p-0 shadow-lg backdrop-blur-sm animate-slide-down"
           )}
         >
           <Dialog.Title className="sr-only">Command palette</Dialog.Title>
@@ -103,7 +103,7 @@ export function CommandPalette({
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Jump to area, run action…"
-                className="w-full border-0 bg-transparent py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                className="w-full border-0 bg-transparent py-2 text-sm text-foreground outline-hidden placeholder:text-muted-foreground"
               />
             </div>
             <Command.List className="overflow-y-auto p-2">
@@ -114,7 +114,7 @@ export function CommandPalette({
               {recentItems.length > 0 ? (
                 <Command.Group
                   heading="Recents"
-                  className="mb-2 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[length:var(--type-caption)] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-muted-foreground"
+                  className="mb-2 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-(length:--type-caption) **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.14em] **:[[cmdk-group-heading]]:text-muted-foreground"
                 >
                   {recentItems.map((r) => (
                     <Command.Item
@@ -136,7 +136,7 @@ export function CommandPalette({
 
               <Command.Group
                 heading="Navigation"
-                  className="mb-2 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[length:var(--type-caption)] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-muted-foreground"
+                  className="mb-2 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-(length:--type-caption) **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.14em] **:[[cmdk-group-heading]]:text-muted-foreground"
               >
                 {navigationCommands.map((item) => {
                   const Icon = item.icon;
@@ -163,7 +163,7 @@ export function CommandPalette({
 
               <Command.Group
                 heading="Settings"
-                  className="mb-2 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[length:var(--type-caption)] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-muted-foreground"
+                  className="mb-2 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-(length:--type-caption) **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.14em] **:[[cmdk-group-heading]]:text-muted-foreground"
               >
                 {settingsCommands.map((item) => {
                   const Icon = item.icon;
@@ -184,7 +184,7 @@ export function CommandPalette({
               {actionCommands.length > 0 ? (
                 <Command.Group
                   heading="Preferences"
-                  className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[length:var(--type-caption)] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-muted-foreground"
+                  className="**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-(length:--type-caption) **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.14em] **:[[cmdk-group-heading]]:text-muted-foreground"
                 >
                   {actionCommands.map((item) => {
                     const Icon = item.icon;

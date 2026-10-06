@@ -250,7 +250,7 @@ describe("ListTable column order (#1119)", () => {
     expect(screen.getByRole("columnheader", { name: /^Size/ }).style.zIndex).toBe("");
   });
 
-  it("lifts the held column on the raised surface with the popover shadow: no scale and no tint, and the page shows a grabbing cursor", () => {
+  it("lifts the held column on the raised surface with the popover shadow-sm: no scale and no tint, and the page shows a grabbing cursor", () => {
     mockLayout();
     render(<Demo />);
     const header = screen.getByRole("columnheader", { name: /^Name/ });

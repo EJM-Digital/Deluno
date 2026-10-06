@@ -62,7 +62,7 @@ export function LibraryCreateDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[3px]" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(88dvh,760px)] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl">
-          <div className="flex items-start justify-between gap-[var(--grid-gap)] border-b border-hairline px-6 py-5">
+          <div className="flex items-start justify-between gap-(--grid-gap) border-b border-hairline px-6 py-5">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Dialog.Title className="font-display text-xl font-semibold tracking-tight text-foreground">Add {singular}</Dialog.Title>
@@ -102,16 +102,16 @@ export function LibraryCreateDialog({
                     // nothing would be the same silence in a different place.
                     const isHeld = Boolean(result.libraryEntryId);
                     return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => (isHeld ? onOpenHeldResult(result) : onSelectResult(result))} className={cn("flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition", isHeld ? "border-success/45 bg-success/5 hover:border-success/70 hover:bg-success/10" : isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline hover:border-primary/45 hover:bg-primary/5")} title={isHeld ? `Open ${result.title} — already in your library` : `Select ${result.title}`}>
-                      {result.posterUrl ? <ArtworkImage src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[length:var(--type-caption)] text-muted-foreground">No art</div>}
+                      {result.posterUrl ? <ArtworkImage src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-(length:--type-caption) text-muted-foreground">No art</div>}
                       <span className="min-w-0 self-center">
                         <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
                         <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · {result.dataSource === "tvdb" ? "TheTVDB" : "TMDb"}</span>
                         {result.rating ? <span className="mt-2 block text-xs tabular-nums text-primary">{result.rating.toFixed(1)} rating</span> : null}
                         {isHeld
-                          ? <span className="mt-1 inline-flex items-center gap-1 text-[length:var(--type-micro)] font-semibold text-success">Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
+                          ? <span className="mt-1 inline-flex items-center gap-1 text-(length:--type-micro) font-semibold text-success">Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
                           : isSelected
-                            ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-semibold text-primary">Selected</span>
-                            : <span className="mt-1 block text-[length:var(--type-micro)] text-muted-foreground">Click to select</span>}
+                            ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-(length:--type-micro) font-semibold text-primary">Selected</span>
+                            : <span className="mt-1 block text-(length:--type-micro) text-muted-foreground">Click to select</span>}
                       </span>
                     </button>;
                   })}
@@ -151,7 +151,7 @@ export function LibraryCreateDialog({
 
           <form onSubmit={onCreate}className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-              <div className="inline-flex min-h-[1.25rem] flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="inline-flex min-h-5 flex-wrap items-center gap-x-4 gap-y-2">
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>
 
                 {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}

@@ -793,7 +793,7 @@ export function SettingsCustomFormatsPage() {
         : selectedGuide.patterns.map((pattern) => ({ name: "", implementation: "ReleaseTitleSpecification", negate: false, required: false, value: pattern }))
       : null;
   return (
-    <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={submitSafeguards} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar
         tabs={TABS}
         actions={<PageToolbarAction onClick={() => openRule(null)}>New custom rule</PageToolbarAction>}
@@ -801,8 +801,8 @@ export function SettingsCustomFormatsPage() {
 
       {moveItems.length ? (
         <ListCard title="Rules from the old guide catalogue" count={`${moveItems.length} to review`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 p-[var(--card-pad-x)]">
-            <p className="max-w-3xl text-[length:var(--type-body-sm)] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-(--card-pad-x)">
+            <p className="max-w-3xl text-(length:--type-body-sm) text-muted-foreground">
               {moveItems.length === 1 ? "One rule was" : `${moveItems.length} rules were`} made from Deluno's earlier guide catalogue, whose ids were not TRaSH's and whose rules matched by Deluno's own patterns. Moving {moveItems.length === 1 ? "it" : "them"} onto TRaSH's formats keeps every score and every profile answer.
             </p>
             <Button type="button" onClick={() => { setMoveState(undefined); setMoveMessage(null); setDrawer({ kind: "guide-move" }); }}>
@@ -841,7 +841,7 @@ export function SettingsCustomFormatsPage() {
       </ListCard>
 
       <ListCard title="TRaSH guide updates" count="Optional check and owner-approved sync — Deluno never changes a plan automatically">
-        <div className="grid gap-3 p-[var(--card-pad-x)]">
+        <div className="grid gap-3 p-(--card-pad-x)">
           <SwitchRow
             label="Check upstream guide changes weekly"
             description="Off by default. When enabled, Deluno compares the public TRaSH Git tree with the exact guide files behind your saved rules. A detected update can be staged, reviewed, and explicitly synced; it never changes a local rule or plan automatically."
@@ -851,8 +851,8 @@ export function SettingsCustomFormatsPage() {
           />
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
             <div className="min-w-0">
-              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{guideUpdateCheckLabel(updateCheck.status)}</p>
-              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-body-sm) font-medium text-foreground">{guideUpdateCheckLabel(updateCheck.status)}</p>
+              <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">
                 {updateCheck.error ?? updateCheck.report?.summary ?? (updateCheck.isEnabled ? "No guide check has run yet." : "Enable checks to allow an outbound TRaSH Guides comparison.")}
               </p>
             </div>
@@ -868,27 +868,27 @@ export function SettingsCustomFormatsPage() {
               open={guideUpdateDetailsOpen}
               onOpenChange={setGuideUpdateDetailsOpen}
             >
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              <p className="text-(length:--type-caption) text-muted-foreground">
                 {updateCheck.report.changes.filter((change) => change.isInUse).length} changed source item(s) affect saved custom formats. Review these before changing any guide package.
               </p>
               {updateCheck.report.changes.map((change) => (
                 <div key={`${change.kind}:${change.id}`} className="rounded-[10px] border border-hairline px-3 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{change.name}</span>
+                    <span className="text-(length:--type-body-sm) font-medium text-foreground">{change.name}</span>
                     <Chip tone={change.changeType === "removed" || change.isInUse ? "warn" : "info"}>{change.changeType === "removed" ? "Removed upstream" : "Changed upstream"}</Chip>
                   </div>
-                  <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
                     {change.mediaType === "tv" ? "TV" : "Movies"} · {change.kind} · {change.isInUse ? `used by ${change.inUseCustomFormatIds.length} saved custom format${change.inUseCustomFormatIds.length === 1 ? "" : "s"}` : "not used by a saved custom format"}
                   </p>
                 </div>
               ))}
               {updateCheck.report.addedSources.map((source) => (
-                <p key={source.sourcePath} className="text-[length:var(--type-caption)] text-muted-foreground">
+                <p key={source.sourcePath} className="text-(length:--type-caption) text-muted-foreground">
                   New upstream {source.mediaType === "tv" ? "TV" : "movie"} {source.kind}: <span className="font-mono">{source.sourcePath}</span>
                 </p>
               ))}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
-                <p className="max-w-2xl text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="max-w-2xl text-(length:--type-caption) text-muted-foreground">
                   Build a versioned sync preview from this exact upstream revision. Deluno preserves its reviewed mappings, keeps unknown rules Advanced, and does not change saved custom formats, library profiles, or scenario plans.
                 </p>
                 <Button type="button" variant="outline" size="sm" onClick={() => void previewGuideSync()} disabled={updateCheckBusy !== null}>
@@ -900,10 +900,10 @@ export function SettingsCustomFormatsPage() {
                 <div className="mt-3 rounded-[10px] border border-hairline bg-surface-2 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      <p className="text-(length:--type-body-sm) font-medium text-foreground">
                         {guideSyncPreview.canApply ? `Ready to sync guide package v${guideSyncPreview.proposed.version}` : "Sync preview needs attention"}
                       </p>
-                      <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                      <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">
                         {guideSyncPreview.canApply
                           ? `Pins the source inventory to ${guideSyncPreview.proposed.source.upstreamRevision.slice(0, 12)}. Existing local rules and plans stay as they are.`
                           : "Nothing has been saved. Resolve the reported problem, then run a fresh check."}
@@ -916,8 +916,8 @@ export function SettingsCustomFormatsPage() {
                       </Button>
                     ) : null}
                   </div>
-                  {guideSyncPreview.errors.map((error) => <p key={error} className="mt-2 text-[length:var(--type-caption)] text-destructive">{error}</p>)}
-                  {guideSyncPreview.warnings.map((warning) => <p key={warning} className="mt-2 text-[length:var(--type-caption)] text-warning">{warning}</p>)}
+                  {guideSyncPreview.errors.map((error) => <p key={error} className="mt-2 text-(length:--type-caption) text-destructive">{error}</p>)}
+                  {guideSyncPreview.warnings.map((warning) => <p key={warning} className="mt-2 text-(length:--type-caption) text-warning">{warning}</p>)}
                   {/*
                     The diff was computed and then reported as a count. "Three
                     profiles have a diff" is not a readable plan diff - it is
@@ -926,7 +926,7 @@ export function SettingsCustomFormatsPage() {
                   */}
                   {guideSyncPreview.profileDiffs.some((diff) => diff.changes.length > 0) ? (
                     <div className="mt-2 grid gap-2" aria-label="Guide profile plan diff">
-                      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                      <p className="text-(length:--type-caption) text-muted-foreground">
                         These guide profiles compile differently under the new snapshot. Syncing does not change them; apply each plan change yourself.
                       </p>
                       {guideSyncPreview.profileDiffs
@@ -934,25 +934,25 @@ export function SettingsCustomFormatsPage() {
                         .map((diff) => (
                           <div key={diff.profileId} className="rounded-[10px] border border-hairline px-3 py-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{diff.profileName}</span>
-                              <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                              <span className="text-(length:--type-body-sm) font-medium text-foreground">{diff.profileName}</span>
+                              <span className="text-(length:--type-caption) text-muted-foreground">
                                 {diff.currentAdvancedRuleCount} → {diff.proposedAdvancedRuleCount} rule{diff.proposedAdvancedRuleCount === 1 ? "" : "s"} needing review
                               </span>
                             </div>
-                            <ul className="mt-1 grid gap-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                            <ul className="mt-1 grid gap-0.5 text-(length:--type-caption) text-muted-foreground">
                               {diff.changes.map((change) => <li key={change}>{change}</li>)}
                             </ul>
                             {diff.warnings.map((warning) => (
-                              <p key={warning} className="mt-1 text-[length:var(--type-caption)] text-warning">{warning}</p>
+                              <p key={warning} className="mt-1 text-(length:--type-caption) text-warning">{warning}</p>
                             ))}
-                            <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                            <p className="mt-1 font-mono text-(length:--type-caption) text-muted-foreground">
                               {(diff.currentPlanHash ?? "none").slice(0, 12)} → {(diff.proposedPlanHash ?? "none").slice(0, 12)}
                             </p>
                           </div>
                         ))}
                     </div>
                   ) : (
-                    <p className="mt-2 text-[length:var(--type-caption)] text-muted-foreground">
+                    <p className="mt-2 text-(length:--type-caption) text-muted-foreground">
                       No guide profile compiles differently under this snapshot.
                     </p>
                   )}
@@ -977,11 +977,11 @@ export function SettingsCustomFormatsPage() {
                 {versions.map((stored) => (
                   <div key={`${stored.package.id}:${stored.package.version}`} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      <p className="text-(length:--type-body-sm) font-medium text-foreground">
                         Version {stored.package.version}
                         {stored.isActive ? " · in use" : ""}
                       </p>
-                      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                      <p className="mt-0.5 font-mono text-(length:--type-caption) text-muted-foreground">
                         {stored.package.source.upstreamRevision.slice(0, 12)} · {stored.integritySha256.slice(0, 12)}
                       </p>
                     </div>
@@ -1090,11 +1090,11 @@ export function SettingsCustomFormatsPage() {
       </ListCard>
 
       <ListCard title="Safeguards" count="The final guardrails applied after quality and legacy inputs are worked out">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <Field
             label="How Deluno picks a release"
             help="Hybrid is the normal choice. Rules only makes your configured policy the sole decision-maker."
-            className="max-w-[28rem]"
+            className="max-w-md"
           >
             <Select
               value={safeguards.scoringMode}
@@ -1203,9 +1203,9 @@ export function SettingsCustomFormatsPage() {
           ) : null}
           {selectedGuide ? (
             <div className="grid gap-1 rounded-[10px] border border-primary/25 bg-primary/5 px-3 py-2">
-              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{friendlyRuleName(selectedGuide.name)}</p>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">{selectedGuide.description}</p>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">{isGenuineGuideFormat(selectedGuide) ? "TRaSH's own format, with TRaSH's id and conditions." : "Deluno's own format: TRaSH does not publish one."}</p>
+              <p className="text-(length:--type-body-sm) font-medium text-foreground">{friendlyRuleName(selectedGuide.name)}</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">{selectedGuide.description}</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">{isGenuineGuideFormat(selectedGuide) ? "TRaSH's own format, with TRaSH's id and conditions." : "Deluno's own format: TRaSH does not publish one."}</p>
             </div>
           ) : null}
           <Field label="Name" help="What this rule is looking for, in your own words.">
@@ -1264,7 +1264,7 @@ export function SettingsCustomFormatsPage() {
 
         {lockedDefinition ? (
           <DrawerSection title="Matching" aside={`${lockedDefinition.length} ${lockedDefinition.length === 1 ? "condition" : "conditions"}`}>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               {lockedDefinition.some((specification) => specification.implementation !== "ReleaseTitleSpecification" || specification.required)
                 ? "Matched exactly as TRaSH defines it: every required condition must hold, and at least one condition of each kind. These are TRaSH's, so they are not edited here."
                 : "Matches a release title containing any one of these patterns."}
@@ -1273,7 +1273,7 @@ export function SettingsCustomFormatsPage() {
           </DrawerSection>
         ) : (
         <DrawerSection title="Matching" aside={selectedGuide ? "Guide-backed" : form.conditions.length ? `${form.conditions.length} criteria` : "Set up below"}>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             {selectedGuide
               ? "Deluno will use the guide definition above. You only need to open Advanced matching if you want to change how it identifies releases."
               : "A custom rule needs at least one thing to look for. Use plain words such as WEB-DL, HDR, or a release group name."}
@@ -1285,7 +1285,7 @@ export function SettingsCustomFormatsPage() {
             onOpenChange={setAdvancedOpen}
           >
             {form.conditions.length === 0 ? (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Add at least one matching criterion before saving this custom rule.</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Add at least one matching criterion before saving this custom rule.</p>
             ) : null}
             {form.conditions.map((condition, index) => (
               <div key={index} className="grid gap-2 rounded-[10px] border border-hairline bg-surface-2/40 p-3">
@@ -1395,14 +1395,14 @@ export function SettingsCustomFormatsPage() {
 
         {editing ? (
           <DrawerSection title="Library impact" aside={librariesByFormat.get(editing.id)?.length ? `${librariesByFormat.get(editing.id)!.length} libraries` : "Not assigned"}>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">This rule only changes releases for libraries whose Library Profile includes it.</p>
+            <p className="text-(length:--type-caption) text-muted-foreground">This rule only changes releases for libraries whose Library Profile includes it.</p>
             <LibraryImpactLinks libraries={librariesByFormat.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
           </DrawerSection>
         ) : null}
 
         {editing ? (
           <DrawerSection title="Share or back up this rule">
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Download this rule as JSON to back it up or hand it to someone else. Import it back here, or on another Deluno install, from Import above.</p>
+            <p className="text-(length:--type-caption) text-muted-foreground">Download this rule as JSON to back it up or hand it to someone else. Import it back here, or on another Deluno install, from Import above.</p>
             <div>
               <Button type="button" variant="outline" size="sm" onClick={() => void exportRule(editing)} disabled={busy !== null}>
                 {busy === `export:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -1462,13 +1462,13 @@ export function SettingsCustomFormatsPage() {
                     onCheckedChange={(next) => setMoveSelection((current) => next ? [...new Set([...current, item.ruleId])] : current.filter((id) => id !== item.ruleId))}
                   />
                   <span className="grid min-w-0 gap-0.5">
-                    <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                    <span className="text-(length:--type-body-sm) font-medium text-foreground">
                       {item.currentName} → {friendlyRuleName(item.newName)}
                       <span className="font-normal text-muted-foreground"> · {mediaTypeLabel(item.mediaType)}</span>
                     </span>
-                    <span className="text-[length:var(--type-caption)] text-muted-foreground">{item.explanation}</span>
+                    <span className="text-(length:--type-caption) text-muted-foreground">{item.explanation}</span>
                     {item.profileNames.length ? (
-                      <span className="text-[length:var(--type-caption)] text-muted-foreground">Used by {item.profileNames.join(", ")}</span>
+                      <span className="text-(length:--type-caption) text-muted-foreground">Used by {item.profileNames.join(", ")}</span>
                     ) : null}
                     {item.conditionsWereEdited ? (
                       <span><Chip tone="warn">Your conditions differ from what Deluno shipped</Chip></span>
@@ -1530,12 +1530,12 @@ export function SettingsCustomFormatsPage() {
               {importResults.map((result, index) => (
                 <div key={`${result.name ?? "unnamed"}-${index}`} className="grid gap-1 border-b border-hairline py-2 last:border-b-0">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate text-[length:var(--type-body-sm)] text-foreground">{result.name ?? "(unnamed)"}</span>
+                    <span className="min-w-0 truncate text-(length:--type-body-sm) text-foreground">{result.name ?? "(unnamed)"}</span>
                     <Chip tone={result.imported ? "ok" : "bad"}>{result.imported ? "Imported" : "Not imported"}</Chip>
                   </div>
-                  {result.error ? <p className="text-[length:var(--type-caption)] text-destructive">{result.error}</p> : null}
+                  {result.error ? <p className="text-(length:--type-caption) text-destructive">{result.error}</p> : null}
                   {result.droppedConditions.length ? (
-                    <p className="text-[length:var(--type-caption)] text-warning">
+                    <p className="text-(length:--type-caption) text-warning">
                       Could not understand: {result.droppedConditions.join(", ")}
                     </p>
                   ) : null}
@@ -1571,14 +1571,14 @@ export function SettingsCustomFormatsPage() {
         {presetDetail ? (
           <>
             <DrawerSection title="What this is for">
-              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{presetDetail.description}</p>
-              <p className="text-[length:var(--type-body-sm)] text-foreground">
+              <p className="text-(length:--type-body-sm) text-muted-foreground">{presetDetail.description}</p>
+              <p className="text-(length:--type-body-sm) text-foreground">
                 <span className="font-medium">Best for:</span> {presetDetail.bestFor}
               </p>
               {presetDetail.warnings?.length ? (
                 <div className="grid gap-1">
                   {presetDetail.warnings.map((warning) => (
-                    <p key={warning} className="text-[length:var(--type-caption)] text-warning">
+                    <p key={warning} className="text-(length:--type-caption) text-warning">
                       {warning}
                     </p>
                   ))}
@@ -1595,14 +1595,14 @@ export function SettingsCustomFormatsPage() {
                   return (
                     <div key={`${mediaType}:${cf.trashId}`} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
                       <span className="min-w-0">
-                        <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">
+                        <span className="block truncate text-(length:--type-body-sm) text-foreground">
                           {friendlyRuleName(cf.name)}
                           {presetDetail.mediaType === "all" ? <span className="text-muted-foreground"> · {mediaTypeLabel(mediaType)}</span> : null}
                         </span>
-                        <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cf.description}</span>
+                        <span className="block truncate text-(length:--type-caption) text-muted-foreground">{cf.description}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[length:var(--type-caption)] text-muted-foreground">{ruleIntent(score)}</span>
+                        <span className="text-(length:--type-caption) text-muted-foreground">{ruleIntent(score)}</span>
                         {already ? <Chip tone="ok">Added</Chip> : null}
                       </span>
                     </div>
@@ -1679,7 +1679,7 @@ export function SettingsCustomFormatsPage() {
             />
           </Field>
           {customFormats.length === 0 ? (
-            <p className="text-[length:var(--type-caption)] text-warning">You have no rules yet, so nothing can match. Apply a preset first.</p>
+            <p className="text-(length:--type-caption) text-warning">You have no rules yet, so nothing can match. Apply a preset first.</p>
           ) : null}
         </DrawerSection>
 
@@ -1689,22 +1689,22 @@ export function SettingsCustomFormatsPage() {
             aside={`${results.filter((result) => result.isMatch).length} of ${results.length} matched`}
           >
             {results.length === 0 ? (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Nothing to report — the test could not be run.</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Nothing to report — the test could not be run.</p>
             ) : (
               <div className="grid gap-1.5">
                 {[...results].sort((a, b) => Number(b.isMatch) - Number(a.isMatch)).map((result) => (
                   <div key={result.formatId} className="grid gap-1 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-center justify-between gap-3">
-                      <span className={`min-w-0 truncate text-[length:var(--type-body-sm)] ${result.isMatch ? "text-foreground" : "text-muted-foreground"}`}>
+                      <span className={`min-w-0 truncate text-(length:--type-body-sm) ${result.isMatch ? "text-foreground" : "text-muted-foreground"}`}>
                         {result.formatName}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[length:var(--type-caption)] text-muted-foreground">{result.isMatch ? ruleIntent(result.score) : "No intent"}</span>
+                        <span className="text-(length:--type-caption) text-muted-foreground">{result.isMatch ? ruleIntent(result.score) : "No intent"}</span>
                         <Chip tone={result.isMatch ? "ok" : "idle"}>{result.isMatch ? "Matched" : "No match"}</Chip>
                       </span>
                     </div>
                     {result.isMatch && result.matchedConditions.length ? (
-                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                      <span className="block truncate text-(length:--type-caption) text-muted-foreground">
                         {result.matchedConditions.map(describeMatchedCondition).join(" · ")}
                       </span>
                     ) : null}
@@ -1717,7 +1717,7 @@ export function SettingsCustomFormatsPage() {
 
         {typedPreviewError ? (
           <DrawerSection title="Typed plan preview">
-            <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{typedPreviewError}</p>
+            <p role="alert" className="text-(length:--type-caption) text-destructive">{typedPreviewError}</p>
           </DrawerSection>
         ) : null}
 
@@ -1728,27 +1728,27 @@ export function SettingsCustomFormatsPage() {
                 <Chip tone={typedPreview.comparison?.status === "rejected" ? "bad" : typedPreview.comparison?.status === "needsReview" ? "warn" : typedPreview.comparison?.status === "currentBetter" || typedPreview.comparison?.status === "equivalent" ? "info" : typedPreview.candidateEvaluation.status === "meetsPlan" ? "ok" : "info"}>
                   {typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}
                 </Chip>
-                <span className="text-[length:var(--type-caption)] text-muted-foreground">Plan {typedPreview.planVersion}</span>
+                <span className="text-(length:--type-caption) text-muted-foreground">Plan {typedPreview.planVersion}</span>
               </div>
               {typedPreview.comparison?.reasons.length ? (
-                <ul className="grid gap-1 text-[length:var(--type-body-sm)] text-muted-foreground" aria-label="Typed comparison reasons">
+                <ul className="grid gap-1 text-(length:--type-body-sm) text-muted-foreground" aria-label="Typed comparison reasons">
                   {typedPreview.comparison.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
               ) : null}
               {typedPreview.candidateEvaluation.reasons.length ? (
-                <ul className="grid gap-1 text-[length:var(--type-caption)] text-muted-foreground" aria-label="Typed evaluation reasons">
+                <ul className="grid gap-1 text-(length:--type-caption) text-muted-foreground" aria-label="Typed evaluation reasons">
                   {typedPreview.candidateEvaluation.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
               ) : null}
               <div className="grid gap-1.5" aria-label="Typed family outcomes">
                 {typedPreview.candidateEvaluation.families.map((family) => (
                   <div key={family.familyId} className="flex flex-wrap items-start justify-between gap-2 rounded-[10px] border border-hairline px-3 py-2">
-                    <span className="min-w-0 text-[length:var(--type-body-sm)] text-foreground">{humanizeTypedName(family.familyId)}</span>
-                    <span className="max-w-full text-right text-[length:var(--type-caption)] text-muted-foreground">{family.explanation}</span>
+                    <span className="min-w-0 text-(length:--type-body-sm) text-foreground">{humanizeTypedName(family.familyId)}</span>
+                    <span className="max-w-full text-right text-(length:--type-caption) text-muted-foreground">{family.explanation}</span>
                   </div>
                 ))}
               </div>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Detected {typedPreview.candidateFacts.length} typed evidence item{typedPreview.candidateFacts.length === 1 ? "" : "s"}. The plan hash is {typedPreview.planHash.slice(0, 12)}…</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Detected {typedPreview.candidateFacts.length} typed evidence item{typedPreview.candidateFacts.length === 1 ? "" : "s"}. The plan hash is {typedPreview.planHash.slice(0, 12)}…</p>
             </div>
           </DrawerSection>
         ) : null}
@@ -1901,13 +1901,13 @@ function SpecificationList({ specifications }: { specifications: RuleSpecificati
     <ul className="grid gap-1.5" aria-label="Matching conditions">
       {specifications.map((specification, index) => (
         <li key={index} className="grid gap-0.5 rounded-[10px] border border-hairline bg-surface-2/40 px-3 py-2">
-          <span className="flex flex-wrap items-center gap-2 text-[length:var(--type-body-sm)] text-foreground">
+          <span className="flex flex-wrap items-center gap-2 text-(length:--type-body-sm) text-foreground">
             {specificationKind(specification.implementation)}
             {specification.name ? <span className="text-muted-foreground">{specification.name}</span> : null}
             {specification.negate ? <Chip tone="warn">must not match</Chip> : null}
             {specification.required ? <Chip tone="info">required</Chip> : null}
           </span>
-          <span className="break-all font-mono text-[length:var(--type-caption)] text-muted-foreground">{specification.value}</span>
+          <span className="break-all font-mono text-(length:--type-caption) text-muted-foreground">{specification.value}</span>
         </li>
       ))}
     </ul>

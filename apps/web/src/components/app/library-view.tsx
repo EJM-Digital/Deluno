@@ -1082,7 +1082,7 @@ export function LibraryView({
 
   return (
     <>
-      <section className="space-y-[var(--grid-gap)]">
+      <section className="space-y-(--grid-gap)">
         {/*
           The summary band is gone. It counted Missing, Monitored, Unmonitored
           and Upgradable directly above a row of chips carrying the same four
@@ -1150,7 +1150,7 @@ export function LibraryView({
         {/*
           The count line belongs to the shelf, not to the space above it.
 
-          It used to be a third sibling in a `space-y-[--grid-gap]` stack, so one
+          It used to be a third sibling in a `space-y-(--grid-gap)` stack, so one
           sentence sat in its own band with a full gap either side: the rail, a
           gap, "11 titles shown", another gap, then the posters. It reads as a
           hole. It is a caption for what is below it, so it sits close to it, and

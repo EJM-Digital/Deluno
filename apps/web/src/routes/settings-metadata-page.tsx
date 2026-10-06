@@ -144,12 +144,12 @@ export function SettingsMetadataPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-(--page-gap)" noValidate>
       <PageToolbar tabs={librarySetupNavItems} />
 
       {/* No .nfo or artwork switches here: Deluno writes neither file (#735). Offer them again only with a writer behind them. */}
       <ListCard title="Title details" count="Language and ratings region">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="Details language" help="Titles, descriptions and taglines are shown in this language when a translation exists. The original title is always kept, and searches still match every name a title is known by. English leaves everything as it is." error={settingsMutation.fieldErrors.metadataLanguage}>
               <PresetField
@@ -171,7 +171,7 @@ export function SettingsMetadataPage() {
             </Field>
           </FieldRow>
           {metadataPreferencesIgnored(metadataStatus) && (
-            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+            <p className="text-(length:--type-body-sm) text-muted-foreground">
               The ratings region applies when Deluno looks titles up on TMDb directly. This install uses Deluno's managed
               metadata service, which does not take a region, so changing it has no effect here. The language does apply.
             </p>
@@ -181,7 +181,7 @@ export function SettingsMetadataPage() {
 
       {metadataKeysUnreadable(settings) ? (
         <ListCard title="Saved keys" count="Enter again">
-          <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
             <SecretUnreadableNotice item={{ secretUnreadable: true, secretProblem: settings.metadataKeyProblem }} />
             <FieldRow>
               {settings.metadataTmdbApiKeyUnreadable ? (

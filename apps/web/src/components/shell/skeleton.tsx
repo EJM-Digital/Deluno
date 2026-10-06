@@ -10,7 +10,7 @@ export function Skeleton({
       data-skeleton
       className={cn(
         "relative overflow-hidden rounded-md bg-surface-2",
-        "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent before:animate-shimmer",
+        "before:absolute before:inset-0 before:-translate-x-full before:bg-linear-to-r/srgb before:from-transparent before:via-white/5 before:to-transparent before:animate-shimmer",
         className
       )}
       {...props}
@@ -51,7 +51,7 @@ export function CardSkeleton() {
 export function PosterSkeleton() {
   return (
     <div className="space-y-2">
-      <Skeleton className="aspect-[2/3] w-full rounded-xl" />
+      <Skeleton className="aspect-2/3 w-full rounded-xl" />
       <Skeleton className="h-3 w-2/3" />
       <Skeleton className="h-2.5 w-1/3" />
     </div>
@@ -65,7 +65,7 @@ export function PosterSkeleton() {
  */
 export function RouteSkeleton() {
   return (
-    <div className="space-y-[var(--page-gap)]" aria-busy="true" aria-live="polite" data-route-skeleton>
+    <div className="space-y-(--page-gap)" aria-busy="true" aria-live="polite" data-route-skeleton>
       <div className="space-y-3">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-9 w-2/3 max-w-xl" />
@@ -78,8 +78,8 @@ export function RouteSkeleton() {
         ))}
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(min(100%,var(--hero-stat-panel-min)),0.85fr)] 2xl:grid-cols-[minmax(0,1.65fr)_minmax(min(100%,calc(var(--hero-stat-panel-min)+40px)),0.7fr)]">
-        <div className="space-y-3 rounded-2xl border border-hairline bg-card p-5 dark:border-white/[0.06]">
+      <div className="grid gap-(--grid-gap) xl:grid-cols-[minmax(0,1.45fr)_minmax(min(100%,var(--hero-stat-panel-min)),0.85fr)] 2xl:grid-cols-[minmax(0,1.65fr)_minmax(min(100%,calc(var(--hero-stat-panel-min)+40px)),0.7fr)]">
+        <div className="space-y-3 rounded-2xl border border-hairline bg-card p-5 dark:border-white/6">
           <Skeleton className="h-4 w-1/3" />
           <Skeleton className="h-3 w-1/2" />
           <div className="mt-3 space-y-2">

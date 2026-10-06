@@ -231,7 +231,7 @@ export function LibraryTable(
     <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] min-w-0 flex-1 overflow-auto">
       <table
         ref={tableRef}
-        className="data-table min-w-[900px] text-[length:var(--list-row-text)]"
+        className="data-table min-w-[900px] text-(length:--list-row-text)"
         role="grid"
         aria-rowcount={items.length}
       >
@@ -283,7 +283,7 @@ export function LibraryTable(
                   LIST_COLUMN_CLASSES[column],
                   "cursor-grab select-none",
                   draggingColumn === column && "opacity-45",
-                  dropTargetColumn === column && draggingColumn !== column && "bg-primary/[0.08]"
+                  dropTargetColumn === column && draggingColumn !== column && "bg-primary/8"
                 )}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -317,7 +317,7 @@ export function LibraryTable(
                 aria-rowindex={index + 1}
                 onFocus={() => setFocusIndex(index)}
                 onKeyDown={(event) => handleRowKey(event, index, item)}
-                className="outline-none focus-visible:shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.7)]"
+                className="outline-hidden focus-visible:shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.7)]"
               >
                 <td className="col-sticky" style={{ minWidth: 40 }}>
                   <TableCheckbox
@@ -346,7 +346,7 @@ export function LibraryTable(
                         already did with "Monitored" while the dot was halved.
                       */}
                       <p className="truncate font-medium text-foreground">{item.localizedTitle ?? item.title}</p>
-                      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                      <p className="text-(length:--type-caption) text-muted-foreground">
                         {item.type === "movie" ? "Movie" : "TV"} · {item.year}
                       </p>
                     </div>

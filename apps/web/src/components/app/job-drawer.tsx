@@ -45,7 +45,7 @@ export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem
 
           {job.lastError ? (
             <DrawerSection title="Why it failed">
-              <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-destructive">{job.lastError}</p>
+              <p className="whitespace-pre-wrap text-(length:--type-body-sm) leading-relaxed text-destructive">{job.lastError}</p>
             </DrawerSection>
           ) : null}
 
@@ -62,7 +62,7 @@ export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem
 
           {job.payloadJson ? (
             <DrawerSection title="Payload">
-              <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+              <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
                 {prettyJson(job.payloadJson)}
               </pre>
             </DrawerSection>

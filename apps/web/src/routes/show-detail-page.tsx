@@ -1056,7 +1056,7 @@ export function ShowDetailPage() {
   const visibleCandidates = filterCandidates(releaseCandidates, { protocol: candidateProtocolFilter, indexerName: candidateIndexerFilter });
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-[var(--page-gap)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-(--page-gap)">
       {/* One toolbar: which part of the show you want, where you came from, and
           the two searches. The topbar names the section, the hero names the show. */}
       <PageToolbar
@@ -1124,17 +1124,17 @@ export function ShowDetailPage() {
         onRetry={() => void handleMetadataRefresh()}
       />
 
-      <Card className="relative isolate min-w-0 min-h-[19rem] overflow-hidden border-primary/25 bg-card">
+      <Card className="relative isolate min-w-0 min-h-76 overflow-hidden border-primary/25 bg-card">
         <HeroBackdrop url={series.backdropUrl} />
-        <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]">
+        <CardContent className="relative p-(--tile-pad) sm:p-[calc(var(--tile-pad)*1.15)]">
+          <div className="grid items-start gap-(--grid-gap) md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]">
             {series.posterUrl ? (
               <ArtworkImage src={series.posterUrl} alt={`${series.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
-            <div className="min-w-0 self-start xl:flex xl:h-96 xl:flex-col xl:has-[[data-expanded=true]]:h-auto">
-              <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
+            <div className="min-w-0 self-start xl:flex xl:h-96 xl:flex-col xl:has-data-[expanded=true]:h-auto">
+              <p className="text-(length:--section-eyebrow-size) font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
               {logoUrl ? <ArtworkImage fallback={null} src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
@@ -1171,7 +1171,7 @@ export function ShowDetailPage() {
               ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
-                  <span className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide" title="Classification">
+                  <span className="rounded-sm border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide" title="Classification">
                     {metaText("Certification")}
                   </span>
                 ) : null}
@@ -1222,15 +1222,15 @@ export function ShowDetailPage() {
                   { label: "Import issues", value: importCases.length ? String(importCases.length) : null }
                 ].filter((fact) => fact.value).map((fact) => (
                   <div key={fact.label} className="min-w-0">
-                    <dt className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{fact.label}</dt>
+                    <dt className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{fact.label}</dt>
                     <dd className="truncate text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
                   </div>
                 ))}
               </dl>
               <TitleSynopsis text={series.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this series."} />
             </div>
-            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-sm xl:min-h-96">
-              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
+            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-xs xl:min-h-96">
+              <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-0.5 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-2"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
               {/* Source, IMDb and TheTVDB on one line (#1058): the panel may not outgrow the poster. */}
@@ -1247,8 +1247,8 @@ export function ShowDetailPage() {
               </div>
               {/* One short credit line for both sources, so the panel still fits beside the poster. */}
               {metaText("TvDbId")
-                ? <TmdbAndTvdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" />
-                : <TmdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" />}
+                ? <TmdbAndTvdbAttribution className="mt-1.5 text-(length:--type-micro) leading-tight" />
+                : <TmdbAttribution className="mt-1.5 text-(length:--type-micro) leading-tight" />}
               <TitleActionGrid>
               <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -1295,7 +1295,7 @@ export function ShowDetailPage() {
       {screenshots.length ? (
         <Card>
           <CardContent className="p-4">
-            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Screenshots</p>
+            <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.18em] text-muted-foreground">Screenshots</p>
             <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
               {screenshots.map((url) => (
                 <ArtworkImage key={url} fallback={null} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
@@ -1313,7 +1313,7 @@ export function ShowDetailPage() {
       {releaseFactsByCountry.length ? (
         <Card>
           <CardContent className="p-4">
-            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Certification by country</p>
+            <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.18em] text-muted-foreground">Certification by country</p>
             <div className="mt-2 space-y-2 text-sm">
               {selectedCountryFacts ? <CountryReleaseRow facts={selectedCountryFacts} preferences={preferences} highlighted /> : null}
               {otherCountryFacts.map((facts) => (
@@ -1427,7 +1427,7 @@ export function ShowDetailPage() {
                     <ListCell mobile>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
                       {candidate.decisionStatus?.toLowerCase() === "rejected" && candidate.decisionReasons?.[0] ? (
-                        <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">{candidate.decisionReasons[0]}</span>
+                        <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{candidate.decisionReasons[0]}</span>
                       ) : null}
                     </ListCell>
                   </ListRow>
@@ -1651,7 +1651,7 @@ export function ShowDetailPage() {
                     <ListNameCell name={entry.name} />
                     <ListCell mobile>
                       <Chip tone={entry.used ? "ok" : "idle"}>{entry.used ? "Used" : "Not used"}</Chip>
-                      <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">{entry.reason}</span>
+                      <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{entry.reason}</span>
                     </ListCell>
                   </ListRow>
                 ))}
@@ -1997,16 +1997,16 @@ export function ShowDetailPage() {
                     onChange={(event) => setNumberingDraft({ ...numberingDraft, numberingScheme: event.target.value })}
                     options={ALL_NUMBERING_SCHEME_OPTIONS.filter((option) => numberingDraft.availableSchemes.includes(option.value))}
                   />
-                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                  <p className="text-(length:--type-caption) leading-snug text-muted-foreground">
                     {explainNumberingScheme(numberingDraft.numberingScheme)}
                   </p>
                   {hasNoOtherOrderings(numberingDraft) ? (
-                    <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                    <p className="text-(length:--type-caption) leading-snug text-muted-foreground">
                       {OTHER_ORDERINGS_UNAVAILABLE_NOTE}
                     </p>
                   ) : null}
                   {numberingDraft.otherSchemeNames.length > 0 ? (
-                    <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                    <p className="text-(length:--type-caption) leading-snug text-muted-foreground">
                       TMDb also publishes {numberingDraft.otherSchemeNames.join(", ")} for this title, which Deluno does not match episodes by yet.
                     </p>
                   ) : null}
@@ -2024,13 +2024,13 @@ export function ShowDetailPage() {
                   />
                 </label>
               </div>
-              <p className="mt-3 text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+              <p className="mt-3 text-(length:--type-caption) leading-snug text-muted-foreground">
                 Deluno matches only an exact, unique key. If a filename cannot be matched safely it stays in import recovery for review.
               </p>
             </DrawerSection>
 
             <DrawerSection title="Episode mappings" aside={`${Object.keys(numberingDraft.mappings).length} episodes`}>
-              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-112 space-y-2 overflow-y-auto pr-1">
                 {inventory.episodes.map((episode) => {
                   const mapping = numberingDraft.mappings[episode.episodeId] ?? { absoluteNumber: "", sceneSeasonNumber: "", sceneEpisodeNumber: "", airDate: "" };
                   const updateMapping = (field: keyof NumberingDraft["mappings"][string], value: string) => setNumberingDraft({
@@ -2181,10 +2181,10 @@ export function ShowDetailPage() {
             ) : null}
 
             <DrawerSection title="Automation" aside={wantedStatusPresentation(openEpisode.wantedStatus).label}>
-              <div className="flex min-h-[var(--control-height)] items-center justify-between gap-[var(--grid-gap)]">
+              <div className="flex min-h-(--control-height) items-center justify-between gap-(--grid-gap)">
                 <span className="min-w-0">
-                  <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">Monitor this episode</span>
-                  <span className="mt-0.5 block text-[length:var(--type-caption)] text-muted-foreground">{openEpisode.wantedReason}</span>
+                  <span className="block text-(length:--type-body-sm) font-medium text-foreground">Monitor this episode</span>
+                  <span className="mt-0.5 block text-(length:--type-caption) text-muted-foreground">{openEpisode.wantedReason}</span>
                 </span>
                 <Switch
                   aria-label="Monitor this episode"
@@ -2277,14 +2277,14 @@ export function ShowDetailPage() {
                   ...(openCandidate.releaseGroup ? [{ label: "Release group", value: openCandidate.releaseGroup }] : [])
                 ]}
               />
-              <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">{openCandidate.summary}</p>
+              <p className="text-(length:--type-caption) leading-snug text-muted-foreground">{openCandidate.summary}</p>
             </DrawerSection>
 
             {openCandidate.decisionReasons?.length ? (
               <DrawerSection title={likesCandidate(openCandidate) ? "Why Deluno likes it" : "How Deluno reached this"}>
                 <ul className="grid gap-1">
                   {openCandidate.decisionReasons.slice(0, 6).map((reason) => (
-                    <li key={reason} className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                    <li key={reason} className="text-(length:--type-body-sm) text-muted-foreground">
                       {reason}
                     </li>
                   ))}
@@ -2296,7 +2296,7 @@ export function ShowDetailPage() {
               <DrawerSection title="Risks">
                 <ul className="grid gap-1">
                   {openCandidate.riskFlags.slice(0, 6).map((risk) => (
-                    <li key={risk} className="text-[length:var(--type-body-sm)] text-destructive">
+                    <li key={risk} className="text-(length:--type-body-sm) text-destructive">
                       {risk}
                     </li>
                   ))}
@@ -2305,11 +2305,11 @@ export function ShowDetailPage() {
             ) : null}
 
             <DrawerSection>
-              <div className="rounded-[10px] border border-warning/30 px-[var(--field-pad-x)] py-2">
-                <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)]">
+              <div className="rounded-[10px] border border-warning/30 px-(--field-pad-x) py-2">
+                <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap)">
                   <div className="min-w-0">
-                    <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
-                    <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                    <p className="text-(length:--type-body-sm) font-medium text-foreground">Send it anyway</p>
+                    <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">
                       Overrides this decision. Your reason is stored in activity and search history.
                     </p>
                   </div>

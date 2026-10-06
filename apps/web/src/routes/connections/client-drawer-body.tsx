@@ -204,10 +204,10 @@ export function ClientDrawerBody({
             />
           </Field>
           {editing ? (
-            <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">
+            <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline px-(--field-pad-x) py-2">
               <div className="min-w-0">
-                <p className="text-[length:var(--type-body-sm)] text-foreground">Content blocklist sync</p>
-                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="text-(length:--type-body-sm) text-foreground">Content blocklist sync</p>
+                <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">
                   {blocklistSync
                     ? blocklistSync.succeeded
                       ? (blocklistSync.message ?? "Last push succeeded.")
@@ -250,13 +250,13 @@ export function ClientDrawerBody({
           open={pathMappingOpen}
           onOpenChange={setPathMappingOpen}
         >
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             Configure completed-download folders in the client itself. Use this only when the client reports a path Deluno cannot use directly — for example, the client reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping is shared by host (#809): add it once here, and any other client at the same host reuses it automatically.
           </p>
           {mappings.length ? (
             <div className="grid gap-2">
               {mappings.map((mapping) => (
-                <div key={mapping.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] font-mono text-[length:var(--type-caption)]">
+                <div key={mapping.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-(--field-pad-x) font-mono text-(length:--type-caption)">
                   <span className="min-w-0 flex-1 truncate text-muted-foreground" title={mapping.remotePath}>{mapping.remotePath}</span>
                   <span aria-hidden className="text-primary">→</span>
                   <span className="min-w-0 flex-1 truncate text-foreground" title={mapping.localPath}>{mapping.localPath}</span>
@@ -273,10 +273,10 @@ export function ClientDrawerBody({
           ) : null}
           <FieldRow>
             <Field label={`Path reported by ${editing.name}`}>
-              <Input value={newMapping.remotePath} onChange={(event) => setNewMapping({ ...newMapping, remotePath: event.target.value })} placeholder="/downloads/complete" className="font-mono text-[length:var(--type-caption)]" />
+              <Input value={newMapping.remotePath} onChange={(event) => setNewMapping({ ...newMapping, remotePath: event.target.value })} placeholder="/downloads/complete" className="font-mono text-(length:--type-caption)" />
             </Field>
             <Field label="Same path as Deluno sees it">
-              <Input value={newMapping.localPath} onChange={(event) => setNewMapping({ ...newMapping, localPath: event.target.value })} placeholder="D:\Downloads\complete" className="font-mono text-[length:var(--type-caption)]" />
+              <Input value={newMapping.localPath} onChange={(event) => setNewMapping({ ...newMapping, localPath: event.target.value })} placeholder="D:\Downloads\complete" className="font-mono text-(length:--type-caption)" />
             </Field>
           </FieldRow>
           <Button type="button" variant="outline" size="sm" className="w-max" onClick={onAddMapping} disabled={busy !== null || !newMapping.remotePath.trim() || !newMapping.localPath.trim()}>
@@ -290,7 +290,7 @@ export function ClientDrawerBody({
 
       {editing && chip ? (
         <DrawerSection title="Health">
-          <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+          <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
@@ -407,14 +407,14 @@ function SharingRulesEditor() {
       open={open}
       onOpenChange={setOpen}
     >
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="text-(length:--type-caption) text-muted-foreground">
         Hold specific downloads to a different seed target, or refuse to reclaim them below a minimum seeder count or past a run of inactivity — evaluated in priority order, before Deluno&apos;s normal sharing rule.
       </p>
-      {error ? <p className="text-[length:var(--type-caption)] text-destructive">{error}</p> : null}
+      {error ? <p className="text-(length:--type-caption) text-destructive">{error}</p> : null}
       {sorted.length ? (
         <div className="grid gap-2">
           {sorted.map((rule) => (
-            <div key={rule.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-caption)]">
+            <div key={rule.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-(--field-pad-x) text-(length:--type-caption)">
               <span className="text-muted-foreground">{rule.priority}.</span>
               <span className="min-w-0 flex-1 truncate text-foreground" title={describeRule(rule)}>{describeRule(rule)}</span>
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove seeding rule ${rule.priority}`} onClick={() => removeRule(rule.id)} disabled={busy !== null}>

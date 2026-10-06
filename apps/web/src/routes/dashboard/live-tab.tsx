@@ -163,17 +163,17 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }
 
   return (
-    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-[var(--grid-gap)]", side && "h-full min-h-0")}>
+    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-(--grid-gap)", side && "h-full min-h-0")}>
       {showSetup ? (
-        <div className="flex shrink-0 flex-col gap-[var(--grid-gap)]">
+        <div className="flex shrink-0 flex-col gap-(--grid-gap)">
           <OnboardingBanner isSetupSuppressed={setup.progress.isSkipped || setup.progress.isCompleted} onDismiss={dismissOnboarding} />
           <SetupProgressLadder status={setup.status} />
         </div>
       ) : null}
 
       {emptyLibrary ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
-          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Nothing in your library yet.</p>
+        <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-(--card-pad-x) py-2 shadow-card dark:border-white/[0.07]">
+          <p className="text-(length:--type-body-sm) text-muted-foreground">Nothing in your library yet.</p>
           <Button asChild size="sm" variant="outline">
             <Link to="/movies?add=true">Add a movie</Link>
           </Button>
@@ -183,7 +183,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
       <div
         ref={gridRef}
         data-live-grid={side ? "shared" : "stacked"}
-        className={cn("gap-[var(--grid-gap)]", side ? "grid min-h-0 flex-1" : "flex flex-col")}
+        className={cn("gap-(--grid-gap)", side ? "grid min-h-0 flex-1" : "flex flex-col")}
         style={side ? ({ gridTemplateColumns: GRID_COLUMNS, gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS } satisfies CSSProperties) : undefined}
       >
         <div className={cn("min-h-0 min-w-0", side && "[&>.lb-now]:h-full [&>.lb-now]:grid-rows-[minmax(0,1fr)] [&>.lb-now>*]:h-full [&>.lb-now>*]:min-h-0 [&>.lb-now>*]:overflow-hidden")} style={side ? { gridArea: "now" } : undefined}>
@@ -192,7 +192,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         <div className="flex min-h-0 min-w-0 flex-col" style={side ? { gridArea: "board" } : undefined}>
           <Journey fill={side} budget={side ? undefined : stackedJourneyBudget(windowHeight)} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
         </div>
-        <div className="grid min-h-0 min-w-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
+        <div className="grid min-h-0 min-w-0 gap-(--grid-gap) md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
           <Shelf
             onHeightNeed={setLowNeed}
             items={shelfItems}
@@ -203,11 +203,11 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
             heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0))}
             detail={showingLatest ? undefined : arrivedDetail(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)}
           />
-          <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")}>
+          <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-104")}>
             <ActivityStream rows={latest} titles={titles} dense={compactActivity} />
           </div>
         </div>
-        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "src" } : undefined}>
+        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-104")} style={side ? { gridArea: "src" } : undefined}>
           <SourcesCard
             indexers={data.indexers ?? NO_ROWS}
             scoreboard={data.scoreboard}
@@ -220,7 +220,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
             connections={connections.connections}
           />
         </div>
-        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "act" } : undefined}>
+        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-104")} style={side ? { gridArea: "act" } : undefined}>
           <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
         </div>
       </div>

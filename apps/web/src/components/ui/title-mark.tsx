@@ -250,7 +250,7 @@ function labelTone(fillPercent: number): string {
     ? "text-black/85"
     // Tailwind cannot parse commas inside an arbitrary value, so the shadow is
     // spelled with underscores and a slash.
-    : "text-white [text-shadow:0_1px_2px_rgb(0_0_0_/_0.65)]";
+    : "text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.65)]";
 }
 
 /**
@@ -322,7 +322,7 @@ function TwoToneBar({
    * Which edge of the artwork this bar pins to.
    *
    * **It must be positioned, not laid out in flow.** The artwork box is
-   * `relative aspect-[2/3] overflow-hidden` with the image at `h-full w-full`,
+   * `relative aspect-2/3 overflow-hidden` with the image at `h-full w-full`,
    * so a bar in normal flow is pushed below a full-height image and clipped away
    * entirely — the card renders with no bars at all, which is exactly what
    * happened on the first build.
@@ -336,7 +336,7 @@ function TwoToneBar({
     and it is right to: a card with a fixed size is a card that stops matching
     the shelf around it once the viewport scales up.
   */
-  const layer = "pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap px-1 font-mono text-[length:var(--library-badge-size)] font-bold leading-none";
+  const layer = "pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap px-1 font-mono text-(length:--library-badge-size) font-bold leading-none";
   /*
     **Baseline, not centre, between the lead and the number.**
 
@@ -700,7 +700,7 @@ export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; cla
       className={cn(
         "absolute right-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full",
         "border border-white/15 bg-surface-1 px-2 py-0.5 shadow-card",
-        "text-[length:var(--library-badge-size)] font-bold tabular-nums text-foreground",
+        "text-(length:--library-badge-size) font-bold tabular-nums text-foreground",
         className
       )}
     >
@@ -774,8 +774,8 @@ export function EpisodeProgressBar({ item, type, className }: { item: TitleMarkI
       aria-label={label}
       title={label}
       className={cn(
-        "relative inline-flex h-[18px] min-w-[58px] items-center justify-center overflow-hidden rounded",
-        "bg-mark-idle/70 text-[length:var(--library-badge-size)] font-bold tabular-nums",
+        "relative inline-flex h-[18px] min-w-[58px] items-center justify-center overflow-hidden rounded-sm",
+        "bg-mark-idle/70 text-(length:--library-badge-size) font-bold tabular-nums",
         className
       )}
       style={track ? { backgroundColor: paintVar(track.surface) } : undefined}
@@ -910,7 +910,7 @@ export function TitleMarkBarLegend({ className, type: _type }: { className?: str
       <span
         role="heading"
         aria-level={3}
-        className="shrink-0 text-[length:var(--library-toolbar-size)] font-semibold text-foreground"
+        className="shrink-0 text-(length:--library-toolbar-size) font-semibold text-foreground"
         title={"The strip on a poster's bottom edge: the subtitle languages this shelf asked for. "
           + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
       >
@@ -919,7 +919,7 @@ export function TitleMarkBarLegend({ className, type: _type }: { className?: str
       {TITLE_BAR_SEGMENTS.map((segment) => (
         <span
           key={segment.mark}
-          className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+          className="flex items-center gap-1.5 text-(length:--library-toolbar-size) font-medium text-muted-foreground"
         >
           {/*
             Neutral swatches, not the mark colours. The subtitle bar on a card
@@ -1033,7 +1033,7 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
       title={words.hint}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2 py-0.5",
-        "text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-white backdrop-blur-md",
+        "text-(length:--library-badge-size) font-bold uppercase tracking-wider text-white backdrop-blur-md",
         className
       )}
     >

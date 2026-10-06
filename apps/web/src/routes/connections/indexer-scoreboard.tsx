@@ -10,7 +10,7 @@ const percentFormat = new Intl.NumberFormat(undefined, { style: "percent", maxim
 export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSnapshot }) {
   const rows = snapshot.indexers;
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <SummaryStrip
         cells={[
           {
@@ -38,10 +38,10 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
         ]}
       />
 
-      <section className="rounded-2xl border border-primary/20 bg-primary/[0.06] px-[var(--card-pad-x)] py-[var(--card-pad-y)] shadow-card">
-        <p className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-primary">Deluno's read</p>
-        <p className="mt-1 text-[length:var(--type-body-sm)] text-foreground">{snapshot.insight}</p>
-        <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+      <section className="rounded-2xl border border-primary/20 bg-primary/6 px-(--card-pad-x) py-(--card-pad-y) shadow-card">
+        <p className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-primary">Deluno's read</p>
+        <p className="mt-1 text-(length:--type-body-sm) text-foreground">{snapshot.insight}</p>
+        <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
           Window: {snapshot.windowDays} days. Query history is retained for 30 days and excludes credentials and full request URLs.
         </p>
       </section>
@@ -55,7 +55,7 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
         </ListCard>
       ) : (
         <>
-          <div className="grid gap-[var(--page-gap)] md:grid-cols-2">
+          <div className="grid gap-(--page-gap) md:grid-cols-2">
             <ScoreboardBars title="Queries" rows={rows} value={(row) => row.totalQueries} empty="No queries in this window." />
             <ScoreboardBars title="Successful grabs" rows={rows} value={(row) => row.successfulGrabs} empty="No successful grabs in this window." tone="success" />
             <ScoreboardBars title="Average response" rows={rows} value={(row) => row.averageResponseMilliseconds ?? 0} format={(value) => `${numberFormat.format(Math.round(value))} ms`} empty="No response history in this window." tone="info" />
@@ -120,13 +120,13 @@ function ScoreboardBars({
       {!hasValue ? (
         <ListEmpty title={empty} />
       ) : (
-        <div className="space-y-3 px-[var(--card-pad-x)] py-[var(--card-pad-y)]">
+        <div className="space-y-3 px-(--card-pad-x) py-(--card-pad-y)">
           {rows.slice().sort((left, right) => value(right) - value(left)).map((row) => {
             const reading = value(row);
             return (
               <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center justify-between gap-3 text-[length:var(--type-caption)]">
+                  <div className="flex items-center justify-between gap-3 text-(length:--type-caption)">
                     <span className="truncate font-medium text-foreground">{row.name}</span>
                     <span className="shrink-0 tabular-nums text-muted-foreground">{format(reading)}</span>
                   </div>

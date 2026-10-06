@@ -71,13 +71,13 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
 
   return (
     <DrawerSection title="Folder check" aside={aside}>
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="text-(length:--type-caption) text-muted-foreground">
         Where each download client really saves this library's downloads, read from the client, and whether that is the folder
         {report?.usesProcessor ? ` ${report.processorName ?? "the processor"} and ` : " "}Deluno expect. This checks the saved routing.
       </p>
-      {failed ? <p role="alert" className="text-[length:var(--type-body-sm)] text-destructive">{failed}</p> : null}
+      {failed ? <p role="alert" className="text-(length:--type-body-sm) text-destructive">{failed}</p> : null}
       {report ? (
-        <ul className="grid gap-[var(--grid-gap)]" aria-label="Folder check">
+        <ul className="grid gap-(--grid-gap)" aria-label="Folder check">
           {report.clients.map((client) =>
             client.links.map((link) => (
               <ChainLine key={`${client.clientId}-${link.step}`} link={link} title={`${client.clientName} · ${link.step === "category" ? `category ${client.category}` : link.step === "layout" ? "file layout" : "folder"}`} />
@@ -105,7 +105,7 @@ const STEP_TITLE: Record<string, string> = {
 
 function ChainLine({ link, title }: { link: FolderChainLink; title: string }) {
   return (
-    <li className="grid gap-1 text-[length:var(--type-body-sm)]">
+    <li className="grid gap-1 text-(length:--type-body-sm)">
       <span className="flex flex-wrap items-center gap-2">
         <Chip tone={TONE[link.status] ?? "idle"}>{LABEL[link.status] ?? link.status}</Chip>
         <span className="font-medium text-foreground">{title}</span>

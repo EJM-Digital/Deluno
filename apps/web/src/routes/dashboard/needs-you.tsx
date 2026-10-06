@@ -19,7 +19,7 @@ import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
 
-const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center whitespace-nowrap rounded-[10px] border border-hairline text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
+const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center whitespace-nowrap rounded-[10px] border border-hairline text-(length:--button-font-size-sm) font-medium text-foreground hover:bg-secondary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`;
 
 /**
  * One row, the same in the bell's Your media and Deluno sections: status dot, bold
@@ -28,13 +28,13 @@ const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center whitespace-nowrap
  * on every row; on a phone the buttons drop under the text.
  */
 export function NeedsYouRow({ tone, title, text, actions, to }: { tone: "bad" | "warn"; title: string; text: string; actions: ReactElement; to?: string }) {
-  const titleClass = "block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground";
+  const titleClass = "block truncate text-(length:--type-body-sm) font-semibold text-foreground";
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2.5 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+    <li className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 border-b border-hairline px-(--card-pad-x) py-2.5 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <StatusLed tone={tone} pulse />
       <div className="min-w-0 leading-tight">
-        {to ? <Link to={to} title={title} className={`${titleClass} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{title}</Link> : <span title={title} className={titleClass}>{title}</span>}
-        <span title={text} className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{text}</span>
+        {to ? <Link to={to} title={title} className={`${titleClass} hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}>{title}</Link> : <span title={title} className={titleClass}>{title}</span>}
+        <span title={text} className="block truncate text-(length:--type-caption) text-muted-foreground">{text}</span>
       </div>
       <div className="col-start-2 sm:col-start-auto">{actions}</div>
     </li>

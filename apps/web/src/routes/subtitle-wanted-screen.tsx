@@ -91,7 +91,7 @@ export function SubtitleWantedPage() {
   }
 
   return (
-    <div className="grid gap-[var(--section-gap)]">
+    <div className="grid gap-(--section-gap)">
       <PageToolbar tabs={TABS} />
 
       <ListCard

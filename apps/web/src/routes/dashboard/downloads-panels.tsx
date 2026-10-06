@@ -88,7 +88,7 @@ export function DownloadsNow({ summary, telemetry, attention, action, live = NO_
             </ListTable>
           )}
           rows={rows.map((item) => (
-            <ListRow key={`${item.clientId}:${item.id}`} className="min-h-[2.5rem] py-1">
+            <ListRow key={`${item.clientId}:${item.id}`} className="min-h-10 py-1">
               <ListNameCell name={item.title} sub={item.status === "stalled" ? item.errorMessage ?? "No one is sharing it, or its data is missing" : item.releaseName} />
               <ListCell primary={<span title={item.clientName}>{item.clientName}</span>} />
               <ListCell>
@@ -98,7 +98,7 @@ export function DownloadsNow({ summary, telemetry, attention, action, live = NO_
                   </span>
                   <span className="w-9 text-right tabular-nums">{percent(item.progress)}%</span>
                 </span>
-                <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">
                   {formatEta(item.etaSeconds) === "–" ? "no time left given" : `${formatEta(item.etaSeconds)} left`}
                 </span>
               </ListCell>

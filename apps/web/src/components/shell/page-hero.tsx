@@ -46,7 +46,7 @@ export function PageHero({
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-[24px] border border-hairline bg-card shadow-lg dark:border-white/[0.06]",
+        "relative overflow-hidden rounded-[24px] border border-hairline bg-card shadow-lg dark:border-white/6",
         className
       )}
     >
@@ -76,7 +76,7 @@ export function PageHero({
       {/* Gradient wash — always present */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-background/75 via-background/88 to-background/96 dark:from-black/65 dark:via-black/82 dark:to-black/95"
+        className="absolute inset-0 bg-linear-to-br/srgb from-background/75 dark:from-black/65 dark:to-black/95"
       />
       <div
         aria-hidden
@@ -85,19 +85,19 @@ export function PageHero({
 
       <div
         className={cn(
-          "relative grid gap-[var(--grid-gap)]",
+          "relative grid gap-(--grid-gap)",
           stats && stats.length > 0
             ? "hero-layout-with-stats"
             : "",
-          size === "sm" ? "p-[var(--tile-pad)] md:p-[calc(var(--tile-pad)*1.1)]" : "p-[calc(var(--tile-pad)*1.05)] md:p-[calc(var(--tile-pad)*1.2)] lg:p-[calc(var(--tile-pad)*1.3)]"
+          size === "sm" ? "p-(--tile-pad) md:p-[calc(var(--tile-pad)*1.1)]" : "p-[calc(var(--tile-pad)*1.05)] md:p-[calc(var(--tile-pad)*1.2)] lg:p-[calc(var(--tile-pad)*1.3)]"
         )}
       >
-        <div className="flex flex-col justify-between gap-[var(--grid-gap)]">
+        <div className="flex flex-col justify-between gap-(--grid-gap)">
           <div>
             {eyebrow ? (
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 backdrop-blur-sm dark:border-primary/20">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 backdrop-blur-xs dark:border-primary/20">
                 {eyebrowIcon ?? <Sparkles className="h-3 w-3 text-primary" />}
-                <span className="text-[length:var(--type-caption)] font-semibold tracking-wide text-primary">
+                <span className="text-(length:--type-caption) font-semibold tracking-wide text-primary">
                   {eyebrow}
                 </span>
               </div>
@@ -109,8 +109,8 @@ export function PageHero({
               className={cn(
                 "mt-4 text-balance font-display font-bold leading-[0.98] tracking-display text-foreground",
                 size === "sm"
-                  ? "text-[length:var(--type-hero-sm)]"
-                  : "text-[length:var(--type-hero-lg)]"
+                  ? "text-(length:--type-hero-sm)"
+                  : "text-(length:--type-hero-lg)"
               )}
             >
               {title}
@@ -120,7 +120,7 @@ export function PageHero({
               <p
                 className={cn(
                   "mt-3 max-w-[min(68rem,100%)] text-balance leading-relaxed text-muted-foreground",
-                  size === "sm" ? "text-[length:var(--type-body-sm)]" : "text-[length:var(--type-body)]"
+                  size === "sm" ? "text-(length:--type-body-sm)" : "text-(length:--type-body)"
                 )}
               >
                 {subtitle}
@@ -132,7 +132,7 @@ export function PageHero({
         </div>
 
         {stats && stats.length > 0 ? (
-          <div className="relative flex flex-col justify-center rounded-2xl border border-hairline bg-card/60 p-[calc(var(--tile-pad)*0.8)] backdrop-blur-md dark:border-white/[0.08] dark:bg-white/[0.03]">
+          <div className="relative flex flex-col justify-center rounded-2xl border border-hairline bg-card/60 p-[calc(var(--tile-pad)*0.8)] backdrop-blur-md dark:border-white/8 dark:bg-white/3">
             <div className="hero-stat-grid">
               {stats.map((stat, i) => (
                 <HeroStatTile key={i} {...stat} />
@@ -155,13 +155,13 @@ function HeroStatTile({ label, value, tone = "neutral" }: PageHeroStat) {
   }[tone];
 
   return (
-    <div className="min-w-0 rounded-xl border border-hairline bg-muted/30 px-[calc(var(--tile-pad)*0.55)] py-[calc(var(--tile-pad)*0.42)] dark:border-white/[0.05] dark:bg-white/[0.02]">
-      <p className="density-nowrap text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+    <div className="min-w-0 rounded-xl border border-hairline bg-muted/30 px-[calc(var(--tile-pad)*0.55)] py-[calc(var(--tile-pad)*0.42)] dark:border-white/5 dark:bg-white/2">
+      <p className="density-nowrap text-(length:--type-micro) font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
         {label}
       </p>
       <p
         className={cn(
-          "density-nowrap mt-0.5 tabular font-display text-[length:var(--type-title-md)] font-bold leading-tight tracking-display",
+          "density-nowrap mt-0.5 tabular font-display text-(length:--type-title-md) font-bold leading-tight tracking-display",
           valueClass
         )}
       >
@@ -184,8 +184,8 @@ export function GlassTile({
       className={cn(
         "relative overflow-hidden rounded-2xl border border-hairline bg-card shadow-card",
         "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px",
-        "before:bg-gradient-to-r before:from-transparent before:via-hairline before:to-transparent",
-        "dark:border-white/[0.06]",
+        "before:bg-linear-to-r/srgb before:from-transparent before:via-hairline before:to-transparent",
+        "dark:border-white/6",
         className
       )}
       {...rest}
@@ -214,7 +214,7 @@ export function StatChip({
     success: "bg-success/10 text-success border-success/20",
     warn: "bg-warning/10 text-warning border-warning/20",
     danger: "bg-destructive/10 text-destructive border-destructive/20",
-    neutral: "bg-muted/40 text-foreground border-hairline dark:bg-white/[0.04]"
+    neutral: "bg-muted/40 text-foreground border-hairline dark:bg-white/4"
   }[tone];
 
   return (
@@ -225,10 +225,10 @@ export function StatChip({
       )}
     >
       {icon}
-      <span className="density-nowrap text-[length:var(--type-micro)] font-semibold uppercase tracking-wide opacity-75">
+      <span className="density-nowrap text-(length:--type-micro) font-semibold uppercase tracking-wide opacity-75">
         {label}
       </span>
-      <span className="density-nowrap tabular text-[length:var(--type-caption)] font-bold">{value}</span>
+      <span className="density-nowrap tabular text-(length:--type-caption) font-bold">{value}</span>
     </div>
   );
 }

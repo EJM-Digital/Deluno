@@ -49,14 +49,14 @@ export function ArtworkPlaceholder({ title, className, compact = false }: { titl
   return (
     <div
       className={cn(
-        "flex items-center justify-center bg-gradient-to-br from-surface-2 to-surface-3 text-center text-muted-foreground",
+        "flex items-center justify-center bg-linear-to-br/srgb from-surface-2 to-surface-3 text-center text-muted-foreground",
         className
       )}
       role={title ? "img" : undefined}
       aria-label={title ? `${title} artwork unavailable` : undefined}
       data-artwork-placeholder=""
     >
-      <span className={cn("px-2 font-display font-semibold tracking-tight", compact ? "text-[length:var(--type-micro)]" : "text-sm")}>
+      <span className={cn("px-2 font-display font-semibold tracking-tight", compact ? "text-(length:--type-micro)" : "text-sm")}>
         {title ? title.slice(0, 2).toUpperCase() : ""}
       </span>
     </div>

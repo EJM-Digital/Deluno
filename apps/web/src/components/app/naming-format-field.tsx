@@ -199,8 +199,8 @@ export function NamingFormatField({
   return (
     <div className={cn("grid gap-3", className)}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[length:var(--type-caption)] font-medium text-foreground">Format</span>
-        <span className="text-[length:var(--type-caption)] text-muted-foreground">Choose how Deluno names these files and folders.</span>
+        <span className="text-(length:--type-caption) font-medium text-foreground">Format</span>
+        <span className="text-(length:--type-caption) text-muted-foreground">Choose how Deluno names these files and folders.</span>
       </div>
       <div
         role="radiogroup"
@@ -218,24 +218,24 @@ export function NamingFormatField({
               aria-checked={active}
               onClick={() => choosePreset(option.value)}
               className={cn(
-                "flex w-full items-start gap-3 border-b border-hairline px-3.5 py-3 text-left transition-colors last:border-b-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                active ? "bg-primary/[0.08]" : "hover:bg-surface-2/70"
+                "flex w-full items-start gap-3 border-b border-hairline px-3.5 py-3 text-left transition-colors last:border-b-0 focus-visible:z-10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                active ? "bg-primary/8" : "hover:bg-surface-2/70"
               )}
             >
               <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border", active ? "border-primary bg-primary text-primary-foreground" : "border-hairline bg-background text-transparent")}>
                 <Check aria-hidden className="h-3 w-3" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className={cn("flex items-center gap-2 text-[length:var(--type-caption)] font-semibold", active ? "text-primary" : "text-foreground")}>
+                <span className={cn("flex items-center gap-2 text-(length:--type-caption) font-semibold", active ? "text-primary" : "text-foreground")}>
                   <span className="truncate">{option.label}</span>
-                  {index === 0 ? <span className="shrink-0 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-primary/70">Recommended</span> : null}
+                  {index === 0 ? <span className="shrink-0 text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-primary/70">Recommended</span> : null}
                 </span>
-                <span className="mt-0.5 block text-[length:var(--type-caption)] leading-snug text-muted-foreground">{option.description}</span>
+                <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">{option.description}</span>
               </span>
               {showExamples ? (
                 <span className="hidden max-w-[42%] shrink-0 text-right md:block">
-                  <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Example</span>
-                  <code className="mt-0.5 block truncate text-[length:var(--type-caption)] text-foreground">{option.hint}</code>
+                  <span className="block text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Example</span>
+                  <code className="mt-0.5 block truncate text-(length:--type-caption) text-foreground">{option.hint}</code>
                 </span>
               ) : null}
             </button>
@@ -244,7 +244,7 @@ export function NamingFormatField({
       </div>
 
       {showExamples ? (
-        <div className="flex min-w-0 items-baseline gap-3 text-[length:var(--type-caption)]">
+        <div className="flex min-w-0 items-baseline gap-3 text-(length:--type-caption)">
           <span className="shrink-0 font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Preview</span>
           <code className="truncate text-foreground">{example || "Choose a style to see a preview."}</code>
         </div>
@@ -262,15 +262,15 @@ export function NamingPatternEditor({ kind, value, onChange, placeholder }: { ki
   }
 
   return (
-    <div className="grid gap-[var(--grid-gap)]">
+    <div className="grid gap-(--grid-gap)">
       <div className="grid gap-1.5">
-        <span className="text-[length:var(--type-caption)] font-medium text-foreground">Pattern</span>
+        <span className="text-(length:--type-caption) font-medium text-foreground">Pattern</span>
         <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} aria-label="Custom pattern" />
       </div>
-      <div className="grid gap-2 border-t border-hairline pt-[var(--grid-gap)]">
+      <div className="grid gap-2 border-t border-hairline pt-(--grid-gap)">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <span className="text-[length:var(--type-caption)] font-medium text-foreground">Available tokens</span>
-          <span className="text-[length:var(--type-caption)] text-muted-foreground">Insert values into the pattern.</span>
+          <span className="text-(length:--type-caption) font-medium text-foreground">Available tokens</span>
+          <span className="text-(length:--type-caption) text-muted-foreground">Insert values into the pattern.</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {tokens.map((token) => (

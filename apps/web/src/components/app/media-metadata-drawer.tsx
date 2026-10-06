@@ -268,7 +268,7 @@ export function MediaMetadataDrawer({
       }
     >
       <DrawerSection title="Provider record" aside={provider ? provider.toUpperCase() : "Not linked"}>
-        <div className="flex items-start gap-[var(--grid-gap)]">
+        <div className="flex items-start gap-(--grid-gap)">
           {posterUrl ? (
             <ArtworkImage src={posterUrl} alt="" className="h-28 w-[74px] shrink-0 rounded-[10px] border border-hairline object-cover" />
           ) : null}
@@ -327,14 +327,14 @@ export function MediaMetadataDrawer({
             {matches.map((match) => (
               <div
                 key={`${match.provider}:${match.providerId}`}
-                className="flex items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2"
+                className="flex items-center justify-between gap-(--grid-gap) rounded-[10px] border border-hairline px-(--field-pad-x) py-2"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
+                  <p className="truncate text-(length:--type-body-sm) font-medium text-foreground">
                     {match.title}
                     {match.year ? <span className="ml-1 font-normal text-muted-foreground">{match.year}</span> : null}
                   </p>
-                  <p className="mt-0.5 line-clamp-1 text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="mt-0.5 line-clamp-1 text-(length:--type-caption) text-muted-foreground">
                     {match.overview ?? `${match.provider.toUpperCase()} ${match.providerId}`}
                   </p>
                 </div>
@@ -346,7 +346,7 @@ export function MediaMetadataDrawer({
             ))}
           </div>
         ) : searched && busy === null ? (
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          <p className="text-(length:--type-caption) text-muted-foreground">
             No matches. Try adding the year, the original title, or an IMDb ID.
           </p>
         ) : null}
@@ -355,7 +355,7 @@ export function MediaMetadataDrawer({
           <section
             role="region"
             aria-label="Metadata remap preview"
-            className="grid gap-[var(--grid-gap)] rounded-[10px] border border-hairline bg-surface-1 p-[var(--field-pad-x)]"
+            className="grid gap-(--grid-gap) rounded-[10px] border border-hairline bg-surface-1 p-(--field-pad-x)"
           >
             <div className="flex items-start gap-3">
               {linkPreview.canApply ? (
@@ -365,7 +365,7 @@ export function MediaMetadataDrawer({
               )}
               <div className="min-w-0">
                 <p className="font-medium text-foreground">Review this remap</p>
-                <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
                   Nothing changes until you apply this reviewed preview.
                 </p>
               </div>
@@ -377,15 +377,15 @@ export function MediaMetadataDrawer({
             </div>
 
             <div>
-              <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">Identity changes</p>
-              <ul className="mt-1.5 grid gap-1 text-[length:var(--type-body-sm)] text-foreground">
+              <p className="text-(length:--type-caption) font-semibold uppercase tracking-wide text-muted-foreground">Identity changes</p>
+              <ul className="mt-1.5 grid gap-1 text-(length:--type-body-sm) text-foreground">
                 {linkPreview.changes.map((change) => <li key={change}>• {change}</li>)}
               </ul>
             </div>
 
             <div>
-              <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">What stays and what refreshes</p>
-              <ul className="mt-1.5 grid gap-1 text-[length:var(--type-body-sm)] text-muted-foreground">
+              <p className="text-(length:--type-caption) font-semibold uppercase tracking-wide text-muted-foreground">What stays and what refreshes</p>
+              <ul className="mt-1.5 grid gap-1 text-(length:--type-body-sm) text-muted-foreground">
                 {linkPreview.consequences.map((consequence) => <li key={consequence}>• {consequence}</li>)}
               </ul>
             </div>
@@ -402,7 +402,7 @@ export function MediaMetadataDrawer({
             ) : null}
 
             {linkPreview.blockReason ? (
-              <p className="rounded-[8px] border border-warning/35 bg-warning/10 px-3 py-2 text-[length:var(--type-body-sm)] text-foreground">
+              <p className="rounded-[8px] border border-warning/35 bg-warning/10 px-3 py-2 text-(length:--type-body-sm) text-foreground">
                 {linkPreview.blockReason}
               </p>
             ) : null}
@@ -493,13 +493,13 @@ export function MediaMetadataDrawer({
 function IdentityPreview({ label, identity }: { label: string; identity: MetadataLinkPreview["current"] }) {
   return (
     <div className="rounded-[8px] border border-hairline bg-card px-3 py-2">
-      <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-(length:--type-caption) font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 font-medium text-foreground">{identity.title}{identity.year ? ` (${identity.year})` : ""}</p>
-      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+      <p className="mt-0.5 font-mono text-(length:--type-caption) text-muted-foreground">
         {identity.provider?.toUpperCase() ?? "Unlinked"} {identity.providerId ?? "—"}
       </p>
-      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">IMDb {identity.imdbId ?? "—"}</p>
-      {identity.context ? <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{identity.context}</p> : null}
+      <p className="mt-0.5 font-mono text-(length:--type-caption) text-muted-foreground">IMDb {identity.imdbId ?? "—"}</p>
+      {identity.context ? <p className="mt-1 text-(length:--type-caption) text-muted-foreground">{identity.context}</p> : null}
     </div>
   );
 }

@@ -21,7 +21,7 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
   return (
     <div
       className={cn(
-        "border-b border-hairline px-[var(--card-pad-x)] py-[var(--card-pad-y)]",
+        "border-b border-hairline px-(--card-pad-x) py-(--card-pad-y)",
         className
       )}
       {...props}
@@ -33,7 +33,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
   return (
     <h3
       className={cn(
-        "text-[length:var(--type-card-title)] font-semibold leading-snug tracking-tight text-foreground",
+        "text-(length:--type-card-title) font-semibold leading-snug tracking-tight text-foreground",
         className
       )}
       {...props}
@@ -56,7 +56,7 @@ export function CardDescription({
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("px-[var(--card-pad-x)] py-[var(--card-pad-y)]", className)}
+      className={cn("px-(--card-pad-x) py-(--card-pad-y)", className)}
       {...props}
     />
   );

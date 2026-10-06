@@ -41,7 +41,7 @@ export function FilterChips<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={cn("no-scrollbar flex w-max min-w-0 max-w-full shrink items-center gap-[2px] overflow-x-auto border border-hairline bg-card", size === "sm" ? "rounded-[9px] p-[2px]" : "rounded-[12px] p-[3px]", className)}
+      className={cn("no-scrollbar flex w-max min-w-0 max-w-full shrink items-center gap-[2px] overflow-x-auto border border-hairline bg-card", size === "sm" ? "rounded-[9px] p-[2px]" : "rounded-xl p-[3px]", className)}
     >
       {options.map((option) => {
         const active = option.value === value;
@@ -60,8 +60,8 @@ export function FilterChips<T extends string>({
             }}
             className={cn(
               "inline-flex shrink-0 items-center whitespace-nowrap border font-medium transition-colors duration-150 motion-reduce:transition-none",
-              size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-[length:var(--type-caption)]" : "h-[30px] rounded-[10px] px-[14px] text-[length:var(--type-control)]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             )}
           >
@@ -76,8 +76,8 @@ export function FilterChips<T extends string>({
 }
 
 /** The line under a card's header that holds a list's rarer filters (Activity's kind, source and time; Indexers' protocol). */
-export const FILTER_ROW_CLASS = "flex flex-wrap items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2";
+export const FILTER_ROW_CLASS = "flex flex-wrap items-center gap-2 border-b border-hairline px-(--card-pad-x) py-2";
 
 /** The trigger of a dropdown filter on that line, for `MenuSelect`'s `triggerClassName`. */
 export const FILTER_MENU_TRIGGER =
-  "h-[28px] rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-[length:var(--type-caption)] font-semibold text-muted-foreground hover:text-foreground";
+  "h-[28px] rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-(length:--type-caption) font-semibold text-muted-foreground hover:text-foreground";

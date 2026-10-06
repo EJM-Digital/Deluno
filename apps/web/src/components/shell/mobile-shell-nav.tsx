@@ -87,13 +87,13 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
       <nav
         aria-label="Primary navigation"
         className={cn(
-          "fixed inset-x-0 bottom-0 z-[45] border-t border-hairline/80 bg-card/98 backdrop-blur-xl",
-          "supports-[backdrop-filter]:bg-card/90 pb-[env(safe-area-inset-bottom)] lg:hidden",
+          "fixed inset-x-0 bottom-0 z-45 border-t border-hairline/80 backdrop-blur-xl",
+          "supports-backdrop-filter:bg-card/90 pb-safe-bottom lg:hidden",
           "shadow-[0_-8px_32px_hsl(0_0%_0%/0.1)] dark:shadow-[0_-8px_36px_hsl(0_0%_0%/0.4)]"
         )}
         style={{ height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))" }}
       >
-        <ul className="mx-auto grid h-[var(--mobile-tabbar-height)] w-full max-w-md grid-cols-5">
+        <ul className="mx-auto grid h-(--mobile-tabbar-height) w-full max-w-md grid-cols-5">
           {primaryWithAttention.map((tab) => {
             return (
               <li key={tab.to} className="flex min-w-0">
@@ -105,18 +105,18 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                   className={({ isActive, isPending }) =>
                     cn(
                       "relative flex min-w-0 w-full flex-col items-center justify-center gap-0.5 px-0.5",
-                      "text-[length:var(--shell-subtle-size)] font-semibold leading-tight tracking-tight text-muted-foreground transition-colors",
+                      "text-(length:--shell-subtle-size) font-semibold leading-tight tracking-tight text-muted-foreground transition-colors",
                       "active:bg-muted/40 tap-target",
-                      (isActive || isPending) && "text-[var(--nav-accent)]"
+                      (isActive || isPending) && "text-(--nav-accent)"
                     )
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      <span className="relative flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0 items-center justify-center rounded-xl transition-colors">
+                      <span className="relative flex h-(--control-height-icon) w-(--control-height-icon) shrink-0 items-center justify-center rounded-xl transition-colors">
                         <DelunoNavGlyph
                           kind={tab.icon}
-                          className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground")}
+                          className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", isActive ? "text-(--nav-accent)" : "text-muted-foreground")}
                         />
                         {"attention" in tab && tab.attention ? (
                           <AttentionDot
@@ -130,7 +130,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                       {isActive ? (
                         <span
                           aria-hidden
-                          className="absolute left-1/2 top-1 h-0.5 w-6 -translate-x-1/2 rounded-full bg-[var(--nav-accent)]"
+                          className="absolute left-1/2 top-1 h-0.5 w-6 -translate-x-1/2 rounded-full bg-(--nav-accent)"
                         />
                       ) : null}
                     </>
@@ -145,13 +145,13 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                 type="button"
                 className={cn(
                   "relative flex min-w-0 w-full flex-col items-center justify-center gap-0.5 px-0.5",
-                  "text-[length:var(--shell-subtle-size)] font-semibold leading-tight tracking-tight transition-colors tap-target",
+                  "text-(length:--shell-subtle-size) font-semibold leading-tight tracking-tight transition-colors tap-target",
                   "text-muted-foreground active:bg-muted/40",
                   moreActive && "text-foreground"
                 )}
                 aria-label="More destinations"
               >
-                <span className="relative flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0 items-center justify-center rounded-xl">
+                <span className="relative flex h-(--control-height-icon) w-(--control-height-icon) shrink-0 items-center justify-center rounded-xl">
                   <MoreHorizontal
                     className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", moreActive ? "text-primary" : "text-muted-foreground")}
                     strokeWidth={moreActive ? 2.1 : 1.75}
@@ -174,7 +174,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
       </nav>
 
       <SheetContent side="bottom" className="flex max-h-[min(88dvh,640px)] flex-col gap-0 p-0">
-        <div className="flex shrink-0 flex-col items-center border-b border-hairline/70 px-4 pb-2 pt-3 dark:border-white/[0.06]">
+        <div className="flex shrink-0 flex-col items-center border-b border-hairline/70 px-4 pb-2 pt-3 dark:border-white/6">
           <div
             aria-hidden
             className="mb-3 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/25"
@@ -192,7 +192,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
         >
           {(["Your Media", "Live operations", "Setup", "Deluno"] as const).map((group) => (
             <div key={group} className="mb-3 last:mb-0">
-              <p className="px-3 pb-1.5 pt-2 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <p className="px-3 pb-1.5 pt-2 text-(length:--shell-subtle-size) font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {group}
               </p>
               <ul className="space-y-0.5">
@@ -210,13 +210,13 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                           className={cn(
                             "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-dynamic-base font-medium transition-colors",
                             isActive
-                              ? "text-[var(--nav-accent)]"
-                              : "text-muted-foreground hover:text-[var(--nav-accent)]"
+                              ? "text-(--nav-accent)"
+                              : "text-muted-foreground hover:text-(--nav-accent)"
                           )}
                         >
                           <DelunoNavGlyph
                             kind={item.icon as DelunoNavGlyphKind}
-                            className={cn("h-5 w-5 shrink-0", isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground")}
+                            className={cn("h-5 w-5 shrink-0", isActive ? "text-(--nav-accent)" : "text-muted-foreground")}
                           />
                           <span className="flex-1">{item.label}</span>
                         </NavLink>
@@ -229,15 +229,15 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
           ))}
         </nav>
 
-        <div className="shrink-0 border-t border-hairline/70 bg-muted/15 px-3 py-3 dark:border-white/[0.06]">
+        <div className="shrink-0 border-t border-hairline/70 bg-muted/15 px-3 py-3 dark:border-white/6">
           {user ? (
             <div className="mb-2 flex items-center gap-3 rounded-xl px-2 py-1.5">
-              <div className="flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-[length:var(--shell-subtle-size)] font-bold text-primary-foreground">
+              <div className="flex h-(--control-height-icon) w-(--control-height-icon) shrink-0 items-center justify-center rounded-full bg-linear-to-br/srgb from-primary to-[hsl(var(--primary-2))] text-(length:--shell-subtle-size) font-bold text-primary-foreground">
                 {user.avatarInitials ?? "DU"}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-dynamic-base font-semibold text-foreground">{user.displayName}</p>
-                <p className="truncate text-[length:var(--shell-subtle-size)] text-muted-foreground">@{user.username}</p>
+                <p className="truncate text-(length:--shell-subtle-size) text-muted-foreground">@{user.username}</p>
               </div>
             </div>
           ) : null}
@@ -286,10 +286,10 @@ function MobileAreaRow({
             {...prefetchHandlers(area.to)}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-dynamic-base font-bold transition-colors",
-              isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
+              isActive ? "text-(--nav-accent)" : "text-muted-foreground hover:text-(--nav-accent)"
             )}
           >
-            <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", isActive ? "border border-[var(--nav-accent-border)] text-[var(--nav-accent)]" : "bg-muted/35 text-muted-foreground")}>
+            <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", isActive ? "border border-(--nav-accent-border) text-(--nav-accent)" : "bg-muted/35 text-muted-foreground")}>
               <DelunoNavGlyph kind={area.icon} className="h-4 w-4" />
             </span>
             <span className="min-w-0 truncate">{area.label}</span>
@@ -301,9 +301,9 @@ function MobileAreaRow({
             aria-label={`${open ? "Collapse" : "Expand"} ${area.label}`}
             aria-expanded={open}
             onClick={onToggle}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:text-[var(--nav-accent)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:text-(--nav-accent)"
           >
-            <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90 text-[var(--nav-accent)]")} />
+            <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90 text-(--nav-accent)")} />
           </button>
         ) : null}
       </div>
@@ -315,8 +315,8 @@ function MobileAreaRow({
                 to={item.to}
                 end={item.end}
                 className={({ isActive: routeIsActive }) => cn(
-                  "relative block rounded-lg px-3 py-1.5 text-[length:var(--type-body-sm)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
-                  routeIsActive ? "text-[var(--nav-accent)] before:bg-[var(--nav-accent)]" : "text-muted-foreground before:bg-muted-foreground/35 hover:text-[var(--nav-accent)]"
+                  "relative block rounded-lg px-3 py-1.5 text-(length:--type-body-sm) font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
+                  routeIsActive ? "text-(--nav-accent) before:bg-(--nav-accent)" : "text-muted-foreground before:bg-muted-foreground/35 hover:text-(--nav-accent)"
                 )}
               >
                 {item.label}

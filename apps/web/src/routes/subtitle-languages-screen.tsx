@@ -234,14 +234,14 @@ export function SubtitleLanguagesPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={TABS} />
 
       <ListCard title="Fetching">
-        <div className="flex items-start justify-between gap-[var(--grid-gap)] px-1 py-1">
+        <div className="flex items-start justify-between gap-(--grid-gap) px-1 py-1">
           <div>
             <p className="font-medium text-foreground">Fetch subtitles automatically</p>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            <p className="text-(length:--type-caption) text-muted-foreground">
               On: Deluno searches for the languages each library asks for below, on its own. Off: nothing is fetched until you ask, even if a library has languages set.
             </p>
           </div>
@@ -255,8 +255,8 @@ export function SubtitleLanguagesPage() {
       </ListCard>
 
       <ListCard title="File encoding and permissions">
-        <div className="grid gap-[var(--grid-gap)] px-1 py-1">
-          <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+        <div className="grid gap-(--grid-gap) px-1 py-1">
+          <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
             Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
           </p>
           <SwitchRow
@@ -273,7 +273,7 @@ export function SubtitleLanguagesPage() {
                   value={permissionsForm.folderChmod}
                   disabled={permissionsBusy}
                   placeholder="755"
-                  className="max-w-[7rem]"
+                  className="max-w-28"
                   onChange={(event) => setPermissionsForm({ ...permissionsForm, folderChmod: event.target.value })}
                   onBlur={() => void commitPermissions(permissionsForm)}
                 />
@@ -352,7 +352,7 @@ export function SubtitleLanguagesPage() {
         description="Which subtitles this shelf wants, and what already counts as having one."
         footer={
           <>
-            <span className="text-[length:var(--type-caption)] text-muted-foreground">
+            <span className="text-(length:--type-caption) text-muted-foreground">
               Saving queues nothing. The library cycle reads and fetches on its own schedule.
             </span>
             <Button type="button" size="sm" onClick={() => void save()} disabled={busy} className="gap-1.5">
@@ -438,7 +438,7 @@ export function SubtitleLanguagesPage() {
                 </DrawerSection>
 
                 <DrawerSection title="Subtitle type, per language">
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     Hearing-impaired is watchable and counts as coverage either way — this only decides which one wins when both exist, or whether a hearing-impaired track is refused outright.
                   </p>
                   {form.languages.map((code) => {
@@ -484,7 +484,7 @@ export function SubtitleLanguagesPage() {
                 </DrawerSection>
 
                 <DrawerSection title="Timing repair">
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     Deluno only moves a subtitle when the audio has a clear match. The default repairs subtitles below “made for this file”; narrow that to “same source” or turn it off when this shelf should never rewrite timing.
                   </p>
                   <PolicySwitch
@@ -572,7 +572,7 @@ export function SubtitleLanguagesPage() {
                 </DrawerSection>
 
                 <DrawerSection title="Which releases to take">
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     Language and hearing-impaired are decided above. This is about the release
                     itself — the words in its name. Separate terms with commas. Leave both empty
                     and Deluno takes the best match it finds.
@@ -602,10 +602,10 @@ export function SubtitleLanguagesPage() {
                 </DrawerSection>
 
                 <DrawerSection title="File encoding and permissions">
-                  <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                  <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
                     Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
                   </p>
-                  <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                  <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
                     {settings.setPermissionsOnImport
                       ? `A written subtitle also gets the "Set permissions on written subtitles" chmod${settings.folderChmod ? ` (${settings.folderChmod})` : ""}${settings.chownGroup ? ` and group ${settings.chownGroup}` : ""}, on non-Windows hosts.`
                       : "\"Set permissions on written subtitles\" is off, so a written subtitle's file permissions are left as the operating system default."}{" "}
@@ -614,7 +614,7 @@ export function SubtitleLanguagesPage() {
                 </DrawerSection>
 
                 <DrawerSection title="After download">
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  <p className="text-(length:--type-caption) text-muted-foreground">
                     These named cleanups change subtitle text only. Timing and provider matching stay untouched.
                   </p>
                   <PolicySwitch

@@ -72,7 +72,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
         {open ? (
           <>
             <DrawerSection title="Outcome" aside={formatStatus(open.status)}>
-              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{open.outcome}</p>
+              <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">{open.outcome}</p>
             </DrawerSection>
 
             {Object.entries(open.inputs).filter(([, value]) => value).length ? (
@@ -97,7 +97,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
                     }))}
                   />
                 </div>
-                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                <p className="text-(length:--type-caption) leading-snug text-muted-foreground">
                   {open.alternatives[0]?.reason}
                 </p>
               </DrawerSection>

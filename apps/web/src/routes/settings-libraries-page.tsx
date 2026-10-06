@@ -274,7 +274,7 @@ export function SettingsLibrariesPage() {
     mode.kind === "create" ? "Where the files live and how Deluno should look after them." : `Library · ${editing?.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.rootPath ?? ""}`;
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={setupTabs} actions={<PageToolbarAction onClick={openCreate}>New library</PageToolbarAction>} />
 
 
@@ -373,10 +373,10 @@ export function SettingsLibrariesPage() {
         }
       >
         <div className="grid gap-0 py-1">
-          <section className="grid gap-[var(--grid-gap)] border-b border-hairline py-6 first:pt-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
+          <section className="grid gap-(--grid-gap) border-b border-hairline py-6 first:pt-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
             <div className="grid content-start gap-1">
-              <h3 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">What is this library?</h3>
-              <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Give this library a name and tell Deluno whether it contains movies or TV shows.</p>
+              <h3 className="text-(length:--type-body-sm) font-semibold text-foreground">What is this library?</h3>
+              <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">Give this library a name and tell Deluno whether it contains movies or TV shows.</p>
             </div>
             <FieldRow>
               <Field label="Library name" error={errors.name}>
@@ -406,10 +406,10 @@ export function SettingsLibrariesPage() {
 
           <section className="border-b border-hairline py-6">
             <div className="grid max-w-2xl gap-1">
-              <h3 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Where do the files go?</h3>
-              <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Choose where Deluno puts the clean, imported files people see in this library.</p>
+              <h3 className="text-(length:--type-body-sm) font-semibold text-foreground">Where do the files go?</h3>
+              <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">Choose where Deluno puts the clean, imported files people see in this library.</p>
             </div>
-            <div className="mt-4 grid gap-[var(--grid-gap)]">
+            <div className="mt-4 grid gap-(--grid-gap)">
               <Field label="Library folder" help="This is where imported files end up." error={errors.rootPath}>
                 <PathInput
                   value={form.rootPath}
@@ -460,14 +460,14 @@ export function SettingsLibrariesPage() {
           {mode.kind === "edit" && editing ? (
             <section className="grid gap-3 border-b border-hairline py-6">
               <div>
-                <h3 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Already have files here?</h3>
-                <p className="mt-1 max-w-2xl text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Review what Deluno finds in this folder, then select only the movies or TV shows you want to add. Deluno will not guess or import anything from this screen without your selection.</p>
+                <h3 className="text-(length:--type-body-sm) font-semibold text-foreground">Already have files here?</h3>
+                <p className="mt-1 max-w-2xl text-(length:--type-caption) leading-relaxed text-muted-foreground">Review what Deluno finds in this folder, then select only the movies or TV shows you want to add. Deluno will not guess or import anything from this screen without your selection.</p>
               </div>
               <div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setExistingImportLibraryId(editing.id)} disabled={dirty || busy}>
                   Review existing files
                 </Button>
-                {dirty ? <p className="mt-2 text-[length:var(--type-caption)] text-warning">Save the library folder before reviewing files.</p> : null}
+                {dirty ? <p className="mt-2 text-(length:--type-caption) text-warning">Save the library folder before reviewing files.</p> : null}
               </div>
             </section>
           ) : null}

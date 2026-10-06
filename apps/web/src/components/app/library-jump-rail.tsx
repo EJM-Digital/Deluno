@@ -101,7 +101,7 @@ export function JumpRail({
               else setPending(bucket.label);
             }}
             className={cn(
-              "rounded-md px-1.5 text-[length:var(--type-micro)] font-semibold leading-[1.35] tabular transition-colors duration-150",
+              "rounded-md px-1.5 text-(length:--type-micro) font-semibold leading-[1.35] tabular transition-colors duration-150",
               inert
                 ? "cursor-default text-muted-foreground/25"
                 : activeLabel === bucket.label

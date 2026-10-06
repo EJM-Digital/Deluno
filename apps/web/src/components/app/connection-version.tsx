@@ -43,5 +43,5 @@ export function ConnectionVersionText({ info, className }: { info: ConnectionVer
 export function ConnectionVersionBeside({ info, fallback }: { info: ConnectionVersion | null | undefined; fallback?: string | null }) {
   const shown = info ?? (fallback ? ({ kind: "", id: "", version: fallback, latestVersion: null, updateAvailable: false, releaseUrl: null } satisfies ConnectionVersion) : null);
   if (!shown?.version) return null;
-  return <ConnectionVersionText info={shown} className="ml-2 text-[length:var(--type-caption)]" />;
+  return <ConnectionVersionText info={shown} className="ml-2 text-(length:--type-caption)" />;
 }
