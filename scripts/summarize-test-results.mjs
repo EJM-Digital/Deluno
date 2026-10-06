@@ -123,8 +123,9 @@ export function summarizePlaywright(file, title = "Browser smoke tests") {
     if (failed.length > MAX_FAILURES) lines.push(`- ... and ${failed.length - MAX_FAILURES} more.`);
   }
   if (flaky.length) {
-    lines.push("", "Passed only on retry:", "");
-    for (const item of flaky.slice(0, MAX_FAILURES)) lines.push(`- ${item.label} (${item.file})`);
+    // Every one is listed, never cut short: a test that needed its retry is a defect to fix, not a pass to forget.
+    lines.push("", "Flaky (passed on retry):", "");
+    for (const item of flaky) lines.push(`- ${item.label} (${item.file})`);
   }
   return `${lines.join("\n")}\n`;
 }

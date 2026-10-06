@@ -2,6 +2,10 @@
 
 The CI and release standard for Deluno and Weir. This page is the same, word for word, in both repositories; each repository adds only its own jobs between the shared ones. Decided by James, 3 Oct 2026 (Deluno [#1124](https://github.com/jampat000/Deluno/issues/1124)).
 
+## Two copies, on purpose
+
+Deluno and Weir each keep their own identical copy of this standard and of the scripts below. They never share a workflow, a reusable workflow or an action across the two repositories. James decided this on 6 Oct 2026, "in case something happens to one repo or we decide to go a different direction on it": either repository must keep working, and be free to change, with the other gone or different. So a change to the standard is made in both repositories, in the same words, and neither points at the other.
+
 ## What each repository has
 
 | File | What it is |
@@ -51,6 +55,7 @@ The job ids and display names below are the same in both repositories.
 8. **Build once, share the result.** A build several jobs need is made in one job and handed on as an artifact (retention of one day).
 9. **Containers are scanned.** Every image built in CI and in the release is scanned with Trivy (`aquasecurity/trivy-action`, pinned). The scan fails on a `CRITICAL` vulnerability that has a fix available (`severity: CRITICAL`, `ignore-unfixed: true`, `exit-code: "1"`).
 10. **Dependabot watches the actions.** The `github-actions` ecosystem in `dependabot.yml` covers `.github/workflows`, so a security advisory on a pinned action opens a pull request.
+11. **Browser tests retry once on CI; backend tests never retry.** Playwright runs with `retries: process.env.CI ? 1 : 0`, so one failed attempt is run again, and the job summary lists every test that passed only on the retry under "Flaky (passed on retry)". Nothing is hidden, and a test on that list is fixed. The backend xUnit tests are not retried at all: a failure is a failure.
 
 ## The release
 

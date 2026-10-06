@@ -41,6 +41,9 @@ export default defineConfig({
   // setup drafts and seeded media from one scenario from leaking into another;
   // projects still verify both desktop and mobile in the same regression run.
   workers: 1,
+  // A browser test that fails is run once more on CI, and the job summary lists every test that passed only on that retry
+  // (scripts/summarize-test-results.mjs), so a flaky test is seen and fixed, never quietly absorbed. Locally nothing retries.
+  retries: process.env.CI ? 1 : 0,
   timeout: 30_000,
   expect: {
     timeout: 5_000
