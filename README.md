@@ -104,13 +104,14 @@ docker run -d \
   --user 1000:1000 \
   -p 5099:8080 \
   -e Storage__DataRoot=/config \
+  -e TZ=Australia/Sydney \
   -v /srv/deluno-config:/config \
   -v /srv/data:/data \
   --restart unless-stopped \
   ghcr.io/jampat000/deluno:1.0.0-rc.28
 ```
 
-Then open `http://<server>:5099`, where `<server>` is the name or address of the machine running Docker.
+Set `TZ` to [your own time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) instead of `Australia/Sydney`, so schedules, the log and Activity use your local time. Then open `http://<server>:5099`, where `<server>` is the name or address of the machine running Docker.
 
 ### docker-compose.yml
 
@@ -126,6 +127,7 @@ services:
       - "5099:8080"
     environment:
       Storage__DataRoot: /config
+      TZ: Australia/Sydney  # set your own time zone
     volumes:
       - /srv/deluno-config:/config
       - /srv/data:/data
@@ -167,8 +169,11 @@ The first time you open Deluno it asks you to create your account, then walks yo
 
 ## Reaching Deluno from another computer, safely
 
-- **Windows:** the firewall prompt at install time is the switch. If you said no and want to change it, use **Allow other devices on your network** in the tray menu.
-- **Docker:** `-p 5099:8080` makes Deluno available on every network interface of the machine. To keep it to the machine itself, publish it as `-p 127.0.0.1:5099:8080` (in compose, `"127.0.0.1:5099:8080"`) and put a reverse proxy in front.
+Deluno listens only on the computer it runs on until you allow more, because a fresh install has no password yet and nothing else on your network should be able to reach it.
+
+- **Windows (the installed app):** answer yes to the firewall prompt at install time. If you said no and want to change it, right-click the tray icon and choose **Allow other devices on your network**.
+- **Docker:** the image already sets `Server__AllowLan=true`, so `-p 5099:8080` makes Deluno available on every network interface of the machine. To keep it to the machine itself, publish it as `-p 127.0.0.1:5099:8080` (in compose, `"127.0.0.1:5099:8080"`) and put a reverse proxy in front.
+- **Running `Deluno.Host` yourself:** set `Server:AllowLan` to `true` in `appsettings.json` (`"Server": { "AllowLan": true }`), or start it with `--Server:AllowLan=true`. Leave it out and Deluno answers on `localhost` only.
 
 Deluno has one account protected by your password, so treat it like the admin page of a router. Choose a long, unique password. Do not forward its port from your router to the internet.
 

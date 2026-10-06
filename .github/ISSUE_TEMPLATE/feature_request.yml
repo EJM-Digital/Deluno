@@ -1,0 +1,26 @@
+name: An idea
+description: Suggest something Deluno could do, or do better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us what you are trying to get done. You do not need to say how Deluno should do it.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: What is hard or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Deluno to do?
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: How do you do it today?
+      description: Another app, a workaround, or by hand. Naming the tool helps.
