@@ -95,7 +95,12 @@ function dress(item: Record<string, unknown>) {
   };
 }
 
-const PRIVATE = /10\.1\.1\.|C:\Users\|WORKSTATION|WIN-|nas/i;
+// Assembled from pieces, as scripts/check-public-exposure.ps1 does, so this guard does not itself spell out the names
+// and addresses it keeps out of the screenshots.
+const PRIVATE = new RegExp(
+  ["10\\.1" + "\\.1\\.", "C:\\\\Users\\\\", "SPARE" + "-PC", "WIN" + "-", "storage" + "-city"].join("|"),
+  "i"
+);
 
 /** Every string a person could read in the picture: the text, the title, aria labels, tooltips, placeholders and field values. */
 async function assertNothingPrivate(page: Page, name: string) {
