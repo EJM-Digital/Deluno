@@ -52,6 +52,7 @@ import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { ProxyDrawerBody } from "./connections/proxy-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
+import { routingStatus, useRoutingChecks } from "./connections/routing-status";
 import { RoutingFixLink } from "./connections/preferences-link";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
 import {
@@ -975,6 +976,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     });
   }
 
+  const routingChecks = useRoutingChecks(section === "routing", libraries, routing);
   const readiness = indexerReadiness(indexers, (id) => routing.filter((route) => route.sources.some((source) => source.indexerId === id)).length, libraries.length);
 
   const toolbarAction =
@@ -1326,20 +1328,22 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                 const snapshot = routing.find((item) => item.libraryId === library.id);
                 const sources = snapshot?.sources ?? [];
                 const targets = snapshot?.downloadClients ?? [];
-                const status = !sources.length
-                  ? { tone: "warn" as const, label: "No indexers" }
-                  : !targets.length
-                    ? { tone: "warn" as const, label: "No client" }
-                    : targets.some((target) => Boolean(target.category?.trim()))
-                      ? { tone: "info" as const, label: "Category route" }
-                      : { tone: "ok" as const, label: "Ready" };
+                const status = routingStatus(snapshot, routingChecks[library.id]);
                 return (
                   <ListRow key={library.id} onClick={() => openRouting(library)} selected={drawer.kind === "routing" && drawer.libraryId === library.id}>
                     <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                     <ListCell numeric primary={sources.length ? `${sources.length} of ${indexers.length}` : <span className="text-muted-foreground">None</span>} secondary={sources.map((source) => source.indexerName).join(", ") || "Deluno can't search for this library"} />
                     <ListCell numeric primary={targets.length ? `${targets.length} of ${clients.length}` : <span className="text-muted-foreground">None</span>} secondary={targets.map((target) => `${target.downloadClientName}${target.category?.trim() ? ` · ${target.category.trim()}` : ""}`).join(", ") || "Nowhere to send releases"} />
                     <ListCell mobile>
-                      <Chip tone={status.tone}>{status.label}</Chip>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <Chip tone={status.tone}>{status.label}</Chip>
+                        {status.needsFix ? (
+                          <Button type="button" size="sm" variant="outline" aria-label={`Fix ${library.name} routing`} title={status.hint} onClick={(event) => { event.stopPropagation(); openRouting(library); }}>
+                            Fix
+                          </Button>
+                        ) : null}
+                      </span>
+                      {status.hint ? <span className="mt-1 block max-w-prose text-(length:--type-caption) text-muted-foreground">{status.hint}</span> : null}
                     </ListCell>
                   </ListRow>
                 );
