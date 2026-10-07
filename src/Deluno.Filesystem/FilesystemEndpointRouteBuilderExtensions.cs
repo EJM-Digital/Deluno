@@ -18,24 +18,88 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> FilesGoneRunning = new(StringComparer.OrdinalIgnoreCase);
 
+    // #1170: how long a Windows folder window on the server may sit unanswered
+    // before the request gives up, and the one window allowed at a time.
+    internal static readonly TimeSpan NativePickerTimeout = TimeSpan.FromSeconds(90);
+    private static int nativePickerOpen;
+
+    /// <summary>
+    /// Whether the browser asking is on the server's own machine (#1170): the
+    /// connection comes from the loopback address or from the machine's own
+    /// address, and was not forwarded by a proxy. A Windows folder window opens
+    /// on the server's screen, so it is of use to nobody else.
+    /// </summary>
+    public static bool IsFromThisMachine(System.Net.IPAddress? remote, System.Net.IPAddress? local, IHeaderDictionary headers)
+    {
+        if (headers.ContainsKey("X-Forwarded-For") || headers.ContainsKey("Forwarded") || headers.ContainsKey("X-Real-IP"))
+        {
+            return false;
+        }
+
+        // No address at all is an in-process caller (a test host), never a network one.
+        return remote is null
+            || System.Net.IPAddress.IsLoopback(remote)
+            || (local is not null && remote.Equals(local));
+    }
+
+    public static async Task<IResult> PickNativeFolderAsync(HttpContext httpContext, NativeFolderPickerRequest request, CancellationToken cancellationToken)
+    {
+        if (!IsFromThisMachine(httpContext.Connection.RemoteIpAddress, httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
+        {
+            return Results.Json(
+                new
+                {
+                    message = "The Windows folder window opens on the computer Deluno runs on. Use the folder browser instead.",
+                    nativePickerUnavailable = true
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (Interlocked.CompareExchange(ref nativePickerOpen, 1, 0) != 0)
+        {
+            return Results.Conflict(new
+            {
+                message = "A folder window is already open on the server. Answer it there, or use the folder browser.",
+                nativePickerUnavailable = true
+            });
+        }
+
+        var pick = WindowsFolderPicker.PickAsync(request.InitialPath);
+        _ = pick.ContinueWith(_ => Interlocked.Exchange(ref nativePickerOpen, 0), TaskScheduler.Default);
+
+        WindowsFolderPickerResult result;
+        try
+        {
+            result = await pick.WaitAsync(NativePickerTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return Results.Json(
+                new
+                {
+                    message = "Nobody answered the folder window on the server in time. Use the folder browser instead.",
+                    nativePickerUnavailable = true
+                },
+                statusCode: StatusCodes.Status408RequestTimeout);
+        }
+
+        if (!result.Available)
+        {
+            return Results.Conflict(new
+            {
+                message = result.Message ?? "The native folder picker is unavailable.",
+                nativePickerUnavailable = true
+            });
+        }
+
+        return Results.Ok(new NativeFolderPickerResponse(result.Path, result.Cancelled));
+    }
+
     public static IEndpointRouteBuilder MapDelunoFilesystemEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var filesystem = endpoints.MapGroup("/api/filesystem");
 
-        filesystem.MapPost("/native-folder-picker", async ([FromBody] NativeFolderPickerRequest request) =>
-        {
-            var result = await WindowsFolderPicker.PickAsync(request.InitialPath);
-            if (!result.Available)
-            {
-                return Results.Conflict(new
-                {
-                    message = result.Message ?? "The native folder picker is unavailable.",
-                    nativePickerUnavailable = true
-                });
-            }
-
-            return Results.Ok(new NativeFolderPickerResponse(result.Path, result.Cancelled));
-        });
+        filesystem.MapPost("/native-folder-picker", PickNativeFolderAsync);
 
         filesystem.MapGet("/directories", (string? path) =>
         {
