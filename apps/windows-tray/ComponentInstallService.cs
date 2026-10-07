@@ -183,9 +183,13 @@ public sealed class ComponentInstallService(
     IStartedComponentsRegistry? startedComponents = null,
     IInstalledComponentRecord? installedRecord = null,
     TimeSpan? credentialCaptureWait = null,
-    IInstallLog? installLog = null)
+    IInstallLog? installLog = null,
+    Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null)
 {
     private readonly IInstallLog _log = installLog ?? new FileInstallLog();
+    // Test-only (#1158): a local Weir build the person driving a golden-path run named, installed instead of Weir's newest release.
+    private readonly Func<BundledComponentSpec, LocalWeirBuild?> _localBuild = localBuild ?? (spec => LocalWeirBuild.Find(
+        spec.Kind, name => Environment.GetEnvironmentVariable(name), AppContext.BaseDirectory));
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
     private readonly ITextFileReader _templates = templates ?? new RealTextFileReader();
     private readonly Lazy<IBundledComponentCredentialStore> _credentials = new(
@@ -220,7 +224,26 @@ public sealed class ComponentInstallService(
 
         var url = spec.Url;
         var expectedSha256 = spec.Sha256;
-        if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.GithubRepo))
+        string? path = null;
+        var local = _localBuild(spec);
+        if (local is not null)
+        {
+            // Test-only (#1158). The named file is copied, so the later clean-up never deletes the person's own
+            // file, and it is checked against the SHA-256 they gave exactly as a download is.
+            if (!File.Exists(local.Path))
+            {
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                    $"The local {spec.DisplayName} build named for this test was not found.");
+            }
+
+            path = Path.Combine(Path.GetTempPath(), "Deluno-components", Guid.NewGuid().ToString("N")[..8] + "-" + spec.FileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.Copy(local.Path, path, overwrite: true);
+            url = local.Path;
+            expectedSha256 = local.Sha256;
+            _log.Write($"{spec.DisplayName}: using local Weir build {local.Version()} {local.Sha256}");
+        }
+        else if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.GithubRepo))
         {
             var resolved = await GithubLatestRelease.ResolveAsync(spec, cancellationToken);
             if (resolved is null)
@@ -249,7 +272,7 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName} has no download source configured.");
         }
 
-        var path = await _downloader.DownloadAsync(url, spec.FileName, cancellationToken);
+        path ??= await _downloader.DownloadAsync(url, spec.FileName, cancellationToken);
         if (path is null)
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
@@ -283,7 +306,9 @@ public sealed class ComponentInstallService(
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed, verification);
         }
 
-        _log.Write($"{spec.DisplayName}: {DescribeVerification(spec, expectedSha256, checksumFromVendor: !string.IsNullOrWhiteSpace(expectedSha256) && string.IsNullOrWhiteSpace(spec.Sha256))}");
+        _log.Write(local is not null
+            ? $"{spec.DisplayName}: SHA-256 matches the checksum given with the local build"
+            : $"{spec.DisplayName}: {DescribeVerification(spec, expectedSha256, checksumFromVendor: !string.IsNullOrWhiteSpace(expectedSha256) && string.IsNullOrWhiteSpace(spec.Sha256))}");
 
         if (spec.Prerequisite is not null)
         {
