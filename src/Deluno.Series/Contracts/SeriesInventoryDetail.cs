@@ -16,4 +16,14 @@ public sealed record SeriesInventoryDetail(
     /// </summary>
     public IReadOnlyList<int> SeasonsWithRemovedEpisodes()
         => Episodes.Where(episode => !episode.Monitored && episode.SeasonNumber > 0).Select(episode => episode.SeasonNumber).Distinct().ToArray();
+
+    /// <summary>
+    /// The provider's titles for one season's episodes, by episode number, so a release that carries another episode's
+    /// title can be refused for the one searched (#1173).
+    /// </summary>
+    public IReadOnlyDictionary<int, string> EpisodeTitlesForSeason(int seasonNumber)
+        => Episodes
+            .Where(episode => episode.SeasonNumber == seasonNumber && !string.IsNullOrWhiteSpace(episode.Title))
+            .GroupBy(episode => episode.EpisodeNumber)
+            .ToDictionary(group => group.Key, group => group.First().Title!.Trim());
 }
