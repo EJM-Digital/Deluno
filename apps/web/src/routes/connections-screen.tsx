@@ -1165,7 +1165,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             titleCase={false}
           >
             <p className="px-(--card-pad-x) pb-3 text-(length:--type-caption) text-muted-foreground">
-              Only needed when a download client reports a path Deluno cannot use directly — for example a container reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping applies to every download client at its host (#809), so it only needs adding once per host, however many clients share it.
+              Only needed when a download client reports a path Deluno cannot use directly — for example a container reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping applies to every download client at its host, so it only needs adding once per host, however many clients share it.
             </p>
             {clients.length === 0 ? (
               <ListEmpty title="No download client yet" description="Add a download client first, then a remote path mapping can be filed under its host." />

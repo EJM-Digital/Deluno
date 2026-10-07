@@ -1,6 +1,8 @@
 using Deluno.Connections.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Integrations.Processors;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 
 namespace Deluno.Integrations.DownloadClients;
@@ -111,7 +113,8 @@ public sealed class FolderChainService(
     IConnectionsRepository connections,
     IDownloadClientRegistry registry,
     IProcessorRepository? processors = null,
-    TimeSpan? stepTimeout = null) : IFolderChainService
+    TimeSpan? stepTimeout = null,
+    IProcessorConnectionService? processorService = null) : IFolderChainService
 {
     /// <summary>
     /// #1079: how long one client, or one folder, gets to answer. A client that
@@ -309,7 +312,56 @@ public sealed class FolderChainService(
             usesProcessor ? library.ProcessorOutputPath : null,
             library.RootPath,
             chains,
-            await LibraryLinksAsync(library, usesProcessor, kind, chains.Count, Timeout, cancellationToken));
+            await LibraryLinksAsync(library, usesProcessor, kind, chains.Count, Timeout, cancellationToken, usesProcessor ? await ProcessorWatchLinkAsync(library, cancellationToken) : null));
+    }
+
+    /// <summary>
+    /// #1144: the folder the library's processor says it watches, found in its own library-folders list by the
+    /// library's id and translated through the connection's path mappings, set against the processed folder set
+    /// here. Null when the processor cannot be asked or says nothing about this library (not reported, as before).
+    /// </summary>
+    private async Task<FolderChainLink?> ProcessorWatchLinkAsync(LibraryItem library, CancellationToken cancellationToken)
+    {
+        if (processors is null || processorService is null
+            || (string.IsNullOrWhiteSpace(library.ProcessorConnectionId) && string.IsNullOrWhiteSpace(library.ProcessorName))
+            || await processors.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken) is not { } connection)
+        {
+            return null;
+        }
+
+        try
+        {
+            var support = await WithTimeoutAsync(token => processorService.GetStatusSupportAsync(connection, token), Timeout, cancellationToken);
+            if (support.Answer != ProcessorAnswer.Answered)
+            {
+                return null;
+            }
+
+            var folders = support.HasLibraryFolders
+                ? await WithTimeoutAsync(token => processorService.GetLibraryFoldersAsync(connection, token), Timeout, cancellationToken)
+                : [];
+            var watched = folders.FirstOrDefault(folder => string.Equals(folder.ManagerLibraryKey, library.Id, StringComparison.OrdinalIgnoreCase))?.WatchedFolder
+                ?? support.WatchedPath;
+            if (string.IsNullOrWhiteSpace(watched))
+            {
+                return null;
+            }
+
+            var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+            var here = mappings.Count > 0 ? Deluno.Platform.Processing.ProcessorPathMappingTranslator.ToDeluno(watched, mappings) ?? watched : watched;
+            if (string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
+            {
+                return new("processor", FolderChainStatuses.Unknown, $"{connection.Name} says it watches {here} for the {library.Name} library, but no ready folder is set here to compare it with.", here);
+            }
+
+            return SamePath(here, library.ProcessorOutputPath)
+                ? new("processor", FolderChainStatuses.Ok, $"{connection.Name} watches {here} for the {library.Name} library, the ready folder set here.", here)
+                : new("processor", FolderChainStatuses.Problem, $"{connection.Name} watches {here} for the {library.Name} library, but the ready folder set here is {library.ProcessorOutputPath}. Point {connection.Name} at {library.ProcessorOutputPath}, or change the ready folder to match.", here);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Runs work but stops waiting for it after the timeout, even when the work ignores its token.</summary>
@@ -439,7 +491,7 @@ public sealed class FolderChainService(
                 clientFolder);
     }
 
-    private static async Task<IReadOnlyList<FolderChainLink>> LibraryLinksAsync(LibraryItem library, bool usesProcessor, string kind, int clientCount, TimeSpan timeout, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<FolderChainLink>> LibraryLinksAsync(LibraryItem library, bool usesProcessor, string kind, int clientCount, TimeSpan timeout, CancellationToken cancellationToken, FolderChainLink? processorWatch = null)
     {
         var links = new List<FolderChainLink>();
         if (clientCount == 0)
@@ -466,6 +518,11 @@ public sealed class FolderChainService(
         if (ready is not null)
         {
             links.Add(await ready);
+        }
+
+        if (processorWatch is not null)
+        {
+            links.Add(processorWatch);
         }
 
         links.Add(await root);

@@ -673,7 +673,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
         open={openPanel === "filter"}
         onOpenChange={(next) => setOpenPanel(next ? "filter" : null)}
         title="Filter"
-        description={`Pick a saved filter, or build one from ${controlSet.filterFields.length} fields — including the file you actually hold, which Radarr states in its own dialog that it cannot ask about.`}
+        description={`Pick a saved filter, or build one from ${controlSet.filterFields.length} fields — including the file you actually hold.`}
       >
         <div className="space-y-(--grid-gap) py-(--grid-gap)">
           {/*

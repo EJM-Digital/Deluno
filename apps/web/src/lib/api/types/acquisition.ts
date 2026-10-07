@@ -33,6 +33,8 @@ export interface AcquisitionBlocker {
   canClear: boolean;
   /** What clearing it would do, in the words the person needs before pressing. */
   clearEffect: string | null;
+  /** When a wait lifts (ISO time); the summary says it in words, the screen adds the clock time. */
+  untilUtc?: string | null;
 }
 
 export interface AcquisitionBlockersResponse {

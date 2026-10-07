@@ -387,6 +387,18 @@ export function ShowDetailPage() {
   const upcomingCount = progress.upcoming;
   const upgradeCount = progress.upgradable;
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
+  // The season switch answers for the whole season, not for the rows a filter leaves
+  // showing: with the list filtered to Monitored, 1 of 74 Specials read as all of them.
+  const seasonTotals = useMemo(() => {
+    const totals = new Map<number, { episodes: number; monitored: number }>();
+    for (const item of inventory.episodes) {
+      const total = totals.get(item.seasonNumber) ?? { episodes: 0, monitored: 0 };
+      total.episodes += 1;
+      if (item.monitored) total.monitored += 1;
+      totals.set(item.seasonNumber, total);
+    }
+    return totals;
+  }, [inventory.episodes]);
   const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
 
   // Subtitles belong to the episode's own file, not the series (a show's
@@ -1509,7 +1521,7 @@ export function ShowDetailPage() {
                           Monitor season
                           <Switch
                             aria-label={`Monitor ${formatSeasonLabel(season.seasonNumber)}`}
-                            checked={seasonMonitorState(season.episodes.length, season.monitoredCount) === "all"}
+                            checked={seasonMonitorState(seasonTotals.get(season.seasonNumber)?.episodes ?? season.episodes.length, seasonTotals.get(season.seasonNumber)?.monitored ?? season.monitoredCount) === "all"}
                             disabled={busyAction !== null}
                             onCheckedChange={(checked) => void handleSeasonMonitoring(season.seasonNumber, checked)}
                           />

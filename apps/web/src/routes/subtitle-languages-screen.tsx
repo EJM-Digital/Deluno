@@ -257,7 +257,7 @@ export function SubtitleLanguagesPage() {
       <ListCard title="File encoding and permissions">
         <div className="grid gap-(--grid-gap) px-1 py-1">
           <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
-            Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
+            Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why.
           </p>
           <SwitchRow
             label="Set permissions on written subtitles"
@@ -603,7 +603,7 @@ export function SubtitleLanguagesPage() {
 
                 <DrawerSection title="File encoding and permissions">
                   <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
-                    Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
+                    Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why.
                   </p>
                   <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
                     {settings.setPermissionsOnImport

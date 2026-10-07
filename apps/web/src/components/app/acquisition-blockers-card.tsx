@@ -61,6 +61,14 @@ export const BLOCKER_TONE: Record<string, Tone> = {
   [ACQUISITION_BLOCKER_KINDS.releasesBlocked]: "idle"
 };
 
+/** "…in about 6 hours." becomes "…in about 6 hours (12:03 pm)." in the viewer's own time zone. */
+export function withClockTime(summary: string, untilUtc?: string | null): string {
+  const until = untilUtc ? new Date(untilUtc) : null;
+  if (!until || Number.isNaN(until.getTime())) return summary;
+  const clock = until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  return summary.replace(/\.$/, "") + ` (${clock}).`;
+}
+
 export interface AcquisitionBlockersCardProps {
   blockers: AcquisitionBlockersResponse | null;
   /** "/api/movies" or "/api/series". */
@@ -149,7 +157,7 @@ export function AcquisitionBlockersCard({
         >
           {blockers.blockers.map((blocker) => (
             <ListRow key={`${blocker.kind}:${blocker.source}`}>
-              <ListNameCell name={blocker.summary} sub={blocker.detail} />
+              <ListNameCell name={withClockTime(blocker.summary, blocker.untilUtc)} sub={blocker.detail} />
               <div role="cell" className="flex justify-end">
                 <Chip tone={BLOCKER_TONE[blocker.kind] ?? "idle"}>{blocker.source}</Chip>
               </div>

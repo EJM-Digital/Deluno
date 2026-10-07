@@ -517,12 +517,12 @@ function ImportPolicyFields({
         exists per library.
       */}
       <p className="border-t border-hairline p-(--card-pad-x) text-(length:--type-caption) text-muted-foreground">
-        Whether Deluno removes folders left empty by an import is set per library, in Processing -&gt; that library's workflow.
+        Whether Deluno removes folders left empty by an import is set per library, in Media Management, Processing Workflow, on that library's workflow.
       </p>
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Storage safety</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Deluno checks every library's free space on the health schedule (#909). Below the warn line it flags a problem but keeps working; at or below the pause line it stops that library's grabs and imports until space is freed, the same way an unreachable folder does.</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Deluno checks every library's free space on the health schedule. Below the warn line it flags a problem but keeps working; at or below the pause line it stops that library's grabs and imports until space is freed, the same way an unreachable folder does.</p>
         </div>
         <FieldRow>
           <Field label="Warn when a library has less than" help="Percent of the drive free. Deluno flags the problem on Health, the Dashboard tile and the bell, but keeps grabbing and importing.">
@@ -539,7 +539,7 @@ function ImportPolicyFields({
           </Field>
         </FieldRow>
         <FieldRow>
-          <Field label="Minimum free space" help="Deluno blocks an import that would leave the destination volume below this, with a dismissable Activity entry saying why (#765).">
+          <Field label="Minimum free space" help="Deluno blocks an import that would leave the destination volume below this, with a dismissable Activity entry saying why.">
             <div className="flex items-center gap-2">
               <Input type="number" min={0} value={form.minimumFreeSpaceMb} onChange={(event) => onFormChange((current) => ({ ...current, minimumFreeSpaceMb: Number(event.target.value || 0) }))} className="max-w-28" />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">MB</span>
@@ -551,7 +551,7 @@ function ImportPolicyFields({
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Leftover downloads</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list on Queue always offers Keep/Remove by hand either way.</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list in Transfers always offers Keep/Remove by hand either way.</p>
         </div>
         <Field label="Never count these as leftovers" help="Names to skip, one per line or separated by commas. * matches any run of characters and ? one character, so *.nfo skips every .nfo and Thumbs.db skips that file. Checked against each file or folder name at the top of the download folder. Empty by default.">
           <Textarea
@@ -640,14 +640,14 @@ function ImportPolicyFields({
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Still-packed archives</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason on Search &amp; Cycles -&gt; Failure and blocklist). Removing and deleting it from the download client is your call (#887).</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason under Automation & Recovery, Failed Downloads). Removing and deleting it from the download client is your call.</p>
         </div>
         <SwitchRow label="Remove and delete still-packed archives from the download client" description="Off keeps the packed files in the client, using disk space, the same as today." checked={form.removeAndDeletePackedArchivesFromClient} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, removeAndDeletePackedArchivesFromClient: checked }))} />
       </div>
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Permissions</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Set file mode and group ownership when Deluno imports a file. This only takes effect when Deluno's own process owns the file — the same limit Radarr and Sonarr document for their Permissions section.</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Set file mode and group ownership when Deluno imports a file. This only takes effect when Deluno's own process owns the file — a limit of the operating system.</p>
         </div>
         <SwitchRow label="Set permissions on import" description="Apply the chmod and group below to every media file Deluno imports." checked={form.setPermissionsOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, setPermissionsOnImport: checked }))} />
         {form.setPermissionsOnImport ? (
@@ -756,6 +756,7 @@ function ProcessingWorkflowPage() {
   const isRefined = workflow.importWorkflow === "refine-before-import";
   const hasProcessor = Boolean(workflow.processorConnectionId || workflow.processorName);
   const selectedProcessor = findLinkedProcessor(processorConnections, workflow.processorConnectionId, workflow.processorName);
+  const processorProduct = selectedProcessor ? processorProductName(selectedProcessor.name) : null;
   const workflowReady = !isRefined || (Boolean(workflow.processorOutputPath.trim()) && (!hasProcessor || Boolean(selectedProcessor?.isEnabled)));
   const dirty =
     drawer.kind === "library"
@@ -1024,7 +1025,7 @@ function ProcessingWorkflowPage() {
             {(rows) => rows.map((connection) => (
               <ListRow key={connection.id}>
                 <ListNameCell name={<>{connection.name}<ConnectionVersionBeside info={versions.get(versionKey("processor", connection.id))} /></>} sub={processorSub(connection)} />
-                <ListCell primary={connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Generic processor notification"} />
+                <ListCell primary={connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Processor webhook"} />
                 <ListCell mono primary={connection.submissionUrl || "—"} />
                 <ListCell mobile>
                   <Chip tone={healthTone(connection.healthStatus)}>{connection.healthStatus}</Chip>
@@ -1099,7 +1100,7 @@ function ProcessingWorkflowPage() {
         {drawer.kind === "library" ? (
           <>
             <DrawerSection title="Import timing">
-              <Field label="When a download finishes" help="Choose whether Deluno should use the download as soon as it is complete, or wait for an external processor such as FileFlows to produce a cleaned file.">
+              <Field label="When a download finishes" help={<>Choose whether Deluno should use the download as soon as it is complete, or wait for {processorProduct ?? "an external processor"} to produce a cleaned file.</>}>
                 <SegmentedControl<"standard" | "refine-before-import">
                   value={workflow.importWorkflow as "standard" | "refine-before-import"}
                   onValueChange={(importWorkflow) => setWorkflow((current) => ({ ...current, importWorkflow }))}
@@ -1121,7 +1122,7 @@ function ProcessingWorkflowPage() {
                   <Field label="No progress for" help="Deluno asks the processor what it is doing. Queued, scheduled or working is waited for however long it takes; this is how long nothing may change before the rule on the right applies.">
                     <Select value={workflow.processorTimeoutMinutes} onChange={(event) => setWorkflow((current) => ({ ...current, processorTimeoutMinutes: event.target.value }))} options={TIMEOUT_OPTIONS} />
                   </Field>
-                  <Field label="If processing stalls or fails" help="Import the original file brings the untouched download in. The other two keep it out of the library and ask you in Queue.">
+                  <Field label="If processing stalls or fails" help="Import the original file brings the untouched download in. The other two keep it out of the library and ask you in Transfers.">
                     <Select value={workflow.processorFailureMode} onChange={(event) => setWorkflow((current) => ({ ...current, processorFailureMode: event.target.value }))} options={FAILURE_OPTIONS} />
                   </Field>
                 </FieldRow>
@@ -1149,7 +1150,7 @@ function ProcessingWorkflowPage() {
                 </DrawerSection>
               ) : null}
             <DrawerSection title="Source cleanup">
-              <Field label="After import" help="This is Deluno's own cleanup step after a successful import. It is separate from FileFlows, Cleanarr, or any other processor. The copy in your library stays.">
+              <Field label="After import" help={<>This is Deluno's own cleanup step after a successful import. It is separate from {processorProduct ? `${processorProduct}'s own cleanup` : "any external processor's"}. The copy in your library stays.</>}>
                 <SegmentedControl<"keep-source" | "remove-source-after-import">
                   value={workflow.cleanupMode as "keep-source" | "remove-source-after-import"}
                   onValueChange={(cleanupMode) => setWorkflow((current) => ({ ...current, cleanupMode }))}
@@ -1246,6 +1247,13 @@ function emptyWorkflow(): WorkflowForm {
 }
 const UNMATCHED_PROCESSOR = "__unmatched__";
 /** A library's processor by id (#1077), so a rename never loses it; the name is tried only for a link that never matched a connection. */
+/** The processor's own name, from a connection named "<name> on <machine>"; null for the plain "Processor on <machine>" form. */
+export function processorProductName(connectionName: string): string | null {
+  const at = connectionName.indexOf(" on ");
+  const product = at > 0 ? connectionName.slice(0, at) : connectionName;
+  return product === "Processor" ? null : product;
+}
+
 export function findLinkedProcessor(connections: ProcessorConnectionItem[], id: string | null | undefined, name: string | null | undefined) {
   if (id) return connections.find((connection) => connection.id === id) ?? null;
   return name ? connections.find((connection) => connection.name === name) ?? null : null;

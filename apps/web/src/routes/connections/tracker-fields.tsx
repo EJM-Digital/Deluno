@@ -80,7 +80,7 @@ export function TrackerFields({
       </div>
       {chosen.description ? <p className="text-(length:--type-caption) text-muted-foreground">{chosen.description}</p> : null}
       {chosen.mayNeedCloudflareHelp ? (
-        <p className="text-(length:--type-caption) text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr) set under Settings, General. Without one, try another of its addresses.</p>
+        <p className="text-(length:--type-caption) text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr) set under Preferences, General. Without one, try another of its addresses.</p>
       ) : null}
       {chosen.links.length > 1 ? (
         <Field label="Address" error={errors.baseUrl} help="The site's addresses change; Deluno tries the others if this one does not answer.">

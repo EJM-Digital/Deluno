@@ -157,6 +157,122 @@ public sealed class ProcessorConnectionService(
         }
     }
 
+    public async Task<string?> GetProductNameAsync(
+        string submissionUrl,
+        string? authHeaderName,
+        string? secret,
+        CancellationToken cancellationToken)
+    {
+        var body = await ReadCapabilitiesAsync(submissionUrl, authHeaderName, secret, cancellationToken);
+        if (body is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var key in new[] { "name", "product" })
+            {
+                if (document.RootElement.TryGetProperty(key, out var value)
+                    && value.ValueKind == JsonValueKind.String
+                    && value.GetString()?.Trim() is { Length: > 0 and <= 60 } name)
+                {
+                    return name;
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<ProcessorLibraryFolder>> GetLibraryFoldersAsync(
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+    {
+        if (connection.SecretUnreadable || !ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.LibraryFolders);
+            ApplyAuthentication(request, connection);
+            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return [];
+            }
+
+            using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(timeout.Token), cancellationToken: timeout.Token);
+            return ParseLibraryFolders(document.RootElement);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException or InvalidOperationException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>The list as a bare array, or inside the first array property of an object; entries without a watched folder are left out.</summary>
+    internal static IReadOnlyList<ProcessorLibraryFolder> ParseLibraryFolders(JsonElement root)
+    {
+        var list = root;
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            list = default;
+            foreach (var property in root.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Array)
+                {
+                    list = property.Value;
+                    break;
+                }
+            }
+        }
+
+        if (list.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var found = new List<ProcessorLibraryFolder>();
+        foreach (var entry in list.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            string? Text(string name) => entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!.Trim()
+                : null;
+            var watched = Text("watched_folder");
+            if (watched is null)
+            {
+                continue;
+            }
+
+            found.Add(new ProcessorLibraryFolder(
+                Text("manager_library_key"),
+                watched,
+                entry.TryGetProperty("folders_from_manager", out var fromManager) && fromManager.ValueKind == JsonValueKind.True));
+        }
+
+        return found;
+    }
+
     private const int MaxCheckRedirects = 5;
 
     /// <summary>
@@ -439,7 +555,8 @@ public sealed class ProcessorConnectionService(
                 null)
             {
                 CanBeToldTheOutcome = capabilities.Contains("handoff-outcome"),
-                WatchedPath = watchedPath
+                WatchedPath = watchedPath,
+                HasLibraryFolders = capabilities.Contains("library-folders")
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))

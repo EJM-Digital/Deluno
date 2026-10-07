@@ -178,7 +178,7 @@ public static class ActivityEventLabels
             ["filesystem.import.completed"] = "Imported into the library",
             ["filesystem.import.failed"] = "Import failed",
             ["filesystem.import.forced"] = "Import forced by hand",
-            ["filesystem.import.named"] = "Imported using a name chosen by hand",
+            ["filesystem.import.named"] = "Renamed by the naming rules",
             ["filesystem.import.auto-queued"] = "Import queued automatically",
             ["filesystem.import.not-imported"] = "Not imported",
             ["filesystem.import.held-by-file-check"] = "Import held by the file check",

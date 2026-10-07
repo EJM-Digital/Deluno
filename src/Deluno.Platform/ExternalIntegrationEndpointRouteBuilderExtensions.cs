@@ -710,7 +710,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName, request.HealthCheckUrl);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var machineName = await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? string.Empty, request.AuthHeaderName, request.Secret, cancellationToken);
-            return Results.Ok(await repository.CreateProcessorConnectionAsync(request with { MachineName = machineName }, cancellationToken));
+            var productName = await processorConnections.GetProductNameAsync(request.SubmissionUrl ?? string.Empty, request.AuthHeaderName, request.Secret, cancellationToken);
+            return Results.Ok(await repository.CreateProcessorConnectionAsync(request with { MachineName = machineName, ProductName = productName }, cancellationToken));
         });
 
         integrations.MapPut("/processors/connections/{id}", async (
@@ -727,7 +728,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var current = await repository.GetProcessorConnectionAsync(id, cancellationToken);
             var machineName = current is null ? null : await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? current.SubmissionUrl, request.AuthHeaderName ?? current.AuthHeaderName, string.IsNullOrWhiteSpace(request.Secret) ? current.Secret : request.Secret, cancellationToken);
-            var updated = await repository.UpdateProcessorConnectionAsync(id, request with { MachineName = machineName }, cancellationToken);
+            var productName = current is null ? null : await processorConnections.GetProductNameAsync(request.SubmissionUrl ?? current.SubmissionUrl, request.AuthHeaderName ?? current.AuthHeaderName, string.IsNullOrWhiteSpace(request.Secret) ? current.Secret : request.Secret, cancellationToken);
+            var updated = await repository.UpdateProcessorConnectionAsync(id, request with { MachineName = machineName, ProductName = productName }, cancellationToken);
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
 
