@@ -786,3 +786,45 @@ describe("Transfers points to Activity for the history (#1115)", () => {
     expect(screen.getByRole("link", { name: /See everything in Activity/ })).toHaveAttribute("href", "/activity");
   });
 });
+
+/** #1162: a download with a processor hand-off is one line, and the page does not repeat its help. */
+describe("Transfers: one line per download, help said once", () => {
+  afterEach(() => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
+    queueLoaderData.processorHandoffs = [];
+  });
+
+  function download(id: string, releaseName: string): DownloadQueueItem {
+    return {
+      id, clientId: "qbit-client", clientName: "qBittorrent", protocol: "qbittorrent", mediaType: "movies",
+      title: releaseName, releaseName, category: "movies", status: "waiting-for-processor", progress: 100, speedMbps: 0,
+      etaSeconds: 0, sizeBytes: 1_000_000_000, downloadedBytes: 1_000_000_000, peers: 0, indexerName: "Fixture indexer",
+      errorMessage: null, addedUtc: new Date().toISOString(), sourcePath: null, libraryId: null, healthFindings: null
+    } as DownloadQueueItem;
+  }
+
+  it("lists a download with a hand-off once, with the processor's stage in its row", async () => {
+    const { repeatedSentences } = await import("../test/repeated-text");
+    const kept = download("qbit-1", "Kept.In.The.List.2026.1080p.WEB-DL-GROUP");
+    queueLoaderData.telemetry = {
+      ...queueLoaderData.telemetry,
+      clients: [{
+        clientId: "qbit-client", clientName: "qBittorrent", protocol: "qbittorrent", endpointUrl: null, healthStatus: "healthy", lastHealthMessage: null,
+        capabilities: { supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true, supportsRecheck: true, supportsImportPath: true, authMode: "form" },
+        summary: { activeCount: 0, queuedCount: 0, completedCount: 1, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 1 },
+        queue: [kept], history: [], capturedUtc: new Date().toISOString(), historyTruncated: false
+      }]
+    };
+    queueLoaderData.processorHandoffs = [
+      { id: "h1", libraryId: "l", mediaType: "movies", clientId: "qbit-client", queueItemId: "qbit-1", releaseName: kept.releaseName, sourcePath: "D:/in/a", processorName: "Weir", status: "processing", outputPath: null, importJobId: null, failureMessage: null, createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T00:00:00Z" },
+      { id: "h2", libraryId: "l", mediaType: "movies", clientId: "qbit-client", queueItemId: "gone", releaseName: "Left.The.Client.2025.1080p-GROUP", sourcePath: "D:/in/b", processorName: "Weir", status: "processing", outputPath: null, importJobId: null, failureMessage: null, createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T00:00:00Z" }
+    ] as never;
+
+    const { container } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    expect(screen.getAllByText(kept.releaseName)).toHaveLength(2); // the one row: its name and its release line
+    expect(screen.getAllByText("Left.The.Client.2025.1080p-GROUP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Weir: /).length).toBeGreaterThan(0);
+    expect(repeatedSentences(container)).toEqual([]);
+  });
+});

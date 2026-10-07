@@ -295,6 +295,20 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const selectedRemovableOrphans = orphanedDownloads.filter((orphan) => selectedOrphanPaths.has(orphan.path));
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
+  // A download that is still in the list above shows its hand-off in its own
+  // row (the Stage column), so the Processing connector table keeps only the
+  // hand-offs that have no row there: one download, one line (#1162).
+  const newestHandoffByDownload = useMemo(() => {
+    const map = new Map<string, ProcessorHandoffItem>();
+    for (const handoff of processorHandoffs) {
+      const key = handoffDownloadKey(handoff.clientId, handoff.queueItemId);
+      const known = map.get(key);
+      if (!known || handoff.updatedUtc.localeCompare(known.updatedUtc) > 0) map.set(key, handoff);
+    }
+    return map;
+  }, [processorHandoffs]);
+  const queueDownloadKeys = useMemo(() => new Set(queue.map((item) => handoffDownloadKey(item.clientId, item.id))), [queue]);
+  const handoffsWithoutARow = processorHandoffs.filter((handoff) => !queueDownloadKeys.has(handoffDownloadKey(handoff.clientId, handoff.queueItemId)));
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
   const needsActionCount = attention.total;
@@ -997,13 +1011,17 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               const needsAttention = chip.tone === "bad" || chip.tone === "warn" || Boolean(item.failure);
               const rowDispatch = findDispatchForQueueItem(item, dispatches);
               const extras = queueRowExtras(item, rowDispatch, transferring);
+              const rowHandoff = item.failure || item.errorMessage ? undefined : newestHandoffByDownload.get(handoffDownloadKey(item.clientId, item.id));
               return (
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
                   <ListNameCell
                     name={item.title || item.releaseName}
                     sub={<span className="font-mono">{item.releaseName}</span>}
                   />
-                  <ListCell primary={pipelineStage(item)} secondary={pipelineDetail(item)} />
+                  <ListCell
+                    primary={pipelineStage(item)}
+                    secondary={rowHandoff ? `${rowHandoff.processorName ?? "Processor"}: ${processorStageLabel(rowHandoff.status)}${rowHandoff.failureMessage ? ` - ${rowHandoff.failureMessage}` : ""}` : pipelineDetail(item)}
+                  />
                   <ListCell>
                     {transferring ? (
                       <>
@@ -1051,7 +1069,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         )}
       </ListCard>
 
-      {processorHandoffs.length || processorConnections.length ? (
+      {handoffsWithoutARow.length || processorConnections.length ? (
         <ListCard
           title="Processing connector"
           count={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active · ${processorConnections.length} configured` : `${processorConnections.length} configured · latest ${processorHandoffs.length}`}
@@ -1065,10 +1083,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               ))}
             </div>
           ) : null}
-          {processorHandoffs.length ? (
+          {handoffsWithoutARow.length ? (
             <ListTable
               listId="transfers-processing"
-              items={processorHandoffs}
+              items={handoffsWithoutARow}
               columns={[
                 { id: "media", label: "Media", sort: (handoff) => handoff.releaseName.toLowerCase() },
                 { id: "connector", label: "Connector", sort: (handoff) => (handoff.processorName ?? "Configured processor").toLowerCase() },
@@ -1088,7 +1106,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               ))}
             </ListTable>
           ) : (
+            processorHandoffs.length ? (
+            <ListEmpty title="Everything with the processor is in the list above" description="Each download shows what the processor is doing in its Stage column." />
+          ) : (
             <ListEmpty title="No media is being processed" description="The connector is configured. When Deluno hands media to it, its status and returned output will appear here." />
+          )
           )}
         </ListCard>
       ) : null}
@@ -2202,6 +2224,10 @@ function importJobTone(job: JobQueueItem): NonNullable<ChipProps["tone"]> {
   if (isJobFailed(job.status as JobStatus)) return "bad";
   if (isJobActive(job.status as never)) return "info";
   return "ok";
+}
+
+function handoffDownloadKey(clientId: string, queueItemId: string) {
+  return `${clientId}:${queueItemId}`.toLowerCase();
 }
 
 function pipelineStage(item: DownloadQueueItem) {
