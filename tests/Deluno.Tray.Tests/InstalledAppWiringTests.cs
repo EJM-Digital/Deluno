@@ -20,7 +20,7 @@ public sealed partial class ComponentSetupTests
     {
         var record = new RecordingInstalledRecord();
 
-        var result = await InstallWithRecord(Load(kind), record, new RecordingCredentialStore(), template: "ControlIP=0.0.0.0\nMainDir=${AppDir}\\downloads\nControlUsername=nzbget\nControlPassword=tegbzn6789\n");
+        var result = await InstallWithRecord(Load(kind), record, new RecordingCredentialStore(), template: "ControlIP=0.0.0.0\nMainDir=${AppDir}\\downloads\nControlUsername=nzbget\nControlPassword=tegbzn6789\nServer1.Active=yes\n");
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         var entry = Assert.Single(record.Entries);

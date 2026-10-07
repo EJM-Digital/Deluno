@@ -443,29 +443,6 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 : Results.Ok(new { saved = results.All(result => result.Saved), clients = results });
         }).RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-        // #1142: a client Deluno installed on this computer has a login Deluno made, which only the
-        // client's own web page asks for. Showing it is the person's call, so it is a deliberate request
-        // for one connection on this computer, never part of a list.
-        endpoints.MapPost("/api/download-clients/{clientId}/reveal-login", async (
-            string clientId,
-            IConnectionsRepository connectionsRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
-                .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
-            if (client is null)
-            {
-                return Results.NotFound();
-            }
-
-            if (!ClientSaveFolders.IsSameMachine(client))
-            {
-                return Results.BadRequest(new { message = $"{client.Name} is not on this computer, so its login is not shown here." });
-            }
-
-            return Results.Ok(ClientLoginReveal.From(client));
-        }).RequireAuthorization(DelunoAuthorizationPolicies.System);
-
         endpoints.MapPost("/api/download-clients/{clientId}/queue/actions", async (
             string clientId,
             HttpContext httpContext,
@@ -691,15 +668,3 @@ public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Note);
 
 public sealed record PurgeDownloadHealthStrikesResult(int PurgedCount);
-
-/// <summary>What a person needs to sign in to a download client's own web page (#1142).</summary>
-public sealed record ClientLoginReveal(string Address, string? Username, string? Secret, string SecretLabel)
-{
-    public static ClientLoginReveal From(Deluno.Connections.Contracts.DownloadClientItem client)
-    {
-        var address = DownloadClientHelpers.ResolveEndpoint(client)?.ToString() ?? string.Empty;
-        // SABnzbd is reached with an API key; the others with a password.
-        var label = string.Equals(client.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase) ? "API key" : "Password";
-        return new(address, string.IsNullOrWhiteSpace(client.Username) ? null : client.Username, string.IsNullOrWhiteSpace(client.Secret) ? null : client.Secret, label);
-    }
-}

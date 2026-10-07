@@ -53,6 +53,16 @@ public sealed class EndpointInventoryTests
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public void No_route_returns_a_download_clients_login()
+    {
+        // #1142: the person picks the Usenet logins at install, so Deluno never shows a stored one (#1061).
+        using var app = BuildApplication();
+
+        Assert.DoesNotContain(ApplicationEndpoints(app), endpoint =>
+            endpoint.RoutePattern.RawText!.Contains("reveal-login", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static RouteEndpoint[] ApplicationEndpoints(WebApplication app)
         => ((IEndpointRouteBuilder)app).DataSources
             .SelectMany(source => source.Endpoints)
