@@ -73,6 +73,26 @@ public interface IExistingLibraryImportService
         DateTimeOffset idleBeforeUtc,
         int take,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks in one library for the folder (or loose file) that already holds
+    /// this title and attaches it to the title's own catalogue entry, so
+    /// adding or restoring a title never searches for what is on disk (#1161).
+    /// Matches by the folder's title and year, the way an existing-library
+    /// import reads them. Does nothing when no such folder is there.
+    /// </summary>
+    Task<TitleFolderImportOutcome> ImportTitleFolderAsync(
+        string libraryId,
+        string titleId,
+        string title,
+        int? year,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>What looking for a title's existing folder found (#1161).</summary>
+public sealed record TitleFolderImportOutcome(bool Matched, string? Path, string? Message = null)
+{
+    public static TitleFolderImportOutcome NotFound { get; } = new(false, null);
 }
 
 /// <summary>Where a slice got to, and whether the run has more to do.</summary>
