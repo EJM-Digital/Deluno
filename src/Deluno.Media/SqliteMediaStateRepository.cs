@@ -1720,7 +1720,7 @@ public sealed class SqliteMediaStateRepository(
             VALUES (
                 @mediaId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
                 @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
-                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc,
+                NULL, NULL, NULL, COALESCE(@resultNote, 'Imported from your existing library.'), @updatedUtc,
                 1, 0,
                 @videoCodec, @audioCodec, @audioChannels, @releaseGroup
             )
@@ -1745,6 +1745,7 @@ public sealed class SqliteMediaStateRepository(
                 updated_utc = excluded.updated_utc;
             """;
         AddParameter(wanted, "@mediaId", mediaId);
+        AddParameter(wanted, "@resultNote", string.IsNullOrWhiteSpace(request.ResultNote) ? null : request.ResultNote.Trim());
         AddParameter(wanted, "@libraryId", libraryId);
         AddParameter(wanted, "@wantedStatus", WantedStatuses.Normalize(request.WantedStatus));
         AddParameter(wanted, "@wantedReason", request.WantedReason.Trim());

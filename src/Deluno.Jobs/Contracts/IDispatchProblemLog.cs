@@ -25,6 +25,15 @@ public interface IDispatchProblemLog
     /// <summary>Records that this kind of problem has been reported for the download.</summary>
     Task RecordAsync(string dispatchId, string kind, CancellationToken cancellationToken);
 
+    /// <summary>Releases this kind of problem for the download, so it is no longer open and may be raised afresh.</summary>
+    Task SettleAsync(string dispatchId, string kind, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that this kind of problem was already dealt with (by Deluno
+    /// itself), so it is never raised for the download and nobody is waiting on it.
+    /// </summary>
+    Task RecordAcknowledgedAsync(string dispatchId, string kind, CancellationToken cancellationToken);
+
     /// <summary>
     /// The issue written about this download was dismissed: its problems stay
     /// recorded, but are no longer waiting on anyone. Returns how many.

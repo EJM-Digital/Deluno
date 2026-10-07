@@ -484,6 +484,41 @@ public sealed class MediaStateRepositoryTests
         }
     }
 
+    /// <summary>#1151: a film imported from a processor's output says so on its page, not "your existing library".</summary>
+    [Fact]
+    public async Task An_import_can_say_where_the_file_came_from_as_the_titles_last_attempt()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, MediaKind.Movie);
+        var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
+
+        await repository.ImportExistingAsync(
+            "library-movies", "Oppenheimer", 2023, "covered", "Imported.", "Bluray-1080p", "Bluray-1080p", true,
+            @"D:\Media\Oppenheimer (2023)\Oppenheimer.2023.1080p.BluRay.x264-GROUP.mkv", 1024, CancellationToken.None,
+            resultNote: "Imported from Weir's cleaned output.");
+        await repository.ImportExistingAsync(
+            "library-movies", "Older Film", 1999, "covered", "Imported.", "Bluray-1080p", "Bluray-1080p", true,
+            @"D:\Media\Older Film (1999)\Older.Film.1999.1080p.BluRay.x264-GROUP.mkv", 1024, CancellationToken.None);
+
+        var items = (await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items;
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        async Task<string?> LastAttemptAsync(string movieId)
+        {
+            using var read = connection.CreateCommand();
+            read.CommandText = "SELECT last_search_result FROM movie_wanted_state WHERE movie_id = @id;";
+            var parameter = read.CreateParameter();
+            parameter.ParameterName = "@id";
+            parameter.Value = movieId;
+            read.Parameters.Add(parameter);
+            return await read.ExecuteScalarAsync(CancellationToken.None) as string;
+        }
+
+        Assert.Equal("Imported from Weir's cleaned output.", await LastAttemptAsync(items.Single(item => item.Title == "Oppenheimer").Id));
+        Assert.Equal("Imported from your existing library.", await LastAttemptAsync(items.Single(item => item.Title == "Older Film").Id));
+    }
+
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]

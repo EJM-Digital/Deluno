@@ -1874,7 +1874,8 @@ public sealed class SqliteMovieCatalogRepository(
         long? fileSizeBytes,
         CancellationToken cancellationToken,
         PreferenceEvaluationSnapshot? preferenceEvaluation = null,
-        string? movieId = null)
+        string? movieId = null,
+        string? resultNote = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -1890,7 +1891,8 @@ public sealed class SqliteMovieCatalogRepository(
                     FilePath: filePath,
                     FileSizeBytes: fileSizeBytes,
                     PreferenceEvaluation: preferenceEvaluation,
-                    MovieId: movieId)
+                    MovieId: movieId,
+                    ResultNote: resultNote)
             ],
             cancellationToken);
 
@@ -1962,7 +1964,8 @@ public sealed class SqliteMovieCatalogRepository(
                     request.FilePath,
                     request.FileSizeBytes,
                     request.PreferenceEvaluation,
-                    MediaId: request.MovieId),
+                    MediaId: request.MovieId,
+                    ResultNote: request.ResultNote),
                 connection,
                 transaction,
                 cancellationToken);
@@ -2048,7 +2051,7 @@ public sealed class SqliteMovieCatalogRepository(
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
                 @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
-                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc,
+                NULL, NULL, NULL, COALESCE(@resultNote, 'Imported from your existing library.'), @updatedUtc,
                 1, 0,
                 @videoCodec, @audioCodec, @audioChannels, @releaseGroup
             )
@@ -2079,6 +2082,7 @@ public sealed class SqliteMovieCatalogRepository(
             """;
 
         AddParameter(wanted, "@movieId", movieId);
+        AddParameter(wanted, "@resultNote", string.IsNullOrWhiteSpace(request.ResultNote) ? null : request.ResultNote.Trim());
         AddParameter(wanted, "@videoCodec", fileFacts.VideoCodec);
         AddParameter(wanted, "@audioCodec", fileFacts.AudioCodec);
         AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);

@@ -49,6 +49,19 @@ public sealed class AProcessingFailureShowsTheProcessorsReasonTests
         Assert.Equal("Torrent Error", item.ErrorMessage);
     }
 
+    /// <summary>#1151: the drawer said "Deluge queue failed: The processor refused...", blaming the client that did nothing wrong.</summary>
+    [Fact]
+    public void The_failure_is_attributed_to_the_processor_not_the_download_client()
+    {
+        var snapshot = DownloadClientHelpers.NormalizeSnapshotFailures(Enrich(Handoff("failed", RefusalReason)));
+
+        var failure = Assert.IsType<Deluno.Contracts.IntegrationFailure>(Assert.Single(snapshot.Queue).Failure);
+        Assert.Equal("processor", failure.ServiceType);
+        Assert.Equal("Weir", failure.ServiceName);
+        Assert.StartsWith("Weir hand-off failed:", failure.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Deluge queue", failure.Summary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_hand_off_still_with_the_processor_carries_no_error_at_all()
     {

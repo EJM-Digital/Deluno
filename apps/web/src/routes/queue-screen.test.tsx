@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
+import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { buildImportRequest, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
@@ -21,7 +21,7 @@ const queueLoaderData = {
     capturedUtc: new Date().toISOString()
   },
   dispatches: [],
-  movieRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
+  movieRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] as MovieImportRecoverySummary["recentCases"] },
   seriesRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
   libraries: [],
   settings: emptyPlatformSettingsSnapshot,
@@ -535,6 +535,50 @@ describe("leftover downloads: select all", () => {
   });
 });
 
+/** #1167: a pile of things that need the user clears in one go, and the count is the rows. */
+describe("Needs attention: select all, then Dismiss", () => {
+  afterEach(() => {
+    queueLoaderData.movieRecovery = { ...queueLoaderData.movieRecovery, recentCases: [] };
+    authedFetchMock.mockReset();
+  });
+
+  it("dismisses every selected row with the same request the row's own Dismiss sends", async () => {
+    queueLoaderData.movieRecovery = {
+      ...queueLoaderData.movieRecovery,
+      recentCases: ["a", "b", "c"].map((id) => ({
+        id: `case-${id}`,
+        title: `Film ${id}`,
+        failureKind: "import-timeout",
+        summary: "Import was detected but never completed after 24 hours.",
+        recommendedAction: "Retry the import.",
+        detailsJson: null,
+        detectedUtc: "2026-10-07T01:00:00Z"
+      }))
+    };
+    authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: "Dismiss" })).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Select all 3 to dismiss" }));
+    expect(screen.getByRole("switch", { name: "Select Film a" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss 3 selected" }));
+
+    await waitFor(() => {
+      const dismissed = authedFetchMock.mock.calls.map(([path]) => String(path)).filter((path) => path.endsWith("/dismiss"));
+      expect(dismissed.sort()).toEqual([
+        "/api/movies/import-recovery/case-a/dismiss",
+        "/api/movies/import-recovery/case-b/dismiss",
+        "/api/movies/import-recovery/case-c/dismiss"
+      ]);
+    });
+  });
+});
+
 describe("dismissing a health finding", () => {
   function findingAt(ignoredUntilUtc: string | null): DownloadHealthFinding {
     return {
@@ -660,6 +704,85 @@ describe("queueRowExtras (#796)", () => {
 
     expect(queueRowExtras(item, null, true).timeleft).toBe("2m left");
     expect(queueRowExtras(item, null, false).timeleft).toBe("—");
+  });
+});
+
+/** #1151: a failed processor hand-off is put right from the download's own drawer, once, blaming the processor. */
+describe("download drawer: a failed processor hand-off (#1151)", () => {
+  const reason = "The processor refused the hand-off with HTTP 400: Weir's watched folder is not set for this media scope.";
+
+  afterEach(() => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
+    queueLoaderData.processorHandoffs = [] as unknown as typeof queueLoaderData.processorHandoffs;
+    authedFetchMock.mockReset();
+  });
+
+  function openFailedHandoffDrawer() {
+    const item = {
+      id: "deluge-1", clientId: "deluge-client", clientName: "Deluge", protocol: "deluge", mediaType: "movies", title: "Nosferatu",
+      releaseName: "Nosferatu.2024.1080p.BluRay-GROUP", category: "movies", status: "processingFailed", progress: 100, speedMbps: 0, etaSeconds: 0,
+      sizeBytes: 1000, downloadedBytes: 1000, peers: 0, indexerName: "Fixture", errorMessage: reason, addedUtc: new Date().toISOString(),
+      sourcePath: null, libraryId: null, healthFindings: null,
+      failure: {
+        serviceType: "processor", serviceId: "h1", serviceName: "Weir", operation: "hand-off", kind: "RejectedAction", retryState: "ManualAction",
+        message: reason, code: "failed", httpStatus: null, upstreamDetail: null, externalId: "h1", retryAfterUtc: null, attempts: 0, isTransient: false,
+        legacyCategory: "rejected", summary: `Weir hand-off failed: ${reason}`, nextAction: "Review the provider response and the requested action before retrying."
+      }
+    } as unknown as DownloadQueueItem;
+    queueLoaderData.telemetry = {
+      ...queueLoaderData.telemetry,
+      clients: [{
+        clientId: "deluge-client", clientName: "Deluge", protocol: "deluge", endpointUrl: null, healthStatus: "healthy", lastHealthMessage: null,
+        capabilities: { supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true, supportsRecheck: true, supportsImportPath: true, authMode: "form" },
+        summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
+        queue: [item], history: [], capturedUtc: new Date().toISOString(), historyTruncated: false
+      }]
+    };
+    queueLoaderData.processorHandoffs = [{
+      id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "deluge-client", queueItemId: "deluge-1", releaseName: "Nosferatu.2024.1080p.BluRay-GROUP",
+      sourcePath: "/downloads/nosferatu", processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: reason,
+      createdUtc: new Date().toISOString(), updatedUtc: new Date().toISOString()
+    }] as unknown as typeof queueLoaderData.processorHandoffs;
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+    // The Needs attention row opens the download's own drawer.
+    fireEvent.click(screen.getAllByText("Nosferatu.2024.1080p.BluRay-GROUP")[0]);
+  }
+
+  it("offers one send-again button, import original, search for another and dismiss in the download's own drawer", async () => {
+    openFailedHandoffDrawer();
+
+    expect(await screen.findByRole("button", { name: "Send to Weir again" })).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Send to Weir again" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Ask the processor again" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import original" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Search for another release" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Dismiss this hand-off" })).toBeVisible();
+  });
+
+  it("says the processor refused it, once, and never blames the download client", async () => {
+    openFailedHandoffDrawer();
+    await screen.findByRole("button", { name: "Send to Weir again" });
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByText(reason)).toHaveLength(1);
+    expect(within(dialog).queryByText(/Deluge.*queue failed/)).not.toBeInTheDocument();
+  });
+
+  it("sends the hand-off again with the same request the hand-off drawer used", async () => {
+    authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    openFailedHandoffDrawer();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send to Weir again" }));
+
+    await waitFor(() => {
+      expect(authedFetchMock).toHaveBeenCalledWith("/api/integrations/processors/handoffs/h1/retry", { method: "POST" });
+    });
   });
 });
 

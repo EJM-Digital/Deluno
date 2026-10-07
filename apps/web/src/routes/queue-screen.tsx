@@ -64,7 +64,7 @@ import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
-import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction } from "../lib/needs-action";
+import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -223,6 +223,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const [removalReasonBusy, setRemovalReasonBusy] = useState<RemovalReason | null>(null);
   // #932: select-all on the leftovers list, alongside per-item Keep/Remove.
   const [selectedOrphanPaths, setSelectedOrphanPaths] = useState<Set<string>>(new Set());
+  /** Rows picked for Dismiss in Needs attention (#1167): a key per row, see `dismissibleRows`. */
+  const [selectedDismissKeys, setSelectedDismissKeys] = useState<Set<string>>(new Set());
   const [manualImport, setManualImport] = useState<ManualImportForm>(() => ({
     sourcePath: "",
     fileName: "",
@@ -330,6 +332,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       .filter((handoff) => handoff.clientId.toLowerCase() === openQueueItem.clientId.toLowerCase() && handoff.queueItemId.toLowerCase() === openQueueItem.id.toLowerCase())
       .sort((left, right) => right.updatedUtc.localeCompare(left.updatedUtc))[0] ?? null
     : null;
+  /** The processor's own reason is said once, in the Import box with its fixes, not again as the client's health (#1151). */
+  const processorOwnsFailure = Boolean(openQueueHandoff) && openQueueItem?.status === downloadQueueStatuses.processingFailed;
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
   const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
@@ -631,16 +635,14 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     await run(`job:dismiss:${job.id}`, () => dismissFailedJob(job.id), `${jobTitle(job)} dismissed`);
   }
 
-  async function dismissRecovery(item: (typeof recoveryCases)[number]) {
+  async function dismissRecoveryRequest(item: (typeof recoveryCases)[number]) {
     const collection = item.mediaType === "movie" ? "movies" : "series";
-    await run(
-      `recovery:dismiss:${item.id}`,
-      async () => {
-        const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/dismiss`, { method: "POST" });
-        if (!response.ok) throw new Error("That case could not be dismissed.");
-      },
-      `${item.title} dismissed`
-    );
+    const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/dismiss`, { method: "POST" });
+    if (!response.ok) throw new Error("That case could not be dismissed.");
+  }
+
+  async function dismissRecovery(item: (typeof recoveryCases)[number]) {
+    await run(`recovery:dismiss:${item.id}`, () => dismissRecoveryRequest(item), `${item.title} dismissed`);
   }
 
   async function importOriginal(handoff: ProcessorHandoffItem) {
@@ -657,31 +659,138 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     );
   }
 
+  async function dismissDispatchRequest(dispatch: DownloadDispatchItem) {
+    const response = await authedFetch(`/api/v1/download-dispatches/${encodeURIComponent(dispatch.id)}?reason=dismissed`, { method: "DELETE" });
+    if (!response.ok && response.status !== 404) throw new Error("That download could not be dismissed.");
+  }
+
   async function dismissDispatch(dispatch: DownloadDispatchItem) {
-    const done = await run(
-      `dispatch:dismiss:${dispatch.id}`,
-      async () => {
-        const response = await authedFetch(`/api/v1/download-dispatches/${encodeURIComponent(dispatch.id)}?reason=dismissed`, { method: "DELETE" });
-        if (!response.ok && response.status !== 404) throw new Error("That download could not be dismissed.");
-      },
-      `${dispatch.releaseName} dismissed`
-    );
+    const done = await run(`dispatch:dismiss:${dispatch.id}`, () => dismissDispatchRequest(dispatch), `${dispatch.releaseName} dismissed`);
     if (done) setDrawer(null);
   }
 
+  async function dismissHandoffRequest(handoff: ProcessorHandoffItem) {
+    const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/dismiss`, { method: "POST" });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(body?.message || "That hand-off could not be dismissed.");
+    }
+  }
+
   async function dismissHandoff(handoff: ProcessorHandoffItem) {
-    const done = await run(
-      `handoff:dismiss:${handoff.id}`,
-      async () => {
-        const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/dismiss`, { method: "POST" });
-        if (!response.ok) {
-          const body = (await response.json().catch(() => null)) as { message?: string } | null;
-          throw new Error(body?.message || "That hand-off could not be dismissed.");
-        }
-      },
-      `${handoff.releaseName} dismissed`
-    );
+    const done = await run(`handoff:dismiss:${handoff.id}`, () => dismissHandoffRequest(handoff), `${handoff.releaseName} dismissed`);
     if (done) setDrawer(null);
+  }
+
+  /**
+   * What can be done about a hand-off the processor did not finish: one place, used by the download's own drawer and
+   * by the hand-off drawer, each action with a line saying what it does (#1151).
+   */
+  function handoffFixes(handoff: ProcessorHandoffItem) {
+    const processor = handoff.processorName ?? "the processor";
+    const busy = busyKey !== null;
+    const spin = (key: string) => (busyKey === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null);
+    const line = (button: React.ReactNode, caption: string) => (
+      <div className="grid gap-1">
+        <div>{button}</div>
+        <p className="text-(length:--type-caption) text-muted-foreground">{caption}</p>
+      </div>
+    );
+    return (
+      <div className="grid gap-3">
+        {canImportOriginal(handoff.status)
+          ? (
+            <>
+              {line(
+                <Button type="button" size="sm" onClick={() => void retryHandoff(handoff)} disabled={busy}>
+                  {spin(`handoff:${handoff.id}`)}
+                  Send to {processor} again
+                </Button>,
+                `Sends the finished download to ${processor} again, the same way as the first time.`
+              )}
+              {line(
+                <Button type="button" variant="outline" size="sm" onClick={() => void importOriginal(handoff)} disabled={busy}>
+                  {spin(`original:${handoff.id}`)}
+                  Import original
+                </Button>,
+                "Brings the download in as it is, without processing."
+              )}
+              {line(
+                <Button type="button" variant="outline" size="sm" onClick={() => void searchAgainForHandoff(handoff)} disabled={busy}>
+                  {spin(`handoff:search-again:${handoff.id}`)}
+                  Search for another release
+                </Button>,
+                "Gives up on this release, never picks it again, and looks for a different one."
+              )}
+              {line(
+                <Button type="button" variant="outline" size="sm" onClick={() => void keepWaiting(handoff)} disabled={busy}>
+                  {spin(`handoff:keep-waiting:${handoff.id}`)}
+                  Keep waiting
+                </Button>,
+                `Goes on watching ${processor} for a while longer without sending anything again.`
+              )}
+            </>
+          )
+          : null}
+        {handoffNeedsPerson(handoff)
+          ? line(
+            <Button type="button" variant="outline" size="sm" aria-label="Dismiss this hand-off" onClick={() => void dismissHandoff(handoff)} disabled={busy}>
+              {spin(`handoff:dismiss:${handoff.id}`)}
+              Dismiss
+            </Button>,
+            "Stops counting this as needing you. What happened stays here and in Activity."
+          )
+          : null}
+      </div>
+    );
+  }
+
+  /** Every row of Needs attention that Dismiss clears, with the request that clears it (#1167). */
+  const dismissibleRows: { key: string; title: string; dismiss: () => Promise<void> }[] = [
+    ...recoveryCases.map((item) => ({ key: `recovery:${item.mediaType}:${item.id}`, title: item.title, dismiss: () => dismissRecoveryRequest(item) })),
+    ...failedImportJobs.map((job) => ({ key: `job:${job.id}`, title: jobTitle(job), dismiss: () => dismissFailedJob(job.id).then(() => undefined) })),
+    ...failedProcessorHandoffs.map((handoff) => ({ key: `handoff:${handoff.id}`, title: handoff.releaseName, dismiss: () => dismissHandoffRequest(handoff) })),
+    ...failedDownloads.map(({ dispatch }) => ({ key: `dispatch:${dispatch.id}`, title: dispatch.releaseName, dismiss: () => dismissDispatchRequest(dispatch) }))
+  ];
+  const selectedDismissRows = dismissibleRows.filter((row) => selectedDismissKeys.has(row.key));
+  /** Two rows can name the same release, and a button's name must be unique on screen. */
+  const selectLabels = (() => {
+    const seen = new Map<string, number>();
+    const totals = new Map<string, number>();
+    for (const row of dismissibleRows) totals.set(row.title, (totals.get(row.title) ?? 0) + 1);
+    return new Map(dismissibleRows.map((row) => {
+      const n = (seen.get(row.title) ?? 0) + 1;
+      seen.set(row.title, n);
+      return [row.key, (totals.get(row.title) ?? 0) > 1 ? `Select ${row.title} (${n})` : `Select ${row.title}`] as const;
+    }));
+  })();
+
+  function toggleDismissSelected(key: string, checked: boolean) {
+    setSelectedDismissKeys((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  /** Select all, then Dismiss (#1167): one at a time, so one failure does not stop the rest. */
+  async function dismissSelected(rows: typeof dismissibleRows) {
+    await run("needs:dismiss-selected", async () => {
+      let dismissed = 0;
+      let firstFailure: string | null = null;
+      for (const row of rows) {
+        try {
+          await row.dismiss();
+          dismissed += 1;
+        } catch (error) {
+          firstFailure ??= error instanceof Error ? error.message : `${row.title} could not be dismissed.`;
+        }
+      }
+      setSelectedDismissKeys(new Set());
+      if (firstFailure) throw new Error(dismissed > 0 ? `Dismissed ${dismissed} of ${rows.length}. ${firstFailure}` : firstFailure);
+      toast.success(`Dismissed ${dismissed} ${dismissed === 1 ? "thing" : "things"}.`);
+    });
   }
 
   async function retryHandoff(handoff: ProcessorHandoffItem) {
@@ -694,7 +803,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           throw new Error(body?.message || "The processor hand-off could not be tried again.");
         }
       },
-      "Hand-off queued to try again with the same ID"
+      `Sent to ${handoff.processorName ?? "the processor"} again.`
     );
   }
 
@@ -1156,33 +1265,48 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           title="Needs attention"
           count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own`}
           actions={
-            failedImportJobs.length || orphanedDownloads.length ? (
-              <>
-                {failedImportJobs.length ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
-                    {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                    Retry {failedImportJobs.length} failed
-                  </Button>
-                ) : null}
-                {orphanedDownloads.length ? (
-                  selectedRemovableOrphans.length > 0 ? (
-                    <>
-                      <Button type="button" variant="outline" size="sm" onClick={clearOrphanSelection} disabled={busyKey !== null}>
-                        Clear selection
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => void removeSelectedOrphans(selectedRemovableOrphans)} disabled={busyKey !== null}>
-                        {busyKey === "orphan:remove-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                        Remove {selectedRemovableOrphans.length} selected
-                      </Button>
-                    </>
-                  ) : (
-                    <Button type="button" variant="outline" size="sm" onClick={() => selectAllRemovableOrphans(orphanedDownloads)} disabled={busyKey !== null}>
-                      Select all leftovers
+            <>
+              {dismissibleRows.length ? (
+                selectedDismissRows.length > 0 ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSelectedDismissKeys(new Set())} disabled={busyKey !== null}>
+                      Clear dismiss selection
                     </Button>
-                  )
-                ) : null}
-              </>
-            ) : undefined
+                    <Button type="button" variant="outline" size="sm" onClick={() => void dismissSelected(selectedDismissRows)} disabled={busyKey !== null}>
+                      {busyKey === "needs:dismiss-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Dismiss {selectedDismissRows.length} selected
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSelectedDismissKeys(new Set(dismissibleRows.map((row) => row.key)))} disabled={busyKey !== null}>
+                    Select all {dismissibleRows.length} to dismiss
+                  </Button>
+                )
+              ) : null}
+              {failedImportJobs.length ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
+                  {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+                  Retry {failedImportJobs.length} failed
+                </Button>
+              ) : null}
+              {orphanedDownloads.length ? (
+                selectedRemovableOrphans.length > 0 ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={clearOrphanSelection} disabled={busyKey !== null}>
+                      Clear selection
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void removeSelectedOrphans(selectedRemovableOrphans)} disabled={busyKey !== null}>
+                      {busyKey === "orphan:remove-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Remove {selectedRemovableOrphans.length} selected
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={() => selectAllRemovableOrphans(orphanedDownloads)} disabled={busyKey !== null}>
+                    Select all leftovers
+                  </Button>
+                )
+              ) : null}
+            </>
           }
         >
           <ListTable
@@ -1199,7 +1323,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                 <ListNameCell name={item.title} sub={item.mediaType === "movie" ? "Movies" : "TV"} />
                 <ListCell primary={item.summary} secondary={item.recommendedAction} />
                 <ListCell mobile align="end">
-                  <span className="flex justify-end gap-2">
+                  <span className="flex items-center justify-end gap-2">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Switch size="sm" aria-label={selectLabels.get(`recovery:${item.mediaType}:${item.id}`)} checked={selectedDismissKeys.has(`recovery:${item.mediaType}:${item.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`recovery:${item.mediaType}:${item.id}`, checked)} disabled={busyKey !== null} />
+                    </span>
                     {/* Offered where Deluno can act (#558): a failed download or
                         import, named by the download it is about. A quality,
                         unmatched or corrupt file needs a decision instead. */}
@@ -1253,9 +1380,12 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             {failedImportJobs.map((job) => (
               <ListRow key={`job:${job.id}`}>
                 <ListNameCell name={jobTitle(job)} sub="Import job" />
-                <ListCell primary={job.lastError ?? "The import failed."} secondary={`Attempt ${job.attempts}`} />
+                <ListCell primary={job.lastError ? plainFailure(job.lastError, "The import") : "The import failed."} secondary={`Attempt ${job.attempts}`} />
                 <ListCell mobile align="end">
-                  <span className="flex justify-end gap-2">
+                  <span className="flex items-center justify-end gap-2">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Switch size="sm" aria-label={selectLabels.get(`job:${job.id}`)} checked={selectedDismissKeys.has(`job:${job.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`job:${job.id}`, checked)} disabled={busyKey !== null} />
+                    </span>
                     <Button type="button" variant="outline" size="sm" onClick={() => void dismissFailedImport(job)} disabled={busyKey !== null}>
                       Dismiss
                     </Button>
@@ -1264,10 +1394,25 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </ListRow>
             ))}
             {failedProcessorHandoffs.map((handoff) => (
-              <ListRow key={`processor-failure:${handoff.id}`} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })}>
+              <ListRow
+                key={`processor-failure:${handoff.id}`}
+                onClick={() => setDrawer(
+                  // The download's own drawer holds the fixes beside the download; the hand-off drawer is for one whose download has left the client.
+                  queue.some((item) => item.id === handoff.queueItemId && item.clientId === handoff.clientId)
+                    ? { kind: "queue", id: handoff.queueItemId }
+                    : { kind: "activity", id: `processor:${handoff.id}` }
+                )}
+              >
                 <ListNameCell name={handoff.releaseName} sub={handoff.processorName ?? "Processing connector"} />
-                <ListCell primary={handoff.failureMessage ?? `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
-                <ListCell mobile align="end"><span className="text-(length:--type-caption) text-muted-foreground">Open to fix</span></ListCell>
+                <ListCell primary={handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
+                <ListCell mobile align="end">
+                  <span className="flex items-center justify-end gap-2">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Switch size="sm" aria-label={selectLabels.get(`handoff:${handoff.id}`)} checked={selectedDismissKeys.has(`handoff:${handoff.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`handoff:${handoff.id}`, checked)} disabled={busyKey !== null} />
+                    </span>
+                    <span className="text-(length:--type-caption) text-muted-foreground">Open to fix</span>
+                  </span>
+                </ListCell>
               </ListRow>
             ))}
             {failedDownloads.map(({ dispatch, attempts }) => (
@@ -1277,7 +1422,14 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   primary={dispatchActivityDetail(dispatch)}
                   secondary={attempts > 1 ? `${attempts} attempts · ${dispatchFailureDetail(dispatch)}` : dispatchFailureDetail(dispatch)}
                 />
-                <ListCell mobile align="end"><span className="text-(length:--type-caption) text-muted-foreground">Open transfer details</span></ListCell>
+                <ListCell mobile align="end">
+                  <span className="flex items-center justify-end gap-2">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Switch size="sm" aria-label={selectLabels.get(`dispatch:${dispatch.id}`)} checked={selectedDismissKeys.has(`dispatch:${dispatch.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`dispatch:${dispatch.id}`, checked)} disabled={busyKey !== null} />
+                    </span>
+                    <span className="text-(length:--type-caption) text-muted-foreground">Open transfer details</span>
+                  </span>
+                </ListCell>
               </ListRow>
             ))}
             {orphanedDownloads.map((orphan) => (
@@ -1391,10 +1543,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </div>
             </DrawerSection>
 
-            {openQueueItem.errorMessage || openQueueItem.failure || visibleFindings(openQueueItem).length ? (
+            {(!processorOwnsFailure && (openQueueItem.errorMessage || openQueueItem.failure)) || visibleFindings(openQueueItem).length ? (
               <DrawerSection title="Health">
-                {openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
-                {openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
+                {!processorOwnsFailure && openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
+                {!processorOwnsFailure && openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
                 {visibleFindings(openQueueItem).map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-start justify-between gap-2">
@@ -1439,17 +1591,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   is shown (#616): the hand-off drawer had both, this one had
                   neither, and Queue import is closed to a failed hand-off. */}
               {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed ? (
-                <div className="grid gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
+                <div className="grid gap-3 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
                   <p className="text-(length:--type-body-sm) text-foreground">
-                    {openQueueHandoff.failureMessage ?? `${openQueueHandoff.processorName ?? "The processor"} did not finish this download.`}
+                    {plainFailure(openQueueHandoff.failureMessage, `Sending it to ${openQueueHandoff.processorName ?? "the processor"}`)}
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" onClick={() => void importOriginal(openQueueHandoff)} disabled={busyKey !== null}>
-                      {busyKey === `original:${openQueueHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                      Import original
-                    </Button>
-                  </div>
-                  <p className="text-(length:--type-caption) text-muted-foreground">Brings the download in as it is, without processing.</p>
+                  {handoffFixes(openQueueHandoff)}
                 </div>
               ) : null}
               {importPreviews[openQueueItem.id] ? (
@@ -1893,24 +2039,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         }}
         title={openActivity?.name ?? "Activity"}
         description={openActivity ? `${openActivity.sub} · ${openActivity.status}` : undefined}
-        footer={
-          // Try again is offered where the API will accept it. It used to sit on
-          // every hand-off, so on a rejected or still-submitted one it could only fail.
-          openActivity?.kind === "processor" && openHandoff && canImportOriginal(openHandoff.status) ? (
-            <DrawerFooter
-              state="clean"
-              saveType="button"
-              saveLabel="Try again"
-              saveEnabled={busyKey === null}
-              onSave={() => {
-                if (openHandoff) void retryHandoff(openHandoff);
-              }}
-              onCancel={() => setDrawer(null)}
-            />
-          ) : (
-            <DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />
-          )
-        }
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openActivity ? (
           <DrawerSection title="What happened">
@@ -1949,46 +2078,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             />
           </DrawerSection>
         ) : null}
-        {openHandoff && canImportOriginal(openHandoff.status) ? (
-          <DrawerSection title="Use the original" aside={processorStageLabel(openHandoff.status)}>
-            <p className="text-(length:--type-caption) text-muted-foreground">
-              The processor did not finish this file. Deluno can import the download as it is, unprocessed, with the same naming as any other import, keep waiting a while longer, or ask the processor about it again.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={() => void importOriginal(openHandoff)} disabled={busyKey !== null}>
-                {busyKey === `original:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Import original
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => void keepWaiting(openHandoff)} disabled={busyKey !== null}>
-                {busyKey === `handoff:keep-waiting:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Keep waiting
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => void retryHandoff(openHandoff)} disabled={busyKey !== null}>
-                {busyKey === `handoff:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Ask the processor again
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => void searchAgainForHandoff(openHandoff)} disabled={busyKey !== null}>
-                {busyKey === `handoff:search-again:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Search for another release
-              </Button>
-            </div>
-          </DrawerSection>
-        ) : null}
-        {/* Whatever Transfers counts as needing a person can be ended here: a
-            second rule about which endings qualify is how a counted row ends up
-            with no way off the screen (#570). */}
-        {openHandoff && handoffNeedsPerson(openHandoff) ? (
-          <DrawerSection title="If nothing more needs doing">
-            <DrawerDanger
-              title="Dismiss this hand-off"
-              description="Deluno stops counting it as needing you. What happened to it stays here and in Activity."
-              action={
-                <Button type="button" variant="outline" size="sm" onClick={() => void dismissHandoff(openHandoff)} disabled={busyKey !== null}>
-                  {busyKey === `handoff:dismiss:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Dismiss
-                </Button>
-              }
-            />
+        {openHandoff && (canImportOriginal(openHandoff.status) || handoffNeedsPerson(openHandoff)) ? (
+          <DrawerSection title="What you can do" aside={processorStageLabel(openHandoff.status)}>
+            {handoffFixes(openHandoff)}
           </DrawerSection>
         ) : null}
       </Drawer>
