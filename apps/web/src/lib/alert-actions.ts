@@ -10,7 +10,7 @@ import type { DownloadQueueItem, JobQueueItem, NoReleaseRow, ProcessorHandoffIte
 import { activityLinkForStatus } from "./activity-history";
 import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
 import { connectionLink, dismissPath } from "./connection-updates";
-import { canTryAgain, isProcessorFault, isVanished, type RecoveryCaseRow } from "./needs-action";
+import { canTryAgain, isProcessorFault, isVanished, plainFailure, type RecoveryCaseRow } from "./needs-action";
 
 /** The longest label that fits the one button width the bell and Health share ("Open Transfers"). */
 export const ALERT_LABEL_MAX = 14;
@@ -77,7 +77,7 @@ function open(id: string, label: string, to: string, hint: string): AlertAction 
 /** What a stuck download's row names as its reason. */
 export function stuckDownloadReason(item: DownloadQueueItem): string {
   const finding = item.healthFindings?.[0];
-  if (item.errorMessage) return item.errorMessage;
+  if (item.errorMessage) return plainFailure(item.errorMessage, `Talking to ${item.clientName} about it`);
   if (finding?.summary) return finding.summary;
   if (item.status === "stalled") return `Not moving in ${item.clientName}.`;
   return `${item.clientName} reported a problem with it.`;

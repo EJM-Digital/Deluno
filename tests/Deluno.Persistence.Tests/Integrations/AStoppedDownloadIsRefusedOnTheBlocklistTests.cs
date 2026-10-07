@@ -104,6 +104,13 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
     public void The_reason_says_how_long_it_went_on(string kind, int strikes, string says)
         => Assert.StartsWith(says, DownloadClientTelemetryService.StalledReason(Finding(kind, strikes), "qBittorrent"), StringComparison.Ordinal);
 
+    /// <summary>#1167: Activity says what Deluno did in plain words, not the internal list of steps.</summary>
+    [Fact]
+    public void Activity_says_what_Deluno_did_about_a_stalled_download_in_plain_words()
+        => Assert.Equal(
+            "Deluno blocked this release, is looking for another copy and removed it from qBittorrent.",
+            DownloadClientTelemetryService.PlainRemediation(["release refused", "replacement search queued", "client entry removed (payload retained by client)"], "qBittorrent"));
+
     [Theory]
     [InlineData(8_640_000L, 0)]
     [InlineData(9_000_000L, 0)]

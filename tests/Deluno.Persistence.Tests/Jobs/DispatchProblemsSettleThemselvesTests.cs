@@ -218,6 +218,91 @@ public sealed class DispatchProblemsSettleThemselvesTests
         Assert.Equal(1, metrics.RecoveryCasesOpenCount);
     }
 
+    /// <summary>
+    /// #1167: a download Deluno's own stall rules blocked, removed and searched
+    /// again is Activity's story. It used to be written down as a failed import
+    /// (with a list of codecs and permissions to check), which put 88 rows on
+    /// Needs action overnight for things Deluno had already dealt with.
+    /// </summary>
+    [Fact]
+    public async Task A_download_the_stall_rules_handled_is_not_reported_as_a_failed_import()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "stalled");
+
+        var (poller, problems, recovery) = CreatePoller(storage, clock);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ImportFailuresDetected);
+        Assert.Equal(0, recovery.ImportFailures);
+        Assert.Equal(0, await problems.CountOpenAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1167: what an earlier build already raised about such a download resolves itself.</summary>
+    [Fact]
+    public async Task An_old_alarm_about_a_download_the_stall_rules_handled_resolves_itself()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "stalled");
+        var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
+        await problems.RecordAsync("stalled", "import-failed", CancellationToken.None);
+        await problems.RecordAsync("stalled", "vanished-downloading", CancellationToken.None);
+        Assert.Equal(2, await problems.CountOpenAsync(CancellationToken.None));
+
+        var (poller, _, recovery) = CreatePoller(storage, clock);
+        await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(0, await problems.CountOpenAsync(CancellationToken.None));
+        Assert.Contains(recovery.Settled, entry => entry.DispatchId == "stalled");
+        // And it is not raised again on the next pass.
+        clock.Advance(TimeSpan.FromHours(1));
+        await poller.PollAsync(CancellationToken.None);
+        Assert.Equal(0, await problems.CountOpenAsync(CancellationToken.None));
+        Assert.Single(recovery.Settled);
+    }
+
+    /// <summary>#1167: a real failed import is still raised, with its own real cause.</summary>
+    [Fact]
+    public async Task A_real_failed_import_is_still_reported()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "bad-file", code: "no-video-file");
+
+        var (poller, problems, recovery) = CreatePoller(storage, clock);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.ImportFailuresDetected);
+        Assert.Equal(1, recovery.ImportFailures);
+        Assert.Equal(1, await problems.CountOpenAsync(CancellationToken.None));
+    }
+
+    private static async Task InsertHandledByDelunoAsync(TestStorage storage, FixedTimeProvider clock, string id, string code = "health-remediation-applied")
+    {
+        var now = clock.GetUtcNow();
+        await ExecuteAsync(storage.Factory,
+            """
+            INSERT INTO download_dispatches (
+                id, library_id, media_type, entity_type, entity_id, release_name,
+                indexer_name, download_client_id, download_client_name, status, created_utc,
+                grab_status, grab_attempted_utc, detected_utc, import_status, import_failure_code, import_failure_message
+            ) VALUES (
+                @id, 'movies-main', 'movie', 'movie', @id, @release,
+                'test-indexer', 'qbittorrent-main', 'qBittorrent', 'sent', @when,
+                'succeeded', @when, @when, 'failed', @code, 'release refused; replacement search queued'
+            )
+            """,
+            ("@id", id),
+            ("@release", $"{id}.2010.1080p.WEB-DL-DELUNO"),
+            ("@when", now.Subtract(TimeSpan.FromHours(1)).ToString("O")),
+            ("@code", code));
+    }
+
     private static (DownloadDispatchPollingService Poller, SqliteDispatchProblemLog Problems, CountingRecoveryHandler Recovery) CreatePoller(
         TestStorage storage,
         FixedTimeProvider clock)
@@ -402,6 +487,8 @@ public sealed class DispatchProblemsSettleThemselvesTests
     {
         public int GrabTimeouts { get; private set; }
 
+        public int ImportFailures { get; private set; }
+
         public List<(string DispatchId, string Reason)> Settled { get; } = [];
 
         public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
@@ -423,6 +510,9 @@ public sealed class DispatchProblemsSettleThemselvesTests
             => Task.CompletedTask;
 
         public Task HandleImportFailureAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string entityId, string importFailureCode, string importFailureMessage, string detailsJson, CancellationToken cancellationToken)
-            => Task.CompletedTask;
+        {
+            ImportFailures++;
+            return Task.CompletedTask;
+        }
     }
 }

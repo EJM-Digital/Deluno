@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
+import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { buildImportRequest, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
@@ -21,7 +21,7 @@ const queueLoaderData = {
     capturedUtc: new Date().toISOString()
   },
   dispatches: [],
-  movieRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
+  movieRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] as MovieImportRecoverySummary["recentCases"] },
   seriesRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
   libraries: [],
   settings: emptyPlatformSettingsSnapshot,
@@ -532,6 +532,50 @@ describe("leftover downloads: select all", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Select all leftovers" })).not.toBeInTheDocument();
+  });
+});
+
+/** #1167: a pile of things that need the user clears in one go, and the count is the rows. */
+describe("Needs attention: select all, then Dismiss", () => {
+  afterEach(() => {
+    queueLoaderData.movieRecovery = { ...queueLoaderData.movieRecovery, recentCases: [] };
+    authedFetchMock.mockReset();
+  });
+
+  it("dismisses every selected row with the same request the row's own Dismiss sends", async () => {
+    queueLoaderData.movieRecovery = {
+      ...queueLoaderData.movieRecovery,
+      recentCases: ["a", "b", "c"].map((id) => ({
+        id: `case-${id}`,
+        title: `Film ${id}`,
+        failureKind: "import-timeout",
+        summary: "Import was detected but never completed after 24 hours.",
+        recommendedAction: "Retry the import.",
+        detailsJson: null,
+        detectedUtc: "2026-10-07T01:00:00Z"
+      }))
+    };
+    authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: "Dismiss" })).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Select all 3 to dismiss" }));
+    expect(screen.getByRole("switch", { name: "Select Film a" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss 3 selected" }));
+
+    await waitFor(() => {
+      const dismissed = authedFetchMock.mock.calls.map(([path]) => String(path)).filter((path) => path.endsWith("/dismiss"));
+      expect(dismissed.sort()).toEqual([
+        "/api/movies/import-recovery/case-a/dismiss",
+        "/api/movies/import-recovery/case-b/dismiss",
+        "/api/movies/import-recovery/case-c/dismiss"
+      ]);
+    });
   });
 });
 
