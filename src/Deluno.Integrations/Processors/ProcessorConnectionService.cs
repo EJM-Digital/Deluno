@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
@@ -14,7 +15,8 @@ namespace Deluno.Integrations.Processors;
 /// </summary>
 public sealed class ProcessorConnectionService(
     IHttpClientFactory httpClientFactory,
-    IProcessorHandoffTitleResolver? titleResolver = null) : IProcessorConnectionService
+    IProcessorHandoffTitleResolver? titleResolver = null,
+    ILogger<ProcessorConnectionService>? logger = null) : IProcessorConnectionService
 {
     public async Task<ProcessorConnectionTestResult> TestAsync(
         ProcessorConnectionItem connection,
@@ -260,11 +262,18 @@ public sealed class ProcessorConnectionService(
         ProcessorHandoffItem handoff,
         CancellationToken cancellationToken)
     {
+        var title = handoff.ReleaseName;
         try
         {
+            var payload = await BuildPayloadAsync(handoff, cancellationToken);
+            if (payload.TryGetValue("title", out var resolvedTitle) && resolvedTitle is string resolved && resolved.Length > 0)
+            {
+                title = resolved;
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Post, connection.SubmissionUrl)
             {
-                Content = SizedJson.Create(await BuildPayloadAsync(handoff, cancellationToken))
+                Content = SizedJson.Create(payload)
             };
             // The key is the hand-off *as of this revision*, not the hand-off.
             //
@@ -290,6 +299,11 @@ public sealed class ProcessorConnectionService(
             var statusCode = (int)response.StatusCode;
             if (response.IsSuccessStatusCode)
             {
+                // #1152: one line per hand-off, so a hand-off can be traced
+                // without the HTTP pipeline's own chatter (now Warning).
+                logger?.LogInformation(
+                    "Hand-off sent: {HandoffTitle} to {Processor}, HTTP {StatusCode}, release {ReleaseName}, hand-off {HandoffId}",
+                    title, connection.Name, statusCode, handoff.ReleaseName, handoff.Id);
                 return new ProcessorSubmissionResult(true, "submitted", "Deluno submitted the hand-off to the processor.", statusCode);
             }
 
@@ -303,6 +317,9 @@ public sealed class ProcessorConnectionService(
             // that away leaves an owner with a number and nowhere to go, and it
             // is the processor, not Deluno, that knows why it refused.
             var explanation = await ReadRefusalAsync(response, cancellationToken);
+            logger?.LogInformation(
+                "Hand-off refused: {HandoffTitle} by {Processor}, HTTP {StatusCode}, reason {Reason}, release {ReleaseName}, hand-off {HandoffId}",
+                title, connection.Name, statusCode, explanation ?? "none given", handoff.ReleaseName, handoff.Id);
             return new ProcessorSubmissionResult(
                 false,
                 "failed",
@@ -313,6 +330,9 @@ public sealed class ProcessorConnectionService(
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
         {
+            logger?.LogInformation(
+                "Hand-off failed: {HandoffTitle} to {Processor}, could not reach it ({ErrorType}), release {ReleaseName}, hand-off {HandoffId}",
+                title, connection.Name, exception.GetType().Name, handoff.ReleaseName, handoff.Id);
             return new ProcessorSubmissionResult(false, "failed", "Deluno could not submit the hand-off. Check the processor connection before retrying.", null);
         }
     }

@@ -1,6 +1,7 @@
 using System.Net;
 using Deluno.Integrations.Processors;
 using Deluno.Platform.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.Tests.Processors;
 
@@ -154,6 +155,52 @@ public sealed class ProcessorConnectionServiceTests
             "handoff-1", "library-1", "movies", "client-1", "queue-1", "Dune Part Two",
             "/downloads/dune.mkv", "Weir", "waiting", null, null, null,
             DateTimeOffset.Parse("2026-09-05T09:00:00Z"), updatedUtc);
+
+    [Theory]
+    [InlineData(HttpStatusCode.Accepted, "Hand-off sent")]
+    [InlineData(HttpStatusCode.BadRequest, "Hand-off refused")]
+    public async Task SubmitAsync_writes_one_information_line_naming_the_title_the_processor_and_the_outcome(HttpStatusCode status, string outcome)
+    {
+        var logger = new CapturingLogger();
+        var service = new ProcessorConnectionService(
+            new StubHttpClientFactory(new HttpClient(new StubHandler(_ => new HttpResponseMessage(status)))),
+            titleResolver: null,
+            logger: logger);
+
+        await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.UtcNow), CancellationToken.None);
+
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains(outcome, line.Message);
+        Assert.Contains("Dune Part Two", line.Message);
+        Assert.Contains("Weir", line.Message);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_writes_a_line_when_the_processor_cannot_be_reached()
+    {
+        var logger = new CapturingLogger();
+        var service = new ProcessorConnectionService(
+            new StubHttpClientFactory(new HttpClient(new StubHandler(_ => throw new HttpRequestException("down")))),
+            titleResolver: null,
+            logger: logger);
+
+        await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.UtcNow), CancellationToken.None);
+
+        Assert.Contains("Hand-off failed", Assert.Single(logger.Lines).Message);
+    }
+
+    private sealed class CapturingLogger : ILogger<ProcessorConnectionService>
+    {
+        public List<(LogLevel Level, string Message)> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Lines.Add((logLevel, formatter(state, exception)));
+    }
 
     [Fact]
     public async Task TestAsync_marks_reachable_endpoint_with_bad_credentials_as_degraded()
