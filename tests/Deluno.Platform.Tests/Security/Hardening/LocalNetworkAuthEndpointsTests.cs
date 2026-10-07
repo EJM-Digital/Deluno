@@ -42,6 +42,30 @@ public sealed class LocalNetworkAuthEndpointsTests
         }
     }
 
+    private sealed class FakeAllowedHosts : IAllowedHostsRepository
+    {
+        public Task<AllowedHostsSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(AllowedHostsSettings.Off);
+
+        public Task SaveAsync(AllowedHostsSettings settings, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class FakeResolver(System.Net.IPAddress? address) : ITrustedProxyClientAddressResolver
+    {
+        public Task<System.Net.IPAddress?> ResolveAsync(HttpContext context, CancellationToken cancellationToken) => Task.FromResult(address);
+    }
+
+    [Fact]
+    public async Task An_IPv4_address_that_arrived_over_IPv6_is_shown_as_plain_IPv4()
+    {
+        var result = await LocalNetworkAuthEndpoints.GetOverviewAsync(
+            new DefaultHttpContext(), new FakeRepository(), new FakeAllowedHosts(),
+            new FakeResolver(System.Net.IPAddress.Parse("::ffff:192.168.1.196")), CancellationToken.None);
+
+        var overview = Assert.IsType<Ok<LocalNetworkAuthOverview>>(result).Value!;
+        Assert.Equal("192.168.1.196", overview.CurrentAddress);
+        Assert.True(overview.CurrentAddressIsLocal);
+    }
+
     [Fact]
     public async Task Invalid_entries_are_refused_and_nothing_is_saved()
     {

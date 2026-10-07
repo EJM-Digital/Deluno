@@ -17,15 +17,20 @@ export type LanAccessStatus = {
  * lets them in (#623). Nothing shows while they can reach Deluno, or on a host
  * with no firewall for Deluno to look after.
  */
-export function LanAccessNotice() {
+export function LanAccessNotice({ showResult = false, address }: {
+  /** Setup asks the question, so it shows the answer too (#1141): reachable or not, and the address to use from another device. */
+  showResult?: boolean;
+  address?: string;
+} = {}) {
   const [status, setStatus] = useState<LanAccessStatus | null>(null);
+  const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
     void fetchJson<LanAccessStatus>("/api/system/lan-access")
-      .then((next) => { if (active) setStatus(next); })
-      .catch(() => { if (active) setStatus(null); });
+      .then((next) => { if (active) { setStatus(next); setChecked(true); } })
+      .catch(() => { if (active) { setStatus(null); setChecked(true); } });
     return () => { active = false; };
   }, []);
 
@@ -41,6 +46,28 @@ export function LanAccessNotice() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (showResult && !checked) {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        Checking whether other devices can reach Deluno...
+      </p>
+    );
+  }
+
+  if (showResult && (!status || status.state !== "blocked")) {
+    const where = status?.port && address ? ` From another device, open http://${address}:${status.port}.` : "";
+    return (
+      <p role="status" aria-label="Other devices on your network" className="rounded-xl border border-hairline bg-surface-2 p-3 text-sm text-foreground">
+        {!status
+          ? "Deluno could not check whether other devices can reach it. Nothing is blocked that Deluno can see."
+          : status.state === "open"
+            ? `Other devices can reach Deluno. ${status.message}${where}`
+            : `Nothing to allow here. ${status.message}`}
+      </p>
+    );
   }
 
   if (!status || status.state !== "blocked") {
