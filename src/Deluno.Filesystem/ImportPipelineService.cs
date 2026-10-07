@@ -4281,6 +4281,21 @@ public sealed partial class ImportPipelineService(
             SeriesNumberingSchemes.Scene
         })
         {
+            // #1174: a name that already says SxxEyy is for those episodes
+            // only. Absolute and air-date readings are for names that carry
+            // no such token, and absolute only for absolutely numbered shows.
+            if (scheme != SeriesNumberingSchemes.Scene &&
+                SeriesNumberingResolver.NamesSeasonAndEpisode(sourcePath))
+            {
+                continue;
+            }
+
+            if (scheme == SeriesNumberingSchemes.Absolute &&
+                selectedScheme != SeriesNumberingSchemes.Absolute)
+            {
+                continue;
+            }
+
             var parsed = SeriesNumberingResolver.ParseFileName(sourcePath, scheme);
             alternateEpisodes.AddRange(parsed.Matches.Select(item => new ImportedEpisodeNumberingItem(
                 item.NumberingScheme,

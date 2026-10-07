@@ -51,6 +51,12 @@ import { CountryReleaseRow } from "../components/app/country-release-row";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
+import {
+  AlreadyDownloadingDialog,
+  readAlreadyDownloading,
+  type AlreadyDownloadingPrompt,
+  type DuplicateSendAction
+} from "../components/app/already-downloading-prompt";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleSynopsis } from "../components/app/title-synopsis";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
@@ -269,6 +275,9 @@ export function MovieDetailPage() {
   const [candidateProtocolFilter, setCandidateProtocolFilter] = useState("");
   const [candidateIndexerFilter, setCandidateIndexerFilter] = useState("");
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
+  const [duplicateSend, setDuplicateSend] = useState<
+    (AlreadyDownloadingPrompt & { candidate: SearchPlanCandidate; force: boolean; overrideReason?: string }) | null
+  >(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
@@ -651,7 +660,12 @@ export function MovieDetailPage() {
     }
   }
 
-  async function handleGrabCandidate(candidate: SearchPlanCandidate, force = false, overrideReason?: string) {
+  async function handleGrabCandidate(
+    candidate: SearchPlanCandidate,
+    force = false,
+    overrideReason?: string,
+    duplicateAction?: DuplicateSendAction
+  ) {
     setBusyAction(force ? "force-grab" : "grab");
     let grabResponse: Response | null = null;
 
@@ -668,10 +682,16 @@ export function MovieDetailPage() {
           sizeBytes: candidate.sizeBytes,
           seeders: candidate.seeders,
           force,
-          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null
+          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null,
+          duplicateAction: duplicateAction ?? null
         })
       });
       grabResponse = response;
+      const alreadyDownloading = await readAlreadyDownloading(response);
+      if (alreadyDownloading) {
+        setDuplicateSend({ ...alreadyDownloading, candidate, force, overrideReason });
+        return;
+      }
       if (!response.ok) throw new Error("movie-grab-failed");
 
       const payload = (await response.json()) as {
@@ -1638,6 +1658,17 @@ export function MovieDetailPage() {
         dispatch={openDispatch}
         onClose={() => setOpenDispatchId(null)}
         onBlocked={() => revalidator.revalidate()}
+      />
+
+      <AlreadyDownloadingDialog
+        prompt={duplicateSend}
+        busy={busyAction !== null}
+        onCancel={() => setDuplicateSend(null)}
+        onChoose={(action) => {
+          const pending = duplicateSend;
+          setDuplicateSend(null);
+          if (pending) void handleGrabCandidate(pending.candidate, pending.force, pending.overrideReason, action);
+        }}
       />
 
       <Drawer

@@ -73,6 +73,12 @@ import { CountryReleaseRow } from "../components/app/country-release-row";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
+import {
+  AlreadyDownloadingDialog,
+  readAlreadyDownloading,
+  type AlreadyDownloadingPrompt,
+  type DuplicateSendAction
+} from "../components/app/already-downloading-prompt";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleSynopsis } from "../components/app/title-synopsis";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
@@ -250,6 +256,9 @@ export function ShowDetailPage() {
   // "Choose a release" for a show with 71 episodes and name none of them.
   const [candidatesFor, setCandidatesFor] = useState<string | null>(null);
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
+  const [duplicateSend, setDuplicateSend] = useState<
+    (AlreadyDownloadingPrompt & { candidate: SearchPlanCandidate; force: boolean; overrideReason?: string }) | null
+  >(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
   // Which language's manual search dialog (#841) is open, or null for none.
@@ -859,7 +868,12 @@ export function ShowDetailPage() {
     }
   }
 
-  async function handleGrabCandidate(candidate: SearchPlanCandidate, force = false, overrideReason?: string) {
+  async function handleGrabCandidate(
+    candidate: SearchPlanCandidate,
+    force = false,
+    overrideReason?: string,
+    duplicateAction?: DuplicateSendAction
+  ) {
     setBusyAction(force ? "force-grab" : "grab");
     let grabResponse: Response | null = null;
 
@@ -876,10 +890,16 @@ export function ShowDetailPage() {
           sizeBytes: candidate.sizeBytes,
           seeders: candidate.seeders,
           force,
-          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null
+          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null,
+          duplicateAction: duplicateAction ?? null
         })
       });
       grabResponse = response;
+      const alreadyDownloading = await readAlreadyDownloading(response);
+      if (alreadyDownloading) {
+        setDuplicateSend({ ...alreadyDownloading, candidate, force, overrideReason });
+        return;
+      }
       if (!response.ok) throw new Error("series-grab-failed");
 
       const payload = (await response.json()) as {
@@ -913,16 +933,17 @@ export function ShowDetailPage() {
     }
   }
 
-  async function handleEpisodeSearch(episodeIds: string[]) {
+  // One thing per button (#1175): "send" searches and sends the best release, "choose" sends nothing and lists what it found.
+  async function handleEpisodeSearch(episodeIds: string[], mode: "send" | "choose" = "send") {
     if (!episodeIds.length) return;
-    setBusyAction("episode-search");
+    setBusyAction(mode === "choose" ? "episode-choose" : "episode-search");
     let searchResponse: Response | null = null;
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/episodes/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeIds })
+        body: JSON.stringify({ episodeIds, mode })
       });
       searchResponse = response;
       if (!response.ok) throw new Error("episode-search-failed");
@@ -934,6 +955,7 @@ export function ShowDetailPage() {
         plannedCount?: number;
         failedCount?: number;
         reason?: string;
+        alreadyDownloading?: string[];
         episodes?: Array<{
           episodeId: string;
           seasonNumber: number;
@@ -941,6 +963,7 @@ export function ShowDetailPage() {
           title?: string | null;
           summary?: string | null;
           releaseName?: string | null;
+          comparedCount?: number;
           candidates?: SearchPlanCandidate[];
         }>;
         failures?: IntegrationFailure[];
@@ -951,7 +974,11 @@ export function ShowDetailPage() {
       // Show what the search actually compared. Counts alone left a person
       // with no way to see which release Deluno chose, or to choose another.
       const withCandidates = (payload.episodes ?? []).filter((item) => (item.candidates?.length ?? 0) > 0);
-      if (withCandidates.length === 1) {
+      if (mode === "send") {
+        // Sending lists nothing to choose from: the toast says what was sent, or why nothing was.
+        setReleaseCandidates([]);
+        setCandidatesFor(null);
+      } else if (withCandidates.length === 1) {
         const only = withCandidates[0]!;
         setReleaseCandidates(only.candidates ?? []);
         setCandidatesFor(`S${String(only.seasonNumber).padStart(2, "0")}E${String(only.episodeNumber).padStart(2, "0")}${only.title ? ` · ${only.title}` : ""}`);
@@ -967,7 +994,9 @@ export function ShowDetailPage() {
       // releases to choose from succeeded, whatever it chose to call itself -
       // and telling a person nothing was found while the list sits under the
       // toast sends them off to fix something that works.
-      if (compared > 0) {
+      if (payload.alreadyDownloading?.length) {
+        toast.info("Already downloading, so nothing more was sent.", { description: payload.alreadyDownloading.join(" ") });
+      } else if (compared > 0) {
         toast.success(
           `Compared ${compared} release${compared === 1 ? "" : "s"}. Choose one below.`,
           failureNotice ? { description: failureNotice } : undefined
@@ -1492,7 +1521,7 @@ export function ShowDetailPage() {
                   onClick={() => void handleEpisodeSearch(visibleEpisodes.map((item) => item.episodeId))}
                 >
                   {busyAction === "episode-search" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                  Search these
+                  Search and send these
                 </Button>
               </>
             }
@@ -2230,21 +2259,43 @@ export function ShowDetailPage() {
             </DrawerSection>
 
             <DrawerSection title="Search">
-              <div>
+              <div className="flex flex-wrap gap-(--grid-gap)">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void handleEpisodeSearch([openEpisode.episodeId])}
+                onClick={() => void handleEpisodeSearch([openEpisode.episodeId], "send")}
                 disabled={busyAction !== null}
+                title="Deluno applies the Library Profile and sends the best acceptable release."
               >
                 {busyAction === "episode-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                Search for this episode
+                Search and send the best release
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleEpisodeSearch([openEpisode.episodeId], "choose")}
+                disabled={busyAction !== null}
+                title="Lists the releases it finds and sends nothing until you choose one."
+              >
+                {busyAction === "episode-choose" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Choose a release for this episode
               </Button>
               </div>
             </DrawerSection>
           </>
         ) : null}
       </Drawer>
+
+      <AlreadyDownloadingDialog
+        prompt={duplicateSend}
+        busy={busyAction !== null}
+        onCancel={() => setDuplicateSend(null)}
+        onChoose={(action) => {
+          const pending = duplicateSend;
+          setDuplicateSend(null);
+          if (pending) void handleGrabCandidate(pending.candidate, pending.force, pending.overrideReason, action);
+        }}
+      />
 
       <Drawer
         open={openCandidate !== null}

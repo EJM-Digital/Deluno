@@ -275,8 +275,8 @@ Implemented endpoints:
 - `PUT /api/series/{id}/metadata/override`
 - `GET /api/series/page` — the paged catalogue list; see below. `facets=false` behaves as on the movie twin
 - `POST /api/series/metadata/jobs` — same shape as the movie twin
-- `POST /api/series/{id}/episodes/search` — each selected episode resolves its own installed path, size, current/target quality, and same-library immutable-plan evaluation before candidate comparison; replacement authority is bound to that exact path
-- `POST /api/series/{id}/grab`
+- `POST /api/series/{id}/episodes/search` — each selected episode resolves its own installed path, size, current/target quality, and same-library immutable-plan evaluation before candidate comparison; replacement authority is bound to that exact path It takes `mode`: `send` (default) searches and sends the best release once, listing nothing to choose from, and never sends a second release for an episode already downloading; `choose` sends nothing and returns the compared releases (#1175).
+- `POST /api/series/{id}/grab` — a hand send for a title or episode that already has a download on its way is refused with 409 `already-downloading` (client name and question) unless the body carries `duplicateAction` of `replace` (removes the first download from its client) or `send-as-well`; `/api/movies/{id}/grab` behaves the same (#1175)
 - `POST /api/series/{id}/seasons/{seasonNumber}/search` — one season-pack search; the query planner owns the season token and an imported `S01`/`Season 01` pack is expanded against the persisted catalogue inside one transaction. For a partly installed season, every installed episode must have an exact snapshot under the current immutable plan and the candidate must compare as a typed `Upgrade` against every snapshot. Missing/stale evidence or one lateral/worse comparison returns `held` and makes no dispatch. An accepted dispatch persists an episode→owned-path manifest; import revalidates it, backs up every distinct current file, places the complete pack, updates the catalogue atomically, and restores all old files/sources if the transaction fails.
 - `POST /api/series`
 - `POST /api/series/bulk`

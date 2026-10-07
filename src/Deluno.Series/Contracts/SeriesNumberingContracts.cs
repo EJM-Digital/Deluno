@@ -340,6 +340,17 @@ public static partial class SeriesNumberingResolver
             .ToArray();
     }
 
+    /// <summary>
+    /// True when the name carries an explicit season-and-episode token such as
+    /// <c>S38E01</c>. Such a name already says which episode(s) the file is
+    /// for, so the looser absolute-number and air-date readings (a stray
+    /// "5.1" audio layout reads as absolute episode 1) must never add a
+    /// second, different episode on top of it (#1174).
+    /// </summary>
+    public static bool NamesSeasonAndEpisode(string? fileName)
+        => !string.IsNullOrWhiteSpace(fileName) &&
+           ParseStandard(fileName, SeriesNumberingSchemes.Standard).Matches.Count > 0;
+
     public static SeriesNumberingParseResult ParseFileName(
         string? fileName,
         string? numberingScheme = SeriesNumberingSchemes.Standard)

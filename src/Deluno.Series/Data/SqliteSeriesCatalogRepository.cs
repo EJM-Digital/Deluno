@@ -3883,6 +3883,119 @@ public sealed class SqliteSeriesCatalogRepository(
         return results;
     }
 
+    public async Task<IReadOnlyList<WrongEpisodeFileLinkRepair>> RepairWrongEpisodeFileLinksAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var linked = new List<(string EpisodeId, string SeriesId, string Title, int Season, int Episode, string FilePath)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText =
+                """
+                SELECT e.id, e.series_id, s.title, e.season_number, e.episode_number, e.file_path
+                FROM episode_entries e
+                INNER JOIN series_entries s ON s.id = e.series_id
+                WHERE e.has_file = 1
+                  AND e.file_path IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM episode_entries other
+                      WHERE other.series_id = e.series_id
+                        AND other.file_path = e.file_path
+                        AND other.has_file = 1
+                        AND other.id <> e.id);
+                """;
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                linked.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetInt32(3), reader.GetInt32(4), reader.GetString(5)));
+            }
+        }
+
+        var repairs = new List<WrongEpisodeFileLinkRepair>();
+        foreach (var group in linked.GroupBy(item => (item.SeriesId, item.FilePath)))
+        {
+            // The library file's own name is the evidence: it is written from the
+            // episode the import was for. No SxxEyy token in it, no repair.
+            var named = SeriesNumberingResolver
+                .ParseFileName(Path.GetFileName(group.Key.FilePath), SeriesNumberingSchemes.Standard)
+                .Matches
+                .Where(match => match.SeasonNumber is not null && match.EpisodeNumber is not null)
+                .Select(match => (Season: match.SeasonNumber!.Value, Episode: match.EpisodeNumber!.Value))
+                .ToHashSet();
+            if (named.Count == 0 || !group.Any(item => named.Contains((item.Season, item.Episode))))
+            {
+                continue;
+            }
+
+            var kept = string.Join(", ", group
+                .Where(item => named.Contains((item.Season, item.Episode)))
+                .OrderBy(item => item.Season).ThenBy(item => item.Episode)
+                .Select(item => $"S{item.Season:00}E{item.Episode:00}"));
+            foreach (var wrong in group.Where(item => !named.Contains((item.Season, item.Episode))))
+            {
+                repairs.Add(new WrongEpisodeFileLinkRepair(
+                    wrong.SeriesId, wrong.Title, wrong.EpisodeId, wrong.Season, wrong.Episode, wrong.FilePath, kept));
+            }
+        }
+
+        if (repairs.Count == 0)
+        {
+            return repairs;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var repair in repairs)
+        {
+            using var episode = connection.CreateCommand();
+            episode.Transaction = transaction;
+            episode.CommandText =
+                """
+                UPDATE episode_entries
+                SET has_file = 0,
+                    file_path = NULL,
+                    file_size_bytes = NULL,
+                    imported_utc = NULL,
+                    quality_cutoff_met = 0,
+                    updated_utc = @now
+                WHERE id = @episodeId
+                  AND file_path = @filePath;
+                """;
+            AddParameter(episode, "@episodeId", repair.EpisodeId);
+            AddParameter(episode, "@filePath", repair.FilePath);
+            AddParameter(episode, "@now", now.ToString("O"));
+            if (await episode.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                continue;
+            }
+
+            using var wanted = connection.CreateCommand();
+            wanted.Transaction = transaction;
+            wanted.CommandText =
+                """
+                UPDATE episode_wanted_state
+                SET wanted_status = 'missing',
+                    wanted_reason = 'The file that was linked here belongs to another episode, so the link was cleared.',
+                    current_quality = NULL,
+                    quality_cutoff_met = 0,
+                    updated_utc = @now
+                WHERE episode_id = @episodeId;
+                """;
+            AddParameter(wanted, "@episodeId", repair.EpisodeId);
+            AddParameter(wanted, "@now", now.ToString("O"));
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await RefreshSeriesRungsAsync(
+            connection, transaction, repairs.Select(repair => repair.SeriesId), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return repairs;
+    }
+
     private async Task<bool> MarkTrackedFileGoneInTransactionAsync(
         DbConnection connection,
         DbTransaction transaction,
