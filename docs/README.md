@@ -27,6 +27,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.
 - `ci-standard.md`: the CI and release standard shared with Weir: the `ci-passed` check, job names, path filters, pinning, permissions, timeouts, the one release workflow and Dependabot.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
+- `golden-path.md`: the golden-path run on a clean VM that gates every release tag (#1158), shared byte for byte with Weir.
 - `windows-rc-validation-matrix.md`: clean-machine install/upgrade/rollback execution matrix for RC validation.
 - `release-evidence-template.md`: standard issue comment template for RC/GA evidence and go/no-go decisions.
 - `release-notes-1.0.0-draft.md`: draft 1.0.0 release notes structure for final GA publication.
@@ -39,6 +40,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 
 - `exec-plans/active/`: checked-in plans for larger in-flight work.
 - `exec-plans/active/E2E-live-test-rc28-2026-10-03.md`: the current live test plan: a fresh install of the released build, used the way a person would use it.
+- `exec-plans/active/FIX-BATCH-rc30-live-test.md`: the fix batch for every issue the rc.30 live test found, by area, with the rules each fix is held to.
 - `exec-plans/completed/`: completed plan history.
 - `exec-plans/templates/`: starting points for large feature work and post-merge cleanup.
 - `exec-plans/tech-debt-tracker.md`: recurring cleanup queue.
