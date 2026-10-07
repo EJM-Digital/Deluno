@@ -28,7 +28,9 @@ test("clicking a poster's Search icon runs the search and does not open the titl
     expect(page.url()).toBe(urlBefore);
 
     // The rest of the poster still opens the title.
-    await open.click({ position: { x: 20, y: 20 } });
+    // Low on the poster: clear of the select circle in the top-left corner and the centred action icons.
+    const box = await open.boundingBox();
+    await open.click({ position: { x: (box?.width ?? 120) / 2, y: (box?.height ?? 180) * 0.85 } });
     await expect(page).not.toHaveURL(urlBefore);
   } finally {
     const removed = await page.request.post("/api/movies/bulk", { headers, data: { movieIds: [movie.id], operation: "remove" } });

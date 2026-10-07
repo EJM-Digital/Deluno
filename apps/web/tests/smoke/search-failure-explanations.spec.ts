@@ -33,7 +33,8 @@ test("explains a no-indexer interactive search and links to indexers", async ({ 
     await page.goto(`/movies/${movie.id}`);
     await page.getByRole("button", { name: "Choose a release", exact: true }).click();
 
-    await expect(page.getByText("No indexers are linked to this library", { exact: true })).toBeVisible();
+    // The page's own note keeps the result; a toast may say it too, for a moment.
+    await expect(page.getByLabel("Result of the last search").getByText("No indexers are linked to this library", { exact: true })).toBeVisible();
     const action = page.getByRole("button", { name: "Open Indexers", exact: true });
     await expect(action).toBeVisible();
     await action.click();
