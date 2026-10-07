@@ -4685,7 +4685,7 @@ public sealed class SqliteSeriesCatalogRepository(
         return value is DBNull or null ? null : value.ToString();
     }
 
-    public async Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken)
+    public async Task<bool> UpdateQualityProfileAsync(string seriesId, string? qualityProfileId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
