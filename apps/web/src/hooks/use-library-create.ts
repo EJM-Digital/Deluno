@@ -28,10 +28,13 @@ export type CreateFormDraft = {
   monitored: boolean;
   /** Which episodes to start monitoring for a new show (#991). Ignored for movies. */
   monitorPreset: ShowMonitorPreset;
-  /** Search for this title's missing content right away, once it is added (#793). Off by default. */
-  searchForMissingNow: boolean;
-  /** Search for this title's cutoff-unmet content right away, once it is added (#793). Off by default. */
-  searchForCutoffUnmetNow: boolean;
+  /**
+   * Search for it as soon as it is added (#1145). The one choice: ticked searches straight away, unticked
+   * leaves it for the next scheduled search. Monitoring alone no longer starts a search.
+   */
+  searchNow: boolean;
+  /** The quality profile chosen in the dialog (#1145). Empty follows the chosen library's own profile. */
+  qualityProfileId: string;
   /** Tags to put on the title as it is added (#1038), comma-separated. Empty means none. */
   tags: string;
   metadata: MetadataSearchResult | null;
@@ -44,8 +47,8 @@ export function createInitialLibraryForm(): CreateFormDraft {
     imdbId: "",
     monitored: true,
     monitorPreset: "all",
-    searchForMissingNow: false,
-    searchForCutoffUnmetNow: false,
+    searchNow: true,
+    qualityProfileId: "",
     tags: "",
     metadata: null
   };

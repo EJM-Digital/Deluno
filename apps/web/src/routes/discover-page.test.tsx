@@ -131,11 +131,13 @@ describe("Discover page (#785)", () => {
     expect(body.title).toBe("The Matrix");
     expect(body.libraryId).toBe("lib-1");
     expect(body.monitored).toBe(true);
-    expect(body.searchForMissingNow).toBe(false);
-    expect(body.searchForCutoffUnmetNow).toBe(false);
+    // One clear choice, ticked by default (#1145); the profile follows the library unless another is picked.
+    expect(body.searchForMissingNow).toBe(true);
+    expect(body.searchForCutoffUnmetNow).toBe(true);
+    expect(body.qualityProfileId).toBeNull();
   });
 
-  it("sends search-on-add choices when their switches are turned on, off by default", async () => {
+  it("sends nothing to search when the search-on-add switch is turned off (#1145)", async () => {
     const response = discoverResponse();
     authedFetch.mockImplementation((path: string) => {
       if (path === "/api/discover/add") {
@@ -156,14 +158,14 @@ describe("Discover page (#785)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add The Matrix" }));
     await waitFor(() => expect(screen.getByRole("dialog", { name: /Add The Matrix/ })).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("switch", { name: /Search for missing now/ }));
+    fireEvent.click(screen.getByRole("switch", { name: /Search for it as soon as it is added/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("/api/discover/add", expect.anything()));
     const addCall = authedFetch.mock.calls.filter(([path]) => path === "/api/discover/add").at(-1)!;
     const [, init] = addCall as [string, RequestInit];
     const body = JSON.parse(init.body as string);
-    expect(body.searchForMissingNow).toBe(true);
+    expect(body.searchForMissingNow).toBe(false);
     expect(body.searchForCutoffUnmetNow).toBe(false);
   });
 });
