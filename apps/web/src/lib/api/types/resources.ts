@@ -463,6 +463,12 @@ export interface ImportPreviewResponse {
   explanation: string;
   decisionSteps: string[];
   pack?: ImportPackPreview | null;
+  /** The show in the library this file was matched to (#1171). */
+  matchedTitle?: string | null;
+  /** A TV file matched nothing and no title was given: the person is asked for one (#1171). */
+  needsTitle?: boolean;
+  /** A connected download client still holds this file, so importing it copies and leaves the original (#1171). */
+  clientHoldsSource?: boolean;
 }
 
 export interface ImportPackPreview {
