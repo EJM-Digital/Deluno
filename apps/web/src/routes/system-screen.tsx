@@ -402,7 +402,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   if (location.pathname.startsWith("/system/recycle-bin")) {
     return (
       <SystemShell>
-        <RecycleBinCard initialItems={recycleBin} initialSettings={recycleBinSettings}>{runtimeCard}</RecycleBinCard>
+        <RecycleBinCard initialItems={recycleBin} initialSettings={recycleBinSettings} />
       </SystemShell>
     );
   }
@@ -716,12 +716,10 @@ function formatInterval(seconds: number) {
 
 function RecycleBinCard({
   initialItems,
-  initialSettings,
-  children
+  initialSettings
 }: {
   initialItems: RecycleBinItem[];
   initialSettings: RecycleBinSettings;
-  children: ReactNode;
 }) {
   const { preferences } = useDisplayPreferences();
   const [items, setItems] = useState(initialItems);
@@ -885,6 +883,9 @@ function RecycleBinCard({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {formatBytes(item.sizeBytes)} · removed {formatWhen(item.createdUtc, preferences)} · expires {formatWhen(item.expiresUtc, preferences)}
                       </p>
+                      {item.titleSnapshotId ? (
+                        <p className="mt-1 text-xs text-muted-foreground">Restore puts the title back in Deluno with these files, its monitoring and its history.</p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => void restore(item)}>
@@ -904,7 +905,6 @@ function RecycleBinCard({
           )}
         </CardContent>
       </Card>
-      {children}
       <PageFooter
         state={footerState}
         message={message}
