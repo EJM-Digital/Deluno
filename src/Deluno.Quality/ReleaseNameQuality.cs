@@ -55,12 +55,14 @@ public static partial class ReleaseNameQuality
     }
 
     /// <summary>
-    /// The resolution a release's name claims, and the picture width that
-    /// claim requires at minimum -- judged by width, not height, so a cropped
-    /// widescreen 3840&#215;1600 still counts as 2160p (#917). Null means the
-    /// name says nothing Deluno can check a picture against.
+    /// The resolution a release's name claims, and the least picture it
+    /// requires: a width OR a height reaches the minimum (#1148). Width alone
+    /// keeps a cropped widescreen 3840&#215;1600 passing as 2160p (#917);
+    /// height alone keeps a 4:3 film (1440&#215;1080) passing as 1080p. A
+    /// picture below both is not what the name says. Null means the name says
+    /// nothing Deluno can check a picture against.
     /// </summary>
-    public static (string Label, int MinimumWidth)? ClaimedResolution(string? releaseName)
+    public static (string Label, int MinimumWidth, int MinimumHeight)? ClaimedResolution(string? releaseName)
     {
         if (string.IsNullOrWhiteSpace(releaseName))
         {
@@ -69,14 +71,22 @@ public static partial class ReleaseNameQuality
 
         return ResolutionOf(releaseName) switch
         {
-            "2160p" => ("2160p", 3200),
-            "1080p" => ("1080p", 1600),
-            "720p" => ("720p", 1100),
-            "576p" => ("576p", 700),
-            "480p" => ("480p", 600),
+            "2160p" => ("2160p", 3200, 2000),
+            "1080p" => ("1080p", 1600, 1000),
+            "720p" => ("720p", 1100, 680),
+            "576p" => ("576p", 700, 540),
+            "480p" => ("480p", 600, 450),
             _ => null
         };
     }
+
+    /// <summary>
+    /// Whether a picture of this size is at least the claimed resolution: its
+    /// width or its height reaches the minimum (#1148). So 1440&#215;1080,
+    /// 1920&#215;800 and 1920&#215;1080 are all 1080p, and 1280&#215;720 is not.
+    /// </summary>
+    public static bool MeetsClaim((string Label, int MinimumWidth, int MinimumHeight) claim, int width, int height)
+        => width >= claim.MinimumWidth || height >= claim.MinimumHeight;
 
     private static string? ResolutionOf(string name)
     {

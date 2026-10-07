@@ -157,13 +157,20 @@ public static class DownloadIntegrityCheck
             return DownloadIntegrityResult.Passed;
         }
 
-        // "Lower resolution than the name says", judged by width (#917).
+        // "Lower resolution than the name says" (#917): the main picture
+        // reaches the claim by width or by height, so a 4:3 film (1440x1080)
+        // and a cropped widescreen one (1920x800) both pass as 1080p (#1148).
         var claimed = ReleaseNameQuality.ClaimedResolution(releaseName);
-        var actualWidth = probe.VideoStreams.Select(stream => stream.Width ?? 0).DefaultIfEmpty(0).Max();
-        if (claimed is { } resolution && actualWidth > 0 && actualWidth < resolution.MinimumWidth)
+        var mainPicture = probe.VideoStreams
+            .Select(stream => (Width: stream.Width ?? 0, Height: stream.Height ?? 0))
+            .OrderByDescending(size => (long)size.Width * size.Height)
+            .FirstOrDefault();
+        if (claimed is { } resolution
+            && mainPicture.Width > 0
+            && !ReleaseNameQuality.MeetsClaim(resolution, mainPicture.Width, mainPicture.Height))
         {
             return DownloadIntegrityResult.Failed(
-                $"Name said {resolution.Label}; the picture is {actualWidth} pixels wide.");
+                $"Name said {resolution.Label}; the picture is {mainPicture.Width}x{mainPicture.Height}.");
         }
 
         // "Much shorter than the film or episode" / "not the film/episode the
