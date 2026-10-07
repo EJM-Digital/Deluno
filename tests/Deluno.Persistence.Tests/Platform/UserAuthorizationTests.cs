@@ -97,6 +97,68 @@ public sealed class UserAuthorizationTests
         Assert.NotNull(denied);
     }
 
+    [Fact]
+    public async Task RequireAuthenticatedAsync_renews_a_token_past_halfway_and_keeps_its_length()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-04-29T08:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = CreateRepository(storage, timeProvider);
+        var user = await BootstrapUserAsync(repository);
+        var dataProtectionProvider = CreateDataProtectionProvider(storage);
+        var login = UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, user, keepSignedIn: true);
+        Assert.Equal(now.Add(UserAuthorization.KeepSignedInLifetime), login.ExpiresUtc);
+        Assert.Equal(now.Add(UserAuthorization.SessionLifetime),
+            UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, user).ExpiresUtc);
+
+        // Fresh token: no renewal yet.
+        var fresh = CreateHttpContext(dataProtectionProvider, timeProvider, login.AccessToken);
+        Assert.Null(await UserAuthorization.RequireAuthenticatedAsync(fresh, repository, CancellationToken.None));
+        Assert.False(fresh.Response.Headers.ContainsKey(UserAuthorization.RenewedTokenHeader));
+
+        // 20 days in (past halfway of 30): normal use hands back a new 30-day token.
+        var later = new FixedTimeProvider(now.AddDays(20));
+        var used = CreateHttpContext(dataProtectionProvider, later, login.AccessToken);
+        Assert.Null(await UserAuthorization.RequireAuthenticatedAsync(used, repository, CancellationToken.None));
+        var renewed = used.Response.Headers[UserAuthorization.RenewedTokenHeader].ToString();
+        Assert.False(string.IsNullOrWhiteSpace(renewed));
+        Assert.Equal(
+            now.AddDays(50).ToString("O"),
+            used.Response.Headers[UserAuthorization.RenewedTokenExpiresHeader].ToString());
+
+        // The renewed token works after the original would have expired.
+        var muchLater = new FixedTimeProvider(now.AddDays(40));
+        Assert.Null(await UserAuthorization.RequireAuthenticatedAsync(
+            CreateHttpContext(dataProtectionProvider, muchLater, renewed), repository, CancellationToken.None));
+        Assert.NotNull(await UserAuthorization.RequireAuthenticatedAsync(
+            CreateHttpContext(dataProtectionProvider, muchLater, login.AccessToken), repository, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_renewed_token_still_ends_with_a_password_change()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-04-29T08:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = CreateRepository(storage, timeProvider);
+        var user = await BootstrapUserAsync(repository);
+        var dataProtectionProvider = CreateDataProtectionProvider(storage);
+        var login = UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, user);
+
+        var later = new FixedTimeProvider(now.AddDays(5));
+        var used = CreateHttpContext(dataProtectionProvider, later, login.AccessToken);
+        Assert.Null(await UserAuthorization.RequireAuthenticatedAsync(used, repository, CancellationToken.None));
+        var renewed = used.Response.Headers[UserAuthorization.RenewedTokenHeader].ToString();
+        Assert.False(string.IsNullOrWhiteSpace(renewed));
+
+        Assert.True(await repository.ChangeUserPasswordAsync(user.Id, "old-password", "new-password", CancellationToken.None));
+
+        Assert.NotNull(await UserAuthorization.RequireAuthenticatedAsync(
+            CreateHttpContext(dataProtectionProvider, later, renewed), repository, CancellationToken.None));
+    }
+
     private static async Task InitializePlatformAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new PlatformSchemaInitializer(

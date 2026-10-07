@@ -162,6 +162,66 @@ public sealed class DelunoFileLoggerTests : IDisposable
         Assert.Contains(lines, line => line.Contains("must appear"));
     }
 
+    /// <summary>
+    /// #1152: every client poll and UI request used to be written at
+    /// Information, about 70 MB in a few hours on an idle install.
+    /// </summary>
+    [Fact]
+    public void Routine_http_and_request_lines_are_kept_out_until_the_log_level_is_turned_up()
+    {
+        var store = new RecordingRuntimeLogLevelStore(LogLevel.Information);
+        using (var provider = CreateProvider(runtimeLogLevelStore: store))
+        using (var factory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Trace).AddProvider(provider)))
+        {
+            var client = factory.CreateLogger("System.Net.Http.HttpClient.download-clients.LogicalHandler");
+            var request = factory.CreateLogger("Microsoft.AspNetCore.Hosting.Diagnostics");
+            var routing = factory.CreateLogger("Microsoft.AspNetCore.Routing.EndpointMiddleware");
+            var own = factory.CreateLogger("Deluno.Test");
+
+            client.LogInformation("poll quiet");
+            request.LogInformation("request quiet");
+            routing.LogInformation("endpoint quiet");
+            request.LogWarning("slow request kept");
+            own.LogInformation("own line kept");
+
+            store.Current = LogLevel.Debug;
+            client.LogInformation("poll turned up");
+        }
+
+        var lines = ReadLines();
+        Assert.DoesNotContain(lines, line => line.Contains("quiet"));
+        Assert.Contains(lines, line => line.Contains("slow request kept"));
+        Assert.Contains(lines, line => line.Contains("own line kept"));
+        Assert.Contains(lines, line => line.Contains("poll turned up"));
+    }
+
+    [Fact]
+    public void The_logs_folder_stays_under_its_size_cap_by_removing_the_oldest_files()
+    {
+        Directory.CreateDirectory(LogDirectory);
+        var oldest = Path.Combine(LogDirectory, "deluno-20990101.jsonl");
+        var middle = Path.Combine(LogDirectory, "deluno-20990102.jsonl");
+        var newest = Path.Combine(LogDirectory, "deluno-20990103.jsonl");
+        foreach (var file in new[] { oldest, middle, newest })
+        {
+            File.WriteAllText(file, new string('x', 1000));
+        }
+
+        File.SetLastWriteTimeUtc(oldest, DateTime.UtcNow.AddDays(-3));
+        File.SetLastWriteTimeUtc(middle, DateTime.UtcNow.AddDays(-2));
+        File.SetLastWriteTimeUtc(newest, DateTime.UtcNow.AddDays(-1));
+
+        using (var provider = CreateProvider(new DelunoFileLogOptions { MaxTotalBytes = 2500 }))
+        using (var factory = LoggerFactory.Create(builder => builder.AddProvider(provider)))
+        {
+            factory.CreateLogger("Deluno.Test").LogInformation("started");
+        }
+
+        Assert.False(File.Exists(oldest));
+        Assert.True(File.Exists(middle));
+        Assert.True(File.Exists(newest));
+    }
+
     private sealed class RecordingRuntimeLogLevelStore(LogLevel initial) : IRuntimeLogLevelStore
     {
         public LogLevel Current { get; set; } = initial;

@@ -94,7 +94,7 @@ export function LogFilesCard() {
   return (
     <ListCard
       title="Log files"
-      count={files ? `${files.length} ${files.length === 1 ? "file" : "files"}` : undefined}
+      count={files ? `${files.length} ${files.length === 1 ? "file" : "files"}, ${formatSize(files.reduce((sum, file) => sum + file.sizeBytes, 0))} in all` : undefined}
       actions={
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => void load()}>

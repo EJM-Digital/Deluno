@@ -26,6 +26,12 @@ public sealed class DelunoFileLogOptions
     public long MaxFileBytes { get; set; } = 50L * 1024 * 1024;
 
     /// <summary>
+    /// The whole logs folder is kept under this size: past it, the oldest files
+    /// go first (#1152). 0 turns the cap off.
+    /// </summary>
+    public long MaxTotalBytes { get; set; } = 250L * 1024 * 1024;
+
+    /// <summary>
     /// The level a fresh start boots with, before any runtime change made
     /// through the Settings screen (#866) is read from its own persisted
     /// file. Matches Radarr's own default.
@@ -116,8 +122,28 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
 
     internal bool IsEnabled => options.Enabled;
 
-    internal bool MeetsMinLevel(LogLevel logLevel)
-        => runtimeLogLevelStore is null || logLevel >= runtimeLogLevelStore.Current;
+    internal bool MeetsMinLevel(LogLevel logLevel, string category)
+    {
+        var current = runtimeLogLevelStore?.Current ?? LogLevel.Information;
+        if (logLevel < current)
+        {
+            return false;
+        }
+
+        // #1152: the HTTP client pipeline and ASP.NET Core's request, routing
+        // and result lines fire for every client poll and every UI refresh --
+        // about 70 MB in a few hours on an idle install -- and bury the lines a
+        // person needs. They are Warning and above until Log Level is turned up
+        // to Debug or Trace in Preferences.
+        return logLevel >= LogLevel.Warning || current <= LogLevel.Debug || !IsRoutineTraffic(category);
+    }
+
+    /// <summary>Categories that log every request rather than a decision.</summary>
+    public static bool IsRoutineTraffic(string category)
+        => category.StartsWith("System.Net.Http.HttpClient", StringComparison.Ordinal) ||
+           category.StartsWith("Microsoft.Extensions.Http", StringComparison.Ordinal) ||
+           (category.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal) &&
+            !category.StartsWith("Microsoft.AspNetCore.DataProtection", StringComparison.Ordinal));
 
     internal void Enqueue<TState>(
         string category,
@@ -418,6 +444,7 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
     /// </summary>
     private void PruneExpired()
     {
+        PruneOverCap();
         if (options.RetainDays <= 0)
         {
             return;
@@ -436,6 +463,38 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             catch (IOException)
             {
                 // Held open elsewhere; the next roll tries again.
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// Keeps the folder under <see cref="DelunoFileLogOptions.MaxTotalBytes"/>
+    /// by removing the oldest files first. The newest file is never removed.
+    /// </summary>
+    private void PruneOverCap()
+    {
+        if (options.MaxTotalBytes <= 0)
+        {
+            return;
+        }
+
+        var files = new DirectoryInfo(LogDirectory)
+            .EnumerateFiles($"{FilePrefix}*{FileExtension}", SearchOption.TopDirectoryOnly)
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .ToList();
+        var total = files.Sum(file => file.Length);
+        for (var index = files.Count - 1; index > 0 && total > options.MaxTotalBytes; index--)
+        {
+            try
+            {
+                total -= files[index].Length;
+                files[index].Delete();
+            }
+            catch (IOException)
+            {
             }
             catch (UnauthorizedAccessException)
             {
@@ -463,7 +522,7 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
             => provider.scopeProvider.Push(state);
 
-        public bool IsEnabled(LogLevel logLevel) => provider.IsEnabled && logLevel != LogLevel.None && provider.MeetsMinLevel(logLevel);
+        public bool IsEnabled(LogLevel logLevel) => provider.IsEnabled && logLevel != LogLevel.None && provider.MeetsMinLevel(logLevel, category);
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
