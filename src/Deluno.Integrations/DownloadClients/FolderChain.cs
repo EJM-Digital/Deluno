@@ -420,6 +420,7 @@ public sealed class FolderChainService(
     private static FolderChainLink FolderLink(string clientName, string category, string? clientFolder, LibraryItem library, string kind, bool usesProcessor)
     {
         var watcher = usesProcessor ? $"the {library.Name} library and {library.ProcessorName ?? "its processor"}" : $"the {library.Name} library";
+        var expects = usesProcessor ? "expect" : "expects";
         if (string.IsNullOrWhiteSpace(clientFolder))
         {
             return new("folder", FolderChainStatuses.Unknown, $"{clientName} did not say where it saves {category}.");
@@ -428,14 +429,14 @@ public sealed class FolderChainService(
         if (string.IsNullOrWhiteSpace(library.DownloadsPath))
         {
             return new("folder", FolderChainStatuses.Unknown,
-                $"{clientName} saves {kind} to {clientFolder}. The {library.Name} library has no downloads folder set, so Deluno cannot check it is the one {watcher} expect.",
+                $"{clientName} saves {kind} to {clientFolder}. The {library.Name} library has no downloads folder set, so Deluno cannot check it is the one {watcher} {expects}.",
                 clientFolder);
         }
 
         return SamePath(clientFolder, library.DownloadsPath)
-            ? new("folder", FolderChainStatuses.Ok, $"{clientName} saves {kind} to {clientFolder}, the folder {watcher} expect.", clientFolder)
+            ? new("folder", FolderChainStatuses.Ok, $"{clientName} saves {kind} to {clientFolder}, the folder {watcher} {expects}.", clientFolder)
             : new("folder", FolderChainStatuses.Problem,
-                $"{clientName} saves {kind} to {clientFolder}, but {watcher} expect {library.DownloadsPath}. Downloads from {clientName} will not be picked up. Change the {category} folder in {clientName}, or the {library.Name} library's downloads folder.",
+                $"{clientName} saves {kind} to {clientFolder}, but {watcher} {expects} {library.DownloadsPath}. Downloads from {clientName} will not be picked up. Change the {category} folder in {clientName}, or the {library.Name} library's downloads folder.",
                 clientFolder);
     }
 

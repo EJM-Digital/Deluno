@@ -37,6 +37,20 @@ public sealed class FolderChainTests
     }
 
     [Fact]
+    public async Task A_library_with_no_processor_expects_a_folder_in_the_singular()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+        client.Result = Ready(scene.Downloads);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var message = report.GetProperty("clients")[0].GetProperty("links")[1].GetProperty("message").GetString();
+        Assert.Contains("the folder the Films library expects.", message);
+    }
+
+    [Fact]
     public async Task A_client_saving_somewhere_else_is_named_with_both_folders()
     {
         var client = new FakeClient();
