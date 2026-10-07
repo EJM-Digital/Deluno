@@ -421,7 +421,8 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<string>? otherTitles = null,
             IReadOnlyList<int>? categoryIds = null,
             IReadOnlyDictionary<int, string>? episodeTitles = null,
-            bool queryIsATitle = true)
+            bool queryIsATitle = true,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
         {
             ObservedPreferencePlan = preferencePlan;
             return Task.FromResult(plan);
@@ -466,7 +467,8 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<string>? otherTitles = null,
             IReadOnlyList<int>? categoryIds = null,
             IReadOnlyDictionary<int, string>? episodeTitles = null,
-            bool queryIsATitle = true)
+            bool queryIsATitle = true,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 
