@@ -1075,3 +1075,42 @@ describe("a release held for approval (#1159)", () => {
     expect(JSON.parse((grab![1] as { body: string }).body)).toMatchObject({ releaseName: row.releaseName, downloadUrl: "https://x/get", force: true });
   });
 });
+
+/** #1167: the number in the header is the number of rows, and the card says how every one of them is cleared. */
+describe("Needs attention: the count matches the rows", () => {
+  afterEach(() => {
+    queueLoaderData.movieRecovery = { ...queueLoaderData.movieRecovery, recentCases: [] };
+    queueLoaderData.orphans = [];
+  });
+
+  it("counts every row listed, and says which are dismissed together and which are cleared from their own row", () => {
+    queueLoaderData.movieRecovery = {
+      ...queueLoaderData.movieRecovery,
+      recentCases: ["a", "b"].map((id) => ({
+        id: `case-${id}`,
+        title: `Film ${id}`,
+        failureKind: "import-timeout",
+        summary: "Import was detected but never completed after 24 hours.",
+        recommendedAction: "Retry the import.",
+        detailsJson: null,
+        detectedUtc: "2026-10-07T01:00:00Z"
+      }))
+    };
+    queueLoaderData.orphans = [{
+      path: "/downloads/complete/Left.Over", name: "Left.Over", libraryId: "library-1", libraryName: "TV",
+      sizeBytes: 1_073_741_824, lastWrittenUtc: new Date().toISOString()
+    }];
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    // Two cases and one leftover folder: three rows listed, three counted.
+    expect(screen.getByText(/3 things Deluno could not finish on its own\. 2 can be dismissed together; 1 leftover folder \(Remove or Keep\) are cleared from their own rows/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Select all 2 to dismiss" })).toBeVisible();
+    expect(screen.getByRole("switch", { name: "Select Film a" })).toBeVisible();
+    expect(screen.getByRole("switch", { name: "Select Left.Over" })).toBeVisible();
+  });
+});
