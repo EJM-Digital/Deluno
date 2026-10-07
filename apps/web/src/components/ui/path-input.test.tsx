@@ -62,3 +62,30 @@ describe("PathInput: Choose folder (#1170)", () => {
     await waitFor(() => expect(screen.getByText(/Windows picker is unavailable/)).toBeInTheDocument());
   });
 });
+
+describe("PathInput: example folders follow the server (#1138)", () => {
+  async function openWith(windows: boolean) {
+    vi.stubGlobal("location", { hostname: "192.168.1.10" });
+    fetchJsonMock.mockImplementation(async () => ({ ...roots, windows }));
+    render(<PathInput value="" onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
+    await waitFor(() => expect(screen.getByText("Use typed path")).toBeInTheDocument());
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("offers only Windows examples, and prints the network path with single backslashes, on a Windows server", async () => {
+    await openWith(true);
+    await waitFor(() => expect(screen.getByRole("button", { name: "D:\\Downloads" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "/downloads" })).toBeNull();
+    expect(screen.getByText(/Use a path such as \\\\nas\\media/)).toBeInTheDocument();
+    expect(screen.queryByText(/\\\\\\\\nas/)).toBeNull();
+    expect(screen.queryByText(/review details and take related actions/)).toBeNull();
+  });
+
+  it("offers only container examples on a Linux server", async () => {
+    await openWith(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "/downloads" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "D:\\Downloads" })).toBeNull();
+  });
+});

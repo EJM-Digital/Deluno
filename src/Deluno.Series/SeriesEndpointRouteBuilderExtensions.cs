@@ -1208,6 +1208,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 result.IndexerName,
                 result.DispatchStatus,
                 result.DispatchMessage,
+                result.DownloadClientName,
                 plannedEpisodes,
                 failures = result.Failures ?? [],
                 candidates = MediaSearchCandidateView.ForAll(result.Candidates)

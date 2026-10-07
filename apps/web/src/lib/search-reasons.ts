@@ -282,3 +282,27 @@ export function describeSearchNow(payload: {
 
   return episodes ? { tone: "info", title: episodes } : null;
 }
+
+/**
+ * The one short line a poster shows after its Search icon ran (#1156): what
+ * the search did, in the same terms as the result note on the title's page.
+ * A title that already has a file is looking for an upgrade, so an empty
+ * search there means nothing better, not nothing at all.
+ */
+export function posterSearchResult(
+  payload: {
+    outcome?: string | null;
+    releaseName?: string | null;
+    dispatchStatus?: string | null;
+    downloadClientName?: string | null;
+  },
+  hasFile: boolean
+): string {
+  if (payload.releaseName && payload.dispatchStatus === "sent") {
+    return payload.downloadClientName ? `Sent to ${payload.downloadClientName}` : "Sent to your download client";
+  }
+  if (payload.releaseName && payload.dispatchStatus === "failed") return "Your download client refused it";
+  if (payload.releaseName && payload.outcome === "held") return "Found one, waiting on you";
+  if (payload.releaseName) return "Found one, nothing sent";
+  return hasFile ? "Nothing better found" : "Nothing found yet";
+}
