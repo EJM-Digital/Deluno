@@ -396,6 +396,8 @@ public sealed class AcquisitionOverrideServiceTests
         public string? UpdatedOutputPath { get; private set; }
         public string? UpdatedImportJobId { get; private set; }
 
+        public Task<bool> RepointWaitingProcessorHandoffAsync(string id, string sourcePath, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
             string id, string status, string? outputPath, string? importJobId, string? failureMessage, CancellationToken cancellationToken)
         {

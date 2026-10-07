@@ -41,6 +41,14 @@ public sealed class ProcessorOutputImportQueue(
     {
         outputPath = ImportPathFor(outputPath, library.MediaType);
         var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
+        // Deluno is the main stop against duplicate processing (#1155): a
+        // processor that sends an output for a download whose file Deluno has
+        // already imported is sending a second copy.
+        if (await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken))
+        {
+            return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, AlreadyImported: true);
+        }
+
         if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
         {
             return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, removed);
@@ -96,6 +104,9 @@ public sealed class ProcessorOutputImportQueue(
 
         return new ProcessorOutputImport(job.Id, dispatch?.DispatchId, dispatch?.EntityId);
     }
+
+    public Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken);
 
     /// <summary>
     /// What to import when a processor hands back a folder (#619): a film is its

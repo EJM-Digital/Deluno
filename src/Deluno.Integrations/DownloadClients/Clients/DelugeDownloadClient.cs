@@ -107,12 +107,17 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // whenever it reads "OK" and says nothing else useful.
         var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path", "move_completed", "move_completed_path", "ratio", "seeding_time", "tracker_status", "private", "queue", "stop_at_ratio", "stop_ratio", "remove_at_ratio" }, new Dictionary<string, object>()], 2);
         var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, new Uri(baseUri, "json"), payload, cancellationToken);
-        var queue = (response?.Result?.Torrents ?? new Dictionary<string, DelugeTorrent>()).Select(pair =>
+        var torrents = response?.Result?.Torrents ?? new Dictionary<string, DelugeTorrent>();
+        // Where each label finally puts a finished download (#1150), asked only
+        // when a labelled torrent has finished: the Label plugin moves it after
+        // it reports finished, and nothing on the torrent says so beforehand.
+        var finalFolders = await FinalFoldersAsync(http, new Uri(baseUri, "json"), torrents.Values, cancellationToken);
+        var queue = torrents.Select(pair =>
         {
             var item = pair.Value;
             return new DownloadQueueItem(pair.Key, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, item.Label),
                 DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Deluge item"), item.Name ?? "Unknown Deluge item", item.Label ?? string.Empty,
-                StillMoving(item) ? DownloadQueueStatuses.Downloading : NormalizeStatus(item.State, item.Progress), Math.Clamp(Math.Round(item.Progress ?? 0, 1), 0, 100), Math.Round((item.DownloadPayloadRate ?? 0) / 1_000_000d, 1),
+                StillMoving(item, finalFolders) ? DownloadQueueStatuses.Downloading : NormalizeStatus(item.State, item.Progress), Math.Clamp(Math.Round(item.Progress ?? 0, 1), 0, 100), Math.Round((item.DownloadPayloadRate ?? 0) / 1_000_000d, 1),
                 Math.Max(0, Convert.ToInt32(item.Eta ?? 0)), Convert.ToInt64(item.TotalSize ?? 0), Convert.ToInt64(item.TotalDone ?? 0), item.NumPeers ?? 0, "Deluge",
                 TrackerError(item.TrackerStatus) ?? DelugeMessage(item.Message), DownloadClientHelpers.FromUnix(Convert.ToInt64(item.TimeAdded ?? 0)), DownloadClientHelpers.ResolveDownloadPath(item.SavePath, item.Name),
                 // Both come back on the same web.update_ui call, so a sharing
@@ -288,6 +293,74 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         => !string.IsNullOrWhiteSpace(trackerStatus) && trackerStatus.StartsWith("Error", StringComparison.OrdinalIgnoreCase)
             ? trackerStatus.Trim()
             : null;
+
+    private static bool StillMoving(DelugeTorrent item, IReadOnlyDictionary<string, string> finalFolders)
+        => StillMoving(item)
+           // The Label plugin's own move (#1150): finished, labelled, and still
+           // saved somewhere other than the folder its label moves to.
+           || item.Progress >= 100
+              && !string.IsNullOrWhiteSpace(item.Label)
+              && !string.Equals(item.State, "Error", StringComparison.OrdinalIgnoreCase)
+              && finalFolders.TryGetValue(item.Label.Trim().ToLowerInvariant(), out var finalFolder)
+              && !SameFolder(item.SavePath, finalFolder);
+
+    private static bool SameFolder(string? left, string? right)
+        => string.Equals((left ?? string.Empty).TrimEnd('\\', '/'), (right ?? string.Empty).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// For each label with a finished torrent that has no move of its own, the
+    /// folder Deluge will move it to (#1150). A label that moves nothing is
+    /// left out, as is anything Deluge would not tell us: unknown reads as
+    /// "already where it is going", the behaviour before this check.
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string, string>> FinalFoldersAsync(
+        HttpClient http,
+        Uri json,
+        IEnumerable<DelugeTorrent> torrents,
+        CancellationToken cancellationToken)
+    {
+        var labels = torrents
+            .Where(torrent => torrent.Progress >= 100
+                && !string.IsNullOrWhiteSpace(torrent.Label)
+                && !string.Equals(torrent.State, "Moving", StringComparison.OrdinalIgnoreCase)
+                && !StillMoving(torrent))
+            .Select(torrent => torrent.Label!.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (labels.Length == 0)
+        {
+            return folders;
+        }
+
+        try
+        {
+            var core = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(
+                http, json, new DelugeRequest("core.get_config_values", [new[] { "move_completed", "move_completed_path" }], 20), cancellationToken);
+            var coreConfig = core?.Result ?? default;
+            var coreMoves = coreConfig.ValueKind == JsonValueKind.Object && coreConfig.TryGetProperty("move_completed", out var moves) && moves.ValueKind == JsonValueKind.True;
+            var corePath = coreMoves && coreConfig.TryGetProperty("move_completed_path", out var coreValue) && coreValue.ValueKind == JsonValueKind.String ? coreValue.GetString() : null;
+
+            foreach (var label in labels)
+            {
+                var options = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(http, json, new DelugeRequest("label.get_options", [label], 21), cancellationToken);
+                var own = options?.Result ?? default;
+                bool Flag(string key) => own.ValueKind == JsonValueKind.Object && own.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
+                var ownPath = own.ValueKind == JsonValueKind.Object && own.TryGetProperty("move_completed_path", out var path) && path.ValueKind == JsonValueKind.String ? path.GetString() : null;
+                var folder = Flag("apply_move_completed") && Flag("move_completed") && !string.IsNullOrWhiteSpace(ownPath) ? ownPath : corePath;
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    folders[label] = folder;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return folders;
+    }
 
     private static bool StillMoving(DelugeTorrent item)
         => string.Equals(item.State, "Moving", StringComparison.OrdinalIgnoreCase)
