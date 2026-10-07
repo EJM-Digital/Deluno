@@ -19,6 +19,7 @@
  */
 import { statusPresentation, statusTone, toneSortValue } from "../lib/status-tones";
 import { eventLabel } from "../lib/activity-format";
+import { handoffCanBeSentAgain } from "../lib/alert-actions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -707,13 +708,19 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         {canImportOriginal(handoff.status)
           ? (
             <>
-              {line(
-                <Button type="button" size="sm" onClick={() => void retryHandoff(handoff)} disabled={busy}>
-                  {spin(`handoff:${handoff.id}`)}
-                  Send to {processor} again
-                </Button>,
-                `Sends the finished download to ${processor} again, the same way as the first time.`
-              )}
+              {handoffCanBeSentAgain(handoff)
+                ? line(
+                  <Button type="button" size="sm" onClick={() => void retryHandoff(handoff)} disabled={busy}>
+                    {spin(`handoff:${handoff.id}`)}
+                    Send to {processor} again
+                  </Button>,
+                  `Sends the finished download to ${processor} again, the same way as the first time.`
+                )
+                : (
+                  <p className="text-(length:--type-caption) text-muted-foreground">
+                    {processor} already made the processed file for {handoff.releaseName}, so there is nothing to send again.
+                  </p>
+                )}
               {line(
                 <Button type="button" variant="outline" size="sm" onClick={() => void importOriginal(handoff)} disabled={busy}>
                   {spin(`original:${handoff.id}`)}
@@ -806,7 +813,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/retry`, { method: "POST" });
         if (!response.ok) {
           const body = (await response.json().catch(() => null)) as { message?: string } | null;
-          throw new Error(body?.message || "The processor hand-off could not be tried again.");
+          // 409: the server has closed this hand-off already (its processed file is there). Say so rather than "failed".
+          throw new Error(body?.message || (response.status === 409
+            ? `${handoff.releaseName} cannot be sent again: it is finished or already has its processed file.`
+            : "The processor hand-off could not be tried again."));
         }
       },
       `Sent to ${handoff.processorName ?? "the processor"} again.`

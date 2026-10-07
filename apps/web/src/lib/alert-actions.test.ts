@@ -63,6 +63,12 @@ describe("alert buttons (#1098)", () => {
     }
   });
 
+  it("a hand-off that already has its processed file is not offered Retry (#1151)", () => {
+    expect(handoffActions({ id: "h1", releaseName: "R", outputPath: null, importJobId: null }).map((a) => a.label)).toEqual(["Retry", "Dismiss"]);
+    expect(handoffActions({ id: "h1", releaseName: "R", outputPath: "D:/Refined/R.mkv" }).map((a) => a.label)).toEqual(["Dismiss"]);
+    expect(handoffActions({ id: "h1", releaseName: "R", importJobId: "job" }).map((a) => a.label)).toEqual(["Dismiss"]);
+  });
+
   it("Dismiss says it stops showing the problem and deletes nothing", () => {
     const dismissals = [
       failedImportActions({ id: "j1" })[1]!,
