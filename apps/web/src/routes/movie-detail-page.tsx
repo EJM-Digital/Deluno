@@ -59,6 +59,7 @@ import { TitleActionGrid } from "../components/app/title-action-grid";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
+import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import {
@@ -257,6 +258,7 @@ export function MovieDetailPage() {
   const { preferences, certificationCountry } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [searchNote, setSearchNote] = useState<SearchNote | null>(null);
   // Which language's manual search dialog (#841) is open, or null for none.
   const [manualSearchLanguage, setManualSearchLanguage] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -576,6 +578,7 @@ export function MovieDetailPage() {
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
     setBusyAction(`${mode}-search`);
+    setSearchNote({ state: "searching", label: mode === "interactive" ? "Comparing releases from your indexers..." : "Searching your indexers..." });
     let searchResponse: Response | null = null;
 
     try {
@@ -602,20 +605,24 @@ export function MovieDetailPage() {
       if (mode === "interactive") {
         const found = payload.candidates?.length ?? 0;
         setSection("destination");
-        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
-        else {
+        if (found) {
+          toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
+          setSearchNote({ state: "done", tone: "success", title: `${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, description: failureNotice ?? undefined });
+        } else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this movie's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
             description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
+          setSearchNote({ state: "done", tone: "info", title: explained.title, description: [explained.description, failureNotice].filter(Boolean).join(" ") || undefined });
         }
       } else {
         const notice = describeSearchNow(payload);
         if (notice) {
           const description = [notice.description, failureNotice].filter(Boolean).join(" ");
           toast[notice.tone](notice.title, description ? { description } : undefined);
+          setSearchNote({ state: "done", tone: notice.tone, title: notice.title, description: description || undefined });
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
@@ -623,6 +630,7 @@ export function MovieDetailPage() {
             description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
+          setSearchNote({ state: "done", tone: "info", title: explained.title, description: [explained.description, failureNotice].filter(Boolean).join(" ") || undefined });
         }
       }
       revalidator.revalidate();
@@ -637,6 +645,7 @@ export function MovieDetailPage() {
           ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
           : undefined,
       });
+      setSearchNote({ state: "done", tone: "error", title: explained.title, description: explained.description });
     } finally {
       setBusyAction(null);
     }
@@ -774,6 +783,8 @@ export function MovieDetailPage() {
           </>
         }
       />
+
+      <SearchResultNote note={searchNote} />
 
       <MetadataProviderIssueNotice
         issue={metadataIssue}

@@ -49,6 +49,7 @@ import { SubtitleManualSearchDialog } from "../components/app/subtitle-manual-se
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
+import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import {
@@ -237,6 +238,7 @@ export function ShowDetailPage() {
   const showAbsolute = preferences.showAbsoluteEpisodeNumbers && (inventory.numbering?.seriesType ?? series.seriesType) === "anime";
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [searchNote, setSearchNote] = useState<SearchNote | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
@@ -782,6 +784,7 @@ export function ShowDetailPage() {
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
     setBusyAction(`${mode}-search`);
+    setSearchNote({ state: "searching", label: mode === "interactive" ? "Comparing releases from your indexers..." : "Searching your indexers..." });
     let searchResponse: Response | null = null;
 
     try {
@@ -810,20 +813,24 @@ export function ShowDetailPage() {
       if (mode === "interactive") {
         const found = payload.candidates?.length ?? 0;
         setSection("episodes");
-        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
-        else {
+        if (found) {
+          toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
+          setSearchNote({ state: "done", tone: "success", title: `${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, description: failureNotice ?? undefined });
+        } else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
             description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
+          setSearchNote({ state: "done", tone: "info", title: explained.title, description: [explained.description, failureNotice].filter(Boolean).join(" ") || undefined });
         }
       } else {
         const notice = describeSearchNow(payload);
         if (notice) {
           const description = [notice.description, failureNotice].filter(Boolean).join(" ");
           toast[notice.tone](notice.title, description ? { description } : undefined);
+          setSearchNote({ state: "done", tone: notice.tone, title: notice.title, description: description || undefined });
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
@@ -831,6 +838,7 @@ export function ShowDetailPage() {
             description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
+          setSearchNote({ state: "done", tone: "info", title: explained.title, description: [explained.description, failureNotice].filter(Boolean).join(" ") || undefined });
         }
       }
       revalidator.revalidate();
@@ -845,6 +853,7 @@ export function ShowDetailPage() {
           ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
           : undefined,
       });
+      setSearchNote({ state: "done", tone: "error", title: explained.title, description: explained.description });
     } finally {
       setBusyAction(null);
     }
@@ -1127,6 +1136,8 @@ export function ShowDetailPage() {
           </>
         }
       />
+
+      <SearchResultNote note={searchNote} />
 
       <MetadataProviderIssueNotice
         issue={metadataIssue}
