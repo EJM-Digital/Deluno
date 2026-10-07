@@ -106,9 +106,79 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         // mislabelled as paused.
         var clientPaused = status is { } value && (value.DownloadPaused == true || value.PostPaused == true || value.ScanPaused == true);
         var clientVersion = await GetVersionAsync(http, baseUri, cancellationToken);
+        // #1142: NZBGet ships a placeholder server and cannot download until a real one is added.
+        if (health == "healthy" && await ReadOptionsAsync(http, baseUri, cancellationToken) is { } options && !NzbGetServerPlan.HasWorkingServer(options))
+        {
+            health = "degraded";
+            message = UsenetProviderText.NoProvider;
+        }
+
         return CreateSnapshot(
             client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
             freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion);
+    }
+
+    public override async Task<bool?> HasUsenetProviderAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return null;
+        return await ReadOptionsAsync(CreateHttp(client), baseUri, cancellationToken) is { } options ? NzbGetServerPlan.HasWorkingServer(options) : null;
+    }
+
+    /// <summary>#1142: writes the person's news server into NZBGet's config (saveconfig), reloads it, then reads it back.</summary>
+    public override async Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null)
+        {
+            return new(client.Id, client.Name, false, $"Deluno does not have {client.Name}'s address.");
+        }
+
+        var http = CreateHttp(client);
+        try
+        {
+            var current = await ReadOptionsAsync(http, baseUri, cancellationToken);
+            if (current is null)
+            {
+                return new(client.Id, client.Name, false, $"Deluno could not read {client.Name}'s settings, so it left them alone.");
+            }
+
+            var plan = NzbGetServerPlan.Apply(current, request)
+                .Select(option => new Dictionary<string, string> { ["Name"] = option.Key, ["Value"] = option.Value })
+                .ToArray();
+            var saved = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("saveconfig", [plan]), cancellationToken);
+            if (saved?.Result != true)
+            {
+                return new(client.Id, client.Name, false, $"{client.Name} did not accept the provider.");
+            }
+
+            await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("reload", []), cancellationToken);
+            var after = await ReadOptionsAsync(http, baseUri, cancellationToken);
+            return after is not null && NzbGetServerPlan.HasWorkingServer(after)
+                ? new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.")
+                : new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return new(client.Id, client.Name, false, $"Deluno could not reach {client.Name} to give it the provider.");
+        }
+    }
+
+    /// <summary>NZBGet's options as it holds them now, or null when it could not be asked.</summary>
+    private static async Task<IReadOnlyList<KeyValuePair<string, string>>?> ReadOptionsAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetOption>>>(
+                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("config", []), cancellationToken);
+            return response?.Result is null
+                ? null
+                : response.Result.Where(option => option.Name is not null).Select(option => new KeyValuePair<string, string>(option.Name!, option.Value ?? string.Empty)).ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)

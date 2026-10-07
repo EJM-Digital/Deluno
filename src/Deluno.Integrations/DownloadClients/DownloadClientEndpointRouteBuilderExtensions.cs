@@ -419,6 +419,53 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return Results.Ok(new DownloadThroughputWindow(window, samples));
         });
 
+        // #1142: the Usenet provider is entered once, here, and written to SABnzbd and NZBGet.
+        // The password is passed on and never kept or echoed.
+        endpoints.MapGet("/api/download-clients/usenet-provider", async (
+            UsenetProviderService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(new { clients = await service.StatusAsync(cancellationToken) }))
+            .RequireAuthorization(DelunoAuthorizationPolicies.Queue);
+
+        endpoints.MapPost("/api/download-clients/usenet-provider", async (
+            [FromBody] UsenetProviderRequest request,
+            UsenetProviderService service,
+            CancellationToken cancellationToken) =>
+        {
+            if (UsenetProviderText.Validate(request) is { } problem)
+            {
+                return Results.BadRequest(new { message = problem });
+            }
+
+            var results = await service.SaveAsync(request, cancellationToken);
+            return results.Count == 0
+                ? Results.BadRequest(new { message = "There is no SABnzbd or NZBGet connection to give the provider to." })
+                : Results.Ok(new { saved = results.All(result => result.Saved), clients = results });
+        }).RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
+        // #1142: a client Deluno installed on this computer has a login Deluno made, which only the
+        // client's own web page asks for. Showing it is the person's call, so it is a deliberate request
+        // for one connection on this computer, never part of a list.
+        endpoints.MapPost("/api/download-clients/{clientId}/reveal-login", async (
+            string clientId,
+            IConnectionsRepository connectionsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+            if (client is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (!ClientSaveFolders.IsSameMachine(client))
+            {
+                return Results.BadRequest(new { message = $"{client.Name} is not on this computer, so its login is not shown here." });
+            }
+
+            return Results.Ok(ClientLoginReveal.From(client));
+        }).RequireAuthorization(DelunoAuthorizationPolicies.System);
+
         endpoints.MapPost("/api/download-clients/{clientId}/queue/actions", async (
             string clientId,
             HttpContext httpContext,
@@ -644,3 +691,15 @@ public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Note);
 
 public sealed record PurgeDownloadHealthStrikesResult(int PurgedCount);
+
+/// <summary>What a person needs to sign in to a download client's own web page (#1142).</summary>
+public sealed record ClientLoginReveal(string Address, string? Username, string? Secret, string SecretLabel)
+{
+    public static ClientLoginReveal From(Deluno.Connections.Contracts.DownloadClientItem client)
+    {
+        var address = DownloadClientHelpers.ResolveEndpoint(client)?.ToString() ?? string.Empty;
+        // SABnzbd is reached with an API key; the others with a password.
+        var label = string.Equals(client.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase) ? "API key" : "Password";
+        return new(address, string.IsNullOrWhiteSpace(client.Username) ? null : client.Username, string.IsNullOrWhiteSpace(client.Secret) ? null : client.Secret, label);
+    }
+}

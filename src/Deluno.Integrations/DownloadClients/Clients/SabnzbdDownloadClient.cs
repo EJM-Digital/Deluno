@@ -158,6 +158,13 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         var clientPaused = payload?.Queue?.Paused;
         var clientVersion = await GetVersionAsync(http, baseUri, apiKey, cancellationToken);
 
+        // #1142: SABnzbd with no news server cannot download anything, yet answers every call happily.
+        if (health == "healthy" && await ReadServersAsync(http, baseUri, apiKey, cancellationToken) is { } servers && !servers.Any(IsWorkingServer))
+        {
+            health = "degraded";
+            message = UsenetProviderText.NoProvider;
+        }
+
         // #813: SABnzbd's own queue-level warnings (disk-full, a failed
         // unpack, and the like). have_warnings is a non-zero count string
         // once SABnzbd has one waiting; only fetched then, so a client with
@@ -182,6 +189,91 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
             freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion,
             clientWarnings: warnings.Length > 0 ? warnings : null);
+    }
+
+    public override async Task<bool?> HasUsenetProviderAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return null;
+        var http = httpClientFactory.CreateClient("download-clients");
+        http.Timeout = TimeSpan.FromSeconds(8);
+        return await ReadServersAsync(http, baseUri, client.Secret, cancellationToken) is { } servers ? servers.Any(IsWorkingServer) : null;
+    }
+
+    /// <summary>#1142: writes the person's news server into SABnzbd (mode=set_config, section=servers), then reads it back.</summary>
+    public override async Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret))
+        {
+            return new(client.Id, client.Name, false, $"Deluno does not have {client.Name}'s address or API key.");
+        }
+
+        var http = httpClientFactory.CreateClient("download-clients");
+        http.Timeout = TimeSpan.FromSeconds(10);
+        var query = string.Join('&', new Dictionary<string, string>
+        {
+            ["mode"] = "set_config",
+            ["section"] = "servers",
+            ["keyword"] = UsenetProviderText.ServerName,
+            ["displayname"] = UsenetProviderText.ServerName,
+            ["host"] = request.Host.Trim(),
+            ["port"] = request.Port.ToString(CultureInfo.InvariantCulture),
+            ["username"] = request.Username?.Trim() ?? string.Empty,
+            ["password"] = request.Password ?? string.Empty,
+            ["connections"] = request.Connections.ToString(CultureInfo.InvariantCulture),
+            ["ssl"] = request.UseSsl ? "1" : "0",
+            ["enable"] = "1",
+            ["output"] = "json",
+            ["apikey"] = client.Secret
+        }.Select(pair => $"{pair.Key}={Uri.EscapeDataString(pair.Value)}"));
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, $"api?{query}"), cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(client.Id, client.Name, false, $"{client.Name} did not accept the provider (it answered {(int)response.StatusCode}).");
+            }
+
+            var after = await ReadServersAsync(http, baseUri, client.Secret, cancellationToken);
+            return after is not null && after.Any(IsWorkingServer)
+                ? new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.")
+                : new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            return new(client.Id, client.Name, false, $"Deluno could not reach {client.Name} to give it the provider.");
+        }
+    }
+
+    /// <summary>SABnzbd's configured news servers, or null when it could not be asked.</summary>
+    private static async Task<IReadOnlyList<JsonElement>?> ReadServersAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=get_config&section=servers&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            if (!document.RootElement.TryGetProperty("config", out var config) || !config.TryGetProperty("servers", out var servers) || servers.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            return servers.EnumerateArray().Select(item => item.Clone()).ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsWorkingServer(JsonElement server)
+    {
+        static string Text(JsonElement element, string name)
+            => element.TryGetProperty(name, out var value) ? value.ToString() : string.Empty;
+
+        var enabled = Text(server, "enable");
+        return (enabled is "1" or "true" or "True") && !UsenetProviderText.IsPlaceholder(Text(server, "host"));
     }
 
     /// <summary>#813: clears SABnzbd's own queue-level warnings so they do not reappear once handled.</summary>
