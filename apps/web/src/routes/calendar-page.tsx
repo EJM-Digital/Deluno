@@ -369,7 +369,7 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
         cells={[
           { label: "In this range", value: visible.length, help: range.label },
           { label: "Still to come", value: stillToCome, help: "has not happened yet" },
-          { label: "Already here", value: alreadyHere, help: "aired or released" },
+          { label: "Already out", value: alreadyHere, help: "aired or released" },
           { label: "Episodes", value: episodeCount, help: "TV air dates" },
           { label: "Movies", value: movieCount, help: "cinema, digital and disc" }
         ]}

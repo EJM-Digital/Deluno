@@ -3730,7 +3730,7 @@
       "level": "specialist",
       "mediaType": "tv",
       "description": "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
-      "bestFor": "Anime libraries where normal Sonarr-style scoring is not enough.",
+      "bestFor": "Anime libraries where normal scoring is not enough.",
       "includes": [
         {
           "trashId": "e0014372773c8f0e1bef8824f00c7dc4",

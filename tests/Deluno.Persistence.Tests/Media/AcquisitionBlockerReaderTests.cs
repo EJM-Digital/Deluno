@@ -105,7 +105,9 @@ public sealed class AcquisitionBlockerReaderTests
 
         var blocker = Assert.Single(answer.Blockers);
         Assert.Equal(AcquisitionBlockerKinds.SearchDeferred, blocker.Kind);
-        Assert.Contains("2026-09-05 18:00:00Z", blocker.Summary, StringComparison.Ordinal);
+        Assert.Contains("in about 6 hours", blocker.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-", blocker.Summary, StringComparison.Ordinal);
+        Assert.Equal(Now.AddHours(6), blocker.UntilUtc);
         Assert.Contains("No candidates met the profile.", blocker.Detail, StringComparison.Ordinal);
     }
 

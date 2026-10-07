@@ -561,6 +561,8 @@ public sealed class WeirCompanion(
     public async Task<ProcessorConnectionItem> AddProcessorConnectionAsync(string baseUrl, string webhookUrlPath, string? headerName, string? webhookSecret, CancellationToken cancellationToken)
     {
         var machineName = await processorConnections.GetMachineNameAsync($"{baseUrl}{webhookUrlPath}", headerName, webhookSecret, cancellationToken);
+        // Its own name when it says one; else the name this setup installed it under (#1144), so it is never listed as a generic processor.
+        var productName = await processorConnections.GetProductNameAsync($"{baseUrl}{webhookUrlPath}", headerName, webhookSecret, cancellationToken) ?? Name;
         var connection = await processors.CreateProcessorConnectionAsync(
             new CreateProcessorConnectionRequest(
                 Name,
@@ -572,7 +574,7 @@ public sealed class WeirCompanion(
                 // Weir publishes GET /ready ({"ready": true} once its database is open) at
                 // its root. Its hand-off route only takes POST, so this is how Deluno asks
                 // whether it is up (#1055). The generic processor test just follows the address.
-                $"{baseUrl}{WeirReadyPath}") { MachineName = machineName },
+                $"{baseUrl}{WeirReadyPath}") { MachineName = machineName, ProductName = productName },
             cancellationToken);
         var test = await processorConnections.TestAsync(connection, cancellationToken);
         await processors.RecordProcessorConnectionHealthAsync(connection.Id, test.Status, test.Message, cancellationToken);

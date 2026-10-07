@@ -49,6 +49,10 @@ public sealed record CreateProcessorConnectionRequest(
     /// <summary>#1076: the machine name the processor published (never sent by a client), used instead of the address host in the connection's name.</summary>
     [JsonIgnore]
     public string? MachineName { get; init; }
+
+    /// <summary>#1144: the processor's own name, as it reported it or as the setup that added it knows it (never sent by a client); the connection is named "&lt;this&gt; on &lt;machine&gt;".</summary>
+    [JsonIgnore]
+    public string? ProductName { get; init; }
 }
 
 public sealed record UpdateProcessorConnectionRequest(
@@ -63,6 +67,10 @@ public sealed record UpdateProcessorConnectionRequest(
     /// <summary>#1076: the machine name the processor published (never sent by a client), used instead of the address host in the connection's name.</summary>
     [JsonIgnore]
     public string? MachineName { get; init; }
+
+    /// <summary>#1144: the processor's own name, as it reported it or as the setup that added it knows it (never sent by a client); the connection is named "&lt;this&gt; on &lt;machine&gt;".</summary>
+    [JsonIgnore]
+    public string? ProductName { get; init; }
 }
 
 public sealed record ProcessorConnectionTestResult(
@@ -120,6 +128,26 @@ public interface IProcessorConnectionService
     /// </summary>
     Task<string?> ReadVersionAsync(ProcessorConnectionItem connection, CancellationToken cancellationToken)
         => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// #1144: the processor's own name, from a top-level <c>name</c> or <c>product</c> in the same capabilities answer,
+    /// or null when it publishes none. Generic: nothing here knows which product it is.
+    /// </summary>
+    Task<string?> GetProductNameAsync(
+        string submissionUrl,
+        string? authHeaderName,
+        string? secret,
+        CancellationToken cancellationToken)
+        => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// #1144: the processor's <c>library-folders</c> list (GET /api/v1/intake/library-folders), empty when it does not
+    /// advertise the capability or cannot be asked.
+    /// </summary>
+    Task<IReadOnlyList<ProcessorLibraryFolder>> GetLibraryFoldersAsync(
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<ProcessorLibraryFolder>>([]);
 
     Task<ProcessorConnectionTestResult> TestAsync(
         ProcessorConnectionItem connection,

@@ -51,7 +51,13 @@ public sealed record AcquisitionBlocker(
     /// destructive across systems Deluno does not own, so it does not get to be
     /// a surprise.
     /// </summary>
-    string? ClearEffect = null);
+    string? ClearEffect = null,
+
+    /// <summary>
+    /// When this reason lifts, when it is a wait. The summary already says it in words ("in about 5 hours"); the screen
+    /// adds the clock time in the person's own time zone from this.
+    /// </summary>
+    DateTimeOffset? UntilUtc = null);
 
 /// <summary>
 /// Everything standing between a title and its next download.

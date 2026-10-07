@@ -88,9 +88,11 @@ public sealed class SqliteProcessorRepository(
         string provider,
         string submissionUrl,
         string? machineName,
+        string? productName,
         CancellationToken cancellationToken)
     {
-        var app = provider == "fileflows-webhook" ? "FileFlows" : "Processor";
+        // #1144: the processor's own name when it (or the setup that added it) gave one.
+        var app = !string.IsNullOrWhiteSpace(productName) ? productName.Trim() : provider == "fileflows-webhook" ? "FileFlows" : "Processor";
         var named = string.IsNullOrWhiteSpace(machineName)
             ? ConnectionNames.AppOnHost(app, submissionUrl)
             : $"{app} on {(ConnectionNames.IsLoopback(machineName.Trim()) ? DelunoHostName.Current : machineName.Trim())}";
@@ -99,6 +101,14 @@ public sealed class SqliteProcessorRepository(
             ConnectionNames.PortOf(submissionUrl),
             id,
             await ConnectionNameRows.OtherNamesAsync(connection, "processor_connections", id, cancellationToken));
+    }
+
+    /// <summary>The product part of a name this repository wrote ("Weir on RIG" gives "Weir"); null for the generic "Processor on RIG" and "FileFlows on RIG", which the provider already gives, and for a name someone chose.</summary>
+    private static string? ProductOf(string name)
+    {
+        var at = name.IndexOf(" on ", StringComparison.Ordinal);
+        var product = at > 0 ? name[..at] : null;
+        return product is null or "Processor" or "FileFlows" ? null : product;
     }
 
     public async Task<ProcessorConnectionItem> CreateProcessorConnectionAsync(
@@ -126,7 +136,7 @@ public sealed class SqliteProcessorRepository(
             cancellationToken);
         item = item with
         {
-            Name = await ProcessorNameAsync(connection, item.Id, item.Provider, item.SubmissionUrl, request.MachineName, cancellationToken)
+            Name = await ProcessorNameAsync(connection, item.Id, item.Provider, item.SubmissionUrl, request.MachineName, request.ProductName, cancellationToken)
         };
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -174,7 +184,7 @@ public sealed class SqliteProcessorRepository(
         // The name follows the address, and stays put when nothing about the address changed and no new machine name came.
         var name = request.MachineName is null && provider == existing.Provider && string.Equals(submissionUrl, existing.SubmissionUrl, StringComparison.OrdinalIgnoreCase)
             ? existing.Name
-            : await ProcessorNameAsync(connection, id.Trim(), provider, submissionUrl, request.MachineName, cancellationToken);
+            : await ProcessorNameAsync(connection, id.Trim(), provider, submissionUrl, request.MachineName, request.ProductName ?? ProductOf(existing.Name), cancellationToken);
         var authHeaderName = NormalizeProcessorAuthHeaderName(request.AuthHeaderName ?? existing.AuthHeaderName);
         var secret = string.IsNullOrWhiteSpace(request.Secret) ? existing.Secret : request.Secret.Trim();
         // Not sent keeps the address; sent empty clears it.

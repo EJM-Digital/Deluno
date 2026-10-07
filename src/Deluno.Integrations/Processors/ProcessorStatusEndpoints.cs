@@ -15,6 +15,9 @@ namespace Deluno.Integrations.Processors;
 /// </summary>
 public sealed partial record ProcessorStatusEndpoints(Uri Capabilities, string HandoffPrefix)
 {
+    /// <summary>Where a processor that advertises <c>library-folders</c> lists the folder it watches for each library (#1144).</summary>
+    public Uri LibraryFolders => new(Capabilities, "library-folders");
+
     public Uri Handoff(string handoffId) => new($"{HandoffPrefix}/{Uri.EscapeDataString(handoffId)}");
 
     /// <summary>Where to tell a processor what became of the file it handed back (#578).</summary>

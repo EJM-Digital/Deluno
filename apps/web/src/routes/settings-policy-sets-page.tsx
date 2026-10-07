@@ -546,7 +546,7 @@ export function SettingsPolicySetsPage() {
         {policySets.length === 0 ? (
           <ListEmpty
             title="No library profiles yet"
-            description="A Library Profile combines an existing Quality Profile, Release Preferences and destination rule, then attaches them to one or more libraries."
+            description="Optional. Every library already has its own quality profile; a Library Profile bundles a Quality Profile, Release Preferences and a destination rule so several libraries can share them."
             actions={
               <Button type="button" size="sm" onClick={openCreate}>
                 <Plus className="h-3.5 w-3.5" />

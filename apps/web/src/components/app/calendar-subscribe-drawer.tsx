@@ -135,7 +135,7 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
           </p>
           <SwitchRow
             label="Include unmonitored titles"
-            description="Off by default, the same as Radarr/Sonarr's own feed — Deluno is not watching for these, so most people do not want them cluttering a calendar."
+            description="Off by default: Deluno is not watching for these, so most people do not want them cluttering a calendar."
             checked={includeUnmonitored}
             onCheckedChange={setIncludeUnmonitored}
           />
