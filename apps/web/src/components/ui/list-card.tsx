@@ -16,7 +16,7 @@ import { titleCaseLabel } from "../../lib/title-case";
 import { COLUMN_EASE, COLUMN_MOVE_MS, prefersReducedMotion, trackColumnDrag } from "../../lib/list-column-drag";
 import { isColumnMovable, isColumnSortable, useListColumns, type ListColumnSpec, type ListColumnsState } from "../../lib/use-list-columns";
 import { cn } from "../../lib/utils";
-import { ColumnsAnnouncements, ColumnsButton, type ColumnsControls } from "./columns-menu";
+import { ColumnsAnnouncements, ColumnsButton, useSharedColumnsHint, type ColumnsControls } from "./columns-menu";
 
 /** A ListTable inside a ListCard hands its Columns controls up to the card, which draws the button last in its header. */
 interface ListCardContextValue {
@@ -167,6 +167,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
   const [announcement, setAnnouncement] = React.useState("");
   const card = React.useContext(ListCardContext);
   const hintId = React.useId();
+  const describedBy = useSharedColumnsHint(enabled && state.columns.some((entry) => isColumnSortable(entry.column)));
   const hasControls = enabled && state.columns.some((entry) => isColumnMovable(entry.column));
   const sortableTable = enabled && state.columns.some((entry) => isColumnSortable(entry.column));
   const controls: ColumnsControls = { hintId, sortable: sortableTable, announcement, reset: state.reset };
@@ -290,7 +291,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                 aria-sort={active ? (active.direction === "asc" ? "ascending" : "descending") : undefined}
                 tabIndex={movable && !sortable ? 0 : undefined}
                 aria-keyshortcuts={movable ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
-                aria-describedby={movable && !sortable ? hintId : undefined}
+                aria-describedby={movable && !sortable ? describedBy : undefined}
                 onPointerDown={movable ? (event) => startDrag(event, id) : undefined}
                 onKeyDown={
                   movable
@@ -315,7 +316,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                   <button
                     type="button"
                     onClick={() => state.toggleSort(id)}
-                    aria-describedby={movable ? hintId : undefined}
+                    aria-describedby={movable ? describedBy : undefined}
                     className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-widest text-inherit hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <span className="truncate">{col.label}</span>
@@ -421,6 +422,13 @@ interface ListCellProps {
   children?: React.ReactNode;
 }
 
+/**
+ * Cells cut a long value short with an ellipsis, which is right for a phone or
+ * a laptop where the full value is one tap away in the row's drawer. On a wide
+ * screen there is room to say it all, so the value wraps instead (#1162).
+ */
+const WIDE_WRAP = "min-[1920px]:overflow-visible min-[1920px]:whitespace-normal min-[1920px]:break-words";
+
 export function ListCell({ primary, secondary, mobile = false, align = "start", mono, numeric, className, children }: ListCellProps) {
   const originalIndex = React.useContext(CellIndexContext);
   return (
@@ -438,10 +446,10 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
       {children ?? (
         <>
           {primary !== undefined ? (
-            <span className={cn("block truncate text-foreground", mono && "font-mono text-(length:--type-caption)")}>{primary}</span>
+            <span className={cn("block truncate text-foreground", WIDE_WRAP, mono && "font-mono text-(length:--type-caption)")}>{primary}</span>
           ) : null}
           {secondary !== undefined ? (
-            <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{secondary}</span>
+            <span className={cn("mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground", WIDE_WRAP)}>{secondary}</span>
           ) : null}
         </>
       )}
@@ -453,8 +461,8 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
 export function ListNameCell({ name, sub, className }: { name: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
     <div role="cell" className={cn("min-w-0 leading-tight", className)}>
-      <span className="block truncate text-(length:--list-row-text) font-semibold text-foreground">{name}</span>
-      {sub !== undefined ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{sub}</span> : null}
+      <span className={cn("block truncate text-(length:--list-row-text) font-semibold text-foreground", WIDE_WRAP)}>{name}</span>
+      {sub !== undefined ? <span className={cn("mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground", WIDE_WRAP)}>{sub}</span> : null}
     </div>
   );
 }

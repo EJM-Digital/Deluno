@@ -500,7 +500,6 @@ export function DesktopSidebar({
           {collapsed ? <span className="sr-only">{`${user?.displayName ?? "User"}, account menu`}</span> : (
             <span className="block min-w-0 flex-1">
               <span className="block truncate whitespace-nowrap text-[length:14px] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
-              <span className="block truncate whitespace-nowrap text-[length:12px] text-muted-foreground">{`@${user?.username ?? "deluno"} · ${hostName ? `Deluno on ${hostName}` : "Deluno"}`}</span>
             </span>
           )}
           {collapsed ? null : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}

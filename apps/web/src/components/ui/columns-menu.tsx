@@ -116,16 +116,47 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
   );
 }
 
-/** What a screen reader is told about moving and sorting columns, which every heading points at, and after each move. */
+const sharedHints = new Map<string, number>();
+
+/**
+ * The one line a screen reader is told about moving and sorting columns,
+ * which every movable heading points at (#1162).
+ *
+ * <p>It used to be printed once per table, so a page of three tables said it
+ * three times. It now lives once per page, as a single hidden element that the
+ * first table creates and the last one to go removes.</p>
+ *
+ * @returns the id of that element, for aria-describedby.
+ */
+export function useSharedColumnsHint(sortable: boolean): string {
+  const id = sortable ? "deluno-columns-hint-sort" : "deluno-columns-hint";
+  React.useEffect(() => {
+    const count = sharedHints.get(id) ?? 0;
+    sharedHints.set(id, count + 1);
+    if (count === 0 && !document.getElementById(id)) {
+      const element = document.createElement("p");
+      element.id = id;
+      element.className = "sr-only";
+      element.textContent = MOVE_HINT + (sortable ? SORT_HINT : "");
+      document.body.appendChild(element);
+    }
+    return () => {
+      const remaining = (sharedHints.get(id) ?? 1) - 1;
+      if (remaining > 0) {
+        sharedHints.set(id, remaining);
+        return;
+      }
+      sharedHints.delete(id);
+      document.getElementById(id)?.remove();
+    };
+  }, [id, sortable]);
+  return id;
+}
+
+/** What a screen reader is told after each column move. */
 export function ColumnsAnnouncements({ controls }: { controls: readonly ColumnsControls[] }) {
   return (
     <>
-      {controls.map((entry) => (
-        <p key={entry.hintId} id={entry.hintId} className="sr-only">
-          {MOVE_HINT}
-          {entry.sortable ? SORT_HINT : ""}
-        </p>
-      ))}
       <p role="status" aria-live="polite" className="sr-only">
         {controls
           .map((entry) => entry.announcement)

@@ -195,6 +195,14 @@ describe("ListTable column sorting (#1119)", () => {
     expect(screen.getByText(/Drag a heading to move its column, or press Alt with the left or right arrow on it\./)).toHaveTextContent("Click a heading to sort by it, and click again to reverse.");
   });
 
+  // #1162: three tables on one page used to say the same column help three times.
+  it("says how to move and sort a column once per page, however many tables it has", () => {
+    const { unmount } = render(<><Demo /><Demo /><Demo /></>);
+    expect(screen.getAllByText(/Drag a heading to move its column/)).toHaveLength(1);
+    unmount();
+    expect(screen.queryByText(/Drag a heading to move its column/)).toBeNull();
+  });
+
   it("inside a ListCard the Columns button is the last thing in the card header, with no per-page change", () => {
     render(<InCard />);
     const header = screen.getByRole("banner", { hidden: true }) as HTMLElement;

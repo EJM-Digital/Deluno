@@ -43,6 +43,22 @@ const searchResult = {
       indexerProtocol: "torznab",
       releaseAgeHours: 5,
       downloadUrl: "https://fixture.invalid/x.torrent"
+    },
+    {
+      // A release for something else that the indexer matched loosely, and
+      // that a free search has no title to judge: rejected, with a reason.
+      releaseName: "Unrelated.Anime.S01.1080p",
+      indexerId: "idx-1",
+      indexerName: "EZTV",
+      quality: "WEB 1080p",
+      meetsCutoff: true,
+      decisionStatus: "rejected",
+      rejectionGate: "Release group is on the never-grab list.",
+      sizeBytes: 1_000_000_000,
+      seeders: 4,
+      leechers: 1,
+      indexerProtocol: "torznab",
+      downloadUrl: "https://fixture.invalid/y.torrent"
     }
   ],
   indexersQueried: 1
@@ -172,6 +188,8 @@ describe("multi-indexer manual Search page (#753)", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
     await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
 
+    // Block lives in the result's details, apart from Grab (#1172).
+    fireEvent.click(screen.getByText("Example.Release.WEB.1080p"));
     const blockButton = await screen.findByRole("button", { name: 'Block "Example.Release.WEB.1080p"' });
     fireEvent.click(blockButton);
 
@@ -187,5 +205,40 @@ describe("multi-indexer manual Search page (#753)", () => {
     );
     const body = JSON.parse((blockCall![1] as RequestInit).body as string);
     expect(body).toMatchObject({ releaseName: "Example.Release.WEB.1080p", indexerName: "EZTV", mediaType: "movie" });
+  });
+
+  // #1172: a free search has no title or profile, so no verdict is printed,
+  // the controls do not overlap, and a result opens its details.
+  it("shows no verdict chip, only a Grab button in the row, and opens details on a click", async () => {
+    mockFetch();
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example Release" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
+
+    expect(screen.queryByText("Rejected")).toBeNull();
+    expect(screen.queryByText("Recommended")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Block/ })).toBeNull();
+
+    fireEvent.click(screen.getByText("Example.Release.WEB.1080p"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send to download client" })).toBeTruthy());
+    expect(screen.getByText("Indexer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Block/ })).toBeTruthy();
+  });
+
+  it("puts a hard rule's reason in words and keeps names without your words out of the list", async () => {
+    mockFetch();
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Unrelated" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    await waitFor(() => expect(screen.getByText("Unrelated.Anime.S01.1080p")).toBeTruthy());
+
+    expect(screen.getByText(/Release group is on the never-grab list./)).toBeTruthy();
+    expect(screen.queryByText("Example.Release.WEB.1080p")).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Only names with your words/ }));
+    await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
   });
 });
