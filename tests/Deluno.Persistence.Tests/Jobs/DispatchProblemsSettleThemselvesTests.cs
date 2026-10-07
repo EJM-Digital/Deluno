@@ -282,6 +282,102 @@ public sealed class DispatchProblemsSettleThemselvesTests
         Assert.Equal(1, await problems.CountOpenAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// #1167, the second path: an import Deluno refused (another show, a cam, a
+    /// bad file) and then blocked, removed from the client and searched again by
+    /// itself. Activity says so; nothing is left on Needs action.
+    /// </summary>
+    [Fact]
+    public async Task An_import_refused_blocked_removed_and_replaced_leaves_nothing_for_the_person()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "wrong-show", code: "title-mismatch");
+        var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
+        await BlockAsync(blocked, "wrong-show", cleanedUp: true, storage);
+
+        var (poller, problems, recovery) = CreatePoller(storage, clock, blocked);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ImportFailuresDetected);
+        Assert.Equal(0, recovery.ImportFailures);
+        Assert.Equal(0, await problems.CountOpenAsync(CancellationToken.None));
+        var activity = new SqliteJobStore(storage.Factory, clock, new NullRealtimeEventPublisher(), new SqliteDownloadDispatchesRepository(storage.Factory, clock));
+        Assert.Single(await activity.ListActivityAsync(50, null, null, CancellationToken.None));
+    }
+
+    /// <summary>#1167: old alarms of both kinds, raised before this was handled, settle on the next poll.</summary>
+    [Fact]
+    public async Task Old_alarms_about_a_refusal_deluno_handled_settle_on_the_next_poll()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "wrong-show", code: "title-mismatch");
+        var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
+        await BlockAsync(blocked, "wrong-show", cleanedUp: true, storage);
+        var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
+        await problems.RecordAsync("wrong-show", "import-failed", CancellationToken.None);
+        await problems.RecordAsync("wrong-show", "vanished-downloading", CancellationToken.None);
+        Assert.Equal(2, await problems.CountOpenAsync(CancellationToken.None));
+
+        var (poller, _, recovery) = CreatePoller(storage, clock, blocked);
+        await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(0, await problems.CountOpenAsync(CancellationToken.None));
+        Assert.Contains(recovery.Settled, entry => entry.DispatchId == "wrong-show");
+    }
+
+    /// <summary>#1167: a refusal whose removal has not happened stays, with its real reason.</summary>
+    [Fact]
+    public async Task A_refusal_whose_removal_failed_stays_listed_with_its_reason()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "stuck", code: "no-video-stream");
+        var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
+        await BlockAsync(blocked, "stuck", cleanedUp: false, storage, reasonCode: ImportFailurePolicy.NoVideoStream);
+
+        var (poller, problems, recovery) = CreatePoller(storage, clock, blocked);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.ImportFailuresDetected);
+        Assert.Equal(1, recovery.ImportFailures);
+        Assert.Equal(1, await problems.CountOpenAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1167: a stall remediation that could not remove the client entry is not "handled".</summary>
+    [Fact]
+    public async Task A_stall_handling_that_could_not_finish_is_still_reported()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertHandledByDelunoAsync(storage, clock, "half", code: "health-remediation-incomplete");
+
+        var (poller, problems, recovery) = CreatePoller(storage, clock);
+        await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(1, recovery.ImportFailures);
+        Assert.Equal(1, await problems.CountOpenAsync(CancellationToken.None));
+    }
+
+    private static async Task BlockAsync(SqliteBlockedReleaseRepository blocked, string id, bool cleanedUp, TestStorage storage, string reasonCode = "title-mismatch")
+    {
+        var release = await blocked.BlockAsync(
+            new BlockedRelease(
+                Guid.NewGuid().ToString("n"), $"{id}.2010.1080p.web-dl-deluno", $"{id}.2010.1080p.WEB-DL-DELUNO", "test-indexer",
+                "movie", id, "Example", reasonCode, "It is another show (2019, not 1959).", "hash-" + id, "qbittorrent-main", "qBittorrent",
+                DateTimeOffset.MinValue),
+            CancellationToken.None);
+        if (cleanedUp)
+        {
+            await blocked.MarkCleanedUpAsync(release.Id, CancellationToken.None);
+        }
+    }
+
     private static async Task InsertHandledByDelunoAsync(TestStorage storage, FixedTimeProvider clock, string id, string code = "health-remediation-applied")
     {
         var now = clock.GetUtcNow();
@@ -303,9 +399,7 @@ public sealed class DispatchProblemsSettleThemselvesTests
             ("@code", code));
     }
 
-    private static (DownloadDispatchPollingService Poller, SqliteDispatchProblemLog Problems, CountingRecoveryHandler Recovery) CreatePoller(
-        TestStorage storage,
-        FixedTimeProvider clock)
+    private static (DownloadDispatchPollingService Poller, SqliteDispatchProblemLog Problems, CountingRecoveryHandler Recovery) CreatePoller(TestStorage storage, FixedTimeProvider clock, IBlockedReleaseRepository? blocked = null)
     {
         var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
         var recovery = new CountingRecoveryHandler();
@@ -319,7 +413,8 @@ public sealed class DispatchProblemsSettleThemselvesTests
             activity,
             dispatches,
             problems,
-            new NullRealtimeEventPublisher());
+            new NullRealtimeEventPublisher(),
+            blockedReleaseRepository: blocked);
 
         return (poller, problems, recovery);
     }
