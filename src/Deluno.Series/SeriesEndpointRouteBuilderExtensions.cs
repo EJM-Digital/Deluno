@@ -1748,6 +1748,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            library = await TitleQualityProfile.ApplyAsync(mediaStateRepository, qualityRepository, MediaKind.Series, id, library, cancellationToken);
             var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             var configuredSources = routing?.Sources.Count ?? 0;
             var configuredClients = routing?.DownloadClients.Count ?? 0;

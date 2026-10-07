@@ -3526,13 +3526,6 @@ public sealed partial class ImportPipelineService(
 
         var quality = mediaDecisionService.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
         var fileSizeBytes = GetFileSize(preview.DestinationPath);
-        var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-            MediaType: mediaType,
-            HasFile: true,
-            CurrentQuality: quality,
-            CutoffQuality: library.CutoffQuality,
-            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
-            UpgradeUnknownItems: library.UpgradeUnknownItems));
         var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
 
         // A grab says which title this file is for, and the file goes there,
@@ -3543,6 +3536,20 @@ public sealed partial class ImportPipelineService(
         {
             request = request with { Title = grabbed.Title, Year = grabbed.Year ?? request.Year };
         }
+
+        // The title this file is for is known now, so the profile that judges
+        // the file is too: the title's own when it has one, the library's
+        // otherwise (#1157). Judged before anything below reads the cutoff.
+        var knownSeriesId = mediaType == "tv" ? await KnownSeriesIdAsync(request, dispatch, cancellationToken) : null;
+        var knownMovieId = mediaType == "movies" ? await KnownMovieIdAsync(dispatch, cancellationToken) : null;
+        library = await ApplyTitleProfileAsync(library, mediaType, knownSeriesId ?? knownMovieId, cancellationToken);
+        var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+            MediaType: mediaType,
+            HasFile: true,
+            CurrentQuality: quality,
+            CutoffQuality: library.CutoffQuality,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems));
 
         var title = TitleForActivity(request);
         var catalogId = $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Substring(0, Math.Min(64, $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Length));
@@ -3610,8 +3617,6 @@ public sealed partial class ImportPipelineService(
         // and 120 episodes landed on a phantom made from the file name. An id
         // that no longer exists is no identity at all, so it does not excuse
         // an import from the unconfirmed-title guards below either.
-        var knownSeriesId = mediaType == "tv" ? await KnownSeriesIdAsync(request, dispatch, cancellationToken) : null;
-        var knownMovieId = mediaType == "movies" ? await KnownMovieIdAsync(dispatch, cancellationToken) : null;
 
         if (mediaType == "tv"
             && string.IsNullOrWhiteSpace(request.Title)
@@ -4107,6 +4112,33 @@ public sealed partial class ImportPipelineService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    /// <summary>
+    /// The library, judged by the title's own quality profile when it has one (#1157).
+    /// </summary>
+    private async Task<LibraryItem> ApplyTitleProfileAsync(
+        LibraryItem library,
+        string mediaType,
+        string? titleId,
+        CancellationToken cancellationToken)
+    {
+        if (qualityRepository is null || string.IsNullOrWhiteSpace(titleId))
+        {
+            return library;
+        }
+
+        var profileId = mediaType == "tv"
+            ? await seriesCatalogRepository.GetQualityProfileIdAsync(titleId, cancellationToken)
+            : await movieCatalogRepository.GetQualityProfileIdAsync(titleId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return library;
+        }
+
+        var profile = (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, profileId, StringComparison.OrdinalIgnoreCase));
+        return Deluno.Media.TitleQualityProfile.Apply(library, profile);
     }
 
     private async Task<QualityProfileItem?> ResolvePreferenceProfileAsync(

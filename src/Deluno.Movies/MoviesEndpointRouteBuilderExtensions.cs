@@ -1415,6 +1415,11 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
+            if (library is not null)
+            {
+                // The film's own profile judges it when it has one (#1157).
+                library = await TitleQualityProfile.ApplyAsync(mediaStateRepository, qualityRepository, MediaKind.Movie, id, library, cancellationToken);
+            }
 
             QualityProfileItem? profile = null;
             if (library?.QualityProfileId is not null)

@@ -109,6 +109,9 @@ public sealed class SeasonSearchExecutor(
             return SeasonSearchOutcome.LibraryMissing(seasonNumber, seasonEpisodes.Count);
         }
 
+        // The show's own profile judges its seasons when it has one (#1157).
+        library = await TitleQualityProfile.ApplyAsync(mediaStateRepository, qualityRepository, MediaKind.Series, seriesId, library, cancellationToken);
+
         var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
         var configuredSources = routing?.Sources.Count ?? 0;
         var configuredClients = routing?.DownloadClients.Count ?? 0;
