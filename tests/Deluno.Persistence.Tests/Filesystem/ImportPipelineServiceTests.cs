@@ -3939,6 +3939,60 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
     }
 
+    private static async Task<string?> LinkedFileAsync(TestStorage storage, string seriesId, int episodeNumber)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT file_path FROM episode_entries WHERE series_id = @id AND episode_number = @episode;";
+        var id = command.CreateParameter(); id.ParameterName = "@id"; id.Value = seriesId; command.Parameters.Add(id);
+        var episode = command.CreateParameter(); episode.ParameterName = "@episode"; episode.Value = episodeNumber; command.Parameters.Add(episode);
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? null : value.ToString();
+    }
+
+    /// <summary>#1174: the cleared episode's own file, sitting in the show's folder, is linked instead of leaving it Missing.</summary>
+    [Fact]
+    public async Task The_repair_relinks_the_cleared_episodes_own_file_from_the_shows_folder_and_says_so()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        var seriesRoot = Path.Combine(storage.DataRoot, "series");
+        var season = Directory.CreateDirectory(Path.Combine(seriesRoot, "Chernobyl", "Season 1")).FullName;
+        var library = await CreateTvLibraryAsync(libraries, seriesRoot, Path.Combine(storage.DataRoot, "downloads"));
+        var fifth = Path.Combine(season, "Chernobyl.S01E05.Vichnaya.Pamyat.1080p.WEB-DL-GRP.mkv");
+        var first = Path.Combine(season, "Chernobyl.S01E01.1.23.45.1080p.WEB-DL-GRP.mkv");
+        await File.WriteAllBytesAsync(fifth, new byte[16]);
+        await File.WriteAllBytesAsync(first, new byte[32]);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        await seriesRepository.ImportExistingAsync(
+            library.Id, "Chernobyl", 2019, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: fifth, FileSizeBytes: 16),
+                new ImportedEpisodeItem(1, 5, HasFile: true, FilePath: fifth, FileSizeBytes: 16)
+            ],
+            CancellationToken.None);
+
+        var activity = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        Assert.Equal(1, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
+
+        var seriesId = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None)).Id;
+        var detail = await seriesRepository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        var one = detail!.Episodes.Single(e => e.EpisodeNumber == 1);
+        Assert.True(one.HasFile);
+        Assert.Equal(first, await LinkedFileAsync(storage, seriesId, 1));
+        Assert.NotEqual("missing", one.WantedStatus);
+        Assert.Equal(fifth, await LinkedFileAsync(storage, seriesId, 5));
+        var events = await activity.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(events, e => e.Category == Deluno.Worker.Services.EpisodeFileLinkRepairService.ActivityCategory
+            && e.Message.Contains("S01E01") && e.Message.Contains("now shows its own file") && e.Message.Contains("Chernobyl.S01E01"));
+
+        Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
+    }
+
     /// <summary>#761: a dated show is named with DailyEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>
     [Fact]
     public async Task Preview_names_a_dated_series_episode_with_the_daily_format()
