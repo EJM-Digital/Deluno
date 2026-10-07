@@ -1,3 +1,4 @@
+import type { HeldReleaseRow } from "../lib/held-releases";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +32,8 @@ const queueLoaderData = {
   processorConnections: [],
   processorHandoffs: [],
   activityEvents: [],
-  orphans: [] as OrphanedDownloadItem[]
+  orphans: [] as OrphanedDownloadItem[],
+  heldReleases: [] as HeldReleaseRow[]
 };
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -870,6 +872,20 @@ describe("download drawer: availability, last activity and completion (#970)", (
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });
 
+  it("offers no Preview import or Queue import for a magnet that has no files yet (#1138)", () => {
+    openDrawerWith(queueItem({ sizeBytes: 0, downloadedBytes: 0, progress: 0, status: "queued" }));
+
+    expect(screen.queryByRole("button", { name: "Preview import" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Queue import" })).not.toBeInTheDocument();
+    expect(screen.getByText(/no files yet/i)).toBeInTheDocument();
+  });
+
+  it("still offers Preview import once the download has files (#1138)", () => {
+    openDrawerWith(queueItem());
+
+    expect(screen.getByRole("button", { name: "Preview import" })).toBeInTheDocument();
+  });
+
   it("hides availability, last activity and completion facts entirely when the client never reported them", () => {
     openDrawerWith(queueItem({ availability: null, lastActivityUtc: null, completionUtc: null }));
 
@@ -1010,5 +1026,52 @@ describe("Manual import: one file", () => {
     await openAndPreview({ ...packPreview(true), pack: null, clientHoldsSource: true });
 
     await waitFor(() => expect(screen.getByText(/download client is still sharing this file/i)).toBeInTheDocument());
+  });
+});
+
+/** #1159: a release a search held shows under Needs attention with Approve / Find another / Dismiss, and approving sends it. */
+describe("a release held for approval (#1159)", () => {
+  const row: HeldReleaseRow = {
+    historyId: "h1", mediaType: "series", id: "s1", episodeId: "e1", title: "The Wire", year: 2002, episodeLabel: "S01E04", libraryId: "lib",
+    releaseName: "The.Wire.S01E04.1080p.WEB-GRP", indexerName: "Nyaa", indexerId: "ix", downloadUrl: "https://x/get", quality: "WEB 1080p",
+    sizeBytes: 1_000_000_000, seeders: 5, reason: "Held for review by the typed release plan.", heldUtc: "2026-10-08T00:00:00Z"
+  };
+
+  afterEach(() => {
+    queueLoaderData.heldReleases = [];
+    authedFetchMock.mockReset();
+  });
+
+  it("lists the candidate with its three answers", () => {
+    queueLoaderData.heldReleases = [row];
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("The Wire S01E04")).toBeVisible();
+    expect(screen.getByText(/Waiting for your OK: The.Wire.S01E04.1080p.WEB-GRP/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Approve The.Wire.S01E04.1080p.WEB-GRP" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Find another for The Wire S01E04" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Dismiss The.Wire.S01E04.1080p.WEB-GRP" })).toBeVisible();
+  });
+
+  it("approving sends that exact release with force, then stops listing it", async () => {
+    queueLoaderData.heldReleases = [row];
+    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Approve The.Wire.S01E04.1080p.WEB-GRP" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/attention/held-releases/h1/dismiss", { method: "POST" }));
+    const grab = authedFetchMock.mock.calls.find((call) => String(call[0]).startsWith("/api/series/s1/grab"));
+    expect(grab).toBeTruthy();
+    expect(JSON.parse((grab![1] as { body: string }).body)).toMatchObject({ releaseName: row.releaseName, downloadUrl: "https://x/get", force: true });
   });
 });
