@@ -61,6 +61,8 @@ public sealed class AcquisitionBlockerReaderTests
         var blocker = Assert.Single(answer.Blockers);
         Assert.Equal(AcquisitionBlockerKinds.DownloadInFlight, blocker.Kind);
         Assert.Equal("qBittorrent", blocker.Source);
+        // #1138: a download that has started is said as progress, not as a reason it will not download.
+        Assert.Equal("Downloading in qBittorrent.", blocker.Summary);
         Assert.True(blocker.CanClear);
         Assert.True(answer.CanForce);
         // Clearing this means touching something that is not Deluno, so the
