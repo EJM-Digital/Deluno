@@ -795,6 +795,10 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
             await Deluno.Connections.Versions.ConnectionVersionRecording.RememberVersionAsync(
                 versions, ConnectionKinds.Processor, connection.Id, ProcessorProjects.ProjectFor(connection), result.IsReachable ? await processorConnections.ReadVersionAsync(connection, cancellationToken) : null, cancellationToken);
+            if (result.IsReachable)
+            {
+                connection = await ProcessorAutoNames.RenameIfGeneratedAsync(connection, repository, processorConnections, cancellationToken);
+            }
             if (checks is not null)
             {
                 await checks.RecordAsync(ConnectionKinds.Processor, connection.Id, connection.Name, result.IsReachable, result.LatencyMs, result.Message, cancellationToken);

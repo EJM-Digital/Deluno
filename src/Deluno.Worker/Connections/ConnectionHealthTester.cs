@@ -196,6 +196,12 @@ public sealed class ConnectionHealthTester(
                     var result = await processorService.TestAsync(item, cancellationToken);
                     await processors.RecordProcessorConnectionHealthAsync(item.Id, result.Status, result.Message, cancellationToken);
                     await versions.RememberVersionAsync(ConnectionKinds.Processor, item.Id, ProcessorProjects.ProjectFor(item), result.IsReachable ? await processorService.ReadVersionAsync(item, cancellationToken) : null, cancellationToken);
+                    // #1144: a connection still called "Processor on <machine>" takes the processor's own name once it publishes one.
+                    if (result.IsReachable)
+                    {
+                        item = await Deluno.Platform.ProcessorAutoNames.RenameIfGeneratedAsync(item, processors, processorService, cancellationToken);
+                    }
+
                     return await recorder.RecordAsync(target.Kind, item.Id, item.Name, result.IsReachable, result.LatencyMs, result.Message, cancellationToken);
                 }
                 case ConnectionKinds.MediaServer:
