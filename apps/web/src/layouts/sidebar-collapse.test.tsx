@@ -69,9 +69,12 @@ describe("the sidebar collapse button", () => {
     vi.restoreAllMocks();
   });
 
-  it("names the person and the computer on two lines", () => {
+  // #1149: the handle and "Deluno on <machine>" only repeated the name and the computer name shown above.
+  it("names the person once on the account button and the computer once at the top", () => {
     render(<Harness />);
     expect(screen.getByText("Ann Lee")).toBeInTheDocument();
-    expect(screen.getByText("@ann · Deluno on WORKSTATION")).toBeInTheDocument();
+    expect(screen.queryByText(/@ann/)).toBeNull();
+    expect(screen.queryByText(/Deluno on WORKSTATION/)).toBeNull();
+    expect(screen.getAllByText("WORKSTATION")).toHaveLength(1);
   });
 });
