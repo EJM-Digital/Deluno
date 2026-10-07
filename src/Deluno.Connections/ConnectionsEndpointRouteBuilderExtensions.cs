@@ -91,6 +91,21 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var item = await repository.CreateIndexerAsync(request, cancellationToken);
             item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+            // #1134: a test run in the drawer before the add is kept with the
+            // indexer, so the list says what the person just saw rather than
+            // "Untested". Only a status Deluno itself produces is kept.
+            if (request.TestedHealth is { HealthStatus: { } testedStatus } tested
+                && testedStatus is "healthy" or "degraded" or "unreachable" or "failing" or "timeout")
+            {
+                await repository.UpdateIndexerHealthAsync(
+                    item.Id,
+                    testedStatus,
+                    tested.Message ?? string.Empty,
+                    tested.FailureCategory,
+                    tested.LatencyMs,
+                    cancellationToken);
+                item = (await repository.ListIndexersAsync(cancellationToken)).FirstOrDefault(row => string.Equals(row.Id, item.Id, StringComparison.OrdinalIgnoreCase)) ?? item;
+            }
             await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
             // #909: a newly added indexer's reachability is worth showing on
             // Health right away rather than waiting up to fifteen minutes.

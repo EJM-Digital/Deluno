@@ -121,7 +121,7 @@ public sealed record IntegrationFailure(
         IntegrationFailureKind.QuotaExceeded => RetryAfterUtc is { } quotaUntil
             ? $"The quota resets on its own around {quotaUntil.ToLocalTime():HH:mm}; nothing to fix unless you want it sooner."
             : "The quota will reset on its own; nothing to fix unless you want it sooner.",
-        IntegrationFailureKind.Blocked => "Set up a Cloudflare helper (FlareSolverr or Byparr) under Settings, General, then test the connection again.",
+        IntegrationFailureKind.Blocked => "Set up a Cloudflare helper (FlareSolverr or Byparr) under Preferences, General, then test the connection again.",
         _ => "Review the integration details and test the connection again."
     };
 }

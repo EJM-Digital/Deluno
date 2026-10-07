@@ -26,7 +26,7 @@ public sealed class CloudflareHelperCapabilityException(string message) : Tracke
 /// </summary>
 public sealed class CloudflareHelperUnavailableException(string trackerHost, string helperAddress, Exception inner)
     : TrackerException(
-        $"{trackerHost} is behind a Cloudflare check, and the Cloudflare helper at {helperAddress} did not answer. Start it, or fix its address in Settings.",
+        $"{trackerHost} is behind a Cloudflare check, and the Cloudflare helper at {helperAddress} did not answer. Start it, or fix its address in Preferences, General.",
         inner)
 {
     public string HelperAddress { get; } = helperAddress;
@@ -86,7 +86,7 @@ public sealed record CloudflareHelperProxy(string Url, string? Username, string?
 public interface ICloudflareHelper
 {
     /// <summary>
-    /// Whether a helper is set up at all: the instance-wide one in Settings,
+    /// Whether a helper is set up at all: the instance-wide one in Preferences, General,
     /// or <paramref name="helperUrl"/> when the indexer has its own
     /// FlareSolverr/Byparr proxy assigned (#976).
     /// </summary>
@@ -98,7 +98,7 @@ public interface ICloudflareHelper
     /// (#748), if it has one, passed to the helper so it makes this request
     /// through it. <paramref name="helperUrl"/> is this indexer's own
     /// FlareSolverr/Byparr proxy (#976), used instead of the single
-    /// instance-wide helper URL in Settings when the indexer has one assigned.
+    /// instance-wide helper URL in Preferences, General when the indexer has one assigned.
     /// </summary>
     Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null);
 
@@ -119,7 +119,7 @@ public interface ICloudflareHelper
     Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken);
 }
 
-/// <summary>The FlareSolverr <c>/v1</c> API, at the address in Settings.</summary>
+/// <summary>The FlareSolverr <c>/v1</c> API, at the address in Preferences, General.</summary>
 public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFactory, IPlatformSettingsRepository settings) : ICloudflareHelper
 {
     public const string HttpClientName = "cloudflare-helper";

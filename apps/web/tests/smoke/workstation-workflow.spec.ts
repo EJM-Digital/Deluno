@@ -558,7 +558,7 @@ test.describe("dashboard workflow", () => {
     await page.keyboard.press("Enter");
 
     await expect(page).toHaveURL(/\/indexers/);
-    await expect(page.getByRole("heading", { name: /of \d+ healthy$|^0 indexers$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of \d+ ready to search$|^0 indexers$/ })).toBeVisible();
   });
 
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
@@ -930,7 +930,7 @@ test.describe("dashboard workflow", () => {
     await expectTabReachable(page, "Indexers");
     await expectTabReachable(page, "Download Clients");
     await expectTabReachable(page, "Library Routing");
-    await expect(page.getByRole("heading", { name: /of \d+ healthy$|^0 indexers$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of \d+ ready to search$|^0 indexers$/ })).toBeVisible();
 
     // The explainer belongs to the area, so it is here on the tab you land on
     // and still here three tabs along. It starts collapsed (#296).

@@ -171,7 +171,7 @@ public sealed class FlareSolverrCloudflareHelperTests
         var failure = await Assert.ThrowsAsync<CloudflareHelperUnavailableException>(() => helper.FetchAsync(TargetUrl, CancellationToken.None));
 
         Assert.Equal(
-            "tracker.example.test is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Settings.",
+            "tracker.example.test is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Preferences, General.",
             failure.Message);
         Assert.IsType<HttpRequestException>(failure.InnerException);
     }

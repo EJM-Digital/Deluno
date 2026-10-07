@@ -1110,7 +1110,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         public Task<Deluno.Integrations.Search.Trackers.TrackerSearchResult> SearchAsync(
             Deluno.Integrations.Search.Trackers.TrackerConnection connection, Deluno.Integrations.Search.Trackers.TrackerQuery query, CancellationToken cancellationToken)
             => throw new Deluno.Integrations.Search.Trackers.TrackerException(
-                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.",
+                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Preferences, General, gets Deluno past it; if one is set, it could not get through either.",
                 new Deluno.Integrations.Search.Trackers.TrackerBlockedException("1337x.to is behind a Cloudflare check."));
 
         public Task<Deluno.Integrations.Search.Trackers.TrackerGrab> ResolveDownloadAsync(
