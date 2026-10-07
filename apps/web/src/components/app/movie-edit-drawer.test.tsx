@@ -50,14 +50,14 @@ function mockOptionLoads() {
   });
 }
 
-function renderDrawer(onChanged = vi.fn()) {
+function renderDrawer(onChanged = vi.fn(), ownProfileId: string | null = null) {
   return render(
     <MovieEditDrawer
       open
       onOpenChange={vi.fn()}
       movieId="movie-1"
       monitored
-      qualityProfileId={null}
+      qualityProfileId={ownProfileId}
       libraryId="lib-main"
       filePath="/library/movies-main/Dune Part Two (2024)/Dune.mkv"
       metadataJson={null}
@@ -97,6 +97,21 @@ describe("MovieEditDrawer (#784)", () => {
       expect.objectContaining({ body: JSON.stringify({ movieIds: ["movie-1"], qualityProfileId: "profile-4k" }) })
     ));
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("sends no profile when a title goes back to the library default (#1157)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authedFetch).mockResolvedValue(Response.json({ updated: 1 }));
+    renderDrawer(vi.fn(), "profile-4k");
+
+    const select = await screen.findByRole("combobox", { name: "Quality profile" });
+    await user.selectOptions(select, "");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/movies/bulk/quality-profile",
+      expect.objectContaining({ body: JSON.stringify({ movieIds: ["movie-1"], qualityProfileId: null }) })
+    ));
   });
 
   it("requires a second click to confirm a path change, and never calls reassign-library on the first", async () => {

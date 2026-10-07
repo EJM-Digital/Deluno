@@ -3186,7 +3186,7 @@ public sealed class SqliteMovieCatalogRepository(
     }
 
 
-    public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)
+    public async Task<bool> UpdateQualityProfileAsync(string movieId, string? qualityProfileId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
