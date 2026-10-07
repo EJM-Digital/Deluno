@@ -485,6 +485,11 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@proxyId", item.ProxyId);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
+        if (request.RouteToLibraries)
+        {
+            await RouteNewIndexerAsync(connection, item, cancellationToken);
+        }
+
         return item;
     }
 
@@ -870,6 +875,11 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@location", item.Location);
         AddParameter(command, "@contentLayout", item.ContentLayout);
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        if (request.RouteToLibraries)
+        {
+            await RouteNewDownloadClientAsync(connection, item, cancellationToken);
+        }
 
         return item;
     }
@@ -1625,6 +1635,62 @@ public sealed class SqliteConnectionsRepository(
         command.CommandText = "DELETE FROM download_clients WHERE id = @id;";
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+
+    /// <summary>
+    /// #1135: a new indexer is switched on for every library of the media types it searches, so the
+    /// "Used for" answer is not asked again in Library Routing. It runs for every way an indexer is
+    /// created (the drawer, the API, an import). A library that already searches it is left alone.
+    /// </summary>
+    private async Task RouteNewIndexerAsync(System.Data.Common.DbConnection connection, IndexerItem item, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT OR IGNORE INTO library_source_links (id, library_id, indexer_id, priority, required_tags, excluded_tags, created_utc, updated_utc)
+            SELECT lower(hex(randomblob(16))), l.id, @indexerId,
+                   COALESCE((SELECT MAX(priority) FROM library_source_links WHERE library_id = l.id), 0) + 1,
+                   '', '', @now, @now
+            FROM libraries l
+            WHERE (@scope = 'both' OR lower(l.media_type) = @scope);
+            """;
+        AddParameter(command, "@indexerId", item.Id);
+        AddParameter(command, "@scope", item.MediaScope);
+        AddParameter(command, "@now", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// #1135: the first download client connected for a library type is routed to that library. A
+    /// client serves the types its categories name (both when it names none, as Transmission). A
+    /// library that already has a client is left alone: a second client is the person's choice.
+    /// </summary>
+    private async Task RouteNewDownloadClientAsync(System.Data.Common.DbConnection connection, DownloadClientItem item, CancellationToken cancellationToken)
+    {
+        var movies = !string.IsNullOrWhiteSpace(item.MoviesCategory) || !string.IsNullOrWhiteSpace(item.CategoryTemplate);
+        var tv = !string.IsNullOrWhiteSpace(item.TvCategory);
+        if (!movies && !tv)
+        {
+            movies = tv = true;
+        }
+
+        var now = timeProvider.GetUtcNow().ToString("O");
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT OR IGNORE INTO library_download_client_links (id, library_id, download_client_id, priority, category, created_utc, updated_utc)
+            SELECT lower(hex(randomblob(16))), l.id, @clientId, 1, NULL, @now, @now
+            FROM libraries l
+            WHERE ((lower(l.media_type) = 'tv' AND @tv = 1) OR (lower(l.media_type) <> 'tv' AND @movies = 1))
+              AND NOT EXISTS (SELECT 1 FROM library_download_client_links k WHERE k.library_id = l.id);
+            """;
+        AddParameter(command, "@clientId", item.Id);
+        AddParameter(command, "@movies", movies ? 1 : 0);
+        AddParameter(command, "@tv", tv ? 1 : 0);
+        AddParameter(command, "@now", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static string NormalizeMediaScope(string? value)

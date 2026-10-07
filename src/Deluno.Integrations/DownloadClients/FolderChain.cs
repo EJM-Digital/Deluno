@@ -21,6 +21,8 @@ public sealed record FolderChainLink(string Step, string Status, string Message,
 /// <param name="SavedBy"><c>deluno-per-grab</c> when Deluno names the library's downloads folder on each grab (Transmission, Deluge: #1073); <c>client-category</c> when the client's own category folder decides.</param>
 /// <param name="SaveFolder">The folder finished downloads land in, as this host writes it. Null when the client did not say.</param>
 /// <param name="ClientSaveFolder">The same folder as the client writes it (differs behind a path mapping).</param>
+/// <param name="IncompleteFolder">Where the client keeps a download while it is in progress ("where it downloads"), as this host writes it (#1164). Null when the client did not say.</param>
+/// <param name="ClientIncompleteFolder">The same folder as the client writes it.</param>
 public sealed record FolderChainClient(
     string ClientId,
     string ClientName,
@@ -29,7 +31,9 @@ public sealed record FolderChainClient(
     IReadOnlyList<FolderChainLink> Links,
     string SavedBy = FolderChainSavedBy.ClientCategory,
     string? SaveFolder = null,
-    string? ClientSaveFolder = null);
+    string? ClientSaveFolder = null,
+    string? IncompleteFolder = null,
+    string? ClientIncompleteFolder = null);
 
 public static class FolderChainSavedBy
 {
@@ -287,6 +291,14 @@ public sealed class FolderChainService(
                 links.Add(FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
             }
 
+            // #1164: where it downloads, apart from where it finishes. Half-finished files in the finished
+            // folder are where the processor, the media server and the library look.
+            var incompleteHost = DownloadClientTelemetryService.TranslateRemotePath(check.IncompletePath, clientMappings);
+            if (check.Status != DownloadClientCategoryStatuses.Unreachable)
+            {
+                links.Add(IncompleteLink(client, check.IncompletePath, incompleteHost, clientFolder, library.DownloadsPath, kind));
+            }
+
             if (ContentLayoutLink(client, category) is { } layoutLink)
             {
                 links.Add(layoutLink);
@@ -295,7 +307,9 @@ public sealed class FolderChainService(
             return new(client.Id, client.Name, client.Protocol, category, links,
                 named is not null ? FolderChainSavedBy.DelunoPerGrab : FolderChainSavedBy.ClientCategory,
                 clientFolder,
-                named?.ClientFolder ?? check.SavePath);
+                named?.ClientFolder ?? check.SavePath,
+                string.IsNullOrWhiteSpace(check.IncompletePath) ? null : incompleteHost,
+                string.IsNullOrWhiteSpace(check.IncompletePath) ? null : check.IncompletePath);
         }
 
         var chains = (await Task.WhenAll((routing?.DownloadClients ?? []).Select(CheckClientAsync)))
@@ -468,6 +482,63 @@ public sealed class FolderChainService(
             ? new("layout", FolderChainStatuses.Problem,
                 $"{client.Name} is set to put files straight into the {category} folder with no subfolder. A download with several files, such as a season pack, will land loose beside every other download, and Deluno cannot tell them apart. Choose \"Keep the torrent's own layout\" or \"Always create a subfolder\" in {client.Name}'s settings.")
             : null;
+
+    /// <summary>The setting a person changes in each client to move its in-progress folder.</summary>
+    private static string IncompleteSetting(string protocol) => protocol.ToLowerInvariant() switch
+    {
+        "qbittorrent" => "\"Keep incomplete torrents in\" under Downloads",
+        "transmission" => "the incomplete folder under Downloads",
+        "deluge" => "\"Download to\" under Preferences, Downloads",
+        "sabnzbd" => "the Temporary Download Folder under Config, Folders",
+        "nzbget" => "InterDir under Settings, Paths",
+        _ => "the incomplete downloads folder"
+    };
+
+    /// <summary>True when <paramref name="path"/> is <paramref name="parent"/> or sits somewhere inside it.</summary>
+    internal static bool IsSameOrInside(string path, string parent)
+    {
+        var child = Normalize(path);
+        var root = Normalize(parent);
+        return root.Length > 0 && (string.Equals(child, root, StringComparison.OrdinalIgnoreCase)
+            || child.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// #1164: "where it downloads" set beside "where it finishes". It matches the documented layout when
+    /// it is a folder of its own, outside the folder the download finishes in and outside the library's
+    /// downloads folder. An in-progress folder that equals or sits inside either of those puts
+    /// half-finished files where the processor and the library look.
+    /// </summary>
+    internal static FolderChainLink IncompleteLink(Deluno.Connections.Contracts.DownloadClientItem client, string? clientPath, string? hostPath, string? finishedFolder, string? downloadsPath, string kind)
+    {
+        if (string.IsNullOrWhiteSpace(clientPath))
+        {
+            return new("incomplete", FolderChainStatuses.Unknown, $"{client.Name} did not say where it keeps {kind} downloads while they are in progress.");
+        }
+
+        var path = string.IsNullOrWhiteSpace(hostPath) ? clientPath : hostPath;
+        if (!ClientPaths.IsFullClientPath(path))
+        {
+            return new("incomplete", FolderChainStatuses.Unknown, $"{client.Name} keeps {kind} downloads in progress in {clientPath}, a folder Deluno cannot compare with the finished folder because it is not a full path.", path);
+        }
+
+        foreach (var (folder, name) in new[] { (finishedFolder, "the folder they finish in"), (downloadsPath, "the library's downloads folder") })
+        {
+            if (string.IsNullOrWhiteSpace(folder) || !IsSameOrInside(path, folder))
+            {
+                continue;
+            }
+
+            var how = SamePath(path, folder) ? "the same as" : "inside";
+            return new("incomplete", FolderChainStatuses.Problem,
+                $"{client.Name} downloads {kind} into {path}, which is {how} {name} ({folder}). Half-finished files sit where the processor and the library look. Set {IncompleteSetting(client.Protocol)} in {client.Name} to a folder of its own outside it, for example D:\\Incomplete\\{client.Name}.",
+                path);
+        }
+
+        return new("incomplete", FolderChainStatuses.Ok,
+            $"{client.Name} keeps {kind} downloads in progress in {path}, apart from the folder they finish in{(string.IsNullOrWhiteSpace(finishedFolder) ? string.Empty : $" ({finishedFolder})")}.",
+            path);
+    }
 
     private static FolderChainLink FolderLink(string clientName, string category, string? clientFolder, LibraryItem library, string kind, bool usesProcessor)
     {

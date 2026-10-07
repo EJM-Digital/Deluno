@@ -592,6 +592,34 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         }
     }
 
+    /// <summary>qBittorrent's temporary path when "keep incomplete torrents in" is on; otherwise the save path, where it then writes them (#1164). Null when it cannot be read.</summary>
+    private static async Task<string?> ReadIncompletePathAsync(HttpClient http, string? savePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync("api/v2/app/preferences", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var enabled = root.TryGetProperty("temp_path_enabled", out var flag) && flag.ValueKind == JsonValueKind.True;
+            var temp = root.TryGetProperty("temp_path", out var path) && path.ValueKind == JsonValueKind.String ? path.GetString() : null;
+            return enabled && !string.IsNullOrWhiteSpace(temp) ? temp : savePath;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException)
+        {
+            return null;
+        }
+    }
+
     public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
         DownloadClientItem client,
         string category,
@@ -664,13 +692,16 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 savePath = ClientPaths.ClientFolder(defaultSavePath, savePath) ?? savePath;
             }
 
+            // Where a torrent is written while it downloads (#1164): the temporary path when qBittorrent
+            // keeps incomplete torrents apart, otherwise the save path itself.
+            var incompletePath = await ReadIncompletePathAsync(http, savePath, cancellationToken);
             return string.IsNullOrWhiteSpace(savePath)
                 ? new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
                     $"qBittorrent has a category named {normalizedCategory}, but it has no save path, so downloads will go wherever qBittorrent defaults to rather than a folder Deluno watches. Set a save path on the category in qBittorrent.",
-                    Supported: true, Found: true, SavePath: null)
+                    Supported: true, Found: true, SavePath: null, IncompletePath: incompletePath)
                 : new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Ready,
                     $"qBittorrent has a category named {normalizedCategory}, saving to {savePath}.",
-                    Supported: true, Found: true, SavePath: savePath);
+                    Supported: true, Found: true, SavePath: savePath, IncompletePath: incompletePath);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
         {

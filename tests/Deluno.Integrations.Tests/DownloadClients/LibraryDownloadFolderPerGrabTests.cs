@@ -623,7 +623,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         client.Setup(instance => instance.GrabAsync(It.IsAny<DownloadClientItem>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DownloadClientGrabResult("client-1", "Big.Buck.Bunny", true, "sent", "Sent.") { ExternalId = "abc" });
         client.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DownloadClientCategoryCheckResult("client-1", "Deluge", "movies", DownloadClientCategoryStatuses.Ready, "Ready.", true, true, reportedFolder));
+            .ReturnsAsync(new DownloadClientCategoryCheckResult("client-1", "Deluge", "movies", DownloadClientCategoryStatuses.Ready, "Ready.", true, true, reportedFolder, IncompletePath: "/incomplete/deluge"));
         return client;
     }
 

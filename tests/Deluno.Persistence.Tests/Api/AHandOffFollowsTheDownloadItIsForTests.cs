@@ -10,6 +10,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Series.Data;
 using Deluno.Worker.Services;
+using Deluno.Worker.HealthChecks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -287,6 +288,152 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         }
     }
 
+    // ---- #1155: output Deluno will never import is cleared; the rest is listed ------------------------
+
+    [Fact]
+    public async Task Output_of_a_hand_off_whose_original_was_imported_instead_is_cleared_with_one_activity_line()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Released, null, null, null, CancellationToken.None);
+        var output = await WriteOutputAsync(scene);
+
+        var removed = await SweepAsync(app);
+
+        Assert.Equal(1, removed);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(output)!), "the processor's folder for that hand-off is gone");
+        var lines = await SweepActivityAsync(app);
+        var said = Assert.Single(lines);
+        Assert.Contains("imported the original download instead", said.Message);
+        Assert.Contains(Release, said.Message);
+        Assert.True(Directory.Exists(scene.Output), "only the hand-off's own folder goes, never the processor's output folder");
+    }
+
+    [Fact]
+    public async Task Output_of_a_download_whose_title_was_removed_is_cleared()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None);
+        var output = await WriteOutputAsync(scene);
+
+        // Still in the catalogue: its output may yet be imported, so it stays.
+        Assert.Equal(0, await SweepAsync(app));
+        Assert.True(File.Exists(output));
+
+        var removedResponse = await app.Client.DeleteAsync($"/api/movies/{movieId}?deleteFiles=true");
+        Assert.True(removedResponse.IsSuccessStatusCode, await removedResponse.Content.ReadAsStringAsync());
+
+        Assert.Equal(1, await SweepAsync(app));
+        Assert.False(File.Exists(output));
+        Assert.Contains("film was removed", Assert.Single(await SweepActivityAsync(app)).Message);
+    }
+
+    [Fact]
+    public async Task Output_of_an_older_release_a_newer_download_of_the_same_title_replaced_is_cleared()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, "Weir could not finish it.", CancellationToken.None);
+        var output = await WriteOutputAsync(scene);
+        await Task.Delay(30);
+        // A better release of the same film, fetched later, is in the library.
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var newer = await jobs.RecordDownloadDispatchAsync(
+            scene.LibraryId, "movies", "movie", movieId, "Nosferatu.1922.2160p.UHD.BluRay.x265-HD4U", "Fixture Indexer",
+            Client, "Deluge", "sent", null, clientExternalId: "hash-newer", cancellationToken: CancellationToken.None);
+        await app.Services.GetRequiredService<IDownloadDispatchesRepository>().RecordImportOutcomeAsync(
+            newer, "imported", Path.Combine(app.DataRoot, "Films", "Nosferatu (1922)", "Nosferatu (1922).mkv"), null, null, CancellationToken.None);
+
+        Assert.Equal(1, await SweepAsync(app));
+        Assert.False(File.Exists(output));
+        Assert.Contains("newer download of the same title", Assert.Single(await SweepActivityAsync(app)).Message);
+    }
+
+    [Fact]
+    public async Task Output_a_hand_off_is_still_waiting_for_is_never_swept()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        await HandoffAsync(app, scene); // waiting
+        await RecordDispatchAsync(app, scene, imported: true, entityId: movieId);
+        var output = await WriteOutputAsync(scene);
+
+        Assert.Equal(0, await SweepAsync(app));
+
+        Assert.True(File.Exists(output));
+        Assert.Empty(await SweepActivityAsync(app));
+    }
+
+    [Fact]
+    public async Task Leftovers_from_an_older_build_with_no_hand_off_are_left_alone_and_listed_for_the_person_to_clear()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        // The Ready\Movies-style folder an older build left, with no hand-off row at all.
+        var leftover = Directory.CreateDirectory(Path.Combine(scene.Output, "Pulp.Fiction.1994.1080p.BluRay.x264-OLD")).FullName;
+        var file = Path.Combine(leftover, "Pulp.Fiction.1994.1080p.BluRay.x264-OLD.mkv");
+        await File.WriteAllBytesAsync(file, new byte[2048]);
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-30));
+
+        Assert.Equal(0, await SweepAsync(app));
+        Assert.True(File.Exists(file), "Deluno cannot say it will never import this, so it does not delete it");
+
+        using var scope = app.Services.CreateScope();
+        var check = scope.ServiceProvider.GetServices<IHealthCheck>()
+            .OfType<Deluno.Worker.HealthChecks.Checks.ProcessorOutputSafetyNetHealthCheck>().Single();
+        var outcomes = await check.RunAsync(CancellationToken.None);
+        var listed = Assert.Single(outcomes);
+        Assert.Contains("Pulp.Fiction.1994", listed.Message);
+        Assert.Contains("clear it", listed.Fix);
+    }
+
+    [Fact]
+    public async Task The_sweep_never_reaches_outside_the_processors_output_folder()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Released, null, null, null, CancellationToken.None);
+        // The download itself, in the downloads folder, shares the hand-off's name and is not the processor's to clear.
+        var download = Path.Combine(scene.DownloadFolder, Release + ".mkv");
+        await WriteOutputAsync(scene);
+
+        await SweepAsync(app);
+
+        Assert.True(File.Exists(download));
+    }
+
+    private static async Task<int> SweepAsync(ApplicationTestHost app)
+    {
+        using var scope = app.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<ProcessorOutputSweep>().SweepAsync(CancellationToken.None);
+    }
+
+    private static async Task<IReadOnlyList<Deluno.Jobs.Contracts.ActivityEventItem>> SweepActivityAsync(ApplicationTestHost app)
+        => (await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(50, null, null, CancellationToken.None))
+            .Where(item => item.Category == ProcessorOutputSweep.ActivityCategory)
+            .ToArray();
+
+    private static async Task<string> AddMovieAsync(ApplicationTestHost app)
+    {
+        var added = await app.Client.PostAsJsonAsync("/api/movies", new { title = "Nosferatu", releaseYear = 1922, monitored = true });
+        Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
+        return (await added.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString()!;
+    }
+
     // ---- plumbing -------------------------------------------------------------------------------
 
     private sealed record Scene(string LibraryId, string Downloads, string Output, string DownloadFolder);
@@ -337,14 +484,17 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         var file = Path.Combine(folder, Release + ".mkv");
         await File.WriteAllBytesAsync(file, new byte[2048]);
         await File.WriteAllTextAsync(Path.Combine(folder, Release + ".nfo"), "info");
+        // Long since written, so it counts as finished rather than still being written.
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-30));
+        File.SetLastWriteTimeUtc(Path.Combine(folder, Release + ".nfo"), DateTime.UtcNow.AddMinutes(-30));
         return file;
     }
 
-    private static async Task RecordDispatchAsync(ApplicationTestHost app, Scene scene, bool imported)
+    private static async Task RecordDispatchAsync(ApplicationTestHost app, Scene scene, bool imported, string entityId = "movie-nosferatu")
     {
         var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
         var id = await jobs.RecordDownloadDispatchAsync(
-            scene.LibraryId, "movies", "movie", "movie-nosferatu", Release, "Fixture Indexer",
+            scene.LibraryId, "movies", "movie", entityId, Release, "Fixture Indexer",
             Client, "Deluge", "sent", null, clientExternalId: $"hash-{Release}", cancellationToken: CancellationToken.None);
         if (imported)
         {
