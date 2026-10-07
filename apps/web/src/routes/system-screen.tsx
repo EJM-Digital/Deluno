@@ -1916,13 +1916,14 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           variant="ghost"
                           size="sm"
                           className="h-6 px-2 text-(length:--type-caption) text-destructive"
+                          aria-label={`Clear ${outputDetails.path.split(/[\\/]/).filter(Boolean).pop() ?? "this item"}`}
                           disabled={busyId === check.id}
                           onClick={(event) => {
                             event.stopPropagation();
                             void deleteProcessorOutputItem(check, outputDetails);
                           }}
                         >
-                          Delete
+                          Clear
                         </Button>
                       </div>
                     ) : isHealthNotice(check) ? (

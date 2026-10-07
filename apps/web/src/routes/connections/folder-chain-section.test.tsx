@@ -46,8 +46,8 @@ describe("the folder check (#616)", () => {
       clients: [{
         clientId: "d", clientName: "Deluge", protocol: "deluge", category: "movies",
         links: [
-          { step: "incomplete", status: "problem", message: "Deluge downloads movies into C:\Downloads\Completed\Movies, which is the same as the folder they finish in. Half-finished files sit where the processor and the library look." },
-          { step: "folder", status: "ok", message: "Deluge saves movies to C:\Downloads\Completed\Movies." }
+          { step: "incomplete", status: "problem", message: "Deluge downloads movies into /downloads/completed/movies, which is the same as the folder they finish in. Half-finished files sit where the processor and the library look." },
+          { step: "folder", status: "ok", message: "Deluge saves movies to /downloads/completed/movies." }
         ]
       }]
     });
