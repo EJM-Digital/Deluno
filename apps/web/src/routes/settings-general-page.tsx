@@ -126,7 +126,7 @@ export function SettingsGeneralPage() {
 
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-          <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
+          <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check. This one helper covers every tracker. A single indexer can have its own under Find & Download, Proxies; that one wins for that indexer." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
             <Input value={form.cloudflareHelperUrl} onChange={(event) => { setHelperResult(null); setForm((current) => ({ ...current, cloudflareHelperUrl: event.target.value })); }} placeholder="http://127.0.0.1:8191" className="font-mono" autoComplete="off" spellCheck={false} />
           </Field>
           <Field label="Helper timeout" optional help="How long Deluno waits for the helper to solve a check before giving up, in seconds (1-180)." error={settingsMutation.fieldErrors.cloudflareHelperTimeoutSeconds}>

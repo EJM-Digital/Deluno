@@ -1,6 +1,7 @@
 import { Chip } from "../../components/ui/chip";
 import { DrawerSection } from "../../components/ui/drawer";
 import { healthChip } from "./format";
+import { MessageWithPreferencesLink } from "./preferences-link";
 
 export type ConnectionTestOutcome = { healthStatus: string; message: string };
 
@@ -14,7 +15,7 @@ export function ConnectionTestResult({ result }: { result: ConnectionTestOutcome
     <DrawerSection title="Test">
       <p role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-(length:--type-body-sm)">
         <Chip tone={chip.tone}>{chip.label}</Chip>
-        <span className="text-foreground">{result.message}</span>
+        <span className="text-foreground"><MessageWithPreferencesLink text={result.message} /></span>
       </p>
     </DrawerSection>
   );

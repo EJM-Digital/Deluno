@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import type { IndexerForm } from "./forms";
+import { PreferencesLink } from "./preferences-link";
 
 /** Every tracker Deluno can search, fetched once and kept: the list only changes with a Deluno release or a definitions update. */
 export function useTrackers(enabled: boolean) {
@@ -26,13 +27,16 @@ export function TrackerFields({
   setForm,
   editing,
   errors,
-  clearError
+  clearError,
+  cloudflareExplained = false
 }: {
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
   editing: IndexerItem | null;
   errors: Record<string, string>;
   clearError: (key: string) => void;
+  /** A message beside this already says what a Cloudflare check needs. */
+  cloudflareExplained?: boolean;
 }) {
   const trackers = useTrackers(true);
   const chosen = trackers.data?.find((item) => item.id === form.definitionId) ?? null;
@@ -79,8 +83,8 @@ export function TrackerFields({
         )}
       </div>
       {chosen.description ? <p className="text-(length:--type-caption) text-muted-foreground">{chosen.description}</p> : null}
-      {chosen.mayNeedCloudflareHelp ? (
-        <p className="text-(length:--type-caption) text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr) set under Settings, General. Without one, try another of its addresses.</p>
+      {chosen.mayNeedCloudflareHelp && !cloudflareExplained ? (
+        <p className="text-(length:--type-caption) text-warning">This site sometimes puts a Cloudflare check in front of searches. Deluno gets past it through a Cloudflare helper (FlareSolverr or Byparr), set once for every tracker in Preferences, General. <PreferencesLink />. Without one, try another of its addresses.</p>
       ) : null}
       {chosen.links.length > 1 ? (
         <Field label="Address" error={errors.baseUrl} help="The site's addresses change; Deluno tries the others if this one does not answer.">

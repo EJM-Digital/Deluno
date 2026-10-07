@@ -598,7 +598,7 @@ public sealed class FeedMediaSearchPlanner(
                         // timeout was retried as transient, and every search waited
                         // minutes for it. Out of time, it is reported and the search
                         // goes on without it.
-                        var budget = await trackerIndexers.BudgetAsync(token);
+                        var budget = await trackerIndexers.BudgetAsync(token, indexer);
                         using var trackerTime = CancellationTokenSource.CreateLinkedTokenSource(token);
                         trackerTime.CancelAfter(budget);
                         XDocument trackerDocument;
