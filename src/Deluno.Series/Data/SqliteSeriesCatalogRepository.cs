@@ -3942,8 +3942,10 @@ public sealed class SqliteSeriesCatalogRepository(
                 .Select(item => $"S{item.Season:00}E{item.Episode:00}"));
             foreach (var wrong in group.Where(item => !named.Contains((item.Season, item.Episode))))
             {
+                var ownFile = await FindEpisodesOwnFileAsync(
+                    connection, wrong.SeriesId, wrong.FilePath, wrong.Season, wrong.Episode, cancellationToken);
                 repairs.Add(new WrongEpisodeFileLinkRepair(
-                    wrong.SeriesId, wrong.Title, wrong.EpisodeId, wrong.Season, wrong.Episode, wrong.FilePath, kept));
+                    wrong.SeriesId, wrong.Title, wrong.EpisodeId, wrong.Season, wrong.Episode, wrong.FilePath, kept, ownFile));
             }
         }
 
@@ -3993,12 +3995,118 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@episodeId", repair.EpisodeId);
             AddParameter(wanted, "@now", now.ToString("O"));
             await wanted.ExecuteNonQueryAsync(cancellationToken);
+
+            if (repair.RelinkedFilePath is { } ownFile)
+            {
+                // The episode's own file is in the show's folder (#1174): link it
+                // rather than leave the episode to be downloaded again.
+                var detected = LibraryQualityDecider.DetectQuality(Path.GetFileName(ownFile));
+                using var relink = connection.CreateCommand();
+                relink.Transaction = transaction;
+                relink.CommandText =
+                    """
+                    UPDATE episode_entries
+                    SET has_file = 1,
+                        file_path = @ownFile,
+                        file_size_bytes = @size,
+                        imported_utc = @now,
+                        updated_utc = @now
+                    WHERE id = @episodeId;
+                    UPDATE episode_wanted_state
+                    SET wanted_status = 'covered',
+                        wanted_reason = 'Its own file was found in the show''s folder and linked.',
+                        current_quality = @quality,
+                        updated_utc = @now
+                    WHERE episode_id = @episodeId;
+                    """;
+                AddParameter(relink, "@episodeId", repair.EpisodeId);
+                AddParameter(relink, "@ownFile", ownFile);
+                AddParameter(relink, "@size", new FileInfo(ownFile).Length);
+                AddParameter(relink, "@quality", detected);
+                AddParameter(relink, "@now", now.ToString("O"));
+                await relink.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         await RefreshSeriesRungsAsync(
             connection, transaction, repairs.Select(repair => repair.SeriesId), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        // A linked file is judged by the profile that now governs its title, so the
+        // cutoff and upgrade answer is the one every other screen reads.
+        foreach (var seriesId in repairs.Where(repair => repair.RelinkedFilePath is not null).Select(repair => repair.SeriesId).Distinct())
+        {
+            await SharedMediaState.ReevaluateTitleUnderProfileAsync(
+                MediaKind.Series,
+                seriesId,
+                await SharedMediaState.GetTitleQualityProfileIdAsync(MediaKind.Series, seriesId, cancellationToken),
+                cancellationToken);
+        }
+
         return repairs;
+    }
+
+    private static readonly HashSet<string> RepairVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
+    };
+
+    /// <summary>
+    /// The episode's own file (#1174): a video in the show's folder whose name gives that
+    /// season and episode and which no episode of the show is linked to. The show's folder is
+    /// the folder of the file the wrong link pointed at, or its parent when that is a season
+    /// folder. Null when there is none.
+    /// </summary>
+    private async Task<string?> FindEpisodesOwnFileAsync(
+        DbConnection connection,
+        string seriesId,
+        string linkedFilePath,
+        int season,
+        int episode,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(linkedFilePath);
+            if (folder is not null
+                && System.Text.RegularExpressions.Regex.IsMatch(
+                    Path.GetFileName(folder), @"^(season|series|s)[\s._-]*\d+$|^specials?$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            {
+                folder = Path.GetDirectoryName(folder);
+            }
+
+            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+            {
+                return null;
+            }
+
+            var candidates = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                .Where(path => RepairVideoExtensions.Contains(Path.GetExtension(path)))
+                .Where(path => SeriesNumberingResolver
+                    .ParseFileName(Path.GetFileName(path), SeriesNumberingSchemes.Standard)
+                    .Matches
+                    .Any(match => match.SeasonNumber == season && match.EpisodeNumber == episode))
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foreach (var candidate in candidates)
+            {
+                using var taken = connection.CreateCommand();
+                taken.CommandText = "SELECT 1 FROM episode_entries WHERE series_id = @seriesId AND has_file = 1 AND file_path = @path LIMIT 1;";
+                AddParameter(taken, "@seriesId", seriesId);
+                AddParameter(taken, "@path", candidate);
+                if (await taken.ExecuteScalarAsync(cancellationToken) is null)
+                {
+                    return candidate;
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A folder that cannot be read is simply not searched; the episode is Missing again.
+        }
+
+        return null;
     }
 
     private async Task<bool> MarkTrackedFileGoneInTransactionAsync(
