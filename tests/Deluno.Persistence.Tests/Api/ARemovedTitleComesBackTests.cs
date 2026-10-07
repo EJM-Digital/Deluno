@@ -59,7 +59,8 @@ public sealed class ARemovedTitleComesBackTests
         await using var app = await ApplicationTestHost.StartAsync();
         var libraryId = await CreateLibraryAsync(app, kind);
 
-        var id = await AddAsync(app, kind, libraryId);
+        // A search on add is the person's explicit choice (#1145), so the box is ticked here.
+        var id = await AddAsync(app, kind, libraryId, searchNow: true);
 
         Assert.False(await HasFileAsync(app, kind, id));
         var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
@@ -206,11 +207,11 @@ public sealed class ARemovedTitleComesBackTests
         return file;
     }
 
-    private static async Task<string> AddAsync(ApplicationTestHost app, MediaKind kind, string libraryId, bool monitored = true)
+    private static async Task<string> AddAsync(ApplicationTestHost app, MediaKind kind, string libraryId, bool monitored = true, bool searchNow = false)
     {
         object body = kind == MediaKind.Movie
-            ? new { title = "Nosferatu", releaseYear = 1922, monitored, libraryId }
-            : new { title = "Nosferatu", startYear = 1922, monitored, libraryId };
+            ? new { title = "Nosferatu", releaseYear = 1922, monitored, libraryId, searchForMissingNow = searchNow }
+            : new { title = "Nosferatu", startYear = 1922, monitored, libraryId, searchForMissingNow = searchNow };
         var response = await app.Client.PostAsJsonAsync(Route(kind), body);
         Assert.True(response.IsSuccessStatusCode, $"POST {Route(kind)} returned {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
