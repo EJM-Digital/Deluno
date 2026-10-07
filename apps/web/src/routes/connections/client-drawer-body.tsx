@@ -45,7 +45,9 @@ export function ClientDrawerBody({
   onRemoveMapping,
   onTestMapping,
   onRemove,
-  blocklistSync
+  blocklistSync,
+  routeOnAdd = true,
+  onRouteOnAddChange = () => {}
 }: {
   form: ClientForm;
   setForm: (updater: (current: ClientForm) => ClientForm) => void;
@@ -62,6 +64,9 @@ export function ClientDrawerBody({
   onRemove: () => void;
   /** #822: this client's last content-blocklist "Excluded file names" sync attempt, or null when it has never run. */
   blocklistSync?: QbittorrentBlocklistSyncState | null;
+  /** For a new client: whether Add also routes it to libraries that have no client yet (#1135). */
+  routeOnAdd?: boolean;
+  onRouteOnAddChange?: (value: boolean) => void;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -133,6 +138,9 @@ export function ClientDrawerBody({
           </Field>
         </FieldRow>
         <SwitchRow label="Enabled" description="Deluno may send approved releases to this client." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+        {editing ? null : (
+          <SwitchRow label="Use it for libraries with no client yet" description="Routes this client to each library that has nowhere to send releases, for the library types its categories name. Turn off to choose in Library Routing yourself." checked={routeOnAdd} onCheckedChange={onRouteOnAddChange} />
+        )}
         <SwitchRow label="Add downloads paused" description="New downloads sent to this client start paused instead of active." checked={form.addPaused} onCheckedChange={(checked) => setForm((current) => ({ ...current, addPaused: checked }))} />
       </DrawerSection>
 

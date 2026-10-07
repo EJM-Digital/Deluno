@@ -39,7 +39,9 @@ export function IndexerDrawerBody({
   onReset,
   onAcknowledgeVip,
   onRemove,
-  testMessage = null
+  testMessage = null,
+  routeOnAdd = true,
+  onRouteOnAddChange = () => {}
 }: {
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
@@ -61,6 +63,9 @@ export function IndexerDrawerBody({
   onRemove: () => void;
   /** What the Test button last said, so a Cloudflare note is not repeated beside it. */
   testMessage?: string | null;
+  /** For a new indexer: whether Add also switches it on in Library Routing (#1135). */
+  routeOnAdd?: boolean;
+  onRouteOnAddChange?: (value: boolean) => void;
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
   const chip = editing ? healthChip(editing) : null;
@@ -125,6 +130,9 @@ export function IndexerDrawerBody({
             <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom priority" customPlaceholder="1–50" />
           </Field>
         </FieldRow>
+        {editing ? null : (
+          <SwitchRow label="Search it in my libraries" description={`Switches this indexer on in Library Routing for your ${form.scope === "movies" ? "movie" : form.scope === "tv" ? "TV" : "movie and TV"} libraries, so they search it straight away. Turn off to choose in Library Routing yourself.`} checked={routeOnAdd} onCheckedChange={onRouteOnAddChange} />
+        )}
         <Field label="Tags" optional help="Leave blank to search this indexer for any title. With tags set, Deluno searches it only for a title that shares one of them — for example, keep an anime indexer to anime titles.">
           <TagPicker label="Indexer tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
         </Field>
