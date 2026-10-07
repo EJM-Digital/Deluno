@@ -76,6 +76,38 @@ public sealed class ManualSearchEndpointTests
     }
 
     [Fact]
+    public async Task A_free_search_never_says_a_release_is_for_something_else_because_the_query_is_not_a_title()
+    {
+        await using var server = await TorznabServerAsync(
+            "The.Simpsons.S38E01.The.Childrens.Book.Job.1080p.WEB-DL.DDP5.1.H.264-GRP",
+            "The.Simpsons.S38E02.Some.Cam.Release.CAM.x264-GRP");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var indexer = await app.Services.GetRequiredService<IConnectionsRepository>().CreateIndexerAsync(
+            new CreateIndexerRequest("Fixture torznab", "torznab", "public", server.BaseUrl, "fixture-key", 10, "5000", "", "tv", true),
+            CancellationToken.None);
+
+        var response = await app.Client.PostAsJsonAsync("/api/search", new { query = "The Simpsons S38", searchType = "tv", indexerIds = new[] { indexer.Id } });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, raw);
+        var candidates = JsonSerializer.Deserialize<JsonElement>(raw).GetProperty("candidates").EnumerateArray().ToArray();
+
+        Assert.Equal(2, candidates.Length);
+        foreach (var candidate in candidates)
+        {
+            var everything = string.Join(" | ",
+                candidate.GetProperty("decisionReasons").EnumerateArray().Select(item => item.GetString())
+                    .Concat(candidate.GetProperty("riskFlags").EnumerateArray().Select(item => item.GetString()))
+                    .Append(candidate.GetProperty("rejectionGate").ValueKind == JsonValueKind.String ? candidate.GetProperty("rejectionGate").GetString() : null));
+            Assert.DoesNotContain("something else", everything);
+        }
+        var real = candidates.Single(item => item.GetProperty("releaseName").GetString()!.Contains("S38E01"));
+        Assert.NotEqual("rejected", real.GetProperty("decisionStatus").GetString());
+        // The hard rules still hold: a cam release is refused.
+        var cam = candidates.Single(item => item.GetProperty("releaseName").GetString()!.Contains("CAM"));
+        Assert.Equal("rejected", cam.GetProperty("decisionStatus").GetString());
+    }
+
+    [Fact]
     public async Task Grabbing_without_a_download_url_is_refused()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -338,29 +370,29 @@ public sealed class ManualSearchEndpointTests
         public ValueTask DisposeAsync() => app.DisposeAsync();
     }
 
-    private static async Task<FakeServer> TorznabServerAsync()
+    private static async Task<FakeServer> TorznabServerAsync(params string[] releaseNames)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var app = builder.Build();
+        var names = releaseNames.Length == 0 ? ["Example.Release.WEB.1080p"] : releaseNames;
+        var items = string.Concat(names.Select((name, index) =>
+            $"""
+             <item>
+               <title>{name}</title>
+               <link>https://fixture.invalid/x{index}.torrent</link>
+               <torznab:attr name="seeders" value="12" />
+               <torznab:attr name="peers" value="3" />
+               <torznab:attr name="grabs" value="47" />
+             </item>
+             """));
+        var feed =
+            "<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\"><channel>"
+            + items + "</channel></rss>";
         app.Run(async context =>
         {
             context.Response.ContentType = "application/rss+xml";
-            await context.Response.WriteAsync(
-                """
-                <?xml version="1.0"?>
-                <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-                  <channel>
-                    <item>
-                      <title>Example.Release.WEB.1080p</title>
-                      <link>https://fixture.invalid/x.torrent</link>
-                      <torznab:attr name="seeders" value="12" />
-                      <torznab:attr name="peers" value="3" />
-                      <torznab:attr name="grabs" value="47" />
-                    </item>
-                  </channel>
-                </rss>
-                """);
+            await context.Response.WriteAsync(feed);
         });
         await app.StartAsync();
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();

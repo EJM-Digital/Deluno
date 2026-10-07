@@ -185,7 +185,8 @@ public sealed class LiveReleasesTurnedDownTests : IDisposable
             string? genres = null,
             IReadOnlyList<string>? otherTitles = null,
             IReadOnlyList<int>? categoryIds = null,
-            IReadOnlyDictionary<int, string>? episodeTitles = null)
+            IReadOnlyDictionary<int, string>? episodeTitles = null,
+            bool queryIsATitle = true)
             => Task.FromResult(plan);
     }
 }

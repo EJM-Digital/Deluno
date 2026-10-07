@@ -114,7 +114,8 @@ public sealed class FeedMediaSearchPlanner(
         /// </summary>
         IReadOnlyList<string>? otherTitles = null,
         IReadOnlyList<int>? categoryIds = null,
-        IReadOnlyDictionary<int, string>? episodeTitles = null)
+        IReadOnlyDictionary<int, string>? episodeTitles = null,
+        bool queryIsATitle = true)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -205,7 +206,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles, queryIsATitle);
                 var answer = searchResults[index];
                 await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
                     new IndexerQueryRecordedEvent(
@@ -269,7 +270,7 @@ public sealed class FeedMediaSearchPlanner(
         }
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
-        var orderingExpectation = TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles);
+        var orderingExpectation = queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles) : null;
         var ordered = liveCandidates
             // Candidates that cannot become the automatic winner remain
             // visible for explanation, but sort after the ones that can:
@@ -295,7 +296,7 @@ public sealed class FeedMediaSearchPlanner(
             // Between releases the plan rates alike, the one that names this
             // episode's own title, or the show's own year, is the safer pick
             // than one that names neither (#1166, #1173).
-            .ThenByDescending(item => NameEvidence(item.ReleaseName, orderingExpectation))
+            .ThenByDescending(item => orderingExpectation is null ? 0 : NameEvidence(item.ReleaseName, orderingExpectation))
             // Typed plans own every candidate tie-break. Legacy searches keep
             // their historical seeder ordering, but typed selection must not
             // bypass the explicit transient family with a hidden numeric
@@ -439,7 +440,8 @@ public sealed class FeedMediaSearchPlanner(
         string? genres = null,
         IReadOnlyList<string>? otherTitles = null,
         IReadOnlyList<int>? categoryIds = null,
-        IReadOnlyDictionary<int, string>? episodeTitles = null)
+        IReadOnlyDictionary<int, string>? episodeTitles = null,
+        bool queryIsATitle = true)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -747,7 +749,7 @@ public sealed class FeedMediaSearchPlanner(
                         sizeRules: sizeRules,
                         upgradeStop: upgradeStop,
                         mediaType: mediaType,
-                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles),
+                        expectation: queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles) : null,
                         runtimeMinutes: runtimeMinutes,
                         scoreLimits: scoreLimits);
                     return new IndexerSearchOutcome(

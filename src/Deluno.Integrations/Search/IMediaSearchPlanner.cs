@@ -68,5 +68,6 @@ public interface IMediaSearchPlanner
         /// </summary>
         IReadOnlyList<int>? categoryIds = null,
         /// <summary>The provider's titles for the searched season's episodes, by episode number (#1173).</summary>
-        IReadOnlyDictionary<int, string>? episodeTitles = null);
+        IReadOnlyDictionary<int, string>? episodeTitles = null,
+        bool queryIsATitle = true);
 }

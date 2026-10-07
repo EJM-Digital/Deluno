@@ -137,7 +137,8 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                     sources,
                     cancellationToken: cancellationToken,
                     searchKind: AcquisitionSearchKinds.Interactive,
-                    categoryIds: categoriesForType);
+                    categoryIds: categoriesForType,
+                    queryIsATitle: false);
 
                 foreach (var candidate in plan.Candidates)
                 {
