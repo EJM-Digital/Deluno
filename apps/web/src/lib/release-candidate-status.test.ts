@@ -61,3 +61,14 @@ describe("release candidate status", () => {
     expect(candidateLabel({ decisionStatus: "rejected", meetsCutoff: false })).toBe("Rejected");
   });
 });
+
+describe("candidate explanation (#1138)", () => {
+  it("says a custom rule's shortfall once, in words, without the rule's name", async () => {
+    const { candidateExplanation } = await import("./release-candidate-status");
+    const sentence = "Custom rule · WEB Tier 01 is below its target.";
+    const out = candidateExplanation({ summary: `Quality fine. ${sentence}`, decisionReasons: [sentence, "Seeders are fine."] });
+    expect(out.summary).toBe("Quality fine. It lacks something your quality profile prefers.");
+    expect(out.reasons).toEqual(["Seeders are fine."]);
+    expect(JSON.stringify(out)).not.toContain("WEB Tier 01");
+  });
+});
