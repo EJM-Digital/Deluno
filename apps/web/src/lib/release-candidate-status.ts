@@ -88,7 +88,11 @@ export function canWinSearch(candidate: ReleaseCandidateStatusInput): boolean {
  * "Custom rule · WEB Tier 01 is below its target.", a rule's internal name in front of a status nobody asked about.
  */
 export function plainCandidateReason(text: string): string {
-  return text.replace(/Custom rule · [^.]*? is below its target\./g, "It lacks something your quality profile prefers.");
+  return text
+    .replace(/Custom rule [·-] [^.]*? is below its target\./g, "It lacks something your quality profile prefers.")
+    .replace(/(^|[.!?]\s+)?Custom rule [·-] [^.;']*Tier\s*\d+/gi, (_match, lead?: string) =>
+      lead === undefined ? "your preferred release groups" : `${lead}Your preferred release groups`)
+    .replace(/Custom rule [·-] /g, "");
 }
 
 function sentencesOf(text: string): string[] {

@@ -22,7 +22,8 @@ public sealed record MediaSearchResult(
     string? DispatchStatus,
     string? DispatchMessage,
     IReadOnlyList<MediaSearchCandidate> Candidates,
-    IReadOnlyList<IntegrationFailure>? Failures = null)
+    IReadOnlyList<IntegrationFailure>? Failures = null,
+    string? DownloadClientName = null)
 {
     public static MediaSearchResult NotFoundResult()
         => new(true, string.Empty, string.Empty, string.Empty, null, null, null, null, [], []);
@@ -272,7 +273,8 @@ public static class MediaSearchHandler
             DispatchStatus: grabResult?.Status,
             DispatchMessage: grabResult?.Message,
             Candidates: searchPlan.Candidates,
-            Failures: failures.Distinct().ToArray());
+            Failures: failures.Distinct().ToArray(),
+            DownloadClientName: grabResult is null ? null : decisionPlan.SelectedDownloadClient?.DownloadClientName);
     }
 
     private static MediaSearchResult BlockedResult(string summary, string reason)

@@ -481,6 +481,8 @@ export interface DirectoryBrowseResponse {
   currentPath: string | null;
   parentPath: string | null;
   entries: DirectoryBrowseEntry[];
+  /** Whether the server runs on Windows; the folder browser offers that platform's example paths only. */
+  windows?: boolean;
 }
 
 export interface NativeFolderPickerResponse {
