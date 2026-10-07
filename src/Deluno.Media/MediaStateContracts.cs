@@ -195,11 +195,19 @@ public sealed record MediaFileProbeCandidate(
     string? LibraryId = null);
 
 /// <summary>The immutable plan one library expects for installed-file baselines.</summary>
+/// <param name="TitleProfileId">
+/// Null: the plan the library's own profile compiles to, expected of the titles in
+/// <paramref name="LibraryId"/> that follow the library's profile. Set: the plan
+/// expected of every title that chose this profile for itself, in any library
+/// (#1157) - such a title's file is judged by its own profile, so a snapshot made
+/// under the library's plan would only hold its upgrades.
+/// </param>
 public sealed record MediaPreferencePlanExpectation(
     string LibraryId,
     string PlanId,
     string PlanVersion,
-    string PlanHash);
+    string PlanHash,
+    string? TitleProfileId = null);
 
 public sealed record MediaEntryCreate(
     string Title,
@@ -465,6 +473,35 @@ public interface IMediaStateRepository
         bool upgradeUnknownItems,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Re-decides the wanted state of every row the scope selects, against
+    /// the cutoff and upgrade rules of the profile that now judges them. For a
+    /// show that includes each episode that holds a file, and the show's rung.
+    /// </summary>
+    Task<WantedReevaluationResult> ReevaluateWantedStateAsync(
+        MediaKind kind,
+        WantedReevaluationScope scope,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A title was given <paramref name="profileId"/> as its own profile: judge it, in every library
+    /// that holds it, by that profile's cutoff and upgrade rules (#1157, #1169).
+    /// </summary>
+    Task<WantedReevaluationResult> ReevaluateTitleUnderProfileAsync(
+        MediaKind kind,
+        string titleId,
+        string profileId,
+        CancellationToken cancellationToken);
+
+    /// <summary>The title's own quality profile (#1157), or null when it follows its library's.</summary>
+    Task<string?> GetTitleQualityProfileIdAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
         MediaKind kind,
         CancellationToken cancellationToken)
@@ -635,4 +672,28 @@ public interface IMediaStateRepository
         DateOnly fromDate,
         DateOnly toDate,
         CancellationToken cancellationToken);
+}
+
+
+/// <summary>
+/// Which wanted-state rows a re-decision covers. Every filter that is set must
+/// hold; none set means every row of the catalogue.
+/// </summary>
+/// <param name="LibraryId">Rows held in this library.</param>
+/// <param name="TitleId">Rows of this one film or show.</param>
+/// <param name="TitleProfileId">Titles whose own profile is this one.</param>
+/// <param name="OnlyTitlesWithoutOwnProfile">Titles that follow their library's profile - a title with a profile of its own is judged by that one.</param>
+public sealed record WantedReevaluationScope(
+    string? LibraryId = null,
+    string? TitleId = null,
+    string? TitleProfileId = null,
+    bool OnlyTitlesWithoutOwnProfile = false);
+
+/// <summary>What a re-decision changed. <see cref="Titles"/> is title rows written; <see cref="Episodes"/> is episode rows (shows only).</summary>
+public sealed record WantedReevaluationResult(int Titles, int Episodes, int BecameUpgrade, int BecameCovered)
+{
+    public static readonly WantedReevaluationResult None = new(0, 0, 0, 0);
+
+    public WantedReevaluationResult Plus(WantedReevaluationResult other)
+        => new(Titles + other.Titles, Episodes + other.Episodes, BecameUpgrade + other.BecameUpgrade, BecameCovered + other.BecameCovered);
 }
