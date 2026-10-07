@@ -110,3 +110,12 @@ export function candidateExplanation(candidate: { summary?: string | null; decis
   }
   return { summary: summarySentences.join(" "), reasons };
 }
+
+/** Sentences the engine writes for itself; they name no outcome a person can act on (#1159). */
+const INTERNAL_SENTENCE = /typed preference evaluation|hybrid mode|ml boost|deterministic score/i;
+
+/** What an episode's or title's last search came to, without the engine's own bookkeeping sentences. */
+export function plainSearchResult(text: string): string {
+  const kept = sentencesOf(text).filter((sentence) => !INTERNAL_SENTENCE.test(sentence));
+  return [...new Set(kept)].join(" ");
+}

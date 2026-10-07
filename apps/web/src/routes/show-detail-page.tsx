@@ -51,7 +51,7 @@ import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
-import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason } from "../lib/release-candidate-status";
+import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason, plainSearchResult } from "../lib/release-candidate-status";
 import {
   candidateSortValue,
   filterCandidates,
@@ -1579,7 +1579,10 @@ export function ShowDetailPage() {
                       >
                         <ListNameCell name={formatEpisodeCode(episode, showAbsolute)} sub={episode.title ?? "Episode title pending"} />
                         <ListCell primary={episode.airDateUtc ? formatAirDateTime(episode.airDateUtc, preferences) : "—"} />
-                        <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
+                        <ListCell
+                          primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"}
+                          secondary={episode.lastSearchResult ? plainSearchResult(episode.lastSearchResult) : undefined}
+                        />
                         <ListCell>
                           {/* An episode is a title. Same five marks (DESIGN-001). */}
                           <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
@@ -2221,6 +2224,7 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Quality cutoff met", value: openEpisode.qualityCutoffMet ? "Yes" : "No" },
                   { label: "Last searched", value: openEpisode.lastSearchUtc ? formatPreferenceDateTime(openEpisode.lastSearchUtc, preferences) : "Never" },
+                  ...(openEpisode.lastSearchResult ? [{ label: "What happened", value: plainSearchResult(openEpisode.lastSearchResult) }] : []),
                   {
                     label: "Next eligible search",
                     value: openEpisode.nextEligibleSearchUtc ? formatPreferenceDateTime(openEpisode.nextEligibleSearchUtc, preferences) : "As soon as a cycle runs"

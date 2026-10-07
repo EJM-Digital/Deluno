@@ -24,4 +24,6 @@ public sealed record SeriesEpisodeInventoryItem(
     int? SceneEpisodeNumber = null,
     DateOnly? AirDate = null,
     string? NumberingSource = null,
-    string? CatalogueSource = null);
+    string? CatalogueSource = null,
+    /// <summary>What this episode's own last search came to, in words: what was sent, or why nothing was (#1159).</summary>
+    string? LastSearchResult = null);

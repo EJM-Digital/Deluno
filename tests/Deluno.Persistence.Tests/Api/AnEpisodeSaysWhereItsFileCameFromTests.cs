@@ -36,6 +36,12 @@ public sealed class AnEpisodeSaysWhereItsFileCameFromTests
             [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: episodePath, FileSizeBytes: 4)],
             CancellationToken.None, resultNote: note);
 
+        // The show page reads the same sentence from the show's inventory, per episode (#1159).
+        var series = app.Services.GetRequiredService<ISeriesCatalogRepository>();
+        var seriesId = Assert.Single(await series.ListAsync(CancellationToken.None)).Id;
+        var inventory = await series.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.Equal(expected, Assert.Single(inventory!.Episodes).LastSearchResult);
+
         var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
         await using var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None);
         await using var command = connection.CreateCommand();
