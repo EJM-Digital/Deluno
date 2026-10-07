@@ -21,14 +21,12 @@ import { Loader2, Search as SearchIcon } from "lucide-react";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Button } from "../components/ui/button";
 import { CheckboxRow } from "../components/ui/checkbox";
-import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
-import { candidateLabel, candidateTone } from "../lib/release-candidate-status";
 import {
   candidateSortValue,
   filterCandidates,
@@ -49,6 +47,10 @@ interface ManualSearchCandidate {
   meetsCutoff: boolean;
   decisionStatus?: string;
   decisionReasons?: string[];
+  /** Hard-rule findings (a cam copy, a blocked group...), in words. */
+  riskFlags?: string[] | null;
+  /** The first hard rule that refused the release, when one did. */
+  rejectionGate?: string | null;
   sizeBytes?: number | null;
   seeders?: number | null;
   leechers?: number | null;
@@ -67,6 +69,39 @@ interface SearchCategoryOption {
 
 type SearchType = "movie" | "tv" | "basic";
 
+/**
+ * A free search has no title and no profile, so a "Rejected" or "Preferred"
+ * verdict would mean nothing (#1172). What helps without a title is quality,
+ * size and seeders, plus any hard rule that really applies, said in words.
+ */
+function hardRuleFlags(candidate: ManualSearchCandidate): string[] {
+  const flags: string[] = [];
+  const add = (text: string | null | undefined) => {
+    const trimmed = text?.trim();
+    if (trimmed && !flags.includes(trimmed)) flags.push(trimmed);
+  };
+  add(candidate.rejectionGate);
+  (candidate.riskFlags ?? []).forEach(add);
+  if ((candidate.indexerProtocol ?? "").toLowerCase() !== "usenet" && candidate.seeders === 0) {
+    add("No one is seeding this release.");
+  }
+  return flags;
+}
+
+const IGNORED_WORDS = new Set(["the", "a", "an", "of", "and"]);
+
+function words(text: string): string[] {
+  return text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+}
+
+/** Whether a release name holds every word that was searched for (ignoring small words like "the"). */
+function nameHoldsTheWords(releaseName: string, query: string): boolean {
+  const wanted = words(query).filter((word) => !IGNORED_WORDS.has(word));
+  if (wanted.length === 0) return true;
+  const name = words(releaseName).join(" ");
+  return wanted.every((word) => name.includes(word));
+}
+
 export function SearchPage() {
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState<SearchType>("movie");
@@ -80,6 +115,10 @@ export function SearchPage() {
   const [indexerFilter, setIndexerFilter] = useState("");
   const [grabTarget, setGrabTarget] = useState<ManualSearchCandidate | null>(null);
   const [grabbing, setGrabbing] = useState(false);
+  // The words the results were searched with, kept apart from the box so
+  // editing the box does not re-sort a list that is already on screen.
+  const [searchedQuery, setSearchedQuery] = useState("");
+  const [onlyMatchingNames, setOnlyMatchingNames] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -114,6 +153,7 @@ export function SearchPage() {
         })
       });
       setResults(body.candidates);
+      setSearchedQuery(trimmed);
       if (body.indexersQueried === 0) {
         toast.error("No enabled indexer covers this search. Check Find & Download -> Indexers.");
       }
@@ -125,7 +165,11 @@ export function SearchPage() {
     }
   }
 
-  const visibleResults = results ? filterCandidates(results, { protocol: protocolFilter, indexerName: indexerFilter }) : [];
+  const namesMatching = results ? results.filter((item) => nameHoldsTheWords(item.releaseName, searchedQuery)).length : 0;
+  const visibleResults = results
+    ? filterCandidates(results, { protocol: protocolFilter, indexerName: indexerFilter })
+        .filter((item) => !onlyMatchingNames || nameHoldsTheWords(item.releaseName, searchedQuery))
+    : [];
   const protocolOptions = results ? [...new Set(results.map((item) => item.indexerProtocol).filter((value): value is string => Boolean(value)))] : [];
   const indexerOptions = results ? [...new Set(results.map((item) => item.indexerName))] : [];
 
@@ -227,7 +271,18 @@ export function SearchPage() {
         <ListCard
           title="Results"
           count={`${visibleResults.length} of ${results.length} release${results.length === 1 ? "" : "s"}`}
-          actions={<ReleaseFilterMenus protocols={protocolOptions} protocol={protocolFilter} onProtocolChange={setProtocolFilter} indexers={indexerOptions} indexer={indexerFilter} onIndexerChange={setIndexerFilter} />}
+          actions={
+            <>
+              {namesMatching < results.length ? (
+                <CheckboxRow
+                  label={`Only names with your words (${results.length - namesMatching} other${results.length - namesMatching === 1 ? "" : "s"} hidden)`}
+                  checked={onlyMatchingNames}
+                  onCheckedChange={setOnlyMatchingNames}
+                />
+              ) : null}
+              <ReleaseFilterMenus protocols={protocolOptions} protocol={protocolFilter} onProtocolChange={setProtocolFilter} indexers={indexerOptions} indexer={indexerFilter} onIndexerChange={setIndexerFilter} />
+            </>
+          }
         >
           {results.length === 0 ? (
             <ListEmpty title="No releases found" description="Try a different query, or check that an indexer covering this type is enabled." />
@@ -251,8 +306,11 @@ export function SearchPage() {
               chevron={false}
             >
               {(rows) => rows.map((candidate) => (
-                <ListRow key={`${candidate.indexerId}:${candidate.releaseName}`}>
-                  <ListNameCell name={candidate.releaseName} sub={`${candidate.indexerName} · ${candidate.quality}`} />
+                <ListRow key={`${candidate.indexerId}:${candidate.releaseName}`} onClick={() => openGrab(candidate)}>
+                  <ListNameCell
+                    name={candidate.releaseName}
+                    sub={[candidate.indexerName, candidate.quality, hardRuleFlags(candidate)[0]].filter(Boolean).join(" · ")}
+                  />
                   {searchType === "basic" ? (
                     <ListCell primary={candidate.searchType === "tv" ? "TV" : "Movie"} />
                   ) : null}
@@ -262,13 +320,13 @@ export function SearchPage() {
                   <ListCell primary={formatGrabs(candidate.grabs)} />
                   <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
                   <div role="cell" className="flex items-center justify-end gap-2">
-                    <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
-                    <BlockReleaseAction
-                      releaseName={candidate.releaseName}
-                      indexerName={candidate.indexerName}
-                      mediaType={(candidate.searchType ?? searchType) === "tv" ? "tv" : "movie"}
-                    />
-                    <Button type="button" size="sm" variant="outline" disabled={!candidate.downloadUrl} onClick={() => openGrab(candidate)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!candidate.downloadUrl}
+                      onClick={(event) => { event.stopPropagation(); openGrab(candidate); }}
+                    >
                       Grab
                     </Button>
                   </div>
@@ -299,11 +357,27 @@ export function SearchPage() {
           <div className="grid gap-(--grid-gap)">
             <DrawerFacts
               items={[
+                { label: "Indexer", value: grabTarget.indexerName },
+                { label: "Quality", value: grabTarget.quality },
                 { label: "Size", value: grabTarget.sizeBytes ? formatBytes(grabTarget.sizeBytes) : "—" },
                 { label: "Seeders/Leechers", value: formatSeedersAndLeechers(grabTarget.seeders, grabTarget.leechers) },
+                { label: "Grabs", value: formatGrabs(grabTarget.grabs) },
+                { label: "Age", value: formatReleaseAge(grabTarget.releaseAgeHours) },
                 { label: "Protocol", value: formatProtocol(grabTarget.indexerProtocol) }
               ]}
             />
+            {hardRuleFlags(grabTarget).length > 0 ? (
+              <ul className="grid gap-1 text-(length:--type-body-sm) text-foreground">
+                {hardRuleFlags(grabTarget).map((flag) => <li key={flag}>{flag}</li>)}
+              </ul>
+            ) : null}
+            <div>
+              <BlockReleaseAction
+                releaseName={grabTarget.releaseName}
+                indexerName={grabTarget.indexerName}
+                mediaType={(grabTarget.searchType ?? searchType) === "tv" ? "tv" : "movie"}
+              />
+            </div>
             <p className="text-(length:--type-body-sm) text-muted-foreground">
               There is no title here to route through a library, so Deluno sends this the same way it would route a{" "}
               {grabTarget.searchType === "tv" || searchType === "tv" ? "TV" : "movie"} library's own grab: to whichever

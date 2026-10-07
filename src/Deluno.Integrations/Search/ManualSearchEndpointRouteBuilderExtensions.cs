@@ -155,6 +155,8 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                         candidate.MeetsCutoff,
                         candidate.DecisionStatus,
                         candidate.DecisionReasons,
+                        candidate.RiskFlags,
+                        candidate.RejectionGate,
                         candidate.SizeBytes,
                         candidate.Seeders,
                         candidate.Leechers,
