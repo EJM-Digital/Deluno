@@ -74,6 +74,7 @@ import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
+import { showRemovalToast } from "../components/app/removal-toast";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { MovieEditDrawer } from "../components/app/movie-edit-drawer";
@@ -475,9 +476,9 @@ export function MovieDetailPage() {
       });
       if (!response.ok) throw new Error("movie-remove-failed");
 
-      const result = (await response.json()) as { successCount?: number };
+      const result = (await response.json()) as { successCount?: number; results?: Array<{ metadata?: Record<string, string | null> | null }> };
       if ((result.successCount ?? 0) !== 1) throw new Error("movie-remove-failed");
-      toast.success(`${movie.title} removed from Deluno`);
+      showRemovalToast(movie.title, result.results?.[0]?.metadata, (to) => navigate(to));
       navigate("/movies", { replace: true });
     } catch {
       toast.error("This movie could not be removed.");

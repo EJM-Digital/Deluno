@@ -45,3 +45,37 @@ export function describeCleanup(preview: RecycleBinCleanupPreview, formatBytes: 
 
   return `${early}. ${expired}. Emptying frees ${freed} in total. This cannot be undone.`;
 }
+
+/**
+ * What a removal with files did, in the words the person needs to feel safe
+ * (#1160): the files went to Deluno's recycle bin, for how long, and where to
+ * get them back. Built from the removal's own result, so the toast cannot say
+ * something other than what happened.
+ */
+export interface RemovalOutcomeWords {
+  /** The recycle-bin items the removal made, for a Restore button. Empty when no files moved. */
+  itemIds: string[];
+  /** One sentence under the toast headline, or null when no files were moved. */
+  description: string | null;
+}
+
+export function describeRemovalOutcome(metadata: Record<string, string | null> | null | undefined): RemovalOutcomeWords {
+  const itemIds = (metadata?.recycleBinItemIds ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+  if (!itemIds.length) return { itemIds: [], description: null };
+
+  const days = Number(metadata?.recycleBinRetentionDays);
+  const keptFor = Number.isFinite(days) && days > 0 ? ` for ${days} ${days === 1 ? "day" : "days"}` : "";
+  return {
+    itemIds,
+    description: `Its files are in Deluno's recycle bin${keptFor}. Restore brings back the title with them.`
+  };
+}
+
+/** Mirrors the restore endpoint's answer (`Deluno.Platform.RecycleBinOperationResult`). */
+export interface RecycleBinRestoreResult {
+  success: boolean;
+  message: string;
+  titleRestored?: boolean;
+  titleId?: string | null;
+  titleEntityType?: string | null;
+}
