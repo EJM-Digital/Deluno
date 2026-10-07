@@ -40,15 +40,15 @@ public static class CompanionCatalog
         MinimumBytes: 20_000_000);
 
     public static readonly CompanionArtifact Sabnzbd = new(
-        "SABnzbd-5.0.4-win-setup.exe",
-        new Uri("https://github.com/sabnzbd/sabnzbd/releases/download/5.0.4/SABnzbd-5.0.4-win-setup.exe"),
-        "76B214FE1C2A65EEADB01E97A2AFACA00BC52BDB6ABF49E0F7A643451BFB2AD1",
+        "SABnzbd-5.1.3-win-setup.exe",
+        new Uri("https://github.com/sabnzbd/sabnzbd/releases/download/5.1.3/SABnzbd-5.1.3-win-setup.exe"),
+        "136D8EF811677A1C65917F9E71AFCC16F6B3D60F7294E426DAC6210D4D186DC6",
         MustBeSigned: true,
         MinimumBytes: 20_000_000);
 
     /// <summary>The versions the pinned artifacts above are (#1118: compared with what is installed before an update is offered).</summary>
     public const string QbittorrentVersion = "5.2.1";
-    public const string SabnzbdVersion = "5.0.4";
+    public const string SabnzbdVersion = "5.1.3";
 
     public const string WeirRepository = "jampat000/Weir";
     public const string WeirSetupAsset = "Weir-win-Setup.exe";

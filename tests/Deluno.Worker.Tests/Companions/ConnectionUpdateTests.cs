@@ -112,7 +112,7 @@ public sealed class ConnectionUpdateTests : IDisposable
 
         Assert.Equal(ConnectionUpdateModes.NotChecked, option.Mode);
         Assert.Null(option.TargetVersion);
-        Assert.Equal("Deluno hasn't checked 5.1.0 yet. Read the release notes.", option.Message);
+        Assert.Equal("Deluno hasn't checked 5.1.0 yet, so it won't update SABnzbd for you. To update now, update it in SABnzbd itself. Deluno offers Update now here once a Deluno release has checked 5.1.0; the release notes say what changed.", option.Message);
     }
 
     [Theory]

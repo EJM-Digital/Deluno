@@ -33,10 +33,28 @@ public enum ComponentInstallOutcome
     VerificationFailed,
     InstallerFailed,
     StartFailed,
-    ReadinessTimedOut
+    ReadinessTimedOut,
+    /// <summary>Installed and running, but Deluno could not create its categories or set its folders (#1133); the result says what to do by hand.</summary>
+    InstalledNeedsSetup
 }
 
 public sealed record ComponentInstallResult(string Kind, ComponentInstallOutcome Outcome, string Message);
+
+/// <summary>Where one component is in its install, for the progress window (#1140).</summary>
+public enum ComponentStage
+{
+    Waiting,
+    Downloading,
+    Checking,
+    Installing,
+    Starting,
+    SettingUp,
+    Done,
+    Failed
+}
+
+/// <param name="Detail">For a failed component, why; otherwise a short note on the stage.</param>
+public sealed record ComponentProgress(string Kind, string DisplayName, ComponentStage Stage, string? Detail = null);
 
 public interface IComponentDownloader
 {
@@ -184,8 +202,10 @@ public sealed class ComponentInstallService(
     IInstalledComponentRecord? installedRecord = null,
     TimeSpan? credentialCaptureWait = null,
     IInstallLog? installLog = null,
-    Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null)
+    Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null,
+    IDownloadClientConfigurator? clientConfigurator = null)
 {
+    private readonly IDownloadClientConfigurator _clientConfigurator = clientConfigurator ?? new DownloadClientConfigurator();
     private readonly IInstallLog _log = installLog ?? new FileInstallLog();
     // Test-only (#1158): a local Weir build the person driving a golden-path run named, installed instead of Weir's newest release.
     private readonly Func<BundledComponentSpec, LocalWeirBuild?> _localBuild = localBuild ?? (spec => LocalWeirBuild.Find(
@@ -214,14 +234,41 @@ public sealed class ComponentInstallService(
     public bool IsAlreadyInstalled(BundledComponentSpec spec)
         => _programs.ReadDisplayNames().Any(name => name.Contains(spec.UninstallDisplayNameHint, StringComparison.OrdinalIgnoreCase));
 
-    public async Task<ComponentInstallResult> InstallAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    /// <summary>
+    /// Installs one component and tells <paramref name="progress"/> each step it reaches (#1140), so a window can show
+    /// downloading, checking, installing, started, or failed with the reason. A download client is then given its
+    /// Movies and TV categories and the folders in <paramref name="layout"/> (#1133).
+    /// </summary>
+    public async Task<ComponentInstallResult> InstallAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress>? progress = null, DownloadLayout? layout = null)
     {
+        ComponentInstallResult result;
+        try
+        {
+            result = await InstallCoreAsync(spec, cancellationToken, progress ?? (_ => { }), layout);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // One component failing must never stop the others (#1140).
+            _log.Write($"{spec.DisplayName}: failed unexpectedly. {exception}");
+            result = new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.InstallerFailed, $"{spec.DisplayName} could not be installed: {exception.Message}");
+        }
+
+        var failed = result.Outcome is ComponentInstallOutcome.DownloadFailed or ComponentInstallOutcome.VerificationFailed
+            or ComponentInstallOutcome.InstallerFailed or ComponentInstallOutcome.StartFailed or ComponentInstallOutcome.ReadinessTimedOut;
+        progress?.Invoke(new ComponentProgress(spec.Kind, spec.DisplayName, failed ? ComponentStage.Failed : ComponentStage.Done, result.Message));
+        return result;
+    }
+
+    private async Task<ComponentInstallResult> InstallCoreAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress> progress, DownloadLayout? layout)
+    {
+        void Report(ComponentStage stage, string? detail = null) => progress(new ComponentProgress(spec.Kind, spec.DisplayName, stage, detail));
         if (IsAlreadyInstalled(spec))
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.AlreadyInstalled,
                 $"{spec.DisplayName} is already installed; Deluno left it alone.");
         }
 
+        Report(ComponentStage.Downloading, "Finding the current version");
         var url = spec.Url;
         var expectedSha256 = spec.Sha256;
         string? path = null;
@@ -272,12 +319,15 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName} has no download source configured.");
         }
 
+        Report(ComponentStage.Downloading, "Downloading the installer");
         path ??= await _downloader.DownloadAsync(url, spec.FileName, cancellationToken);
         if (path is null)
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
                 $"Could not download {spec.DisplayName}'s installer.");
         }
+
+        Report(ComponentStage.Checking, "Checking the installer against its published checksum or signature");
 
         // The file is hashed before and after the checks, and that hash is what the run must
         // still match: a file swapped while it was being checked, or after, is refused (#1061).
@@ -320,6 +370,7 @@ public sealed class ComponentInstallService(
             }
         }
 
+        Report(ComponentStage.Installing, "Running its installer");
         int? exitCode;
         var lockedFolder = spec.RunsElevated || IsMsi(path);
         if (lockedFolder)
@@ -387,9 +438,36 @@ public sealed class ComponentInstallService(
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
         }
 
-        var result = await StartAndWaitForReadyAsync(spec, cancellationToken);
+        Report(ComponentStage.Starting, "Starting it and waiting until it answers");
+        var started = await StartAndWaitForReadyAsync(spec, cancellationToken);
         await CaptureGeneratedCredentialsAsync(spec, cancellationToken);
-        return result;
+        if (started.Outcome != ComponentInstallOutcome.Installed || layout is null
+            || !string.Equals(spec.Category, BundledComponentSpec.DownloadClientCategory, StringComparison.Ordinal))
+        {
+            return started;
+        }
+
+        Report(ComponentStage.SettingUp, "Adding the Movies and TV categories and the download folders");
+        string? setupProblem;
+        try
+        {
+            setupProblem = await _clientConfigurator.ConfigureAsync(spec, layout, _credentials.Value.TryGet(spec.Kind), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            setupProblem = $"Deluno could not finish setting up {spec.DisplayName}: {exception.Message}";
+        }
+
+        if (setupProblem is null)
+        {
+            _log.Write($"{spec.DisplayName}: categories and download folders set up.");
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed,
+                $"{spec.DisplayName} installed and set up with Movies and TV categories and your download folders.");
+        }
+
+        _log.Write($"{spec.DisplayName}: {setupProblem}");
+        return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.InstalledNeedsSetup,
+            $"{spec.DisplayName} installed and running. {setupProblem} Add the Movies and TV categories and the download folders in {spec.DisplayName} itself.");
     }
 
     private void RecordInstalled(BundledComponentSpec spec)

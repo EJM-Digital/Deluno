@@ -69,6 +69,23 @@ public static class BundledComponentCatalog
     };
 }
 
+/// <summary>
+/// The Movies and TV categories Deluno routes to on each client the installer puts on (#1133). The
+/// installer creates exactly these in each client, and connecting that client names exactly these,
+/// so the category Deluno asks for always exists. qBittorrent and Deluge keep the prefixed names
+/// Deluno has always used; Transmission (which has no categories, only a folder per name inside its
+/// download folder), SABnzbd and NZBGet use the plain names.
+/// </summary>
+public static class InstalledClientCategories
+{
+    public static (string Movies, string Tv) For(string kind)
+        => kind.ToLowerInvariant() switch
+        {
+            "qbittorrent" or "deluge" => ("deluno-movies", "deluno-tv"),
+            _ => ("Movies", "TV")
+        };
+}
+
 /// <summary>A host with nothing for Deluno to detect against: not Windows.</summary>
 public sealed class UncheckedBundledComponentDetection : IBundledComponentDetection
 {
