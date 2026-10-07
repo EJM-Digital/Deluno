@@ -66,5 +66,7 @@ public interface IMediaSearchPlanner
         /// leaves each indexer's own configured categories (or anime override)
         /// as the default, unchanged from before this existed.
         /// </summary>
-        IReadOnlyList<int>? categoryIds = null);
+        IReadOnlyList<int>? categoryIds = null,
+        /// <summary>The provider's titles for the searched season's episodes, by episode number (#1173).</summary>
+        IReadOnlyDictionary<int, string>? episodeTitles = null);
 }

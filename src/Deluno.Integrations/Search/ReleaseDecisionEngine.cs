@@ -35,10 +35,12 @@ public static partial class ReleaseDecisionEngine
         // The first gate that refused the release, so its summary names what
         // actually stopped it rather than whichever risk was noted first (#611).
         string? rejectionGate = null;
+        var refusals = new List<string>();
         void Refuse(string reason)
         {
             hardReject = true;
             risks.Add(reason);
+            refusals.Add(reason);
             rejectionGate ??= reason;
         }
         var delayed = false;
@@ -563,7 +565,6 @@ public static partial class ReleaseDecisionEngine
             if (hardReject)
             {
                 status = "rejected";
-                reasons.Add("Typed preference evaluation was not allowed to override an earlier hard safety or acquisition gate.");
             }
             else if (requiresInstalledBaselineReview)
             {
@@ -621,7 +622,8 @@ public static partial class ReleaseDecisionEngine
             score,
             meetsCutoff,
             summary,
-            reasons,
+            // What refused it leads: "Quality X is below cutoff Y" read as the reason when it was not (#1159).
+            refusals.Count == 0 ? reasons : refusals.Concat(reasons).ToList(),
             risks,
             qualityDelta,
             effectiveCustomFormatScore,

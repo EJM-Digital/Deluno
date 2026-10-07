@@ -184,7 +184,8 @@ public sealed class LiveReleasesTurnedDownTests : IDisposable
             ProfileScoreLimits? scoreLimits = null,
             string? genres = null,
             IReadOnlyList<string>? otherTitles = null,
-            IReadOnlyList<int>? categoryIds = null)
+            IReadOnlyList<int>? categoryIds = null,
+            IReadOnlyDictionary<int, string>? episodeTitles = null)
             => Task.FromResult(plan);
     }
 }

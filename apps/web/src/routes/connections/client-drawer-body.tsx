@@ -226,7 +226,7 @@ export function ClientDrawerBody({
       ) : null}
 
       <Disclosure title="Advanced" summary={`Priority ${form.priority || "1"}`} open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). Used to order same-type clients when Deluno round-robins downloads between them.">
+        <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). A lower number always goes first, unless that client keeps failing. Clients with the same number take turns.">
           <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />
         </Field>
         <Field label="Tags" optional help="Leave blank to use this client for any title. With tags set, Deluno sends a release here only when its title shares one of them — for example, keep an anime library on its own client.">

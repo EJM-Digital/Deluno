@@ -106,7 +106,7 @@ public static class TurnedDownReasons
 
         // The most specific first: a name that is not the title asked for, or a file that is not what it says.
         if (Has("looks like a sample") || Has("blocked token") || Has("never-grab pattern")
-            || Has("This release is for something else") || Has("the search was for") || Has("This release is from ") || Has("mislabelled") || Has("fake"))
+            || Has("This release is for something else") || Has("This release is for another show") || Has("but its title is") || Has("the search was for") || Has("This release is from ") || Has("mislabelled") || Has("fake"))
         {
             return TurnedDownGroups.Fake;
         }

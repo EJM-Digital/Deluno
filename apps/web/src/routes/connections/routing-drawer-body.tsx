@@ -49,7 +49,7 @@ export function RoutingDrawerBody({
     <>
       <div className="mb-4 rounded-[10px] border border-hairline bg-surface-2/40 px-3 py-2.5">
         <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">
-          Choose where this library searches and which download client receives approved releases. A category or label is optional: use one only when the client has different folders or processing rules for different libraries. Deluno sends the label, but it does not create the matching rule inside the client.
+          Choose where this library searches and which download client receives approved releases. A category or label is optional: use one only when the client has different folders or processing rules for different libraries. Deluno sends the label, but it does not create the matching rule inside the client. When more than one client can take a download, the one with the lowest priority number goes first; clients with the same number take turns, and a client whose recent downloads mostly failed is passed over.
         </p>
       </div>
       <DrawerSection title="Indexers" aside={`${sources.length} of ${relevantIndexers.length} · only ${isTv ? "TV" : "movie"}-capable indexers are listed`}>
