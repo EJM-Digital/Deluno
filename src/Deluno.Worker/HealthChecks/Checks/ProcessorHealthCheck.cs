@@ -104,7 +104,7 @@ public sealed class ProcessorHealthCheck(
 
             foreach (var library in servedLibraries)
             {
-                var entry = folders.FirstOrDefault(folder => string.Equals(folder.ManagerLibraryKey, library.Id, StringComparison.OrdinalIgnoreCase));
+                var entry = ProcessorLibraryFolder.ForLibrary(folders, library.Id);
                 outcomes.Add(BuildWatchedFolderOutcome(connection, library, support with { WatchedPath = ToDeluno(entry?.WatchedFolder ?? support.WatchedPath) }));
             }
         }

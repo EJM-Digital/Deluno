@@ -62,7 +62,18 @@ public sealed record ProcessorStatusSupport(
 /// some other way; <see cref="FoldersFromManager"/> says the processor took the folders from Deluno. Generic: any
 /// processor may publish this list.
 /// </summary>
-public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager);
+public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager)
+{
+    /// <summary>
+    /// The entry for one library. Two entries carry the same key only when someone copied a workflow by hand, so
+    /// the one whose folders still come from Deluno wins, otherwise the first.
+    /// </summary>
+    public static ProcessorLibraryFolder? ForLibrary(IEnumerable<ProcessorLibraryFolder> folders, string libraryId)
+    {
+        var matching = folders.Where(folder => string.Equals(folder.ManagerLibraryKey, libraryId, StringComparison.OrdinalIgnoreCase)).ToList();
+        return matching.FirstOrDefault(folder => folder.FoldersFromManager) ?? matching.FirstOrDefault();
+    }
+}
 
 /// <summary>What became of a file a processor handed back (#578).</summary>
 public enum ProcessorHandoffOutcome
