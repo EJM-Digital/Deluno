@@ -943,7 +943,10 @@ public sealed class WorkPlanner(
         IPlatformSettingsRepository? downloadIntegrityPlatformSettings = null,
         IMediaProbeService? downloadIntegrityProbeService = null,
         IBlockedReleaseRepository? downloadIntegrityBlockedReleases = null,
-        IQualityRepository? downloadIntegrityQualityRepository = null)
+        IQualityRepository? downloadIntegrityQualityRepository = null,
+        // #1148: lets a failed file check be recorded on the download itself,
+        // so Transfers agrees with Activity. Optional like the rest.
+        IDownloadDispatchesRepository? downloadIntegrityDispatches = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.ImportAutomation,
@@ -1096,6 +1099,7 @@ public sealed class WorkPlanner(
                     downloadIntegrityProbeService,
                     downloadIntegrityBlockedReleases,
                     downloadIntegrityQualityRepository,
+                    downloadIntegrityDispatches,
                     downloadClientTelemetryService,
                     jobScheduler,
                     activityFeedRepository,
@@ -1405,6 +1409,7 @@ public sealed class WorkPlanner(
         IMediaProbeService? mediaProbeService,
         IBlockedReleaseRepository? blockedReleaseRepository,
         IQualityRepository? qualityRepository,
+        IDownloadDispatchesRepository? dispatchesRepository,
         IDownloadClientTelemetryService downloadClientTelemetryService,
         IJobScheduler jobScheduler,
         IActivityFeedRepository activityFeedRepository,
@@ -1485,6 +1490,42 @@ public sealed class WorkPlanner(
         // processor never sees it.
         var reason = result.Reason ?? "Deluno's own check of this file found it was not what it claimed to be.";
 
+        // Said once (#1148). The same finished download is looked at again on
+        // every pass for as long as it is still in the client, and writing the
+        // same failure each minute buried everything else in Activity.
+        var subjectType = entityId is null ? "download" : entityType;
+        var subjectId = entityId ?? item.Id;
+        var earlier = (await activityFeedRepository.ListActivityAsync(30, subjectType, subjectId, cancellationToken))
+            .Where(activity => activity.Category == DownloadIntegrityFailedCategory
+                && activity.DetailsJson is { Length: > 0 } details
+                && details.Contains(item.Id, StringComparison.Ordinal))
+            .OrderByDescending(activity => activity.CreatedUtc)
+            .FirstOrDefault();
+
+        if (earlier is not null)
+        {
+            if (!EarlierReportSaidRemoved(earlier))
+            {
+                // The removal did not work last time. Try again, quietly, and
+                // say so only when it finally does.
+                var (removedNow, _) = await TryRemoveFromClientAsync(item, downloadClientTelemetryService, cancellationToken);
+                if (removedNow)
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        DownloadIntegrityFailedCategory,
+                        $"{item.Title} is now removed from {item.ClientName}.",
+                        JsonSerializer.Serialize(new { item.ClientId, item.ClientName, item.ReleaseName, item.SourcePath, itemId = item.Id, reason, removedFromClient = true }, PayloadJsonOptions),
+                        null,
+                        subjectType,
+                        subjectId,
+                        cancellationToken);
+                }
+            }
+
+            return true;
+        }
+
+        var blocklisted = false;
         if (blockedReleaseRepository is not null && !chosenOnSearch)
         {
             try
@@ -1505,29 +1546,17 @@ public sealed class WorkPlanner(
                         item.ClientName,
                         DateTimeOffset.UtcNow),
                     cancellationToken);
+                blocklisted = true;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // Left unblocked; the next pass finds the same file and tries
-                // again rather than this one going silent about it.
+                // Left unblocked, and said so below.
             }
         }
 
-        var removedFromClient = false;
-        try
-        {
-            var actionResult = await downloadClientTelemetryService.ExecuteActionAsync(
-                item.ClientId,
-                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
-                cancellationToken);
-            removedFromClient = actionResult.Succeeded;
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // The client could not be reached right now. The blocklist entry
-            // alone still keeps this exact release from being sent again.
-        }
+        var (removedFromClient, removalProblem) = await TryRemoveFromClientAsync(item, downloadClientTelemetryService, cancellationToken);
 
+        var searchQueued = false;
         if (entityId is not null)
         {
             try
@@ -1551,37 +1580,149 @@ public sealed class WorkPlanner(
                         IdempotencyKey: $"download-integrity-failed:{item.Id}",
                         DedupeKey: $"download-integrity-failed:{item.Id}"),
                     cancellationToken);
+                searchQueued = true;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // The blocklist entry alone still keeps this release out; the
-                // title's own scheduled search picks it back up regardless.
+                // The title's own scheduled search picks it back up
+                // regardless, and the message below does not claim otherwise.
             }
+        }
+
+        // What the message says is what happened, step by step: a step that
+        // did not work is named, with the reason, never claimed (#1148).
+        var done = new List<string>();
+        var notDone = new List<string>();
+        if (removedFromClient)
+        {
+            done.Add("removed it");
+        }
+        else
+        {
+            notDone.Add($"could not remove it from {item.ClientName}{(string.IsNullOrWhiteSpace(removalProblem) ? string.Empty : $" ({removalProblem.TrimEnd('.')})")}, so remove it there");
+        }
+
+        if (!chosenOnSearch)
+        {
+            if (blocklisted)
+            {
+                done.Add("blocklisted the release");
+            }
+            else if (entityId is not null)
+            {
+                notDone.Add("could not blocklist the release");
+            }
+        }
+
+        if (entityId is not null)
+        {
+            if (searchQueued)
+            {
+                done.Add("is searching for another copy");
+            }
+            else
+            {
+                notDone.Add("could not start a search for another copy");
+            }
+        }
+
+        var told = new System.Text.StringBuilder($"{item.Title} finished in {item.ClientName}, but {reason}");
+        if (done.Count > 0)
+        {
+            told.Append(" Deluno ").Append(JoinWithAnd(done)).Append('.');
+        }
+
+        if (notDone.Count > 0)
+        {
+            told.Append(" Deluno ").Append(JoinWithAnd(notDone)).Append('.');
+        }
+
+        if (chosenOnSearch)
+        {
+            told.Append(' ').Append(DispatchTargets.ChosenOnSearchNote);
         }
 
         await activityFeedRepository.RecordActivityAsync(
             DownloadIntegrityFailedCategory,
-            chosenOnSearch
-                ? $"{item.Title} finished in {item.ClientName}, but {reason} {(removedFromClient ? "Deluno removed it. " : "")}{DispatchTargets.ChosenOnSearchNote}"
-                : removedFromClient
-                ? $"{item.Title} finished in {item.ClientName}, but {reason} Deluno removed it, blocklisted the release and is searching for another copy."
-                : $"{item.Title} finished in {item.ClientName}, but {reason} Deluno blocklisted the release and is searching for another copy. It could not remove the download from {item.ClientName}, so remove it there.",
+            told.ToString(),
             JsonSerializer.Serialize(new
             {
                 item.ClientId,
                 item.ClientName,
                 item.ReleaseName,
                 item.SourcePath,
+                itemId = item.Id,
                 reason,
                 removedFromClient
             }, PayloadJsonOptions),
             null,
-            entityId is null ? "download" : entityType,
-            entityId ?? item.Id,
+            subjectType,
+            subjectId,
             cancellationToken);
+
+        // Transfers shows the same failure as Activity, as something to deal
+        // with, rather than "Waiting for processor" (#1148).
+        if (dispatchesRepository is not null && dispatch is not null && !string.IsNullOrWhiteSpace(dispatch.DispatchId))
+        {
+            try
+            {
+                await dispatchesRepository.RecordImportOutcomeAsync(
+                    dispatch.DispatchId,
+                    "failed",
+                    null,
+                    DownloadClientFailureCodes.IntegrityCheckFailed,
+                    reason,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Activity already has it; the next pass does not repeat itself.
+            }
+        }
 
         return true;
     }
+
+    private static async Task<(bool Removed, string? Problem)> TryRemoveFromClientAsync(
+        DownloadQueueItem item,
+        IDownloadClientTelemetryService downloadClientTelemetryService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var actionResult = await downloadClientTelemetryService.ExecuteActionAsync(
+                item.ClientId,
+                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
+                cancellationToken);
+            return (actionResult.Succeeded, actionResult.Succeeded ? null : actionResult.Message);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return (false, exception.Message);
+        }
+    }
+
+    private static bool EarlierReportSaidRemoved(ActivityEventItem earlier)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(earlier.DetailsJson!);
+            return document.RootElement.TryGetProperty("removedFromClient", out var removed)
+                && removed.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string JoinWithAnd(IReadOnlyList<string> parts)
+        => parts.Count switch
+        {
+            0 => string.Empty,
+            1 => parts[0],
+            _ => $"{string.Join(", ", parts.Take(parts.Count - 1))} and {parts[^1]}"
+        };
 
     /// <summary>The library's own language preference, from its assigned quality profile, or null when it has none.</summary>
     private static async Task<ProfileLanguagePreference?> LanguagePreferenceForAsync(

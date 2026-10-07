@@ -210,6 +210,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  // A manual import has no dispatch, so its row only moves to done when the job itself says it finished (#1171).
+  useSignalREvent("ImportStateChanged", RealtimeGroups.Queue, () => {
+    if (revalidator.state === "idle") revalidator.revalidate();
+  });
   useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => {
     realtimeToast.info(`Sent "${event.releaseName}" to ${event.clientName}`);
   });
@@ -236,6 +240,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     transferMode: "auto"
   }));
   const [manualPreview, setManualPreview] = useState<ImportPreviewResponse | null>(null);
+  // What was last queued from the drawer, so the same file cannot be queued twice (#1171).
+  const [manualQueued, setManualQueued] = useState<{ key: string; title: string; destination: string } | null>(null);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
   // DrawerFooter only renders a message for a non-clean state, so the outcome of a
   // preview or a queue has to move the state, not just the text.
@@ -874,6 +880,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     };
   }
 
+  const manualKey = [manualImport.sourcePath.trim(), manualImport.fileName.trim(), manualImport.mediaType, manualImport.title.trim(), manualImport.year].join("|");
+
   /** Preview and queue both report into the drawer that asked, not a toast. */
   async function manualRun(mode: "preview" | "queue") {
     if (!manualImport.sourcePath.trim()) {
@@ -901,7 +909,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         });
         setManualPreview(result.preview);
         setManualState("saved");
-        setManualMessage("Import queued. Its progress shows under Activity.");
+        const landing = result.preview.destinationPath || result.preview.destinationFolder;
+        setManualQueued({ key: manualKey, title: result.preview.matchedTitle ?? (manualImport.title.trim() || "Your file"), destination: landing });
+        setManualMessage("Queued. Deluno is importing it now.");
         revalidator.revalidate();
       }
     } catch (error) {
@@ -1714,7 +1724,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               message={manualMessage}
               saveType="button"
               saveLabel="Queue import"
-              saveEnabled={Boolean(manualImport.sourcePath.trim()) && busyKey === null}
+              saveEnabled={Boolean(manualImport.sourcePath.trim()) && busyKey === null && manualQueued?.key !== manualKey && !(manualPreview?.needsTitle && !manualImport.title.trim())}
               onSave={() => void manualRun("queue")}
               onCancel={() => setDrawer(null)}
             />
@@ -1782,7 +1792,27 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </Field>
             </DrawerSection>
 
+            {manualQueued?.key === manualKey ? (
+              <DrawerSection title="Queued">
+                <p className="text-(length:--type-caption) text-muted-foreground" role="status">
+                  {manualQueued.title} will be filed at <span className="font-mono">{manualQueued.destination}</span>.{" "}
+                  <Link to="/activity" className="font-medium text-primary hover:underline">Follow it in Activity</Link>
+                </p>
+              </DrawerSection>
+            ) : null}
+
             <DrawerSection title="Where it would land" aside={manualPreview ? undefined : "run a preview"}>
+              {manualPreview?.needsTitle && !manualImport.title.trim() ? (
+                <p className="text-(length:--type-caption) text-warning" role="alert">
+                  Deluno could not tell which show in your library this is. Enter the show&apos;s title above, then preview again.
+                </p>
+              ) : null}
+              {manualPreview?.clientHoldsSource ? (
+                <p className="text-(length:--type-caption) text-muted-foreground">
+                  A download client is still sharing this file. Deluno copies it and leaves the original where the client expects it.
+                  {manualImport.transferMode === "move" ? " Moving it takes the file away from that client, which will lose it and stop sharing." : ""}
+                </p>
+              ) : null}
               {manualPreview ? (
                 <ImportPreviewFacts preview={manualPreview} />
               ) : (
@@ -2202,6 +2232,7 @@ export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse
     <div className="grid gap-1.5">
       <Fact label={preview.pack ? "Pack destination" : "Would land at"} value={preview.destinationPath || "Not resolved"} mono />
       <Fact label="In folder" value={preview.destinationFolder || "Not resolved"} mono />
+      {preview.matchedTitle ? <Fact label="Matched show" value={preview.matchedTitle} /> : null}
       <Fact label="Matched rule" value={preview.matchedRuleName ?? "No destination rule matched"} />
       <Fact label="How" value={preview.transferExplanation || preview.preferredTransferMode} />
       <Fact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not found on disk"} />

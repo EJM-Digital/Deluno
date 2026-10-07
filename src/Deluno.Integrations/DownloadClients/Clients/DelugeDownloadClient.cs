@@ -257,10 +257,30 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
+        // core.remove_torrent takes one torrent id, not a list: a list is
+        // refused with an error Deluno used to ignore, so a "removed" download
+        // stayed in Deluge (#1148). The others take the list form.
         object[] parameters = removeData is { } wipe
-            ? [new[] { queueItemId }, wipe]
+            ? [queueItemId, wipe]
             : [new[] { queueItemId }];
-        await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, new Uri(baseUri, "json"), new DelugeRequest(method, parameters, 3), cancellationToken);
+        var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, new Uri(baseUri, "json"), new DelugeRequest(method, parameters, 3), cancellationToken);
+        // Deluge answers 200 with the refusal inside the body. Saying "sent"
+        // without reading it is how a removal that never happened was reported
+        // as done.
+        if (response?.Error is { } rejected)
+        {
+            return DownloadClientHelpers.ActionFailure(
+                client,
+                queueItemId,
+                action,
+                string.IsNullOrWhiteSpace(rejected.Message) ? "Deluge refused the request." : $"Deluge refused the request: {rejected.Message}");
+        }
+
+        if (removeData is not null && response?.Result is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.False })
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action, "Deluge did not remove the torrent.");
+        }
+
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Deluge action sent.");
     }
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
@@ -17,24 +18,88 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> FilesGoneRunning = new(StringComparer.OrdinalIgnoreCase);
 
+    // #1170: how long a Windows folder window on the server may sit unanswered
+    // before the request gives up, and the one window allowed at a time.
+    internal static readonly TimeSpan NativePickerTimeout = TimeSpan.FromSeconds(90);
+    private static int nativePickerOpen;
+
+    /// <summary>
+    /// Whether the browser asking is on the server's own machine (#1170): the
+    /// connection comes from the loopback address or from the machine's own
+    /// address, and was not forwarded by a proxy. A Windows folder window opens
+    /// on the server's screen, so it is of use to nobody else.
+    /// </summary>
+    public static bool IsFromThisMachine(System.Net.IPAddress? remote, System.Net.IPAddress? local, IHeaderDictionary headers)
+    {
+        if (headers.ContainsKey("X-Forwarded-For") || headers.ContainsKey("Forwarded") || headers.ContainsKey("X-Real-IP"))
+        {
+            return false;
+        }
+
+        // No address at all is an in-process caller (a test host), never a network one.
+        return remote is null
+            || System.Net.IPAddress.IsLoopback(remote)
+            || (local is not null && remote.Equals(local));
+    }
+
+    public static async Task<IResult> PickNativeFolderAsync(HttpContext httpContext, NativeFolderPickerRequest request, CancellationToken cancellationToken)
+    {
+        if (!IsFromThisMachine(httpContext.Connection.RemoteIpAddress, httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
+        {
+            return Results.Json(
+                new
+                {
+                    message = "The Windows folder window opens on the computer Deluno runs on. Use the folder browser instead.",
+                    nativePickerUnavailable = true
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (Interlocked.CompareExchange(ref nativePickerOpen, 1, 0) != 0)
+        {
+            return Results.Conflict(new
+            {
+                message = "A folder window is already open on the server. Answer it there, or use the folder browser.",
+                nativePickerUnavailable = true
+            });
+        }
+
+        var pick = WindowsFolderPicker.PickAsync(request.InitialPath);
+        _ = pick.ContinueWith(_ => Interlocked.Exchange(ref nativePickerOpen, 0), TaskScheduler.Default);
+
+        WindowsFolderPickerResult result;
+        try
+        {
+            result = await pick.WaitAsync(NativePickerTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return Results.Json(
+                new
+                {
+                    message = "Nobody answered the folder window on the server in time. Use the folder browser instead.",
+                    nativePickerUnavailable = true
+                },
+                statusCode: StatusCodes.Status408RequestTimeout);
+        }
+
+        if (!result.Available)
+        {
+            return Results.Conflict(new
+            {
+                message = result.Message ?? "The native folder picker is unavailable.",
+                nativePickerUnavailable = true
+            });
+        }
+
+        return Results.Ok(new NativeFolderPickerResponse(result.Path, result.Cancelled));
+    }
+
     public static IEndpointRouteBuilder MapDelunoFilesystemEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var filesystem = endpoints.MapGroup("/api/filesystem");
 
-        filesystem.MapPost("/native-folder-picker", async ([FromBody] NativeFolderPickerRequest request) =>
-        {
-            var result = await WindowsFolderPicker.PickAsync(request.InitialPath);
-            if (!result.Available)
-            {
-                return Results.Conflict(new
-                {
-                    message = result.Message ?? "The native folder picker is unavailable.",
-                    nativePickerUnavailable = true
-                });
-            }
-
-            return Results.Ok(new NativeFolderPickerResponse(result.Path, result.Cancelled));
-        });
+        filesystem.MapPost("/native-folder-picker", PickNativeFolderAsync);
 
         filesystem.MapGet("/directories", (string? path) =>
         {
@@ -92,9 +157,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
         filesystem.MapPost("/import/preview", async (
             [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
+            IClientHeldFileProbe? clientHeldFiles,
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request, cancellationToken);
+            // #1171: a file with no download behind it may still be one a
+            // client is seeding. Said here so the person sees it before
+            // choosing "Move the file".
+            if (clientHeldFiles is not null
+                && string.IsNullOrWhiteSpace(request.DispatchId)
+                && preview.SourceExists
+                && await clientHeldFiles.IsHeldByAnyClientAsync(preview.SourcePath, cancellationToken))
+            {
+                preview = preview with { ClientHoldsSource = true };
+            }
+
             return Results.Ok(preview);
         });
 
@@ -315,6 +392,15 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     statusCode: ImportFileReadiness.RetryableStatusCode);
             }
 
+            if (preview.NeedsTitle)
+            {
+                return Results.BadRequest(new
+                {
+                    message = "Deluno could not tell which show in your library this is. Enter the show's title under \"Help Deluno match it\", then queue the import again.",
+                    preview
+                });
+            }
+
             if (!preview.SourceExists ||
                 !preview.IsSupportedMediaFile ||
                 preview.Pack is { CanExecute: false } ||
@@ -346,9 +432,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/integrations/external/import-preview", async (
             [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
+            IClientHeldFileProbe? clientHeldFiles,
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request, cancellationToken);
+            // #1171: a file with no download behind it may still be one a
+            // client is seeding. Said here so the person sees it before
+            // choosing "Move the file".
+            if (clientHeldFiles is not null
+                && string.IsNullOrWhiteSpace(request.DispatchId)
+                && preview.SourceExists
+                && await clientHeldFiles.IsHeldByAnyClientAsync(preview.SourcePath, cancellationToken))
+            {
+                preview = preview with { ClientHoldsSource = true };
+            }
+
             return Results.Ok(preview);
         });
 
@@ -883,7 +981,23 @@ public sealed record ImportPreviewResponse(
     IReadOnlyList<string> Warnings,
     string Explanation,
     IReadOnlyList<string> DecisionSteps,
-    ImportPackPreview? Pack = null);
+    ImportPackPreview? Pack = null,
+    /// <summary>
+    /// The title in the library this file was matched to (#1171), so the
+    /// preview can say whose folder and episode name it is using.
+    /// </summary>
+    string? MatchedTitle = null,
+    /// <summary>
+    /// True when a TV file matched nothing in the library and nobody gave a
+    /// title either, so there is no honest destination to show: the person
+    /// is asked to pick the title instead (#1171).
+    /// </summary>
+    bool NeedsTitle = false,
+    /// <summary>
+    /// True when a connected download client still holds this file (#1171).
+    /// Importing it copies; the original stays where the client expects it.
+    /// </summary>
+    bool ClientHoldsSource = false);
 
 public sealed record ImportPackPreview(
     bool CanExecute,
