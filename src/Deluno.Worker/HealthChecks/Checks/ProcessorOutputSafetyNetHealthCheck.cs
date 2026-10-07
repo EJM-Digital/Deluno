@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Worker.Services;
@@ -31,7 +32,8 @@ namespace Deluno.Worker.HealthChecks.Checks;
 public sealed class ProcessorOutputSafetyNetHealthCheck(
     ILibrariesRepository libraries,
     IProcessorRepository processors,
-    IJobQueueRepository jobQueueRepository) : IHealthCheck
+    IJobQueueRepository jobQueueRepository,
+    IMovieCatalogRepository movies) : IHealthCheck
 {
     public string Category => HealthCheckCategories.Processor;
 
@@ -61,6 +63,19 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Select(source => WorkPlanner.NormalizeSourceKey(source!))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Imports still queued or running: the only ones that keep a second copy out of sight. A finished import has
+        // already done its work, and a spare copy beside it is just a spare copy (#1138).
+        var activeSourceKeys = (await jobQueueRepository.ListAsync(MaintenancePlanningBatchSize, cancellationToken))
+            .Where(job => job.JobType == "filesystem.import.execute"
+                && !string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(job.Status, "failed", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase))
+            .Select(job => WorkPlanner.TryReadImportSourcePath(job.PayloadJson))
+            .Where(source => !string.IsNullOrWhiteSpace(source))
+            .Select(source => WorkPlanner.NormalizeSourceKey(source!))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyDictionary<string, string>? heldFilms = null;
 
         var allHandoffs = await processors.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.AcceptingLateOutput, cancellationToken);
 
@@ -96,6 +111,29 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
                     continue;
                 }
 
+                // A second copy of a film the library already holds (#1138): said as that, with Keep and Remove.
+                string? spareOf = null;
+                if (string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase)
+                    && (Directory.Exists(entry) || WorkPlanner.IsImportableVideoFile(entry)))
+                {
+                    heldFilms ??= await HeldFilmsAsync(cancellationToken);
+                    if (SpareCopy.TitleKey(name) is { } key && heldFilms.TryGetValue(key, out var heldTitle))
+                    {
+                        spareOf = heldTitle;
+                    }
+                }
+
+                if (spareOf is not null)
+                {
+                    var spare = DescribeSpare(library, entry, name, spareOf, activeSourceKeys);
+                    if (spare is not null)
+                    {
+                        outcomes.Add(spare);
+                    }
+
+                    continue;
+                }
+
                 var outcome = Directory.Exists(entry)
                     ? DescribeFolder(library, entry, name, reservedSourceKeys)
                     : DescribeFile(library, entry, name, reservedSourceKeys);
@@ -107,6 +145,50 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
         }
 
         return outcomes;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> HeldFilmsAsync(CancellationToken cancellationToken)
+    {
+        var held = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var film in await movies.ListAsync(cancellationToken))
+        {
+            if (film.HasFile && SpareCopy.KeyOf(film.Title, film.ReleaseYear) is { } key)
+            {
+                held[key] = film.ReleaseYear is { } year ? $"{film.Title} ({year})" : film.Title;
+            }
+        }
+
+        return held;
+    }
+
+    private static HealthCheckOutcome? DescribeSpare(LibraryItem library, string path, string name, string heldTitle, ISet<string> activeSourceKeys)
+    {
+        IReadOnlyList<string> files;
+        try
+        {
+            files = Directory.Exists(path)
+                ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).ToArray()
+                : [path];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (files.Count == 0 || !files.All(ProcessorOutputReadiness.IsReady)
+            || files.Any(file => activeSourceKeys.Contains(WorkPlanner.NormalizeSourceKey(file))))
+        {
+            return null;
+        }
+
+        return HealthCheckOutcome.Problem(
+            $"processor-output:{library.Id}:{name.ToLowerInvariant()}",
+            HealthCheckCategories.Processor,
+            $"A second copy of {heldTitle} is waiting in the {library.Name} library's processor output folder",
+            $"The {library.Name} library already has {heldTitle}, and a second copy is sitting in its processor output folder: {name}.",
+            cause: "A processor made more than one file for the same film, or the film was fetched twice.",
+            fix: "Remove the spare copy, or keep it for now.",
+            detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind = Directory.Exists(path) ? "folder" : "file", isMedia = true, spareCopyOf = heldTitle }));
     }
 
     private static HealthCheckOutcome? DescribeFolder(LibraryItem library, string path, string name, ISet<string> reservedSourceKeys)
@@ -161,4 +243,31 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             cause: "This shouldn't happen: it only occurs after something else already went wrong, or another app shares this folder.",
             fix: isMedia ? "Import it, or delete it." : "Delete it, or leave it for now.",
             detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind, isMedia }));
+}
+
+/// <summary>Matching a release or folder name to a film the library already holds (#1138): the title before the year, letters and digits only.</summary>
+internal static class SpareCopy
+{
+    public static string? KeyOf(string title, int? year)
+    {
+        var letters = new string(title.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        return letters.Length == 0 || year is null ? null : $"{letters}|{year}";
+    }
+
+    /// <summary>"Pulp.Fiction.1994.1080p.mkv" gives "pulpfiction|1994"; a name with no year gives null.</summary>
+    public static string? TitleKey(string name)
+    {
+        var withoutExtension = WorkPlanner.IsImportableVideoFile(name) ? Path.GetFileNameWithoutExtension(name) : name;
+        var tokens = withoutExtension.Split([' ', '.', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
+        var at = -1;
+        for (var index = 1; index < tokens.Length; index++)
+        {
+            if (tokens[index].Length == 4 && int.TryParse(tokens[index], out var year) && year is >= 1900 and <= 2100)
+            {
+                at = index;
+            }
+        }
+
+        return at < 1 ? null : KeyOf(string.Concat(tokens.Take(at)), int.Parse(tokens[at]));
+    }
 }

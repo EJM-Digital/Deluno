@@ -68,8 +68,9 @@ public static class AcquisitionBlockerReader
             blockers.Add(new AcquisitionBlocker(
                 AcquisitionBlockerKinds.DownloadInFlight,
                 clientHoldingRelease,
-                $"{clientHoldingRelease} already has a download for {title}, so sending it again would do nothing.",
-                "A download client keeps one copy of a release. Asking it for the same one is accepted and then ignored.",
+                // #1138: a download just started is progress, not a reason the title will not download.
+                $"Downloading in {clientHoldingRelease}.",
+                $"{clientHoldingRelease} has {title} on its way. A download client keeps one copy of a release, so sending the same one again would be accepted and then ignored.",
                 CanClear: true,
                 ClearEffect: $"Removes that download from {clientHoldingRelease}, so the release can be fetched again."));
         }

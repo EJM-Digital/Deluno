@@ -2,6 +2,8 @@ using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Movies.Contracts;
+using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Worker.HealthChecks.Checks;
@@ -105,6 +107,36 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
         Assert.Empty(await RunAsync());
     }
 
+    [Fact]
+    public async Task A_second_copy_of_a_film_the_library_holds_is_said_so_even_when_an_import_for_it_finished()
+    {
+        var spare = WriteReadyFile(Path.Combine(_root, "Pulp.Fiction.1994.1080p.mkv"));
+        var finished = TestJobs.Create(
+            "filesystem.import.execute",
+            payloadJson: "{\"preview\":{\"sourcePath\":\"" + JsonPath(spare) + "\"}}",
+            status: "completed");
+
+        var outcome = Assert.Single(await RunAsync(jobs: [finished], films: [Film("Pulp Fiction", 1994, hasFile: true)]));
+
+        Assert.Contains("second copy", outcome.Message);
+        Assert.Contains("Pulp Fiction (1994)", outcome.Message);
+        Assert.Contains("\"spareCopyOf\":\"Pulp Fiction (1994)\"", outcome.DetailsJson);
+    }
+
+    [Fact]
+    public async Task A_film_the_library_does_not_hold_is_not_called_a_second_copy()
+    {
+        WriteReadyFile(Path.Combine(_root, "Pulp.Fiction.1994.1080p.mkv"));
+
+        var outcome = Assert.Single(await RunAsync(films: [Film("Pulp Fiction", 1994, hasFile: false)]));
+
+        Assert.DoesNotContain("second copy", outcome.Message);
+        Assert.DoesNotContain("spareCopyOf", outcome.DetailsJson);
+    }
+
+    private static MovieListItem Film(string title, int year, bool hasFile)
+        => new("movie-" + title, title, year, null, true, hasFile, null, null, null, null, null, null, null, [], null, null, null, null, Now, Now);
+
     private static string JsonPath(string path) => path.Replace("\\", "\\\\");
 
     private static string WriteReadyFile(string path)
@@ -120,7 +152,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
 
     private async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(
         IReadOnlyList<ProcessorHandoffItem>? handoffs = null,
-        IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem>? jobs = null)
+        IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem>? jobs = null,
+        IReadOnlyList<MovieListItem>? films = null)
     {
         var library = new LibraryItem(
             "library-1", "Movies", "movies", "main", "/library", null, null, null, null,
@@ -138,7 +171,10 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
         var jobQueue = new Mock<IJobQueueRepository>();
         jobQueue.Setup(repo => repo.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(jobs ?? []);
 
-        var check = new ProcessorOutputSafetyNetHealthCheck(libraries.Object, processors.Object, jobQueue.Object);
+        var catalogue = new Mock<IMovieCatalogRepository>();
+        catalogue.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(films ?? []);
+
+        var check = new ProcessorOutputSafetyNetHealthCheck(libraries.Object, processors.Object, jobQueue.Object, catalogue.Object);
         return await check.RunAsync(CancellationToken.None);
     }
 }

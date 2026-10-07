@@ -61,6 +61,9 @@ export const BLOCKER_TONE: Record<string, Tone> = {
   [ACQUISITION_BLOCKER_KINDS.releasesBlocked]: "idle"
 };
 
+/** Blockers that are the system working (a download in a client, a file with the processor): all of them means nothing is wrong (#1138). */
+const IN_PROGRESS_KINDS = new Set<string>([ACQUISITION_BLOCKER_KINDS.downloadInFlight, ACQUISITION_BLOCKER_KINDS.processorHoldingFile]);
+
 /** "…in about 6 hours." becomes "…in about 6 hours (12:03 pm)." in the viewer's own time zone. */
 export function withClockTime(summary: string, untilUtc?: string | null): string {
   const until = untilUtc ? new Date(untilUtc) : null;
@@ -146,7 +149,7 @@ export function AcquisitionBlockersCard({
   return (
     <>
       <ListCard
-        title="Why this will not download"
+        title={blockers.blockers.every((blocker) => IN_PROGRESS_KINDS.has(blocker.kind)) ? "Already on its way" : "Why this will not download"}
         count={blockers.blockers.length === 1 ? "1 reason" : `${blockers.blockers.length} reasons`}
       >
         <ListTable

@@ -117,7 +117,16 @@ public static class SearchHistoryDetails
             .FirstOrDefault(key => string.Equals(key, "bestCandidate", StringComparison.OrdinalIgnoreCase));
         if (bestKey is not null && plan[bestKey] is JsonObject best)
         {
+            // The held release's link is kept (#1159): approving it from Needs action sends exactly this release, and
+            // a re-search could not be sure to find the same one. One link a row, only for a release not refused.
+            var keptLink = Read(best, "DownloadUrl") is JsonValue link && !string.Equals((Read(best, "DecisionStatus") as JsonValue)?.ToString(), "rejected", StringComparison.OrdinalIgnoreCase)
+                ? link.DeepClone()
+                : null;
             SlimCandidate(best);
+            if (keptLink is not null)
+            {
+                best[camel ? "downloadUrl" : "DownloadUrl"] = keptLink;
+            }
         }
 
         plan[camel ? "candidateCount" : "CandidateCount"] = total;

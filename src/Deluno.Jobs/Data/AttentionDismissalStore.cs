@@ -10,7 +10,13 @@ namespace Deluno.Jobs.Data;
 /// </summary>
 public sealed class AttentionDismissalStore(IDelunoDatabaseConnectionFactory databases, TimeProvider timeProvider)
 {
-    public static string NoReleaseKey(string mediaType, string id) => $"no-release:{mediaType}:{id}";
+    public const string NoReleasePrefix = "no-release:";
+    public const string HeldReleasePrefix = "held-release:";
+
+    public static string NoReleaseKey(string mediaType, string id) => $"{NoReleasePrefix}{mediaType}:{id}";
+
+    /// <summary>A held release (#1159) is dismissed by its search-history row, so a later held search is a new item.</summary>
+    public static string HeldReleaseKey(string historyId) => $"{HeldReleasePrefix}{historyId}";
 
     public async Task DismissAsync(string key, CancellationToken cancellationToken)
     {
@@ -37,11 +43,14 @@ public sealed class AttentionDismissalStore(IDelunoDatabaseConnectionFactory dat
         return keys;
     }
 
-    /// <summary>Forgets every dismissal whose key is not in <paramref name="stillProblems"/>.</summary>
-    public async Task ForgetExceptAsync(IReadOnlySet<string> stillProblems, CancellationToken cancellationToken)
+    /// <summary>
+    /// Forgets every dismissal whose key is not in <paramref name="stillProblems"/>. Only keys that start with
+    /// <paramref name="keyPrefix"/> are looked at, so one list's problems never forget another list's dismissals.
+    /// </summary>
+    public async Task ForgetExceptAsync(IReadOnlySet<string> stillProblems, CancellationToken cancellationToken, string keyPrefix = NoReleasePrefix)
     {
         var existing = await ListAsync(cancellationToken);
-        var gone = existing.Where(key => !stillProblems.Contains(key)).ToArray();
+        var gone = existing.Where(key => key.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase) && !stillProblems.Contains(key)).ToArray();
         if (gone.Length == 0)
         {
             return;

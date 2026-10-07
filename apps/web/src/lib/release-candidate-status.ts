@@ -82,3 +82,40 @@ export function canWinSearch(candidate: ReleaseCandidateStatusInput): boolean {
     && status !== "equivalent"
     && status !== "current-better";
 }
+
+/**
+ * One of the engine's sentences in the owner's words (#1138). A custom format that is "below its target" arrives as
+ * "Custom rule · WEB Tier 01 is below its target.", a rule's internal name in front of a status nobody asked about.
+ */
+export function plainCandidateReason(text: string): string {
+  return text.replace(/Custom rule · [^.]*? is below its target\./g, "It lacks something your quality profile prefers.");
+}
+
+function sentencesOf(text: string): string[] {
+  return plainCandidateReason(text).split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+}
+
+/**
+ * What the release drawer says about a candidate, each thing once: the summary with its repeated sentences folded,
+ * and the reasons that the summary does not already say (#1138).
+ */
+export function candidateExplanation(candidate: { summary?: string | null; decisionReasons?: string[] | null }): { summary: string; reasons: string[] } {
+  const summarySentences = [...new Set(sentencesOf(candidate.summary ?? ""))];
+  const said = new Set(summarySentences);
+  const reasons: string[] = [];
+  for (const raw of candidate.decisionReasons ?? []) {
+    const reason = plainCandidateReason(raw).trim();
+    if (!reason || said.has(reason) || reasons.includes(reason)) continue;
+    reasons.push(reason);
+  }
+  return { summary: summarySentences.join(" "), reasons };
+}
+
+/** Sentences the engine writes for itself; they name no outcome a person can act on (#1159). */
+const INTERNAL_SENTENCE = /typed preference evaluation|hybrid mode|ml boost|deterministic score/i;
+
+/** What an episode's or title's last search came to, without the engine's own bookkeeping sentences. */
+export function plainSearchResult(text: string): string {
+  const kept = sentencesOf(text).filter((sentence) => !INTERNAL_SENTENCE.test(sentence));
+  return [...new Set(kept)].join(" ");
+}
