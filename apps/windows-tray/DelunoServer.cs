@@ -161,6 +161,13 @@ public sealed class DelunoServer : IDisposable
         // request is for and let a public one (the poster route, #1146) through.
         _app.UseRouting();
 
+        // An explicit UseRouting turns off the authentication and authorization
+        // steps WebApplication adds by itself, and every endpoint carrying
+        // authorization metadata then fails with a 500. Deluno.Host adds them
+        // the same way.
+        _app.UseAuthentication();
+        _app.UseAuthorization();
+
         _app.Use(async (context, next) =>
         {
             var path = context.Request.Path;
