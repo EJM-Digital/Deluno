@@ -1323,6 +1323,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IGuidePackageStore guidePackageStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IMediaTagStore tagStore,
+            Deluno.Integrations.DownloadClients.IDownloadClientTelemetryService downloadClientTelemetry,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1330,6 +1331,12 @@ public static class MoviesEndpointRouteBuilderExtensions
             {
                 return denied;
             }
+
+            // #1175: sending by hand what is already downloading asks first.
+            var grabbedMovie = await mediaStateRepository.GetByIdAsync(MediaKind.Movie, id, cancellationToken);
+            var activeDownloadCheck = grabbedMovie is null
+                ? null
+                : ActiveDownloadChecks.ForWholeTitle(id, grabbedMovie.Title, downloadClientTelemetry);
 
             var result = await MediaGrabHandler.ExecuteAsync(
                 MediaKind.Movie,
@@ -1343,7 +1350,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     request.SizeBytes,
                     request.Seeders,
                     request.Force,
-                    request.OverrideReason),
+                    request.OverrideReason,
+                    request.DuplicateAction),
                 mediaStateRepository,
                 platformSettingsRepository,
                 librariesRepository,
@@ -1370,7 +1378,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 guidePackageStore,
                 releasePreferencePlanRepository,
                 libraryId,
-                tagStore);
+                tagStore,
+                activeDownloadCheck);
+
+            if (result.ActiveDownload is not null)
+            {
+                return ActiveDownloadResponse.Conflict(result.ActiveDownload);
+            }
 
             if (result.NotFound)
             {
@@ -3667,7 +3681,8 @@ public static class MoviesEndpointRouteBuilderExtensions
         long? SizeBytes,
         int? Seeders,
         bool? Force,
-        string? OverrideReason);
+        string? OverrideReason,
+        string? DuplicateAction = null);
 
     private sealed record MetadataRefreshJobsRequest(
         bool ForceAll,

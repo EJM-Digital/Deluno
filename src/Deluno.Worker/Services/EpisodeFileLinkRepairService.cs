@@ -1,0 +1,56 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Deluno.Jobs.Data;
+using Deluno.Series.Data;
+
+namespace Deluno.Worker.Services;
+
+/// <summary>
+/// #1174: an import once linked one file to a second, unrelated episode (a stray "5.1" in the
+/// release name read as episode 1). Once at start-up, any library file linked to several
+/// episodes where its name gives one is kept on the right episode, the wrong link is cleared,
+/// and each clearing is written to Activity in plain words. Running it again changes nothing.
+/// </summary>
+public sealed class EpisodeFileLinkRepairService(
+    IServiceScopeFactory scopes,
+    ILogger<EpisodeFileLinkRepairService> logger) : IHostedService
+{
+    public const string ActivityCategory = "series.episode-file-link.repaired";
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            await RunAsync(
+                scope.ServiceProvider.GetRequiredService<ISeriesCatalogRepository>(),
+                scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>(),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not check episode file links; they are left as they are.");
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>Returns how many wrong links were cleared.</summary>
+    public static async Task<int> RunAsync(
+        ISeriesCatalogRepository series,
+        IActivityFeedRepository activity,
+        CancellationToken cancellationToken)
+    {
+        var repairs = await series.RepairWrongEpisodeFileLinksAsync(cancellationToken);
+        foreach (var repair in repairs)
+        {
+            await activity.RecordActivityAsync(
+                ActivityCategory,
+                $"{repair.SeriesTitle} S{repair.ClearedSeasonNumber:00}E{repair.ClearedEpisodeNumber:00} was showing a file that belongs to {repair.KeptEpisodes}. The wrong link was removed, so it is Missing again.",
+                null, null, "episode", repair.EpisodeId, cancellationToken);
+        }
+
+        return repairs.Count;
+    }
+}

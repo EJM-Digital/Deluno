@@ -554,7 +554,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         command.CommandText =
             """
             SELECT entity_type, entity_id, release_name,
-                   CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 1 ELSE 0 END
+                   CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 1 ELSE 0 END,
+                   download_client_id, download_client_name, torrent_hash_or_item_id
             FROM download_dispatches
             WHERE grab_status = 'succeeded'
               AND archived_utc IS NULL
@@ -570,7 +571,11 @@ public sealed class SqliteDownloadDispatchesRepository(
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            downloads.Add(new DownloadInFlight(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3) == 1));
+            downloads.Add(new DownloadInFlight(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3) == 1,
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6)));
         }
 
         return downloads;
