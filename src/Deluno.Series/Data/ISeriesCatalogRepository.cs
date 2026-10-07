@@ -308,7 +308,8 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string? seriesId = null,
         bool upgradeUntilCutoff = false,
         bool upgradeUnknownItems = false,
-        string episodeImportSource = "download");
+        string episodeImportSource = "download",
+        string? resultNote = null);
 
     /// <summary>
     /// Imports a slice of already-on-disk shows, and the episodes detected

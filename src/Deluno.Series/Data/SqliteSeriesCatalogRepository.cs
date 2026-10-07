@@ -2831,7 +2831,8 @@ public sealed class SqliteSeriesCatalogRepository(
         string? seriesId = null,
         bool upgradeUntilCutoff = false,
         bool upgradeUnknownItems = false,
-        string episodeImportSource = "download")
+        string episodeImportSource = "download",
+        string? resultNote = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -2854,7 +2855,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     SeriesId: seriesId,
                     UpgradeUntilCutoff: upgradeUntilCutoff,
                     UpgradeUnknownItems: upgradeUnknownItems,
-                    EpisodeImportSource: episodeImportSource)
+                    EpisodeImportSource: episodeImportSource,
+                    ResultNote: resultNote)
             ],
             cancellationToken);
 
@@ -2914,7 +2916,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
             qualityCutoffMet, filePath, fileSizeBytes, episodes,
             preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations, knownSeriesId,
-            upgradeUntilCutoff, upgradeUnknownItems, episodeImportSource) = request;
+            upgradeUntilCutoff, upgradeUnknownItems, episodeImportSource, _) = request;
 
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
@@ -3000,7 +3002,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     fileSizeBytes,
                     preferenceEvaluation,
                     preferenceEvaluations,
-                    knownSeriesId),
+                    knownSeriesId,
+                    request.ResultNote),
                 connection,
                 transaction,
                 cancellationToken);
@@ -3394,7 +3397,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     AddParameter(
                         upsertEpisodeWanted,
                         "@lastSearchResult",
-                        episode.HasFile ? episodeOrigin : null);
+                        episode.HasFile ? (string.IsNullOrWhiteSpace(request.ResultNote) ? episodeOrigin : request.ResultNote.Trim()) : null);
                     AddParameter(upsertEpisodeWanted, "@episodeCurrentQuality", episodeQuality);
                     AddParameter(upsertEpisodeWanted, "@episodeTargetQuality", targetQuality);
                     AddParameter(upsertEpisodeWanted, "@episodeQualityCutoffMet", episodeCutoffMet ? 1 : 0);
