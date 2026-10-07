@@ -2065,7 +2065,7 @@ export function ShowDetailPage() {
         footer={
           <DrawerFooter
             state="clean"
-            message={openEpisode?.wantedReason}
+            note={openEpisode?.wantedReason}
             readOnly
             saveLabel="Close"
             onCancel={() => setOpenEpisodeId(null)}

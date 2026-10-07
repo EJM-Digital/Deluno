@@ -21,4 +21,6 @@ public sealed record ExistingMovieImportRequest(
     long? FileSizeBytes,
     PreferenceEvaluationSnapshot? PreferenceEvaluation = null,
     /// <summary>The film this is already known to be, when it is; see <c>MediaExistingImportRequest.MediaId</c>.</summary>
-    string? MovieId = null);
+    string? MovieId = null,
+    /// <summary>Where the file came from, said as the film's last attempt (#1151); null for a file already in the library.</summary>
+    string? ResultNote = null);

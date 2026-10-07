@@ -66,6 +66,24 @@ public sealed class AProcessorsOutputIsDelunosToTidyTests
         Assert.False(ImportPipelineService.IsProcessorOutput(@"C:\Deluno\Weir3\Refined\Movies-Old\film.mkv", Library()));
     }
 
+    /// <summary>#1151: the movie page said "Imported from your existing library" for a file that came from the processor's output.</summary>
+    [Fact]
+    public void A_file_from_the_processors_output_says_so_in_the_titles_last_attempt()
+    {
+        var library = Library() with { ProcessorName = "Weir" };
+
+        Assert.Equal(
+            "Imported from Weir's cleaned output.",
+            ImportPipelineService.ImportOriginNote(@"C:\Deluno\Weir3\Refined\Movies\Big.Buck.Bunny.2008\Big.Buck.Bunny.2008.mkv", library, fromDownload: true));
+    }
+
+    [Fact]
+    public void A_file_straight_from_a_download_says_so_and_a_file_already_in_the_library_keeps_the_default()
+    {
+        Assert.Equal("Imported from a download.", ImportPipelineService.ImportOriginNote(@"C:\Deluno\Downloads-Complete\Movies\Big.Buck.Bunny.2008\a.mkv", Library(), fromDownload: true));
+        Assert.Null(ImportPipelineService.ImportOriginNote(@"C:\Movies\Big.Buck.Bunny.2008\a.mkv", Library(), fromDownload: false));
+    }
+
     private static LibraryItem Library()
     {
         var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));

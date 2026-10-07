@@ -310,7 +310,12 @@ public sealed record MediaExistingImportRequest(
     /// instead, a grab for a show catalogued without a start year, arriving
     /// as "Say Yes to the Dress 2007", missed it and created a second show.
     /// </summary>
-    string? MediaId = null);
+    string? MediaId = null,
+    /// <summary>
+    /// Where the file came from, said as the title's "last attempt" (#1151). Null
+    /// means a file already sitting in the library, which is what the default says.
+    /// </summary>
+    string? ResultNote = null);
 
 public sealed record MediaImportResult(string Id, bool Created);
 
