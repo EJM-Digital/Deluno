@@ -1819,6 +1819,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             // along.
             var episodeResults = new List<object>();
             var comparedCandidates = 0;
+            var alreadyOnItsWay = new List<string>();
 
             foreach (var episode in targetEpisodes)
             {
@@ -1883,14 +1884,32 @@ public static class SeriesEndpointRouteBuilderExtensions
                     summary = searchPlan.Summary,
                     releaseName = bestCandidate?.ReleaseName,
                     indexerName = bestCandidate?.IndexerName,
-                    candidates = MediaSearchCandidateView.ForAll(searchPlan.Candidates)
+                    comparedCount = searchPlan.Candidates.Count,
+                    // One thing per button (#1175): "send" lists nothing to choose from, "choose" sends nothing.
+                    candidates = request.ChooseOnly
+                        ? MediaSearchCandidateView.ForAll(searchPlan.Candidates)
+                        : []
                 });
 
-                if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+                var willDispatch = !request.ChooseOnly
+                    && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null;
+                if (willDispatch)
+                {
+                    // An episode already downloading is never sent a second release (#1175).
+                    var onItsWay = await DispatchCoverage.AlreadyOnItsWayAsync(
+                        jobQueueRepository, bestCandidate!.ReleaseName, [episode.EpisodeId, seriesItem.Id], cancellationToken);
+                    if (onItsWay is not null)
+                    {
+                        willDispatch = false;
+                        alreadyOnItsWay.Add($"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}: {onItsWay}");
+                    }
+                }
+
+                if (willDispatch)
                 {
                     matchedCount++;
                     queuedCount++;
-                    var downloadClient = decisionPlan.SelectedDownloadClient;
+                    var downloadClient = decisionPlan.SelectedDownloadClient!;
                     var grabResult = bestCandidate!.DownloadUrl is null
                         ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
                         {
@@ -1904,7 +1923,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         }
                         : await downloadClientGrabService.GrabAsync(
                             downloadClient.DownloadClientId,
-                            decisionPlan.DispatchRequest with
+                            decisionPlan.DispatchRequest! with
                             {
                                 OnDeadRelease = new DeadReleaseFollowUp("episode", episode.EpisodeId, seriesItem.Title, library.Id, library.Name)
                             },
@@ -1961,7 +1980,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     episode.EpisodeId,
                     library.Id,
                     "manual-episode",
-                    outcome,
+                    request.ChooseOnly ? "checked" : outcome,
                     now,
                     nextEligibleSearchUtc,
                     decisionPlan.SearchResult,
@@ -2050,7 +2069,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 plannedCount,
                 failedCount,
                 episodes = episodeResults.ToArray(),
-                failures = failures.Distinct().ToArray()
+                failures = failures.Distinct().ToArray(),
+                alreadyDownloading = alreadyOnItsWay.ToArray()
             });
         });
 
@@ -3158,6 +3178,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IGuidePackageStore guidePackageStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IDownloadClientTelemetryService downloadClientTelemetry,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3165,6 +3186,17 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 return denied;
             }
+
+            // #1175: sending by hand what is already downloading asks first.
+            var grabInventory = await repository.GetInventoryDetailAsync(id, cancellationToken);
+            var activeDownloadCheck = grabInventory is null || string.IsNullOrWhiteSpace(request.ReleaseName)
+                ? null
+                : SeriesManualSendGuard.Build(
+                    id,
+                    grabInventory.Title,
+                    [.. grabInventory.Episodes.Select(item => (item.EpisodeId, item.SeasonNumber, item.EpisodeNumber))],
+                    request.ReleaseName,
+                    downloadClientTelemetry);
 
             var result = await MediaGrabHandler.ExecuteAsync(
                 MediaKind.Series,
@@ -3178,7 +3210,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     request.SizeBytes,
                     request.Seeders,
                     request.Force,
-                    request.OverrideReason),
+                    request.OverrideReason,
+                    request.DuplicateAction),
                 mediaStateRepository,
                 platformSettingsRepository,
                 librariesRepository,
@@ -3206,7 +3239,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 guidePackageStore,
                 releasePreferencePlanRepository,
                 libraryId,
-                tagStore);
+                tagStore,
+                activeDownloadCheck);
+
+            if (result.ActiveDownload is not null)
+            {
+                return ActiveDownloadResponse.Conflict(result.ActiveDownload);
+            }
 
             if (result.NotFound)
             {
@@ -3947,7 +3986,8 @@ public static class SeriesEndpointRouteBuilderExtensions
         long? SizeBytes,
         int? Seeders,
         bool? Force,
-        string? OverrideReason);
+        string? OverrideReason,
+        string? DuplicateAction = null);
 
     private sealed record MetadataRefreshJobsRequest(
         bool ForceAll,

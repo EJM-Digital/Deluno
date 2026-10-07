@@ -21,7 +21,27 @@ public sealed record MediaReleaseGrabRequest(
     long? SizeBytes,
     int? Seeders,
     bool? Force,
-    string? OverrideReason);
+    string? OverrideReason,
+    /// <summary>"replace" removes the download already on its way first; "send-as-well" sends this one too. Null asks (#1175).</summary>
+    string? DuplicateAction = null);
+
+/// <summary>A download already on its way for the title or episode a hand send is for (#1175).</summary>
+public sealed record ActiveDownloadConflict(string ClientId, string ClientName, string? QueueItemId, string ReleaseName, string Subject);
+
+/// <summary>
+/// How a hand send finds the download already on its way for the same title or
+/// episode, and removes it when the person chooses Replace (#1175).
+/// </summary>
+public sealed record ActiveDownloadCheck(
+    string Subject,
+    Func<Deluno.Jobs.Contracts.DownloadInFlight, bool> IsSameTarget,
+    Func<ActiveDownloadConflict, CancellationToken, Task<string?>> ReplaceAsync);
+
+public static class DuplicateSendActions
+{
+    public const string Replace = "replace";
+    public const string SendAsWell = "send-as-well";
+}
 
 public delegate Task RecordMediaSearchAttemptAsync(
     string mediaId,
@@ -44,7 +64,8 @@ public sealed record MediaGrabResult(
     bool ForceOverride,
     string? OverrideReason,
     string? DispatchStatus,
-    string? DispatchMessage)
+    string? DispatchMessage,
+    ActiveDownloadConflict? ActiveDownload = null)
 {
     public static MediaGrabResult NotFoundResult()
         => new(true, null, null, null, false, null, null, null);
@@ -78,7 +99,8 @@ public static class MediaGrabHandler
         IGuidePackageStore? guidePackageStore = null,
         IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
         string? libraryId = null,
-        IMediaTagStore? mediaTagStore = null)
+        IMediaTagStore? mediaTagStore = null,
+        ActiveDownloadCheck? activeDownloadCheck = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -90,6 +112,41 @@ public static class MediaGrabHandler
         if (validation.Count > 0)
         {
             return MediaGrabResult.ValidationResult(validation);
+        }
+
+        // #1175: a hand send for something already downloading asks first. Two
+        // copies of one episode meant a second import; nothing said so.
+        if (activeDownloadCheck is not null)
+        {
+            var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(
+                DispatchCoverage.InFlightLimit, cancellationToken) ?? [];
+            var active = inFlight.FirstOrDefault(download =>
+                !download.NeverShown && activeDownloadCheck.IsSameTarget(download));
+            if (active is not null)
+            {
+                var conflict = new ActiveDownloadConflict(
+                    active.ClientId ?? string.Empty,
+                    string.IsNullOrWhiteSpace(active.ClientName) ? "a download client" : active.ClientName!,
+                    active.QueueItemId,
+                    active.ReleaseName,
+                    activeDownloadCheck.Subject);
+                var action = request.DuplicateAction?.Trim().ToLowerInvariant();
+                if (action == DuplicateSendActions.Replace)
+                {
+                    var failure = await activeDownloadCheck.ReplaceAsync(conflict, cancellationToken);
+                    if (failure is not null)
+                    {
+                        return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
+                        {
+                            ["duplicateAction"] = [failure]
+                        });
+                    }
+                }
+                else if (action != DuplicateSendActions.SendAsWell)
+                {
+                    return new MediaGrabResult(false, null, null, null, false, null, null, null, conflict);
+                }
+            }
         }
 
         var entityType = kind == MediaKind.Movie ? "movie" : "series";
