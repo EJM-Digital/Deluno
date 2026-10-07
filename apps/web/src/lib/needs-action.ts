@@ -48,7 +48,13 @@ export function handoffNeedsPerson(handoff: ProcessorHandoffItem) {
   return isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage);
 }
 
+/** Deluno's own stall rules blocked, removed and replaced this download (#1167): Activity's story, not a failed import. */
+export function isHandledByDeluno(dispatch: Pick<DownloadDispatchItem, "importFailureCode">) {
+  return dispatch.importFailureCode?.toLowerCase() === "health-remediation-applied";
+}
+
 export function isDispatchFailure(dispatch: DownloadDispatchItem) {
+  if (isHandledByDeluno(dispatch)) return false;
   return [dispatch.status, dispatch.grabStatus, dispatch.importStatus, dispatch.grabFailureCode, dispatch.importFailureCode]
     .filter((value): value is string => Boolean(value))
     .some((value) => ["failed", "blocked", "rejected", "unresolved", "error", "not_found", "circuit_open", "paused"].includes(value.toLowerCase()))
@@ -92,12 +98,33 @@ export interface NeedsActionSources {
   orphans?: OrphanedDownloadItem[];
 }
 
+/**
+ * An alarm resolves itself when what it was about resolved (#1167): a download that has since been imported
+ * has nothing left to ask of anyone, whatever it reported on the way.
+ */
+function importedDownloads(dispatches: DownloadDispatchItem[]) {
+  const byClientItem = new Set<string>();
+  const byDispatchId = new Set<string>();
+  for (const dispatch of dispatches) {
+    if (dispatch.importStatus?.toLowerCase() !== "imported") continue;
+    byDispatchId.add(dispatch.id);
+    if (dispatch.torrentHashOrItemId) byClientItem.add(`${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase());
+  }
+  return { byClientItem, byDispatchId };
+}
+
 export function needsAction(sources: NeedsActionSources): NeedsAction {
-  const unfilteredQueueAttention = (sources.telemetry?.clients ?? []).flatMap((client) => client.queue).filter(queueItemNeedsAttention);
+  const imported = importedDownloads(sources.dispatches ?? []);
+  const unfilteredQueueAttention = (sources.telemetry?.clients ?? [])
+    .flatMap((client) => client.queue)
+    .filter(queueItemNeedsAttention)
+    .filter((item) => !imported.byClientItem.has(`${item.clientId}:${item.id}`.toLowerCase()));
   // A job with another attempt coming is retrying, not waiting on a person (#562).
   const failedImportJobs = (sources.failedJobs ?? [])
     .filter((job) => job.jobType === "filesystem.import.execute" && !isJobRetrying(job));
-  const failedHandoffs = (sources.handoffs ?? []).filter(handoffNeedsPerson);
+  const failedHandoffs = (sources.handoffs ?? [])
+    .filter(handoffNeedsPerson)
+    .filter((handoff) => !imported.byClientItem.has(`${handoff.clientId}:${handoff.queueItemId}`.toLowerCase()));
 
   // A hand-off a case is about is shown once, as the hand-off row: it, not
   // the case, carries Import original, Retry, Stop waiting and Dismiss
@@ -110,6 +137,8 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     ...(sources.movieRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "movie" as const })),
     ...(sources.seriesRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "series" as const }))
   ].filter((item) => {
+    const dispatchId = dispatchIdIn(item.detailsJson);
+    if (dispatchId !== null && imported.byDispatchId.has(dispatchId)) return false;
     const handoffId = handoffIdIn(item.detailsJson);
     return handoffId === null || !handoffIdsWithTheirOwnRow.has(handoffId);
   });
@@ -207,4 +236,18 @@ function handoffIdIn(detailsJson: string | null | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A failure says which step failed and what to do, never a bare "Error: timed out" (#1167). A message that is
+ * only a generic word is dressed with the step; a message that already says something is left as it is.
+ */
+export function plainFailure(raw: string | null | undefined, step: string): string {
+  const message = (raw ?? "").trim();
+  const bare = message.replace(/^error:?\s*/i, "").replace(/[.!\s]+$/, "").toLowerCase();
+  if (!message || ["timed out", "timeout", "time out", "failed", "unknown", "unknown error", "error"].includes(bare)) {
+    const what = !message || bare === "failed" || bare === "error" || bare.startsWith("unknown") ? "failed" : "timed out";
+    return `${step} ${what}. If the title is already where it belongs, dismiss this; otherwise try again.`;
+  }
+  return message;
 }

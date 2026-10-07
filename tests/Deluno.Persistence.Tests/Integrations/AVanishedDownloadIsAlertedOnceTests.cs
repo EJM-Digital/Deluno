@@ -92,6 +92,64 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         Assert.Contains(world.DispatchId, call.DetailsJson);
     }
 
+    /// <summary>
+    /// #1167: a removal Deluno made itself (the stall rules, Remove failed, a
+    /// person pressing Remove in Transfers) is never then reported as the
+    /// download having vanished from the client.
+    /// </summary>
+    [Fact]
+    public async Task A_download_Deluno_removed_itself_is_not_then_reported_as_vanished()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.RemoveFromClientAsync();
+        await world.PollWithOtherItemInQueueAsync();
+
+        Assert.Equal(0, await world.Problems.CountOpenAsync(CancellationToken.None));
+        Assert.Empty(world.RecoveryHandler.VanishedCalls);
+        var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.DoesNotContain(activities, item => item.Category == "download.vanished");
+    }
+
+    [Fact]
+    public async Task A_download_the_user_removed_in_the_client_itself_still_raises_vanished()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.PollWithOtherItemInQueueAsync();
+
+        Assert.Equal(1, await world.Problems.CountOpenAsync(CancellationToken.None));
+        Assert.Single(world.RecoveryHandler.VanishedCalls);
+    }
+
+    private sealed class RemovalOnlyClient : IDownloadClient
+    {
+        public string Protocol => "qbittorrent";
+
+        public DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, true, true, "qbittorrent");
+
+        public Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, true, $"{action} sent to {client.Name}"));
+
+        public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<string>?>(null);
+
+        public string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
+            => nativeStatus ?? "unknown";
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -168,11 +226,13 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var recoveryHandler = new FakeDispatchRecoveryHandler();
             var service = new DownloadClientTelemetryService(
-                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, new DownloadClientRegistry([new RemovalOnlyClient()]), time, null!,
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
                 blocklist, dispatchProblemLog: problems, recoveryHandler: recoveryHandler);
             return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, problems, recoveryHandler);
         }
+
+        public Task RemoveFromClientAsync() => _service.ReclaimCompletedAsync(_client.Id, "hash-1", CancellationToken.None);
 
         public Task PollWithOtherItemInQueueAsync() => PollAsync(queue: [Queued("hash-other")], history: []);
 

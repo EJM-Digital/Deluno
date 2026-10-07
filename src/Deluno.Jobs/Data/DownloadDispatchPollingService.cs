@@ -186,7 +186,34 @@ public sealed class DownloadDispatchPollingService(
                 }
             }
             else if (dispatch.ImportStatus == "failed"
+                && string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase))
+            {
+                // Deluno's own stall rules handled this one (blocked, removed,
+                // searched again): Activity says so. Anything an earlier build
+                // raised about it, an "import failed" or a "vanished" case, is
+                // released here, so it stops counting as needing the user (#1167).
+                var released = false;
+                foreach (var kind in new[] { "import-failed", "vanished-downloading" })
+                {
+                    if (await problemLog.IsRecordedAsync(dispatch.Id, kind, cancellationToken))
+                    {
+                        await problemLog.SettleAsync(dispatch.Id, kind, cancellationToken);
+                        released = true;
+                    }
+                }
+
+                if (released)
+                {
+                    await recoveryHandler.HandleDispatchSettledAsync(dispatch.Id, "Deluno handled this download itself.", cancellationToken);
+                    report = report with { ProblemsSettled = report.ProblemsSettled + 1 };
+                }
+            }
+            else if (dispatch.ImportStatus == "failed"
                 && !string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
+                // A download Deluno's own stall rules handled (blocked, removed,
+                // searched again) is Activity's story, not a failed import and
+                // not something that needs the user (#1167).
+                && !string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)
                 && !await problemLog.IsRecordedAsync(dispatch.Id, "import-failed", cancellationToken))
             {
                 await RecordImportFailureRecoveryAsync(
@@ -208,7 +235,7 @@ public sealed class DownloadDispatchPollingService(
         // After archiving, so a download archived on this pass releases its
         // problems on this pass rather than an hour later.
         var resolved = await problemLog.SettleMovedOnAsync(cancellationToken);
-        report = report with { ProblemsSettled = resolved.Count };
+        report = report with { ProblemsSettled = report.ProblemsSettled + resolved.Count };
 
         // The recovery case written beside each problem settles with it (#559),
         // or it goes on saying "never appeared" about a download the client

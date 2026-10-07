@@ -1170,6 +1170,52 @@ public sealed class DownloadClientTelemetryService(
         string queueItemId,
         CancellationToken cancellationToken)
     {
+        var outcome = await RunActionCoreAsync(client, action, queueItemId, cancellationToken);
+        if (outcome.Succeeded && IsRemovalAction(action))
+        {
+            await NoteRemovedByDelunoAsync(client, queueItemId, cancellationToken);
+        }
+
+        return outcome;
+    }
+
+    private static bool IsRemovalAction(string action)
+        => action.StartsWith("delete", StringComparison.OrdinalIgnoreCase)
+           || action.StartsWith("remove", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A removal Deluno made itself (the stall rules, Remove failed, a person
+    /// pressing Remove in the Queue) is never then reported as the download
+    /// having "vanished from the client" (#1167). The vanished notice is
+    /// marked as already seen and nobody is waiting on it.
+    /// </summary>
+    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        if (dispatchProblemLog is null || string.IsNullOrWhiteSpace(queueItemId))
+        {
+            return;
+        }
+
+        try
+        {
+            var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
+            if (dispatch is not null)
+            {
+                await dispatchProblemLog.RecordAcknowledgedAsync(dispatch.Id, "vanished-downloading", cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Bookkeeping only: the removal itself already happened.
+        }
+    }
+
+    private async Task<DownloadClientActionResult> RunActionCoreAsync(
+        DownloadClientItem client,
+        string action,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
         try
         {
             return !downloadClientRegistry.TryGet(client.Protocol, out var implementation)
@@ -1862,7 +1908,7 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"Applied failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}.";
+                    : $"{item.ReleaseName}: {StalledReason(struck, client.Name)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
@@ -1916,6 +1962,23 @@ public sealed class DownloadClientTelemetryService(
         }
 
         return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes, refused);
+    }
+
+    /// <summary>What Deluno did about a failed download, in a sentence a person can read in Activity (#1167).</summary>
+    internal static string PlainRemediation(IReadOnlyList<string> applied, string clientName)
+    {
+        var steps = new List<string>();
+        foreach (var step in applied)
+        {
+            if (step.Contains("refused", StringComparison.OrdinalIgnoreCase)) steps.Add("blocked this release");
+            else if (step.Contains("replacement", StringComparison.OrdinalIgnoreCase)) steps.Add("is looking for another copy");
+            else if (step.Contains("client entry", StringComparison.OrdinalIgnoreCase)) steps.Add($"removed it from {clientName}");
+            else if (step.Contains("purge", StringComparison.OrdinalIgnoreCase)) steps.Add("deleted the leftover files");
+        }
+
+        if (steps.Count == 0) return "Deluno handled it.";
+        var joined = steps.Count == 1 ? steps[0] : string.Join(", ", steps.Take(steps.Count - 1)) + " and " + steps[^1];
+        return $"Deluno {joined}.";
     }
 
     /// <summary>

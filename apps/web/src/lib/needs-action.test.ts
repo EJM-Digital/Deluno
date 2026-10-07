@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, ProcessorHandoffItem, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, isVanished, needsAction } from "./needs-action";
+import { canTryAgain, isVanished, needsAction, plainFailure } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -221,5 +221,65 @@ describe("isVanished", () => {
   it("is true only for a vanished-downloading case", () => {
     expect(isVanished({ failureKind: "vanished-downloading" })).toBe(true);
     expect(isVanished({ failureKind: "downloadFailed" })).toBe(false);
+  });
+});
+
+// #1167, the rc.30 live test: 88 rows overnight for downloads Deluno had already dealt with.
+describe("needsAction: what Deluno handled itself is not for the user", () => {
+  it("does not list a download the stall rules blocked, removed and replaced", () => {
+    const handled = dispatch({
+      id: "stalled",
+      status: "sent",
+      grabFailureCode: null,
+      importStatus: "failed",
+      importFailureCode: "health-remediation-applied",
+      importFailureMessage: "release refused; replacement search queued; client entry removed (payload retained by client)"
+    });
+
+    const result = needsAction({ dispatches: [handled] });
+
+    expect(result.failedDownloads).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+
+  it("still lists a download whose import was tried and failed", () => {
+    const failed = dispatch({ id: "bad", status: "sent", grabFailureCode: null, importStatus: "failed", importFailureCode: "no-video-file", importFailureMessage: "No video file." });
+
+    expect(needsAction({ dispatches: [failed] }).total).toBe(1);
+  });
+
+  it("drops a failed hand-off once its download was imported", () => {
+    const imported = dispatch({ id: "done", status: "imported", grabFailureCode: null, importStatus: "imported", torrentHashOrItemId: "hash-1" });
+    const handoff = {
+      id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "client-1", queueItemId: "hash-1", releaseName: "Oppenheimer.2023",
+      sourcePath: "/downloads/oppenheimer", processorName: "Weir", status: "failed", outputPath: null, importJobId: null,
+      failureMessage: "The processor refused the hand-off with HTTP 400", createdUtc: "2026-10-07T03:00:00Z", updatedUtc: "2026-10-07T03:00:00Z"
+    } as ProcessorHandoffItem;
+
+    expect(needsAction({ handoffs: [handoff], dispatches: [] }).failedHandoffs).toHaveLength(1);
+    expect(needsAction({ handoffs: [handoff], dispatches: [imported] }).failedHandoffs).toHaveLength(0);
+  });
+
+  it("drops a recovery case once its download was imported", () => {
+    const imported = dispatch({ id: "d1", status: "imported", grabFailureCode: null, importStatus: "imported" });
+
+    const result = needsAction({
+      movieRecovery: recovery([{ id: "case-1", dispatchId: "d1" }]),
+      seriesRecovery: noSeriesRecovery,
+      dispatches: [imported]
+    });
+
+    expect(result.recoveryCases).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+});
+
+describe("plainFailure", () => {
+  it("never leaves a bare 'Error: timed out'", () => {
+    expect(plainFailure("Error: timed out", "Sending it to Weir")).toBe("Sending it to Weir timed out. If the title is already where it belongs, dismiss this; otherwise try again.");
+  });
+
+  it("leaves a message that already says something as it is", () => {
+    expect(plainFailure("Weir's watched folder is not set for this media scope.", "Sending it to Weir")).toBe("Weir's watched folder is not set for this media scope.");
   });
 });
