@@ -1618,13 +1618,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   {handoffFixes(openQueueHandoff)}
                 </div>
               ) : null}
-              {importPreviews[openQueueItem.id] ? (
+              {!queueItemHasFiles(openQueueItem) ? (
+                <p className="text-(length:--type-caption) text-muted-foreground">
+                  This download has no files yet (a magnet link is still fetching its details), so there is nothing to import. Import opens once it has files.
+                </p>
+              ) : importPreviews[openQueueItem.id] ? (
                 <ImportPreviewFacts preview={importPreviews[openQueueItem.id]!} />
               ) : (
                 <p className="text-(length:--type-caption) text-muted-foreground">
                   Preview shows exactly where the file would land and what it would be renamed to, before anything moves.
                 </p>
               )}
+              {queueItemHasFiles(openQueueItem) ? (
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => void previewImport(openQueueItem)} disabled={busyKey !== null}>
                   {busyKey === `preview:${openQueueItem.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -1635,6 +1640,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   Queue import
                 </Button>
               </div>
+              ) : null}
             </DrawerSection>
 
             <DrawerSection title="In the client">
@@ -2444,6 +2450,11 @@ function isProcessorTerminal(status: string) {
 }
 
 /** Mirrors `ProcessorHandoffStatuses.CanReleaseOriginal`: the processor stopped without delivering. */
+/** A magnet still fetching its details is 0 B of 0 B: nothing to preview or import yet (#1138). */
+function queueItemHasFiles(item: { sizeBytes: number; downloadedBytes: number }): boolean {
+  return item.sizeBytes > 0 || item.downloadedBytes > 0;
+}
+
 function canImportOriginal(status: string) {
   return ["failed", "timed-out", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
 }

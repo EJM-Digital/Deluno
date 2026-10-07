@@ -1037,7 +1037,10 @@ export function SettingsCustomFormatsPage() {
           />
         ) : (
           <ListTable listId="custom-format-rules" columns={RULE_COLUMNS}>
-            {split.groups.flatMap((group) => [
+            {split.groups.flatMap((group) => {
+              // Each description once per group (#1138): a second rule that reads the same says so instead of repeating it.
+              const shownDescriptions = new Set<string>();
+              return [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {
                 const specifications = readSpecifications(format.conditions);
@@ -1045,6 +1048,9 @@ export function SettingsCustomFormatsPage() {
                 const conditionCount = specifications?.length ?? conditions.length;
                 const guideFormat = format.trashId ? guide.customFormats.find((candidate) => candidate.trashId === format.trashId) : undefined;
                 const usedBy = librariesByFormat.get(format.id) ?? [];
+                const description = guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : specifications ? specificationKind(specifications[0]!.implementation) : "No conditions");
+                const repeatsAbove = shownDescriptions.has(description);
+                shownDescriptions.add(description);
                 // The guide's own names are its filenames: "WEB Tier 01",
                 // "Repack2", "BR-DISK". The column your eye lands on first
                 // should be English, with the guide's name kept underneath
@@ -1061,7 +1067,7 @@ export function SettingsCustomFormatsPage() {
                     />
                     {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
                     <ListCell
-                      primary={guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : specifications ? specificationKind(specifications[0]!.implementation) : "No conditions")}
+                      primary={repeatsAbove ? "Reads the same as the rule above" : description}
                       secondary={conditionCount ? `${conditionCount} ${conditionCount === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
                     {/*
@@ -1084,7 +1090,8 @@ export function SettingsCustomFormatsPage() {
                   </ListRow>
                 );
               })
-            ])}
+              ];
+            })}
           </ListTable>
         )}
       </ListCard>
