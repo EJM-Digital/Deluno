@@ -5,7 +5,6 @@ const fetchJson = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", () => ({ fetchJson }));
 
 const { UsenetProviderPanel, isUsenetProtocol } = await import("./usenet-provider-panel");
-const { ClientLoginReveal, isOnThisComputer } = await import("./client-login-reveal");
 
 describe("Usenet provider (#1142)", () => {
   afterEach(() => fetchJson.mockReset());
@@ -41,32 +40,5 @@ describe("Usenet provider (#1142)", () => {
     expect(isUsenetProtocol("sabnzbd")).toBe(true);
     expect(isUsenetProtocol("nzbget")).toBe(true);
     expect(isUsenetProtocol("qbittorrent")).toBe(false);
-  });
-});
-
-describe("a client's login on this computer (#1142)", () => {
-  afterEach(() => fetchJson.mockReset());
-
-  it("shows nothing until asked, then the address and login, and can hide it again", async () => {
-    fetchJson.mockResolvedValueOnce({ address: "http://localhost:6789/", username: "nzbget", secret: "pw-123", secretLabel: "Password" });
-
-    render(<ClientLoginReveal clientId="c2" name="NZBGet" />);
-    expect(screen.queryByText("pw-123")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show the login for NZBGet" }));
-
-    expect(await screen.findByText("pw-123")).toBeTruthy();
-    expect(screen.getByText("http://localhost:6789/")).toBeTruthy();
-    expect(screen.getByText("nzbget")).toBeTruthy();
-    expect(fetchJson).toHaveBeenCalledWith("/api/download-clients/c2/reveal-login", { method: "POST" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Hide the login" }));
-    expect(screen.queryByText("pw-123")).toBeNull();
-  });
-
-  it("only offers it for a client on this computer", () => {
-    expect(isOnThisComputer("localhost")).toBe(true);
-    expect(isOnThisComputer("127.0.0.1")).toBe(true);
-    expect(isOnThisComputer("nas.local")).toBe(false);
   });
 });

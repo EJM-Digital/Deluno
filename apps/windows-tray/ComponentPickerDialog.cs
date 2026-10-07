@@ -19,6 +19,15 @@ public sealed class ComponentPickerDialog : Form
 {
     private readonly CheckedListBox _list;
     private readonly Label _status;
+    private readonly Panel _usenetPanel;
+    private readonly Label _usenetHeading;
+    private readonly Label _sabLabel;
+    private readonly TextBox _sabUser;
+    private readonly TextBox _sabPassword;
+    private readonly Label _nzbLabel;
+    private readonly TextBox _nzbUser;
+    private readonly TextBox _nzbPassword;
+    private readonly CheckBox _sameLogin;
     private readonly Button _btnInstall;
     private readonly Button _btnSkip;
     private readonly Button _btnLicences;
@@ -90,6 +99,9 @@ public sealed class ComponentPickerDialog : Form
             {
                 e.NewValue = CheckState.Unchecked;
             }
+
+            // The tick has not landed yet; lay the login boxes out once it has.
+            BeginInvoke(UpdateUsenetPanel);
         };
 
         _btnLicences = new Button { Text = "View licences", Location = new Point(16, 250), Size = new Size(130, 26) };
@@ -119,6 +131,19 @@ public sealed class ComponentPickerDialog : Form
             Text = "Each ticked item runs its own installer, downloaded from the project's official source and verified before it runs."
         };
 
+        // The logins for the two Usenet clients (#1142): shown only while SABnzbd or NZBGet is ticked.
+        _usenetPanel = new Panel { Location = new Point(16, 426), Size = new Size(428, 0), Visible = false };
+        _usenetHeading = new Label { Text = "Choose the login you will use to sign in to the Usenet client's own web page.", Location = new Point(0, 0), Size = new Size(428, 32) };
+        _sabLabel = new Label { Text = "SABnzbd username and password", AutoSize = true };
+        _sabUser = new TextBox { Size = new Size(206, 23), AccessibleName = "SABnzbd username" };
+        _sabPassword = new TextBox { Size = new Size(206, 23), UseSystemPasswordChar = true, AccessibleName = "SABnzbd password" };
+        _nzbLabel = new Label { Text = "NZBGet username and password", AutoSize = true };
+        _nzbUser = new TextBox { Size = new Size(206, 23), AccessibleName = "NZBGet username" };
+        _nzbPassword = new TextBox { Size = new Size(206, 23), UseSystemPasswordChar = true, AccessibleName = "NZBGet password" };
+        _sameLogin = new CheckBox { Text = "Use the same login for both", AutoSize = true, AccessibleName = "Use the same login for both" };
+        _sameLogin.CheckedChanged += (_, _) => UpdateUsenetPanel();
+        _usenetPanel.Controls.AddRange([_usenetHeading, _sabLabel, _sabUser, _sabPassword, _nzbLabel, _nzbUser, _nzbPassword, _sameLogin]);
+
         _btnInstall = new Button { Text = "Install selected", Location = new Point(216, 462), Size = new Size(120, 28) };
         _btnInstall.Click += async (_, _) => await RunInstallAsync();
 
@@ -142,12 +167,67 @@ public sealed class ComponentPickerDialog : Form
         _btnClose = new Button { Text = "Close", DialogResult = DialogResult.OK, Location = new Point(344, 462), Size = new Size(100, 28), Visible = false, Enabled = false };
 
         Controls.AddRange([lblTitle, _list, _btnLicences, _lblFolders, _lblCompleted, _completedRoot, _btnBrowseCompleted, _lblIncomplete, _incompleteRoot, _btnBrowseIncomplete,
-            _status, _btnInstall, _btnSkip, _progressList, _summary, _btnOpen, _btnClose]);
+            _status, _usenetPanel, _btnInstall, _btnSkip, _progressList, _summary, _btnOpen, _btnClose]);
         CancelButton = _btnSkip;
         _title = lblTitle;
     }
 
     private Label? _title;
+
+    private bool IsTicked(string kind)
+    {
+        for (var i = 0; i < _entries.Count; i++)
+        {
+            if (_entries[i].Spec.Kind == kind && _list.GetItemCheckState(i) == CheckState.Checked)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Shows a username and password for each ticked Usenet client, and moves the buttons down to make room (#1142).</summary>
+    private void UpdateUsenetPanel()
+    {
+        var sab = IsTicked("sabnzbd");
+        var nzb = IsTicked("nzbget");
+        _usenetPanel.Visible = sab || nzb;
+
+        var same = sab && nzb;
+        _sameLogin.Visible = same;
+        var showNzb = nzb && !(same && _sameLogin.Checked);
+
+        var y = _usenetHeading.Bottom;
+        void Place(Label label, TextBox user, TextBox password, bool visible)
+        {
+            label.Visible = user.Visible = password.Visible = visible;
+            if (!visible)
+            {
+                return;
+            }
+
+            label.Location = new Point(0, y);
+            user.Location = new Point(0, y + 18);
+            password.Location = new Point(214, y + 18);
+            y += 48;
+        }
+
+        Place(_sabLabel, _sabUser, _sabPassword, sab);
+        Place(_nzbLabel, _nzbUser, _nzbPassword, showNzb);
+        if (same)
+        {
+            _sameLogin.Location = new Point(0, y);
+            y += 26;
+        }
+
+        var extra = _usenetPanel.Visible ? y + 6 : 0;
+        _usenetPanel.Height = extra;
+        _status.Top = 426 + extra;
+        _btnInstall.Top = 462 + extra;
+        _btnSkip.Top = 462 + extra;
+        ClientSize = new Size(460, 500 + extra);
+    }
 
     private static void Browse(TextBox target)
     {
@@ -204,12 +284,26 @@ public sealed class ComponentPickerDialog : Form
             return;
         }
 
+        var (logins, loginProblem) = UsenetLogins.Resolve(
+            ticked.Any(spec => spec.Kind == "sabnzbd"), ticked.Any(spec => spec.Kind == "nzbget"), _sameLogin.Checked,
+            _sabUser.Text.Trim(), _sabPassword.Text, _nzbUser.Text.Trim(), _nzbPassword.Text);
+        if (loginProblem is not null)
+        {
+            _status.ForeColor = Color.Firebrick;
+            _status.Text = loginProblem;
+            return;
+        }
+
+        // The logins are held by the installer from here; clear the boxes so nothing is left on the form.
+        _sabPassword.Clear();
+        _nzbPassword.Clear();
+
         ShowProgressView(ticked);
         var results = new List<ComponentInstallResult>();
         foreach (var spec in ticked)
         {
             // On a worker thread so the window keeps repainting while an installer is hashed, run or waited on.
-            var result = await Task.Run(() => _installer.InstallAsync(spec, CancellationToken.None, progress => BeginInvoke(() => ShowProgress(progress)), layout));
+            var result = await Task.Run(() => _installer.InstallAsync(spec, CancellationToken.None, progress => BeginInvoke(() => ShowProgress(progress)), layout, logins.GetValueOrDefault(spec.Kind)));
             results.Add(result);
         }
 
@@ -219,7 +313,7 @@ public sealed class ComponentPickerDialog : Form
 
     private void ShowProgressView(IReadOnlyList<BundledComponentSpec> ticked)
     {
-        foreach (var control in new Control[] { _list, _btnLicences, _lblFolders, _lblCompleted, _completedRoot, _btnBrowseCompleted, _lblIncomplete, _incompleteRoot, _btnBrowseIncomplete, _status, _btnInstall, _btnSkip })
+        foreach (var control in new Control[] { _list, _btnLicences, _lblFolders, _lblCompleted, _completedRoot, _btnBrowseCompleted, _lblIncomplete, _incompleteRoot, _btnBrowseIncomplete, _status, _usenetPanel, _btnInstall, _btnSkip })
         {
             control.Visible = false;
         }

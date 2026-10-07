@@ -2,7 +2,6 @@ import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-n
 import { ConnectionUpdatePanel } from "../../components/app/connection-update-panel";
 import { useEffect, useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
-import { ClientLoginReveal, isOnThisComputer } from "../../components/app/client-login-reveal";
 import { UsenetProviderPanel, isUsenetProtocol } from "../../components/app/usenet-provider-panel";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type QbittorrentBlocklistSyncState, type SharingRuleItem } from "../../lib/api";
@@ -146,7 +145,6 @@ export function ClientDrawerBody({
         <SwitchRow label="Add downloads paused" description="New downloads sent to this client start paused instead of active." checked={form.addPaused} onCheckedChange={(checked) => setForm((current) => ({ ...current, addPaused: checked }))} />
       </DrawerSection>
 
-      {editing && isOnThisComputer(form.host) ? <ClientLoginReveal clientId={editing.id} name={editing.name} /> : null}
       {editing && isUsenetProtocol(form.protocol) ? <UsenetProviderPanel clientId={editing.id} /> : null}
 
       <DrawerSection title="Categories" aside="keep Movies and TV apart in the client">

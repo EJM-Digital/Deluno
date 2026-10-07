@@ -239,12 +239,12 @@ public sealed class ComponentInstallService(
     /// downloading, checking, installing, started, or failed with the reason. A download client is then given its
     /// Movies and TV categories and the folders in <paramref name="layout"/> (#1133).
     /// </summary>
-    public async Task<ComponentInstallResult> InstallAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress>? progress = null, DownloadLayout? layout = null)
+    public async Task<ComponentInstallResult> InstallAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress>? progress = null, DownloadLayout? layout = null, BundledComponentCredentials? chosenLogin = null)
     {
         ComponentInstallResult result;
         try
         {
-            result = await InstallCoreAsync(spec, cancellationToken, progress ?? (_ => { }), layout);
+            result = await InstallCoreAsync(spec, cancellationToken, progress ?? (_ => { }), layout, chosenLogin);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -259,7 +259,7 @@ public sealed class ComponentInstallService(
         return result;
     }
 
-    private async Task<ComponentInstallResult> InstallCoreAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress> progress, DownloadLayout? layout)
+    private async Task<ComponentInstallResult> InstallCoreAsync(BundledComponentSpec spec, CancellationToken cancellationToken, Action<ComponentProgress> progress, DownloadLayout? layout, BundledComponentCredentials? chosenLogin = null)
     {
         void Report(ComponentStage stage, string? detail = null) => progress(new ComponentProgress(spec.Kind, spec.DisplayName, stage, detail));
         if (IsAlreadyInstalled(spec))
@@ -431,7 +431,7 @@ public sealed class ComponentInstallService(
         // Recorded before the config is seeded, so a sign-in kept for the app never exists
         // without the record that says the app is installed (#1061).
         RecordInstalled(spec);
-        await SeedConfigAsync(spec, cancellationToken);
+        var loginProblem = await SeedConfigAsync(spec, chosenLogin, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
         {
@@ -440,7 +440,14 @@ public sealed class ComponentInstallService(
 
         Report(ComponentStage.Starting, "Starting it and waiting until it answers");
         var started = await StartAndWaitForReadyAsync(spec, cancellationToken);
-        await CaptureGeneratedCredentialsAsync(spec, cancellationToken);
+        await CaptureGeneratedCredentialsAsync(spec, chosenLogin, cancellationToken);
+        if (loginProblem is not null)
+        {
+            _log.Write($"{spec.DisplayName}: the login chosen in the picker could not be written to its settings.");
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.InstalledNeedsSetup,
+                $"{spec.DisplayName} installed and running, but {loginProblem}");
+        }
+
         if (started.Outcome != ComponentInstallOutcome.Installed || layout is null
             || !string.Equals(spec.Category, BundledComponentSpec.DownloadClientCategory, StringComparison.Ordinal))
         {
@@ -497,7 +504,7 @@ public sealed class ComponentInstallService(
     /// into the same secret store the other clients' sign-ins use, so the running Deluno can
     /// connect with it (#1054). The key is the "password"; there is no user name.
     /// </summary>
-    private async Task CaptureGeneratedCredentialsAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    private async Task CaptureGeneratedCredentialsAsync(BundledComponentSpec spec, BundledComponentCredentials? chosenLogin, CancellationToken cancellationToken)
     {
         if (!string.Equals(spec.Kind, "sabnzbd", StringComparison.OrdinalIgnoreCase))
         {
@@ -516,7 +523,7 @@ public sealed class ComponentInstallService(
                     {
                         // SABnzbd keeps its own sign-in defaults; the "password" Deluno's
                         // connection uses is its own API key, and there is no user name.
-                        var seededUser = _credentials.Value.TryGet(spec.Kind)?.Username ?? string.Empty;
+                        var seededUser = chosenLogin?.Username ?? _credentials.Value.TryGet(spec.Kind)?.Username ?? string.Empty;
                         _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(seededUser, key));
                     }
                     catch
@@ -566,13 +573,14 @@ public sealed class ComponentInstallService(
     /// Deluno's secret store -- and only when the config really was written, so a
     /// stored password never disagrees with a config the client is using (#1050).
     /// </summary>
-    private async Task SeedConfigAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    private async Task<string?> SeedConfigAsync(BundledComponentSpec spec, BundledComponentCredentials? chosenLogin, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(spec.ConfigFilePath))
         {
-            return;
+            return null;
         }
 
+        // SABnzbd and NZBGet get the login the person chose in the picker (#1142); qBittorrent a generated one.
         var credentials = string.IsNullOrWhiteSpace(spec.CredentialsUsername)
             ? null
             : new BundledComponentCredentials(spec.CredentialsUsername, GeneratedPassword.Create());
@@ -592,9 +600,27 @@ public sealed class ComponentInstallService(
                 : ComponentConfig.RenderPlaceholders(spec.ConfigFileContent, credentials);
         }
 
+        string? loginProblem = null;
+        if (chosenLogin is not null && UsenetLogins.IsUsenetKind(spec.Kind))
+        {
+            var withLogin = content is null ? null : UsenetLogins.WriteInto(spec.Kind, content, chosenLogin);
+            if (withLogin is null)
+            {
+                // The vendor's file no longer looks the way this expects: leave it unwritten rather than guess.
+                loginProblem = $"Deluno could not put the login you chose into its settings. It keeps the login it ships with; set your own in {spec.DisplayName} itself.";
+                content = null;
+            }
+            else
+            {
+                content = withLogin;
+                // SABnzbd's connection uses its API key, captured after it starts; NZBGet's uses this login.
+                credentials = string.Equals(spec.Kind, "sabnzbd", StringComparison.OrdinalIgnoreCase) ? null : chosenLogin;
+            }
+        }
+
         if (content is null)
         {
-            return;
+            return loginProblem;
         }
 
         var configPath = Environment.ExpandEnvironmentVariables(spec.ConfigFilePath);
@@ -610,6 +636,8 @@ public sealed class ComponentInstallService(
                 // The client still works; the connection just has to be filled in by hand.
             }
         }
+
+        return null;
     }
 
     private static (string Path, string? Arguments) BuildInstallCommand(string installerPath, string? silentArgs)

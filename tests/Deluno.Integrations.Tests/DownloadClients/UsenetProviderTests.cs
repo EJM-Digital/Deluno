@@ -133,20 +133,6 @@ public sealed class UsenetProviderTests
         Assert.Null(result);
     }
 
-    [Fact]
-    public void The_login_to_show_is_the_connections_own_and_SABnzbd_calls_it_an_API_key()
-    {
-        var reveal = ClientLoginReveal.From(SabClient());
-
-        Assert.Equal("http://localhost:8085/", reveal.Address);
-        Assert.Equal("apikey", reveal.Secret);
-        Assert.Equal("API key", reveal.SecretLabel);
-
-        var nzbget = ClientLoginReveal.From(SabClient() with { Protocol = "nzbget", Username = "nzbget", Secret = "pw" });
-        Assert.Equal("Password", nzbget.SecretLabel);
-        Assert.Equal("nzbget", nzbget.Username);
-    }
-
     private static DownloadClientItem SabClient()
         => new("sab-1", "SABnzbd", "sabnzbd", "localhost", 8085, null, "apikey", "http://localhost:8085/", false, null,
             "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

@@ -211,3 +211,111 @@ public sealed class ComponentAutoStarter(
     public static string? ExpandArgs(string? arguments)
         => string.IsNullOrWhiteSpace(arguments) ? arguments : Environment.ExpandEnvironmentVariables(arguments);
 }
+
+/// <summary>
+/// The login the person picks for SABnzbd and NZBGet in the installer's picker (#1142), checked before anything is
+/// installed and written into each client's own settings. Never logged: a failed check names the rule, not the value.
+/// </summary>
+public static class UsenetLogins
+{
+    public const int MinimumUsernameLength = 3;
+    public const int MinimumPasswordLength = 8;
+
+    public static bool IsUsenetKind(string kind)
+        => string.Equals(kind, "sabnzbd", StringComparison.OrdinalIgnoreCase) || string.Equals(kind, "nzbget", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The first thing wrong with a login, in plain words, or null when it can be used.</summary>
+    public static string? Validate(string displayName, string? username, string? password)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
+        {
+            return $"Choose a username and a password for {displayName}.";
+        }
+
+        if (username.Length < MinimumUsernameLength)
+        {
+            return $"The {displayName} username needs at least {MinimumUsernameLength} characters.";
+        }
+
+        if (password.Length < MinimumPasswordLength)
+        {
+            return $"The {displayName} password needs at least {MinimumPasswordLength} characters.";
+        }
+
+        if (!IsSafe(username) || !IsSafe(password))
+        {
+            return $"The {displayName} username and password cannot start or end with a space, or contain quote marks, backslashes or $.";
+        }
+
+        return null;
+    }
+
+    private static bool IsSafe(string value)
+        => value == value.Trim() && !value.Any(c => char.IsControl(c) || c is '"' or '\'' or '\\' or '$');
+
+    /// <summary>SABnzbd's <c>[misc]</c> section gets the login; NZBGet's <c>ControlUsername</c> and <c>ControlPassword</c> lines are replaced. Null when the file has no place for it.</summary>
+    public static string? WriteInto(string kind, string content, BundledComponentCredentials login)
+    {
+        if (string.Equals(kind, "sabnzbd", StringComparison.OrdinalIgnoreCase))
+        {
+            var at = content.IndexOf("[misc]", StringComparison.OrdinalIgnoreCase);
+            if (at < 0)
+            {
+                return null;
+            }
+
+            var lineEnd = content.IndexOf('\n', at);
+            var lead = lineEnd < 0 ? "\n" : string.Empty;
+            lineEnd = lineEnd < 0 ? content.Length : lineEnd + 1;
+            return content[..lineEnd] + lead + $"username = \"{login.Username}\"\npassword = \"{login.Password}\"\n" + content[lineEnd..];
+        }
+
+        const System.Text.RegularExpressions.RegexOptions Lines = System.Text.RegularExpressions.RegexOptions.Multiline;
+        if (System.Text.RegularExpressions.Regex.Matches(content, @"^ControlUsername=[^\r\n]*", Lines).Count != 1
+            || System.Text.RegularExpressions.Regex.Matches(content, @"^ControlPassword=[^\r\n]*", Lines).Count != 1)
+        {
+            return null;
+        }
+
+        var replaced = System.Text.RegularExpressions.Regex.Replace(content, @"^ControlUsername=[^\r\n]*", _ => "ControlUsername=" + login.Username, Lines);
+        return System.Text.RegularExpressions.Regex.Replace(replaced, @"^ControlPassword=[^\r\n]*", _ => "ControlPassword=" + login.Password, Lines);
+    }
+
+    /// <summary>
+    /// What the picker hands the installer: one login per ticked Usenet client, the same one for both when asked.
+    /// Returns the first problem when a ticked client's login is not usable.
+    /// </summary>
+    public static (IReadOnlyDictionary<string, BundledComponentCredentials> Logins, string? Problem) Resolve(
+        bool sabnzbdTicked, bool nzbgetTicked, bool sameForBoth,
+        string? sabnzbdUser, string? sabnzbdPassword, string? nzbgetUser, string? nzbgetPassword)
+    {
+        var logins = new Dictionary<string, BundledComponentCredentials>(StringComparer.OrdinalIgnoreCase);
+        if (sameForBoth && sabnzbdTicked && nzbgetTicked)
+        {
+            nzbgetUser = sabnzbdUser;
+            nzbgetPassword = sabnzbdPassword;
+        }
+
+        if (sabnzbdTicked)
+        {
+            if (Validate("SABnzbd", sabnzbdUser, sabnzbdPassword) is { } problem)
+            {
+                return (logins, problem);
+            }
+
+            logins["sabnzbd"] = new BundledComponentCredentials(sabnzbdUser!, sabnzbdPassword!);
+        }
+
+        if (nzbgetTicked)
+        {
+            if (Validate("NZBGet", nzbgetUser, nzbgetPassword) is { } problem)
+            {
+                return (logins, problem);
+            }
+
+            logins["nzbget"] = new BundledComponentCredentials(nzbgetUser!, nzbgetPassword!);
+        }
+
+        return (logins, null);
+    }
+}
