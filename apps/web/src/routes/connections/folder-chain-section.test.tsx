@@ -40,6 +40,25 @@ describe("the folder check (#616)", () => {
     expect(fetchJson).toHaveBeenCalledWith("/api/libraries/tv/folder-chain", expect.anything());
   });
 
+  it("shows where a client downloads beside where it finishes, and flags the two being the same (#1164)", async () => {
+    fetchJson.mockResolvedValue({
+      ...mismatch,
+      clients: [{
+        clientId: "d", clientName: "Deluge", protocol: "deluge", category: "movies",
+        links: [
+          { step: "incomplete", status: "problem", message: "Deluge downloads movies into C:\Downloads\Completed\Movies, which is the same as the folder they finish in. Half-finished files sit where the processor and the library look." },
+          { step: "folder", status: "ok", message: "Deluge saves movies to C:\Downloads\Completed\Movies." }
+        ]
+      }]
+    });
+
+    render(<FolderChainSection libraryId="tv" />);
+
+    expect(await screen.findByText("Deluge · where it downloads")).toBeTruthy();
+    expect(screen.getByText("Deluge · where it finishes")).toBeTruthy();
+    expect(screen.getByText(/Half-finished files sit where the processor and the library look/)).toBeTruthy();
+  });
+
   it("checks again on request", async () => {
     fetchJson.mockResolvedValue({ ...mismatch, allMatch: true, clients: [], libraryLinks: [] });
 

@@ -80,7 +80,7 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
         <ul className="grid gap-(--grid-gap)" aria-label="Folder check">
           {report.clients.map((client) =>
             client.links.map((link) => (
-              <ChainLine key={`${client.clientId}-${link.step}`} link={link} title={`${client.clientName} · ${link.step === "category" ? `category ${client.category}` : link.step === "layout" ? "file layout" : "folder"}`} />
+              <ChainLine key={`${client.clientId}-${link.step}`} link={link} title={`${client.clientName} · ${clientStepTitle(link.step, client.category)}`} />
             ))
           )}
           {report.libraryLinks.map((link) => (
@@ -94,6 +94,14 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
       </Button>
     </DrawerSection>
   );
+}
+
+/** What a client's line is called: where it downloads (in progress) is set beside where it finishes (#1164). */
+export function clientStepTitle(step: string, category: string): string {
+  if (step === "category") return `category ${category}`;
+  if (step === "layout") return "file layout";
+  if (step === "incomplete") return "where it downloads";
+  return "where it finishes";
 }
 
 const STEP_TITLE: Record<string, string> = {

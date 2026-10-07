@@ -25,4 +25,11 @@ public sealed record DownloadClientCategoryCheckResult(
     /// makes a download land where Deluno is looking - and checking only the
     /// name is how a misrouted category came back "ready".
     /// </summary>
-    string? SavePath = null);
+    string? SavePath = null,
+    /// <summary>
+    /// Where the client keeps a download while it is in progress (#1164): Deluge's download location,
+    /// qBittorrent's temporary path, Transmission's incomplete folder, SABnzbd's temporary download
+    /// folder, NZBGet's intermediate folder. When the client has none switched on this is the folder
+    /// the download finishes in, because that is where it is then written. Null when the client did not say.
+    /// </summary>
+    string? IncompletePath = null);
