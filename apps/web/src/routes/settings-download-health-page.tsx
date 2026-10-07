@@ -84,11 +84,11 @@ const RULE_KIND_COPY: Record<string, { label: string; description: string; thres
   },
   "dangerous-file": {
     label: "Dangerous or junk file",
-    description: "A file inside the download matches the content blocklist (Search & Cycles -> Failed downloads -> Content blocklist). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below."
+    description: "A file inside the download matches the content blocklist (Automation & Recovery, Failed Downloads, Content blocklist). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below."
   },
   "client-failure": {
     label: "Client-reported failure",
-    description: "The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on Search & Cycles -> Failed downloads."
+    description: "The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on Automation & Recovery, Failed Downloads."
   },
   "magnet-metadata": {
     label: "Magnet stuck fetching metadata",

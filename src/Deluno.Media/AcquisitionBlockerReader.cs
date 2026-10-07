@@ -169,10 +169,11 @@ public static class AcquisitionBlockerReader
                 // path is the opposite: Deluno found candidates, chose one, and
                 // is holding it for a person. Do not claim an outcome the
                 // detail underneath is about to contradict.
-                $"Deluno is waiting until {nextEligible:u} before searching again.",
+                $"Deluno will search again in about {PlainWait(nextEligible - now)}.",
                 LastAttemptDetail(wanted.LastSearchResult),
                 CanClear: true,
-                ClearEffect: "Clears the retry delay so it can be searched now."));
+                ClearEffect: "Clears the retry delay so it can be searched now.",
+                UntilUtc: nextEligible));
         }
 
         if (wanted?.AvailableUtc is { } available && available > now)
@@ -180,10 +181,11 @@ public static class AcquisitionBlockerReader
             blockers.Add(new AcquisitionBlocker(
                 AcquisitionBlockerKinds.NotYetAvailable,
                 "deluno",
-                $"{title} is not obtainable yet — Deluno has it as available from {available:u}.",
+                $"{title} is not obtainable yet — Deluno expects it to be available in about {PlainWait(available - now)}.",
                 "Searching before then spends indexer requests on something nobody has.",
                 CanClear: false,
-                ClearEffect: "Change the library's availability rule if you want Deluno to look anyway."));
+                ClearEffect: "Change the library's availability rule if you want Deluno to look anyway.",
+                UntilUtc: available));
         }
 
         return new AcquisitionBlockersResponse(
@@ -201,6 +203,16 @@ public static class AcquisitionBlockerReader
     /// recorded result is already a sentence, so appending a full stop to it
     /// produced "below your cutoff.." on screen.
     /// </summary>
+    /// <summary>A wait in everyday words: "5 minutes", "1 hour", "6 hours", "2 days".</summary>
+    internal static string PlainWait(TimeSpan wait)
+    {
+        static string Count(double value, string unit) => $"{(int)Math.Round(value)} {unit}{((int)Math.Round(value) == 1 ? "" : "s")}";
+        if (wait < TimeSpan.FromMinutes(1)) return "a minute";
+        if (wait < TimeSpan.FromHours(1)) return Count(wait.TotalMinutes, "minute");
+        if (wait < TimeSpan.FromHours(48)) return Count(wait.TotalHours, "hour");
+        return Count(wait.TotalDays, "day");
+    }
+
     private static string LastAttemptDetail(string? lastSearchResult)
     {
         var recorded = lastSearchResult?.Trim();

@@ -14,6 +14,24 @@
   "integritySha256": null,
   "qualityTiers": [
     {
+      "id": "sdtv",
+      "label": "SDTV",
+      "source": "hdtv",
+      "resolution": "480p",
+      "minMbPerMin": 3,
+      "maxMbPerMin": 900,
+      "rank": 2
+    },
+    {
+      "id": "dvd",
+      "label": "DVD",
+      "source": "dvd",
+      "resolution": "480p",
+      "minMbPerMin": 5,
+      "maxMbPerMin": 1200,
+      "rank": 4
+    },
+    {
       "id": "hdtv-720p",
       "label": "HDTV 720p",
       "source": "hdtv",
@@ -3119,7 +3137,7 @@
     },
     {
       "id": "web-1080p-tv",
-      "name": "TV — 1080p Streaming",
+      "name": "1080p Streaming",
       "tagline": "Standard quality for TV series",
       "description": "The recommended profile for TV shows. Grabs WEB-DL 1080p from streaming platforms. Same day as Netflix, Amazon, etc.",
       "highlights": [
@@ -3164,6 +3182,300 @@
         {
           "trashId": "47435ece6b99a0b477caf360e79ba0bb",
           "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "web-720p",
+      "name": "720p Streaming",
+      "tagline": "Smaller files, plain HD",
+      "description": "Grabs WEB-DL 720p releases from streaming services. A good fit for small screens, limited storage or slow connections.",
+      "highlights": [
+        "WEB-DL 720p from streaming platforms",
+        "WEBRip and HDTV as fallbacks",
+        "Much smaller files than 1080p",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "webdl-720p",
+        "webrip-720p",
+        "hdtv-720p"
+      ],
+      "cutoffQualityId": "webdl-720p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
+      "recommendedFormats": [
+        {
+          "trashId": "e7718d7a3ce595f289bfee26adc178f5",
+          "score": 5
+        },
+        {
+          "trashId": "ae43b294509409a6a13919dedd4764c4",
+          "score": 6
+        },
+        {
+          "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
+          "score": 7
+        },
+        {
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
+          "score": -10000
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "0a3f082873eb454bde444150b70253cc",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "web-720p-tv",
+      "name": "720p Streaming",
+      "tagline": "Smaller files, plain HD",
+      "description": "Grabs WEB-DL 720p episodes from streaming services. A good fit for small screens, limited storage or long-running shows.",
+      "highlights": [
+        "WEB-DL 720p from streaming platforms",
+        "WEBRip and HDTV as fallbacks",
+        "Much smaller files than 1080p",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "tv",
+      "qualityOrder": [
+        "webdl-720p",
+        "webrip-720p",
+        "hdtv-720p"
+      ],
+      "cutoffQualityId": "webdl-720p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
+      "recommendedFormats": [
+        {
+          "trashId": "e6258996055b9fbab7e9cb2f75819294",
+          "score": 1700
+        },
+        {
+          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "score": 1650
+        },
+        {
+          "trashId": "ec8fa7296b64e8cd390a1600981f3923",
+          "score": 5
+        },
+        {
+          "trashId": "eb3d5cc0a2be0db205fb823640db6a3c",
+          "score": 6
+        },
+        {
+          "trashId": "44e7c4de10ae50265753082e5dc76047",
+          "score": 7
+        },
+        {
+          "trashId": "47435ece6b99a0b477caf360e79ba0bb",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "web-2160p-tv",
+      "name": "4K Streaming",
+      "tagline": "Ultra HD episodes",
+      "description": "Grabs WEB-DL 2160p episodes from streaming services, with HDR preferred and Dolby Vision without an HDR fallback refused.",
+      "highlights": [
+        "WEB-DL 2160p from streaming platforms",
+        "WEBRip and 1080p as fallbacks",
+        "HDR preferred",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "tv",
+      "qualityOrder": [
+        "webdl-2160p",
+        "webrip-2160p",
+        "webdl-1080p"
+      ],
+      "cutoffQualityId": "webdl-2160p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
+      "recommendedFormats": [
+        {
+          "trashId": "e6258996055b9fbab7e9cb2f75819294",
+          "score": 1700
+        },
+        {
+          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "score": 1650
+        },
+        {
+          "trashId": "ec8fa7296b64e8cd390a1600981f3923",
+          "score": 5
+        },
+        {
+          "trashId": "eb3d5cc0a2be0db205fb823640db6a3c",
+          "score": 6
+        },
+        {
+          "trashId": "44e7c4de10ae50265753082e5dc76047",
+          "score": 7
+        },
+        {
+          "trashId": "deluno-hdr-hdr10-plus",
+          "score": 520
+        },
+        {
+          "trashId": "505d871304820ba7106b693be6fe4a9e",
+          "score": 500
+        },
+        {
+          "trashId": "9b27ab6498ec0f31a3353992e19434ca",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "sd-dvd",
+      "name": "SD / DVD",
+      "tagline": "Older films and DVD-era titles",
+      "description": "For titles that were never made in HD. Accepts DVD and standard-definition releases and upgrades to the best DVD.",
+      "highlights": [
+        "DVD and standard-definition releases",
+        "Small files",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "dvd",
+        "sdtv"
+      ],
+      "cutoffQualityId": "dvd",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
+      "recommendedFormats": [
+        {
+          "trashId": "e7718d7a3ce595f289bfee26adc178f5",
+          "score": 5
+        },
+        {
+          "trashId": "ae43b294509409a6a13919dedd4764c4",
+          "score": 6
+        },
+        {
+          "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
+          "score": 7
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "0a3f082873eb454bde444150b70253cc",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "sd-dvd-tv",
+      "name": "SD / DVD",
+      "tagline": "Older shows and daily programmes",
+      "description": "For shows that were never made in HD, and daily programmes. Accepts DVD and standard-definition releases and upgrades to the best DVD.",
+      "highlights": [
+        "DVD and standard-definition releases",
+        "Small files",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "tv",
+      "qualityOrder": [
+        "dvd",
+        "sdtv"
+      ],
+      "cutoffQualityId": "dvd",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
+      "recommendedFormats": [
+        {
+          "trashId": "ec8fa7296b64e8cd390a1600981f3923",
+          "score": 5
+        },
+        {
+          "trashId": "eb3d5cc0a2be0db205fb823640db6a3c",
+          "score": 6
+        },
+        {
+          "trashId": "44e7c4de10ae50265753082e5dc76047",
+          "score": 7
         }
       ]
     },
@@ -3730,7 +4042,7 @@
       "level": "specialist",
       "mediaType": "tv",
       "description": "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
-      "bestFor": "Anime libraries where normal Sonarr-style scoring is not enough.",
+      "bestFor": "Anime libraries where normal scoring is not enough.",
       "includes": [
         {
           "trashId": "e0014372773c8f0e1bef8824f00c7dc4",

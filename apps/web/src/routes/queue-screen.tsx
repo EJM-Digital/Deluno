@@ -792,7 +792,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         });
         setManualPreview(result.preview);
         setManualState("saved");
-        setManualMessage(`Queued as job ${result.jobId.slice(0, 8)}.`);
+        setManualMessage("Import queued. Its progress shows under Activity.");
         revalidator.revalidate();
       }
     } catch (error) {
@@ -1383,7 +1383,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   size="sm"
                   onClick={() => void ignoreDownloadHealth(openQueueItem)}
                   disabled={busyKey !== null}
-                  title="Exempt this download from every health rule until removed from Settings -> Download health"
+                  title="Exempt this download from every health rule until removed from Automation & Recovery, Download Health"
                 >
                   {busyKey === `ignore-download:${openQueueItem.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   Ignore this download

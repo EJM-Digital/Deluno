@@ -199,6 +199,24 @@ public sealed class ConnectionNamesTests
         Assert.Equal("Processor on MEDIA-BOX", saved!.Name);
     }
 
+    [Fact]
+    public async Task A_processor_that_says_its_own_name_is_listed_under_it_and_keeps_it_when_saved_again()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var processors = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var named = await processors.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Weir", "generic-webhook", "http://192.168.1.60:8181/hook", null, null, true) { MachineName = "MEDIA-BOX", ProductName = "Weir" },
+            CancellationToken.None);
+        Assert.Equal("Weir on MEDIA-BOX", named.Name);
+
+        // Saved again when it did not say its name this time: the name it was listed under stays.
+        var saved = await processors.UpdateProcessorConnectionAsync(
+            named.Id, new UpdateProcessorConnectionRequest(null, null, null, null, null, true) { MachineName = "MEDIA-BOX" }, CancellationToken.None);
+        Assert.Equal("Weir on MEDIA-BOX", saved!.Name);
+    }
+
     [Theory]
     [InlineData("http://localhost:9117/api/v2.0/indexers/1337x/results/torznab/", "1337x")]
     [InlineData("http://192.168.1.5:9117/api/v2.0/indexers/yts/results/torznab", "yts")]

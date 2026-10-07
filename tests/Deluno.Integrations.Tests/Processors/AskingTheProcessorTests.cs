@@ -49,6 +49,37 @@ public sealed class AskingTheProcessorTests
     }
 
     [Fact]
+    public async Task A_processor_with_a_folder_per_library_lists_them_and_says_it_does()
+    {
+        var requested = new List<string>();
+        var service = Service(request =>
+        {
+            requested.Add(request.RequestUri!.AbsolutePath);
+            return request.RequestUri.AbsolutePath.EndsWith("/capabilities")
+                ? Json(HttpStatusCode.OK, """{ "capabilities": ["handoff-status", "library-folders"] }""")
+                : Json(HttpStatusCode.OK, """[{"watched_folder":"/data/films","manager_library_key":"lib-1","folders_from_manager":true},{"watched_folder":"/data/other","manager_library_key":null,"folders_from_manager":false},{"manager_library_key":"lib-3"}]""");
+        });
+
+        var support = await service.GetStatusSupportAsync(Weir, CancellationToken.None);
+        var folders = await service.GetLibraryFoldersAsync(Weir, CancellationToken.None);
+
+        Assert.True(support.HasLibraryFolders);
+        Assert.Contains("/api/v1/intake/library-folders", requested);
+        Assert.Equal(2, folders.Count);
+        Assert.Equal(new ProcessorLibraryFolder("lib-1", "/data/films", true), folders[0]);
+        Assert.Null(folders[1].ManagerLibraryKey);
+    }
+
+    [Fact]
+    public async Task A_processor_names_itself_in_its_capabilities_answer_or_not_at_all()
+    {
+        Assert.Equal("Weir", await Service(_ => Json(HttpStatusCode.OK, """{ "name": " Weir ", "version": "3.2.0" }"""))
+            .GetProductNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
+        Assert.Null(await Service(_ => Json(HttpStatusCode.OK, """{ "capabilities": [] }"""))
+            .GetProductNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_processor_without_the_endpoint_is_treated_as_it_always_was()
     {
         var support = await Service(_ => new HttpResponseMessage(HttpStatusCode.NotFound)).GetStatusSupportAsync(Weir, CancellationToken.None);

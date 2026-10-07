@@ -50,8 +50,19 @@ public sealed record ProcessorStatusSupport(
     /// </summary>
     public string? WatchedPath { get; init; }
 
+    /// <summary>The processor advertises a <c>library-folders</c> capability: one watched folder per library, read from its own list (#1144).</summary>
+    public bool HasLibraryFolders { get; init; }
+
     public static readonly ProcessorStatusSupport None = new(ProcessorAnswer.Unsupported, false, false, null);
 }
+
+/// <summary>
+/// One entry of a processor's <c>library-folders</c> capability (#1144): the folder it watches for the library its
+/// workflow was set up from. <see cref="ManagerLibraryKey"/> is the Deluno library id, or null for a workflow made
+/// some other way; <see cref="FoldersFromManager"/> says the processor took the folders from Deluno. Generic: any
+/// processor may publish this list.
+/// </summary>
+public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager);
 
 /// <summary>What became of a file a processor handed back (#578).</summary>
 public enum ProcessorHandoffOutcome

@@ -70,11 +70,62 @@ public sealed class ProcessorHealthCheckTests
         Assert.Equal(HealthCheckStatuses.Ok, watching.Status);
     }
 
+    [Fact]
+    public async Task A_processor_with_a_folder_per_library_is_read_by_the_library_id()
+    {
+        var connection = Connection();
+        var library = Library(processorOutputPath: "D:\\Refined");
+
+        var outcomes = await RunAsync(
+            connection,
+            [library],
+            support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
+            mappings: [Mapping("D:\\Refined", "/data/refined")],
+            folders:
+            [
+                new ProcessorLibraryFolder("someone-else", "/data/other", false),
+                new ProcessorLibraryFolder("library-1", "/data/refined", true)
+            ]);
+
+        var watching = Assert.Single(outcomes, item => item.Id.Contains(":watching:"));
+        Assert.Equal(HealthCheckStatuses.Ok, watching.Status);
+        Assert.Contains("D:\\Refined", watching.Message);
+    }
+
+    [Fact]
+    public async Task A_folder_per_library_list_with_no_entry_for_the_library_is_not_reported()
+    {
+        var outcomes = await RunAsync(
+            Connection(),
+            [Library(processorOutputPath: "D:\\Refined")],
+            support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
+            mappings: [],
+            folders: [new ProcessorLibraryFolder("someone-else", "/data/other", false)]);
+
+        var watching = Assert.Single(outcomes, item => item.Id.Contains(":watching:"));
+        Assert.Equal(HealthCheckStatuses.Unknown, watching.Status);
+        Assert.Contains("Not reported", watching.Message);
+    }
+
+    [Fact]
+    public async Task A_folder_per_library_entry_that_disagrees_with_the_ready_folder_is_a_problem()
+    {
+        var outcomes = await RunAsync(
+            Connection(),
+            [Library(processorOutputPath: "D:\\Refined")],
+            support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
+            mappings: [],
+            folders: [new ProcessorLibraryFolder("library-1", "E:\\Elsewhere", false)]);
+
+        Assert.Equal(HealthCheckStatuses.Problem, Assert.Single(outcomes, item => item.Id.Contains(":watching:")).Status);
+    }
+
     private static async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(
         ProcessorConnectionItem connection,
         IReadOnlyList<LibraryItem> libraries,
         ProcessorStatusSupport support,
-        IReadOnlyList<ProcessorPathMappingItem> mappings)
+        IReadOnlyList<ProcessorPathMappingItem> mappings,
+        IReadOnlyList<ProcessorLibraryFolder>? folders = null)
     {
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>()))
@@ -85,6 +136,8 @@ public sealed class ProcessorHealthCheckTests
         var connections = new Mock<IProcessorConnectionService>();
         connections.Setup(service => service.GetStatusSupportAsync(connection, It.IsAny<CancellationToken>()))
             .ReturnsAsync(support);
+        connections.Setup(service => service.GetLibraryFoldersAsync(connection, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(folders ?? []);
 
         var libraryRepository = new Mock<ILibrariesRepository>();
         libraryRepository.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))

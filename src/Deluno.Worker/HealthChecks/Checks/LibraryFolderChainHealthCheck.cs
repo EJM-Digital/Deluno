@@ -75,6 +75,23 @@ public sealed class LibraryFolderChainHealthCheck(
             : HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, message);
     }
 
+    /// <summary>
+    /// The volume a folder is on. A network share (\\nas\media) is its own volume, named by server and share:
+    /// a drive lookup cannot answer for one, which left "could not tell" on a library whose downloads are on
+    /// C: and whose library is on a NAS.
+    /// </summary>
+    public static string VolumeOf(string path)
+    {
+        var trimmed = path.Trim();
+        if (trimmed.StartsWith("\\\\", StringComparison.Ordinal) || trimmed.StartsWith("//", StringComparison.Ordinal))
+        {
+            var parts = trimmed.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return "//" + string.Join('/', parts.Take(2));
+        }
+
+        return new DriveInfo(trimmed).Name;
+    }
+
     private static HealthCheckOutcome? VolumesOutcome(FolderChainReport report)
     {
         if (string.IsNullOrWhiteSpace(report.DownloadsPath) || string.IsNullOrWhiteSpace(report.RootPath))
@@ -88,10 +105,7 @@ public sealed class LibraryFolderChainHealthCheck(
         bool? sameVolume;
         try
         {
-            sameVolume = string.Equals(
-                new DriveInfo(report.DownloadsPath).Name,
-                new DriveInfo(report.RootPath).Name,
-                StringComparison.OrdinalIgnoreCase);
+            sameVolume = string.Equals(VolumeOf(report.DownloadsPath), VolumeOf(report.RootPath), StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
         {

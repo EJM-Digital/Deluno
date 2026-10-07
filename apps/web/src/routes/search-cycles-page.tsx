@@ -709,11 +709,11 @@ export function SearchCyclesPage() {
       {view === "failed" ? <ListCard title="Download health" count="What counts as stuck, before it is struck">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
-            What counts as stuck, and what Deluno does about it, moved to its own page (#905): each rule now has its own strikes, its own timer and its own action, instead of one flat switch shared by every kind. Nothing changed for this installation until you open it and edit a rule there. A tracker the client itself says is unregistered feeds the same Dead torrent rule there, and is otherwise handled separately (Downloading: torrents) — removed and replaced as soon as it is seen, once removal is turned on.
+            What counts as stuck, and what Deluno does about it, is set rule by rule on the Download Health tab: each rule has its own strikes, its own timer and its own action. A tracker the client itself says is unregistered feeds the same Dead torrent rule there, and is otherwise handled separately (Downloading: torrents) — removed and replaced as soon as it is seen, once removal is turned on.
           </p>
           <div>
             <Button asChild variant="outline" size="sm">
-              <Link to="/search-cycles/download-health">Open Download health</Link>
+              <Link to="/search-cycles/download-health">Open Download Health</Link>
             </Button>
           </div>
 
@@ -846,7 +846,7 @@ export function SearchCyclesPage() {
       {view === "failed" ? <ListCard title="When strikes run out" titleCase={false}>
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
-            Strikes, timers and per-kind conditions now live on their own rules in Settings -&gt; Download health. What happens once a rule's strikes run out, for anything still using this platform-wide default, is set below.
+            Strikes, timers and per-kind conditions belong to each rule under Download Health. What happens once a rule's strikes run out, for anything still using this platform-wide default, is set below.
           </p>
           <div className="grid gap-(--grid-gap) sm:grid-cols-2">
             <SwitchRow label="Block this release" description="Refuse it on the blocklist, so searches pick another release. It can be lifted there." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
@@ -923,7 +923,7 @@ export function SearchCyclesPage() {
             <Field label="Missing titles per run" help="Keeps a single cycle from flooding your indexers looking for missing titles.">
               <PresetField inputType="number" value={form.maxMissingItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxMissingItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
             </Field>
-            <Field label="Upgrade candidates per run" help="Set independently from missing titles, so tuning one never changes the other (#830).">
+            <Field label="Upgrade candidates per run" help="Set on its own, apart from missing titles, so tuning one never changes the other.">
               <PresetField inputType="number" value={form.maxUpgradeItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxUpgradeItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
             </Field>
           </FieldRow>
