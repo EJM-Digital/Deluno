@@ -63,4 +63,10 @@ public sealed record CreateIndexerRequest(
     IReadOnlyDictionary<string, string>? DefinitionSecrets = null,
     // The configured proxy (#748) this indexer's requests go through. Null
     // means "no proxy assigned" -- direct connection.
-    string? ProxyId = null);
+    string? ProxyId = null,
+    // The result of a test the person ran in the drawer before adding this
+    // indexer (#1134), kept with it so the list shows it straight away.
+    IndexerTestedHealth? TestedHealth = null);
+
+/// <summary>A test result carried in with a new indexer (#1134).</summary>
+public sealed record IndexerTestedHealth(string? HealthStatus, string? Message, string? FailureCategory, int? LatencyMs);
