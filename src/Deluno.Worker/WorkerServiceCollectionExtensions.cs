@@ -123,6 +123,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, LibraryFolderChainHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHandoffHoldHealthCheck>();
+        services.AddScoped<Deluno.Worker.Services.ProcessorOutputSweep>();
         services.AddScoped<IHealthCheck, ProcessorOutputSafetyNetHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorOutputImportIssueHealthCheck>();
         services.AddScoped<IHealthCheck, ExternalServiceHealthCheck>();
