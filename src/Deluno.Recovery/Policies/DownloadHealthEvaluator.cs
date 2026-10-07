@@ -40,7 +40,8 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRetry: true,
                 CanSafelyRemove: false));
         }
-        else if (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage))
+        else if (!DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent)
+            && (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage)))
         {
             findings.Add(new(
                 Severity: "critical",
@@ -236,7 +237,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // RuleActionPreset is left unset so the platform's own cleanup
         // switches (#936) still decide whether anything actually removes,
         // deletes, blocklists or searches.
-        if (trackerUnregistered && !item.IsUsenetProtocol && item.Status != "importReady")
+        if (trackerUnregistered && !item.IsUsenetProtocol && !DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent))
         {
             findings.Add(new(
                 Severity: "critical",
