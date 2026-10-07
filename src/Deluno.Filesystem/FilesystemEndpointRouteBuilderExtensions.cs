@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
@@ -92,9 +93,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
         filesystem.MapPost("/import/preview", async (
             [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
+            IClientHeldFileProbe? clientHeldFiles,
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request, cancellationToken);
+            // #1171: a file with no download behind it may still be one a
+            // client is seeding. Said here so the person sees it before
+            // choosing "Move the file".
+            if (clientHeldFiles is not null
+                && string.IsNullOrWhiteSpace(request.DispatchId)
+                && preview.SourceExists
+                && await clientHeldFiles.IsHeldByAnyClientAsync(preview.SourcePath, cancellationToken))
+            {
+                preview = preview with { ClientHoldsSource = true };
+            }
+
             return Results.Ok(preview);
         });
 
@@ -315,6 +328,15 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     statusCode: ImportFileReadiness.RetryableStatusCode);
             }
 
+            if (preview.NeedsTitle)
+            {
+                return Results.BadRequest(new
+                {
+                    message = "Deluno could not tell which show in your library this is. Enter the show's title under \"Help Deluno match it\", then queue the import again.",
+                    preview
+                });
+            }
+
             if (!preview.SourceExists ||
                 !preview.IsSupportedMediaFile ||
                 preview.Pack is { CanExecute: false } ||
@@ -346,9 +368,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/integrations/external/import-preview", async (
             [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
+            IClientHeldFileProbe? clientHeldFiles,
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request, cancellationToken);
+            // #1171: a file with no download behind it may still be one a
+            // client is seeding. Said here so the person sees it before
+            // choosing "Move the file".
+            if (clientHeldFiles is not null
+                && string.IsNullOrWhiteSpace(request.DispatchId)
+                && preview.SourceExists
+                && await clientHeldFiles.IsHeldByAnyClientAsync(preview.SourcePath, cancellationToken))
+            {
+                preview = preview with { ClientHoldsSource = true };
+            }
+
             return Results.Ok(preview);
         });
 
@@ -883,7 +917,23 @@ public sealed record ImportPreviewResponse(
     IReadOnlyList<string> Warnings,
     string Explanation,
     IReadOnlyList<string> DecisionSteps,
-    ImportPackPreview? Pack = null);
+    ImportPackPreview? Pack = null,
+    /// <summary>
+    /// The title in the library this file was matched to (#1171), so the
+    /// preview can say whose folder and episode name it is using.
+    /// </summary>
+    string? MatchedTitle = null,
+    /// <summary>
+    /// True when a TV file matched nothing in the library and nobody gave a
+    /// title either, so there is no honest destination to show: the person
+    /// is asked to pick the title instead (#1171).
+    /// </summary>
+    bool NeedsTitle = false,
+    /// <summary>
+    /// True when a connected download client still holds this file (#1171).
+    /// Importing it copies; the original stays where the client expects it.
+    /// </summary>
+    bool ClientHoldsSource = false);
 
 public sealed record ImportPackPreview(
     bool CanExecute,

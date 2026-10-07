@@ -84,6 +84,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Deluno.Contracts.IGrabAppearanceLookupService, GrabAppearanceLookupService>();
         services.AddSingleton<LegacyItemIdUpgradeMemory>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
+        services.AddScoped<Deluno.Contracts.IClientHeldFileProbe, ClientHeldFileProbe>();
         // #1081: the last thing the clients said, refreshed in the background, so no screen waits on a live call.
         services.AddSingleton<DownloadTelemetrySnapshotStore>();
         services.AddSingleton<IDownloadTelemetrySnapshotStore>(provider => provider.GetRequiredService<DownloadTelemetrySnapshotStore>());
