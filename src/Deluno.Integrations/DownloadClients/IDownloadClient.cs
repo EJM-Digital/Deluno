@@ -21,6 +21,17 @@ public interface IDownloadClient
     /// </summary>
     bool SetsSaveFolderPerGrab => false;
 
+    /// <summary>
+    /// For a Usenet client: whether it has a news server it can download from (#1142). Null for a
+    /// client that has no such thing, and null when the client could not be asked.
+    /// </summary>
+    Task<bool?> HasUsenetProviderAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult<bool?>(null);
+
+    /// <summary>For a Usenet client: writes the provider to the client's own settings. Null for a client that takes none.</summary>
+    Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
+        => Task.FromResult<UsenetProviderClientResult?>(null);
+
     Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

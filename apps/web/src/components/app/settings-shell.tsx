@@ -154,9 +154,9 @@ export const maintenanceNavItems = [
     items: systemSettingsNavItems
   },
   {
-    // The guided setup is its own screen, but it lives in System as far as the
-    // sidebar is concerned, so the area stays lit while you are in it.
-    match: (path: string) => configurationAreaMatch("system")(path) || path.startsWith("/setup-guide"),
+    // The guided setup is its own screen and lights no sidebar item (#1141):
+    // lighting System made it look as if the person had left for another page.
+    match: configurationAreaMatch("system"),
     label: "System",
     icon: "system",
     to: "/system",

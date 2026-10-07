@@ -275,7 +275,7 @@ public sealed class FolderChainService(
             if (named is not null)
             {
                 links.Add(new("folder", FolderChainStatuses.Ok,
-                    $"Deluno sends each {kind} download to {named.ClientFolder} itself, the folder the {library.Name} library expects, whatever folder {client.Name} is set to by default.",
+                    $"Deluno asks {client.Name} to finish each {kind} download in {named.ClientFolder}, the folder the {library.Name} library expects. While a download is in progress, {client.Name} keeps it in its own incomplete folder, if it has one set.",
                     named.HostFolder));
             }
             else if (perGrab is not null)

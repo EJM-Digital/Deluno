@@ -502,12 +502,12 @@ public static class FilesystemEndpointRouteBuilderExtensions
             // four places that have nothing to do with it.
             if (!exists && !parentExists)
             {
-                warnings.Add("Neither this folder nor the one above it is visible to the Deluno process. Check Docker volumes, UNC permissions, mapped drives, or service account access.");
+                warnings.Add($"Neither this folder nor the one above it is visible to the Deluno process. Check Docker volumes, UNC permissions, mapped drives, or access for {RunAccount.Phrase()}.");
             }
 
             if (isUncPath)
             {
-                warnings.Add("This is a UNC path. Ensure the Deluno service account has network-share permissions, not just your interactive Windows user.");
+                warnings.Add($"This is a UNC path. Give {RunAccount.Phrase()} network-share permissions; being able to open the share yourself is not enough.");
             }
 
             if (isLikelyDockerPath)
@@ -709,7 +709,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     Name: "UNC network share",
                     Path: @"\\server\share\media",
                     Kind: "preset",
-                    Description: "Template for NAS or SMB shares visible to the Deluno service account"),
+                    Description: $"Template for NAS or SMB shares visible to {RunAccount.Phrase()}"),
                 new DirectoryBrowseEntry(
                     Name: "Mapped media drive",
                     Path: @"Z:\",

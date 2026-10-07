@@ -24,13 +24,14 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // .torrent itself and cannot take a magnet, so a magnet sent there was
         // lost (#606).
         var options = new Dictionary<string, object> { ["add_paused"] = client.AddPaused };
-        // #1073: Deluge's label has no folder unless someone set one by hand, so
-        // the library's downloads folder is named on the add itself. It downloads
-        // there and, when Deluge's own "move completed" is on, moves to the same
-        // place rather than to whatever folder Deluge was set to.
+        // #1073/#1164: Deluge's label has no folder unless someone set one by hand,
+        // so the library's downloads folder is named as where the torrent ENDS UP
+        // (move_completed_path). Where it downloads in the meantime is left to
+        // Deluge's own download_location, its incomplete folder: Deluno never
+        // sends download_location, so half-finished files stay out of the
+        // folder the processor and media servers watch.
         if (!string.IsNullOrWhiteSpace(request.SaveFolder))
         {
-            options["download_location"] = request.SaveFolder;
             options["move_completed"] = true;
             options["move_completed_path"] = request.SaveFolder;
         }

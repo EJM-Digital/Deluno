@@ -13,8 +13,11 @@ const {
   buildAutomationSettingsPayload,
   buildIndexerAutomationFields,
   buildLibraryAutomationFields,
+  connectedDownloadClients,
+  describeDownloadRoute,
   getEffectiveFormatGoal,
   hasAnsweredAllAutomationQuestions,
+  preflightDownloadClient,
   resolveDraftFormatGoal,
   saveAllowedHosts,
   saveDangerousFileCheck,
@@ -373,5 +376,37 @@ describe("Force import setup question (#1013)", () => {
       renameOnImport: false
     });
     expect(buildLibraryAutomationFields(ALL_YES)).not.toHaveProperty("forceImportEnabled");
+  });
+});
+
+describe("setup guide uses the download clients that are already connected (#1132)", () => {
+  const qbit = { id: "c1", name: "qBittorrent", protocol: "qbittorrent", host: "localhost", port: 8081, isEnabled: true, healthStatus: "healthy" } as never;
+  const deluge = { id: "c2", name: "Deluge", protocol: "deluge", host: "localhost", port: 8112, isEnabled: true, healthStatus: "healthy" } as never;
+  const broken = { id: "c3", name: "SABnzbd", protocol: "sabnzbd", host: "localhost", port: 8080, isEnabled: true, healthStatus: "unreachable" } as never;
+  const blankForm = { clientHost: "localhost", clientName: "qBittorrent", clientProtocol: "qbittorrent" } as never;
+
+  it("counts only clients that are on and healthy as connected", () => {
+    expect(connectedDownloadClients([qbit, broken, { ...(deluge as object), isEnabled: false } as never])).toEqual([qbit]);
+  });
+
+  it("asks for no test of the form when a client is connected, so the baseline can be created", () => {
+    expect(preflightDownloadClient([qbit], blankForm, false)).toBeNull();
+  });
+
+  it("refuses an untested form only when nothing is connected, before anything is written", () => {
+    expect(preflightDownloadClient([broken], blankForm, false)).toMatch(/Test the download client you entered/);
+    expect(preflightDownloadClient([], { clientHost: "" } as never, false)).toBeNull();
+    expect(preflightDownloadClient([broken], blankForm, true)).toBeNull();
+  });
+
+  it("names the clients it will really route to, never the form's default", () => {
+    const route = describeDownloadRoute([deluge, qbit], blankForm, false);
+    expect(route.names).toEqual(["Deluge", "qBittorrent"]);
+    expect(route.copy).toContain("Deluge and qBittorrent");
+    expect(route.copy).not.toMatch(/qbittorrent with deluno-movies/);
+  });
+
+  it("says nothing is routed yet when no client is connected or tested", () => {
+    expect(describeDownloadRoute([broken], blankForm, false).names).toEqual([]);
   });
 });
