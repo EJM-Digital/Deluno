@@ -31,6 +31,7 @@ export type CardSize = "sm" | "md" | "lg";
  * header describes, one import below it.
  */
 import type { DisplayOptions } from "../../lib/library-filters";
+import { posterSearchResult } from "../../lib/search-reasons";
 export type { DisplayOptions } from "../../lib/library-filters";
 
 /**
@@ -238,14 +239,14 @@ function PosterCard({
 
       // What it did, not what it is doing. "Searching" was a lie by the time
       // it was drawn - the request had already come back.
-      setActionResult(name === "search" ? await searchOutcome(response) : "Refreshed");
+      setActionResult(name === "search" ? await searchOutcome(response, item.hasFile === true) : "Metadata refreshed");
     } catch {
-      setActionResult("Failed");
+      setActionResult(name === "search" ? "Search failed" : "Refresh failed");
     } finally {
       setBusyAction(null);
       // Long enough to read, short enough that it is gone before you look
       // back. Nothing else on the card moves while it is there.
-      window.setTimeout(() => setActionResult(null), 3200);
+      window.setTimeout(() => setActionResult(null), 6000);
     }
   }
   // Whether this card size draws anything under the artwork at all. Small is
@@ -485,16 +486,22 @@ function PosterCard({
               busy={busyAction === "refresh"}
               onClick={() => void runAction("refresh", `/api/${apiSegment}/${item.id}/metadata/refresh`)}
             />
-
-            {actionResult ? (
-              <span
-                role="status"
-                className="pointer-events-none absolute inset-x-2 bottom-3 truncate text-center text-(length:--library-badge-size) font-bold uppercase tracking-wider text-white"
-              >
-                {actionResult}
-              </span>
-            ) : null}
           </div>
+
+          {/*
+            What the last Search or Refresh did, in words (#1156). Outside the
+            hover cluster on purpose: the icons fade out as soon as the pointer
+            moves, and the answer has to outlast them.
+          */}
+          {actionResult ? (
+            <span
+              role="status"
+              aria-label={`Result for ${item.title}`}
+              className="pointer-events-none absolute inset-x-2 bottom-2 z-30 rounded-md bg-black/80 px-2 py-1 text-center text-xs font-semibold leading-tight text-white"
+            >
+              {actionResult}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -645,20 +652,17 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
 }
 
 /**
- * What a finished search actually did, in one word.
+ * What a finished search actually did, in plain words (#1156).
  *
- * <p>On a card two centimetres wide the answer has to be a word, and the useful
- * word is the outcome: whether a release was taken or nothing was found. The
- * detail page is where a search explains itself.</p>
+ * <p>A poster has room for one short line, so the answer is the outcome: a
+ * release was sent to a client, one is waiting on you, or nothing was found.
+ * The detail page is where a search explains itself.</p>
  */
-async function searchOutcome(response: Response) {
+async function searchOutcome(response: Response, hasFile: boolean) {
   try {
-    const payload = (await response.json()) as { outcome?: string; releaseName?: string | null };
-    // "matched" is what the pipeline writes when a release was taken; every
-    // other outcome is effort that came back empty.
-    return payload.outcome === "matched" || payload.releaseName ? "Grabbed" : "Nothing found";
+    return posterSearchResult(await response.json(), hasFile);
   } catch {
-    return "Searched";
+    return "Search finished";
   }
 }
 

@@ -868,7 +868,12 @@ public static class FilesystemEndpointRouteBuilderExtensions
 public sealed record DirectoryBrowseResponse(
     string? CurrentPath,
     string? ParentPath,
-    IReadOnlyList<DirectoryBrowseEntry> Entries);
+    IReadOnlyList<DirectoryBrowseEntry> Entries,
+    bool Windows = false)
+{
+    /// <summary>Whether the server is Windows, so the folder browser offers that platform's example paths only.</summary>
+    public bool Windows { get; init; } = Windows || OperatingSystem.IsWindows();
+}
 
 public sealed record DirectoryBrowseEntry(
     string Name,

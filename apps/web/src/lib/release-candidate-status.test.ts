@@ -79,3 +79,11 @@ describe("plain search result (#1159)", () => {
     expect(plainSearchResult("Sent X to Transmission. Hybrid mode used deterministic score because ML boost was not applied.")).toBe("Sent X to Transmission.");
   });
 });
+
+describe("plain reason wording for a decisive custom rule (#1138)", () => {
+  it("never prints the rule's internal name when it decided the outcome", async () => {
+    const { plainCandidateReason } = await import("./release-candidate-status");
+    const out = plainCandidateReason("Your installed file is better than this release. Custom rule · WEB Tier 01 decided it; this release ranks lower.");
+    expect(out).toBe("Your installed file is better than this release. Your preferred release groups decided it; this release ranks lower.");
+  });
+});

@@ -274,7 +274,7 @@ public static class ReleasePreferenceEvaluator
                     ? "candidate"
                     : "installed file";
                 return Result(PreferenceCandidateStatus.NeedsReview, false, false, false, family.Id,
-                    [$"Family '{family.Dimension}' is unknown or conflicting for the {subject}."], current, candidate);
+                    [$"Family '{PlainDimension(family.Dimension)}' is unknown or conflicting for the {subject}."], current, candidate);
             }
 
             // An absent family is represented by -1 in the public
@@ -301,7 +301,7 @@ public static class ReleasePreferenceEvaluator
                 {
                     persistentImprovement = true;
                     persistentImprovementFamilyId = family.Id;
-                    reasons.Add($"Candidate improves the '{family.Dimension}' preference family below its target.");
+                    reasons.Add($"Candidate improves '{PlainDimension(family.Dimension)}' below its target.");
                 }
                 continue;
             }
@@ -327,13 +327,14 @@ public static class ReleasePreferenceEvaluator
             var decisiveDimension = plan.OrderedFamilies
                 .FirstOrDefault(item => string.Equals(item.Id, decisive, StringComparison.OrdinalIgnoreCase))
                 ?.Dimension ?? decisive;
+            decisiveDimension = decisiveDimension is null ? null : PlainDimension(decisiveDimension);
             // Say the specific half only. The summary already carries the
             // headline, and repeating it produced "Your installed file is
             // better than this release. The installed file is better than
             // this candidate: ..." on the deployed lab.
             reasons.Add(decisiveDimension is null
                 ? "No preference in this plan ranks this release above your file."
-                : $"{decisiveDimension} decided it; this release ranks lower.");
+                : $"{char.ToUpperInvariant(decisiveDimension[0])}{decisiveDimension[1..]} decided it; this release ranks lower.");
             return Result(
                 PreferenceCandidateStatus.CurrentBetter,
                 false,
@@ -549,11 +550,11 @@ public static class ReleasePreferenceEvaluator
             ? true
             : target is not null && selected is not null && selected.Rank <= target.Rank;
         var explanation = selected is null
-            ? $"No known trait matched the {family.Dimension} family."
-            : $"Matched {family.Dimension} at {selected.Id}.";
+            ? $"No known trait matched {PlainDimension(family.Dimension)}."
+            : $"Matched {PlainDimension(family.Dimension)} at {selected.Id}.";
 
         if (family.UpgradeDriving && !targetMet)
-            reasons.Add($"{family.Dimension} is below its target.");
+            reasons.Add($"{PlainDimension(family.Dimension, capitalise: true)} is below its target.");
 
         return new PreferenceFamilyEvaluation(
             family.Id,
@@ -666,4 +667,23 @@ public static class ReleasePreferenceEvaluator
         => facts.TryGetValue(traitId.Trim().ToLowerInvariant(), out var fact)
             ? fact.State
             : PreferenceFactState.Unknown;
+
+    /// <summary>
+    /// A family's name in the owner's words (#1138). A custom format is stored
+    /// as "Custom rule · WEB Tier 01"; that internal label never reaches a
+    /// sentence a person reads.
+    /// </summary>
+    public static string PlainDimension(string dimension, bool capitalise = false)
+    {
+        const string prefix = "Custom rule · ";
+        var text = dimension;
+        if (dimension.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            text = System.Text.RegularExpressions.Regex.IsMatch(dimension, @"\bTier\s*\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                ? "your preferred release groups"
+                : dimension[prefix.Length..];
+        }
+
+        return capitalise && text.Length > 0 ? char.ToUpperInvariant(text[0]) + text[1..] : text;
+    }
 }
