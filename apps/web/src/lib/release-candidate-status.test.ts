@@ -72,3 +72,10 @@ describe("candidate explanation (#1138)", () => {
     expect(JSON.stringify(out)).not.toContain("WEB Tier 01");
   });
 });
+
+describe("plain search result (#1159)", () => {
+  it("drops the engine's own bookkeeping sentences and keeps what happened", async () => {
+    const { plainSearchResult } = await import("./release-candidate-status");
+    expect(plainSearchResult("Sent X to Transmission. Hybrid mode used deterministic score because ML boost was not applied.")).toBe("Sent X to Transmission.");
+  });
+});

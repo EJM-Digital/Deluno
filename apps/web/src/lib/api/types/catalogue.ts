@@ -425,6 +425,8 @@ export interface SeriesEpisodeInventoryItem {
   lastSearchUtc: string | null;
   nextEligibleSearchUtc: string | null;
   updatedUtc: string;
+  /** What this episode's own last search came to, in words (#1159). */
+  lastSearchResult?: string | null;
   currentQuality?: string | null;
   targetQuality?: string | null;
   preventLowerQualityReplacements?: boolean;

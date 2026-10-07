@@ -2363,7 +2363,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     e.scene_episode_number,
                     e.airdate_key,
                     e.numbering_source,
-                    e.catalogue_source
+                    e.catalogue_source,
+                    w.last_search_result
                 FROM episode_entries e
                 LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
                 WHERE e.series_id = @seriesId
@@ -2398,7 +2399,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     SceneEpisodeNumber: episodeReader.IsDBNull(20) ? null : episodeReader.GetInt32(20),
                     AirDate: ParseAirDateKey(episodeReader.IsDBNull(21) ? null : episodeReader.GetString(21)),
                     NumberingSource: episodeReader.IsDBNull(22) ? null : episodeReader.GetString(22),
-                    CatalogueSource: episodeReader.IsDBNull(23) ? null : episodeReader.GetString(23)));
+                    CatalogueSource: episodeReader.IsDBNull(23) ? null : episodeReader.GetString(23),
+                    LastSearchResult: episodeReader.IsDBNull(24) ? null : episodeReader.GetString(24)));
             }
         }
 
