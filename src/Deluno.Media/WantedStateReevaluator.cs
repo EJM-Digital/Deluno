@@ -89,6 +89,12 @@ public sealed class WantedStateReevaluator(
         return total;
     }
 
+    async Task<int> IProfileChangeReevaluator.ReevaluateForLibraryAsync(string libraryId, CancellationToken cancellationToken)
+    {
+        var result = await ReevaluateLibraryAsync(libraryId, cancellationToken);
+        return result.Titles + result.Episodes;
+    }
+
     public async Task<WantedReevaluationResult> ReevaluateLibraryAsync(string libraryId, CancellationToken cancellationToken)
     {
         var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))

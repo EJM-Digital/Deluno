@@ -11,6 +11,9 @@ public interface IProfileChangeReevaluator
     /// <summary>The profile was edited: re-decide every title and episode it judges.</summary>
     Task<int> ReevaluateForProfileAsync(string profileId, CancellationToken cancellationToken);
 
+    /// <summary>The library was given another profile: re-decide the titles that follow it.</summary>
+    Task<int> ReevaluateForLibraryAsync(string libraryId, CancellationToken cancellationToken);
+
     /// <summary>A media plan was saved and its libraries were given its profile: re-decide those libraries.</summary>
     Task<int> ReevaluateForPolicySetAsync(string policySetId, CancellationToken cancellationToken);
 }

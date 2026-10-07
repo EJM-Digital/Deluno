@@ -18,6 +18,7 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { MenuSelect } from "../components/ui/menu-select";
+import { Select } from "../components/ui/select";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -47,6 +48,8 @@ interface LibraryForm {
   rootPath: string;
   /** Where finished downloads for this library arrive. Empty means "use the download client's own folder". */
   downloadsPath: string;
+  /** The quality profile that judges this library's titles. Empty only while creating, when the server picks the standard one. */
+  qualityProfileId: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -150,6 +153,7 @@ export function SettingsLibrariesPage() {
     setForm((current) => ({
       ...current,
       mediaType,
+      qualityProfileId: "",
       name: current.name,
       rootPath: current.rootPath.trim() && current.rootPath !== defaultRoot(current.mediaType, settings) ? current.rootPath : defaultRoot(mediaType, settings)
     }));
@@ -182,7 +186,7 @@ export function SettingsLibrariesPage() {
             purpose: "Main library",
             rootPath: form.rootPath.trim(),
             downloadsPath: form.downloadsPath.trim() || null,
-            qualityProfileId: null,
+            qualityProfileId: form.qualityProfileId || null,
             // New libraries stay idle until their search behaviour is attached
             // explicitly from Automation & Recovery.
             autoSearchEnabled: false,
@@ -206,6 +210,11 @@ export function SettingsLibrariesPage() {
             { name: form.name.trim(), rootPath: form.rootPath.trim(), downloadsPath: form.downloadsPath.trim() || null },
             "Library details could not be saved."
           );
+        }
+        // Another profile re-judges every title that follows this library, so a raised
+        // cutoff turns the files below it into upgrades straight away (#1169).
+        if (form.qualityProfileId && form.qualityProfileId !== before.qualityProfileId) {
+          await putJson(`/api/libraries/${id}/quality-profile`, { qualityProfileId: form.qualityProfileId }, "The quality profile could not be changed.");
         }
         // Subtitles are not written from here any more. They are one screen for
         // every library — Subtitles → Languages — and a second write path for
@@ -441,6 +450,31 @@ export function SettingsLibrariesPage() {
             </div>
           </section>
 
+          <section className="grid gap-(--grid-gap) border-b border-hairline py-6 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
+            <div className="grid content-start gap-1">
+              <h3 className="text-(length:--type-body-sm) font-semibold text-foreground">What quality do you want?</h3>
+              <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">The quality profile decides which releases are good enough and when a file is worth upgrading.</p>
+            </div>
+            <FieldRow>
+              <Field
+                label="Quality profile"
+                help={mode.kind === "edit" ? "Changing it rechecks every title here that follows the library's profile. A title with a profile of its own keeps it." : "You can change this later."}
+              >
+                <Select
+                  aria-label="Quality profile"
+                  value={form.qualityProfileId}
+                  onChange={(event) => setForm((current) => ({ ...current, qualityProfileId: event.target.value }))}
+                  options={[
+                    ...(mode.kind === "create" ? [{ value: "", label: "Standard (recommended)" }] : form.qualityProfileId ? [] : [{ value: "", label: "Choose a profile" }]),
+                    ...qualityProfiles
+                      .filter((profile) => profile.mediaType === form.mediaType)
+                      .map((profile) => ({ value: profile.id, label: profile.name }))
+                  ]}
+                />
+              </Field>
+            </FieldRow>
+          </section>
+
           {/*
             "Which subtitles?" used to be here.
 
@@ -537,6 +571,7 @@ function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapsho
     mediaType,
     rootPath: defaultRoot(mediaType, settings),
     downloadsPath: "",
+    qualityProfileId: "",
   };
 }
 
@@ -546,6 +581,7 @@ function formFromLibrary(library: LibraryItem): LibraryForm {
     mediaType: library.mediaType === "tv" ? "tv" : "movies",
     rootPath: library.rootPath,
     downloadsPath: library.downloadsPath ?? "",
+    qualityProfileId: library.qualityProfileId ?? "",
   };
 }
 
@@ -554,7 +590,8 @@ function sameForm(a: LibraryForm, b: LibraryForm) {
     a.name === b.name &&
     a.mediaType === b.mediaType &&
     a.rootPath === b.rootPath &&
-    a.downloadsPath === b.downloadsPath
+    a.downloadsPath === b.downloadsPath &&
+    a.qualityProfileId === b.qualityProfileId
   );
 }
 

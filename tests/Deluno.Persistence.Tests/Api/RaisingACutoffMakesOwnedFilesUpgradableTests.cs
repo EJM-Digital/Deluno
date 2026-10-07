@@ -127,6 +127,35 @@ public sealed class RaisingACutoffMakesOwnedFilesUpgradableTests
     }
 
     [Fact]
+    public async Task Giving_a_library_another_profile_rechecks_its_titles_and_refuses_a_profile_for_the_other_kind_of_media()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var modest = await CreateProfileAsync(app, "Movies 1080p", "movies", "WEB 1080p");
+        var ambitious = await CreateProfileAsync(app, "Movies 4K", "movies", "WEB 2160p");
+        var tv = await CreateProfileAsync(app, "TV 1080p", "tv", "WEB 1080p");
+        var libraryId = await CreateLibraryAsync(app, "movies", modest);
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        var mediaState = app.Services.GetRequiredService<IMediaStateRepository>();
+        var movieId = await ImportFilmAsync(app, libraryId, movies);
+        Assert.Equal("covered", (await WantedAsync(mediaState, movieId)).WantedStatus);
+
+        var wrongKind = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/quality-profile", new { qualityProfileId = tv });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, wrongKind.StatusCode);
+        Assert.Equal("covered", (await WantedAsync(mediaState, movieId)).WantedStatus);
+
+        var response = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/quality-profile", new { qualityProfileId = ambitious });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        Assert.Equal(ambitious, JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("qualityProfileId").GetString());
+
+        var raised = await WantedAsync(mediaState, movieId);
+        Assert.Equal("upgrade", raised.WantedStatus);
+        Assert.Equal("WEB 2160p", raised.TargetQuality);
+
+        await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/quality-profile", new { qualityProfileId = modest });
+        Assert.Equal("covered", (await WantedAsync(mediaState, movieId)).WantedStatus);
+    }
+
+    [Fact]
     public async Task A_cutoff_change_is_written_to_Activity_in_plain_words()
     {
         await using var app = await ApplicationTestHost.StartAsync();
