@@ -3848,6 +3848,97 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(preview.DestinationPath, await command.ExecuteScalarAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// #1174: "The.Simpsons.S38E01...DDP5.1..." once also linked S01E01, because the stray
+    /// "5.1" read as absolute episode 1. A name that says S38E01 is for S38E01 only.
+    /// </summary>
+    [Fact]
+    public async Task A_season_and_episode_name_links_only_that_episode_even_when_another_has_the_absolute_number()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "The.Simpsons.S38E01.The.Childrens.Book.Job.1080p.DSNP.WEB-DL.DDP5.1.H.264-STRiKES.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("The Simpsons", 1989, "tt0096697"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "Simpsons Roasting on an Open Fire", null, timeProvider.GetUtcNow(), AbsoluteNumber: 1),
+                new CatalogueEpisodeItem(38, 1, "The Children's Book Job", null, timeProvider.GetUtcNow(), AbsoluteNumber: 808)
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: Path.GetFileName(sourcePath), MediaType: "tv",
+                    Title: "The Simpsons", Year: 1989, Genres: [], Tags: [],
+                    Studio: null, OriginalLanguage: null, SeriesId: series.Id),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.True(detail!.Episodes.Single(e => e.SeasonNumber == 38 && e.EpisodeNumber == 1).HasFile);
+        Assert.False(detail.Episodes.Single(e => e.SeasonNumber == 1 && e.EpisodeNumber == 1).HasFile);
+    }
+
+    /// <summary>#1174: the one-off repair keeps the episode the file's name gives, clears the other, and is safe to repeat.</summary>
+    [Fact]
+    public async Task The_repair_clears_the_wrong_link_keeps_the_named_episode_and_writes_activity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        var seriesRoot = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(seriesRoot);
+        var library = await CreateTvLibraryAsync(libraries, seriesRoot, Path.Combine(storage.DataRoot, "downloads"));
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var filePath = Path.Combine(seriesRoot, "The Simpsons (1989)", "The Simpsons - S38E01 - The Children's Book Job [WEB 1080p].mkv");
+        await seriesRepository.ImportExistingAsync(
+            library.Id, "The Simpsons", 1989, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: filePath, FileSizeBytes: 4096),
+                new ImportedEpisodeItem(38, 1, HasFile: true, FilePath: filePath, FileSizeBytes: 4096)
+            ],
+            CancellationToken.None);
+
+        var activity = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var cleared = await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None);
+        Assert.Equal(1, cleared);
+
+        var seriesId = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None)).Id;
+        var detail = await seriesRepository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.False(detail!.Episodes.Single(e => e.SeasonNumber == 1).HasFile);
+        Assert.True(detail.Episodes.Single(e => e.SeasonNumber == 38).HasFile);
+        var events = await activity.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(events, e => e.Category == Deluno.Worker.Services.EpisodeFileLinkRepairService.ActivityCategory
+            && e.Message.Contains("S01E01") && e.Message.Contains("S38E01"));
+
+        Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
+    }
+
     /// <summary>#761: a dated show is named with DailyEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>
     [Fact]
     public async Task Preview_names_a_dated_series_episode_with_the_daily_format()
