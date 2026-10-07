@@ -1908,7 +1908,7 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"{item.ReleaseName}: {StalledReason(struck, client.Name)} {PlainRemediation(applied, client.Name)}";
+                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
