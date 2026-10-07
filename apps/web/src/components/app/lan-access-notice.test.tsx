@@ -58,10 +58,10 @@ describe("other devices on the network (#623)", () => {
   it("in setup, says the result and the address to use when other devices can already reach Deluno (#1141)", async () => {
     fetchJson.mockResolvedValueOnce({ ...blocked, state: "open", canAllow: false, message: "Windows Firewall lets other devices reach Deluno on port 5099." });
 
-    render(<LanAccessNotice showResult address="192.168.1.196" />);
+    render(<LanAccessNotice showResult address="192.168.1.20" />);
 
     expect(await screen.findByText(/Other devices can reach Deluno\./)).toBeTruthy();
-    expect(screen.getByText(/http:\/\/10\.1\.1\.196:5099/)).toBeTruthy();
+    expect(screen.getByText(/http:\/\/192.168.1.20:5099/)).toBeTruthy();
   });
 
   it("in setup, still says something when there was nothing to check", async () => {

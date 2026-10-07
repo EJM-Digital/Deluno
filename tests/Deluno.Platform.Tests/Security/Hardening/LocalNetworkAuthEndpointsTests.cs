@@ -59,10 +59,10 @@ public sealed class LocalNetworkAuthEndpointsTests
     {
         var result = await LocalNetworkAuthEndpoints.GetOverviewAsync(
             new DefaultHttpContext(), new FakeRepository(), new FakeAllowedHosts(),
-            new FakeResolver(System.Net.IPAddress.Parse("::ffff:192.168.1.196")), CancellationToken.None);
+            new FakeResolver(System.Net.IPAddress.Parse("::ffff:192.168.1.20")), CancellationToken.None);
 
         var overview = Assert.IsType<Ok<LocalNetworkAuthOverview>>(result).Value!;
-        Assert.Equal("192.168.1.196", overview.CurrentAddress);
+        Assert.Equal("192.168.1.20", overview.CurrentAddress);
         Assert.True(overview.CurrentAddressIsLocal);
     }
 

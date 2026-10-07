@@ -22,7 +22,7 @@ public static class LocalNetworkAuthEndpoints
         var allowedHosts = await allowedHostsRepository.GetAsync(cancellationToken);
         var resolvedAddress = await resolver.ResolveAsync(httpContext, cancellationToken);
         var currentAddress = resolvedAddress ?? httpContext.Connection.RemoteIpAddress;
-        // #1141: an IPv4 address that arrived over IPv6 (::ffff:192.168.1.196) is shown the way people write it.
+        // #1141: an IPv4 address that arrived over IPv6 (::ffff:192.168.1.20) is shown the way people write it.
         var currentAddressText = (currentAddress is { IsIPv4MappedToIPv6: true } ? currentAddress.MapToIPv4() : currentAddress)?.ToString() ?? "unknown";
 
         var isLocal = currentAddress is not null && LocalNetworkMatcher.IsLocal(currentAddress, settings.AdditionalLocalNetworks);

@@ -34,12 +34,12 @@ describe("PathInput: Choose folder (#1170)", () => {
     expect(browserIsOnServerMachine("localhost")).toBe(true);
     expect(browserIsOnServerMachine("127.0.0.1")).toBe(true);
     expect(browserIsOnServerMachine("[::1]")).toBe(true);
-    expect(browserIsOnServerMachine("192.168.1.51")).toBe(false);
+    expect(browserIsOnServerMachine("192.168.1.10")).toBe(false);
     expect(browserIsOnServerMachine("deluno.home")).toBe(false);
   });
 
   it("opens the in-app folder browser, and never calls the Windows picker, from another device", async () => {
-    vi.stubGlobal("location", { hostname: "192.168.1.51" });
+    vi.stubGlobal("location", { hostname: "192.168.1.10" });
     render(<PathInput value="" onChange={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
