@@ -398,7 +398,7 @@ export function SettingsProfilesPage() {
     setBusy(true);
     setSaveState("saving");
     try {
-      const starterFormats = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats, guide) : [];
+      const starterFormats = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(formatsStarterId, form.mediaType, customFormats, guide) : [];
       const starterFormatIds = starterFormats.map((format) => format.id);
       const formatIds = [...new Set([...form.customFormatIds, ...starterFormatIds])];
       // Choosing a starter with its recommended rules is choosing its answers,
@@ -486,7 +486,10 @@ export function SettingsProfilesPage() {
 
   /* ---------------------------------------------------------- render */
   const usedBy = editing ? librariesByProfile.get(editing.id) ?? [] : [];
-  const recommendedCount = recommendedFormatsFor(starterId, guide).length;
+  // A custom profile starts from the same baseline formats as the guide's default template for its media type.
+  const baselineStarter = baselineStarterFor(profileStarters, form.mediaType);
+  const formatsStarterId = starterId || baselineStarter?.id || "";
+  const recommendedCount = recommendedFormatsFor(formatsStarterId, guide).length;
 
   return (
     <div className="grid gap-(--page-gap)">
@@ -553,7 +556,7 @@ export function SettingsProfilesPage() {
             {recommendedCount ? (
               <SwitchRow
                 label="Add the recommended formats"
-                description={`${recommendedCount} TRaSH-guide preference rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale handling. Created on save if they don't exist yet.`}
+                description={`${recommendedCount} TRaSH-guide preference rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale handling${starterId ? "" : `, the baseline every custom ${form.mediaType === "tv" ? "TV" : "movie"} profile starts with (from "${baselineStarter?.label}")`}. Created on save if they don't exist yet.`}
                 checked={addRecommended}
                 onCheckedChange={setAddRecommended}
               />
@@ -1064,6 +1067,16 @@ export function SettingsProfilesPage() {
  * the sensible default and the scenario are the same thing — which is what lets
  * the picker go.</p>
  */
+/**
+ * The template a profile with no template of its own is measured against: the guide's balanced profile for the
+ * media type, else its first. A custom profile gets this template's recommended formats as its baseline, for
+ * movies and TV alike (#1139), instead of whichever formats happened to exist already.
+ */
+export function baselineStarterFor(starters: ProfileStarter[], mediaType: "movies" | "tv"): ProfileStarter | undefined {
+  return starters.find((starter) => starter.mediaType === mediaType && /balanced/i.test(starter.label))
+    ?? starters.find((starter) => starter.mediaType === mediaType);
+}
+
 function defaultForm(
   starters: ProfileStarter[],
   mediaType: "movies" | "tv" = "movies",
@@ -1085,9 +1098,7 @@ function defaultForm(
     ...QUALITY_LIMITS_DEFAULTS
   };
 
-  const balanced =
-    starters.find((starter) => starter.mediaType === mediaType && /balanced/i.test(starter.label))
-    ?? starters.find((starter) => starter.mediaType === mediaType);
+  const balanced = baselineStarterFor(starters, mediaType);
   if (!balanced) return blank;
 
   // Steps 3 to 7 open on the guide's recommendations too, not just step 1.

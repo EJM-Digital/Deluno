@@ -80,6 +80,33 @@ public sealed class GuidePackageTests
         Assert.Empty(Deluno.Quality.ReleasePreferences.ReleasePreferencePlanValidator.Validate(compilation.Plan));
     }
 
+    /// <summary>#1139: templates for 720p, 4K TV and SD/DVD exist for the media types they make sense for, none named after the media type.</summary>
+    [Fact]
+    public void The_templates_cover_720p_4k_tv_and_sd_without_repeating_the_media_type_in_their_names()
+    {
+        var package = GuidePackageCatalog.Current;
+        (string Id, string MediaType)[] expected =
+        [
+            ("web-720p", "movies"), ("web-720p-tv", "tv"), ("web-2160p-tv", "tv"), ("sd-dvd", "movies"), ("sd-dvd-tv", "tv")
+        ];
+        foreach (var (id, mediaType) in expected)
+        {
+            var profile = package.QualityProfiles.Single(item => item.Id == id);
+            Assert.Equal(mediaType, profile.MediaType);
+            Assert.NotEmpty(profile.RecommendedFormats);
+            Assert.DoesNotContain(compilationWarnings(id, mediaType), warning => warning.Contains("missing quality tier") || warning.Contains("could not be mapped") || warning.Contains("unknown typed trait"));
+        }
+
+        Assert.All(package.QualityProfiles, profile =>
+        {
+            Assert.False(profile.Name.StartsWith("TV", StringComparison.Ordinal), profile.Name);
+            Assert.False(profile.Name.StartsWith("Movies", StringComparison.Ordinal), profile.Name);
+        });
+
+        IReadOnlyList<string> compilationWarnings(string id, string mediaType)
+            => GuidePlanCompiler.Compile(id, mediaType, package).Warnings;
+    }
+
     [Fact]
     public void Every_shipped_guide_profile_compiles_with_its_provenance_and_explicit_advanced_boundary()
     {
