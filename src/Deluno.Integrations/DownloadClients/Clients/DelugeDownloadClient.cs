@@ -416,20 +416,22 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             string? CoreText(string key) => coreConfig.ValueKind == JsonValueKind.Object && coreConfig.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
             var coreMoves = coreConfig.ValueKind == JsonValueKind.Object && coreConfig.TryGetProperty("move_completed", out var moves) && moves.ValueKind == JsonValueKind.True;
             var coreFolder = coreMoves ? CoreText("move_completed_path") : CoreText("download_location");
+            // Where a torrent is written while it downloads (#1164); with move-completed off that is also where it finishes.
+            var coreIncomplete = CoreText("download_location");
 
             var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, json, new DelugeRequest("label.get_labels", [], 11), cancellationToken);
             if (labels?.Error is not null || labels?.Result is null)
             {
                 return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Unsupported,
                     $"Deluge's Label plugin is off, so every download goes to {coreFolder} whatever its category. Turn on the Label plugin in Deluge, Preferences, Plugins.",
-                    Supported: false, Found: false, SavePath: coreFolder);
+                    Supported: false, Found: false, SavePath: coreFolder, IncompletePath: coreIncomplete);
             }
 
             if (!labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase))
             {
                 return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Missing,
                     $"Deluge has no label named {label}. Deluno adds it on the first grab, but a new label has no folder, so its downloads go to {coreFolder}. Add the label in Deluge and set its completed folder.",
-                    Supported: true, Found: false, SavePath: coreFolder);
+                    Supported: true, Found: false, SavePath: coreFolder, IncompletePath: coreIncomplete);
             }
 
             var options = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(http, json, new DelugeRequest("label.get_options", [label], 12), cancellationToken);
@@ -440,10 +442,10 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             var folder = labelMoves ? ownPath : coreFolder;
             return labelMoves
                 ? new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Ready,
-                    $"Deluge's {label} label moves finished downloads to {folder}.", Supported: true, Found: true, SavePath: folder)
+                    $"Deluge's {label} label moves finished downloads to {folder}.", Supported: true, Found: true, SavePath: folder, IncompletePath: coreIncomplete)
                 : new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Configuration,
                     $"Deluge has a {label} label, but it has no completed folder of its own, so its downloads end up in {folder} with everything else. Set \"Move completed to\" on the label in Deluge.",
-                    Supported: true, Found: true, SavePath: folder);
+                    Supported: true, Found: true, SavePath: folder, IncompletePath: coreIncomplete);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException)
         {

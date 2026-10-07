@@ -24,7 +24,8 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// season-pack folder, or a folder of non-media scraps. Files belonging to an
 /// active hand-off (<see cref="WorkPlanner.ExpectedOutputDirectoryNames"/>) or
 /// still being written (<see cref="ProcessorOutputReadiness"/>) are never
-/// listed. Nothing is ever deleted by this check -- see
+/// listed. Whatever Deluno knows it will never import is cleared first
+/// (<c>ProcessorOutputSweep</c>, #1155); anything else is only listed here -- see
 /// <c>ExternalIntegrationEndpointRouteBuilderExtensions</c>'s
 /// <c>/processors/output/delete</c> for the only way that happens, and only on
 /// request.</para>
@@ -33,7 +34,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
     ILibrariesRepository libraries,
     IProcessorRepository processors,
     IJobQueueRepository jobQueueRepository,
-    IMovieCatalogRepository movies) : IHealthCheck
+    IMovieCatalogRepository movies,
+    ProcessorOutputSweep? sweep = null) : IHealthCheck
 {
     public string Category => HealthCheckCategories.Processor;
 
@@ -42,6 +44,21 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
 
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
+        // #1155: what Deluno knows it will never import (a hand-off a newer one replaced, one whose
+        // original was imported, a removed title) is cleared first, each with a line in Activity.
+        // What is left is listed below for a person to import or clear.
+        if (sweep is not null)
+        {
+            try
+            {
+                await sweep.SweepAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                // The list below is still true; the sweep tries again on the next pass.
+            }
+        }
+
         var refineLibraries = (await libraries.ListLibrariesAsync(cancellationToken))
             .Where(library =>
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
@@ -241,7 +258,7 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             $"Unexpected files in the {library.Name} library's processor output folder",
             message,
             cause: "This shouldn't happen: it only occurs after something else already went wrong, or another app shares this folder.",
-            fix: isMedia ? "Import it, or delete it." : "Delete it, or leave it for now.",
+            fix: isMedia ? "Import it, or clear it." : "Clear it, or leave it for now.",
             detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind, isMedia }));
 }
 

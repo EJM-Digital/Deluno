@@ -364,6 +364,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             string Resolve(string value) => System.Text.RegularExpressions.Regex.Replace(
                 value, @"\$\{(\w+)\}", match => options.TryGetValue(match.Groups[1].Value, out var inner) ? inner : match.Value);
             var destDir = Resolve(options.GetValueOrDefault("DestDir") ?? string.Empty);
+            // The intermediate folder is where a job is kept while it runs; empty means NZBGet works in the destination folder (#1164).
+            var interDir = Resolve(options.GetValueOrDefault("InterDir") ?? string.Empty);
 
             var index = options.Keys
                 .Where(key => key.StartsWith("Category", StringComparison.OrdinalIgnoreCase) && key.EndsWith(".Name", StringComparison.OrdinalIgnoreCase))
@@ -372,7 +374,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             {
                 return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Missing,
                     $"NZBGet has no category named {name}, so its downloads go to NZBGet's DestDir ({destDir}). Add the category in NZBGet, Settings, Categories.",
-                    Supported: true, Found: false, SavePath: ClientPaths.ClientFolder(destDir, null));
+                    Supported: true, Found: false, SavePath: ClientPaths.ClientFolder(destDir, null),
+                    IncompletePath: string.IsNullOrWhiteSpace(interDir) ? ClientPaths.ClientFolder(destDir, null) : interDir);
             }
 
             var ownDir = Resolve(options.GetValueOrDefault(index + ".DestDir") ?? string.Empty);
@@ -381,7 +384,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 ? ClientPaths.ClientFolder(destDir, ownDir)
                 : ClientPaths.ClientFolder(destDir, appends ? name : null);
             return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
-                $"NZBGet has a category named {name}, saving to {folder}.", Supported: true, Found: true, SavePath: folder);
+                $"NZBGet has a category named {name}, saving to {folder}.", Supported: true, Found: true, SavePath: folder,
+                IncompletePath: string.IsNullOrWhiteSpace(interDir) ? folder : interDir);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException)
         {

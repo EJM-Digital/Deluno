@@ -354,7 +354,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
         try
         {
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "rpc-version" } }), cancellationToken);
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "rpc-version", "incomplete-dir", "incomplete-dir-enabled" } }), cancellationToken);
 
             // #973: labels arrived in Transmission's RPC 16 (Transmission
             // 2.40). Deluno routes every grab by category through a label
@@ -377,7 +377,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                     "Transmission did not say where it saves downloads.", Supported: true, Found: false)
                 : new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
                     $"Transmission has no categories of its own; Deluno sends each {name} download to {folder}, inside Transmission's download folder.",
-                    Supported: true, Found: true, SavePath: folder);
+                    Supported: true, Found: true, SavePath: folder,
+                    // Transmission writes a download here while it is in progress (#1164); with its incomplete folder off that is the folder itself.
+                    IncompletePath: session.Arguments?.IncompleteDirEnabled == true && !string.IsNullOrWhiteSpace(session.Arguments.IncompleteDir) ? session.Arguments.IncompleteDir : folder);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException)
         {
@@ -471,7 +473,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("download-dir")] string? DownloadDir = null,
         [property: JsonPropertyName("size-bytes")] long? SizeBytes = null,
         [property: JsonPropertyName("rpc-version")] int? RpcVersion = null,
-        [property: JsonPropertyName("version")] string? Version = null);
+        [property: JsonPropertyName("version")] string? Version = null,
+        [property: JsonPropertyName("incomplete-dir")] string? IncompleteDir = null,
+        [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null, [property: JsonPropertyName("hashString")] string? HashString = null);
 
