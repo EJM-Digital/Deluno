@@ -20,6 +20,8 @@
 import { statusPresentation, statusTone, toneSortValue } from "../lib/status-tones";
 import { eventLabel } from "../lib/activity-format";
 import { handoffCanBeSentAgain } from "../lib/alert-actions";
+import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, heldReleasesSource, heldReleaseTitle, type HeldReleaseRow } from "../lib/held-releases";
+import { plainSearchResult } from "../lib/release-candidate-status";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -163,7 +165,15 @@ export const queueSources = defineSources({
   processorHandoffs: { ...sharedSources.handoffs, fallback: [] as ProcessorHandoffItem[] },
   activityEvents: { key: ["src", "activity-dispatch-80"], label: "What happened to each download", fetch: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch"), fallback: [] as ActivityEventItem[] },
   // Orphaned download folders (#588). An older API without the endpoint shows none.
-  orphans: { ...sharedSources.orphans, fallback: [] as OrphanedDownloadItem[] }
+  orphans: { ...sharedSources.orphans, fallback: [] as OrphanedDownloadItem[] },
+  // Releases a search held for a person's yes (#1159). An older API without the endpoint lists none.
+  heldReleases: {
+    ...heldReleasesSource,
+    fetch: () => heldReleasesSource.fetch().catch((error) => {
+      if (error instanceof ApiRequestError && error.status === 404) return [] as HeldReleaseRow[];
+      throw error;
+    })
+  }
 });
 
 export const queueLoader = sourceLoader(queueSources);
@@ -193,7 +203,7 @@ export function QueuePage() {
 }
 
 function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof queueSources>; revalidator: RouteSourceState<typeof queueSources>["revalidator"] }) {
-  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans } = data;
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans, heldReleases } = data;
   const lastDispatchRefresh = useRef(0);
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
@@ -320,7 +330,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const handoffsWithoutARow = processorHandoffs.filter((handoff) => !queueDownloadKeys.has(handoffDownloadKey(handoff.clientId, handoff.queueItemId)));
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
-  const needsActionCount = attention.total;
+  const needsActionCount = attention.total + heldReleases.length;
 
   const activity = useMemo(
     () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents }),
@@ -682,6 +692,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       throw new Error(body?.message || "That hand-off could not be dismissed.");
     }
+  }
+
+  async function approveHeld(row: HeldReleaseRow) {
+    await run(`held:approve:${row.historyId}`, () => approveHeldRelease(row), `Sent ${row.releaseName} to your download client.`);
+  }
+
+  async function findAnotherHeld(row: HeldReleaseRow) {
+    await run(`held:another:${row.historyId}`, () => findAnotherForHeldRelease(row), `${row.releaseName} will not be used again. Searching for another.`);
+  }
+
+  async function dismissHeld(row: HeldReleaseRow) {
+    await run(`held:dismiss:${row.historyId}`, () => dismissHeldRelease(row), `${heldReleaseTitle(row)} dismissed`);
   }
 
   async function dismissHandoff(handoff: ProcessorHandoffItem) {
@@ -1334,10 +1356,39 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             columns={[
               { id: "item", label: "Item", sortable: false },
               { id: "what", label: "What happened", width: "minmax(0,1.8fr)", sortable: false },
-              { id: "fix", label: "Fix", width: "180px", mobile: true, srOnly: true }
+              { id: "fix", label: "Fix", width: "300px", mobile: true, srOnly: true }
             ]}
             chevron={false}
           >
+            {heldReleases.map((row) => (
+              <ListRow key={`held:${row.historyId}`}>
+                <ListNameCell name={heldReleaseTitle(row)} sub={row.mediaType === "movie" ? "Movies" : "TV"} />
+                <ListCell
+                  primary={`Waiting for your OK: ${row.releaseName}`}
+                  secondary={[
+                    row.quality,
+                    row.sizeBytes ? formatBytes(row.sizeBytes) : null,
+                    row.indexerName ? `from ${row.indexerName}` : null,
+                    row.reason ? plainSearchResult(row.reason) : null
+                  ].filter(Boolean).join(" · ")}
+                />
+                <ListCell mobile align="end">
+                  <span className="flex flex-wrap items-center justify-end gap-2">
+                    <Button type="button" size="sm" aria-label={`Approve ${row.releaseName}`} onClick={() => void approveHeld(row)} disabled={busyKey !== null}>
+                      {busyKey === `held:approve:${row.historyId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Approve
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" aria-label={`Find another for ${heldReleaseTitle(row)}`} onClick={() => void findAnotherHeld(row)} disabled={busyKey !== null}>
+                      {busyKey === `held:another:${row.historyId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Find another
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" aria-label={`Dismiss ${row.releaseName}`} onClick={() => void dismissHeld(row)} disabled={busyKey !== null}>
+                      Dismiss
+                    </Button>
+                  </span>
+                </ListCell>
+              </ListRow>
+            ))}
             {recoveryCases.map((item) => (
               <ListRow key={`${item.mediaType}:${item.id}`}>
                 <ListNameCell name={item.title} sub={item.mediaType === "movie" ? "Movies" : "TV"} />
