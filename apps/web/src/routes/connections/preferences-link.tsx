@@ -18,3 +18,12 @@ export function mentionsCloudflare(text: string | null | undefined): boolean {
 export function MessageWithPreferencesLink({ text }: { text: string }) {
   return text.includes(CLOUDFLARE_HELPER_PLACE) ? <>{text} <PreferencesLink /></> : <>{text}</>;
 }
+
+/** On a row nothing uses yet: says so and goes to the place that fixes it (#1135). Stays out of the row's own click. */
+export function RoutingFixLink({ children }: { children: ReactNode }) {
+  return (
+    <Link to="/indexers/library-routing" onClick={(event) => event.stopPropagation()} className="font-medium text-warning hover:underline">
+      {children}
+    </Link>
+  );
+}

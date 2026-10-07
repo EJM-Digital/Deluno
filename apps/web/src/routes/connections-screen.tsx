@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { defineSources, queryClient, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
@@ -52,6 +52,8 @@ import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { ProxyDrawerBody } from "./connections/proxy-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
+import { RoutingFixLink } from "./connections/preferences-link";
+import { planClientRouting, planIndexerRouting, type RoutingPlan } from "./connections/auto-routing";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
 import {
   emptyIndexerFilters,
@@ -504,12 +506,15 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestOutcome | null>(null);
+  // Whether Add also routes the new indexer or client to the libraries it is for (#1135).
+  const [routeNewIndexer, setRouteNewIndexer] = useState(true);
+  const [routeNewClient, setRouteNewClient] = useState(true);
   // A result belongs to the drawer it was run in.
   const drawerKey = JSON.stringify(drawer);
   // A test run in the drawer before Add (#1134): kept with the form it tested, and sent with
   // the new indexer only if nothing was changed since, so the list shows it straight away.
   const testedNewIndexer = useRef<{ form: IndexerForm; health: { healthStatus: string; message: string; failureCategory: string | null; latencyMs: number | null } } | null>(null);
-  useEffect(() => { setTestResult(null); testedNewIndexer.current = null; }, [drawerKey]);
+  useEffect(() => { setTestResult(null); testedNewIndexer.current = null; setRouteNewIndexer(true); setRouteNewClient(true); }, [drawerKey]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -726,6 +731,38 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     }
   }
 
+  // Switch on, in Library Routing, what the person just added for (#1135). Reads each
+  // library's routing fresh, so it never overwrites a change made a moment ago.
+  async function applyRouting(plan: (snapshots: LibraryRoutingSnapshot[]) => RoutingPlan[]): Promise<string[]> {
+    const snapshots = await Promise.all(libraries.map((library) =>
+      fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${library.id}/routing`).catch((): LibraryRoutingSnapshot => ({ libraryId: library.id, libraryName: library.name, sources: [], downloadClients: [] }))
+    ));
+    const plans = plan(snapshots);
+    for (const item of plans) {
+      await send(`/api/libraries/${item.libraryId}/routing`, "PUT", item.body, "Routing could not be saved.");
+    }
+    return plans.map((item) => item.libraryName);
+  }
+  /** The message to show after an add that also routed it, or null when nothing was routed. */
+  async function routeNewIndexerNow(created: IndexerItem): Promise<string | null> {
+    if (!routeNewIndexer) return null;
+    try {
+      const names = await applyRouting((snapshots) => planIndexerRouting(created, libraries, snapshots));
+      return names.length ? `Indexer added and switched on for ${names.join(", ")}` : null;
+    } catch {
+      return "Indexer added, but could not be switched on in Library Routing. Do that under Library Routing.";
+    }
+  }
+  async function routeNewClientNow(created: DownloadClientItem): Promise<string | null> {
+    if (!routeNewClient) return null;
+    try {
+      const names = await applyRouting((snapshots) => planClientRouting(created, libraries, snapshots));
+      return names.length ? `Client added and routed to ${names.join(", ")}` : null;
+    } catch {
+      return "Client added, but could not be routed to a library. Do that under Library Routing.";
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -755,7 +792,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           setIndexerForm(settled);
           setIndexerInitial(settled);
           setDrawer({ kind: "indexer", id: created.id });
-          setSaveMessage("Indexer added");
+          setSaveMessage(await routeNewIndexerNow(created) ?? "Indexer added");
         }
       } else if (drawer.kind === "client") {
         const payload = clientPayload();
@@ -772,7 +809,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           setClientForm(settled);
           setClientInitial(settled);
           setDrawer({ kind: "client", id: created.id });
-          setSaveMessage("Client added");
+          setSaveMessage(await routeNewClientNow(created) ?? "Client added");
         }
       } else if (drawer.kind === "proxy") {
         const payload = buildProxySavePayload(proxyForm);
@@ -1050,7 +1087,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                             is what it expects back — and only when that differs from
                             their normal rule. */}
                         <ListCell primary={protocolLabel(item.protocol)} secondary={sharingRuleFrom(item) === "strict" ? "Strict sharing" : undefined} />
-                        <ListCell primary={scopeLabel(item.mediaScope)} secondary={libraries.length === 0 ? `Priority ${item.priority}` : searchedBy.length ? `Searched by ${searchedBy.join(", ")}` : "No library searches it"} />
+                        <ListCell primary={scopeLabel(item.mediaScope)} secondary={libraries.length === 0 ? `Priority ${item.priority}` : searchedBy.length ? `Searched by ${searchedBy.join(", ")}` : <RoutingFixLink>No library searches it. Switch it on in Library Routing</RoutingFixLink>} />
                         <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
                         <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
                         <ListCell mobile>
@@ -1132,7 +1169,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                           />
                         </ListCell>
                       ) : null}
-                      <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? "No library sends downloads here" : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
+                      <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? <RoutingFixLink>No library sends downloads here. Route it in Library Routing</RoutingFixLink> : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
                       <ListCell mobile>
@@ -1420,6 +1457,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onAcknowledgeVip={() => editingIndexer && void run(`acknowledge-vip:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}`, "PUT", { acknowledgeVipExpiry: true }, "Could not acknowledge."), `VIP warning acknowledged for ${editingIndexer.name}`)}
             onRemove={() => setConfirmRemove(true)}
             testMessage={testResult?.message ?? null}
+            routeOnAdd={routeNewIndexer}
+            onRouteOnAddChange={setRouteNewIndexer}
           />
         ) : null}
         {drawer.kind === "client" ? (
@@ -1438,6 +1477,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onTestMapping={(mappingId) => editingClient && void testMapping(editingClient.id, mappingId)}
             onRemove={() => setConfirmRemove(true)}
             blocklistSync={editingClient ? qbittorrentBlocklistSync[editingClient.id] ?? null : null}
+            routeOnAdd={routeNewClient}
+            onRouteOnAddChange={setRouteNewClient}
           />
         ) : null}
         {drawer.kind === "proxy" ? (
