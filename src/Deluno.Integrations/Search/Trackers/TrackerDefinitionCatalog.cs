@@ -241,6 +241,9 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
                     setting.IsSecret ? null : setting.Default,
                     setting.IsSecret,
                     setting.Options))
+                // Said in Deluno's words (#1137), not those of the apps the definitions were written for.
+                .Select(TrackerSettingWording.Reword)
+                .OfType<TrackerSettingSummary>()
                 .ToArray(),
             MayNeedCloudflareHelp: definition.Settings.Any(setting => setting.Type == "info_flaresolverr"),
             Unsupported: unsupported,
