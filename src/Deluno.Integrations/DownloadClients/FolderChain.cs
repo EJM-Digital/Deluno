@@ -340,7 +340,7 @@ public sealed class FolderChainService(
             var folders = support.HasLibraryFolders
                 ? await WithTimeoutAsync(token => processorService.GetLibraryFoldersAsync(connection, token), Timeout, cancellationToken)
                 : [];
-            var watched = folders.FirstOrDefault(folder => string.Equals(folder.ManagerLibraryKey, library.Id, StringComparison.OrdinalIgnoreCase))?.WatchedFolder
+            var watched = ProcessorLibraryFolder.ForLibrary(folders, library.Id)?.WatchedFolder
                 ?? support.WatchedPath;
             if (string.IsNullOrWhiteSpace(watched))
             {
