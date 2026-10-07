@@ -3732,7 +3732,8 @@ public sealed partial class ImportPipelineService(
             fileSizeBytes,
             cancellationToken,
             preferenceEvaluation,
-            movieId: knownMovieId);
+            movieId: knownMovieId,
+            resultNote: ImportOriginNote(preview.SourcePath, library, dispatch is not null));
         return new CatalogImportResult
         {
             CatalogUpdated = movieResult,
@@ -4474,6 +4475,21 @@ public sealed partial class ImportPipelineService(
     /// The second half is what keeps a library whose two folders overlap from
     /// having a client's file deleted from underneath it.
     /// </summary>
+    /// <summary>
+    /// What the title's "last attempt" says about where a file came from (#1151): a processor's cleaned output, a
+    /// download, or null for a file that was already in the library (which keeps the default wording).
+    /// </summary>
+    public static string? ImportOriginNote(string? sourcePath, LibraryItem? library, bool fromDownload)
+    {
+        if (IsProcessorOutput(sourcePath, library))
+        {
+            var processor = string.IsNullOrWhiteSpace(library?.ProcessorName) ? "the processor" : library!.ProcessorName!.Trim();
+            return $"Imported from {processor}'s cleaned output.";
+        }
+
+        return fromDownload ? "Imported from a download." : null;
+    }
+
     public static bool IsProcessorOutput(string? sourcePath, LibraryItem? library)
         => library is not null
             && ImportWorkflows.HandsToProcessor(library.ImportWorkflow)

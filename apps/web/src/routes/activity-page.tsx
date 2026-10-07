@@ -45,6 +45,7 @@ import {
 } from "../lib/api";
 import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob } from "../lib/failed-jobs";
+import { detailFields, fixLinkForActivity } from "../lib/detail-fields";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -642,6 +643,15 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               {openEvent.detail ? (
                 <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{openEvent.detail}</p>
               ) : null}
+              {fixLinkForActivity(openEvent.category) ? (
+                <Link
+                  to={fixLinkForActivity(openEvent.category)!.to}
+                  onClick={() => setOpenEvent(null)}
+                  className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline"
+                >
+                  {fixLinkForActivity(openEvent.category)!.label}
+                </Link>
+              ) : null}
             </DrawerSection>
 
             {openEvent.title || openEvent.filePath || openEvent.sourceName || openEvent.reasonGroup ? (
@@ -698,11 +708,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               </DrawerSection>
             ) : null}
 
-            {openEvent.detailsJson ? (
+            {detailFields(openEvent.detailsJson).length ? (
               <DrawerSection title="Detail">
-                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
-                  {prettyJson(openEvent.detailsJson)}
-                </pre>
+                <DrawerFacts items={detailFields(openEvent.detailsJson).map((field) => ({ label: field.label, value: field.value, mono: field.mono }))} />
               </DrawerSection>
             ) : null}
 
@@ -769,11 +777,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               </div>
             </DrawerSection>
 
-            {openImportCase.detailsJson ? (
+            {detailFields(openImportCase.detailsJson).length ? (
               <DrawerSection title="Evidence">
-                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
-                  {prettyJson(openImportCase.detailsJson)}
-                </pre>
+                <DrawerFacts items={detailFields(openImportCase.detailsJson).map((field) => ({ label: field.label, value: field.value, mono: field.mono }))} />
               </DrawerSection>
             ) : null}
           </>
@@ -828,10 +834,3 @@ function filterDay(token: string, edge: "since" | "until"): number | null {
   return moment ? moment.getTime() : null;
 }
 
-function prettyJson(value: string) {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
-}

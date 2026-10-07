@@ -3112,7 +3112,24 @@ public sealed class DownloadClientTelemetryService(
                     // import-ready output", leaving nothing to actually read.
                     ErrorMessage = queueStatus == DownloadQueueStatuses.ProcessingFailed
                         ? resolvedItem.ErrorMessage ?? handoff.FailureMessage
-                        : resolvedItem.ErrorMessage
+                        : resolvedItem.ErrorMessage,
+                    // The reason came from the processor, not the client, so the
+                    // failure says so (#1151). Left to the later normalisation it
+                    // read "Deluge queue failed: The processor refused...".
+                    Failure = queueStatus == DownloadQueueStatuses.ProcessingFailed
+                        && resolvedItem.Failure is null
+                        && string.IsNullOrWhiteSpace(resolvedItem.ErrorMessage)
+                        && !string.IsNullOrWhiteSpace(handoff.FailureMessage)
+                        ? IntegrationFailureFactory.FromLegacy(
+                            "processor",
+                            handoff.Id,
+                            string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "The processor" : handoff.ProcessorName!,
+                            "hand-off",
+                            "rejected",
+                            handoff.FailureMessage!.Trim(),
+                            code: handoff.Status,
+                            externalId: handoff.Id)
+                        : resolvedItem.Failure
                 };
             }
 

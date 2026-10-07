@@ -6,16 +6,9 @@ import { Button } from "../ui/button";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 import { getJobStatusLabel, isJobFailed, type JobStatus } from "../../lib/job-status-constants";
+import { detailFields } from "../../lib/detail-fields";
 import { isChosenOnSearch, relatedEntityLabel } from "../../lib/dispatch-target";
 import type { JobQueueItem } from "../../lib/api";
-
-function prettyJson(value: string) {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
-}
 
 export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem | null; busy: boolean; onClose: () => void; onDismiss: (job: JobQueueItem) => void }) {
   const { preferences } = useDisplayPreferences();
@@ -60,11 +53,9 @@ export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem
             </DrawerSection>
           ) : null}
 
-          {job.payloadJson ? (
-            <DrawerSection title="Payload">
-              <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-(length:--type-caption) text-muted-foreground">
-                {prettyJson(job.payloadJson)}
-              </pre>
+          {detailFields(job.payloadJson).length ? (
+            <DrawerSection title="What was asked">
+              <DrawerFacts items={detailFields(job.payloadJson).map((field) => ({ label: field.label, value: field.value, mono: field.mono }))} />
             </DrawerSection>
           ) : null}
 
