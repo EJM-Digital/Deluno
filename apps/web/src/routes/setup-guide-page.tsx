@@ -725,76 +725,17 @@ export function SetupGuidePage() {
     setBusy(true);
     const createdEntities: CreatedEntity[] = [];
     try {
-      const qualityProfileCache = [...data.qualityProfiles];
-      const customFormatCache = [...data.customFormats];
-      const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
-      const tvCustomFormatIds = hasTv ? await ensureCustomFormats(customFormatCache, "tv", form, data.guide, createdEntities) : [];
-      const movieProfile = hasMovies ? await ensureQualityProfile(qualityProfileCache, "movies", form, movieCustomFormatIds, createdEntities) : null;
-      const tvProfile = hasTv ? await ensureQualityProfile(qualityProfileCache, "tv", form, tvCustomFormatIds, createdEntities) : null;
-      const indexer = await ensureIndexer(data.indexers, form, serviceTest.indexer === "passed", createdEntities);
-      const clients = await ensureClients(liveClients, form, serviceTest.client === "passed", createdEntities);
-      const movieLibrary = canCreateMovies
-        ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, movieProfile?.id ?? null, form, createdEntities)
-        : null;
-      const tvLibrary = canCreateTv
-        ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, tvProfile?.id ?? null, form, createdEntities)
-        : null;
-
-      // A library made a moment ago has no sources to lose; one that was already there keeps its own unless an indexer is named.
-      const routable = (library: LibraryItem | null) =>
-        library && clients.length > 0 && (indexer || createdEntities.some((entity) => entity.kind === "library" && entity.id === library.id));
-      await Promise.all([
-        routable(movieLibrary) ? saveRouting(movieLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve(),
-        routable(tvLibrary) ? saveRouting(tvLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve()
-      ]);
-
-      // The answers go in last, and the one that can refuse goes first: if it refuses, the
-      // libraries above are removed again and none of the answers has been applied.
-      await saveSettings(data.settings, form, form.automation);
-      const notApplied: string[] = [];
-      // #939: only ever turned on by an explicit Yes here, and refused
-      // server-side (so left off) if the address answering this very
-      // request was not ticked -- setup can never lock itself out.
-      await saveAllowedHosts(form).catch(() => notApplied.push("which addresses Deluno answers on"));
-      // #993: unlike Allowed Hosts, an explicit No here always writes the
-      // real (off) setting -- there is no lock-out risk to guard against.
-      await saveLocalNetworkAuth(form).catch(() => notApplied.push("skipping sign-in on your home network"));
-      // #1034: same as Local Network Auth -- an explicit Yes or No here
-      // always writes the real setting.
-      await saveUpdatePreferences(form, data.updatePreferences).catch(() => notApplied.push("how Deluno updates"));
-      // #944: an explicit Yes or No here always writes the real setting,
-      // unlike Allowed Hosts (which only ever turns on) - an existing
-      // install's migration may have already frozen this on, and a plain
-      // "No" answer here should still be honored.
-      await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => notApplied.push("the dangerous-file check"));
-
-      // The first title is a bonus. If it cannot be added the baseline stands, and the screen says so.
-      let firstTitle: { id: string; title: string } | null = null;
-      let firstTitleProblem: string | null = null;
-      if (form.firstTitle.trim()) {
-        try {
-          firstTitle = await createFirstTitle(form, createdEntities);
-        } catch (titleError) {
-          firstTitleProblem = titleError instanceof Error ? titleError.message : `Could not add ${form.firstTitle.trim()}.`;
-        }
-      }
-
-      const created = [movieLibrary ? "Movies" : null, tvLibrary ? "TV Shows" : null].filter(Boolean).join(" and ");
-      const completionResult = {
-        message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.${
-          firstTitleProblem ? ` The first title was not added: ${firstTitleProblem}` : ""
-        }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}`,
-        libraries: [movieLibrary?.name, tvLibrary?.name].filter((item): item is string => Boolean(item)),
-        qualityProfiles: [movieProfile?.name, tvProfile?.name].filter((item, index, arr): item is string => Boolean(item) && arr.indexOf(item) === index),
-        customFormatCount: createdEntities.filter((item) => item.kind === "customFormat").length,
-        indexerName: indexer?.name ?? null,
-        clientName: clients.length > 0 ? clients.map((item) => item.name).join(", ") : null,
-        firstTitle: firstTitle?.title ?? null,
-        firstTitlePath: firstTitle ? (form.firstTitleType === "movies" ? "/movies" : "/tv") : null
-      };
-
-      await recordSetupCompleted(completionResult).catch(() => undefined);
-      await authedFetch("/api/setup/draft", { method: "DELETE" }).catch(() => undefined);
+      const completionResult = await createBaseline({
+        data,
+        form,
+        liveClients,
+        indexerTested: serviceTest.indexer === "passed",
+        clientTested: serviceTest.client === "passed",
+        hasMovies,
+        hasTv,
+        canCreateMovies,
+        canCreateTv
+      }, createdEntities);
       setResult(completionResult);
     } catch (err) {
       // All or none (#1132): what was made is removed, no answer was applied, and the screen keeps every answer given.
@@ -2494,6 +2435,98 @@ function previewFormats(guide: GuidePackage, goal: SelectedFormatGoal): GuideCus
     .map((target) => target.format)
     .filter((format) => !seen.has(format.name) && Boolean(seen.add(format.name)))
     .slice(0, 6);
+}
+
+export type CreateBaselineInput = {
+  data: SetupGuideLoaderData;
+  form: GuideForm;
+  liveClients: DownloadClientItem[];
+  indexerTested: boolean;
+  clientTested: boolean;
+  hasMovies: boolean;
+  hasTv: boolean;
+  canCreateMovies: boolean;
+  canCreateTv: boolean;
+};
+
+/**
+ * Creates the baseline (#1132): the profiles, the sources and clients it routes to, the libraries, and then
+ * the answers. Throws on the first problem; every entity made so far is in <paramref name="createdEntities"/>
+ * so the caller can take them back, and the answers are applied last so a failure applies none of them.
+ */
+export async function createBaseline(input: CreateBaselineInput, createdEntities: CreatedEntity[]): Promise<SetupCompletion> {
+  const { data, form, hasMovies, hasTv, canCreateMovies, canCreateTv } = input;
+  const qualityProfileCache = [...data.qualityProfiles];
+  const customFormatCache = [...data.customFormats];
+  const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
+  const tvCustomFormatIds = hasTv ? await ensureCustomFormats(customFormatCache, "tv", form, data.guide, createdEntities) : [];
+  const movieProfile = hasMovies ? await ensureQualityProfile(qualityProfileCache, "movies", form, movieCustomFormatIds, createdEntities) : null;
+  const tvProfile = hasTv ? await ensureQualityProfile(qualityProfileCache, "tv", form, tvCustomFormatIds, createdEntities) : null;
+  const indexer = await ensureIndexer(data.indexers, form, input.indexerTested, createdEntities);
+  const clients = await ensureClients(input.liveClients, form, input.clientTested, createdEntities);
+  const movieLibrary = canCreateMovies
+    ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, movieProfile?.id ?? null, form, createdEntities)
+    : null;
+  const tvLibrary = canCreateTv
+    ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, tvProfile?.id ?? null, form, createdEntities)
+    : null;
+
+  // A library made a moment ago has no sources to lose; one that was already there keeps its own unless an indexer is named.
+  const routable = (library: LibraryItem | null) =>
+    library && clients.length > 0 && (indexer || createdEntities.some((entity) => entity.kind === "library" && entity.id === library.id));
+  await Promise.all([
+    routable(movieLibrary) ? saveRouting(movieLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve(),
+    routable(tvLibrary) ? saveRouting(tvLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve()
+  ]);
+
+  // The answers go in last, and the one that can refuse goes first: if it refuses, the
+  // libraries above are removed again and none of the answers has been applied.
+  await saveSettings(data.settings, form, form.automation);
+  const notApplied: string[] = [];
+  // #939: only ever turned on by an explicit Yes here, and refused
+  // server-side (so left off) if the address answering this very
+  // request was not ticked -- setup can never lock itself out.
+  await saveAllowedHosts(form).catch(() => notApplied.push("which addresses Deluno answers on"));
+  // #993: unlike Allowed Hosts, an explicit No here always writes the
+  // real (off) setting -- there is no lock-out risk to guard against.
+  await saveLocalNetworkAuth(form).catch(() => notApplied.push("skipping sign-in on your home network"));
+  // #1034: same as Local Network Auth -- an explicit Yes or No here
+  // always writes the real setting.
+  await saveUpdatePreferences(form, data.updatePreferences).catch(() => notApplied.push("how Deluno updates"));
+  // #944: an explicit Yes or No here always writes the real setting,
+  // unlike Allowed Hosts (which only ever turns on) - an existing
+  // install's migration may have already frozen this on, and a plain
+  // "No" answer here should still be honored.
+  await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => notApplied.push("the dangerous-file check"));
+
+  // The first title is a bonus. If it cannot be added the baseline stands, and the screen says so.
+  let firstTitle: { id: string; title: string } | null = null;
+  let firstTitleProblem: string | null = null;
+  if (form.firstTitle.trim()) {
+    try {
+      firstTitle = await createFirstTitle(form, createdEntities);
+    } catch (titleError) {
+      firstTitleProblem = titleError instanceof Error ? titleError.message : `Could not add ${form.firstTitle.trim()}.`;
+    }
+  }
+
+  const created = [movieLibrary ? "Movies" : null, tvLibrary ? "TV Shows" : null].filter(Boolean).join(" and ");
+  const completionResult = {
+    message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.${
+      firstTitleProblem ? ` The first title was not added: ${firstTitleProblem}` : ""
+    }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}`,
+    libraries: [movieLibrary?.name, tvLibrary?.name].filter((item): item is string => Boolean(item)),
+    qualityProfiles: [movieProfile?.name, tvProfile?.name].filter((item, index, arr): item is string => Boolean(item) && arr.indexOf(item) === index),
+    customFormatCount: createdEntities.filter((item) => item.kind === "customFormat").length,
+    indexerName: indexer?.name ?? null,
+    clientName: clients.length > 0 ? clients.map((item) => item.name).join(", ") : null,
+    firstTitle: firstTitle?.title ?? null,
+    firstTitlePath: firstTitle ? (form.firstTitleType === "movies" ? "/movies" : "/tv") : null
+  };
+
+  await recordSetupCompleted(completionResult).catch(() => undefined);
+  await authedFetch("/api/setup/draft", { method: "DELETE" }).catch(() => undefined);
+  return completionResult;
 }
 
 async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "movies" | "tv", form: GuideForm, guide: GuidePackage, createdEntities: CreatedEntity[]): Promise<string[]> {
