@@ -2,6 +2,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Media;
+using Deluno.Platform;
 using Deluno.Series.Data;
 using Deluno.Series.Services;
 using Deluno.Platform.Migration;
@@ -33,6 +34,10 @@ public static class SeriesServiceCollectionExtensions
         // dependency, and the composition test refuses to build the container.
         services.TryAddScoped<AcquisitionOverrideService>();
         services.TryAddScoped<TitleRemovalService>();
+        // #1161: keeps a removed title with its files in the recycle bin and puts it back.
+        services.TryAddScoped<TitleSnapshotService>();
+        services.TryAddScoped<ITitleSnapshotService>(provider => provider.GetRequiredService<TitleSnapshotService>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ITitleRestorer, TitleSnapshotService>(provider => provider.GetRequiredService<TitleSnapshotService>()));
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.TryAddSingleton<IMediaSubtitleOverrideRepository, SqliteMediaSubtitleOverrideRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();

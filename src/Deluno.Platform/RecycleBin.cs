@@ -19,7 +19,40 @@ public sealed record RecycleBinItem(
     bool IsDirectory,
     long SizeBytes,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset ExpiresUtc);
+    DateTimeOffset ExpiresUtc,
+    // #1161: set when the files left the library because a title was removed.
+    // The catalogue record is kept beside the files so Restore can put the
+    // title back with them, not only the folder.
+    string? TitleSnapshotId = null);
+
+/// <summary>
+/// The catalogue record of a title that was removed with its files, kept for
+/// as long as its files are in the bin (#1161). <c>DataJson</c> is opaque
+/// here: only the catalogue that wrote it can read it back.
+/// </summary>
+public sealed record RecycleBinTitleSnapshot(
+    string Id,
+    string MediaType,
+    string EntityType,
+    string TitleId,
+    string Title,
+    int? Year,
+    string DataJson,
+    DateTimeOffset CreatedUtc);
+
+/// <summary>What putting a removed title back in Deluno did.</summary>
+public sealed record TitleRestoreOutcome(bool Restored, string Message, string? TitleId = null);
+
+/// <summary>
+/// Puts a removed title's catalogue record back. Implemented by the catalogue
+/// side (Platform cannot reach the movie and TV databases).
+/// </summary>
+public interface ITitleRestorer
+{
+    bool Handles(string mediaType);
+
+    Task<TitleRestoreOutcome> RestoreAsync(RecycleBinTitleSnapshot snapshot, CancellationToken cancellationToken);
+}
 
 /// <param name="Items">Exactly what a manual empty would take, in the order it would take it.</param>
 /// <param name="ExpiredCount">Items past their retention date.</param>
@@ -43,7 +76,14 @@ public sealed record RecycleBinMoveResult(
 public sealed record RecycleBinOperationResult(
     bool Success,
     string Message,
-    RecycleBinItem? Item = null);
+    RecycleBinItem? Item = null,
+    RecycleBinTitleSnapshot? Title = null,
+    // #1161: whether a restore also put the title back in Deluno, and which
+    // title page to open. False with a Title means the files are back but the
+    // record could not be, and the message says so.
+    bool TitleRestored = false,
+    string? TitleId = null,
+    string? TitleEntityType = null);
 
 public interface IRecycleBinService
 {
@@ -59,6 +99,18 @@ public interface IRecycleBinService
         string originalPath,
         string existingPath,
         CancellationToken cancellationToken);
+    /// <summary>
+    /// Keeps a removed title's catalogue record with the items its files
+    /// became, so a restore can bring the title back too (#1161).
+    /// </summary>
+    Task AttachTitleAsync(
+        IReadOnlyList<string> itemIds,
+        RecycleBinTitleSnapshot title,
+        CancellationToken cancellationToken);
+
+    /// <summary>Forgets a title record once the title is back.</summary>
+    Task ReleaseTitleAsync(string snapshotId, CancellationToken cancellationToken);
+
     Task<RecycleBinOperationResult> RestoreAsync(string id, CancellationToken cancellationToken);
     Task<RecycleBinOperationResult> PermanentlyDeleteAsync(string id, CancellationToken cancellationToken);
     Task<int> CleanupAsync(CancellationToken cancellationToken);
@@ -284,6 +336,61 @@ public sealed class RecycleBinService(
         }
     }
 
+    public async Task AttachTitleAsync(
+        IReadOnlyList<string> itemIds,
+        RecycleBinTitleSnapshot title,
+        CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadStateAsync(cancellationToken);
+            var attached = false;
+            for (var index = 0; index < state.Items.Count; index++)
+            {
+                if (itemIds.Contains(state.Items[index].Id, StringComparer.OrdinalIgnoreCase))
+                {
+                    state.Items[index] = state.Items[index] with { TitleSnapshotId = title.Id };
+                    attached = true;
+                }
+            }
+
+            if (attached)
+            {
+                state.Titles.RemoveAll(existing => string.Equals(existing.Id, title.Id, StringComparison.OrdinalIgnoreCase));
+                state.Titles.Add(title);
+                await WriteStateAsync(state, cancellationToken);
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task ReleaseTitleAsync(string snapshotId, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadStateAsync(cancellationToken);
+            state.Titles.RemoveAll(existing => string.Equals(existing.Id, snapshotId, StringComparison.OrdinalIgnoreCase));
+            for (var index = 0; index < state.Items.Count; index++)
+            {
+                if (string.Equals(state.Items[index].TitleSnapshotId, snapshotId, StringComparison.OrdinalIgnoreCase))
+                {
+                    state.Items[index] = state.Items[index] with { TitleSnapshotId = null };
+                }
+            }
+
+            await WriteStateAsync(state, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<RecycleBinOperationResult> RestoreAsync(
         string id,
         CancellationToken cancellationToken)
@@ -325,7 +432,10 @@ public sealed class RecycleBinService(
                 state.Items.Remove(item);
                 TryDeleteEmptyDirectory(Path.GetDirectoryName(item.RecyclePath));
                 await WriteStateAsync(state, cancellationToken);
-                return new RecycleBinOperationResult(true, $"Restored {Path.GetFileName(item.OriginalPath)} to its original library path.", item);
+                var title = item.TitleSnapshotId is null
+                    ? null
+                    : state.Titles.FirstOrDefault(entry => string.Equals(entry.Id, item.TitleSnapshotId, StringComparison.OrdinalIgnoreCase));
+                return new RecycleBinOperationResult(true, $"Restored {Path.GetFileName(item.OriginalPath)} to its original library path.", item, title);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
@@ -406,6 +516,7 @@ public sealed class RecycleBinService(
             ?? new RecycleBinState();
         state.Settings = NormalizeSettings(state.Settings);
         state.Items ??= [];
+        state.Titles ??= [];
         return state;
     }
 
@@ -454,6 +565,10 @@ public sealed class RecycleBinService(
             }
         }
 
+        // A removed title's record only matters while some of its files are still here.
+        state.Titles.RemoveAll(title => !state.Items.Any(item =>
+            string.Equals(item.TitleSnapshotId, title.Id, StringComparison.OrdinalIgnoreCase)) &&
+            title.CreatedUtc < now.AddDays(-state.Settings.RetentionDays));
         return removed;
     }
 
@@ -659,6 +774,7 @@ public sealed class RecycleBinService(
     {
         public RecycleBinSettings Settings { get; set; } = new(DefaultRetentionDays, DefaultMaxSizeMb);
         public List<RecycleBinItem> Items { get; set; } = [];
+        public List<RecycleBinTitleSnapshot> Titles { get; set; } = [];
     }
 
     private sealed record MoveUnit(

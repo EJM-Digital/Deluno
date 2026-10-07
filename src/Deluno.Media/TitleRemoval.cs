@@ -91,7 +91,10 @@ public sealed class TitleRemovalService(
     // tagged notification connection still fires for a removal it is scoped
     // to.
     IMediaTagStore? mediaTagStore = null,
-    ILogger<TitleRemovalService>? logger = null)
+    ILogger<TitleRemovalService>? logger = null,
+    // #1161: the title's own catalogue record, kept with its files in the
+    // recycle bin so a restore brings the title back and not only a folder.
+    ITitleSnapshotService? titleSnapshots = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
         TitleToRemove title,
@@ -145,7 +148,30 @@ public sealed class TitleRemovalService(
                 }
             }
 
+            // Read before the row is deleted below: afterwards there is
+            // nothing left to read.
+            var snapshotJson = titleSnapshots is null || trackedFiles.Count == 0
+                ? null
+                : await titleSnapshots.CaptureAsync(title.MediaType, title.Id, cancellationToken);
+
             var deletion = await recycleBinService.MoveAsync(trackedFiles, libraries, cancellationToken);
+            if (snapshotJson is not null && deletion.Items.Count > 0)
+            {
+                await recycleBinService.AttachTitleAsync(
+                    deletion.Items.Select(item => item.Id).ToArray(),
+                    new RecycleBinTitleSnapshot(
+                        Guid.CreateVersion7().ToString("N"),
+                        title.MediaType,
+                        title.EntityType,
+                        title.Id,
+                        title.Title,
+                        title.Year,
+                        snapshotJson,
+                        DateTimeOffset.UtcNow),
+                    cancellationToken);
+            }
+
+            metadata["recycleBinItemIds"] = string.Join(",", deletion.Items.Select(item => item.Id));
             metadata["deletedFileCount"] = deletion.MovedFileCount.ToString();
             metadata["deletedFolderCount"] = deletion.MovedFolderCount.ToString();
             metadata["recycleBinItemCount"] = deletion.Items.Count.ToString();
@@ -236,9 +262,21 @@ public sealed class TitleRemovalService(
             $"{title.Title} was removed from Deluno, so this is no longer something to answer.",
             cancellationToken)).ToString();
 
+        // Where the files went, said once: a removal with files is not a
+        // deletion, and the person should know where to find them (#1160).
+        var movedToBin = metadata.TryGetValue("recycleBinItemIds", out var binIds) && !string.IsNullOrEmpty(binIds);
+        var binDays = movedToBin ? (await recycleBinService.GetSettingsAsync(cancellationToken))?.RetentionDays : null;
+        if (binDays is not null)
+        {
+            metadata["recycleBinRetentionDays"] = binDays.Value.ToString();
+        }
+
+        var binNote = movedToBin
+            ? $" Its files were moved to Deluno's recycle bin{(binDays is null ? string.Empty : $" and are kept for {binDays} day{(binDays == 1 ? string.Empty : "s")}")}. Restore them from System, Recycle bin."
+            : options.DeleteFiles ? " It had no imported files to move." : string.Empty;
         var message = options.Reason is { Length: > 0 } reason
             ? $"{title.Title} was removed from Deluno: {reason}"
-            : $"{title.Title} was removed from Deluno.{(options.DeleteFiles ? " Imported library files were also selected for deletion." : string.Empty)}";
+            : $"{title.Title} was removed from Deluno.{binNote}";
         await activityFeedRepository.RecordActivityAsync(
             $"{title.EntityType}.removed",
             message,
