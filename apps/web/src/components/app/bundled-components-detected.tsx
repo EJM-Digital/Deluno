@@ -22,7 +22,8 @@ export function DetectedComponents({
   category,
   configuredKinds,
   onUse,
-  onNeedsSignIn
+  onNeedsSignIn,
+  onConnected
 }: {
   category: "download-client" | "processor";
   /** Protocol keys (download clients) or lowercased names (processors) already saved. */
@@ -30,6 +31,8 @@ export function DetectedComponents({
   onUse: (status: BundledComponentStatus) => void;
   /** An installed app Deluno could not sign in to: open the form with host and port filled in. Falls back to `onUse`. */
   onNeedsSignIn?: (status: BundledComponentStatus, result: BundledComponentConnectResult) => void;
+  /** An installed app has just been connected: reload the screen's own list so it shows there too (#1130). */
+  onConnected?: () => void;
 }) {
   const [items, setItems] = useState<BundledComponentStatus[] | null>(null);
 
@@ -52,6 +55,7 @@ export function DetectedComponents({
       <ConnectInstalledApps
         category={category}
         hideConnected
+        onConnected={onConnected}
         onNeedsSignIn={(app, result) => (onNeedsSignIn ? onNeedsSignIn(app, result) : onUse(app))}
       />
       {reachableOnly.length > 0 ? (

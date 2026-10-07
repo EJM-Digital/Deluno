@@ -999,6 +999,7 @@ function ProcessingWorkflowPage() {
 
       <DetectedComponents
         category="processor"
+        onConnected={() => revalidator.revalidate()}
         configuredKinds={processorConnections.some((connection) => connection.submissionUrl.includes(":9347")) ? ["weir"] : []}
         onUse={openDetectedCallback}
       />
