@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
@@ -1916,6 +1917,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             INotificationService notificationPreferences,
             ITitleTagService titleTagService,
             IAutoTaggingService autoTagging,
+            IActivityFeedRepository activityFeed,
+            IServiceProvider services,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1962,6 +1965,24 @@ public static class MoviesEndpointRouteBuilderExtensions
             var pendingSearches = new List<object>();
             foreach (var library in LibraryMembership.Targets(libraries, "movies", request.LibraryId, already))
             {
+                // #1161: a film whose folder is already in this library is
+                // matched to that file before anything else decides it is
+                // missing. Without this, adding back a title that was removed
+                // searched straight away and downloaded the same release again.
+                if (!movie.HasFile && services.GetService<IExistingLibraryImportService>() is { } folderImport)
+                {
+                    var found = await folderImport.ImportTitleFolderAsync(library.Id, movie.Id, movie.Title, movie.ReleaseYear, cancellationToken);
+                    if (found.Matched && await repository.GetByIdAsync(movie.Id, cancellationToken) is { } matched)
+                    {
+                        movie = matched;
+                        await activityFeed.RecordActivityAsync(
+                            "movie.file-matched",
+                            $"{movie.Title} was added and Deluno found its file already in {library.Name}, so it matched that file and did not search or download it again.",
+                            JsonSerializer.Serialize(new { libraryId = library.Id, path = found.Path }),
+                            null, "movie", movie.Id, cancellationToken);
+                    }
+                }
+
                 // The film's own state, not a fresh install's.
                 //
                 // AddAsync dedupes: adding a title the catalogue already holds

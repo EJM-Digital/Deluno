@@ -58,6 +58,8 @@ export interface RecycleBinItem {
   sizeBytes: number;
   createdUtc: string;
   expiresUtc: string;
+  /** Set when the files left because a title was removed: Restore brings the title back too (#1161). */
+  titleSnapshotId?: string | null;
 }
 
 export interface LibraryAutomationStateItem {

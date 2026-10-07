@@ -1,6 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, FolderX, ListMinus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { fetchJson, type RecycleBinSettings } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 
@@ -39,12 +41,24 @@ export function RemoveMediaDialog({
   const hasImportedFiles = removalPreview.filePaths.length > 0;
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [addImportListExclusion, setAddImportListExclusion] = useState(importListCount > 0);
+  const [retentionDays, setRetentionDays] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDeleteFiles(false);
     setAddImportListExclusion(importListCount > 0);
   }, [open, importListCount]);
+
+  // How long the files are kept is the recycle bin's own setting, so the
+  // dialog asks for it instead of guessing (#1160).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
+      .then((settings) => { if (!cancelled) setRetentionDays(settings.retentionDays); })
+      .catch(() => { if (!cancelled) setRetentionDays(null); });
+    return () => { cancelled = true; };
+  }, [open]);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -85,10 +99,10 @@ export function RemoveMediaDialog({
               checked={deleteFiles}
               disabled={!hasImportedFiles}
               icon={<FolderX className="h-4 w-4" />}
-              label="Delete imported files from disk"
+              label="Move imported files to the recycle bin"
               description={
                 hasImportedFiles
-                  ? `Delete the imported ${mediaLabel} files and its title folder from the configured library. This cannot be undone.`
+                  ? `Move the imported ${mediaLabel} files and its title folder to Deluno's recycle bin. They are kept ${retentionDays ? `for ${retentionDays} ${retentionDays === 1 ? "day" : "days"}` : "until the recycle bin's retention runs out"}, and Restore brings back the ${mediaLabel} with them.`
                   : `Deluno has no imported files recorded for this ${mediaLabel}.`
               }
               onCheckedChange={setDeleteFiles}
@@ -102,6 +116,9 @@ export function RemoveMediaDialog({
                   ))}
                   {(removalPreview.folderPaths.length || removalPreview.filePaths.length) > 3 ? <p>and more tracked files</p> : null}
                 </div>
+                <p className="mt-2 font-sans">
+                  <Link to="/system/recycle-bin" className="font-medium text-foreground underline underline-offset-2">Open the recycle bin</Link>
+                </p>
               </div>
             ) : null}
             {removalPreview.warnings.length ? (

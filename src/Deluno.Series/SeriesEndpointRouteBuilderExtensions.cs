@@ -1,4 +1,5 @@
 ﻿using Deluno.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
@@ -3317,6 +3318,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             INotificationService notificationPreferences,
             ITitleTagService titleTagService,
             IAutoTaggingService autoTagging,
+            IActivityFeedRepository activityFeed,
+            IServiceProvider services,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3378,6 +3381,24 @@ public static class SeriesEndpointRouteBuilderExtensions
             var pendingSearches = new List<object>();
             foreach (var library in LibraryMembership.Targets(libraries, "tv", request.LibraryId, already))
             {
+                // #1161: a show whose folder is already in this library is
+                // matched to the episodes on disk before anything decides they
+                // are missing, so adding a removed show back never downloads
+                // an episode Deluno is already holding.
+                if (!item.HasFile && services.GetService<IExistingLibraryImportService>() is { } folderImport)
+                {
+                    var found = await folderImport.ImportTitleFolderAsync(library.Id, item.Id, item.Title, item.StartYear, cancellationToken);
+                    if (found.Matched && await repository.GetByIdAsync(item.Id, cancellationToken) is { } matched)
+                    {
+                        item = matched;
+                        await activityFeed.RecordActivityAsync(
+                            "series.file-matched",
+                            $"{item.Title} was added and Deluno found its episodes already in {library.Name}, so it matched those files and did not search or download them again.",
+                            JsonSerializer.Serialize(new { libraryId = library.Id, path = found.Path }),
+                            null, "series", item.Id, cancellationToken);
+                    }
+                }
+
                 // The show's own state, not a fresh install's.
                 //
                 // AddAsync dedupes: adding a title the catalogue already holds

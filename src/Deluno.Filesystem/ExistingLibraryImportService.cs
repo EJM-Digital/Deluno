@@ -269,6 +269,88 @@ public sealed class ExistingLibraryImportService(
         CancellationToken cancellationToken)
         => importRunsRepository.ListResumableRunsAsync(idleBeforeUtc, take, cancellationToken);
 
+    public async Task<TitleFolderImportOutcome> ImportTitleFolderAsync(
+        string libraryId,
+        string titleId,
+        string title,
+        int? year,
+        CancellationToken cancellationToken)
+    {
+        var library = await FindLibraryAsync(libraryId, cancellationToken);
+        if (library is null || string.IsNullOrWhiteSpace(library.RootPath) || !Directory.Exists(library.RootPath))
+        {
+            return TitleFolderImportOutcome.NotFound;
+        }
+
+        var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
+        var wanted = NormalizeForMatch(title);
+        if (wanted.Length == 0)
+        {
+            return TitleFolderImportOutcome.NotFound;
+        }
+
+        // Only the folders whose own name reads as this title and year are
+        // opened; a library of twenty thousand folders is listed, not walked.
+        string? folder = null;
+        foreach (var entry in ListTopLevelEntries(library.RootPath))
+        {
+            var name = File.Exists(entry) ? Path.GetFileNameWithoutExtension(entry) : Path.GetFileName(entry);
+            var parsed = ParseTitle(name);
+            if (NormalizeForMatch(parsed.Title) != wanted)
+            {
+                continue;
+            }
+
+            if (year is not null && parsed.Year is not null && year != parsed.Year)
+            {
+                continue;
+            }
+
+            folder = entry;
+            break;
+        }
+
+        if (folder is null)
+        {
+            return TitleFolderImportOutcome.NotFound;
+        }
+
+        var known = await LoadKnownFilesAsync(library, isMovies, cancellationToken);
+        var detection = TryDetect(library, folder, isMovies, known);
+        if (detection.Item is null)
+        {
+            return TitleFolderImportOutcome.NotFound;
+        }
+
+        var model = await qualityModelService.GetAsync(cancellationToken);
+        var (preferenceProfile, customFormats) = await ResolvePreferenceInputsAsync(library, cancellationToken);
+        var preferencePlan = await ResolvePreferencePlanAsync(preferenceProfile, cancellationToken);
+        var guidePackage = preferencePlan is null ? await GetGuidePackageAsync(cancellationToken) : null;
+
+        // The title's own id travels with the request, so the file lands on the
+        // entry that was just added instead of on a second one that merely
+        // spells the name the way the folder does.
+        if (isMovies)
+        {
+            await movieCatalogRepository.ImportExistingBatchAsync(
+                library.Id,
+                [ToMovieRequest(library, detection.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan) with { MovieId = titleId }],
+                cancellationToken);
+        }
+        else
+        {
+            await seriesCatalogRepository.ImportExistingBatchAsync(
+                library.Id,
+                [ToSeriesRequest(library, detection.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan) with { SeriesId = titleId }],
+                cancellationToken);
+        }
+
+        return new TitleFolderImportOutcome(true, folder);
+    }
+
+    private static string NormalizeForMatch(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
     private ExistingLibraryCandidate ToPreviewCandidate(LibraryItem library, string entry, KnownLibraryFiles known)
     {
         var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
