@@ -224,6 +224,8 @@ public static class ActivityEventLabels
             ["collection.tagged"] = "Collection tagged",
             ["movie.removed"] = "Film removed",
             ["series.removed"] = "Show removed",
+            ["movie.file-matched"] = "Matched a film's file already in the library",
+            ["series.file-matched"] = "Matched a show's files already in the library",
             ["movie.download-cancelled"] = "Cancelled a film's download",
             ["series.download-cancelled"] = "Cancelled a show's download",
             ["series.season-pack-kept-running"] = "Kept a season pack downloading for other episodes",
