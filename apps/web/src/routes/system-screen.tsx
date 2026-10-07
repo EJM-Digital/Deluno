@@ -348,6 +348,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
     </ListCard>
   );
 
+  const healthCheckAttention = healthChecks.checks.filter((check) => check.status !== "ok" && check.status !== "suggestion").length;
   const healthChecksCard = <HealthChecksCard checks={healthChecks.checks} onChanged={() => revalidator.revalidate()} />;
 
   const jobsCard = <BackgroundJobsCard jobs={jobs} failedJobs={failedJobs} onChanged={() => revalidator.revalidate()} />;
@@ -434,8 +435,9 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           ...(enabledProcessors.length
             ? [{ label: "Processors", value: `${healthyProcessors}/${enabledProcessors.length}`, help: healthyProcessors === enabledProcessors.length ? "all answering" : "one is not answering", tone: healthyProcessors < enabledProcessors.length ? "warning" as const : undefined }]
             : []),
-          { label: "Alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "need a look" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
-          { label: "Health", value: String(healthChecks.summary.problemCount), help: healthChecks.summary.problemCount ? "checks need attention" : "all checks pass", tone: healthChecks.summary.unsnoozedProblemCount ? "danger" : undefined },
+          { label: "Monitoring alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "raised by monitoring" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
+          // The same count the Health card's own title gives (#1138): every check that is not fine, unanswered ones included.
+          { label: "Health checks", value: String(healthCheckAttention), help: healthCheckAttention ? "need attention" : "all checks pass", tone: healthChecks.summary.unsnoozedProblemCount ? "danger" : undefined },
           { label: "Media roots", value: String(mediaRoots), help: "folders Deluno writes to" }
         ]}
       />
@@ -1646,6 +1648,8 @@ interface ProcessorOutputItemDetails {
   path: string;
   kind: "file" | "folder" | "scraps";
   isMedia: boolean;
+  /** The film the library already holds, when this is a second copy of it (#1138). */
+  spareCopyOf?: string;
 }
 
 function processorOutputDetails(check: HealthCheckResultItem): ProcessorOutputItemDetails | null {
@@ -1750,13 +1754,13 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     }
   }
 
-  async function snooze(check: HealthCheckResultItem) {
+  async function snooze(check: HealthCheckResultItem, hours = 24) {
     setBusyId(check.id);
     try {
       await authedFetch(`/api/system/health/${encodeURIComponent(check.id)}/snooze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hours: 24 })
+        body: JSON.stringify({ hours })
       });
       onChanged();
     } catch {
@@ -1896,7 +1900,38 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                     <Chip tone={check.status === "ok" ? "ok" : check.status === "problem" ? (isSnoozed ? "idle" : "bad") : "warn"}>
                       {check.status === "ok" ? "ok" : isSnoozed ? "snoozed" : check.status}
                     </Chip>
-                    {outputDetails ? (
+                    {outputDetails?.spareCopyOf ? (
+                      <div className="flex gap-1.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-(length:--type-caption)"
+                          aria-label={`Keep the spare copy of ${outputDetails.spareCopyOf}`}
+                          title="Leaves the spare copy where it is and stops listing it here for 30 days."
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void snooze(check, 24 * 30);
+                          }}
+                        >
+                          Keep
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-(length:--type-caption) text-destructive"
+                          aria-label={`Remove the spare copy of ${outputDetails.spareCopyOf}`}
+                          title="Deletes the spare copy. The film in your library is not touched."
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteProcessorOutputItem(check, outputDetails);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ) : outputDetails ? (
                       <div className="flex gap-1.5">
                         {outputDetails.isMedia ? (
                           <Button

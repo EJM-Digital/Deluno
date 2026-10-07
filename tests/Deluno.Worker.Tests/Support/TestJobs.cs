@@ -8,14 +8,15 @@ internal static class TestJobs
         string jobType,
         string? payloadJson = null,
         string? relatedEntityId = null,
-        string? relatedEntityType = null)
+        string? relatedEntityType = null,
+        string status = "leased")
     {
         var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");
         return new JobQueueItem(
             Id: Guid.NewGuid().ToString("N"),
             JobType: jobType,
             Source: "test",
-            Status: "leased",
+            Status: status,
             PayloadJson: payloadJson,
             Attempts: 0,
             CreatedUtc: now,
