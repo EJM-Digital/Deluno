@@ -83,34 +83,26 @@ public abstract class LibrarySearchJobHandler(
         var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
         var searchStatus = ResolveSearchStatus(payload);
         var scopeFilters = ResolveScopeFilters(payload, payload.MediaType == "movies" ? MediaKind.Movie : MediaKind.Series);
-        var customFormats = await SearchExecutionSupport.ResolveCustomFormatsAsync(
-            qualityRepository,
-            library?.QualityProfileId,
-            cancellationToken);
-        var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(
-            qualityRepository,
-            library?.QualityProfileId,
-            cancellationToken);
         // #974: an automatic library search must honour "Do not upgrade
         // automatically" the same as a manual grab, or it keeps taking a
         // Proper/Repack of a file already installed.
         var properRepackAcquisitionMode = platformSettingsRepository is null
             ? null
             : await SearchPlanPreferences.ResolveProperRepackAcquisitionModeAsync(platformSettingsRepository, cancellationToken);
-        var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+        // The library's profile is the default; a title with a profile of its own is judged by that one (#1157).
+        var profileBundles = new SearchProfileBundles(
             qualityRepository,
             releasePreferencePlanRepository,
-            library?.QualityProfileId,
-            cancellationToken,
-            customFormats,
-            properRepackAcquisitionMode);
+            properRepackAcquisitionMode,
+            mediaStateRepository,
+            library?.QualityProfileId);
 
         if (payload.MediaType == "movies")
         {
-            return await SearchMoviesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, profileRules, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
+            return await SearchMoviesAsync(job, payload, searchStatus, scopeFilters, routing, profileBundles, configuredSources, configuredClients, now, cancellationToken);
         }
 
-        return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, profileRules, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
+        return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, profileBundles, configuredSources, configuredClients, now, cancellationToken);
     }
 
     /// <summary>
@@ -165,9 +157,7 @@ public abstract class LibrarySearchJobHandler(
         string? searchStatus,
         CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
-        IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
-        ProfileSearchRules profileRules,
-        ReleasePreferencePlan? preferencePlan,
+        SearchProfileBundles profileBundles,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -262,6 +252,7 @@ public abstract class LibrarySearchJobHandler(
             var movieTitleTags = mediaTagStore is null
                 ? []
                 : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray();
+            var profileBundle = await profileBundles.ForTitleAsync(MediaKind.Movie, candidate.MovieId, cancellationToken);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -271,17 +262,17 @@ public abstract class LibrarySearchJobHandler(
                     candidate.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
-                    customFormats,
+                    profileBundle.CustomFormats,
                     TagNames: movieTitleTags,
                      SearchKind: AcquisitionSearchKinds.Automatic,
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
                      CurrentReleaseName: candidate.FilePath,
-                     PreferencePlan: preferencePlan,
+                     PreferencePlan: profileBundle.Plan,
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                      RuntimeMinutes: candidate.RuntimeMinutes,
                      EntityId: candidate.MovieId,
-                     ImdbId: candidate.ImdbId).WithProfile(profileRules),
+                     ImdbId: candidate.ImdbId).WithProfile(profileBundle.Rules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -733,9 +724,7 @@ public abstract class LibrarySearchJobHandler(
         string? searchStatus,
         CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
-        IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
-        ProfileSearchRules profileRules,
-        ReleasePreferencePlan? preferencePlan,
+        SearchProfileBundles profileBundles,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -919,6 +908,7 @@ public abstract class LibrarySearchJobHandler(
             var seriesTitleTags = mediaTagStore is null
                 ? []
                 : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray();
+            var profileBundle = await profileBundles.ForTitleAsync(MediaKind.Series, candidate.SeriesId, cancellationToken);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -928,18 +918,18 @@ public abstract class LibrarySearchJobHandler(
                     candidate.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
-                    customFormats,
+                    profileBundle.CustomFormats,
                     TagNames: seriesTitleTags,
                      SearchKind: AcquisitionSearchKinds.Automatic,
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
                      CurrentReleaseName: candidate.FilePath,
-                     PreferencePlan: preferencePlan,
+                     PreferencePlan: profileBundle.Plan,
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                      RuntimeMinutes: candidate.RuntimeMinutes,
                      EntityId: candidate.SeriesId,
                      ImdbId: candidate.ImdbId,
-                     SeasonsWithRemovedEpisodes: (await seriesCatalogRepository.GetInventoryDetailAsync(candidate.SeriesId, cancellationToken))?.SeasonsWithRemovedEpisodes()).WithProfile(profileRules),
+                     SeasonsWithRemovedEpisodes: (await seriesCatalogRepository.GetInventoryDetailAsync(candidate.SeriesId, cancellationToken))?.SeasonsWithRemovedEpisodes()).WithProfile(profileBundle.Rules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {

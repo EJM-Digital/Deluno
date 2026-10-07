@@ -40,9 +40,11 @@ type LibraryCreateDialogProps = {
   onOpenHeldResult: (result: MetadataSearchResult) => void;
   onCreate: FormEventHandler<HTMLFormElement>;
   /** Libraries of this type; the choice is offered when there is more than one (#530). */
-  libraries?: { id: string; name: string }[];
+  libraries?: { id: string; name: string; qualityProfileId?: string | null }[];
   libraryId?: string;
   onLibraryChange?: (libraryId: string) => void;
+  /** The quality profiles made for this kind of title (#1145). */
+  qualityProfiles?: { id: string; name: string }[];
 };
 
 function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
@@ -53,9 +55,12 @@ export function LibraryCreateDialog({
   open, onOpenChange, variant, label, singular, metadataStatus, isCreating, createForm,
   setCreateForm, metadataResults, setMetadataResults, selectedMetadataResults,
   setSelectedMetadataResults, isSearchingMetadata, metadataSearchSequence, onSearch,
-  onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange,
+  onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange, qualityProfiles = [],
 }: LibraryCreateDialogProps) {
   const selectedMetadataCount = selectedMetadataResults.length;
+  const chosenLibrary = libraries.find((library) => library.id === (libraryId ?? libraries[0]?.id));
+  // The profile shown is the one picked, or else the library's own - the default is a real choice you can see, not a blank.
+  const shownProfileId = createForm.qualityProfileId || chosenLibrary?.qualityProfileId || "";
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -84,7 +89,7 @@ export function LibraryCreateDialog({
               }} placeholder={variant === "movies" ? "Search movies, for example Top Gun" : "Search TV shows, for example Severance"} /></div>
               <p className="mt-2 text-xs text-muted-foreground"><span className="inline-flex items-center gap-2">
                 {isSearchingMetadata ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                {metadataStatus?.isConfigured === false ? "Metadata matching is currently unavailable." : isSearchingMetadata ? "Searching metadata..." : "Matches auto-refresh as you type, or press Enter to refresh now."}
+                {metadataStatus?.isConfigured === false ? "Metadata matching is currently unavailable." : isSearchingMetadata ? (variant === "movies" ? "Waiting on TMDb..." : "Waiting on TheTVDB and TMDb...") : "Matches auto-refresh as you type, or press Enter to refresh now."}
               </span></p>
             </form>
 
@@ -128,12 +133,34 @@ export function LibraryCreateDialog({
             </details>
           </div>
 
-          {/* Only the chosen library searches for it and holds it (#530). */}
-          {libraries.length > 1 && onLibraryChange ? (
-            <div className="border-t border-hairline px-6 py-4">
+          {/* Where it goes and what it is judged by, chosen before anything is searched (#530, #1145). */}
+          {libraries.length > 0 && onLibraryChange ? (
+            <div className="grid gap-3 border-t border-hairline px-6 py-4 sm:grid-cols-2">
               <Field label="Add into" help={variant === "movies" ? "Only this library searches for it and holds it. It can be kept in another library too, later, from its page." : "Only this library searches for it and holds it. It can be moved to another library later, from its page."}>
-                <Select aria-label="Library" value={libraryId ?? libraries[0].id} onChange={(event) => onLibraryChange(event.target.value)} options={libraries.map((library) => ({ value: library.id, label: library.name }))} />
+                <Select
+                  aria-label="Library"
+                  value={libraryId ?? libraries[0].id}
+                  onChange={(event) => {
+                    onLibraryChange(event.target.value);
+                    setCreateForm((current) => ({ ...current, qualityProfileId: "" }));
+                  }}
+                  options={libraries.map((library) => ({ value: library.id, label: library.name }))}
+                />
               </Field>
+              {qualityProfiles.length > 0 ? (
+                <Field label="Quality profile" help="Starts as the library's own profile. Pick another to judge just this title by it.">
+                  <Select
+                    aria-label="Quality profile"
+                    value={shownProfileId}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      // Choosing the library's own profile is the same as choosing nothing: the title keeps following the library.
+                      setCreateForm((current) => ({ ...current, qualityProfileId: next === (chosenLibrary?.qualityProfileId ?? "") ? "" : next }));
+                    }}
+                    options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.id === chosenLibrary?.qualityProfileId ? `${profile.name} (library's)` : profile.name }))}
+                  />
+                </Field>
+              ) : null}
             </div>
           ) : null}
 
@@ -152,7 +179,7 @@ export function LibraryCreateDialog({
           <form onSubmit={onCreate}className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               <div className="inline-flex min-h-5 flex-wrap items-center gap-x-4 gap-y-2">
-                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor it</label>
 
                 {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}
               </div>
@@ -173,8 +200,7 @@ export function LibraryCreateDialog({
                 </div>
               ) : null}
               <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForMissingNow} onCheckedChange={(searchForMissingNow) => setCreateForm((current) => ({ ...current, searchForMissingNow }))} />Search for missing now</label>
-                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForCutoffUnmetNow} onCheckedChange={(searchForCutoffUnmetNow) => setCreateForm((current) => ({ ...current, searchForCutoffUnmetNow }))} />Search for cutoff unmet now</label>
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchNow} onCheckedChange={(searchNow) => setCreateForm((current) => ({ ...current, searchNow }))} />Search for it as soon as it is added</label>
               </div>
             </div>
             <div className="flex gap-2">

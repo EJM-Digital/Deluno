@@ -541,19 +541,20 @@ public sealed class SqliteMediaStateRepository(
     /// counts as out, because refusing to search an unsynced show would be
     /// worse than searching one too early.
     /// </summary>
-    private static bool IsReleased(MediaKind kind, System.Data.Common.DbDataReader reader, DateOnly today)
+    private static bool IsReleased(MediaKind kind, System.Data.Common.DbDataReader reader, DateOnly today, int firstReleaseOrdinal = 3)
     {
+        var o = firstReleaseOrdinal - 3;
         if (kind == MediaKind.Movie)
         {
             return MovieAvailability.IsAvailable(
-                reader.IsDBNull(6) ? null : reader.GetString(6),
-                ReadDateOnly(reader, 3),
-                ReadDateOnly(reader, 4),
-                ReadDateOnly(reader, 5),
+                reader.IsDBNull(6 + o) ? null : reader.GetString(6 + o),
+                ReadDateOnly(reader, 3 + o),
+                ReadDateOnly(reader, 4 + o),
+                ReadDateOnly(reader, 5 + o),
                 today);
         }
 
-        var earliestAirDate = reader.IsDBNull(7) ? null : reader.GetString(7);
+        var earliestAirDate = reader.IsDBNull(7 + o) ? null : reader.GetString(7 + o);
         if (earliestAirDate is null)
         {
             return true;
@@ -586,32 +587,145 @@ public sealed class SqliteMediaStateRepository(
         bool upgradeUntilCutoff,
         bool upgradeUnknownItems,
         CancellationToken cancellationToken)
+        // A library's plan applies to the titles that follow the library's
+        // profile. A title with a profile of its own keeps the verdict that
+        // profile gives it.
+        => (await ReevaluateWantedStateAsync(
+            kind,
+            new WantedReevaluationScope(LibraryId: libraryId, OnlyTitlesWithoutOwnProfile: true),
+            cutoffQuality,
+            upgradeUntilCutoff,
+            upgradeUnknownItems,
+            cancellationToken)).Titles;
+
+    public async Task<WantedReevaluationResult> ReevaluateTitleUnderProfileAsync(
+        MediaKind kind,
+        string titleId,
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        string? cutoff;
+        bool upgradeUntilCutoff;
+        bool upgradeUnknownItems;
+        await using (var platform = await databaseConnectionFactory.OpenConnectionAsync(
+                         DelunoDatabaseNames.Platform,
+                         cancellationToken))
+        {
+            // A catalogue opened without the platform database (a bare test store)
+            // has no profiles to judge by.
+            using (var exists = platform.CreateCommand())
+            {
+                exists.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'quality_profiles' LIMIT 1;";
+                if (await exists.ExecuteScalarAsync(cancellationToken) is null)
+                {
+                    return WantedReevaluationResult.None;
+                }
+            }
+
+            using var lookup = platform.CreateCommand();
+            lookup.CommandText =
+                """
+                SELECT cutoff_quality, upgrade_until_cutoff, upgrade_unknown_items
+                FROM quality_profiles
+                WHERE id = @id
+                LIMIT 1;
+                """;
+            AddParameter(lookup, "@id", profileId);
+            using var reader = await lookup.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return WantedReevaluationResult.None;
+            }
+
+            cutoff = reader.IsDBNull(0) ? null : reader.GetString(0);
+            upgradeUntilCutoff = reader.GetInt64(1) == 1;
+            upgradeUnknownItems = reader.GetInt64(2) == 1;
+        }
+
+        return await ReevaluateWantedStateAsync(
+            kind,
+            new WantedReevaluationScope(TitleId: titleId),
+            cutoff,
+            upgradeUntilCutoff,
+            upgradeUnknownItems,
+            cancellationToken);
+    }
+
+    public async Task<string?> GetTitleQualityProfileIdAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
-        var items = new List<(string Id, bool HasFile, string? CurrentQuality, bool IsReleased)>();
-        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT quality_profile_id FROM {map.EntryTable} WHERE id = @id LIMIT 1;";
+        AddParameter(command, "@id", mediaId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null || string.IsNullOrWhiteSpace(value.ToString()) ? null : value.ToString();
+    }
+
+    public async Task<WantedReevaluationResult> ReevaluateWantedStateAsync(
+        MediaKind kind,
+        WantedReevaluationScope scope,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var items = new List<(string Id, string LibraryId, string OldStatus, bool HasFile, string? CurrentQuality, bool IsReleased)>();
+        var now = timeProvider.GetUtcNow();
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
 
         using (var command = connection.CreateCommand())
         {
+            var filters = new List<string>();
+            if (!string.IsNullOrWhiteSpace(scope.LibraryId))
+            {
+                filters.Add("w.library_id = @libraryId");
+                AddParameter(command, "@libraryId", scope.LibraryId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(scope.TitleId))
+            {
+                filters.Add($"w.{map.WantedMediaIdColumn} = @titleId");
+                AddParameter(command, "@titleId", scope.TitleId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(scope.TitleProfileId))
+            {
+                filters.Add($"EXISTS (SELECT 1 FROM {map.EntryTable} own WHERE own.id = w.{map.WantedMediaIdColumn} AND own.quality_profile_id = @titleProfileId COLLATE NOCASE)");
+                AddParameter(command, "@titleProfileId", scope.TitleProfileId);
+            }
+
+            if (scope.OnlyTitlesWithoutOwnProfile)
+            {
+                filters.Add($"NOT EXISTS (SELECT 1 FROM {map.EntryTable} own WHERE own.id = w.{map.WantedMediaIdColumn} AND COALESCE(own.quality_profile_id, '') <> '')");
+            }
+
             command.CommandText = $"""
-                SELECT w.{map.WantedMediaIdColumn}, w.has_file, w.current_quality,
+                SELECT w.{map.WantedMediaIdColumn}, w.library_id, w.wanted_status, w.has_file, w.current_quality,
                        {map.ReleaseColumns}
                 FROM {map.WantedTable} w
                 {map.ReleaseJoin}
-                WHERE w.library_id = @libraryId;
+                {(filters.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", filters))};
                 """;
-            AddParameter(command, "@libraryId", libraryId);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 items.Add((
                     reader.GetString(0),
-                    reader.GetInt64(1) == 1,
-                    reader.IsDBNull(2) ? null : reader.GetString(2),
-                    IsReleased(kind, reader, today)));
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt64(3) == 1,
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    IsReleased(kind, reader, today, firstReleaseOrdinal: 5)));
             }
         }
 
@@ -622,8 +736,10 @@ public sealed class SqliteMediaStateRepository(
         // 20,000 titles, measured, and automatic upgrades are held for the
         // whole of it. Nothing about the decision changed - only how often it
         // is written.
-        var updated = 0;
-        var updatedUtc = timeProvider.GetUtcNow().ToString("O");
+        var titles = 0;
+        var becameUpgrade = 0;
+        var becameCovered = 0;
+        var updatedUtc = now.ToString("O");
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         using (var update = connection.CreateCommand())
         {
@@ -639,7 +755,7 @@ public sealed class SqliteMediaStateRepository(
                   AND library_id = @libraryId;
                 """;
             AddParameter(update, "@mediaId", string.Empty);
-            AddParameter(update, "@libraryId", libraryId);
+            AddParameter(update, "@libraryId", string.Empty);
             AddParameter(update, "@wantedStatus", string.Empty);
             AddParameter(update, "@wantedReason", string.Empty);
             AddParameter(update, "@targetQuality", DBNull.Value);
@@ -658,17 +774,189 @@ public sealed class SqliteMediaStateRepository(
                     IsReleased: item.IsReleased));
 
                 update.Parameters["@mediaId"].Value = item.Id;
+                update.Parameters["@libraryId"].Value = item.LibraryId;
                 update.Parameters["@wantedStatus"].Value = decision.WantedStatus;
                 update.Parameters["@wantedReason"].Value = decision.WantedReason;
                 update.Parameters["@targetQuality"].Value = (object?)decision.TargetQuality ?? DBNull.Value;
                 update.Parameters["@qualityCutoffMet"].Value = decision.QualityCutoffMet ? 1 : 0;
-                updated += await update.ExecuteNonQueryAsync(cancellationToken);
+                titles += await update.ExecuteNonQueryAsync(cancellationToken);
+                if (kind == MediaKind.Movie)
+                {
+                    CountMove(item.OldStatus, decision.WantedStatus, ref becameUpgrade, ref becameCovered);
+                }
             }
+        }
+
+        var episodes = 0;
+        if (kind == MediaKind.Series)
+        {
+            (episodes, becameUpgrade, becameCovered) = await ReevaluateEpisodesAsync(
+                connection,
+                transaction,
+                scope,
+                cutoffQuality,
+                upgradeUntilCutoff,
+                upgradeUnknownItems,
+                now,
+                cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
 
-        return updated;
+        return new WantedReevaluationResult(titles, episodes, becameUpgrade, becameCovered);
+    }
+
+    private static void CountMove(string before, string after, ref int becameUpgrade, ref int becameCovered)
+    {
+        if (string.Equals(before, after, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (string.Equals(after, WantedStatuses.Upgrade, StringComparison.OrdinalIgnoreCase))
+        {
+            becameUpgrade++;
+        }
+        else if (string.Equals(after, WantedStatuses.Covered, StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(before, WantedStatuses.Upgrade, StringComparison.OrdinalIgnoreCase))
+        {
+            becameCovered++;
+        }
+    }
+
+    /// <summary>
+    /// Re-decides every episode that holds a file, against that file's real
+    /// quality, and then the rung of each show those episodes belong to.
+    ///
+    /// <para>An episode's "quality met" is stored, and an import is the only
+    /// thing that used to raise it: raising a profile's cutoff left every owned
+    /// episode covered for ever, and the upgrade sweep, which only looks at
+    /// missing and upgrade rows, never reached them (#1169). This is the other
+    /// half - a decision made from what the file is, whenever the profile
+    /// judging it changes. It is not part of a rescan, so the rescan fix that
+    /// stopped un-settling episodes is untouched.</para>
+    /// </summary>
+    private static async Task<(int Episodes, int BecameUpgrade, int BecameCovered)> ReevaluateEpisodesAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        WantedReevaluationScope scope,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<(string EpisodeId, string SeriesId, string LibraryId, string OldStatus, string? Quality)>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            var filters = new List<string> { "e.has_file = 1" };
+            if (!string.IsNullOrWhiteSpace(scope.LibraryId))
+            {
+                filters.Add("ews.library_id = @libraryId");
+                AddParameter(command, "@libraryId", scope.LibraryId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(scope.TitleId))
+            {
+                filters.Add("ews.series_id = @titleId");
+                AddParameter(command, "@titleId", scope.TitleId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(scope.TitleProfileId))
+            {
+                filters.Add("EXISTS (SELECT 1 FROM series_entries own WHERE own.id = ews.series_id AND own.quality_profile_id = @titleProfileId COLLATE NOCASE)");
+                AddParameter(command, "@titleProfileId", scope.TitleProfileId);
+            }
+
+            if (scope.OnlyTitlesWithoutOwnProfile)
+            {
+                filters.Add("NOT EXISTS (SELECT 1 FROM series_entries own WHERE own.id = ews.series_id AND COALESCE(own.quality_profile_id, '') <> '')");
+            }
+
+            command.CommandText = $"""
+                SELECT ews.episode_id, ews.series_id, ews.library_id, ews.wanted_status,
+                       COALESCE(ews.current_quality, sws.current_quality)
+                FROM episode_wanted_state ews
+                JOIN episode_entries e ON e.id = ews.episode_id
+                LEFT JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
+                WHERE {string.Join(" AND ", filters)};
+                """;
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
+            }
+        }
+
+        var updated = 0;
+        var becameUpgrade = 0;
+        var becameCovered = 0;
+        var touched = new HashSet<(string SeriesId, string LibraryId)>();
+        var updatedUtc = now.ToString("O");
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText =
+                """
+                UPDATE episode_wanted_state
+                SET wanted_status = @wantedStatus,
+                    wanted_reason = @wantedReason,
+                    current_quality = COALESCE(current_quality, @currentQuality),
+                    target_quality = @targetQuality,
+                    quality_cutoff_met = @qualityCutoffMet,
+                    updated_utc = @updatedUtc
+                WHERE episode_id = @episodeId;
+                """;
+            AddParameter(update, "@episodeId", string.Empty);
+            AddParameter(update, "@wantedStatus", string.Empty);
+            AddParameter(update, "@wantedReason", string.Empty);
+            AddParameter(update, "@currentQuality", DBNull.Value);
+            AddParameter(update, "@targetQuality", DBNull.Value);
+            AddParameter(update, "@qualityCutoffMet", 0);
+            AddParameter(update, "@updatedUtc", updatedUtc);
+
+            foreach (var row in rows)
+            {
+                var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
+                    "tv",
+                    HasFile: true,
+                    row.Quality,
+                    cutoffQuality,
+                    upgradeUntilCutoff,
+                    upgradeUnknownItems));
+
+                // Short of the cutoff and still upgrading is the one verdict
+                // that keeps looking; everything else settles.
+                var reason = decision.WantedStatus == WantedStatuses.Upgrade
+                    && !string.IsNullOrWhiteSpace(row.Quality)
+                    && !string.IsNullOrWhiteSpace(decision.TargetQuality)
+                    ? $"It's currently {row.Quality}. Deluno will keep looking until it reaches {decision.TargetQuality}."
+                    : decision.WantedReason;
+
+                update.Parameters["@episodeId"].Value = row.EpisodeId;
+                update.Parameters["@wantedStatus"].Value = decision.WantedStatus;
+                update.Parameters["@wantedReason"].Value = reason;
+                update.Parameters["@currentQuality"].Value = (object?)row.Quality ?? DBNull.Value;
+                update.Parameters["@targetQuality"].Value = (object?)decision.TargetQuality ?? DBNull.Value;
+                update.Parameters["@qualityCutoffMet"].Value = decision.QualityCutoffMet ? 1 : 0;
+                updated += await update.ExecuteNonQueryAsync(cancellationToken);
+                CountMove(row.OldStatus, decision.WantedStatus, ref becameUpgrade, ref becameCovered);
+                touched.Add((row.SeriesId, row.LibraryId));
+            }
+        }
+
+        foreach (var (seriesId, libraryId) in touched)
+        {
+            await SeriesRungWriter.RefreshAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
+        }
+
+        return (updated, becameUpgrade, becameCovered);
     }
 
     public async Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
@@ -1097,11 +1385,11 @@ public sealed class SqliteMediaStateRepository(
             cancellationToken);
 
         var expectations = (preferencePlans ?? [])
-            .Where(item => !string.IsNullOrWhiteSpace(item.LibraryId)
+            .Where(item => (!string.IsNullOrWhiteSpace(item.LibraryId) || !string.IsNullOrWhiteSpace(item.TitleProfileId))
                 && !string.IsNullOrWhiteSpace(item.PlanId)
                 && !string.IsNullOrWhiteSpace(item.PlanVersion)
                 && !string.IsNullOrWhiteSpace(item.PlanHash))
-            .GroupBy(item => item.LibraryId, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(item => string.IsNullOrWhiteSpace(item.TitleProfileId) ? "library:" + item.LibraryId : "profile:" + item.TitleProfileId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();
 
@@ -1121,8 +1409,8 @@ public sealed class SqliteMediaStateRepository(
         }
 
         var planRepairClauses = expectations
-            .Select((_, index) => $"""
-                (w.library_id = @planLibrary{index}
+            .Select((item, index) => $"""
+                ({OwnerFilter(item, index, map.EntryTable, $"w.{map.WantedMediaIdColumn}", "w.library_id")}
                  AND NOT EXISTS (
                      SELECT 1
                      FROM {map.PreferenceEvaluationTable} p
@@ -1154,7 +1442,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@take", take);
         for (var index = 0; index < expectations.Length; index++)
         {
-            AddParameter(command, $"@planLibrary{index}", expectations[index].LibraryId);
+            AddOwnerParameter(command, expectations[index], index);
             AddParameter(command, $"@planId{index}", expectations[index].PlanId);
             AddParameter(command, $"@planVersion{index}", expectations[index].PlanVersion);
             AddParameter(command, $"@planHash{index}", expectations[index].PlanHash);
@@ -1174,6 +1462,26 @@ public sealed class SqliteMediaStateRepository(
         return candidates;
     }
 
+    /// <summary>
+    /// Whose file a plan expectation covers: the titles of one library that follow
+    /// the library's profile, or the titles that chose one profile for themselves.
+    /// </summary>
+    private static string OwnerFilter(
+        MediaPreferencePlanExpectation expectation,
+        int index,
+        string entryTable,
+        string titleIdColumn,
+        string libraryColumn)
+        => string.IsNullOrWhiteSpace(expectation.TitleProfileId)
+            ? $"{libraryColumn} = @planLibrary{index} AND NOT EXISTS (SELECT 1 FROM {entryTable} own WHERE own.id = {titleIdColumn} AND COALESCE(own.quality_profile_id, '') <> '')"
+            : $"EXISTS (SELECT 1 FROM {entryTable} own WHERE own.id = {titleIdColumn} AND own.quality_profile_id = @planLibrary{index} COLLATE NOCASE)";
+
+    private static void AddOwnerParameter(DbCommand command, MediaPreferencePlanExpectation expectation, int index)
+        => AddParameter(
+            command,
+            $"@planLibrary{index}",
+            string.IsNullOrWhiteSpace(expectation.TitleProfileId) ? expectation.LibraryId : expectation.TitleProfileId);
+
     private static async Task<IReadOnlyList<MediaFileProbeCandidate>> ListSeriesFileProbeCandidatesAsync(
         DbConnection connection,
         int take,
@@ -1181,8 +1489,8 @@ public sealed class SqliteMediaStateRepository(
         IReadOnlyList<MediaPreferencePlanExpectation> expectations)
     {
         var planRepairClauses = expectations
-            .Select((_, index) => $"""
-                (w.library_id = @planLibrary{index}
+            .Select((item, index) => $"""
+                ({OwnerFilter(item, index, "series_entries", "e.series_id", "w.library_id")}
                  AND NOT EXISTS (
                      SELECT 1
                      FROM media_preference_evaluations p
@@ -1219,7 +1527,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@take", take);
         for (var index = 0; index < expectations.Count; index++)
         {
-            AddParameter(command, $"@planLibrary{index}", expectations[index].LibraryId);
+            AddOwnerParameter(command, expectations[index], index);
             AddParameter(command, $"@planId{index}", expectations[index].PlanId);
             AddParameter(command, $"@planVersion{index}", expectations[index].PlanVersion);
             AddParameter(command, $"@planHash{index}", expectations[index].PlanHash);

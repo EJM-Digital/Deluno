@@ -9,7 +9,10 @@ using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Media;
 using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Data;
 using Deluno.Security;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -128,6 +131,8 @@ public static class DiscoverEndpointRouteBuilderExtensions
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             IAutoTaggingService autoTagging,
+            IQualityRepository qualityRepository,
+            IMediaStateRepository mediaState,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -145,6 +150,20 @@ public static class DiscoverEndpointRouteBuilderExtensions
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var target = LibraryMembership.Targets(libraries, normalized == "series" ? "tv" : "movies", request.LibraryId, [])
                 .FirstOrDefault();
+
+            // The profile picked on the add card must be one made for this kind of title (#1145).
+            QualityProfileItem? chosenProfile = null;
+            if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
+            {
+                var profileMediaType = normalized == "series" ? "tv" : "movies";
+                chosenProfile = (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+                    .FirstOrDefault(profile => string.Equals(profile.Id, request.QualityProfileId.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(profile.MediaType, profileMediaType, StringComparison.OrdinalIgnoreCase));
+                if (chosenProfile is null)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["qualityProfileId"] = ["Choose a quality profile made for this kind of title."] });
+                }
+            }
 
             var addStartedUtc = DateTimeOffset.UtcNow;
             if (normalized == "series")
@@ -164,6 +183,13 @@ public static class DiscoverEndpointRouteBuilderExtensions
                         SearchForMissingNow: request.SearchForMissingNow,
                         SearchForCutoffUnmetNow: request.SearchForCutoffUnmetNow),
                     cancellationToken);
+                if (chosenProfile is not null)
+                {
+                    await seriesRepository.UpdateQualityProfileAsync(series.Id, chosenProfile.Id, cancellationToken);
+                }
+
+                var seriesOwnProfile = chosenProfile ?? await new TitleProfileLookup(mediaState, qualityRepository)
+                    .ForTitleAsync(MediaKind.Series, series.Id, cancellationToken);
 
                 // Same immediate-search wiring the main add-title flow uses
                 // (#793): a pending search rides along on the catalogue
@@ -174,13 +200,14 @@ public static class DiscoverEndpointRouteBuilderExtensions
                 var seriesPendingSearches = new List<object>();
                 if (target is not null)
                 {
+                    var judge = TitleQualityProfile.Apply(target, seriesOwnProfile);
                     var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                         MediaType: "tv",
                         HasFile: series.HasFile,
                         CurrentQuality: null,
-                        CutoffQuality: target.CutoffQuality,
-                        UpgradeUntilCutoff: target.UpgradeUntilCutoff,
-                        UpgradeUnknownItems: target.UpgradeUnknownItems));
+                        CutoffQuality: judge.CutoffQuality,
+                        UpgradeUntilCutoff: judge.UpgradeUntilCutoff,
+                        UpgradeUnknownItems: judge.UpgradeUnknownItems));
 
                     await seriesRepository.EnsureWantedStateAsync(
                         series.Id,
@@ -196,7 +223,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
                     var searchOnAddRequested =
                         (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
                         (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
-                    if (searchOnAddRequested || (series.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
+                    if (searchOnAddRequested)
                     {
                         seriesPendingSearches.Add(new
                         {
@@ -208,11 +235,6 @@ public static class DiscoverEndpointRouteBuilderExtensions
                             targetEntityId = series.Id
                         });
                     }
-                }
-
-                if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
-                {
-                    await seriesRepository.UpdateQualityProfileAsync(series.Id, request.QualityProfileId, cancellationToken);
                 }
 
                 // #1024: auto-tagging rules, before the catalogue refresh and any search.
@@ -259,17 +281,25 @@ public static class DiscoverEndpointRouteBuilderExtensions
                     SearchForMissingNow: request.SearchForMissingNow,
                     SearchForCutoffUnmetNow: request.SearchForCutoffUnmetNow),
                 cancellationToken);
+            if (chosenProfile is not null)
+            {
+                await movieRepository.UpdateQualityProfileAsync(movie.Id, chosenProfile.Id, cancellationToken);
+            }
+
+            var movieOwnProfile = chosenProfile ?? await new TitleProfileLookup(mediaState, qualityRepository)
+                .ForTitleAsync(MediaKind.Movie, movie.Id, cancellationToken);
 
             var moviePendingSearches = new List<object>();
             if (target is not null)
             {
+                var judge = TitleQualityProfile.Apply(target, movieOwnProfile);
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                     MediaType: "movie",
                     HasFile: movie.HasFile,
                     CurrentQuality: movie.CurrentQuality,
-                    CutoffQuality: target.CutoffQuality,
-                    UpgradeUntilCutoff: target.UpgradeUntilCutoff,
-                    UpgradeUnknownItems: target.UpgradeUnknownItems));
+                    CutoffQuality: judge.CutoffQuality,
+                    UpgradeUntilCutoff: judge.UpgradeUntilCutoff,
+                    UpgradeUnknownItems: judge.UpgradeUnknownItems));
 
                 await movieRepository.EnsureWantedStateAsync(
                     movie.Id,
@@ -285,7 +315,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
                 var searchOnAddRequested =
                     (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
                     (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
-                if (searchOnAddRequested || (movie.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
+                if (searchOnAddRequested)
                 {
                     moviePendingSearches.Add(new
                     {
@@ -297,11 +327,6 @@ public static class DiscoverEndpointRouteBuilderExtensions
                         targetEntityId = movie.Id
                     });
                 }
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
-            {
-                await movieRepository.UpdateQualityProfileAsync(movie.Id, request.QualityProfileId, cancellationToken);
             }
 
             // #1024: auto-tagging rules, before the catalogue refresh and any search.

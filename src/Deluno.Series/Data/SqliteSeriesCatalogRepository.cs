@@ -1688,21 +1688,6 @@ public sealed class SqliteSeriesCatalogRepository(
     /// </summary>
     private const string SeriesRungPolicyVersion = "series-rung/episodes-v1";
 
-    /// <summary>
-    /// Why a show is on the rung it is on, in the words Activity and the detail
-    /// page print. Counts, because "missing" on a show is only useful with the
-    /// number beside it.
-    /// </summary>
-    private static string SeriesRungReason(string status, int aired, int airedWithFile) => status switch
-    {
-        WantedStatuses.Upcoming => "Nothing has aired yet.",
-        WantedStatuses.Covered => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here at the quality you asked for.",
-        WantedStatuses.Upgrade => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here, and some could be better.",
-        _ => aired == 0
-            ? "Deluno has not catalogued this show's episodes yet."
-            : $"{airedWithFile} of {aired} aired episodes are here."
-    };
-
     private async Task<IReadOnlyList<SeriesListItem>> AttachEpisodeProgressAsync(
         System.Data.Common.DbConnection connection,
         List<SeriesListItem> items,
@@ -1727,12 +1712,13 @@ public sealed class SqliteSeriesCatalogRepository(
                     COUNT(*),
                     SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END),
                     SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND {SeriesRungWriter.EpisodeIsUpgradable("e", "ews")} THEN 1 ELSE 0 END),
                     MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END),
                     MAX(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NULL THEN 1 ELSE 0 END),
                     SUM(CASE WHEN e.monitored = 1 THEN 1 ELSE 0 END),
                     MAX(CASE WHEN e.monitored = 1 AND e.air_date_utc > @now THEN 1 ELSE 0 END)
                 FROM episode_entries e
+                LEFT JOIN episode_wanted_state ews ON ews.episode_id = e.id
                 WHERE e.series_id IN ({idParameters})
                 GROUP BY e.series_id;
                 """;
@@ -3604,83 +3590,18 @@ public sealed class SqliteSeriesCatalogRepository(
     }
 
     /// <summary>
-    /// Re-decides one show's rung from its episodes and stores it.
-    ///
-    /// <para><b>The stored column is what the chips and the status filter read</b>
-    /// — they are SQL over <c>series_wanted_state</c> and cannot call a C#
-    /// rule. The catalogue page computes the same answer from the rollup it
-    /// already has, so both sides come from <see cref="SeriesRung"/> and the only
-    /// way they can disagree is if this stops being called when episodes
-    /// change.</para>
+    /// Re-decides one show's rung from its episodes and stores it. The
+    /// decision and its SQL live in <see cref="SeriesRungWriter"/>, because
+    /// a profile change re-decides the same rung from outside this class.
     /// </summary>
-    private async Task RefreshSeriesRungAsync(
+    private Task RefreshSeriesRungAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
         string seriesId,
         string libraryId,
         DateTimeOffset now,
         CancellationToken cancellationToken)
-    {
-        var aired = 0;
-        var airedWithFile = 0;
-        var airedUpgradable = 0;
-        var hasFutureAirDate = false;
-        var hasUndated = false;
-        var nothingWanted = false;
-
-        using (var rollup = connection.CreateCommand())
-        {
-            rollup.Transaction = transaction;
-            rollup.CommandText =
-                """
-                SELECT
-                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN monitored = 1 AND air_date_utc > @now THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN monitored = 1 AND air_date_utc IS NULL THEN 1 ELSE 0 END), 0),
-                    COUNT(*),
-                    COALESCE(SUM(CASE WHEN monitored = 1 THEN 1 ELSE 0 END), 0)
-                FROM episode_entries
-                WHERE series_id = @seriesId;
-                """;
-            AddParameter(rollup, "@seriesId", seriesId);
-            AddParameter(rollup, "@now", now.ToString("O"));
-
-            using var reader = await rollup.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                aired = reader.GetInt32(0);
-                airedWithFile = reader.GetInt32(1);
-                airedUpgradable = reader.GetInt32(2);
-                hasFutureAirDate = reader.GetInt32(3) == 1;
-                hasUndated = reader.GetInt32(4) == 1;
-                nothingWanted = reader.GetInt32(5) > 0 && reader.GetInt32(6) == 0;
-            }
-        }
-
-        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate, hasUndated, nothingWanted);
-
-        using var update = connection.CreateCommand();
-        update.Transaction = transaction;
-        update.CommandText =
-            """
-            UPDATE series_wanted_state
-            SET wanted_status = @wantedStatus,
-                wanted_reason = @wantedReason,
-                quality_cutoff_met = @qualityCutoffMet,
-                updated_utc = @updatedUtc
-            WHERE series_id = @seriesId
-              AND library_id = @libraryId;
-            """;
-        AddParameter(update, "@seriesId", seriesId);
-        AddParameter(update, "@libraryId", libraryId);
-        AddParameter(update, "@wantedStatus", status);
-        AddParameter(update, "@wantedReason", SeriesRungReason(status, aired, airedWithFile));
-        AddParameter(update, "@qualityCutoffMet", status == WantedStatuses.Covered ? 1 : 0);
-        AddParameter(update, "@updatedUtc", now.ToString("O"));
-        await update.ExecuteNonQueryAsync(cancellationToken);
-    }
+        => SeriesRungWriter.RefreshAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
 
     public async Task<IReadOnlyDictionary<string, string>> ListRecordedFileQualitiesAsync(
         string libraryId,
@@ -4657,7 +4578,17 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@id", seriesId);
         AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@now", DateTimeOffset.UtcNow.ToString("O"));
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var changed = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (changed)
+        {
+            // The show is now judged by this profile (#1157): re-decide each
+            // episode it owns against it, so the show page, the Upgrades card
+            // and the sweep all agree at once.
+            await (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher))
+                .ReevaluateTitleUnderProfileAsync(MediaKind.Series, seriesId, qualityProfileId, cancellationToken);
+        }
+
+        return changed;
     }
 
     public async Task<int> ReassignLibraryAsync(

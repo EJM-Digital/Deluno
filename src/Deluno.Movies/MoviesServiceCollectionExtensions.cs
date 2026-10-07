@@ -19,6 +19,9 @@ public static class MoviesServiceCollectionExtensions
     public static IServiceCollection AddDelunoMoviesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        // Re-decides what is owned when a profile, a library's profile or a title's own profile changes (#1169).
+        services.TryAddSingleton<IWantedStateReevaluator, WantedStateReevaluator>();
+        services.TryAddSingleton<IProfileChangeReevaluator>(provider => provider.GetRequiredService<IWantedStateReevaluator>());
         // What lets the Add screen say "you already have this". Registered
         // beside the repository it asks, and by both media modules, so the
         // answer exists wherever a catalogue does.

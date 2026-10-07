@@ -80,6 +80,10 @@ public static class MediaSearchHandler
                 MediaSearchReasons.LibraryMissing);
         }
 
+        // The title's own profile, when it has one, judges the search (#1157);
+        // the library's is only the default.
+        library = await TitleQualityProfile.ApplyAsync(mediaStateRepository, qualityRepository, kind, id, library, cancellationToken);
+
         var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var customFormats = await ResolveCustomFormatsAsync(

@@ -403,7 +403,9 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)),
             new CatalogueEpisodeItem(1, 2, "Two", null, now.AddDays(7)));
         using var _s = storage;
-        Assert.Equal(WantedStatuses.Upgrade, await ReadStoredRungAsync(storage, seriesId));
+        // The one aired episode holds a file at its cutoff and another is still to come, so the show is
+        // airing (it used to read Upgradable because it counted a flag nothing ever raised, #1169).
+        Assert.Equal(WantedStatuses.Airing, await ReadStoredRungAsync(storage, seriesId));
         var episodeId = (await GetEpisodeIdsAsync(storage, seriesId))[(1, 1)];
 
         Assert.True(await repository.MarkTrackedFileGoneAsync(seriesId, episodeId, "series-main", @"C:\media\s01e01.mkv", CancellationToken.None));
@@ -420,7 +422,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             now,
             new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)));
         using var _s = storage;
-        Assert.Equal(WantedStatuses.Upgrade, await ReadStoredRungAsync(storage, seriesId));
+        Assert.Equal(WantedStatuses.Covered, await ReadStoredRungAsync(storage, seriesId));
 
         Assert.True(await repository.MarkTrackedFileMissingAsync(seriesId, ids[(1, 1)], "series-main", @"C:\media\s01e01.mkv", CancellationToken.None));
 

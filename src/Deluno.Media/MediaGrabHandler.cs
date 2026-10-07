@@ -116,6 +116,8 @@ public static class MediaGrabHandler
             });
         }
 
+        library = await TitleQualityProfile.ApplyAsync(mediaStateRepository, qualityRepository, kind, id, library, cancellationToken);
+
         var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
         if (routing is null || routing.DownloadClients.Count == 0)
         {

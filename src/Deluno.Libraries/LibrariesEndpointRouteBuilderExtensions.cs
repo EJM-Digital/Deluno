@@ -452,6 +452,50 @@ public static class LibrariesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        // The one place a library is given another quality profile after setup (#1169).
+        // Every title that follows the library is judged again at once, so a raised
+        // cutoff turns the files below it into upgrades without waiting for a rescan.
+        endpoints.MapPut("/api/libraries/{id}/quality-profile", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryQualityProfileRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken,
+            [FromServices] Deluno.Quality.IProfileChangeReevaluator? reevaluator = null) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityProfileId"] = ["Choose a quality profile for this library."]
+                });
+            }
+
+            var item = await repository.UpdateLibraryQualityProfileAsync(id, request.QualityProfileId, cancellationToken);
+            if (item is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityProfileId"] = ["Choose one of the quality profiles made for this kind of library."]
+                });
+            }
+
+            if (reevaluator is not null)
+            {
+                await reevaluator.ReevaluateForLibraryAsync(item.Id, cancellationToken);
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
         endpoints.MapPut("/api/libraries/{id}/workflow", async (
             string id,
             HttpContext httpContext,

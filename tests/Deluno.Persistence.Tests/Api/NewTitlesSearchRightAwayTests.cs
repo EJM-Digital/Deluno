@@ -14,7 +14,14 @@ using System.Text.Json;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// Adding a title searches for it right away.
+/// Adding a title searches for it right away - when the person asked it to.
+///
+/// <para><b>#1145 changed the trigger.</b> A monitored add used to search at once
+/// whatever the dialog said, so a title added with "Search for missing now"
+/// unticked was searched and sent to the download client before its quality
+/// profile could be changed. Whether an add searches at once is now one explicit
+/// choice - the search-on-add box - and monitoring alone does not start a search.
+/// With the box off, nothing is searched until the next scheduled search.</para>
 ///
 /// <para><b>Why this file exists.</b> #645. James added a new monitored TV show
 /// live and expected Deluno to start searching for it. Nothing happened until he
@@ -55,12 +62,12 @@ public sealed class NewTitlesSearchRightAwayTests
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
-    public async Task Adding_a_monitored_missing_title_carries_a_pending_search_on_the_refresh_job(MediaKind kind)
+    public async Task Adding_a_monitored_missing_title_with_search_now_ticked_carries_a_pending_search_on_the_refresh_job(MediaKind kind)
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var libraryId = await CreateLibraryAsync(app, kind);
 
-        var id = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId));
+        var id = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId, searchForMissingNow: true));
 
         // Nothing is enqueued as its own job up front — see the "why" above.
         Assert.Null(await FindJobAsync(app, SearchJobType(kind), id));
@@ -76,6 +83,58 @@ public sealed class NewTitlesSearchRightAwayTests
         Assert.Equal(
             RelatedEntityType(kind) == "movie" ? "movie-added" : "series-added",
             pending.GetProperty("triggeredBy").GetString());
+    }
+
+    /// <summary>#1145: Monitor ticked, search box unticked. Nothing is searched until the next scheduled search.</summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task A_monitored_add_with_search_now_unticked_does_not_search(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+
+        var id = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId));
+
+        Assert.Null(await FindJobAsync(app, SearchJobType(kind), id));
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
+    }
+
+    /// <summary>
+    /// #1145: the profile picked in the add dialog judges the title from the first moment.
+    /// A film added with a 4K profile into a library that stops at 1080p is wanted at 2160p,
+    /// a profile for the other kind of media is refused, and no profile follows the library.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task A_title_added_with_a_profile_is_judged_by_it_and_a_profile_for_the_other_kind_is_refused(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+        var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
+        var otherType = kind == MediaKind.Movie ? "tv" : "movies";
+        var fourK = await CreateProfileAsync(app, "4K Streaming", mediaType, "WEB 2160p");
+        var wrongKind = await CreateProfileAsync(app, "Wrong kind", otherType, "WEB 1080p");
+        var libraryProfile = await CreateProfileAsync(app, "Library 1080p", mediaType, "WEB 1080p");
+        var give = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/quality-profile", new { qualityProfileId = libraryProfile });
+        Assert.True(give.IsSuccessStatusCode, await give.Content.ReadAsStringAsync());
+        var state = app.Services.GetRequiredService<IMediaStateRepository>();
+
+        var refused = await app.Client.PostAsJsonAsync(Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId, qualityProfileId: wrongKind));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, refused.StatusCode);
+
+        var own = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId, qualityProfileId: fourK));
+        var ownRow = Assert.Single(await state.ListWantedByIdsAsync(kind, [own], CancellationToken.None));
+        Assert.Equal("WEB 2160p", ownRow.TargetQuality);
+        Assert.Equal(fourK, await state.GetTitleQualityProfileIdAsync(kind, own, CancellationToken.None));
+
+        var followsLibrary = await AddAsync(app, Route(kind), CreateBody(kind, "Chernobyl", 2019, monitored: true, libraryId));
+        var libraryRow = Assert.Single(await state.ListWantedByIdsAsync(kind, [followsLibrary], CancellationToken.None));
+        Assert.Equal("WEB 1080p", libraryRow.TargetQuality);
+        Assert.Null(await state.GetTitleQualityProfileIdAsync(kind, followsLibrary, CancellationToken.None));
     }
 
     [Theory]
@@ -228,10 +287,27 @@ public sealed class NewTitlesSearchRightAwayTests
         bool monitored,
         string libraryId,
         bool searchForMissingNow = false,
-        bool searchForCutoffUnmetNow = false)
+        bool searchForCutoffUnmetNow = false,
+        string? qualityProfileId = null)
         => kind == MediaKind.Movie
-            ? new { title, releaseYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow }
-            : new { title, startYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow };
+            ? new { title, releaseYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow, qualityProfileId }
+            : new { title, startYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow, qualityProfileId };
+
+    private static async Task<string> CreateProfileAsync(ApplicationTestHost app, string name, string mediaType, string cutoff)
+    {
+        var response = await app.Client.PostAsJsonAsync("/api/quality-profiles", new
+        {
+            name,
+            mediaType,
+            cutoffQuality = cutoff,
+            allowedQualities = "WEB 1080p,WEB 2160p",
+            customFormatIds = string.Empty,
+            upgradeUntilCutoff = true,
+            upgradeUnknownItems = false
+        });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetString()!;
+    }
 
     /// <summary>
     /// A title in the catalogue already, monitored, the create endpoint never

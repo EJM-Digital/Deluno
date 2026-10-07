@@ -115,7 +115,18 @@ public sealed class LibraryMediaProbeJobHandler(
                     plan.Version,
                     plan.PlanHash);
             })
-            .ToArray();
+            .ToList();
+        // A title that chose a profile of its own is judged by that profile's plan, not
+        // its library's (#1157): without these a title's snapshot would be made under
+        // the library's plan and the title's own upgrades would wait for it for ever.
+        expectedPlans.AddRange(preferencePlans
+            .Where(entry => entry.Value is not null)
+            .Select(entry => new MediaPreferencePlanExpectation(
+                string.Empty,
+                entry.Value!.Id,
+                entry.Value.Version,
+                entry.Value.PlanHash,
+                TitleProfileId: entry.Key)));
         var candidates = await mediaStateRepository.ListFileProbeCandidatesAsync(
             kind,
             SliceSize,
@@ -178,8 +189,10 @@ public sealed class LibraryMediaProbeJobHandler(
                 cancellationToken,
                 candidate.LibraryId);
 
+            var ownProfileId = await mediaStateRepository.GetTitleQualityProfileIdAsync(kind, candidate.MediaId, cancellationToken);
             if (TryResolvePreferenceContext(
                     candidate,
+                    ownProfileId,
                     wantedItems,
                     librariesById,
                     profilesById,
@@ -286,6 +299,7 @@ public sealed class LibraryMediaProbeJobHandler(
 
     private static bool TryResolvePreferenceContext(
         MediaFileProbeCandidate candidate,
+        string? ownProfileId,
         IReadOnlyList<MediaWantedItem> wantedItems,
         IReadOnlyDictionary<string, Deluno.Libraries.Contracts.LibraryItem> librariesById,
         IReadOnlyDictionary<string, Deluno.Quality.Contracts.QualityProfileItem> profilesById,
@@ -310,8 +324,12 @@ public sealed class LibraryMediaProbeJobHandler(
         wanted = wantedItems.FirstOrDefault(item =>
             string.Equals(item.Id, candidate.MediaId, StringComparison.OrdinalIgnoreCase)
             && string.Equals(item.LibraryId, candidate.LibraryId, StringComparison.OrdinalIgnoreCase))!;
-        if (wanted is null || string.IsNullOrWhiteSpace(library.QualityProfileId)
-            || !profilesById.TryGetValue(library.QualityProfileId, out profile!))
+        // The title's own profile judges its file when it has one (#1157).
+        var governingProfileId = !string.IsNullOrWhiteSpace(ownProfileId) && profilesById.ContainsKey(ownProfileId)
+            ? ownProfileId
+            : library.QualityProfileId;
+        if (wanted is null || string.IsNullOrWhiteSpace(governingProfileId)
+            || !profilesById.TryGetValue(governingProfileId, out profile!))
         {
             return false;
         }
