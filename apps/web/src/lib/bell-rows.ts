@@ -10,6 +10,7 @@
  * two) buttons from `alert-actions.ts`, so the bell and System's Health can never disagree about them.
  */
 import type { DashboardAttention } from "../routes/dashboard/attention";
+import { plainFailure } from "./needs-action";
 import {
   connectionDownActions,
   connectionUpdateActions,
@@ -234,7 +235,7 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
       kind: "import",
       tone: "bad",
       title: "An import didn’t finish",
-      text: job.lastError ?? "It stopped without saying why.",
+      text: job.lastError ? plainFailure(job.lastError, "The import") : "It stopped without saying why.",
       to: "/queue",
       actions: failedImportActions(job),
       sinceUtc: job.completedUtc ?? job.createdUtc ?? null,
@@ -248,7 +249,7 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
       kind: "handoff",
       tone: "bad",
       title: handoff.releaseName,
-      text: handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`,
+      text: handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `${handoff.processorName ?? "The processor"} could not finish it.`,
       to: "/queue",
       actions: handoffActions(handoff),
       sinceUtc: handoff.updatedUtc ?? handoff.createdUtc ?? null,

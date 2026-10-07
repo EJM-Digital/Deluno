@@ -205,6 +205,7 @@ interface FooterStatus {
 export function DrawerFooter({
   state,
   message,
+  note,
   saveLabel,
   onCancel,
   onSave,
@@ -215,7 +216,13 @@ export function DrawerFooter({
   extraAction
 }: {
   state: DrawerSaveState;
+  /**
+   * What the last save said ("Routing saved", or why it failed). Shown only with the saved and error states, so a
+   * message left over from an earlier drawer never appears on a freshly opened one (#1151).
+   */
   message?: string | null;
+  /** A standing note for a drawer that only explains something; shown in the clean state. */
+  note?: string | null;
   saveLabel: string;
   onCancel: () => void;
   onSave?: () => void;
@@ -233,7 +240,7 @@ export function DrawerFooter({
 }) {
   const statuses: Record<DrawerSaveState, FooterStatus | null> = {
     // A tool-style surface has no dirty state but still has something to say.
-    clean: message ? { icon: CircleDot, tone: "text-muted-foreground", label: message } : null,
+    clean: note ? { icon: CircleDot, tone: "text-muted-foreground", label: note } : null,
     dirty: { icon: CircleDot, tone: "text-warning", label: "Unsaved changes" },
     saving: { icon: Loader2, tone: "text-muted-foreground", label: "Saving…", spin: true },
     saved: { icon: Check, tone: "text-success", label: message ?? "Saved just now" },

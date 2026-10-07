@@ -54,6 +54,19 @@ public sealed class SqliteDispatchProblemLog(
         await InsertAsync(connection, null, dispatchId, RaisedPrefix + kind, timeProvider.GetUtcNow().ToString("O"), cancellationToken);
     }
 
+    public async Task SettleAsync(string dispatchId, string kind, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await InsertAsync(connection, null, dispatchId, SettledPrefix + kind, timeProvider.GetUtcNow().ToString("O"), cancellationToken);
+    }
+
+    public async Task RecordAcknowledgedAsync(string dispatchId, string kind, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await InsertAsync(connection, null, dispatchId, RaisedPrefix + kind, timeProvider.GetUtcNow().ToString("O"), cancellationToken);
+        await InsertAsync(connection, null, dispatchId, AcknowledgedPrefix + kind, timeProvider.GetUtcNow().ToString("O"), cancellationToken);
+    }
+
     public async Task<int> AcknowledgeForDispatchAsync(string dispatchId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
