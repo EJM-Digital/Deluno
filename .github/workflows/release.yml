@@ -409,7 +409,7 @@ jobs:
           cache-from: type=gha,scope=deluno-release-amd64
           cache-to: type=gha,mode=max,scope=deluno-release-amd64,ignore-error=true
 
-      # Before the candidate ever runs: a known CRITICAL vulnerability with a fix already available blocks the
+      # Before the candidate ever runs: a known HIGH or CRITICAL vulnerability with a fix already available blocks the
       # release outright. ignore-unfixed, because failing on something no upstream fix exists for yet would just
       # make every release wait on an unrelated CVE.
       - name: Trivy scan of Docker release candidate
@@ -417,7 +417,7 @@ jobs:
         with:
           image-ref: ${{ env.CANDIDATE }}
           scanners: vuln
-          severity: CRITICAL
+          severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
 

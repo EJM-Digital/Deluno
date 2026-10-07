@@ -153,7 +153,7 @@ requireOrder(
   ["- name: Build unpushed Docker release candidate", "push: false", "- name: Trivy scan of Docker release candidate", "- name: Start unpushed Docker release candidate"],
   `${RELEASE} docker job`,
 );
-for (const marker of ["severity: CRITICAL", "ignore-unfixed: true", 'exit-code: "1"']) {
+for (const marker of ["severity: HIGH,CRITICAL", "ignore-unfixed: true", 'exit-code: "1"']) {
   requireText(requireJob(release, "docker", RELEASE), marker, `${RELEASE} docker job (the scan must be able to fail the release)`);
 }
 
@@ -187,7 +187,7 @@ for (const flag of new Set(Object.values(GATES).filter(Boolean))) {
 }
 // The image scan in CI can fail the build.
 const ciDocker = requireJob(ci, "docker", CI);
-for (const marker of ["severity: CRITICAL", "ignore-unfixed: true", 'exit-code: "1"', "scripts/test-readme-docker-examples.sh"]) {
+for (const marker of ["severity: HIGH,CRITICAL", "ignore-unfixed: true", 'exit-code: "1"', "scripts/test-readme-docker-examples.sh"]) {
   requireText(ciDocker, marker, `${CI} docker job`);
 }
 
