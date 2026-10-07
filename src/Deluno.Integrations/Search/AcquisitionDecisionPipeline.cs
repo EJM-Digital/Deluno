@@ -151,7 +151,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.ImdbId,
                 request.ScoreLimits,
                 request.Genres,
-                request.OtherTitles);
+                request.OtherTitles,
+                episodeTitles: request.EpisodeTitles);
 
         var beforeBlocklist = searchPlan;
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
@@ -162,12 +163,18 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
         searchPlan = LeavePacksThatWouldRestoreRemovedEpisodes(searchPlan, request);
+        searchPlan = NeverNameARejectedCandidateBest(searchPlan);
 
         var bestCandidate = searchPlan.BestCandidate;
+        var wouldDispatch = sourceCount > 0 && clientCount > 0 && bestCandidate is not null
+            && IsSafeForAutomaticDispatch(bestCandidate) && !request.PreviewOnly;
         // The client is chosen for the release that won, not before the search:
         // a torrent goes to a torrent client and an NZB to a Usenet one.
-        var selectedClient = await SelectDownloadClientAsync(
+        var (selectedClient, clientChoiceReason) = await ChooseDownloadClientAsync(
             readyConnections.ClientsFor(bestCandidate?.IndexerId, request.TagNames),
+            wouldDispatch,
+            // The client's own priority, set on its drawer; the routing link only records the order it was ticked in.
+            client => readyConnections.DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail) ? detail.Priority : client.Priority,
             cancellationToken);
         var outcome = sourceCount == 0 || clientCount == 0
             ? "blocked"
@@ -185,6 +192,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             SourceCount: sourceCount,
             DownloadClientCount: clientCount,
             SelectedDownloadClient: selectedClient,
+            ClientChoiceReason: clientChoiceReason,
             ShouldDispatch: outcome == "matched" && !request.PreviewOnly,
             DispatchRequest: bestCandidate is null || selectedClient is null
                 ? null
@@ -677,6 +685,100 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
            candidate.MeetsCutoff &&
            candidate.QualityDelta >= 0;
 
+    /// <summary>
+    /// A release the engine refused is never the plan's best candidate (#1159). A different show's episode was
+    /// "the best candidate", which made the title "held for manual review" and not searched again for hours, when
+    /// nothing was waiting for anybody. The first usable candidate wins; with none, the plan says so plainly and
+    /// leads with the real reasons. Every candidate stays listed, so a person choosing by hand still sees them.
+    /// </summary>
+    public static MediaSearchPlan NeverNameARejectedCandidateBest(MediaSearchPlan plan)
+    {
+        static bool Refused(MediaSearchCandidate candidate)
+            => string.Equals(candidate.DecisionStatus, ReleaseDecisionStatuses.Rejected, StringComparison.OrdinalIgnoreCase);
+
+        if (plan.BestCandidate is null || !Refused(plan.BestCandidate))
+        {
+            return plan;
+        }
+
+        var usable = plan.Candidates.FirstOrDefault(candidate => !Refused(candidate));
+        if (usable is not null)
+        {
+            return plan with
+            {
+                BestCandidate = usable,
+                Summary = $"Best feed candidate is {usable.ReleaseName} from {usable.IndexerName}."
+            };
+        }
+
+        return plan with
+        {
+            BestCandidate = null,
+            Summary = NoUsableReleaseSummary(plan.Candidates),
+            Reason = MediaSearchReasons.NoUsableRelease
+        };
+    }
+
+    /// <summary>"No usable release yet: 9 were cams or telesyncs, 3 had nobody seeding" (#1159).</summary>
+    public static string NoUsableReleaseSummary(IReadOnlyList<MediaSearchCandidate> candidates)
+    {
+        var counts = candidates
+            .GroupBy(candidate => PlainRefusal(TurnedDownReasons.FirstRejectingReason(candidate.RejectionGate, candidate.DecisionReasons, candidate.RiskFlags)))
+            .Select(group => (Phrase: group.Key, Count: group.Count()))
+            .OrderByDescending(item => item.Count)
+            .ThenBy(item => item.Phrase, StringComparer.Ordinal)
+            .ToArray();
+        if (counts.Length == 0)
+        {
+            return "No usable release yet: nothing was offered.";
+        }
+
+        var shown = counts.Take(3).Select(item => $"{item.Count} {(item.Count == 1 && item.Phrase.StartsWith("were ", StringComparison.Ordinal) ? "was " + item.Phrase[5..] : item.Phrase)}");
+        var more = counts.Length > 3 ? $", and {counts.Skip(3).Sum(item => item.Count)} for other reasons" : string.Empty;
+        return $"No usable release yet: {string.Join(", ", shown)}{more}.";
+    }
+
+    private static string PlainRefusal(string? reason)
+    {
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            if (reason.Contains("blocked token", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("looks like a sample", StringComparison.OrdinalIgnoreCase))
+            {
+                return "were cams, telesyncs or samples";
+            }
+
+            if (reason.Contains("for something else", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("for another show", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("but its title is", StringComparison.OrdinalIgnoreCase))
+            {
+                return "were for a different title";
+            }
+
+            if (reason.Contains("the search was for", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("does not say which episode", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("whole-season pack", StringComparison.OrdinalIgnoreCase))
+            {
+                return "were for a different episode";
+            }
+        }
+
+        return TurnedDownReasons.GroupFor(reason) switch
+        {
+            TurnedDownGroups.Language => "were not in a language you want",
+            TurnedDownGroups.NotBetter => "were no better than what you have",
+            TurnedDownGroups.TooBig => "were over your size limit",
+            TurnedDownGroups.FewSeeders => "had nobody seeding",
+            TurnedDownGroups.Fake => "looked fake or mislabelled",
+            TurnedDownGroups.NotQuality => "were not a quality you want",
+            TurnedDownGroups.TooSmall => "were too small for their quality",
+            TurnedDownGroups.Rules => "were blocked by your release rules",
+            TurnedDownGroups.TooOld => "were older than your indexer keeps",
+            TurnedDownGroups.Blocklisted => "were on your blocklist",
+            _ => "were turned down for other reasons"
+        };
+    }
+
     public static string BuildSearchResult(MediaSearchPlan plan, int configuredClients)
     {
         if (plan.BestCandidate is null)
@@ -752,35 +854,90 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 Score: candidate.PreferenceEvaluation is null ? candidate.Score : null))
             .ToArray();
 
-    private async Task<LibraryDownloadClientLinkItem?> SelectDownloadClientAsync(
+    /// <summary>Turns taken so far among clients of equal priority, per group of clients (#1147).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> ClientTurns = new(StringComparer.Ordinal);
+
+    /// <summary>A client whose imported-share of recent grabs is below this is passed over while another is healthy.</summary>
+    private const double FailingClientSuccessRate = 0.5;
+
+    /// <summary>
+    /// Picks the download client for a release (#1147). The rule, in the order a person would apply it:
+    /// a client that keeps failing is passed over (one with no record counts as fine, never worse); then the
+    /// lowest priority number wins; then clients sharing that priority take turns. <paramref name="takeTurn"/> is
+    /// false for previews and held results, which must not use up a turn.
+    /// </summary>
+    internal async Task<(LibraryDownloadClientLinkItem? Client, string? Reason)> ChooseDownloadClientAsync(
         IReadOnlyList<LibraryDownloadClientLinkItem> clients,
+        bool takeTurn,
+        Func<LibraryDownloadClientLinkItem, int> priorityOf,
         CancellationToken cancellationToken)
     {
         if (clients.Count == 0)
         {
-            return null;
+            return (null, null);
         }
 
-        if (intelligentRoutingService is null)
+        if (clients.Count == 1)
         {
-            return clients.OrderBy(client => client.Priority).FirstOrDefault();
+            return (clients[0], $"{clients[0].DownloadClientName} is the only client that can take it.");
         }
 
-        LibraryDownloadClientLinkItem? selected = null;
-        var bestScore = double.MinValue;
-        foreach (var client in clients)
+        var pool = clients;
+        var passedOver = new List<string>();
+        if (intelligentRoutingService is not null)
         {
-            var successRate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(client.DownloadClientId, cancellationToken) ?? 0.5;
-            var priorityScore = Math.Max(0, 120 - client.Priority);
-            var composite = successRate * 100d * 0.65 + priorityScore * 0.35;
-            if (composite > bestScore)
+            var healthy = new List<LibraryDownloadClientLinkItem>();
+            foreach (var client in clients)
             {
-                bestScore = composite;
-                selected = client;
+                var rate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(client.DownloadClientId, cancellationToken);
+                if (rate is { } known && known < FailingClientSuccessRate)
+                {
+                    passedOver.Add(client.DownloadClientName);
+                }
+                else
+                {
+                    healthy.Add(client);
+                }
+            }
+
+            if (healthy.Count > 0)
+            {
+                pool = healthy;
+            }
+            else
+            {
+                passedOver.Clear();
             }
         }
 
-        return selected ?? clients.OrderBy(client => client.Priority).First();
+        var best = pool.Min(priorityOf);
+        var tied = pool.Where(client => priorityOf(client) == best)
+            .OrderBy(client => client.DownloadClientId, StringComparer.Ordinal)
+            .ToArray();
+
+        LibraryDownloadClientLinkItem chosen;
+        string reason;
+        if (tied.Length == 1)
+        {
+            chosen = tied[0];
+            reason = $"{chosen.DownloadClientName} has the highest priority ({priorityOf(chosen)}) of the clients that can take it.";
+        }
+        else
+        {
+            var key = string.Join('|', tied.Select(client => client.DownloadClientId));
+            var turn = takeTurn
+                ? ClientTurns.AddOrUpdate(key, 0, (_, value) => value + 1)
+                : ClientTurns.GetValueOrDefault(key);
+            chosen = tied[turn % tied.Length];
+            reason = $"{chosen.DownloadClientName} shares the top priority ({best}) with {tied.Length - 1} other client{(tied.Length == 2 ? "" : "s")}, and it was its turn.";
+        }
+
+        if (passedOver.Count > 0)
+        {
+            reason += $" {string.Join(", ", passedOver)} {(passedOver.Count == 1 ? "was" : "were")} passed over because most of {(passedOver.Count == 1 ? "its" : "their")} recent downloads failed.";
+        }
+
+        return (chosen, reason);
     }
 
     private async Task<ReadyConnections> ResolveReadyConnectionsAsync(
@@ -1041,7 +1198,9 @@ public sealed record AcquisitionDecisionRequest(
     /// </summary>
     IReadOnlyCollection<int>? SeasonsWithRemovedEpisodes = null,
     /// <summary>The movie or show this search is for, so the releases it turns down can be shown against it (#1098).</summary>
-    string? EntityId = null);
+    string? EntityId = null,
+    /// <summary>The provider's titles for the searched season's episodes, by episode number, so a release carrying another episode's title is refused (#1173).</summary>
+    IReadOnlyDictionary<int, string>? EpisodeTitles = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,
@@ -1053,7 +1212,9 @@ public sealed record AcquisitionDecisionPlan(
     LibraryDownloadClientLinkItem? SelectedDownloadClient,
     bool ShouldDispatch,
     DownloadClientGrabRequest? DispatchRequest,
-    IReadOnlyList<DecisionAlternativeExplanation> Alternatives);
+    IReadOnlyList<DecisionAlternativeExplanation> Alternatives,
+    /// <summary>Why this client took the release, in words, for the Activity entry (#1147).</summary>
+    string? ClientChoiceReason = null);
 
 public sealed record AcquisitionSelectedReleaseRequest(
     string ReleaseName,

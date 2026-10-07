@@ -13,7 +13,12 @@ public sealed record ReleaseTitleExpectation(
     int? Episode = null,
     int? AbsoluteNumber = null,
     DateOnly? AirDate = null,
-    IReadOnlyList<string>? OtherTitles = null);
+    IReadOnlyList<string>? OtherTitles = null,
+    /// <summary>
+    /// The provider's titles for the episodes of <see cref="Season"/>, by episode number (#1173). A release whose
+    /// name carries another episode's title is refused for this one.
+    /// </summary>
+    IReadOnlyDictionary<int, string>? EpisodeTitles = null);
 
 /// <summary>
 /// Whether a release's name is for the title searched (#613).
@@ -65,7 +70,130 @@ public static partial class ReleaseTitleMatch
         }
 
         var rest = name[matchedCut.Value..];
-        return expected.IsTv ? EpisodeMismatch(rest, expected) : YearMismatch(rest, expected);
+        return expected.IsTv
+            ? SeriesYearMismatch(rest, expected) ?? EpisodeMismatch(rest, expected)
+            : YearMismatch(rest, expected);
+    }
+
+    /// <summary>
+    /// True when the name carries the title of the episode asked for (#1173), so a search can prefer it over a
+    /// release that names no title at all.
+    /// </summary>
+    public static bool CarriesWantedEpisodeTitle(string releaseName, ReleaseTitleExpectation expected)
+    {
+        if (!expected.IsTv || expected.Episode is not { } wantedEpisode
+            || expected.EpisodeTitles is null || !expected.EpisodeTitles.TryGetValue(wantedEpisode, out var wantedTitle))
+        {
+            return false;
+        }
+
+        var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
+        var marker = SeasonEpisode().Match(name);
+        return marker.Success && TitleAfterMarker(name[(marker.Index + marker.Length)..]) is { Length: > 0 } carried
+            && TitlesAgree(carried, Clean(wantedTitle));
+    }
+
+    /// <summary>True when the name carries a year equal (within a year) to the series' own first-air year (#1166).</summary>
+    public static bool CarriesSeriesYear(string releaseName, ReleaseTitleExpectation expected)
+    {
+        if (expected.Year is not { } year)
+        {
+            return false;
+        }
+
+        var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
+        return NameYearBeforeEpisode(name) is { } found && Math.Abs(found - year) <= 1;
+    }
+
+    /// <summary>
+    /// A year in the name, ahead of the season and episode marker, that is not the series' own year (#1166): The
+    /// Twilight Zone 2019 is not the 1959 show. A date-named daily release ("Show 2024 05 01") is not a year.
+    /// </summary>
+    private static string? SeriesYearMismatch(string rest, ReleaseTitleExpectation expected)
+    {
+        if (expected.Year is not { } year || expected.AirDate is not null)
+        {
+            return null;
+        }
+
+        if (NameYearBeforeEpisode(rest) is not { } releaseYear || Math.Abs(releaseYear - year) <= 1)
+        {
+            return null;
+        }
+
+        return $"This release is for another show: {expected.Title} ({releaseYear}), not ({year}).";
+    }
+
+    private static int? NameYearBeforeEpisode(string text)
+    {
+        var marker = SeasonEpisode().Match(text);
+        var pack = SeasonPack().Match(text);
+        var end = marker.Success ? marker.Index : pack.Success ? pack.Index : -1;
+        if (end < 0)
+        {
+            return null;
+        }
+
+        var found = Year().Match(text[..end]);
+        if (!found.Success)
+        {
+            return null;
+        }
+
+        // 2024.05.01 is an air date, not a year.
+        return DateTail().IsMatch(text[found.Index..end]) ? null : int.Parse(found.Value, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The words between the episode marker and the first quality/source word, cleaned for comparison.</summary>
+    private static string TitleAfterMarker(string afterMarker)
+    {
+        var cut = Boundary().Match(afterMarker);
+        return Clean(cut.Success ? afterMarker[..cut.Index] : afterMarker);
+    }
+
+    private static bool TitlesAgree(string carried, string other)
+        => other.Length > 0
+           && (carried.StartsWith(other, StringComparison.Ordinal)
+               || (carried.Length >= 4 && other.StartsWith(carried, StringComparison.Ordinal)));
+
+    /// <summary>
+    /// The name says one episode but carries another's title (#1173): "S38E02 The Childrens Book Job" when that is
+    /// E01's. Punctuation, apostrophes, "&amp;" and articles do not count (<see cref="Clean"/>). A name with no title,
+    /// or one matching nothing the provider lists, is not refused here.
+    /// </summary>
+    public static string? EpisodeTitleMismatch(string afterMarker, int season, int episode, ReleaseTitleExpectation expected)
+    {
+        if (expected.EpisodeTitles is not { Count: > 0 } titles)
+        {
+            return null;
+        }
+
+        var carried = TitleAfterMarker(afterMarker);
+        if (carried.Length == 0)
+        {
+            return null;
+        }
+
+        if (titles.TryGetValue(episode, out var wanted) && TitlesAgree(carried, Clean(wanted)))
+        {
+            return null;
+        }
+
+        foreach (var (number, title) in titles)
+        {
+            if (number == episode || string.IsNullOrWhiteSpace(title))
+            {
+                continue;
+            }
+
+            var other = Clean(title);
+            if (other.Length >= 3 && TitlesAgree(carried, other))
+            {
+                return $"The name says S{season:D2}E{episode:D2}, but its title is S{season:D2}E{number:D2}'s \"{title.Trim()}\".";
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -175,7 +303,9 @@ public static partial class ReleaseTitleMatch
                     : $"This release is episodes {first}-{last}; the search was for episode {wantedEpisode}.";
             }
 
-            return null;
+            return first == last && expected.Episode is not null
+                ? EpisodeTitleMismatch(rest[(episode.Index + episode.Length)..], season, first, expected)
+                : null;
         }
 
         var pack = SeasonPack().Match(rest);
@@ -228,6 +358,9 @@ public static partial class ReleaseTitleMatch
 
     // A dash stuck to a separator is one too ("house.on.-haunted"); a hyphen
     // inside a word ("Spider-Man") is not.
+    [GeneratedRegex(@"^(?:19|20)\d{2}[ ._-]\d{2}[ ._-]\d{2}")]
+    private static partial Regex DateTail();
+
     [GeneratedRegex(@"[._\s]+(?:-[._\s]*)?")]
     private static partial Regex TitleSeparators();
 

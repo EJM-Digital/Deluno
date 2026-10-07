@@ -76,6 +76,7 @@ public static class ActivityEventLabels
             ["library.search.requested"] = "Search requested",
             ["library.search.skipped"] = "Search skipped",
             ["episode.search.executed"] = "Episode search finished",
+            ["episode.search.result"] = "Episode search result",
             ["series.search.episode"] = "Searched for an episode",
             ["series.search.season"] = "Searched for a season",
             ["movie.search.manual"] = "Searched for a film by hand",

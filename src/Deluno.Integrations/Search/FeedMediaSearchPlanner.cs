@@ -113,7 +113,8 @@ public sealed class FeedMediaSearchPlanner(
         /// these has nothing else to match against (#861).
         /// </summary>
         IReadOnlyList<string>? otherTitles = null,
-        IReadOnlyList<int>? categoryIds = null)
+        IReadOnlyList<int>? categoryIds = null,
+        IReadOnlyDictionary<int, string>? episodeTitles = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -204,7 +205,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles);
                 var answer = searchResults[index];
                 await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
                     new IndexerQueryRecordedEvent(
@@ -268,6 +269,7 @@ public sealed class FeedMediaSearchPlanner(
         }
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
+        var orderingExpectation = TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles);
         var ordered = liveCandidates
             // Candidates that cannot become the automatic winner remain
             // visible for explanation, but sort after the ones that can:
@@ -290,6 +292,10 @@ public sealed class FeedMediaSearchPlanner(
 
                 return 0;
             }))
+            // Between releases the plan rates alike, the one that names this
+            // episode's own title, or the show's own year, is the safer pick
+            // than one that names neither (#1166, #1173).
+            .ThenByDescending(item => NameEvidence(item.ReleaseName, orderingExpectation))
             // Typed plans own every candidate tie-break. Legacy searches keep
             // their historical seeder ordering, but typed selection must not
             // bypass the explicit transient family with a hidden numeric
@@ -432,7 +438,8 @@ public sealed class FeedMediaSearchPlanner(
         ProfileScoreLimits? scoreLimits = null,
         string? genres = null,
         IReadOnlyList<string>? otherTitles = null,
-        IReadOnlyList<int>? categoryIds = null)
+        IReadOnlyList<int>? categoryIds = null,
+        IReadOnlyDictionary<int, string>? episodeTitles = null)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -740,7 +747,7 @@ public sealed class FeedMediaSearchPlanner(
                         sizeRules: sizeRules,
                         upgradeStop: upgradeStop,
                         mediaType: mediaType,
-                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles),
+                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles),
                         runtimeMinutes: runtimeMinutes,
                         scoreLimits: scoreLimits);
                     return new IndexerSearchOutcome(
@@ -1005,17 +1012,22 @@ public sealed class FeedMediaSearchPlanner(
             Categories: categories.Length > 0 ? categories : [family * 1000]);
     }
 
+    /// <summary>1 for the show's own year in the name, 2 for the searched episode's own title (#1166, #1173).</summary>
+    private static int NameEvidence(string releaseName, ReleaseTitleExpectation expectation)
+        => (ReleaseTitleMatch.CarriesWantedEpisodeTitle(releaseName, expectation) ? 2 : 0)
+           + (ReleaseTitleMatch.CarriesSeriesYear(releaseName, expectation) ? 1 : 0);
+
     /// <summary>What a release's name has to be for (#613), numbered the way the search asked.</summary>
-    private static ReleaseTitleExpectation TitleExpectation(string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber, string? numberingScheme, int? absoluteNumber, DateOnly? airDate, int? sceneSeasonNumber, int? sceneEpisodeNumber, IReadOnlyList<string>? otherTitles)
+    private static ReleaseTitleExpectation TitleExpectation(string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber, string? numberingScheme, int? absoluteNumber, DateOnly? airDate, int? sceneSeasonNumber, int? sceneEpisodeNumber, IReadOnlyList<string>? otherTitles, IReadOnlyDictionary<int, string>? episodeTitles)
     {
         var scheme = numberingScheme?.Trim().ToLowerInvariant();
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
         return scheme switch
         {
-            "absolute" when absoluteNumber is not null => new ReleaseTitleExpectation(title, year, isTv, AbsoluteNumber: absoluteNumber, OtherTitles: otherTitles),
-            "airdate" when airDate is not null => new ReleaseTitleExpectation(title, year, isTv, AirDate: airDate, OtherTitles: otherTitles),
+            "absolute" when absoluteNumber is not null => new ReleaseTitleExpectation(title, year, isTv, AbsoluteNumber: absoluteNumber, OtherTitles: otherTitles, EpisodeTitles: episodeTitles),
+            "airdate" when airDate is not null => new ReleaseTitleExpectation(title, year, isTv, AirDate: airDate, OtherTitles: otherTitles, EpisodeTitles: episodeTitles),
             "scene" when sceneSeasonNumber is not null => new ReleaseTitleExpectation(title, year, isTv, sceneSeasonNumber, sceneEpisodeNumber, OtherTitles: otherTitles),
-            _ => new ReleaseTitleExpectation(title, year, isTv, seasonNumber, episodeNumber, OtherTitles: otherTitles)
+            _ => new ReleaseTitleExpectation(title, year, isTv, seasonNumber, episodeNumber, OtherTitles: otherTitles, EpisodeTitles: episodeTitles)
         };
     }
 
@@ -1175,10 +1187,11 @@ public sealed class FeedMediaSearchPlanner(
 
             var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, scoringMode);
             var finalScore = preferencePlan is null ? scoreComputation.FinalScore : 0;
-            var reasons = decision.Reasons.Concat(
-                preferencePlan is null && scoreComputation.UsesModelSignal
-                    ? [boost.Explanation, scoreComputation.Explanation]
-                    : [scoreComputation.Explanation]).ToArray();
+            // The scoring-mode note is an internal detail; a typed plan has no score to explain.
+            IEnumerable<string> scoringNotes = preferencePlan is not null
+                ? []
+                : scoreComputation.UsesModelSignal ? [boost.Explanation, scoreComputation.Explanation] : [scoreComputation.Explanation];
+            var reasons = decision.Reasons.Concat(scoringNotes).ToArray();
             var summary = preferencePlan is null
                 ? BuildSummary(decision, matchedFormats, boost, scoreComputation)
                 : decision.Summary;

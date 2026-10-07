@@ -249,6 +249,21 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status409Conflict, message);
         }
 
+        // The safety net behind search (#1166, #1173): a file for another show of the same name, or one whose name
+        // says one episode and carries another's title, is refused whatever got it here, and blocklisted so the
+        // loop of grab, refuse, search again cannot run.
+        if (mediaType == "tv" && await WrongShowOrEpisodeReasonAsync(request, preview, cancellationToken) is { } wrongRelease)
+        {
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                ImportFailurePolicy.WrongRelease,
+                wrongRelease,
+                "Deluno will not use this release again and has searched for another. Nothing was imported.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, wrongRelease);
+        }
+
         if (File.Exists(preview.DestinationPath) && !request.Overwrite)
         {
             const string message = "The destination file already exists. Enable overwrite or choose a different naming/routing rule.";
@@ -3758,6 +3773,59 @@ public sealed partial class ImportPipelineService(
             FileSizeBytes = fileSizeBytes,
             QualityMet = decision.QualityCutoffMet
         };
+    }
+
+    /// <summary>
+    /// Why the grabbed release is for another show or another episode than the one it was grabbed for, or null
+    /// (#1166, #1173). Only the two wrong-identity answers count here (a different year, or another episode's own
+    /// title): a loose name match is the search's business, and refusing a file on a spelling would lose real media.
+    /// </summary>
+    private async Task<string?> WrongShowOrEpisodeReasonAsync(ImportExecuteRequest request, ImportPreviewResponse preview, CancellationToken cancellationToken)
+    {
+        var dispatch = await ResolveDispatchAsync(request.DispatchId, cancellationToken);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        var isEpisode = string.Equals(dispatch.EntityType, "episode", StringComparison.OrdinalIgnoreCase);
+        var seriesId = isEpisode
+            ? await seriesCatalogRepository.GetEpisodeSeriesIdAsync(dispatch.EntityId, cancellationToken)
+            : string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase) ? dispatch.EntityId : null;
+        if (string.IsNullOrWhiteSpace(seriesId)
+            || await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken) is not { } series)
+        {
+            return null;
+        }
+
+        int? season = null;
+        int? episode = null;
+        IReadOnlyDictionary<int, string>? titles = null;
+        if (isEpisode && await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, cancellationToken) is { } inventory
+            && inventory.Episodes.FirstOrDefault(item => string.Equals(item.EpisodeId, dispatch.EntityId, StringComparison.OrdinalIgnoreCase)) is { } target)
+        {
+            season = target.SeasonNumber;
+            episode = target.EpisodeNumber;
+            titles = inventory.EpisodeTitlesForSeason(target.SeasonNumber);
+        }
+
+        var expected = new ReleaseTitleExpectation(series.Title, series.StartYear, IsTv: true, season, episode, EpisodeTitles: titles);
+        foreach (var name in new[] { dispatch.ReleaseName, Path.GetFileName(preview.SourcePath) })
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            var mismatch = ReleaseTitleMatch.Mismatch(name, expected);
+            if (mismatch is not null
+                && (mismatch.Contains("is for another show", StringComparison.Ordinal) || mismatch.Contains("but its title is", StringComparison.Ordinal)))
+            {
+                return mismatch;
+            }
+        }
+
+        return null;
     }
 
     private async Task<string?> KnownSeriesIdAsync(ImportPreviewRequest request, DownloadDispatchItem? dispatch, CancellationToken cancellationToken)
