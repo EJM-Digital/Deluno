@@ -12,6 +12,12 @@ public static class AttentionEndpoints
     /// <summary>One title with no acceptable release, as the bell draws it.</summary>
     public sealed record NoReleaseRow(string MediaType, string Id, string Title, int? Year, string LibraryId, DateTimeOffset LastSearchUtc, DateTimeOffset? MissingSinceUtc, string? Reason);
 
+    /// <summary>A held release as Transfers draws it under Needs action (#1159).</summary>
+    public sealed record HeldReleaseRow(
+        string HistoryId, string MediaType, string Id, string? EpisodeId, string Title, int? Year, string? EpisodeLabel, string LibraryId,
+        string ReleaseName, string? IndexerName, string? IndexerId, string? DownloadUrl, string? Quality, long? SizeBytes, int? Seeders,
+        string? Reason, DateTimeOffset HeldUtc);
+
     public static IEndpointRouteBuilder MapDelunoAttentionReadEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // Wanted titles whose newest search found nothing Deluno would take, minus the ones the person dismissed.
@@ -29,6 +35,28 @@ public static class AttentionEndpoints
             var rows = all
                 .Where(item => !dismissed.Contains(AttentionDismissalStore.NoReleaseKey(item.MediaType, item.Id)))
                 .Select(item => new NoReleaseRow(item.MediaType, item.Id, item.Title, item.Year, item.LibraryId, item.LastSearchUtc, item.MissingSinceUtc, item.Reason))
+                .ToArray();
+            return Results.Ok(rows);
+        });
+
+        // Searches that ended "held": a usable release that needs a person's yes (#1159), minus the ones already answered.
+        endpoints.MapGet("/api/attention/held-releases", async (
+            IHeldReleaseReader reader,
+            AttentionDismissalStore dismissals,
+            CancellationToken cancellationToken) =>
+        {
+            var all = await reader.ListAsync(500, cancellationToken);
+            var dismissed = await dismissals.ListAsync(cancellationToken);
+            await dismissals.ForgetExceptAsync(
+                all.Select(item => AttentionDismissalStore.HeldReleaseKey(item.HistoryId)).ToHashSet(StringComparer.OrdinalIgnoreCase),
+                cancellationToken,
+                AttentionDismissalStore.HeldReleasePrefix);
+            var rows = all
+                .Where(item => !dismissed.Contains(AttentionDismissalStore.HeldReleaseKey(item.HistoryId)))
+                .Select(item => new HeldReleaseRow(
+                    item.HistoryId, item.MediaType, item.Id, item.EpisodeId, item.Title, item.Year, item.EpisodeLabel, item.LibraryId,
+                    item.ReleaseName, item.IndexerName, item.IndexerId, item.DownloadUrl, item.Quality, item.SizeBytes, item.Seeders,
+                    item.Reason, item.HeldUtc))
                 .ToArray();
             return Results.Ok(rows);
         });
@@ -51,6 +79,22 @@ public static class AttentionEndpoints
             }
 
             await dismissals.DismissAsync(AttentionDismissalStore.NoReleaseKey(mediaType, id), cancellationToken);
+            return Results.NoContent();
+        });
+
+        // Answer a held release: approved, replaced or dismissed, it stops being listed. The release itself is
+        // sent (or refused) by the grab and blocklist routes the screen calls first (#1159).
+        endpoints.MapPost("/api/attention/held-releases/{historyId}/dismiss", async (
+            string historyId,
+            AttentionDismissalStore dismissals,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(historyId))
+            {
+                return Results.NotFound();
+            }
+
+            await dismissals.DismissAsync(AttentionDismissalStore.HeldReleaseKey(historyId), cancellationToken);
             return Results.NoContent();
         });
 

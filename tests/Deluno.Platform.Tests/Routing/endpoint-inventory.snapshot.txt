@@ -57,6 +57,7 @@ GET /api/activity/display-settings
 GET /api/activity/filters
 GET /api/api-keys/
 GET /api/api-keys/scope-templates
+GET /api/attention/held-releases
 GET /api/attention/no-release
 GET /api/auth/bootstrap-status
 GET /api/auto-tag-rules/
@@ -277,6 +278,7 @@ GET /health
 PATCH /api/settings/
 POST /api/activity/clear
 POST /api/api-keys/
+POST /api/attention/held-releases/{historyId}/dismiss
 POST /api/attention/no-release/{mediaType}/{id}/dismiss
 POST /api/auth/bootstrap
 POST /api/auth/login
