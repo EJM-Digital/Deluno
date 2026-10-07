@@ -40,7 +40,10 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // TV in one folder that no processor watched (#629). Each grab names
             // its own. #1073: the library's own downloads folder when Deluno has
             // one to name; otherwise Transmission's download folder plus the
-            // category, the way Radarr and Sonarr do it.
+            // category, the way Radarr and Sonarr do it. #1164: download-dir is
+            // where the torrent FINISHES. With Transmission's incomplete folder
+            // on, the in-progress files stay there until it completes; Deluno
+            // never touches that setting.
             if (!string.IsNullOrWhiteSpace(request.SaveFolder))
             {
                 arguments["download-dir"] = request.SaveFolder;

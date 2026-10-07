@@ -58,7 +58,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
     }
 
     [Fact]
-    public async Task Deluge_adds_the_torrent_with_the_libraries_folder_as_where_it_downloads_and_where_it_ends_up()
+    public async Task Deluge_adds_the_torrent_with_the_libraries_folder_as_where_it_ends_up_and_leaves_where_it_downloads_to_the_client()
     {
         var sent = new List<string>();
         await new DelugeDownloadClient(new StubFactory(new DelugeHandler(sent)))
@@ -66,7 +66,8 @@ public sealed class LibraryDownloadFolderPerGrabTests
 
         using var add = JsonDocument.Parse(sent.First(body => body.Contains("core.add_torrent_magnet", StringComparison.Ordinal)));
         var options = add.RootElement.GetProperty("params")[1];
-        Assert.Equal(LibraryFolder, options.GetProperty("download_location").GetString());
+        // #1164: the in-progress folder (download_location) stays Deluge's own.
+        Assert.False(options.TryGetProperty("download_location", out _));
         Assert.True(options.GetProperty("move_completed").GetBoolean());
         Assert.Equal(LibraryFolder, options.GetProperty("move_completed_path").GetString());
     }
@@ -175,7 +176,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         Assert.Equal(LibraryFolder, chain.SaveFolder);
         var folder = chain.Links.Single(link => link.Step == "folder");
         Assert.Equal(FolderChainStatuses.Ok, folder.Status);
-        Assert.Contains("Deluno sends", folder.Message);
+        Assert.Contains("Deluno asks", folder.Message);
     }
 
     [Fact]
