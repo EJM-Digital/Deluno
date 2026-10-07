@@ -14,6 +14,12 @@ public abstract class DownloadClientBase : IDownloadClient
     // property and never be asked (#1073).
     public virtual bool SetsSaveFolderPerGrab => false;
 
+    public virtual Task<bool?> HasUsenetProviderAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult<bool?>(null);
+
+    public virtual Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
+        => Task.FromResult<UsenetProviderClientResult?>(null);
+
     public abstract Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

@@ -160,7 +160,8 @@
     "configTemplateSourcePath": "%ProgramFiles%\\NZBGet\\nzbget.conf.template",
     "configReplacements": {
       "MainDir=${AppDir}\\downloads": "MainDir=%ProgramData%\\NZBGet",
-      "ControlIP=0.0.0.0": "ControlIP=127.0.0.1"
+      "ControlIP=0.0.0.0": "ControlIP=127.0.0.1",
+      "Server1.Active=yes": "Server1.Active=no"
     },
     "startHidden": true,
     "postInstallCommand": "%ProgramFiles%\\NZBGet\\nzbget.exe",

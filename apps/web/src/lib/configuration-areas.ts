@@ -124,8 +124,7 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
   },
   {
     id: "system",
-    // Deliberately not `/setup-guide`, which the sidebar counts as System so the
-    // area stays lit, but which is its own screen with its own explaining to do.
+    // Deliberately not `/setup-guide`, which is its own screen and lights no sidebar item.
     match: (path) => path.startsWith("/system"),
     explainer: {
       lead: "The state of the installation rather than its contents: whether Deluno is healthy and what it is waiting on, a record of what changed and who changed it, backups to take before you touch something, updates, the API keys anything outside Deluno needs in order to talk to it, and the guides for anything you would rather read about first.",
