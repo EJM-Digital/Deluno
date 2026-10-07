@@ -47,7 +47,7 @@ describe("Settings -> Subtitles: fetch automatically switch (#936)", () => {
   });
 
   it("saves a settings PATCH turning the switch on", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
 
     renderPage();
@@ -58,7 +58,7 @@ describe("Settings -> Subtitles: fetch automatically switch (#936)", () => {
     expect(url).toContain("/api/settings");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ subtitleFetchAutomaticEnabled: true });
-    expect(revalidate).toHaveBeenCalled();
+    await waitFor(() => expect(revalidate).toHaveBeenCalled());
   });
 });
 
@@ -110,7 +110,7 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
   });
 
   it("defaults to plain preferred and saves a changed choice", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
     Object.assign(loaderData, libraryLoaderData);
 
@@ -137,7 +137,7 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
   });
 
   it("saves the forced-subtitle toggle for a language (#835)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
     Object.assign(loaderData, libraryLoaderData);
 
@@ -213,7 +213,7 @@ describe("Subtitle languages: permission control lives in this screen too (#838)
       languages: [],
       settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: false }
     });
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -237,7 +237,7 @@ describe("Subtitle languages: permission control lives in this screen too (#838)
       languages: [],
       settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "" }
     });
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -326,7 +326,7 @@ describe("Subtitle languages: picture-based embedded subtitles do not count (#98
   });
 
   it("saves pictureBasedCounts: false when turned on", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
     Object.assign(loaderData, libraryLoaderData);
 

@@ -11,18 +11,18 @@ namespace Deluno.Persistence.Tests.Filesystem;
 public sealed class NativeFolderPickerAccessTests
 {
     [Theory]
-    [InlineData("127.0.0.1", "192.168.1.51", false, true)]
-    [InlineData("::1", "192.168.1.51", false, true)]
-    [InlineData("::ffff:127.0.0.1", "192.168.1.51", false, true)]
-    [InlineData("192.168.1.51", "192.168.1.51", false, true)]
-    [InlineData("192.168.1.196", "192.168.1.51", false, false)]
+    [InlineData("127.0.0.1", "192.168.1.10", false, true)]
+    [InlineData("::1", "192.168.1.10", false, true)]
+    [InlineData("::ffff:127.0.0.1", "192.168.1.10", false, true)]
+    [InlineData("192.168.1.10", "192.168.1.10", false, true)]
+    [InlineData("192.168.1.20", "192.168.1.10", false, false)]
     [InlineData("127.0.0.1", "127.0.0.1", true, false)]
     public void Only_a_browser_on_the_servers_own_machine_may_use_the_windows_folder_window(string remote, string local, bool forwarded, bool expected)
     {
         var headers = new HeaderDictionary();
         if (forwarded)
         {
-            headers["X-Forwarded-For"] = "192.168.1.196";
+            headers["X-Forwarded-For"] = "192.168.1.20";
         }
 
         Assert.Equal(
@@ -34,8 +34,8 @@ public sealed class NativeFolderPickerAccessTests
     public async Task A_request_from_another_device_is_refused_and_does_not_open_a_window()
     {
         var context = new DefaultHttpContext();
-        context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.196");
-        context.Connection.LocalIpAddress = IPAddress.Parse("192.168.1.51");
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.20");
+        context.Connection.LocalIpAddress = IPAddress.Parse("192.168.1.10");
 
         var result = await FilesystemEndpointRouteBuilderExtensions.PickNativeFolderAsync(
             context, new NativeFolderPickerRequest(null), CancellationToken.None);
