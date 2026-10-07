@@ -96,6 +96,52 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>#1148: a removal the client refused is said as it was, never claimed.</summary>
+    [Fact]
+    public async Task A_removal_the_client_refused_is_named_with_its_reason_and_not_claimed()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out var file);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1",
+                It.IsAny<DownloadClientActionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, false, "Deluge refused the request: Torrent not in session"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), activity: activity);
+
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory,
+            It.Is<string>(message =>
+                message.Contains("could not remove it from", StringComparison.Ordinal)
+                && message.Contains("Torrent not in session", StringComparison.Ordinal)
+                && !message.Contains("Deluno removed it", StringComparison.Ordinal)),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>#1148: the same failed download, seen again on a later pass, is not written to Activity again.</summary>
+    [Fact]
+    public async Task A_failure_already_reported_for_this_download_is_not_written_again()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out var file);
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+        activity.Setup(instance => instance.ListActivityAsync(It.IsAny<int>(), "movie", "movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ActivityEventItem(
+                "event-1", WorkPlanner.DownloadIntegrityFailedCategory, "earlier", "{\"itemId\":\"queue-1\",\"removedFromClient\":true}",
+                null, "movie", "movie-1", DateTimeOffset.UtcNow.AddMinutes(-1))]);
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), activity: activity);
+
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory, It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        telemetry.Verify(instance => instance.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task A_failed_check_on_a_release_chosen_on_search_removes_it_but_blocklists_and_searches_for_nothing()
     {

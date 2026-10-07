@@ -94,6 +94,22 @@ public sealed class ANewFetchDoesNotInheritAnOldOutcomeTests
         Assert.False(DownloadClientTelemetryService.WasAlreadyImported(QueueItem(), [imported, again]));
     }
 
+    /// <summary>#1148: a download that failed Deluno's own file check reads as failed in Transfers, as it does in Activity.</summary>
+    [Fact]
+    public void A_download_that_failed_the_file_check_is_reported_with_the_reason()
+    {
+        var failed = Dispatch(Today) with
+        {
+            ImportStatus = "failed",
+            ImportFailureCode = DownloadClientFailureCodes.IntegrityCheckFailed,
+            ImportFailureMessage = "Name said 1080p; the picture is 1280x720."
+        };
+
+        Assert.Equal("Name said 1080p; the picture is 1280x720.", DownloadClientTelemetryService.FileCheckFailureOf(QueueItem(), [failed]));
+        Assert.Null(DownloadClientTelemetryService.FileCheckFailureOf(QueueItem(), [Dispatch(Today)]));
+        Assert.Null(DownloadClientTelemetryService.FileCheckFailureOf(QueueItem(), []));
+    }
+
     [Fact]
     public void A_download_with_no_record_of_a_fetch_is_not_assumed_imported()
     {

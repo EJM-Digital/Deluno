@@ -147,6 +147,13 @@ public static class DownloadClientFailureCodes
     /// inferred, and not an import Deluno tried and lost.
     /// </summary>
     public const string ClientReported = "client-reported-failure";
+
+    /// <summary>
+    /// Deluno opened the finished file and it was not what its name claimed
+    /// (#1148). Recorded on the dispatch so Transfers shows the same failure
+    /// Activity reports instead of "Waiting for processor".
+    /// </summary>
+    public const string IntegrityCheckFailed = "download-integrity-failed";
 }
 
 /// <summary>
