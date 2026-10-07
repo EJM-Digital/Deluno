@@ -19,13 +19,15 @@ public sealed record CreateSeriesRequest(
     string? NumberingScheme = null,
     string? NumberingSource = "provider",
     string? LibraryId = null,
-    /// <summary>Search for this show right away if it comes out missing (#793), regardless of Monitored.</summary>
+    /// <summary>Search for this show right away if it comes out missing (#793), an explicit choice: Monitored alone does not search at once (#1145).</summary>
     bool SearchForMissingNow = false,
-    /// <summary>Search for this show right away if it comes out cutoff-unmet (#793), regardless of Monitored.</summary>
+    /// <summary>Search for this show right away if it comes out cutoff-unmet (#793), an explicit choice, like SearchForMissingNow.</summary>
     bool SearchForCutoffUnmetNow = false,
     /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.SeasonFolder"/> (#850). Null follows the global Media Management format, exactly today's behaviour.</summary>
     bool? SeasonFolder = null,
     /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.ListMonitorMode"/> (#848). Null means this series was not added from a list, or the list chose "All".</summary>
     string? ListMonitorMode = null,
     /// <summary>Tag names picked in the add dialog (#1038); written with the title before routing and the added notification.</summary>
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null,
+    /// <summary>The quality profile this show is judged by, chosen in the add dialog (#1145). Null follows the library's profile.</summary>
+    string? QualityProfileId = null);

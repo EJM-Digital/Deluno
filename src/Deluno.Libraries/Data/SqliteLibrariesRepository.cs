@@ -808,6 +808,56 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    public async Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
+        string id,
+        string qualityProfileId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, id, cancellationToken);
+        if (library is null || string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return null;
+        }
+
+        using (var exists = connection.CreateCommand())
+        {
+            exists.CommandText = "SELECT 1 FROM quality_profiles WHERE id = @id AND media_type = @mediaType LIMIT 1;";
+            AddParameter(exists, "@id", qualityProfileId.Trim());
+            AddParameter(exists, "@mediaType", library.MediaType);
+            if (await exists.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                return null;
+            }
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                quality_profile_id = @qualityProfileId,
+                -- A media plan that carries another profile no longer describes this library.
+                default_policy_set_id = CASE
+                    WHEN default_policy_set_id IN (
+                        SELECT id FROM policy_sets WHERE quality_profile_id = @qualityProfileId)
+                    THEN default_policy_set_id
+                    ELSE NULL
+                END,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@qualityProfileId", qualityProfileId.Trim());
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
     public async Task<int> ApplyMediaPlanToAssignedLibrariesAsync(
         string policySetId,
         CancellationToken cancellationToken)

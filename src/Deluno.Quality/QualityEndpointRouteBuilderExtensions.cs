@@ -604,7 +604,8 @@ public static class QualityEndpointRouteBuilderExtensions
             [FromServices] IQualityRepository repository,
             [FromServices] IQualityModelService qualityModelService,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromServices] IProfileChangeReevaluator? reevaluator = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -622,6 +623,14 @@ public static class QualityEndpointRouteBuilderExtensions
             var item = await repository.UpdateQualityProfileAsync(id, request, cancellationToken);
             if (item is not null)
             {
+                // Judge everything the profile covers again (#1169): a raised cutoff
+                // must turn the files below it into upgrades now, not when the next
+                // import happens to touch them.
+                if (reevaluator is not null)
+                {
+                    await reevaluator.ReevaluateForProfileAsync(item.Id, cancellationToken);
+                }
+
                 await realtimeEventPublisher.PublishEntityChangedAsync("QualityProfile", item.Id, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
@@ -954,7 +963,8 @@ public static class QualityEndpointRouteBuilderExtensions
             [FromServices] IQualityRepository repository,
             [FromServices] IPolicySetLibraryApplier libraryApplier,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromServices] IProfileChangeReevaluator? reevaluator = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -970,6 +980,10 @@ public static class QualityEndpointRouteBuilderExtensions
 
             var item = await repository.CreatePolicySetAsync(request, cancellationToken);
             await libraryApplier.ApplyToAssignedLibrariesAsync(item.Id, cancellationToken);
+            if (reevaluator is not null)
+            {
+                await reevaluator.ReevaluateForPolicySetAsync(item.Id, cancellationToken);
+            }
             await realtimeEventPublisher.PublishEntityChangedAsync("PolicySet", item.Id, cancellationToken);
             return Results.Ok(item);
         });
@@ -981,7 +995,8 @@ public static class QualityEndpointRouteBuilderExtensions
             [FromServices] IQualityRepository repository,
             [FromServices] IPolicySetLibraryApplier libraryApplier,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromServices] IProfileChangeReevaluator? reevaluator = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -999,6 +1014,10 @@ public static class QualityEndpointRouteBuilderExtensions
             if (item is not null)
             {
                 await libraryApplier.ApplyToAssignedLibrariesAsync(item.Id, cancellationToken);
+                if (reevaluator is not null)
+                {
+                    await reevaluator.ReevaluateForPolicySetAsync(item.Id, cancellationToken);
+                }
                 await realtimeEventPublisher.PublishEntityChangedAsync("PolicySet", item.Id, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
@@ -1011,7 +1030,8 @@ public static class QualityEndpointRouteBuilderExtensions
             [FromServices] IQualityRepository repository,
             [FromServices] IPolicySetLibraryApplier libraryApplier,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromServices] IProfileChangeReevaluator? reevaluator = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -1069,6 +1089,10 @@ public static class QualityEndpointRouteBuilderExtensions
             }
 
             await libraryApplier.ApplyToAssignedLibrariesAsync(item.Id, cancellationToken);
+            if (reevaluator is not null)
+            {
+                await reevaluator.ReevaluateForPolicySetAsync(item.Id, cancellationToken);
+            }
             await realtimeEventPublisher.PublishEntityChangedAsync("PolicySet", item.Id, cancellationToken);
             return Results.Ok(item);
         });

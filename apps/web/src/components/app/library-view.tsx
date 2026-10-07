@@ -14,6 +14,7 @@ import {
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type MovieListItem,
+  type QualityProfileItem,
   type SeriesListItem,
   type UpdateLibraryViewRequest
 } from "../../lib/api";
@@ -178,6 +179,7 @@ export function LibraryView({
 
   const [libraryItems, setLibraryItems] = useState<MediaItem[]>(() => seeded?.items ?? []);
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
+  const [addProfiles, setAddProfiles] = useState<QualityProfileItem[]>([]);
   const [librariesLoaded, setLibrariesLoaded] = useState(false);
   const [totalCount, setTotalCount] = useState(() => seeded?.totalCount ?? 0);
   const [facets, setFacets] = useState<CatalogueFacets | null>(() => seeded?.facets ?? null);
@@ -209,6 +211,14 @@ export function LibraryView({
       })
       .catch(() => {
         if (!cancelled) setLibraries([]);
+      });
+    // For the profile choice in the add dialog (#1145); without them the dialog simply leaves the choice out.
+    void fetchJson<QualityProfileItem[]>("/api/quality-profiles")
+      .then((items) => {
+        if (!cancelled) setAddProfiles(items);
+      })
+      .catch(() => {
+        if (!cancelled) setAddProfiles([]);
       });
     return () => {
       cancelled = true;
@@ -791,8 +801,8 @@ export function LibraryView({
       imdbId: createForm.imdbId,
       monitored: createForm.monitored,
       monitorPreset: createForm.monitorPreset,
-      searchForMissingNow: createForm.searchForMissingNow,
-      searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
+      searchNow: createForm.searchNow,
+      qualityProfileId: createForm.qualityProfileId,
       tags: createForm.tags,
       metadata: createForm.metadata
     };
@@ -805,8 +815,8 @@ export function LibraryView({
       imdbId: result.imdbId ?? "",
       monitored: createForm.monitored,
       monitorPreset: createForm.monitorPreset,
-      searchForMissingNow: createForm.searchForMissingNow,
-      searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
+      searchNow: createForm.searchNow,
+      qualityProfileId: createForm.qualityProfileId,
       tags: createForm.tags,
       metadata: result
     };
@@ -824,8 +834,9 @@ export function LibraryView({
               releaseYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
-              searchForMissingNow: draft.searchForMissingNow,
-              searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
+              searchForMissingNow: draft.searchNow,
+              searchForCutoffUnmetNow: draft.searchNow,
+              qualityProfileId: draft.qualityProfileId || null,
               tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
@@ -838,8 +849,9 @@ export function LibraryView({
               // #991: "all" is the same as not sending a preset at all
               // (today's fully-monitored behaviour), so it is left out.
               listMonitorMode: draft.monitored && draft.monitorPreset !== "all" ? draft.monitorPreset : null,
-              searchForMissingNow: draft.searchForMissingNow,
-              searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
+              searchForMissingNow: draft.searchNow,
+              searchForCutoffUnmetNow: draft.searchNow,
+              qualityProfileId: draft.qualityProfileId || null,
               tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
@@ -1114,6 +1126,7 @@ export function LibraryView({
           libraries={compatibleLibraries}
           libraryId={addIntoLibraryId ?? undefined}
           onLibraryChange={setCreateLibraryId}
+          qualityProfiles={addProfiles.filter((profile) => profile.mediaType === (variant === "movies" ? "movies" : "tv"))}
         />
 
         {/* ═══════ CONTROL RAIL ═══════ */}

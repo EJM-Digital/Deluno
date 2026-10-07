@@ -3197,7 +3197,16 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@id", movieId);
         AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@now", DateTimeOffset.UtcNow.ToString("O"));
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var changed = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (changed)
+        {
+            // The title is now judged by this profile (#1157): re-decide what it
+            // owns, so its quality card, upgrades and search all agree at once.
+            await (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher))
+                .ReevaluateTitleUnderProfileAsync(MediaKind.Movie, movieId, qualityProfileId, cancellationToken);
+        }
+
+        return changed;
     }
 
     public async Task<bool> UpdateFileLocationAsync(

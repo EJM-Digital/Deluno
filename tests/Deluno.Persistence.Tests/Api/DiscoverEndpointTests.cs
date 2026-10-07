@@ -90,6 +90,8 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
                     services.AddSingleton(_intake);
                     services.AddSingleton(_exclusions);
                     services.AddSingleton(libraryPresence);
+                    services.AddSingleton<IMediaStateRepository>(mediaState);
+                    services.AddSingleton<IQualityRepository>(new SqliteQualityRepository(_storage.Factory, timeProvider));
                     services.AddSingleton(mediaDecisionService);
                     services.AddSingleton<IIntakeListPreviewService>(_intakePreview);
                     services.AddSingleton<IMetadataProvider>(new RecordingMetadataProvider(PopularCards));
@@ -306,6 +308,33 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
         var refreshJob = Assert.Single(_jobScheduler.Requests, request => request.JobType == "movies.catalog.refresh");
         Assert.Contains("\"pendingSearches\":[{", refreshJob.PayloadJson);
         Assert.Contains(added!.Id, refreshJob.PayloadJson);
+    }
+
+    /// <summary>#1145: a monitored add with the search box unticked does not search; the next scheduled search finds it.</summary>
+    [Fact]
+    public async Task A_monitored_add_from_discover_with_the_search_box_unticked_does_not_search()
+    {
+        var library = await CreateMovieLibraryAsync();
+
+        var response = await _client.PostAsJsonAsync("/api/discover/add", new DiscoverAddRequest(
+            MediaType: "movies",
+            Title: "Arrival",
+            Year: 2016,
+            ImdbId: "tt2543164",
+            Provider: "tmdb",
+            ProviderId: "329865",
+            Overview: null,
+            PosterUrl: null,
+            BackdropUrl: null,
+            LibraryId: library.Id,
+            QualityProfileId: null,
+            Monitored: true,
+            SearchForMissingNow: false,
+            SearchForCutoffUnmetNow: false));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var refreshJob = Assert.Single(_jobScheduler.Requests, request => request.JobType == "movies.catalog.refresh");
+        Assert.Contains("\"pendingSearches\":[]", refreshJob.PayloadJson);
     }
 
     private sealed class FakeIntakeListPreviewService : IIntakeListPreviewService

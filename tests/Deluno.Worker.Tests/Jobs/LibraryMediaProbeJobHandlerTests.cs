@@ -79,9 +79,15 @@ public sealed class LibraryMediaProbeJobHandlerTests
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>(),
                 It.Is<IReadOnlyList<MediaPreferencePlanExpectation>>(plans =>
-                    plans.Count == 1
-                    && plans[0].LibraryId == library.Id)))
+                    plans.Count == 2
+                    && plans[0].LibraryId == library.Id
+                    && plans[0].TitleProfileId == null
+                    // Titles that chose the profile for themselves are expected to carry its plan too (#1157).
+                    && plans[1].TitleProfileId == "profile-1")))
             .ReturnsAsync([new MediaFileProbeCandidate("movie-1", path, 1_000, library.Id)]);
+        mediaState
+            .Setup(repository => repository.GetTitleQualityProfileIdAsync(MediaKind.Movie, "movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
         mediaState
             .Setup(repository => repository.ListWantedByIdsAsync(
                 MediaKind.Movie,

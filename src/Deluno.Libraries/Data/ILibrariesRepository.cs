@@ -61,6 +61,17 @@ public interface ILibrariesRepository : ILibrarySubtitlePreferences
         UpdateLibraryMediaPlanRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Gives the library another quality profile (#1169). Null when the library or the
+    /// profile does not exist, or the profile is for the other kind of media. A media
+    /// plan assigned to the library that carries a different profile is let go, because
+    /// the library no longer follows it.
+    /// </summary>
+    Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
+        string id,
+        string qualityProfileId,
+        CancellationToken cancellationToken);
+
     Task<int> ApplyMediaPlanToAssignedLibrariesAsync(
         string policySetId,
         CancellationToken cancellationToken);

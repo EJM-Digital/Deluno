@@ -349,8 +349,7 @@ function DiscoverAddDrawer({
   const [libraryId, setLibraryId] = useState<string>("");
   const [qualityProfileId, setQualityProfileId] = useState<string>("");
   const [monitored, setMonitored] = useState(true);
-  const [searchForMissingNow, setSearchForMissingNow] = useState(false);
-  const [searchForCutoffUnmetNow, setSearchForCutoffUnmetNow] = useState(false);
+  const [searchNow, setSearchNow] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -358,8 +357,7 @@ function DiscoverAddDrawer({
     setLibraryId(libraries[0]?.id ?? "");
     setQualityProfileId("");
     setMonitored(true);
-    setSearchForMissingNow(false);
-    setSearchForCutoffUnmetNow(false);
+    setSearchNow(true);
   }, [target, libraries]);
 
   if (!target) {
@@ -367,6 +365,8 @@ function DiscoverAddDrawer({
   }
 
   const { candidate, mediaType } = target;
+  const chosenLibrary = libraries.find((library) => library.id === libraryId);
+  const shownProfileId = qualityProfileId || chosenLibrary?.qualityProfileId || "";
 
   async function handleAdd() {
     setBusy(true);
@@ -382,10 +382,11 @@ function DiscoverAddDrawer({
         posterUrl: candidate.posterUrl,
         backdropUrl: candidate.backdropUrl,
         libraryId: libraryId || null,
-        qualityProfileId: qualityProfileId || null,
+        // The library's own profile is the same as choosing nothing: the title keeps following the library.
+        qualityProfileId: qualityProfileId && qualityProfileId !== chosenLibrary?.qualityProfileId ? qualityProfileId : null,
         monitored,
-        searchForMissingNow,
-        searchForCutoffUnmetNow
+        searchForMissingNow: searchNow,
+        searchForCutoffUnmetNow: searchNow
       };
       const response = await authedFetch("/api/discover/add", {
         method: "POST",
@@ -395,7 +396,7 @@ function DiscoverAddDrawer({
       if (!response.ok) {
         throw new Error(await readErrorText(response, `${candidate.title} could not be added.`));
       }
-      toast.success(`${candidate.title} added${monitored ? " — searching now" : ""}.`);
+      toast.success(`${candidate.title} added${searchNow ? " — searching now" : ""}.`);
       onAdded(candidate.title, candidate.year);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That title could not be added.");
@@ -432,17 +433,19 @@ function DiscoverAddDrawer({
               <Select
                 aria-label="Library"
                 value={libraryId}
-                onChange={(event) => setLibraryId(event.target.value)}
+                onChange={(event) => {
+                  setLibraryId(event.target.value);
+                  setQualityProfileId("");
+                }}
                 options={libraries.map((library) => ({ value: library.id, label: library.name }))}
               />
             </Field>
-            <Field label="Quality profile" optional help="Leave blank to use the library's own default.">
+            <Field label="Quality profile" help="Starts as the library's own profile. Pick another to judge just this title by it.">
               <Select
                 aria-label="Quality profile"
-                value={qualityProfileId}
+                value={shownProfileId}
                 onChange={(event) => setQualityProfileId(event.target.value)}
-                placeholder="Library default"
-                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.id === chosenLibrary?.qualityProfileId ? `${profile.name} (library's)` : profile.name }))}
               />
             </Field>
           </>
@@ -450,22 +453,16 @@ function DiscoverAddDrawer({
       </DrawerSection>
       <DrawerSection title="Monitoring">
         <SwitchRow
-          label="Monitor and search automatically"
-          description="Search for it as soon as it is added, and keep looking until it is found."
+          label="Monitor it"
+          description="Keep watching this title for missing files and better quality."
           checked={monitored}
           onCheckedChange={setMonitored}
         />
         <SwitchRow
-          label="Search for missing now"
-          description="Runs a search for this title right away instead of waiting for the next scheduled cycle."
-          checked={searchForMissingNow}
-          onCheckedChange={setSearchForMissingNow}
-        />
-        <SwitchRow
-          label="Search for cutoff unmet now"
-          description="Runs an upgrade search right away if this title is already held below its quality cutoff."
-          checked={searchForCutoffUnmetNow}
-          onCheckedChange={setSearchForCutoffUnmetNow}
+          label="Search for it as soon as it is added"
+          description="Ticked: Deluno searches right away. Unticked: nothing is searched until the next scheduled search."
+          checked={searchNow}
+          onCheckedChange={setSearchNow}
         />
       </DrawerSection>
     </Drawer>

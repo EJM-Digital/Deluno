@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
+import type { ComponentProps } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { MetadataSearchResult } from "../../lib/api";
@@ -51,7 +52,8 @@ function result(overrides: Partial<MetadataSearchResult> = {}): MetadataSearchRe
 function renderDialog(
   metadataResults: MetadataSearchResult[],
   variant: LibraryVariant = "movies",
-  createFormOverrides: Partial<CreateFormDraft> = {}
+  createFormOverrides: Partial<CreateFormDraft> = {},
+  extra: Partial<ComponentProps<typeof LibraryCreateDialog>> = {}
 ) {
   const onSelectResult = vi.fn();
   const onOpenHeldResult = vi.fn();
@@ -72,8 +74,8 @@ function renderDialog(
         imdbId: "",
         monitored: true,
         monitorPreset: "all",
-        searchForMissingNow: false,
-        searchForCutoffUnmetNow: false,
+        searchNow: true,
+        qualityProfileId: "",
         tags: "",
         metadata: null,
         ...createFormOverrides
@@ -89,6 +91,7 @@ function renderDialog(
       onSelectResult={onSelectResult}
       onOpenHeldResult={onOpenHeldResult}
       onCreate={vi.fn()}
+      {...extra}
     />
   );
 
@@ -239,46 +242,78 @@ describe.each([
 });
 
 /**
- * The search-on-add toggles (#793): off by default, and each one flips
- * independently of "Monitor and search automatically".
+ * Whether an add searches at once is one clear choice (#1145). It used to be
+ * two boxes beside a monitor box that searched anyway; one box now says what it
+ * does, and the library and quality profile are picked before anything runs.
  */
-describe("search-on-add toggles", () => {
-  it("default off, leaving add-only behaviour unchanged", () => {
+describe("the search-on-add choice", () => {
+  it("is one box, ticked by default, and the old second box is gone", () => {
     renderDialog([]);
 
-    expect(screen.getByRole("checkbox", { name: "Search for missing now" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Search for cutoff unmet now" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Search for it as soon as it is added" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Search for missing now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Search for cutoff unmet now" })).not.toBeInTheDocument();
   });
 
-  it("toggling 'search for missing now' updates only that field", async () => {
+  it("unticking it changes only that field", async () => {
     const user = userEvent.setup();
     const { setCreateForm } = renderDialog([]);
 
-    await user.click(screen.getByRole("checkbox", { name: "Search for missing now" }));
+    await user.click(screen.getByRole("checkbox", { name: "Search for it as soon as it is added" }));
 
     expect(setCreateForm).toHaveBeenCalledTimes(1);
-    const updater = setCreateForm.mock.calls[0][0] as (
-      current: { searchForMissingNow: boolean; searchForCutoffUnmetNow: boolean }
-    ) => unknown;
-    expect(updater({ searchForMissingNow: false, searchForCutoffUnmetNow: false })).toMatchObject({
-      searchForMissingNow: true,
-      searchForCutoffUnmetNow: false
-    });
+    const updater = setCreateForm.mock.calls[0][0] as unknown as (current: { searchNow: boolean; monitored: boolean }) => unknown;
+    expect(updater({ searchNow: true, monitored: true })).toMatchObject({ searchNow: false, monitored: true });
+  });
+});
+
+describe("the metadata search status", () => {
+  it("says which sources a show search is waiting on, and that a movie search waits on TMDb", () => {
+    renderDialog([], "shows", {}, { isSearchingMetadata: true });
+    expect(screen.getByText("Waiting on TheTVDB and TMDb...")).toBeInTheDocument();
   });
 
-  it("toggling 'search for cutoff unmet now' updates only that field", async () => {
+  it("says a movie search is waiting on TMDb", () => {
+    renderDialog([], "movies", {}, { isSearchingMetadata: true });
+    expect(screen.getByText("Waiting on TMDb...")).toBeInTheDocument();
+  });
+});
+
+describe("the library and quality profile choice", () => {
+  const libraries = [
+    { id: "lib-1080", name: "Movies 1080p", qualityProfileId: "p-1080" },
+    { id: "lib-4k", name: "Movies 4K", qualityProfileId: "p-4k" }
+  ];
+  const qualityProfiles = [
+    { id: "p-1080", name: "Movies / 1080p" },
+    { id: "p-4k", name: "Movies / 4K Streaming" }
+  ];
+
+  it("offers the library and starts the quality profile as that library's own", () => {
+    renderDialog([], "movies", {}, { libraries, libraryId: "lib-4k", onLibraryChange: vi.fn(), qualityProfiles });
+
+    expect(screen.getByLabelText("Library")).toHaveValue("lib-4k");
+    expect(screen.getByLabelText("Quality profile")).toHaveValue("p-4k");
+  });
+
+  it("is offered even when there is only one library", () => {
+    renderDialog([], "movies", {}, { libraries: [libraries[0]], libraryId: "lib-1080", onLibraryChange: vi.fn(), qualityProfiles });
+
+    expect(screen.getByLabelText("Library")).toBeInTheDocument();
+    expect(screen.getByLabelText("Quality profile")).toHaveValue("p-1080");
+  });
+
+  it("picking another profile is remembered on the form, and picking the library's own clears it", async () => {
     const user = userEvent.setup();
-    const { setCreateForm } = renderDialog([]);
+    const { setCreateForm } = renderDialog([], "movies", {}, { libraries, libraryId: "lib-1080", onLibraryChange: vi.fn(), qualityProfiles });
 
-    await user.click(screen.getByRole("checkbox", { name: "Search for cutoff unmet now" }));
+    await user.selectOptions(screen.getByLabelText("Quality profile"), "p-4k");
+    const picked = setCreateForm.mock.calls[0][0] as unknown as (current: { qualityProfileId: string }) => { qualityProfileId: string };
+    expect(picked({ qualityProfileId: "" }).qualityProfileId).toBe("p-4k");
 
-    expect(setCreateForm).toHaveBeenCalledTimes(1);
-    const updater = setCreateForm.mock.calls[0][0] as (
-      current: { searchForMissingNow: boolean; searchForCutoffUnmetNow: boolean }
-    ) => unknown;
-    expect(updater({ searchForMissingNow: false, searchForCutoffUnmetNow: false })).toMatchObject({
-      searchForMissingNow: false,
-      searchForCutoffUnmetNow: true
-    });
+    setCreateForm.mockClear();
+    await user.selectOptions(screen.getByLabelText("Quality profile"), "p-1080");
+    const own = setCreateForm.mock.calls[0][0] as unknown as (current: { qualityProfileId: string }) => { qualityProfileId: string };
+    expect(own({ qualityProfileId: "p-4k" }).qualityProfileId).toBe("");
   });
 });

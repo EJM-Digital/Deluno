@@ -329,6 +329,46 @@ public sealed class TvdbFirstMetadataTests : IDisposable
         Assert.Null(results[1].TvDbId);
     }
 
+    /// <summary>
+    /// #1163: the loose TheTVDB matches listed first used to push the one title that actually
+    /// contains the word to the bottom - and each loose match cost a TMDb lookup of its own.
+    /// </summary>
+    [Fact]
+    public async Task Through_the_broker_a_TV_search_ranks_the_exact_match_first_across_both_sources()
+    {
+        var lookedUp = new List<string>();
+        var provider = await CreateProviderAsync(
+            "broker",
+            "https://gateway.test",
+            new(),
+            request =>
+            {
+                lookedUp.Add(request.RequestUri!.AbsolutePath);
+                return Route(request, new()
+                {
+                    ["/metadata/tvdb/search"] = """
+                        { "provider": "tvdb", "results": [
+                            { "tvdbId": "9001", "tmdbId": "91001", "title": "Frieden", "year": 2020 },
+                            { "tvdbId": "9002", "tmdbId": "91002", "title": "Friheden", "year": 2018 },
+                            { "tvdbId": "9003", "tmdbId": "91003", "title": "Gooische Frieten", "year": 2010 },
+                            { "tvdbId": "9004", "tmdbId": "91004", "title": "Brieven aan Samson", "year": 2026 } ] }
+                        """,
+                    ["/metadata/search"] = """
+                        { "provider": "deluno-broker", "mode": "broker", "resultCount": 1, "results": [
+                            { "provider": "tmdb", "providerId": "209867", "mediaType": "tv", "title": "Frieren: Beyond Journey's End", "year": 2023, "rating": 8.8, "ratings": [], "genres": [] } ] }
+                        """
+                });
+            });
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("Frieren", "tv", null, null), CancellationToken.None);
+
+        Assert.Equal("Frieren: Beyond Journey's End", results[0].Title);
+        // The loose matches are not titles anyone typing "Frieren" means, so they are not listed.
+        Assert.Single(results);
+        // None of the loose matches was worth a TMDb lookup of its own.
+        Assert.DoesNotContain(lookedUp, path => path.Contains("91001", StringComparison.Ordinal) || path.Contains("91002", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_gateway_without_a_TheTVDB_key_leaves_TV_search_on_TMDb_and_does_not_report_an_outage()
     {

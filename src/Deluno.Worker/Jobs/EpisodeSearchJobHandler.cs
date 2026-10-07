@@ -44,6 +44,11 @@ public sealed class EpisodeSearchJobHandler(
         var now = timeProvider.GetUtcNow();
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
+        // The show's own profile judges its episodes when it has one (#1157).
+        var showProfile = mediaStateRepository is null
+            ? null
+            : await new TitleProfileLookup(mediaStateRepository, qualityRepository).ForTitleAsync(MediaKind.Series, payload.SeriesId, cancellationToken);
+        var profileId = showProfile?.Id ?? library?.QualityProfileId;
         // The library's own Retry after, as film and series searches use. This
         // was a fixed day, whatever the library said (#592).
         var nextEligibleUtc = now.AddHours(Math.Max(1, library?.RetryDelayHours ?? 24));
@@ -76,7 +81,7 @@ public sealed class EpisodeSearchJobHandler(
         var routing = await librariesRepository.GetLibraryRoutingAsync(payload.LibraryId, cancellationToken);
         var customFormats = await SearchExecutionSupport.ResolveCustomFormatsAsync(
             qualityRepository,
-            library?.QualityProfileId,
+            profileId,
             cancellationToken);
         var targetQuality = await seriesCatalogRepository.GetEpisodeTargetQualityAsync(
             payload.EpisodeId,
@@ -143,7 +148,7 @@ public sealed class EpisodeSearchJobHandler(
                  fileSizeBytes: currentFileSizeBytes);
         var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(
             qualityRepository,
-            library?.QualityProfileId,
+            profileId,
             cancellationToken);
         // #974: same as the library-level automatic search — honour "Do not
         // upgrade automatically" here too, so an episode search does not
@@ -154,7 +159,7 @@ public sealed class EpisodeSearchJobHandler(
         var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
             qualityRepository,
             releasePreferencePlanRepository,
-            library?.QualityProfileId,
+            profileId,
             cancellationToken,
             customFormats,
             properRepackAcquisitionMode);
