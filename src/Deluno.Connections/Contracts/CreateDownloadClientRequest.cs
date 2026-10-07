@@ -37,4 +37,6 @@ public sealed record CreateDownloadClientRequest(
     /// <summary>#811 (qBittorrent only): save path sent at add time. Null leaves the client's own default (or its category's save path).</summary>
     string? Location = null,
     /// <summary>#999 (qBittorrent only): default, original, subfolder or no-subfolder. Omitted means the client's own setting.</summary>
-    string? ContentLayout = null);
+    string? ContentLayout = null,
+    /// <summary>#1135: route this client to each library of a type it serves that has no client yet. The drawer opt-out sends false.</summary>
+    bool RouteToLibraries = true);

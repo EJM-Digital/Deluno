@@ -53,7 +53,6 @@ import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { ProxyDrawerBody } from "./connections/proxy-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
 import { RoutingFixLink } from "./connections/preferences-link";
-import { planClientRouting, planIndexerRouting, type RoutingPlan } from "./connections/auto-routing";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
 import {
   emptyIndexerFilters,
@@ -731,36 +730,25 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     }
   }
 
-  // Switch on, in Library Routing, what the person just added for (#1135). Reads each
-  // library's routing fresh, so it never overwrites a change made a moment ago.
-  async function applyRouting(plan: (snapshots: LibraryRoutingSnapshot[]) => RoutingPlan[]): Promise<string[]> {
+  // The server switches a new indexer or client on in Library Routing (#1135) unless the drawer's
+  // switch says not to. This only reads back what it did, to tell the person.
+  async function routedNames(kind: "indexer" | "client", id: string): Promise<string[]> {
     const snapshots = await Promise.all(libraries.map((library) =>
       fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${library.id}/routing`).catch((): LibraryRoutingSnapshot => ({ libraryId: library.id, libraryName: library.name, sources: [], downloadClients: [] }))
     ));
-    const plans = plan(snapshots);
-    for (const item of plans) {
-      await send(`/api/libraries/${item.libraryId}/routing`, "PUT", item.body, "Routing could not be saved.");
-    }
-    return plans.map((item) => item.libraryName);
+    return snapshots
+      .filter((snapshot) => kind === "indexer" ? snapshot.sources.some((link) => link.indexerId === id) : snapshot.downloadClients.some((link) => link.downloadClientId === id))
+      .map((snapshot) => snapshot.libraryName);
   }
-  /** The message to show after an add that also routed it, or null when nothing was routed. */
   async function routeNewIndexerNow(created: IndexerItem): Promise<string | null> {
     if (!routeNewIndexer) return null;
-    try {
-      const names = await applyRouting((snapshots) => planIndexerRouting(created, libraries, snapshots));
-      return names.length ? `Indexer added and switched on for ${names.join(", ")}` : null;
-    } catch {
-      return "Indexer added, but could not be switched on in Library Routing. Do that under Library Routing.";
-    }
+    const names = await routedNames("indexer", created.id).catch(() => []);
+    return names.length ? `Indexer added and switched on for ${names.join(", ")}` : null;
   }
   async function routeNewClientNow(created: DownloadClientItem): Promise<string | null> {
     if (!routeNewClient) return null;
-    try {
-      const names = await applyRouting((snapshots) => planClientRouting(created, libraries, snapshots));
-      return names.length ? `Client added and routed to ${names.join(", ")}` : null;
-    } catch {
-      return "Client added, but could not be routed to a library. Do that under Library Routing.";
-    }
+    const names = await routedNames("client", created.id).catch(() => []);
+    return names.length ? `Client added and routed to ${names.join(", ")}` : null;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -786,7 +774,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           setIndexerInitial(settled);
           setSaveMessage("Saved just now");
         } else {
-          const response = await send("/api/indexers", "POST", { ...payload, testedHealth: testedNewIndexer.current && sameIndexer(testedNewIndexer.current.form, indexerForm) ? testedNewIndexer.current.health : undefined }, "Indexer could not be added.");
+          const response = await send("/api/indexers", "POST", { ...payload, routeToLibraries: routeNewIndexer, testedHealth: testedNewIndexer.current && sameIndexer(testedNewIndexer.current.form, indexerForm) ? testedNewIndexer.current.health : undefined }, "Indexer could not be added.");
           const created = (await response.json()) as IndexerItem;
           const settled = indexerFormFrom(created);
           setIndexerForm(settled);
@@ -803,7 +791,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           setClientInitial(settled);
           setSaveMessage("Saved just now");
         } else {
-          const response = await send("/api/download-clients", "POST", payload, "Download client could not be added.");
+          const response = await send("/api/download-clients", "POST", { ...payload, routeToLibraries: routeNewClient }, "Download client could not be added.");
           const created = (await response.json()) as DownloadClientItem;
           const settled = clientFormFrom(created);
           setClientForm(settled);
