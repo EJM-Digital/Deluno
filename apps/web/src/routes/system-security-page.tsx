@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { KeyRound, LockKeyhole, Plus, ShieldAlert, Wifi, X } from "lucide-react";
 import { Link } from "react-router-dom";
+import { plainAddress } from "../lib/utils";
 import { fetchJson, type AllowedHostsOverview, type LocalNetworkAuthOverview } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -277,7 +278,7 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
           />
 
           <p className="text-xs text-muted-foreground">
-            You are connecting from <span className="font-medium text-foreground">{overview.currentAddress}</span>, which
+            You are connecting from <span className="font-medium text-foreground">{plainAddress(overview.currentAddress)}</span>, which
             {overview.currentAddressIsLocal ? " is a local address" : " is not a local address"}
             {enabled && overview.currentAddressIsLocal ? (overview.currentAddressTrusted ? " and would skip sign-in." : " but is not on your allow list below, so it would still sign in.") : "."}
           </p>

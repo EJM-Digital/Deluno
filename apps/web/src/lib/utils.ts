@@ -23,3 +23,9 @@ export function formatBytes(value: number) {
 export function formatRelative(value: string) {
   return value;
 }
+
+/** An IPv4 address written the IPv6 way (::ffff:192.168.1.196) shown as people write it (192.168.1.196) (#1141). */
+export function plainAddress(address: string): string {
+  const match = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address.trim());
+  return match ? match[1] : address;
+}

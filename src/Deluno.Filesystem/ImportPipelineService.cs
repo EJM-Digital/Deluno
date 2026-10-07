@@ -231,7 +231,7 @@ public sealed partial class ImportPipelineService(
                 request.Preview,
                 "missingSource",
                 message,
-                "Check the download client's completed path, Docker volume mappings, or Windows service account permissions.",
+                $"Check the download client's completed path, Docker volume mappings, or the permissions of {RunAccount.Phrase()}.",
                 cancellationToken);
             return Failed(StatusCodes.Status404NotFound, message);
         }
@@ -787,7 +787,7 @@ public sealed partial class ImportPipelineService(
                 request.Preview,
                 "permission",
                 message,
-                "Grant the Deluno service account read access to downloads and write access to the destination library.",
+                $"Grant {RunAccount.Phrase()} read access to downloads and write access to the destination library.",
                 cancellationToken);
             return Failed(StatusCodes.Status403Forbidden, message);
         }
@@ -4198,7 +4198,7 @@ public sealed partial class ImportPipelineService(
     {
         var warnings = new List<string>();
         if (!isSupportedMediaFile) warnings.Add("This file extension is not configured as an importable video file.");
-        if (!sourceExists) warnings.Add("Source file is not visible to Deluno. Check Docker mounts, UNC access, mapped drives, or service account permissions.");
+        if (!sourceExists) warnings.Add($"Source file is not visible to Deluno. Check Docker mounts, UNC access, mapped drives, or the permissions of {RunAccount.Phrase()}.");
         if (sourceExists && IsSamePath(sourcePath, destinationPath)) warnings.Add("Source and destination resolve to the same file. Deluno will block this import.");
         if (destinationExists) warnings.Add("Destination already exists. Import will be blocked unless overwrite is enabled.");
         if (!hardlinkAvailable) warnings.Add("Hardlink is unlikely because source and destination appear to be on different filesystems. Copy fallback may be required.");

@@ -52,7 +52,7 @@ import {
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch, useAuth } from "../lib/use-auth";
-import { cn } from "../lib/utils";
+import { cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
@@ -507,6 +507,10 @@ export function SetupGuidePage() {
   // #1061: the apps the installer put here, and whether the person skipped connecting them. Never blocks the baseline.
   const [installedApps, setInstalledApps] = useState<BundledComponentStatus[]>([]);
   const [appsSkipped, setAppsSkipped] = useState(false);
+  // #1132: the clients as they are now. The loader read them when the page opened, before "Connect all" ran, so
+  // a client the installer put on and the person just connected would otherwise look missing.
+  const [liveClients, setLiveClients] = useState<DownloadClientItem[]>(data.clients);
+  const [addingClient, setAddingClient] = useState(false);
   useEffect(() => {
     let active = true;
     void fetchJson<BundledComponentStatus[]>("/api/system/bundled-components")
@@ -514,6 +518,13 @@ export function SetupGuidePage() {
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    let active = true;
+    void fetchJson<DownloadClientItem[]>("/api/download-clients")
+      .then((next) => { if (active && Array.isArray(next)) setLiveClients(next); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [stepIndex, installedApps]);
   const [serviceTest, setServiceTest] = useState<ServiceTestState>({
     indexer: "idle",
     client: "idle",
@@ -575,7 +586,8 @@ export function SetupGuidePage() {
   const hasQualityChoice = Boolean(form.qualityPreset);
   const hasReleaseRuleChoice = Boolean(form.formatGoal);
   const hasReadyIndexer = data.indexers.some((item) => item.isEnabled && item.healthStatus === "healthy") || serviceTest.indexer === "passed";
-  const hasReadyClient = data.clients.some((item) => item.isEnabled && item.healthStatus === "healthy") || serviceTest.client === "passed";
+  const connectedClientList = connectedDownloadClients(liveClients);
+  const hasReadyClient = connectedClientList.length > 0 || serviceTest.client === "passed";
   const indexerConnectionRequested = Boolean(form.indexerUrl.trim()) && !hasReadyIndexer;
   const clientConnectionRequested = Boolean(form.clientHost.trim()) && !hasReadyClient;
   // What the baseline itself needs: somewhere to put media, and the quality
@@ -619,8 +631,15 @@ export function SetupGuidePage() {
       { label: "Release preferences chosen", done: hasReleaseRuleChoice },
       { label: "Search source ready", done: hasReadyIndexer },
       { label: "Downloads ready", done: hasReadyClient },
-      ...(installedApps.length > 0 ? [{ label: "Installed apps connected", done: appsSkipped || installedApps.every((app) => app.connected) }] : [])
-    ];
+      // #1132: skipping is not connecting. A skipped step reads "Skipped", never "Done".
+      ...(installedApps.length > 0
+        ? [{
+            label: "Installed apps connected",
+            done: installedApps.every((app) => app.connected),
+            skipped: appsSkipped && !installedApps.every((app) => app.connected)
+          }]
+        : [])
+    ] as { label: string; done: boolean; skipped?: boolean }[];
     return checks;
   }, [
     canCreateMovies,
@@ -695,25 +714,17 @@ export function SetupGuidePage() {
       return;
     }
 
+    // #1132: everything that can be refused is checked before anything is written, so a refusal
+    // leaves nothing half-applied.
+    const preflight = preflightDownloadClient(liveClients, form, serviceTest.client === "passed");
+    if (preflight) {
+      setError(preflight);
+      return;
+    }
+
     setBusy(true);
     const createdEntities: CreatedEntity[] = [];
     try {
-      await saveSettings(data.settings, form, form.automation);
-      // #939: only ever turned on by an explicit Yes here, and refused
-      // server-side (so left off) if the address answering this very
-      // request was not ticked -- setup can never lock itself out.
-      await saveAllowedHosts(form).catch(() => undefined);
-      // #993: unlike Allowed Hosts, an explicit No here always writes the
-      // real (off) setting -- there is no lock-out risk to guard against.
-      await saveLocalNetworkAuth(form).catch(() => undefined);
-      // #1034: same as Local Network Auth -- an explicit Yes or No here
-      // always writes the real setting.
-      await saveUpdatePreferences(form, data.updatePreferences).catch(() => undefined);
-      // #944: an explicit Yes or No here always writes the real setting,
-      // unlike Allowed Hosts (which only ever turns on) - an existing
-      // install's migration may have already frozen this on, and a plain
-      // "No" answer here should still be honored.
-      await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => undefined);
       const qualityProfileCache = [...data.qualityProfiles];
       const customFormatCache = [...data.customFormats];
       const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
@@ -721,7 +732,7 @@ export function SetupGuidePage() {
       const movieProfile = hasMovies ? await ensureQualityProfile(qualityProfileCache, "movies", form, movieCustomFormatIds, createdEntities) : null;
       const tvProfile = hasTv ? await ensureQualityProfile(qualityProfileCache, "tv", form, tvCustomFormatIds, createdEntities) : null;
       const indexer = await ensureIndexer(data.indexers, form, serviceTest.indexer === "passed", createdEntities);
-      const client = await ensureClient(data.clients, form, serviceTest.client === "passed", createdEntities);
+      const clients = await ensureClients(liveClients, form, serviceTest.client === "passed", createdEntities);
       const movieLibrary = canCreateMovies
         ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, movieProfile?.id ?? null, form, createdEntities)
         : null;
@@ -729,23 +740,55 @@ export function SetupGuidePage() {
         ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, tvProfile?.id ?? null, form, createdEntities)
         : null;
 
+      // A library made a moment ago has no sources to lose; one that was already there keeps its own unless an indexer is named.
+      const routable = (library: LibraryItem | null) =>
+        library && clients.length > 0 && (indexer || createdEntities.some((entity) => entity.kind === "library" && entity.id === library.id));
       await Promise.all([
-        movieLibrary && indexer && client ? saveRouting(movieLibrary.id, indexer.id, client.id) : Promise.resolve(),
-        tvLibrary && indexer && client ? saveRouting(tvLibrary.id, indexer.id, client.id) : Promise.resolve()
+        routable(movieLibrary) ? saveRouting(movieLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve(),
+        routable(tvLibrary) ? saveRouting(tvLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve()
       ]);
 
-      const firstTitle = form.firstTitle.trim()
-        ? await createFirstTitle(form, createdEntities)
-        : null;
+      // The answers go in last, and the one that can refuse goes first: if it refuses, the
+      // libraries above are removed again and none of the answers has been applied.
+      await saveSettings(data.settings, form, form.automation);
+      const notApplied: string[] = [];
+      // #939: only ever turned on by an explicit Yes here, and refused
+      // server-side (so left off) if the address answering this very
+      // request was not ticked -- setup can never lock itself out.
+      await saveAllowedHosts(form).catch(() => notApplied.push("which addresses Deluno answers on"));
+      // #993: unlike Allowed Hosts, an explicit No here always writes the
+      // real (off) setting -- there is no lock-out risk to guard against.
+      await saveLocalNetworkAuth(form).catch(() => notApplied.push("skipping sign-in on your home network"));
+      // #1034: same as Local Network Auth -- an explicit Yes or No here
+      // always writes the real setting.
+      await saveUpdatePreferences(form, data.updatePreferences).catch(() => notApplied.push("how Deluno updates"));
+      // #944: an explicit Yes or No here always writes the real setting,
+      // unlike Allowed Hosts (which only ever turns on) - an existing
+      // install's migration may have already frozen this on, and a plain
+      // "No" answer here should still be honored.
+      await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => notApplied.push("the dangerous-file check"));
+
+      // The first title is a bonus. If it cannot be added the baseline stands, and the screen says so.
+      let firstTitle: { id: string; title: string } | null = null;
+      let firstTitleProblem: string | null = null;
+      if (form.firstTitle.trim()) {
+        try {
+          firstTitle = await createFirstTitle(form, createdEntities);
+        } catch (titleError) {
+          firstTitleProblem = titleError instanceof Error ? titleError.message : `Could not add ${form.firstTitle.trim()}.`;
+        }
+      }
 
       const created = [movieLibrary ? "Movies" : null, tvLibrary ? "TV Shows" : null].filter(Boolean).join(" and ");
       const completionResult = {
-        message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.`,
+        message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.${
+          firstTitleProblem ? ` The first title was not added: ${firstTitleProblem}` : ""
+        }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}`,
         libraries: [movieLibrary?.name, tvLibrary?.name].filter((item): item is string => Boolean(item)),
         qualityProfiles: [movieProfile?.name, tvProfile?.name].filter((item, index, arr): item is string => Boolean(item) && arr.indexOf(item) === index),
         customFormatCount: createdEntities.filter((item) => item.kind === "customFormat").length,
         indexerName: indexer?.name ?? null,
-        clientName: client?.name ?? null,
+        clientName: clients.length > 0 ? clients.map((item) => item.name).join(", ") : null,
         firstTitle: firstTitle?.title ?? null,
         firstTitlePath: firstTitle ? (form.firstTitleType === "movies" ? "/movies" : "/tv") : null
       };
@@ -754,10 +797,11 @@ export function SetupGuidePage() {
       await authedFetch("/api/setup/draft", { method: "DELETE" }).catch(() => undefined);
       setResult(completionResult);
     } catch (err) {
-      if (createdEntities.length > 0) {
-        const rollback = await rollbackCreatedEntities(createdEntities);
-        setRollbackMessage(rollback);
-      }
+      // All or none (#1132): what was made is removed, no answer was applied, and the screen keeps every answer given.
+      const rollback = createdEntities.length > 0
+        ? await rollbackCreatedEntities(createdEntities)
+        : "Setup failed before Deluno created anything that needed cleanup.";
+      setRollbackMessage(`${rollback} None of your answers were applied. Your choices are still here, so fix the problem above and press Create baseline again.`);
       setError(err instanceof Error ? err.message : "Setup could not be completed.");
     } finally {
       setBusy(false);
@@ -926,7 +970,7 @@ export function SetupGuidePage() {
               {completion.map((item) => (
                 <li key={item.label} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 text-(length:--type-caption) leading-snug text-muted-foreground">{item.label}</span>
-                  <Chip tone={item.done ? "ok" : "idle"}>{item.done ? "Done" : "Waiting"}</Chip>
+                  <Chip tone={item.done ? "ok" : "idle"}>{item.done ? "Done" : item.skipped ? "Skipped" : "Waiting"}</Chip>
                 </li>
               ))}
             </ul>
@@ -958,7 +1002,7 @@ export function SetupGuidePage() {
                 currentHost={data.allowedHosts.currentHost}
               />
             ) : null}
-            {current.id === "network" ? <NetworkStep /> : null}
+            {current.id === "network" ? <NetworkStep address={plainAddress(data.allowedHosts.currentHost)} /> : null}
             {current.id === "updates" ? <UpdatesStep form={form} patch={patch} channel={data.updatePreferences.channel} /> : null}
             {current.id === "mode" ? <ModeStep form={form} patch={patch} onSkip={skipWizard} /> : null}
             {current.id === "folders" ? <FoldersStep form={form} patch={patch} /> : null}
@@ -968,6 +1012,9 @@ export function SetupGuidePage() {
                 form={form}
                 patch={patch}
                 testState={serviceTest}
+                connectedClients={connectedClientList}
+                addingClient={addingClient}
+                onAddClient={() => { setAddingClient(true); patch({ clientHost: "", clientUsername: "", clientPassword: "" }); }}
                 onTestIndexer={() => void testIndexerConnection()}
                 onTestClient={() => void testClientConnection()}
               />
@@ -991,6 +1038,7 @@ export function SetupGuidePage() {
                 existingMetadataConfigured={Boolean(data.metadataStatus?.isConfigured)}
                 onMetadataSearch={() => void handleMetadataSearch()}
                 onSelectMetadata={selectMetadataResult}
+                route={describeDownloadRoute(liveClients, form, serviceTest.client === "passed")}
               />
             ) : null}
           </div>
@@ -1012,12 +1060,13 @@ export function SetupGuidePage() {
                   </Link>
                 </Button>
               ) : stepIndex < STEPS.length - 1 ? (
-                <Button type="button" onClick={() => moveToStep(stepIndex + 1)}>
+                <Button key="continue" type="button" onClick={() => moveToStep(stepIndex + 1)}>
                   Continue
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
                 <Button
+                  key="create-baseline"
                   type="submit"
                   disabled={busy || !canFinish}
                   // A disabled primary button must say why it is disabled,
@@ -1254,12 +1303,18 @@ function ServicesStep({
   form,
   patch,
   testState,
+  connectedClients,
+  addingClient,
+  onAddClient,
   onTestIndexer,
   onTestClient
 }: {
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   testState: ServiceTestState;
+  connectedClients: DownloadClientItem[];
+  addingClient: boolean;
+  onAddClient: () => void;
   onTestIndexer: () => void;
   onTestClient: () => void;
 }) {
@@ -1303,12 +1358,36 @@ function ServicesStep({
         </div>
       </FieldShell>
 
-      <FieldShell icon={DownloadCloud} label="Download client" copy="Required for operational readiness. The external client owns downloading; Deluno orchestrates, observes, and imports.">
+      <FieldShell icon={DownloadCloud} label="Download client" copy="The external client owns downloading; Deluno orchestrates, observes, and imports.">
         <div className="grid gap-3">
-          {/* #506: the first-run offer to install one, rather than find, install and wire it by hand. */}
-          <p className="text-(length:--type-caption) text-muted-foreground">
-            Not installed yet? <Link className="font-medium text-primary hover:underline" to="/indexers/companion-tools">Let Deluno install and connect SABnzbd, qBittorrent or Weir</Link>, then come back.
-          </p>
+          {connectedClients.length > 0 ? (
+            // #1132: clients that are already connected are used as they are. Nothing is asked again.
+            <div className="grid gap-2 rounded-xl border border-hairline bg-surface-2 p-3">
+              <p className="text-sm font-semibold text-foreground">Already connected. Deluno will use these.</p>
+              <ul className="grid gap-1.5">
+                {connectedClients.map((client) => (
+                  <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground">
+                    <span className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
+                    <Chip tone="ok">Connected</Chip>
+                  </li>
+                ))}
+              </ul>
+              {!addingClient ? (
+                <div>
+                  <Button type="button" variant="outline" size="sm" onClick={onAddClient}>
+                    Add a different download client
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            // #506: the first-run offer to install one, rather than find, install and wire it by hand.
+            <p className="text-(length:--type-caption) text-muted-foreground">
+              Not installed yet? <Link className="font-medium text-primary hover:underline" to="/indexers/companion-tools">Let Deluno install and connect SABnzbd, qBittorrent or Weir</Link>, then come back.
+            </p>
+          )}
+          {connectedClients.length === 0 || addingClient ? (
+            <div className="grid gap-3">
           <PresetRadioGroup
             label="Download client presets"
             options={CLIENT_SETUP_PRESETS.map((preset) => ({
@@ -1355,6 +1434,8 @@ function ServicesStep({
             onClick={onTestClient}
             label="Test download client"
           />
+            </div>
+          ) : null}
         </div>
       </FieldShell>
     </div>
@@ -1659,14 +1740,14 @@ function AddressesStep({
  * firewall already lets other devices reach Deluno, or on a host with no
  * firewall for Deluno to look after -- there is nothing to ask in that case.
  */
-function NetworkStep() {
+function NetworkStep({ address }: { address: string }) {
   return (
     <FieldShell
       icon={MonitorSmartphone}
       label="Other devices on your network"
       copy="Phones, tablets and other computers on your network can only reach Deluno if this computer's firewall allows it. Deluno checks that now."
     >
-      <LanAccessNotice />
+      <LanAccessNotice showResult address={address} />
       <p className="mt-3 text-xs text-muted-foreground">
         Nothing to do if you only ever use Deluno from this computer. Change this anytime from System.
       </p>
@@ -1755,7 +1836,7 @@ function LocalNetworkAuthQuestion({
     <FieldShell
       icon={Wifi}
       label="Skip sign-in for devices on your home network?"
-      copy={`Off, every device signs in, exactly as Deluno has always done. Yes, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) skips sign-in. You are connecting from ${currentAddress}.`}
+      copy={`Off, every device signs in, exactly as Deluno has always done. Yes, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) skips sign-in. You are connecting from ${plainAddress(currentAddress)}.`}
     >
       <div className="mb-4 flex gap-2" role="radiogroup" aria-label="Skip sign-in for devices on your home network?">
         <Button
@@ -1860,8 +1941,10 @@ function FinishStep({
   metadataBusy,
   existingMetadataConfigured,
   onMetadataSearch,
-  onSelectMetadata
+  onSelectMetadata,
+  route
 }: {
+  route: { names: string[]; copy: string };
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   canFinish: boolean;
@@ -1890,7 +1973,7 @@ function FinishStep({
           // The connection's name, not its protocol id: this read "torznab"
           // and "qbittorrent" where the user had just named them (#259).
           { label: "Search source", value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Later" },
-          { label: "Download client", value: form.clientHost.trim() ? form.clientName || form.clientProtocol : "Later" }
+          { label: "Download client", value: route.names.length > 0 ? route.names.join(", ") : "Later" }
         ]}
       />
       <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
@@ -1901,12 +1984,12 @@ function FinishStep({
               This is the plain-English route Deluno will use before importing anything.
             </p>
           </div>
-          <Badge variant={form.clientHost.trim() ? "success" : "warning"}>
-            {form.clientHost.trim() ? "Client route ready" : "Client can be added later"}
+          <Badge variant={route.names.length > 0 ? "success" : "warning"}>
+            {route.names.length > 0 ? "Client route ready" : "Client can be added later"}
           </Badge>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {buildImportPreviewRows(form).map((row) => (
+          {buildImportPreviewRows(form, route).map((row) => (
             <div key={row.label} className="rounded-xl border border-hairline bg-background/35 p-3">
               <p className="text-(length:--type-caption) font-bold uppercase tracking-[0.16em] text-muted-foreground">{row.label}</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{row.value}</p>
@@ -2222,7 +2305,7 @@ function FieldShell({ icon: Icon, label, copy, children }: { icon: LucideIcon; l
   );
 }
 
-function buildImportPreviewRows(form: GuideForm) {
+function buildImportPreviewRows(form: GuideForm, route: { names: string[]; copy: string }) {
   const roots = [
     form.mediaIntent !== "tv" && form.movieRootPath.trim() ? `Movies -> ${form.movieRootPath.trim()}` : null,
     form.mediaIntent !== "movies" && form.seriesRootPath.trim() ? `TV -> ${form.seriesRootPath.trim()}` : null
@@ -2238,10 +2321,8 @@ function buildImportPreviewRows(form: GuideForm) {
     },
     {
       label: "Download",
-      value: form.clientHost.trim() ? form.clientName || form.clientProtocol : "Download client required",
-      copy: form.clientHost.trim()
-        ? `Routes to ${form.clientProtocol} with deluno-movies and deluno-tv categories.`
-        : "Approved releases will not be sent anywhere until a download client is configured."
+      value: route.names.length > 0 ? route.names.join(", ") : "Download client required",
+      copy: route.copy
     },
     {
       label: "Destination",
@@ -2505,28 +2586,66 @@ async function ensureIndexer(existing: IndexerItem[], form: GuideForm, tested: b
   return item;
 }
 
-async function ensureClient(existing: DownloadClientItem[], form: GuideForm, tested: boolean, createdEntities: CreatedEntity[]) {
-  if (!form.clientHost.trim()) return null;
-  if (!tested) throw new Error("Test the download destination before saving it.");
+/** Clients that are on, healthy and so ready to take downloads: what the guide routes to without asking again (#1132). */
+export function connectedDownloadClients(clients: DownloadClientItem[]): DownloadClientItem[] {
+  return clients.filter((item) => item.isEnabled && item.healthStatus === "healthy");
+}
 
-  const item = existing[0]
-    ? await fetchJson<DownloadClientItem>(`/api/download-clients/${existing[0].id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildClientPayload(form))
-      })
+/**
+ * Whether a download client is in the way of finishing, decided before anything is written (#1132).
+ * Connected clients are used as they are. A form is only needed to add one that is not connected yet,
+ * and a form typed in but never tested is refused rather than saved untested.
+ */
+export function preflightDownloadClient(clients: DownloadClientItem[], form: Pick<GuideForm, "clientHost">, formTested: boolean): string | null {
+  if (formTested || connectedDownloadClients(clients).length > 0) return null;
+  return form.clientHost.trim()
+    ? "Test the download client you entered, or clear it, before creating the baseline."
+    : null;
+}
+
+/** What the Start step says Movies and TV will be routed to: the connected clients, plus a new one if it was tested. */
+export function describeDownloadRoute(clients: DownloadClientItem[], form: Pick<GuideForm, "clientHost" | "clientName" | "clientProtocol">, formTested: boolean): { names: string[]; copy: string } {
+  const names = connectedDownloadClients(clients).map((item) => item.name);
+  if (formTested && form.clientHost.trim()) {
+    const own = form.clientName || form.clientProtocol;
+    if (!names.includes(own)) names.push(own);
+  }
+  return names.length === 0
+    ? { names, copy: "Approved releases will not be sent anywhere until a download client is configured." }
+    : { names, copy: `Movies and TV downloads go to ${names.join(" and ")}, each with its own categories.` };
+}
+
+/** The clients Movies and TV are routed to: every connected one, plus the new one when it was tested (#1132). */
+async function ensureClients(existing: DownloadClientItem[], form: GuideForm, tested: boolean, createdEntities: CreatedEntity[]): Promise<DownloadClientItem[]> {
+  const connected = connectedDownloadClients(existing);
+  if (!tested || !form.clientHost.trim()) return connected;
+
+  const port = Number(form.clientPort || defaultClientPort(form.clientProtocol));
+  const same = existing.find((item) =>
+    item.protocol === form.clientProtocol
+    && (item.host ?? "").toLowerCase() === form.clientHost.trim().toLowerCase()
+    && (item.port ?? port) === port);
+  // A client already saved at this address is left as it is unless a password was typed; saving the blank form over it would erase its login.
+  const item = same
+    ? form.clientPassword || form.clientUsername.trim() !== (same.username ?? "")
+      ? await fetchJson<DownloadClientItem>(`/api/download-clients/${same.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildClientPayload(form))
+        })
+      : same
     : await fetchJson<DownloadClientItem>("/api/download-clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildClientPayload(form))
       });
-  if (!existing[0]) createdEntities.push({ kind: "client", id: item.id });
+  if (!same) createdEntities.push({ kind: "client", id: item.id });
 
   const persistedTest = await fetchJson<ConnectionTestResponse>(`/api/download-clients/${item.id}/test`, { method: "POST" });
   if (persistedTest.healthStatus !== "healthy") {
     throw new Error(persistedTest.message || "Download destination did not pass its persisted connection test.");
   }
-  return item;
+  return [...connected.filter((client) => client.id !== item.id), item];
 }
 
 function buildIndexerPayload(form: GuideForm) {
@@ -2669,13 +2788,13 @@ function rollbackEndpoint(entity: CreatedEntity) {
   }
 }
 
-async function saveRouting(libraryId: string, indexerId: string, downloadClientId: string) {
+async function saveRouting(libraryId: string, indexerId: string | null, downloadClientIds: string[]) {
   const response = await authedFetch(`/api/libraries/${libraryId}/routing`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sources: [{ indexerId, priority: 1, requiredTags: "", excludedTags: "" }],
-      downloadClients: [{ downloadClientId, priority: 1 }]
+      sources: indexerId ? [{ indexerId, priority: 1, requiredTags: "", excludedTags: "" }] : [],
+      downloadClients: downloadClientIds.map((downloadClientId, index) => ({ downloadClientId, priority: index + 1 }))
     })
   });
   if (!response.ok) {
