@@ -94,3 +94,33 @@ export function toggleIndexerFlag(preferIndexerFlags: string, flag: string): str
     : [...flags, flag];
   return next.join(", ");
 }
+
+/**
+ * What the Indexers header counts (#1134): the indexers that are switched on,
+ * answered their last test and are searched by a library. Each one left out is
+ * named, so "2 of 5" says why it is not 5.
+ */
+export function indexerReadiness(
+  indexers: { id: string; isEnabled: boolean; healthStatus: string }[],
+  searchedByLibraryCount: (id: string) => number,
+  libraryCount: number
+): { ready: number; total: number; notReady: string[] } {
+  let ready = 0;
+  const counts = { paused: 0, untested: 0, degraded: 0, failing: 0, notUsed: 0 };
+  for (const item of indexers) {
+    if (!item.isEnabled) counts.paused += 1;
+    else if (item.healthStatus === "untested") counts.untested += 1;
+    else if (item.healthStatus === "degraded") counts.degraded += 1;
+    else if (item.healthStatus !== "healthy") counts.failing += 1;
+    else if (libraryCount > 0 && searchedByLibraryCount(item.id) === 0) counts.notUsed += 1;
+    else ready += 1;
+  }
+  const notReady = [
+    counts.degraded ? `${counts.degraded} degraded` : "",
+    counts.failing ? `${counts.failing} not answering` : "",
+    counts.untested ? `${counts.untested} not tested yet` : "",
+    counts.notUsed ? `${counts.notUsed} not used by any library` : "",
+    counts.paused ? `${counts.paused} paused` : ""
+  ].filter(Boolean);
+  return { ready, total: indexers.length, notReady };
+}
