@@ -52,9 +52,12 @@ public sealed class ProcessorFailureReportHandler(
         }
 
         var failureClass = string.IsNullOrWhiteSpace(report.FailureClass) ? null : report.FailureClass.Trim();
-        var reason = failureClass is null
-            ? $"{report.ProcessorName} could not process it and removed it: {report.Message}"
-            : $"{report.ProcessorName} could not process it ({failureClass}) and removed it: {report.Message}";
+        var processorRemoved = report.SourceRemoved == true;
+        var classNote = failureClass is null ? "" : $" ({failureClass})";
+        var reason = processorRemoved
+            ? $"{report.ProcessorName} could not process it{classNote} and removed it: {report.Message}"
+            : $"{report.ProcessorName} refused it{classNote}: {report.Message.TrimEnd('.', ' ')}. Deluno will remove it from {dispatch.DownloadClientName} once its sharing time is up.";
+        var whatHappened = processorRemoved ? "and removed it" : "and left it for Deluno to remove";
 
         BlockedRelease blocked;
         try
@@ -126,7 +129,7 @@ public sealed class ProcessorFailureReportHandler(
             // A release chosen on Search has no title to search for (#1062).
             return new ProcessorRejectionOutcome(
                 true,
-                $"{report.ProcessorName} could not process {dispatch.ReleaseName} and removed it. {DispatchTargets.ChosenOnSearchNote}",
+                $"{report.ProcessorName} could not process {dispatch.ReleaseName} {whatHappened}. {DispatchTargets.ChosenOnSearchNote}",
                 blocked.Id,
                 null);
         }
@@ -136,7 +139,7 @@ public sealed class ProcessorFailureReportHandler(
 
         return new ProcessorRejectionOutcome(
             true,
-            $"{report.ProcessorName} could not process {dispatch.ReleaseName} and removed it. Deluno refused that release and is searching for another copy.",
+            $"{report.ProcessorName} could not process {dispatch.ReleaseName} {whatHappened}. Deluno refused that release and is searching for another copy.",
             blocked.Id,
             search.Id);
     }

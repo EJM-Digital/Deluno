@@ -1146,7 +1146,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 }
 
                 var outcome = await failureReports.HandleRejectedAsync(
-                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass),
+                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass, request.SourceRemoved),
                     cancellationToken);
                 if (!outcome.Acted)
                 {
