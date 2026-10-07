@@ -16,6 +16,17 @@ public interface IProcessorRepository
 
     Task<ProcessorHandoffItem?> GetProcessorHandoffAsync(string id, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Points a hand-off that has not been sent yet at the folder its download
+    /// is in now (#1150). A download moved by its client after the hand-off
+    /// was made would otherwise be sent from where it used to be. False when
+    /// the hand-off is not waiting or another hand-off already holds that path.
+    /// </summary>
+    Task<bool> RepointWaitingProcessorHandoffAsync(
+        string id,
+        string sourcePath,
+        CancellationToken cancellationToken);
+
     Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
         string id,
         string status,

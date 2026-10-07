@@ -982,11 +982,43 @@ public sealed class WorkPlanner(
 
         // How much each processor is already holding, so this pass can stop
         // before it buries one (#575).
-        var inFlightByProcessor = (await processorRepository.ListProcessorHandoffsWithStatusAsync(
-                ProcessorHandoffStatuses.WithProcessor,
-                cancellationToken))
+        var withProcessor = await processorRepository.ListProcessorHandoffsWithStatusAsync(
+            ProcessorHandoffStatuses.WithProcessor,
+            cancellationToken);
+
+        // A hand-off for a download Deluno has already imported is finished
+        // work, not work in progress (#1155): closed here so it neither sits
+        // on the Dashboard as "working" nor is sent again.
+        var openHandoffs = new List<ProcessorHandoffItem>(withProcessor.Count);
+        foreach (var handoff in withProcessor)
+        {
+            if (await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken))
+            {
+                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "processing.handoff.closed-imported",
+                    $"{handoff.ReleaseName} was already imported, so Deluno closed its hand-off to the processor.",
+                    JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.ReleaseName, handoff.ClientId, PreviousStatus = handoff.Status }, PayloadJsonOptions),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                continue;
+            }
+
+            openHandoffs.Add(handoff);
+        }
+
+        var inFlightByProcessor = openHandoffs
             .GroupBy(handoff => handoff.ProcessorConnectionId ?? handoff.ProcessorName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        // Hand-offs not sent yet, by the download they are for, so a download
+        // its client has moved since is sent from where it is now (#1150).
+        var unsentByDownload = openHandoffs
+            .Where(handoff => string.Equals(handoff.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(handoff => $"{handoff.ClientId}\u001f{handoff.QueueItemId}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
         var recentWaiting = await activityFeedRepository.ListActivityAsync(150, null, null, cancellationToken);
         await ReconcileMatchedProcessorOutputsAsync(
@@ -1081,6 +1113,24 @@ public sealed class WorkPlanner(
             if (library is null)
             {
                 continue;
+            }
+
+            // A download whose file Deluno has already imported is never handed
+            // over again (#1155), whatever a stale hand-off says.
+            if (ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
+                await ImportedDownloads.WasImportedAsync(jobQueueRepository, item.ClientId, item.ReleaseName, cancellationToken))
+            {
+                continue;
+            }
+
+            // The client may have moved the download since a hand-off for it
+            // was made, and a retry re-reads where it is now (#1150): the path
+            // is always the one the download is in at hand-off time.
+            if (ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
+                unsentByDownload.TryGetValue($"{item.ClientId}\u001f{item.Id}", out var unsent) &&
+                !string.Equals(NormalizeSourceKey(unsent.SourcePath), sourceKey, StringComparison.OrdinalIgnoreCase))
+            {
+                await processorRepository.RepointWaitingProcessorHandoffAsync(unsent.Id, item.SourcePath, cancellationToken);
             }
 
             // Checkpoint A (#917): before this download reaches a processor or
@@ -1875,6 +1925,25 @@ public sealed class WorkPlanner(
             var outputPath = candidates[0];
             var importJob = await new ProcessorOutputImportQueue(jobQueueRepository, jobScheduler, movieCatalogRepository, seriesCatalogRepository)
                 .QueueAsync(library, handoff, outputPath, "processor-output-watch", cancellationToken);
+            if (importJob.AlreadyImported)
+            {
+                // A second copy of a download Deluno already imported (#1155).
+                var deleted = Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(outputPath, library.ProcessorOutputPath, handoff.SourcePath);
+                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, "completed", outputPath, null, null, cancellationToken);
+                queuedThisPass.Add(NormalizeSourceKey(outputPath));
+                await activityFeedRepository.RecordActivityAsync(
+                    "processing.output.already-imported",
+                    deleted
+                        ? $"The processor left a second copy of {handoff.ReleaseName}, which Deluno had already imported. Deluno deleted the second copy."
+                        : $"The processor left a second copy of {handoff.ReleaseName}, which Deluno had already imported. There was nothing to import.",
+                    JsonSerializer.Serialize(new { importJob.DispatchId, handoff.ReleaseName, HandoffId = handoff.Id, OutputPath = outputPath, Deleted = deleted }, PayloadJsonOptions),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                continue;
+            }
+
             if (importJob.NotImportedBecause is { } removed)
             {
                 var message = $"{handoff.ReleaseName} was processed, but {removed}, so Deluno did not import it. The processed file is still at {outputPath}.";

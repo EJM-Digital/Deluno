@@ -487,7 +487,8 @@ public sealed class SqliteProcessorRepository(
                   -- hand-off a person had dismissed could never be processed
                   -- again: fetched a second time, it found that row, was not
                   -- handed over, and sat in the client (seen on the rig).
-                  AND (status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
+                  AND (
+                    ((status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
                     -- The processor said it finished this cycle, but nothing
                     -- closed it, because its output had already been imported
                     -- for an earlier download of the same release. That cycle
@@ -495,8 +496,16 @@ public sealed class SqliteProcessorRepository(
                     -- Left open, it claimed every later download into the
                     -- folder, and none reached the processor (#561).
                     OR processor_state IN (@finishedState, @passedThroughState))
-                  AND (queue_item_id <> @queueItemId
-                    OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc));
+                    AND (queue_item_id <> @queueItemId
+                      OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc)))
+                    -- A hand-off still open belongs to the acquisition that made
+                    -- it (#1155). A download added after that hand-off was made
+                    -- is a different acquisition -- the title was removed,
+                    -- restored and added again, or the file replaced -- and the
+                    -- old hand-off must not stand in for it: it sat as "waiting
+                    -- for the processor" for hours and nothing was ever sent.
+                    OR (status IN ('waiting', 'submitted', 'accepted', 'started')
+                      AND @downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > created_utc));
                 """;
             AddParameter(restart, "@downloadAddedUtc", request.DownloadAddedUtc is { } added && added > DateTimeOffset.UnixEpoch ? added.ToUniversalTime().ToString("O") : null);
             AddParameter(restart, "@newId", Guid.CreateVersion7().ToString("N"));
@@ -567,6 +576,37 @@ public sealed class SqliteProcessorRepository(
         AddParameter(command, "@id", id.Trim());
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
+    }
+
+    public async Task<bool> RepointWaitingProcessorHandoffAsync(
+        string id,
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        var path = sourcePath.Trim();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var update = connection.CreateCommand();
+        update.CommandText =
+            """
+            UPDATE processor_handoffs
+            SET source_path = @sourcePath,
+                source_key = @sourceKey,
+                updated_utc = @updatedUtc
+            WHERE id = @id
+              AND status = 'waiting'
+              AND NOT EXISTS (
+                  SELECT 1 FROM processor_handoffs other
+                  WHERE other.library_id = processor_handoffs.library_id
+                    AND other.source_key = @sourceKey
+                    AND other.id <> processor_handoffs.id);
+            """;
+        AddParameter(update, "@id", id.Trim());
+        AddParameter(update, "@sourcePath", path);
+        AddParameter(update, "@sourceKey", BuildProcessorSourceKey(path));
+        AddParameter(update, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await update.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(

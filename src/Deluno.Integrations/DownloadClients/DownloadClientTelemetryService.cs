@@ -3110,6 +3110,14 @@ public sealed class DownloadClientTelemetryService(
                 handoff = null;
             }
 
+            // A download whose file Deluno has already imported is imported,
+            // whatever an old hand-off for it says (#1155): a failed or stale
+            // hand-off must not keep it in Processing or Needs action.
+            if (handoff is not null && WasAlreadyImported(item, settledDispatches))
+            {
+                return resolvedItem with { Status = DownloadQueueStatuses.Imported };
+            }
+
             if (handoff is not null)
             {
                 var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);

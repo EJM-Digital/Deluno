@@ -5,11 +5,15 @@ namespace Deluno.Platform.Contracts;
 /// <summary>The import queued for a processor's output.</summary>
 /// <param name="JobId">The import job; null when nothing was queued.</param>
 /// <param name="DispatchId">The grab the output was traced back to, when Deluno could.</param>
+/// <param name="AlreadyImported">
+/// The download this output came from was already imported (#1155), so the
+/// output is a second copy: nothing was queued, and the processor's copy can go.
+/// </param>
 /// <param name="NotImportedBecause">
 /// Why nothing was queued: the title that was grabbed has been removed from
 /// Deluno since, so importing would bring back a title someone removed.
 /// </param>
-public sealed record ProcessorOutputImport(string? JobId, string? DispatchId, string? EntityId, string? NotImportedBecause = null);
+public sealed record ProcessorOutputImport(string? JobId, string? DispatchId, string? EntityId, string? NotImportedBecause = null, bool AlreadyImported = false);
 
 /// <summary>
 /// Queueing the import of a processed file (#526). Two things find a processed
@@ -27,4 +31,11 @@ public interface IProcessorOutputImportQueue
         string outputPath,
         string source,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the download behind this hand-off was already imported (#1155):
+    /// the latest fetch of that release from that client holds its file in the
+    /// library. A genuine upgrade is a newer fetch and is not.
+    /// </summary>
+    Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }
