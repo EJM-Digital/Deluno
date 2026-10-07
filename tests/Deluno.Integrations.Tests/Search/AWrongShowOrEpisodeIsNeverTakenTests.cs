@@ -104,6 +104,25 @@ public sealed class AWrongShowOrEpisodeIsNeverTakenTests
         => Assert.NotNull(ReleaseTitleMatch.Mismatch(release, Simpsons(2)));
 
     [Fact]
+    public void A_search_of_the_whole_show_checks_a_release_against_its_own_episode_number_and_title()
+    {
+        var wholeShow = new ReleaseTitleExpectation(
+            "The Simpsons", 1989, IsTv: true,
+            SeasonEpisodeTitles: new Dictionary<int, IReadOnlyDictionary<int, string>> { [38] = Simpsons38 });
+
+        var refused = ReleaseTitleMatch.Mismatch(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX", wholeShow);
+        Assert.NotNull(refused);
+        Assert.Contains("The name says S38E02, but its title is S38E01's \"The Children's Book Job\"", refused, StringComparison.Ordinal);
+
+        Assert.Null(ReleaseTitleMatch.Mismatch("The Simpsons S38E02 Diary of a Chimpy Kid 1080p FOX WEB H264-ETHEL", wholeShow));
+        Assert.Null(ReleaseTitleMatch.Mismatch("The Simpsons S38E02 1080p WEB H264-GRP", wholeShow));
+        // A season pack or a season the provider has no titles for is not refused here.
+        Assert.Null(ReleaseTitleMatch.Mismatch("The Simpsons S38 1080p WEB H264-GRP", wholeShow));
+        Assert.Null(ReleaseTitleMatch.Mismatch("The Simpsons S12E02 The Childrens Book Job 1080p WEB H264-GRP", wholeShow));
+    }
+
+    [Fact]
     public void And_and_an_ampersand_are_the_same_word()
     {
         var titles = new Dictionary<int, string> { [1] = "Salt & Pepper", [2] = "Another One" };
@@ -354,7 +373,8 @@ public sealed class AWrongShowOrEpisodeIsNeverTakenTests
             IReadOnlyList<string>? otherTitles = null,
             IReadOnlyList<int>? categoryIds = null,
             IReadOnlyDictionary<int, string>? episodeTitles = null,
-            bool queryIsATitle = true)
+            bool queryIsATitle = true,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
             => Task.FromResult(plan);
     }
 }

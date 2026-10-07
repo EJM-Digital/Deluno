@@ -3622,7 +3622,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             tagStore,
             releasePreferencePlanRepository,
             libraryId,
-            platformSettings);
+            platformSettings,
+            async token => (await repository.GetInventoryDetailAsync(id, token))?.EpisodeTitlesBySeason());
 
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

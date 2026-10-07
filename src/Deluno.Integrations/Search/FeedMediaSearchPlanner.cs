@@ -115,7 +115,8 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<string>? otherTitles = null,
         IReadOnlyList<int>? categoryIds = null,
         IReadOnlyDictionary<int, string>? episodeTitles = null,
-        bool queryIsATitle = true)
+        bool queryIsATitle = true,
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -206,7 +207,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles, queryIsATitle);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles, queryIsATitle, episodeTitlesBySeason);
                 var answer = searchResults[index];
                 await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
                     new IndexerQueryRecordedEvent(
@@ -270,7 +271,7 @@ public sealed class FeedMediaSearchPlanner(
         }
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
-        var orderingExpectation = queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles) : null;
+        var orderingExpectation = queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles, episodeTitlesBySeason) : null;
         var ordered = liveCandidates
             // Candidates that cannot become the automatic winner remain
             // visible for explanation, but sort after the ones that can:
@@ -441,7 +442,8 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<string>? otherTitles = null,
         IReadOnlyList<int>? categoryIds = null,
         IReadOnlyDictionary<int, string>? episodeTitles = null,
-        bool queryIsATitle = true)
+        bool queryIsATitle = true,
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -749,7 +751,7 @@ public sealed class FeedMediaSearchPlanner(
                         sizeRules: sizeRules,
                         upgradeStop: upgradeStop,
                         mediaType: mediaType,
-                        expectation: queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles) : null,
+                        expectation: queryIsATitle ? TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, otherTitles, episodeTitles, episodeTitlesBySeason) : null,
                         runtimeMinutes: runtimeMinutes,
                         scoreLimits: scoreLimits);
                     return new IndexerSearchOutcome(
@@ -1020,7 +1022,7 @@ public sealed class FeedMediaSearchPlanner(
            + (ReleaseTitleMatch.CarriesSeriesYear(releaseName, expectation) ? 1 : 0);
 
     /// <summary>What a release's name has to be for (#613), numbered the way the search asked.</summary>
-    private static ReleaseTitleExpectation TitleExpectation(string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber, string? numberingScheme, int? absoluteNumber, DateOnly? airDate, int? sceneSeasonNumber, int? sceneEpisodeNumber, IReadOnlyList<string>? otherTitles, IReadOnlyDictionary<int, string>? episodeTitles)
+    private static ReleaseTitleExpectation TitleExpectation(string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber, string? numberingScheme, int? absoluteNumber, DateOnly? airDate, int? sceneSeasonNumber, int? sceneEpisodeNumber, IReadOnlyList<string>? otherTitles, IReadOnlyDictionary<int, string>? episodeTitles, IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
     {
         var scheme = numberingScheme?.Trim().ToLowerInvariant();
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
@@ -1029,7 +1031,7 @@ public sealed class FeedMediaSearchPlanner(
             "absolute" when absoluteNumber is not null => new ReleaseTitleExpectation(title, year, isTv, AbsoluteNumber: absoluteNumber, OtherTitles: otherTitles, EpisodeTitles: episodeTitles),
             "airdate" when airDate is not null => new ReleaseTitleExpectation(title, year, isTv, AirDate: airDate, OtherTitles: otherTitles, EpisodeTitles: episodeTitles),
             "scene" when sceneSeasonNumber is not null => new ReleaseTitleExpectation(title, year, isTv, sceneSeasonNumber, sceneEpisodeNumber, OtherTitles: otherTitles),
-            _ => new ReleaseTitleExpectation(title, year, isTv, seasonNumber, episodeNumber, OtherTitles: otherTitles, EpisodeTitles: episodeTitles)
+            _ => new ReleaseTitleExpectation(title, year, isTv, seasonNumber, episodeNumber, OtherTitles: otherTitles, EpisodeTitles: episodeTitles, SeasonEpisodeTitles: episodeTitlesBySeason)
         };
     }
 
