@@ -14,7 +14,7 @@ public sealed partial class ComponentSetupTests
 
     // The four lines of nzbget.conf.template (NZBGet 21.1's Windows installer) the seed edits.
     private const string NzbgetTemplateLines =
-        "MainDir=${AppDir}\\downloads\r\nControlIP=0.0.0.0\r\nControlPort=6789\r\nControlUsername=nzbget\r\nControlPassword=tegbzn6789\r\n";
+        "MainDir=${AppDir}\\downloads\r\nControlIP=0.0.0.0\r\nControlPort=6789\r\nControlUsername=nzbget\r\nControlPassword=tegbzn6789\r\nServer1.Active=yes\r\n";
 
     [Fact]
     public void Nzbget_is_started_in_server_mode_with_no_window_and_never_with_the_service_switch()

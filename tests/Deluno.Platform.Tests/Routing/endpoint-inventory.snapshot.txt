@@ -314,7 +314,6 @@ POST /api/download-clients/{clientId}/queue/actions
 POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore
 POST /api/download-clients/{clientId}/queue/{queueItemId}/remove
 POST /api/download-clients/{clientId}/resume
-POST /api/download-clients/{clientId}/reveal-login
 POST /api/download-clients/{clientId}/warnings/clear
 POST /api/download-clients/{clientId}/webhook
 POST /api/download-clients/{id}/path-mappings
