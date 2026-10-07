@@ -158,6 +158,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddHostedService<HealthCheckHostedService>();
         services.AddScoped<Deluno.Contracts.IConnectionHealthTester, Deluno.Worker.Connections.ConnectionHealthTester>();
         services.AddSingleton<Deluno.Media.INoAcceptableReleaseReader, Deluno.Media.SqliteNoAcceptableReleaseReader>();
+        services.AddSingleton<Deluno.Media.IHeldReleaseReader, Deluno.Media.SqliteHeldReleaseReader>();
         services.AddHostedService<Deluno.Worker.Connections.RegularConnectionCheckService>();
         services.AddScoped<IHealthCheck, BackgroundServiceHealthCheck>();
         services.AddDelunoBackgroundServiceSafety();
