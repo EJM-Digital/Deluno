@@ -432,6 +432,7 @@ Implemented endpoints:
 - `POST /api/libraries`
 - `DELETE /api/libraries/{id}`
 - `PUT /api/libraries/{id}/automation`
+- `PUT /api/libraries/{id}/quality-profile`: `{ qualityProfileId }` gives the library another quality profile (one made for its kind of media) and re-checks every title that follows it (#1169). `PUT /api/quality-profiles/{id}` and a title's own profile do the same for what they judge.
 - `PUT /api/libraries/{id}/workflow`
 - `POST /api/libraries/{id}/search-now`
 - `POST /api/libraries/{id}/skip-cycle`
