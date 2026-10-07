@@ -951,3 +951,64 @@ describe("Transfers: one line per download, help said once", () => {
     expect(repeatedSentences(container)).toEqual([]);
   });
 });
+
+/**
+ * #1171: a one-file manual import says whose show it is, will not queue a TV
+ * file that matched nothing, and cannot be queued twice.
+ */
+describe("Manual import: one file", () => {
+  const authedFetch = authedFetchMock;
+
+  function jsonResponse(body: unknown) {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
+      url: "test"
+    } as Response);
+  }
+
+  async function openAndPreview(preview: Record<string, unknown>) {
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/filesystem/import/preview") return jsonResponse(preview);
+      if (path === "/api/filesystem/import/jobs") {
+        return jsonResponse({ jobId: "01a117f2aaaa", preview, job: {} });
+      }
+      return jsonResponse({});
+    });
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Manual import/ }));
+    fireEvent.change(screen.getByPlaceholderText("D:/Downloads/Some.Release.2024"), { target: { value: "D:/Downloads/Show.S01E05.1080p.mkv" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+  }
+
+  it("asks for the title and keeps Queue import closed when a TV file matched nothing", async () => {
+    await openAndPreview({ ...packPreview(true), pack: null, needsTitle: true, matchedTitle: null });
+
+    await waitFor(() => expect(screen.getByText(/could not tell which show in your library this is/i)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Queue import" })).toBeDisabled();
+  });
+
+  it("says in words what was queued and where it will land, and cannot queue the same file twice", async () => {
+    await openAndPreview({ ...packPreview(true), pack: null, matchedTitle: "Chernobyl (2019)", destinationPath: "TV/Chernobyl (2019)/Chernobyl - S01E05 - Vichnaya Pamyat.mkv" });
+
+    await waitFor(() => expect(screen.getByText("Chernobyl (2019)")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Queue import" }));
+
+    await waitFor(() => expect(screen.getByText(/will be filed at/)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /Follow it in Activity/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Queued as job/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queue import" })).toBeDisabled();
+  });
+
+  it("tells the person a download client is still sharing the file", async () => {
+    await openAndPreview({ ...packPreview(true), pack: null, clientHoldsSource: true });
+
+    await waitFor(() => expect(screen.getByText(/download client is still sharing this file/i)).toBeInTheDocument());
+  });
+});

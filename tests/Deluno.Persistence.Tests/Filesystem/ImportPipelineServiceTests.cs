@@ -4094,6 +4094,153 @@ public sealed class ImportPipelineServiceTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #1171: a manual import has no download behind it, so the clients are
+    /// asked by path. A file one of them is seeding is copied and the original
+    /// is left exactly where the client expects it.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task A_manual_import_keeps_a_source_file_a_download_client_still_holds(bool clientHoldsFile, bool expectSourceKept)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, cleanupMode: "remove-source-after-import");
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, clientHeldFiles: new FakeClientHeldFileProbe(clientHoldsFile));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: true, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Response?.Executed);
+        Assert.Equal(expectSourceKept, File.Exists(sourcePath));
+    }
+
+    /// <summary>
+    /// #1171: "Show.S01E05.Title..." in a release-named folder, for a show
+    /// already in the library, lands in that show's own folder with the
+    /// episode's real title, never in a folder made from the release name.
+    /// </summary>
+    [Fact]
+    public async Task A_manual_tv_import_is_filed_under_the_library_show_with_its_episode_title()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var releaseFolder = Path.Combine(downloadsPath, "Chernobyl.S01E05.Vichnaya.Pamyat.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb");
+        Directory.CreateDirectory(releaseFolder);
+        var sourcePath = Path.Combine(releaseFolder, "Chernobyl.S01E05.Vichnaya.Pamyat.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("Chernobyl", 2019, "tt7366338"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 5, "Vichnaya Pamyat", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        ImportPreviewRequest Request(string? title = null, int? year = null) => new(
+            SourcePath: releaseFolder, FileName: null, MediaType: "tv",
+            Title: title, Year: year, Genres: null, Tags: null,
+            Studio: null, OriginalLanguage: null);
+
+        // No hints at all: the name alone finds the show.
+        var preview = await service.PreviewAsync(Request(), CancellationToken.None);
+        Assert.EndsWith(
+            Path.Combine("Chernobyl (2019)", "Chernobyl - S01E05 - Vichnaya Pamyat.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Chernobyl (2019)", preview.MatchedTitle);
+        Assert.False(preview.NeedsTitle);
+
+        // The person's title and year decide the match.
+        var hinted = await service.PreviewAsync(Request("Chernobyl", 2019), CancellationToken.None);
+        Assert.Equal(preview.DestinationPath, hinted.DestinationPath);
+
+        // Importing it files it there too.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(Preview: Request(), TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(result.Response?.Executed);
+        Assert.True(File.Exists(Path.Combine(seriesRootPath, "Chernobyl (2019)", "Chernobyl - S01E05 - Vichnaya Pamyat.mkv")));
+        Assert.False(Directory.Exists(Path.Combine(seriesRootPath, Path.GetFileName(releaseFolder))));
+    }
+
+    /// <summary>#1171: a TV file that matches nothing and has no title typed asks for one rather than inventing a folder.</summary>
+    [Fact]
+    public async Task A_manual_tv_import_that_matches_nothing_asks_for_the_title()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Unknown.Show.S01E01.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, new byte[4096]);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath, FileName: null, MediaType: "tv",
+                Title: null, Year: null, Genres: null, Tags: null,
+                Studio: null, OriginalLanguage: null),
+            CancellationToken.None);
+
+        Assert.True(preview.NeedsTitle);
+        Assert.Null(preview.MatchedTitle);
+    }
+
     /// <summary>#762: season 0 (a special) uses SpecialsFolderFormat instead of SeasonFolderFormat.</summary>
     [Fact]
     public async Task Preview_places_a_season_zero_episode_in_the_specials_subfolder()
@@ -7565,7 +7712,8 @@ public sealed class ImportPipelineServiceTests
         Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
         Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
         IMediaTagStore? mediaTagStore = null,
-        IForceImportAttemptsRepository? forceImportAttempts = null)
+        IForceImportAttemptsRepository? forceImportAttempts = null,
+        Deluno.Contracts.IClientHeldFileProbe? clientHeldFiles = null)
         => new(
             platform,
             librariesRepository,
@@ -7598,7 +7746,13 @@ public sealed class ImportPipelineServiceTests
             seerrRepository: seerrRepository,
             seerrClient: seerrClient,
             mediaTagStore: mediaTagStore,
-            forceImportAttempts: forceImportAttempts);
+            forceImportAttempts: forceImportAttempts,
+            clientHeldFiles: clientHeldFiles);
+
+    private sealed class FakeClientHeldFileProbe(bool held) : Deluno.Contracts.IClientHeldFileProbe
+    {
+        public Task<bool> IsHeldByAnyClientAsync(string filePath, CancellationToken cancellationToken) => Task.FromResult(held);
+    }
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

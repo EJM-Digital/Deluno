@@ -3052,6 +3052,14 @@ public sealed class DownloadClientTelemetryService(
                 return item;
             }
 
+            // The file check failed this download (#1148): Activity says so, so
+            // Transfers says so too, as something to deal with, not as a
+            // download still waiting for its processor.
+            if (FileCheckFailureOf(item, dispatches) is { } fileCheckFailure)
+            {
+                return item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = fileCheckFailure };
+            }
+
             if (!string.IsNullOrWhiteSpace(item.SourcePath) &&
                 jobsBySource.TryGetValue(NormalizeSourceKey(item.SourcePath), out var job))
             {
@@ -3484,6 +3492,27 @@ public sealed class DownloadClientTelemetryService(
     /// Archived records count, because archiving is housekeeping and says
     /// nothing about the outcome.</para>
     /// </summary>
+    /// <summary>
+    /// Why the latest dispatch of this download failed Deluno's own file check,
+    /// or null when it did not (#1148).
+    /// </summary>
+    internal static string? FileCheckFailureOf(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var latestDispatch = dispatches
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
+
+        return latestDispatch is not null
+            && string.Equals(latestDispatch.ImportFailureCode, DownloadClientFailureCodes.IntegrityCheckFailed, StringComparison.OrdinalIgnoreCase)
+            ? latestDispatch.ImportFailureMessage ?? "Deluno's check of the downloaded file failed."
+            : null;
+    }
+
     internal static bool WasAlreadyImported(
         DownloadQueueItem item,
         IReadOnlyList<DownloadDispatchItem> dispatchesIncludingArchived)

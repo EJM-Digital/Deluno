@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -24,6 +24,16 @@ import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Sheet, SheetContent } from "./sheet";
+
+/**
+ * Whether this browser is on the computer Deluno runs on (#1170). The Windows
+ * folder window opens on the server's own screen, so it is only offered here;
+ * from any other device "Choose folder" opens the in-app server browser.
+ */
+export function browserIsOnServerMachine(hostname: string | undefined = globalThis.location?.hostname): boolean {
+  const host = (hostname ?? "").trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost");
+}
 
 interface PathInputProps {
   value: string;
@@ -58,6 +68,7 @@ export function PathInput({
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
   const [nativePickerLoading, setNativePickerLoading] = useState(false);
   const [advancedReason, setAdvancedReason] = useState<string | null>(null);
+  const nativePickerAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -142,23 +153,40 @@ export function PathInput({
   }
 
   async function handleNativeBrowse() {
-    setNativePickerLoading(true);
     setAdvancedReason(null);
+
+    // From any other device the Windows window would open on the server's
+    // screen, where nobody is looking: go straight to the in-app browser (#1170).
+    if (!browserIsOnServerMachine()) {
+      setOpen(true);
+      return;
+    }
+
+    const abort = new AbortController();
+    nativePickerAbort.current = abort;
+    setNativePickerLoading(true);
 
     try {
       const response = await fetchJson<NativeFolderPickerResponse>("/api/filesystem/native-folder-picker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initialPath: value.trim() || null })
+        body: JSON.stringify({ initialPath: value.trim() || null }),
+        signal: abort.signal
       });
 
       if (response.path && !response.cancelled) {
         handleSelect(response.path);
       }
     } catch (pickerError) {
+      if (abort.signal.aborted) {
+        setAdvancedReason("Closed the folder window on the server's screen? It may still be open there. Pick the folder here instead.");
+        setOpen(true);
+        return;
+      }
+
       const unavailable =
         pickerError instanceof ApiRequestError &&
-        (pickerError.status === 409 || pickerError.status === 501);
+        (pickerError.status === 403 || pickerError.status === 408 || pickerError.status === 409 || pickerError.status === 501);
 
       setAdvancedReason(
         unavailable
@@ -167,8 +195,13 @@ export function PathInput({
       );
       setOpen(true);
     } finally {
+      nativePickerAbort.current = null;
       setNativePickerLoading(false);
     }
+  }
+
+  function cancelNativeBrowse() {
+    nativePickerAbort.current?.abort();
   }
 
   async function handleDiagnostic(pathValue = manualPath) {
@@ -259,6 +292,14 @@ export function PathInput({
           ) : null}
         </div>
       </div>
+      {nativePickerLoading ? (
+        <p className="flex flex-wrap items-center gap-2 text-(length:--type-caption) text-muted-foreground" role="status">
+          A folder window opened on the server. Choose the folder there, or pick it here instead.
+          <Button type="button" variant="outline" size="sm" onClick={cancelNativeBrowse}>
+            Stop waiting
+          </Button>
+        </p>
+      ) : null}
       {diagnostic || diagnosticError ? (
         <PathDiagnosticPanel diagnostic={diagnostic} error={diagnosticError} compact />
       ) : null}

@@ -86,7 +86,10 @@ public sealed partial class ImportPipelineService(
     // reason Force Import may go past, and how often it has been forced.
     // Null in every test that does not exercise Force Import, which then
     // never forces anything.
-    IForceImportAttemptsRepository? forceImportAttempts = null)
+    IForceImportAttemptsRepository? forceImportAttempts = null,
+    // #1171: asked about a file with no download behind it (a manual import),
+    // so a file a client is still seeding is never deleted after the copy.
+    IClientHeldFileProbe? clientHeldFiles = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -100,6 +103,8 @@ public sealed partial class ImportPipelineService(
             request = request with { Title = grabbed.Title, Year = grabbed.Year ?? request.Year };
         }
 
+        var libraryMatch = await MatchLibrarySeriesAsync(request, cancellationToken);
+        request = libraryMatch.Request;
         var tvDirectoryFiles = NormalizeMediaType(request.MediaType) == "tv"
             ? TryListImportableVideoFiles(request.SourcePath)
             : null;
@@ -115,16 +120,140 @@ public sealed partial class ImportPipelineService(
                 rules,
                 libraries,
                 cancellationToken);
-            return pack.Summary;
+            return libraryMatch.Annotate(pack.Summary);
         }
 
-        var preview = await ResolveImportPreviewAsync(request, settings, rules, libraries, cancellationToken);
+        var preview = await ResolveImportPreviewAsync(request, settings, rules, libraries, cancellationToken, forceTemplatedFolder: libraryMatch.Matched);
         if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
         {
-            return AddReadinessWarning(preview);
+            return libraryMatch.Annotate(AddReadinessWarning(preview));
         }
 
-        return await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
+        return libraryMatch.Annotate(await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken));
+    }
+
+    /// <summary>
+    /// What a manual TV import was matched to in the library (#1171).
+    /// </summary>
+    private sealed record LibrarySeriesMatch(ImportPreviewRequest Request, bool Matched, string? MatchedTitle, bool NeedsTitle)
+    {
+        public ImportPreviewResponse Annotate(ImportPreviewResponse preview)
+        {
+            if (!NeedsTitle)
+            {
+                return MatchedTitle is null ? preview : preview with { MatchedTitle = MatchedTitle };
+            }
+
+            return preview with
+            {
+                NeedsTitle = true,
+                Warnings = [.. preview.Warnings, "Deluno could not tell which show in your library this is. Enter the show's title under \"Help Deluno match it\" before importing."]
+            };
+        }
+    }
+
+    /// <summary>
+    /// A manual TV import with no download behind it is matched to the show
+    /// already in the library by its name (or by the title the person typed),
+    /// so it is filed in that show's folder with that show's episode titles
+    /// rather than in a folder made from the release name (#1171). The
+    /// person's title and year decide the match when given.
+    /// </summary>
+    private async Task<LibrarySeriesMatch> MatchLibrarySeriesAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
+    {
+        if (NormalizeMediaType(request.MediaType) != "tv"
+            || !string.IsNullOrWhiteSpace(request.DispatchId)
+            || !string.IsNullOrWhiteSpace(request.SeriesId)
+            || string.IsNullOrWhiteSpace(request.SourcePath))
+        {
+            return new LibrarySeriesMatch(request, false, null, false);
+        }
+
+        var hinted = !string.IsNullOrWhiteSpace(request.Title);
+        var candidates = new List<(string Title, int? Year)>();
+        if (hinted)
+        {
+            candidates.Add((request.Title!.Trim(), request.Year));
+        }
+        else
+        {
+            var names = new List<string>();
+            if (!string.IsNullOrWhiteSpace(request.FileName))
+            {
+                names.Add(request.FileName!);
+            }
+
+            names.Add(Path.GetFileName(request.SourcePath.TrimEnd('\\', '/')));
+            if (Directory.Exists(request.SourcePath))
+            {
+                names.AddRange((TryListImportableVideoFiles(request.SourcePath) ?? []).Select(path => Path.GetFileName(path)));
+            }
+
+            foreach (var name in names.Where(item => !string.IsNullOrWhiteSpace(item)))
+            {
+                var (title, year) = ManualImportFolderScanner.GuessTitleAndYear(name);
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    candidates.Add((title, year ?? request.Year));
+                }
+            }
+        }
+
+        IReadOnlyList<SeriesListItem> catalogue;
+        try
+        {
+            catalogue = await seriesCatalogRepository.ListAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not read the series catalogue to match a manual import.");
+            return new LibrarySeriesMatch(request, false, null, !hinted);
+        }
+
+        static string Key(string value) => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        foreach (var (title, year) in candidates.Distinct())
+        {
+            var key = Key(title);
+            if (key.Length == 0)
+            {
+                continue;
+            }
+
+            var found = catalogue
+                .Where(series => Key(series.Title) == key
+                    || (!string.IsNullOrWhiteSpace(series.OriginalTitle) && Key(series.OriginalTitle) == key))
+                .ToArray();
+            if (found.Length > 1 && year is not null)
+            {
+                found = found.Where(series => series.StartYear == year).ToArray();
+            }
+            else if (found.Length == 1 && year is not null && found[0].StartYear is not null && found[0].StartYear != year)
+            {
+                // A different year is a different show with the same name.
+                found = [];
+            }
+
+            if (found.Length == 1)
+            {
+                var series = found[0];
+                // A show whose episodes are not catalogued yet is still the
+                // right folder and title, but pinning the import to it would
+                // refuse every episode as "not in the catalogue".
+                var numbering = await seriesCatalogRepository.GetNumberingAsync(series.Id, cancellationToken);
+                return new LibrarySeriesMatch(
+                    request with
+                    {
+                        SeriesId = numbering is { Episodes.Count: > 0 } ? series.Id : null,
+                        Title = series.Title,
+                        Year = series.StartYear ?? request.Year
+                    },
+                    true,
+                    series.StartYear is int startYear ? $"{series.Title} ({startYear})" : series.Title,
+                    false);
+            }
+        }
+
+        return new LibrarySeriesMatch(request, false, null, !hinted);
     }
 
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
@@ -137,6 +266,11 @@ public sealed partial class ImportPipelineService(
         if (await GrabbedTitleAsync(await ResolveDispatchAsync(request.DispatchId, cancellationToken), mediaType, cancellationToken) is { } grabbed)
         {
             request = request with { Preview = request.Preview with { Title = grabbed.Title, Year = grabbed.Year ?? request.Preview.Year } };
+        }
+        var libraryMatch = await MatchLibrarySeriesAsync(request.Preview, cancellationToken);
+        if (libraryMatch.Matched)
+        {
+            request = request with { Preview = libraryMatch.Request };
         }
         var tvDirectoryFiles = mediaType == "tv"
             ? TryListImportableVideoFiles(request.Preview.SourcePath)
@@ -156,7 +290,7 @@ public sealed partial class ImportPipelineService(
             libraries,
             (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.ReleaseName,
             cancellationToken);
-        var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken, decision);
+        var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken, decision, forceTemplatedFolder: libraryMatch.Matched);
 
         if (resolvedPreview.SourceExists &&
             !await ImportFileReadiness.WaitUntilReadyAsync(resolvedPreview.SourcePath, _settleWindow, cancellationToken))
@@ -613,7 +747,7 @@ public sealed partial class ImportPipelineService(
             var cleanup = ApplyWorkflowCleanup(
                 preview.SourcePath,
                 matchedLibrary,
-                await IsStillSharedByClientAsync(request.DispatchId, cancellationToken),
+                await IsStillSharedByClientAsync(request.DispatchId, preview.SourcePath, cancellationToken),
                 mode);
             var provenance = BuildImportProvenance(
                 request,
@@ -1709,12 +1843,16 @@ public sealed partial class ImportPipelineService(
             // no longer needs the source to still be there to recognise a
             // retry of this same pack, so packs get the same cleanup a single
             // file already did rather than being left out of it.
-            var sharedByClient = await IsStillSharedByClientAsync(request.DispatchId, cancellationToken);
-            var cleanup = placements.Select(placement => ApplyWorkflowCleanup(
-                placement.File.Preview.SourcePath,
-                ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
-                sharedByClient,
-                modeUsed)).ToArray();
+            var cleanupList = new List<WorkflowCleanupResult>();
+            foreach (var placement in placements)
+            {
+                cleanupList.Add(ApplyWorkflowCleanup(
+                    placement.File.Preview.SourcePath,
+                    ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
+                    await IsStillSharedByClientAsync(request.DispatchId, placement.File.Preview.SourcePath, cancellationToken),
+                    modeUsed));
+            }
+            var cleanup = cleanupList.ToArray();
             var matchedLibrary = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
             var provenance = BuildImportProvenance(
                 request,
@@ -2297,7 +2435,8 @@ public sealed partial class ImportPipelineService(
         IReadOnlyList<DestinationRuleItem> rules,
         IReadOnlyList<LibraryItem> libraries,
         CancellationToken cancellationToken,
-        NamingDecision? decision = null)
+        NamingDecision? decision = null,
+        bool forceTemplatedFolder = false)
     {
         // A preview asked for on its own has no dispatch to read, so the
         // incoming name is all there is; an import resolves the decision first
@@ -2363,7 +2502,7 @@ public sealed partial class ImportPipelineService(
         // (when there was one to keep); on, or when the source was a single
         // file with no folder of its own, the templated movie/series name is
         // still the only name there is.
-        var folder = !settings.RenameFoldersOnImport && incomingFolderName is not null
+        var folder = !settings.RenameFoldersOnImport && !forceTemplatedFolder && incomingFolderName is not null
             ? SanitizeFileName(incomingFolderName, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode)
             : templatedFolder;
         var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering, decision);
@@ -4503,14 +4642,32 @@ public sealed partial class ImportPipelineService(
     /// An unknown answer counts as still shared. Leaving a file behind wastes
     /// disk and says so on the dashboard; deleting one wrongly cannot be undone.
     /// </summary>
-    private async Task<bool> IsStillSharedByClientAsync(string? dispatchId, CancellationToken cancellationToken)
+    private async Task<bool> IsStillSharedByClientAsync(string? dispatchId, string? sourcePath, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(dispatchId) || downloadDispatchesRepository is null)
         {
             // No dispatch behind it: a manual import, a watched folder or an
-            // existing-library scan. No client owns it, so nobody else is going
-            // to tidy it up.
-            return false;
+            // existing-library scan. Nothing of ours says a client owns it, so
+            // the clients themselves are asked, by path (#1171) - a manual
+            // import of a finished torrent is exactly the file one is seeding.
+            if (clientHeldFiles is null || string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return await clientHeldFiles.IsHeldByAnyClientAsync(sourcePath, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Could not ask the download clients whether they hold {Path}; leaving the source file alone.", sourcePath);
+                return true;
+            }
         }
 
         try

@@ -71,7 +71,30 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
 
         Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
         Assert.Contains("Name said 2160p", result.Reason);
-        Assert.Contains("1920 pixels wide", result.Reason);
+        Assert.Contains("1920x1080", result.Reason);
+    }
+
+    /// <summary>#1148: a picture meets its claim by width or by height, so 4:3 and cropped widescreen both pass.</summary>
+    [Theory]
+    [InlineData(1440, 1080, "1080p")]
+    [InlineData(1920, 800, "1080p")]
+    [InlineData(1920, 1080, "1080p")]
+    [InlineData(2880, 2160, "2160p")]
+    [InlineData(960, 720, "720p")]
+    public async Task A_picture_that_reaches_the_claim_by_width_or_height_passes(int width, int height, string claimed)
+    {
+        var result = await Run(Probe.Ok(width, height, 120 * 60), $"Nosferatu.1922.{claimed}.BluRay.x264-HD4U", 120);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_720p_picture_named_1080p_still_fails()
+    {
+        var result = await Run(Probe.Ok(1280, 720, 120 * 60), "Nosferatu.1922.1080p.BluRay.x264-HD4U", 120);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+        Assert.Contains("Name said 1080p", result.Reason);
     }
 
     /// <summary>A cropped widescreen 3840&#215;1600 still counts as 2160p -- judged by width.</summary>
