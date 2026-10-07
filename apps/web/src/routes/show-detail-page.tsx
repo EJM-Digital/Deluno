@@ -67,6 +67,7 @@ import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
+import { showRemovalToast } from "../components/app/removal-toast";
 import { CountryReleaseRow } from "../components/app/country-release-row";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -626,9 +627,9 @@ export function ShowDetailPage() {
       });
       if (!response.ok) throw new Error("series-remove-failed");
 
-      const result = (await response.json()) as { successCount?: number };
+      const result = (await response.json()) as { successCount?: number; results?: Array<{ metadata?: Record<string, string | null> | null }> };
       if ((result.successCount ?? 0) !== 1) throw new Error("series-remove-failed");
-      toast.success(`${series.title} removed from Deluno`);
+      showRemovalToast(series.title, result.results?.[0]?.metadata, (to) => navigate(to));
       navigate("/tv", { replace: true });
     } catch {
       toast.error("This TV show could not be removed.");

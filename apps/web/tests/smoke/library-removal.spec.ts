@@ -65,7 +65,7 @@ test.describe("library removal", () => {
     await page.getByRole("button", { name: "Remove from Deluno" }).click();
     const movieDialog = page.getByRole("dialog");
     await expect(movieDialog).toContainText("Prevent automatic re-add");
-    await expect(movieDialog).toContainText("Delete imported files from disk");
+    await expect(movieDialog).toContainText("Move imported files to the recycle bin");
     await expect(movieDialog).toContainText("Your download client is never changed here");
     await movieDialog.getByRole("button", { name: "Remove movie", exact: true }).click();
     await expect(page).toHaveURL(/\/movies$/);
@@ -75,7 +75,7 @@ test.describe("library removal", () => {
     await page.getByRole("button", { name: "Remove from Deluno" }).click();
     const seriesDialog = page.getByRole("dialog");
     await expect(seriesDialog).toContainText("Prevent automatic re-add");
-    await expect(seriesDialog).toContainText("Delete imported files from disk");
+    await expect(seriesDialog).toContainText("Move imported files to the recycle bin");
     await seriesDialog.getByRole("button", { name: "Remove TV show", exact: true }).click();
     await expect(page).toHaveURL(/\/tv$/);
     expect((await page.request.get(`/api/series/${series.id}`, { headers })).status()).toBe(404);

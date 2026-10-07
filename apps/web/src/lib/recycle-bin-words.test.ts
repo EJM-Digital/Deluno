@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeCleanup, type RecycleBinCleanupPreview } from "./recycle-bin-words";
+import { describeCleanup, describeRemovalOutcome, type RecycleBinCleanupPreview } from "./recycle-bin-words";
 
 /**
  * What emptying the recycle bin would take, said before it takes it.
@@ -61,4 +61,27 @@ describe("what a manual empty takes", () => {
       bytesFreed: overrides.items * 300
     };
   }
+});
+
+describe("what a removal with files says it did (#1160)", () => {
+  it("names the recycle bin and how long the files are kept", () => {
+    const words = describeRemovalOutcome({ recycleBinItemIds: "abc,def", recycleBinRetentionDays: "30" });
+    expect(words.itemIds).toEqual(["abc", "def"]);
+    expect(words.description).toBe(
+      "Its files are in Deluno's recycle bin for 30 days. Restore brings back the title with them."
+    );
+  });
+
+  it("says one day in the singular", () => {
+    expect(describeRemovalOutcome({ recycleBinItemIds: "abc", recycleBinRetentionDays: "1" }).description).toContain("for 1 day.");
+  });
+
+  it("says nothing about the bin when no files moved", () => {
+    expect(describeRemovalOutcome({ recycleBinItemIds: "" })).toEqual({ itemIds: [], description: null });
+    expect(describeRemovalOutcome(null)).toEqual({ itemIds: [], description: null });
+  });
+
+  it("never claims a keep period it was not given", () => {
+    expect(describeRemovalOutcome({ recycleBinItemIds: "abc" }).description).not.toContain("for ");
+  });
 });
