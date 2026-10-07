@@ -211,16 +211,16 @@ export function handoffCanBeSentAgain(handoff: Partial<Pick<ProcessorHandoffItem
 /** A refused hand-off to the processor: send it again (unless it already has its processed file), or dismiss it. */
 export function handoffActions(handoff: Pick<ProcessorHandoffItem, "id" | "releaseName"> & Partial<Pick<ProcessorHandoffItem, "outputPath" | "importJobId" | "outcome">>): AlertActions {
   const base = `/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}`;
+  const dismissal = dismiss(`handoff-dismiss:${handoff.id}`, { method: "POST", path: `${base}/dismiss`, done: "Dismissed", failure: "That could not be dismissed." });
+  if (!handoffCanBeSentAgain(handoff)) return [dismissal];
   return [
-    ...(handoffCanBeSentAgain(handoff)
-      ? [{
-          id: `handoff-retry:${handoff.id}`,
-          label: "Retry",
-          hint: "Sends the finished download to the processor again. The download and your library are not touched.",
-          request: { method: "POST" as const, path: `${base}/retry`, done: "Sent to the processor again", failure: "That could not be tried again." }
-        }]
-      : []),
-    dismiss(`handoff-dismiss:${handoff.id}`, { method: "POST", path: `${base}/dismiss`, done: "Dismissed", failure: "That could not be dismissed." })
+    {
+      id: `handoff-retry:${handoff.id}`,
+      label: "Retry",
+      hint: "Sends the finished download to the processor again. The download and your library are not touched.",
+      request: { method: "POST", path: `${base}/retry`, done: "Sent to the processor again", failure: "That could not be tried again." }
+    },
+    dismissal
   ];
 }
 
