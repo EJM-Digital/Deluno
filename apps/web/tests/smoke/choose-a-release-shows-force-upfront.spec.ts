@@ -90,9 +90,9 @@ async function assertForceRequiredUpfront(dialog: Locator) {
 async function assertNormalOneClickPath(dialog: Locator) {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Send to downloads", exact: true })).toBeEnabled();
-  // Untouched: Force stays collapsed and optional, not pre-expanded.
+  // A release Deluno already prefers needs no override, so Force is not offered at all (#1138).
   await expect(dialog.getByLabel("Why force this release?")).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "Force", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Force", exact: true })).toHaveCount(0);
 }
 
 test.describe("choose a release shows force up front (#612)", () => {
