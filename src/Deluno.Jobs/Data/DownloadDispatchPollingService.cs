@@ -43,6 +43,9 @@ public sealed class DownloadDispatchPollingService(
         var unresolvedDispatches = await QueryUnresolvedDispatchesAsync(connection, cancellationToken);
         report = report with { UnresolvedDispatchesChecked = unresolvedDispatches.Count };
         var recoveryActivities = new List<ActivityEventItem>();
+        var awaitingCleanup = new Lazy<Task<HashSet<string>>>(async () => blockedReleaseRepository is null
+            ? []
+            : (await blockedReleaseRepository.ListAwaitingCleanupAsync(cancellationToken)).Select(block => block.Id).ToHashSet(StringComparer.Ordinal));
 
         foreach (var dispatch in unresolvedDispatches)
         {
@@ -186,7 +189,8 @@ public sealed class DownloadDispatchPollingService(
                 }
             }
             else if (dispatch.ImportStatus == "failed"
-                && string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase))
+                && (string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)
+                    || await RefusalHandledByDelunoAsync(dispatch, awaitingCleanup, cancellationToken)))
             {
                 // Deluno's own stall rules handled this one (blocked, removed,
                 // searched again): Activity says so. Anything an earlier build
@@ -246,6 +250,31 @@ public sealed class DownloadDispatchPollingService(
         }
 
         return report;
+    }
+
+    /// <summary>
+    /// An import Deluno refused and dealt with itself (#1167): the release is on
+    /// the blocklist, another copy is being looked for, and the refused copy is
+    /// not still waiting to be removed from the client. Activity says so in
+    /// plain words; nothing is left for the person. A refusal whose removal has
+    /// not happened yet (it is still waiting for the cleanup) is not handled.
+    /// </summary>
+    private async Task<bool> RefusalHandledByDelunoAsync(
+        UnresolvedDispatch dispatch,
+        Lazy<Task<HashSet<string>>> awaitingCleanup,
+        CancellationToken cancellationToken)
+    {
+        if (blockedReleaseRepository is null
+            || string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
+            || !DispatchTargets.HasTitle(dispatch.EntityType))
+        {
+            return false;
+        }
+
+        var refusal = (await blockedReleaseRepository.ListForAsync(dispatch.MediaType, dispatch.EntityId, cancellationToken))
+            .FirstOrDefault(block => string.Equals(block.State, BlockedReleaseStates.Refused, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(block.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase));
+        return refusal is not null && !(await awaitingCleanup.Value).Contains(refusal.Id);
     }
 
     private static async Task<IReadOnlyList<UnresolvedDispatch>> QueryUnresolvedDispatchesAsync(

@@ -782,6 +782,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
   /** Every row of Needs attention that Dismiss clears, with the request that clears it (#1167). */
   const dismissibleRows: { key: string; title: string; dismiss: () => Promise<void> }[] = [
+    ...heldReleases.map((row) => ({ key: `held:${row.historyId}`, title: heldReleaseTitle(row), dismiss: () => dismissHeldRelease(row) })),
     ...recoveryCases.map((item) => ({ key: `recovery:${item.mediaType}:${item.id}`, title: item.title, dismiss: () => dismissRecoveryRequest(item) })),
     ...failedImportJobs.map((job) => ({ key: `job:${job.id}`, title: jobTitle(job), dismiss: () => dismissFailedJob(job.id).then(() => undefined) })),
     ...failedProcessorHandoffs.map((handoff) => ({ key: `handoff:${handoff.id}`, title: handoff.releaseName, dismiss: () => dismissHandoffRequest(handoff) })),
@@ -798,6 +799,14 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       seen.set(row.title, n);
       return [row.key, (totals.get(row.title) ?? 0) > 1 ? `Select ${row.title} (${n})` : `Select ${row.title}`] as const;
     }));
+  })();
+
+  /** The header counts every row; Select all covers the ones Dismiss clears, and the rest say how they are cleared from their own row. */
+  const otherRowsNote = (() => {
+    const parts: string[] = [];
+    if (orphanedDownloads.length) parts.push(`${orphanedDownloads.length} leftover ${orphanedDownloads.length === 1 ? "folder" : "folders"} (Remove or Keep)`);
+    if (queueAttention.length) parts.push(`${queueAttention.length} live ${queueAttention.length === 1 ? "download" : "downloads"} (open one to fix)`);
+    return parts.length ? `. ${dismissibleRows.length} can be dismissed together; ${parts.join(" and ")} are cleared from their own rows` : "";
   })();
 
   function toggleDismissSelected(key: string, checked: boolean) {
@@ -1305,7 +1314,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       {needsActionCount > 0 ? (
         <ListCard
           title="Needs attention"
-          count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own`}
+          count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own${otherRowsNote}`}
           actions={
             <>
               {dismissibleRows.length ? (
@@ -1374,6 +1383,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                 />
                 <ListCell mobile align="end">
                   <span className="flex flex-wrap items-center justify-end gap-2">
+                    <Switch size="sm" aria-label={selectLabels.get(`held:${row.historyId}`)} checked={selectedDismissKeys.has(`held:${row.historyId}`)} onCheckedChange={(checked) => toggleDismissSelected(`held:${row.historyId}`, checked)} disabled={busyKey !== null} />
                     <Button type="button" size="sm" aria-label={`Approve ${row.releaseName}`} onClick={() => void approveHeld(row)} disabled={busyKey !== null}>
                       {busyKey === `held:approve:${row.historyId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                       Approve
