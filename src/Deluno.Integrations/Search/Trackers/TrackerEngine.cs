@@ -791,7 +791,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
     {
         if (IsCloudflare(page))
         {
-            throw new TrackerBlockedException($"{page.FinalUri.Host} is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.");
+            throw new TrackerBlockedException($"{page.FinalUri.Host} is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Preferences, General, gets Deluno past it; if one is set, it could not get through either.");
         }
 
         var status = (int)page.Status;

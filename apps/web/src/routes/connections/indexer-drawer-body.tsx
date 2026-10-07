@@ -21,6 +21,7 @@ import { describeCallLimitStatus, formatSeconds, healthChip, relative, vipWarnin
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
+import { MessageWithPreferencesLink, mentionsCloudflare } from "./preferences-link";
 export function IndexerDrawerBody({
   form,
   setForm,
@@ -37,7 +38,8 @@ export function IndexerDrawerBody({
   busy,
   onReset,
   onAcknowledgeVip,
-  onRemove
+  onRemove,
+  testMessage = null
 }: {
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
@@ -57,6 +59,8 @@ export function IndexerDrawerBody({
   onReset: () => void;
   onAcknowledgeVip: () => void;
   onRemove: () => void;
+  /** What the Test button last said, so a Cloudflare note is not repeated beside it. */
+  testMessage?: string | null;
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
   const chip = editing ? healthChip(editing) : null;
@@ -90,7 +94,7 @@ export function IndexerDrawerBody({
           </Field>
         </FieldRow>
         {form.protocol === "tracker" ? (
-          <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} />
+          <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} cloudflareExplained={mentionsCloudflare(testMessage) || mentionsCloudflare(editing?.lastHealthMessage)} />
         ) : (
         <>
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
@@ -260,7 +264,7 @@ export function IndexerDrawerBody({
           <Field label="What MULTI means here" error={errors.multiLanguages} help="This indexer's own languages for a release tagged MULTI, e.g. Original, French. Leave blank to use Deluno's default of 'Multilingual'.">
             <Input value={form.multiLanguages} onChange={(event) => { clearError("multiLanguages"); setForm((current) => ({ ...current, multiLanguages: event.target.value })); }} placeholder="Original, French" />
           </Field>
-          <Field label="Proxy" help="Send this indexer's requests through one of your configured proxies instead of connecting directly.">
+          <Field label="Proxy" help="Send this indexer's requests through one of your configured proxies instead of connecting directly. A FlareSolverr / Byparr proxy chosen here is this indexer's own Cloudflare helper and wins over the one set for every tracker in Preferences, General.">
             <Select
               value={form.proxyId}
               onChange={(event) => setForm((current) => ({ ...current, proxyId: event.target.value }))}
@@ -359,13 +363,13 @@ export function IndexerDrawerBody({
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>
             <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
-            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
+            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
             {editing.lastHealthFailure ? (
               <>
                 <dt className="text-muted-foreground">Cause</dt>
                 <dd className="text-foreground">
                   <span>{editing.lastHealthFailure.summary}</span>
-                  <span className="mt-1 block text-muted-foreground">{editing.lastHealthFailure.nextAction}</span>
+                  {mentionsCloudflare(editing.lastHealthFailure.nextAction) && mentionsCloudflare(editing.lastHealthMessage) ? null : <span className="mt-1 block text-muted-foreground"><MessageWithPreferencesLink text={editing.lastHealthFailure.nextAction} /></span>}
                   {editing.lastHealthFailure.retryAfterUtc ? <span className="mt-1 block text-muted-foreground">Next eligible attempt: {relative(editing.lastHealthFailure.retryAfterUtc)}</span> : null}
                 </dd>
               </>

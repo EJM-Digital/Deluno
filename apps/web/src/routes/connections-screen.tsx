@@ -1320,7 +1320,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           {proxies.length === 0 ? (
             <ListEmpty
               title="No proxies yet"
-              description="Add an HTTP, SOCKS4, SOCKS5 or FlareSolverr/Byparr proxy, then assign it to whichever indexers need it from that indexer's own drawer."
+              description="Add an HTTP, SOCKS4 or SOCKS5 proxy, then assign it to whichever indexers need it from that indexer's own drawer. A Cloudflare helper for every tracker is set once in Preferences, General; a FlareSolverr / Byparr proxy here is only for one indexer that needs its own, and it wins over that one."
               actions={
                 <Button type="button" size="sm" onClick={() => openProxy(null)}>
                   <Plus className="h-3.5 w-3.5" />
@@ -1410,6 +1410,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onReset={() => editingIndexer && void run(`reset:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}/reset-circuit`, "POST", undefined, "Could not reset."), `Circuit reset for ${editingIndexer.name}`)}
             onAcknowledgeVip={() => editingIndexer && void run(`acknowledge-vip:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}`, "PUT", { acknowledgeVipExpiry: true }, "Could not acknowledge."), `VIP warning acknowledged for ${editingIndexer.name}`)}
             onRemove={() => setConfirmRemove(true)}
+            testMessage={testResult?.message ?? null}
           />
         ) : null}
         {drawer.kind === "client" ? (
