@@ -1181,7 +1181,9 @@ public sealed class DownloadClientTelemetryService(
 
     private static bool IsRemovalAction(string action)
         => action.StartsWith("delete", StringComparison.OrdinalIgnoreCase)
-           || action.StartsWith("remove", StringComparison.OrdinalIgnoreCase);
+           || action.StartsWith("remove", StringComparison.OrdinalIgnoreCase)
+           // "Forget" is how the refused-download cleanup removes a refused copy (#1167).
+           || string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A removal Deluno made itself (the stall rules, Remove failed, a person
@@ -1758,7 +1760,8 @@ public sealed class DownloadClientTelemetryService(
                 // A dry run never marks a dispatch handled (#814): nothing
                 // really happened, so a later real pass must still be free to
                 // act, and this same preview keeps showing every pass.
-                if (dispatch is null || (!dryRun && string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)))
+                if (dispatch is null || (!dryRun && (string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(dispatch.ImportFailureCode, HealthRemediationIncomplete, StringComparison.OrdinalIgnoreCase))))
                 {
                     skipped++;
                     continue;
@@ -1772,6 +1775,7 @@ public sealed class DownloadClientTelemetryService(
                 var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType, routeCategory);
                 var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
                 var applied = new List<string>();
+                var notesBefore = notes.Count;
 
                 // #905: a rule-engine finding decides its own actions from
                 // its configured preset; a finding outside the rule engine
@@ -1936,13 +1940,27 @@ public sealed class DownloadClientTelemetryService(
                     continue;
                 }
 
+                // Only a download Deluno finished handling is Activity's story. When a
+                // step it meant to take could not be taken (the client entry would not
+                // go, no replacement search was possible), the reason is the failure
+                // and it stays on Needs action with that reason (#1167).
+                var unfinished = notes.Skip(notesBefore).Where(IsUnfinishedNote).ToList();
+                var outcomeCode = unfinished.Count == 0 ? "health-remediation-applied" : HealthRemediationIncomplete;
+                var outcomeMessage = unfinished.Count == 0
+                    ? string.Join("; ", applied)
+                    : string.Join("; ", applied.Concat(unfinished));
+                if (unfinished.Count > 0)
+                {
+                    activityMessage += $" It could not finish: {string.Join(" ", unfinished)}";
+                }
+
                 await dispatchesRepository.RecordTimelineEventAsync(dispatch.Id, "health-remediation-applied", details, cancellationToken);
                 await dispatchesRepository.RecordImportOutcomeAsync(
                     dispatch.Id,
                     "failed",
                     null,
-                    "health-remediation-applied",
-                    string.Join("; ", applied),
+                    outcomeCode,
+                    outcomeMessage,
                     cancellationToken,
                     failure: IntegrationFailureFactory.FromLegacy(
                         "deluno",
@@ -1950,8 +1968,8 @@ public sealed class DownloadClientTelemetryService(
                         "Deluno health remediation",
                         "remediate",
                         "rejected",
-                        string.Join("; ", applied),
-                        code: "health-remediation-applied",
+                        outcomeMessage,
+                        code: outcomeCode,
                         externalId: dispatch.Id));
                 await activityFeedRepository.RecordActivityAsync(
                     "download.health.remediated",
@@ -1975,6 +1993,13 @@ public sealed class DownloadClientTelemetryService(
 
         return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes, refused);
     }
+
+    internal const string HealthRemediationIncomplete = "health-remediation-incomplete";
+
+    private static bool IsUnfinishedNote(string note)
+        => note.Contains("client entry was not removed", StringComparison.OrdinalIgnoreCase)
+           || note.Contains("client entry was retained", StringComparison.OrdinalIgnoreCase)
+           || note.Contains("replacement was not queued", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What Deluno did about a failed download, in a sentence a person can read in Activity (#1167).</summary>
     internal static string PlainRemediation(IReadOnlyList<string> applied, string clientName)
