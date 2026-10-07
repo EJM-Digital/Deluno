@@ -164,7 +164,7 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
   {
     key: "leftoverDownloadCleanup",
     question: "Automatically delete leftover download files?",
-    help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the Queue's leftovers list for you to remove."
+    help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the leftovers list in Transfers for you to remove."
   },
   {
     key: "forceImport",
@@ -404,7 +404,7 @@ const FORMAT_GOALS = {
     label: "Anime",
     bundleId: "anime-balanced",
     copy: "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
-    bestFor: "Anime TV libraries where normal Sonarr-style scoring is not enough. Films in the same setup use Balanced."
+    bestFor: "Anime TV libraries where normal scoring is not enough. Films in the same setup use Balanced."
   },
   archive: {
     label: "Archive quality",

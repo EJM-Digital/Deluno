@@ -94,13 +94,18 @@ public sealed class ProcessorHealthCheck(
             // FolderChainService -- otherwise a correctly mapped setup reads
             // as a folder mismatch here.
             var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-            var watchedPath = mappings.Count > 0
-                ? ProcessorPathMappingTranslator.ToDeluno(support.WatchedPath, mappings) ?? support.WatchedPath
-                : support.WatchedPath;
+            string? ToDeluno(string? path) => mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(path, mappings) ?? path : path;
+
+            // A processor with a watched folder per library says so in its library-folders
+            // list (#1144): each library takes the entry made from it, found by its id.
+            var folders = support.HasLibraryFolders
+                ? await processorConnections.GetLibraryFoldersAsync(connection, cancellationToken)
+                : [];
 
             foreach (var library in servedLibraries)
             {
-                outcomes.Add(BuildWatchedFolderOutcome(connection, library, support with { WatchedPath = watchedPath }));
+                var entry = folders.FirstOrDefault(folder => string.Equals(folder.ManagerLibraryKey, library.Id, StringComparison.OrdinalIgnoreCase));
+                outcomes.Add(BuildWatchedFolderOutcome(connection, library, support with { WatchedPath = ToDeluno(entry?.WatchedFolder ?? support.WatchedPath) }));
             }
         }
 

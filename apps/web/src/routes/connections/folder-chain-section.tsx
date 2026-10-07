@@ -100,6 +100,7 @@ const STEP_TITLE: Record<string, string> = {
   clients: "Download clients",
   downloads: "Downloads folder",
   ready: "Ready folder",
+  processor: "Folder the processor watches",
   library: "Library folder"
 };
 

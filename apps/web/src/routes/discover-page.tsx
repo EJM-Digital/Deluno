@@ -233,7 +233,7 @@ export function DiscoverPage() {
         ? data.lists.map((section) => (
             <ListCard key={section.sourceId} title={section.sourceName} count={`${section.items.length} entries`}>
               {section.items.length === 0 ? (
-                <ListEmpty title="Nothing in this list right now" description="Check the list's own settings under Settings → Lists." />
+                <ListEmpty title="Nothing in this list right now" description="Check the list's own settings under Discover Media, Import Lists." />
               ) : (
                 <ListTable listId="discover-lists" columns={[{ label: "Title" }, { label: "Status", width: LIST_TRACK.status }, { label: "", width: "96px" }]}>
                   {section.items.map((entry) => (
@@ -424,7 +424,7 @@ function DiscoverAddDrawer({
       <DrawerSection title="Where it goes">
         {libraries.length === 0 ? (
           <p className={cn("density-help leading-relaxed text-muted-foreground")}>
-            No {mediaType === "series" ? "TV" : "movie"} library is set up yet. Create one in Settings → Libraries first.
+            No {mediaType === "series" ? "TV" : "movie"} library is set up yet. Create one under Media Management, Library & Storage first.
           </p>
         ) : (
           <>
@@ -451,7 +451,7 @@ function DiscoverAddDrawer({
       <DrawerSection title="Monitoring">
         <SwitchRow
           label="Monitor and search automatically"
-          description="Matches the same toggle the Add title dialog offers everywhere else in Deluno."
+          description="Search for it as soon as it is added, and keep looking until it is found."
           checked={monitored}
           onCheckedChange={setMonitored}
         />

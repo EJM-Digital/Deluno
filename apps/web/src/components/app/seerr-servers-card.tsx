@@ -415,7 +415,7 @@ export function SeerrServersCard({
           <SwitchRow label="Enabled" description="Retention rules may read its requests and clear the titles they remove." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
         </DrawerSection>
 
-        <DrawerSection title="Turning approvals into downloads" aside="#851">
+        <DrawerSection title="Turning approvals into downloads">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
             In Seerr, add a Webhook notification agent pointed at the URL below, and paste the secret into its Authorization Header field. An approved request is placed by Deluno's own destination rules (genre, anime, original language, "requested in 4K", …) on the Destination Rules page, evaluated against the title. The library below is only the fallback — used when no rule matches.
           </p>
