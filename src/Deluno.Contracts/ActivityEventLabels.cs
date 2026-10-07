@@ -77,6 +77,7 @@ public static class ActivityEventLabels
             ["library.search.skipped"] = "Search skipped",
             ["episode.search.executed"] = "Episode search finished",
             ["episode.search.result"] = "Episode search result",
+            ["series.episode-file-link.repaired"] = "Cleared a file linked to the wrong episode",
             ["series.search.episode"] = "Searched for an episode",
             ["series.search.season"] = "Searched for a season",
             ["movie.search.manual"] = "Searched for a film by hand",
