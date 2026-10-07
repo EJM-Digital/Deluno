@@ -192,7 +192,7 @@ public sealed partial class ComponentSetupTests
     public void Every_component_has_a_pinned_or_vendor_published_hash_or_a_signature_rule_its_real_installer_meets()
     {
         // Facts checked against the real installers (30 Sep 2026): qBittorrent 5.2.1, Deluge and NZBGet are NotSigned;
-        // Transmission 4.1.1 is signed by SignPath Foundation; SABnzbd 5.0.4 is signed by SignPath Foundation; VC++ redist by Microsoft.
+        // Transmission 4.1.3 is signed by SignPath Foundation (expected, not yet checked on the file); SABnzbd 5.1.3 is signed by SignPath Foundation; VC++ redist by Microsoft.
         foreach (var spec in BundledComponents.Load())
         {
             var hashed = !string.IsNullOrWhiteSpace(spec.Sha256)
