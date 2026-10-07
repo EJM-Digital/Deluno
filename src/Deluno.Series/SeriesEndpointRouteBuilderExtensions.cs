@@ -3321,6 +3321,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IAutoTaggingService autoTagging,
             IActivityFeedRepository activityFeed,
             IServiceProvider services,
+            IQualityRepository qualityRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3356,8 +3357,29 @@ public static class SeriesEndpointRouteBuilderExtensions
                 };
             }
 
+            // The profile picked in the add dialog (#1145) must be one made for TV.
+            QualityProfileItem? chosenProfile = null;
+            if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
+            {
+                chosenProfile = (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+                    .FirstOrDefault(profile => string.Equals(profile.Id, request.QualityProfileId.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(profile.MediaType, "tv", StringComparison.OrdinalIgnoreCase));
+                if (chosenProfile is null)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["qualityProfileId"] = ["Choose one of your TV quality profiles."] });
+                }
+            }
+
             var requestStartedUtc = DateTimeOffset.UtcNow;
             var item = await repository.AddAsync(request, cancellationToken);
+            if (chosenProfile is not null)
+            {
+                await repository.UpdateQualityProfileAsync(item.Id, chosenProfile.Id, cancellationToken);
+            }
+
+            // The show's own profile, if it has one, judges it from the first search (#1157).
+            var ownProfile = chosenProfile ?? await new TitleProfileLookup(mediaState, qualityRepository)
+                .ForTitleAsync(MediaKind.Series, item.Id, cancellationToken);
             // #1038: the tags picked in the add dialog go on the title now, before
             // any routing, search or the "added" notification reads them. A title
             // the catalogue already held keeps its tags and gains these.
@@ -3415,13 +3437,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                 // a file whose flag has been cleared is a file nothing owns.
                 // Worse than cosmetic — the title goes back on the wanted list
                 // and Deluno re-downloads what it is already holding.
+                var judge = TitleQualityProfile.Apply(library, ownProfile);
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-                    MediaType: library.MediaType,
+                    MediaType: judge.MediaType,
                     HasFile: item.HasFile,
                     CurrentQuality: item.CurrentQuality,
-                    CutoffQuality: library.CutoffQuality,
-                    UpgradeUntilCutoff: library.UpgradeUntilCutoff,
-                    UpgradeUnknownItems: library.UpgradeUnknownItems));
+                    CutoffQuality: judge.CutoffQuality,
+                    UpgradeUntilCutoff: judge.UpgradeUntilCutoff,
+                    UpgradeUnknownItems: judge.UpgradeUnknownItems));
 
                 await repository.EnsureWantedStateAsync(
                     item.Id,
@@ -3434,25 +3457,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                     decision.QualityCutoffMet,
                     cancellationToken);
 
-                // The add dialog's "Monitor and search automatically" checkbox
-                // read as a promise to search right away, and did not keep it: a
-                // newly-added show just sat there until the library's own next
-                // scheduled cycle happened to reach it (#645). item.Monitored
-                // rather than request.Monitored for the same reason item.HasFile
-                // is used above and not a field off the request — AddAsync
-                // dedupes, so a title the catalogue already holds keeps its own
-                // stored state rather than whatever this call asked for.
-                // Targeted at this one show, the same shape as a recovery retry
-                // or an external redownload: real work for one id, not a fresh
-                // sweep of the library.
-                // The add dialog's search-on-add checkboxes (#793) ask for
-                // this one show right away regardless of Monitored - a
-                // person adding an unmonitored title manually can still want
-                // today's search without waiting on tomorrow's automation.
+                // Whether this add searches at once is one explicit choice on the
+                // add dialog (#1145, which settled #645 and #793): "Search for it as
+                // soon as it is added". Monitoring alone no longer starts a search -
+                // with the choice off, the next scheduled search finds the show.
+                // Targeted at this one show, the same shape as a recovery retry or an
+                // external redownload: real work for one id, not a fresh sweep.
                 var searchOnAddRequested =
                     (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
                     (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
-                if (searchOnAddRequested || (item.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
+                if (searchOnAddRequested)
                 {
                     pendingSearches.Add(new
                     {
