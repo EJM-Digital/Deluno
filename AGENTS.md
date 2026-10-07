@@ -77,11 +77,24 @@ release comment, every workflow has `permissions` and every job a timeout.
   does not wait: tag while CI is still running and the release fails at once.
   A green push run on a documents-only commit proves little, so tag a commit
   whose own run ran the jobs, or run `ci.yml` by hand on it first.
-- **One workflow, `release.yml`, publishes.** It builds Windows and the Docker
-  image side by side, and only when both are built does a single `publish` job
-  push the image, create the GitHub Release and, last, move the moving image
-  tags. There is no separate Docker publish workflow (`docker.yml` is gone), so
-  the image can no longer go public for a release whose Windows build failed.
+- **A tag is made only after the golden path has passed on that exact commit**
+  (James, 7 Oct 2026; `docs/golden-path.md`, Deluno issue 1158). The release's
+  `golden-path` job runs `scripts/verify-golden-path-for-release.mjs`: it passes
+  only when the newest commit status with the context `golden-path` on the tagged
+  commit is `success`, and it does not wait. Whoever drove the run records it
+  with `gh api repos/jampat000/Deluno/statuses/<sha> -f state=success -f context=golden-path -f description=... -f target_url=...`.
+  A manual `ci.yml` run builds the Windows installer of any commit
+  (`windows-installer`), which is what the golden path installs.
+- **One workflow, `release.yml`, publishes, in two independent jobs.** Both need
+  `ci-passed`, `golden-path` and `validate`, plus their own build, and neither
+  waits for the other. `publish-windows` (needs `windows`) alone has
+  `contents: write` and creates the GitHub Release. `publish-docker` (needs
+  `docker-candidate`) alone has `packages: write` and the registry login; it
+  pushes the image, attests, checks and starts it, and moves the moving image
+  tags as its last step, never for a release candidate. Either can be re-run
+  alone (`gh run rerun --job`). There is no separate Docker publish workflow
+  (`docker.yml` is gone), so the image can no longer go public for a release
+  whose checks failed. `scripts/check-release-workflow-gates.mjs` enforces the shape.
 - After tagging, confirm the Release run is green, the GitHub Release has its
   assets and the image pulls by its version tag before saying it is released.
 - The account is on GitHub Pro (James, 3 Oct 2026), so branch protection and

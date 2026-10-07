@@ -13,6 +13,7 @@
 #   anything else               backend, web-dist, e2e-smoke (the smoke tests drive the real backend), and web-dist
 #                               builds for them; web's own checks run when the web app changed
 #   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
+#   manual run only             windows-installer: the Windows installer of this commit, for the golden path
 #
 # Work lands on main directly (James, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
 # each push to main the one run. A pull request, if one is ever opened, is still checked; "Run workflow" re-runs by
@@ -54,6 +55,7 @@ jobs:
       run_web: ${{ steps.flags.outputs.run_web }}
       run_e2e_smoke: ${{ steps.flags.outputs.run_e2e_smoke }}
       run_docker: ${{ steps.flags.outputs.run_docker }}
+      run_windows_installer: ${{ steps.flags.outputs.run_windows_installer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -108,9 +110,9 @@ jobs:
           WORKFLOWS: ${{ steps.filter.outputs.workflows }}
         run: |
           set -euo pipefail
-          backend=false; web=false; smoke=false; docker=false
+          backend=false; web=false; smoke=false; docker=false; installer=false
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            backend=true; web=true; smoke=true; docker=true
+            backend=true; web=true; smoke=true; docker=true; installer=true
           else
             # Anything in the change that is not the web app (or a document) reaches the backend side: source,
             # tests, scripts, the tray, build props, the workflows themselves.
@@ -128,6 +130,7 @@ jobs:
             echo "run_web=$web"
             echo "run_e2e_smoke=$smoke"
             echo "run_docker=$docker"
+            echo "run_windows_installer=$installer"
           } | tee -a "$GITHUB_OUTPUT"
 
   # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
@@ -417,9 +420,120 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/test-readme-docker-examples.sh "$IMAGE"
 
+  # The installable build of this exact commit, for the golden path (docs/golden-path.md): only a manual run builds it
+  # ("Run workflow" on any ref or commit), because a release is not tagged until the golden path has passed on a build
+  # like this one. The same steps as the release's windows job, minus signing and delta packages, so what the golden
+  # path installs is what a release of the commit would install. The artifact is named by the commit, and is kept for
+  # two weeks.
+  windows-installer:
+    name: Windows installer
+    needs: changes
+    if: ${{ needs.changes.outputs.run_windows_installer == 'true' }}
+    runs-on: windows-latest
+    # Windows minutes bill at twice the rate. The release's packaging has been seen to take 4.5 to 7 minutes.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # The version the commit itself carries (Directory.Build.props), so the installer says what a release of this
+      # commit would say. A pre-release version is packed on the rc channel, as the release does.
+      - name: Read the version
+        id: version
+        shell: pwsh
+        run: |
+          $props = Get-Content Directory.Build.props -Raw
+          $version = [regex]::Match($props, '<Version>\s*([^<\s]+)\s*</Version>').Groups[1].Value
+          if (-not $version) { Write-Error "No <Version> in Directory.Build.props."; exit 1 }
+          $channel = if ($version.StartsWith("0.") -or $version -match "-(rc|beta|preview)([.-]|$)") { "rc" } else { "stable" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+
+      - run: npm ci
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Publish Deluno.Tray (win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish apps/windows-tray/Deluno.Tray.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:DelunoUpdateChannel=${{ steps.version.outputs.channel }} `
+            -o artifacts/windows/bin
+
+      - name: Cache FFmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tools/ffmpeg/win-x64
+          key: ${{ runner.os }}-ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.ps1') }}
+
+      - name: Cache UnRAR
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tools/unrar/win-x64
+          key: ${{ runner.os }}-unrar-${{ hashFiles('scripts/fetch-unrar.ps1') }}
+
+      - name: Bundle FFmpeg and UnRAR
+        shell: pwsh
+        run: |
+          ./scripts/fetch-ffmpeg.ps1 -RuntimeIdentifier win-x64
+          New-Item -ItemType Directory -Force -Path artifacts/windows/bin/tools/ffmpeg | Out-Null
+          Copy-Item -Path "tools/ffmpeg/win-x64/*" -Destination artifacts/windows/bin/tools/ffmpeg -Recurse -Force
+          foreach ($required in @("ffmpeg.exe", "ffprobe.exe")) {
+            if (-not (Test-Path "artifacts/windows/bin/tools/ffmpeg/$required")) { Write-Error "$required is missing from the package"; exit 1 }
+          }
+          ./scripts/fetch-unrar.ps1 -RuntimeIdentifier win-x64
+          New-Item -ItemType Directory -Force -Path artifacts/windows/bin/tools/unrar | Out-Null
+          Copy-Item -Path "tools/unrar/win-x64/*" -Destination artifacts/windows/bin/tools/unrar -Exclude ".sha256" -Force
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: dotnet tool install -g vpk --version 0.0.1298
+
+      - name: Create the installer
+        shell: pwsh
+        run: |
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          vpk pack `
+            --packId Deluno `
+            --packVersion ${{ steps.version.outputs.version }} `
+            --packDir artifacts/windows/bin `
+            --mainExe Deluno.exe `
+            --packTitle Deluno `
+            --icon installer/deluno.ico `
+            --channel ${{ steps.version.outputs.channel }} `
+            --runtime win-x64 `
+            --outputDir artifacts/windows/velopack
+          if (-not (Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe")) { Write-Error "No Setup executable was produced."; exit 1 }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deluno-windows-${{ github.sha }}
+          path: |
+            artifacts/windows/velopack/*Setup*.exe
+            artifacts/windows/velopack/*.nupkg
+            artifacts/windows/velopack/releases.*.json
+            artifacts/windows/velopack/RELEASES*
+          if-no-files-found: error
+          retention-days: 14
+
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

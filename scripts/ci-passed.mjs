@@ -19,6 +19,8 @@ export const GATES = {
   web: "run_web",
   "e2e-smoke": "run_e2e_smoke",
   docker: "run_docker",
+  // Only a manual run builds it: the installable build the golden path installs (docs/golden-path.md).
+  "windows-installer": "run_windows_installer",
 };
 
 // Returns one line per problem; empty means CI passed.
