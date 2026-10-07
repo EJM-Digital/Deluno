@@ -37,7 +37,10 @@ public sealed record ProcessorFailureReport(
     ProcessorHandoffItem Handoff,
     string ProcessorName,
     string Message,
-    string? FailureClass);
+    string? FailureClass,
+    // Whether the processor deleted the download itself (#1153). Absent or false
+    // means it left the download where the client put it and Deluno removes it.
+    bool? SourceRemoved = null);
 
 /// <summary>
 /// A processor said it made these files, and some of them are not there

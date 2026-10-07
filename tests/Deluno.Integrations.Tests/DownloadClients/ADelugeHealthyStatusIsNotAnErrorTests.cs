@@ -4,6 +4,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Platform.Contracts;
 using Deluno.Recovery.Policies;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
@@ -37,14 +38,23 @@ public sealed class ADelugeHealthyStatusIsNotAnErrorTests
     }
 
     [Fact]
-    public async Task A_real_deluge_error_message_still_reaches_the_evaluator()
+    public async Task A_finished_torrent_with_a_real_deluge_error_is_a_machine_problem_never_a_stalled_download()
     {
         var item = await Snapshot(message: "Torrent Error");
 
         Assert.Equal("Torrent Error", item.ErrorMessage);
-        var findings = Evaluate(item);
-        var finding = Assert.Single(findings, finding => finding.Kind == "client-stalled");
-        Assert.Equal("Torrent Error", finding.Evidence);
+        Assert.True(item.IsSetupProblem);
+        // Finished (100%), so nothing is stalled (#1154): the error is handled
+        // as the missing-file or disk problem it is and can never be struck.
+        var findings = new DownloadHealthEvaluator().Evaluate(
+            new RecoveryQueueSnapshot(
+                item.Status, item.ErrorMessage, item.SourcePath, item.SpeedMbps, item.AddedUtc, item.EtaSeconds,
+                item.ReleaseName, item.Peers, item.IsSetupProblem, item.Progress),
+            capturedUtc: item.AddedUtc.AddHours(3));
+        Assert.DoesNotContain(findings, finding => finding.Kind == "client-stalled");
+        var problem = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.ClientSetupProblem);
+        Assert.Equal("Torrent Error", problem.Evidence);
+        Assert.False(DownloadHealthStrikes.Counts(problem.Kind));
     }
 
     private static IReadOnlyList<RecoveryHealthFinding> Evaluate(DownloadQueueItem item)

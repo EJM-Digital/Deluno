@@ -1741,6 +1741,18 @@ public sealed class DownloadClientTelemetryService(
                     continue;
                 }
 
+                // A finished download, or one in or past Deluno's own processing
+                // (waiting on a hand-off, or failed at one), is never struck,
+                // refused, removed or purged by a stall, error or no-progress
+                // finding (#1154). A person, or the library's "if processing
+                // fails" choice, is the only thing that acts on it.
+                if (DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.Progress) &&
+                    !DownloadHealthStrikes.MayActOnFinishedDownload(struck.Kind))
+                {
+                    skipped++;
+                    continue;
+                }
+
                 evaluated++;
                 var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, item.Id, cancellationToken);
                 // A dry run never marks a dispatch handled (#814): nothing
@@ -1838,7 +1850,7 @@ public sealed class DownloadClientTelemetryService(
                         if (dryRun)
                         {
                             removed++;
-                            applied.Add("would remove the client entry (payload retained by client)");
+                            applied.Add(wantPurge ? "would remove the client entry" : "would remove the client entry and leave its files on disk");
                         }
                         else
                         {
@@ -1850,7 +1862,7 @@ public sealed class DownloadClientTelemetryService(
                             if (result.Succeeded)
                             {
                                 removed++;
-                                applied.Add("client entry removed (payload retained by client)");
+                                applied.Add(wantPurge ? "client entry removed" : "client entry removed, files left on disk");
                             }
                             else
                             {
@@ -3104,6 +3116,14 @@ public sealed class DownloadClientTelemetryService(
             if (handoff is not null && IsFromAnEarlierAttempt(handoff, item, dispatches))
             {
                 handoff = null;
+            }
+
+            // A download whose file Deluno has already imported is imported,
+            // whatever an old hand-off for it says (#1155): a failed or stale
+            // hand-off must not keep it in Processing or Needs action.
+            if (handoff is not null && WasAlreadyImported(item, settledDispatches))
+            {
+                return resolvedItem with { Status = DownloadQueueStatuses.Imported };
             }
 
             if (handoff is not null)
