@@ -66,7 +66,9 @@ public sealed record CreateIndexerRequest(
     string? ProxyId = null,
     // The result of a test the person ran in the drawer before adding this
     // indexer (#1134), kept with it so the list shows it straight away.
-    IndexerTestedHealth? TestedHealth = null);
+    IndexerTestedHealth? TestedHealth = null,
+    // #1135: switch the new indexer on for the libraries of its media types. The drawer opt-out sends false.
+    bool RouteToLibraries = true);
 
 /// <summary>A test result carried in with a new indexer (#1134).</summary>
 public sealed record IndexerTestedHealth(string? HealthStatus, string? Message, string? FailureCategory, int? LatencyMs);
