@@ -355,6 +355,18 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
+            // Offered only while the hand-off has no result (#1155). Once its
+            // output has been collected or imported, the hand-off is closed:
+            // sending the file again only makes the processor clean it twice.
+            if (!string.IsNullOrWhiteSpace(handoff.OutputPath) || !string.IsNullOrWhiteSpace(handoff.ImportJobId) ||
+                (await repository.GetProcessorOutcomeAsync(handoff.Id, cancellationToken))?.Outcome == ProcessorOutcomeRecord.Imported)
+            {
+                return Results.Conflict(new
+                {
+                    message = $"{handoff.ReleaseName} already has its processed file, so there is nothing to send again."
+                });
+            }
+
             var connection = await repository.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
             if (connection is not { IsEnabled: true })
             {
@@ -1105,11 +1117,46 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // imported again later on purpose.
             if (status == "completed" &&
                 string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
-                handoff.ImportJobId is { Length: > 0 } &&
+                handoff.OutputPath is { Length: > 0 } &&
                 string.Equals(NormalizeProcessorPath(handoff.OutputPath ?? string.Empty), NormalizeProcessorPath(request.OutputPath ?? string.Empty), StringComparison.OrdinalIgnoreCase))
             {
                 return Results.Json(
                     new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, importJobId = handoff.ImportJobId },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
+            // Deluno is the main stop against duplicate processing (#1155). A
+            // processor that sends an output for a download whose file Deluno
+            // has already imported -- a safety-net skip that reuses an output
+            // already collected, a second pass over a file it cleaned through
+            // its own scan -- is answered like any report already acted on, and
+            // its copy is deleted. Nothing is blocklisted, removed from the
+            // client or searched for.
+            if (importsOutput && await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+            {
+                var deletedCopy = ProcessorOutputPathPolicy.DeleteSecondCopy(request.OutputPath, library.ProcessorOutputPath, handoff.SourcePath);
+                var closing = !string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase);
+                if (closing)
+                {
+                    await repository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, request.OutputPath, null, null, cancellationToken);
+                }
+
+                if (closing || deletedCopy)
+                {
+                    await activityFeed.RecordActivityAsync(
+                        "processing.output.already-imported",
+                        deletedCopy
+                            ? $"{processorName} sent a second copy of {handoff.ReleaseName}, which Deluno had already imported. Deluno deleted the second copy."
+                            : $"{processorName} reported {handoff.ReleaseName}, which Deluno had already imported. There was nothing to import.",
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, request.OutputPath, Deleted = deletedCopy }),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
+                        cancellationToken);
+                }
+
+                return Results.Json(
+                    new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, alreadyImported = true },
                     statusCode: StatusCodes.Status202Accepted);
             }
 
@@ -1146,7 +1193,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 }
 
                 var outcome = await failureReports.HandleRejectedAsync(
-                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass),
+                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass, request.SourceRemoved),
                     cancellationToken);
                 if (!outcome.Acted)
                 {
@@ -1229,7 +1276,6 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
                 importJob = await outputImports.QueueAsync(library, handoff, outputPath, "processor", cancellationToken);
-
                 // Every file the processor says it made has to be there to be
                 // imported; one that is not is said, not passed over (#619).
                 var missing = (request.OutputFiles ?? []).Where(file => !string.IsNullOrWhiteSpace(file) && !File.Exists(file.Trim())).Select(file => file.Trim()).ToArray();

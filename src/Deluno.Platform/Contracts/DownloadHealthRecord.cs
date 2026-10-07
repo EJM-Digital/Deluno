@@ -186,6 +186,26 @@ public static class DownloadHealthStrikes
     /// </summary>
     public const string LowAvailability = "low-availability";
 
+    /// <summary>
+    /// Whether a download is finished, or already in (or past) Deluno's own
+    /// processing, so that nothing about its transfer can be "stalled" (#1154).
+    /// A complete download that waits on a processor hand-off, or sits after a
+    /// failed one for the person to decide, is not a dead release. Only the
+    /// library's "if processing fails" choice, or the person, may act on it.
+    /// </summary>
+    public static bool IsFinishedOrHandedOff(string? status, double progressPercent)
+        => progressPercent >= 100d ||
+           status is "completed" or "importReady" or "processing" or "processed" or "processingFailed"
+               or "waitingForProcessor" or "importQueued" or "imported" or "importFailed";
+
+    /// <summary>
+    /// The one kind of finding that may still act on a finished download: a
+    /// dangerous or junk file inside it. Every stall, error, speed, peer and
+    /// tracker rule is about getting the bytes, which a finished download has.
+    /// </summary>
+    public static bool MayActOnFinishedDownload(string kind)
+        => string.Equals(kind, DangerousFile, StringComparison.OrdinalIgnoreCase);
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||

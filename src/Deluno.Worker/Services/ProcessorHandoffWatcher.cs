@@ -50,6 +50,9 @@ public sealed class ProcessorHandoffWatcher(
     /// </summary>
     public static readonly TimeSpan NotFoundGrace = TimeSpan.FromMinutes(15);
 
+    /// <summary>How long a hand-off may wait to be sent before it is reported as never picked up (#1155).</summary>
+    public static readonly TimeSpan WaitingToBeSentLimit = TimeSpan.FromMinutes(30);
+
     /// <summary>How long a processor can be unreachable before Deluno says so.</summary>
     public static readonly TimeSpan UnreachableNoticeAfter = TimeSpan.FromHours(1);
 
@@ -98,6 +101,28 @@ public sealed class ProcessorHandoffWatcher(
                     owner is null
                         ? $"The library {handoff.ReleaseName} was downloaded for has been removed, so nothing is waiting for a processed copy."
                         : $"{owner.Name} no longer processes downloads before importing them, so nothing is waiting for a processed copy.",
+                    cancellationToken);
+                continue;
+            }
+
+            // A hand-off that has waited to be sent past the limit is not going
+            // to be (#1155): its processor is switched off or no longer
+            // connected, and the planner sends one every pass that it can.
+            // One clear item for the person, with the retry, instead of
+            // "Waiting for processor" for ever.
+            if (string.Equals(handoff.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase) &&
+                now - handoff.UpdatedUtc >= WaitingToBeSentLimit)
+            {
+                var waitingProcessor = string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "The processor" : handoff.ProcessorName;
+                var neverSent = $"{waitingProcessor} never picked up {handoff.ReleaseName}: Deluno could not send it. Check the processor's connection, then send it again.";
+                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, neverSent, cancellationToken);
+                await activityFeed.RecordActivityAsync(
+                    "processing.waiting-too-long",
+                    neverSent,
+                    JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName, handoff.SourcePath }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
                     cancellationToken);
                 continue;
             }

@@ -84,4 +84,56 @@ public static class ProcessorOutputPathPolicy
             return false;
         }
     }
+
+    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".wmv", ".mpg", ".mpeg", ".iso"];
+
+    /// <summary>
+    /// Deletes a processor's second copy of a download Deluno has already
+    /// imported (#1155): the output itself, and the release folder around it
+    /// once no video is left in it. Only what is recognisably about this
+    /// download (<see cref="IsOutputAbout"/>) and inside the library's own output
+    /// folder is ever touched. Returns whether anything was deleted.
+    /// </summary>
+    public static bool DeleteSecondCopy(string? outputPath, string? configuredOutputPath, string? sourcePath)
+    {
+        if (!IsOutputAbout(outputPath, configuredOutputPath, sourcePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var output = Path.GetFullPath(outputPath!.Trim());
+            var root = Path.GetFullPath(configuredOutputPath!.Trim())
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (Directory.Exists(output))
+            {
+                Directory.Delete(output, recursive: true);
+            }
+            else if (File.Exists(output))
+            {
+                File.Delete(output);
+            }
+            else
+            {
+                return false;
+            }
+
+            var top = Path.Combine(root, output[(root.Length + 1)..].Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0]);
+            if (!string.Equals(top, output, StringComparison.OrdinalIgnoreCase) &&
+                Directory.Exists(top) &&
+                !Directory.EnumerateFiles(top, "*", SearchOption.AllDirectories)
+                    .Any(file => VideoExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)))
+            {
+                Directory.Delete(top, recursive: true);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
 }
