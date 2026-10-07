@@ -23,7 +23,11 @@ namespace Deluno.Api.Network;
 /// Deluno does not connect (see
 /// <c>InstalledComponentWirer.SweepStoredSignInsAsync</c>).</para>
 /// </summary>
-public sealed record BundledComponentCredentials(string Username, string Password);
+public sealed record BundledComponentCredentials(string Username, string Password)
+{
+    /// <summary>A record prints its fields; this one must never print the password into a log.</summary>
+    public override string ToString() => $"{nameof(BundledComponentCredentials)} {{ Username = {Username}, Password = (hidden) }}";
+}
 
 public interface IBundledComponentCredentialStore
 {

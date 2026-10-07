@@ -31,7 +31,8 @@ public sealed partial class ComponentSetupTests
         RecordingCredentialStore store,
         string? template = null,
         RecordingStarter? starter = null,
-        FakeRegistry? registry = null)
+        FakeRegistry? registry = null,
+        BundledComponentCredentials? chosenLogin = null)
     {
         var download = WriteTempFile(new byte[20], ".exe");
         var service = new ComponentInstallService(
@@ -44,7 +45,7 @@ public sealed partial class ComponentSetupTests
             Url = "https://example.invalid/installer.exe", GithubRepo = null, DirectoryListingUrl = null,
             Sha256 = null, MustBeSigned = true, ExpectedPublisher = "Test Publisher", MinimumBytes = 1, Prerequisite = null, ReadinessTimeoutSeconds = 1
         };
-        return await service.InstallAsync(spec, CancellationToken.None);
+        return await service.InstallAsync(spec, CancellationToken.None, null, null, chosenLogin);
     }
 
     private static string WriteTempFile(byte[] content, string extension)
