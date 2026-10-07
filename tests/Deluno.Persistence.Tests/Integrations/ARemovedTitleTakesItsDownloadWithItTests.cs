@@ -523,6 +523,10 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<RecycleBinItem?> StoreReplacementAsync(LibraryItem library, string originalPath, string existingPath, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task AttachTitleAsync(IReadOnlyList<string> itemIds, RecycleBinTitleSnapshot title, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReleaseTitleAsync(string snapshotId, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task<RecycleBinOperationResult> RestoreAsync(string id, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<RecycleBinOperationResult> PermanentlyDeleteAsync(string id, CancellationToken cancellationToken) => throw new NotSupportedException();

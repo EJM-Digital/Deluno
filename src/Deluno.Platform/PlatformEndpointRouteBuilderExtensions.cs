@@ -77,22 +77,62 @@ public static class PlatformEndpointRouteBuilderExtensions
             string id,
             IRecycleBinService service,
             IActivityFeedRepository activity,
+            IEnumerable<ITitleRestorer> restorers,
+            IRealtimeEventPublisher realtime,
             CancellationToken cancellationToken) =>
         {
             var result = await service.RestoreAsync(id, cancellationToken);
             if (result.Success && result.Item is { } restored)
             {
+                // #1161: a title removed with its files comes back as the same
+                // title (same id, library, profile, monitoring, tags, history),
+                // not only as a folder on disk.
+                var titleNote = string.Empty;
+                if (result.Title is { } snapshot)
+                {
+                    var restorer = restorers.FirstOrDefault(candidate => candidate.Handles(snapshot.MediaType));
+                    var outcome = restorer is null
+                        ? new TitleRestoreOutcome(false, $"{snapshot.Title}'s files are back, but Deluno could not put the title back. Add {snapshot.Title} again and it will find these files.")
+                        : await restorer.RestoreAsync(snapshot, cancellationToken);
+                    titleNote = outcome.Message;
+                    // Released either way: the item is out of the bin now, so there is no second try.
+                    await service.ReleaseTitleAsync(snapshot.Id, cancellationToken);
+                    if (outcome.Restored)
+                    {
+                        await realtime.PublishEntityChangedAsync(snapshot.EntityType == "series" ? "Series" : "Movie", snapshot.TitleId, cancellationToken);
+                    }
+
+                    result = result with
+                    {
+                        Message = $"{result.Message} {titleNote}",
+                        TitleRestored = outcome.Restored,
+                        TitleId = outcome.Restored ? snapshot.TitleId : null,
+                        TitleEntityType = outcome.Restored ? snapshot.EntityType : null
+                    };
+                }
+                else if (restored.IsDirectory && restored.MediaType is "movies" or "tv" && restored.TitleSnapshotId is null)
+                {
+                    // Removed before Deluno kept the title record: the files
+                    // are back, the title is not, and nothing else says so.
+                    result = result with
+                    {
+                        Message = $"{result.Message} The title itself is no longer in Deluno, so add it again and Deluno will find these files instead of downloading them."
+                    };
+                }
+
                 // A file put back is written once, with where it went (#1100).
                 await activity.RecordActivityAsync(
                     "recycle.restored",
-                    $"Restored {Path.GetFileName(restored.OriginalPath)} from the recycle bin to {restored.OriginalPath}.",
-                    System.Text.Json.JsonSerializer.Serialize(new { path = restored.OriginalPath, libraryName = restored.LibraryName }),
+                    result.TitleRestored
+                        ? $"Restored {Path.GetFileName(restored.OriginalPath)} from the recycle bin to {restored.OriginalPath}, and put {result.Title!.Title} back in Deluno with its files, monitoring and history."
+                        : $"Restored {Path.GetFileName(restored.OriginalPath)} from the recycle bin to {restored.OriginalPath}.",
+                    System.Text.Json.JsonSerializer.Serialize(new { path = restored.OriginalPath, libraryName = restored.LibraryName, titleRestored = result.TitleRestored }),
                     null, "recycle-bin", restored.Id, cancellationToken);
             }
 
             return result.Success
-                ? Results.Ok(result)
-                : Results.Conflict(result);
+                ? Results.Ok(result with { Title = null })
+                : Results.Conflict(result with { Title = null });
         });
 
         recycleBin.MapDelete("/{id}", async (
