@@ -1,5 +1,5 @@
 import {
-  CalendarDays, Clapperboard, Disc, HardDrive, ListVideo, MonitorPlay, Play,
+  CalendarDays, Clapperboard, Disc, HardDrive, ListVideo, MonitorPlay, Info,
   Star, Tag, Timer, Tv, Users, RefreshCw, Search} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
@@ -304,7 +304,7 @@ function PosterCard({
         />
         <div
           className={cn(
-            "pointer-events-none relative aspect-2/3 overflow-hidden rounded-xl bg-muted transition-all duration-300",
+            "pointer-events-none relative z-2 aspect-2/3 overflow-hidden rounded-xl bg-muted transition-all duration-300",
             "shadow-card group-hover:-translate-y-1 group-hover:shadow-lg",
             // `ring-inset`, so selection paints *inside* the poster.
             //
@@ -465,7 +465,7 @@ function PosterCard({
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-1.5 bg-black/45 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
             <PosterAction
               label="Open"
-              icon={Play}
+              icon={Info}
               href={workspaceHref}
             />
             <PosterAction

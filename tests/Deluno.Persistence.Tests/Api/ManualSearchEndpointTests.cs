@@ -70,6 +70,9 @@ public sealed class ManualSearchEndpointTests
         Assert.Equal(3, candidate.GetProperty("leechers").GetInt32());
         // #969: the grab-count column.
         Assert.Equal(47, candidate.GetProperty("grabs").GetInt32());
+        // #1172: the hard-rule signals travel with the result so the page can say them in words.
+        Assert.True(candidate.TryGetProperty("riskFlags", out _));
+        Assert.True(candidate.TryGetProperty("rejectionGate", out _));
     }
 
     [Fact]
