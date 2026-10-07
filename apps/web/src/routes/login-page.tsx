@@ -8,9 +8,10 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
-import { useAuth } from "../lib/use-auth";
+import { readSignOutReason, useAuth } from "../lib/use-auth";
 import { AppMark } from "../components/shell/app-mark";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { cn } from "../lib/utils";
@@ -25,6 +26,8 @@ export function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [endedReason] = useState(readSignOutReason);
 
   const returnTo = params.get("return") ?? "/";
 
@@ -40,7 +43,7 @@ export function LoginPage() {
     setError(null);
 
     try {
-      await login(username.trim(), password);
+      await login(username.trim(), password, keepSignedIn);
       navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
@@ -74,6 +77,15 @@ export function LoginPage() {
           onSubmit={(event) => void handleSubmit(event)}
           className="space-y-3 bg-card/80 p-6 shadow-lg backdrop-blur-sm dark:border-white/6"
         >
+          {endedReason && !error ? (
+            <div
+              role="status"
+              className="rounded-xl border border-hairline px-3.5 py-3 text-(length:--type-body-sm) text-muted-foreground"
+            >
+              {endedReason}
+            </div>
+          ) : null}
+
           {error ? (
             <div className="flex items-start gap-2.5 rounded-xl border border-destructive/25 px-3.5 py-3 text-(length:--type-body-sm) text-destructive">
               <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
@@ -130,6 +142,14 @@ export function LoginPage() {
               </button>
             </div>
           </div>
+
+          <label
+            htmlFor="login-keep"
+            className="flex cursor-pointer items-center gap-2.5 text-(length:--type-body-sm) text-muted-foreground"
+          >
+            <Checkbox id="login-keep" checked={keepSignedIn} onCheckedChange={setKeepSignedIn} />
+            Keep me signed in on this device (30 days)
+          </label>
 
           <Button
             type="submit"

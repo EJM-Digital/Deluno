@@ -295,8 +295,12 @@ under secret-looking names, and secrets quoted in messages, are written as
 Deluno runs. It is not included in backups.
 
 Tune it under `Logging:File` (`Enabled`, `Directory`, `RetainDays`,
-`MaxFileBytes`). Its level follows `Logging:LogLevel`, or
-`Logging:DelunoFile:LogLevel` for this file only.
+`MaxFileBytes`, `MaxTotalBytes`). The whole folder is kept under
+`MaxTotalBytes` (250 MB by default); past it the oldest files go first. Its
+level is the Log Level in Preferences. Routine traffic, the HTTP client
+pipeline and ASP.NET Core's request, routing and result lines, is written only at
+Warning and above until that level is turned up to Debug or Trace. Each
+hand-off sent, refused or failed to a processor writes one Information line.
 
 ### Docker Logs
 

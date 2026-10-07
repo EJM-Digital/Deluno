@@ -1,0 +1,62 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { applyRenewedToken, authedFetch, describeSessionEnd, readSignOutReason } from "./use-auth";
+
+function seedSession(expiresUtc: string, keep = false) {
+  localStorage.setItem("deluno-auth-token", "old-token");
+  localStorage.setItem("deluno-auth-user", JSON.stringify({ id: "1" }));
+  localStorage.setItem("deluno-auth-expires", expiresUtc);
+  localStorage.setItem("deluno-auth-keep", keep ? "1" : "0");
+}
+
+describe("session renewal and sign-out reasons", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("stores the renewed token a normal request brings back", () => {
+    seedSession("2026-10-10T00:00:00Z");
+    const seen: string[] = [];
+    window.addEventListener("deluno-token-renewed", (e) => seen.push((e as CustomEvent<string>).detail), { once: true });
+
+    applyRenewedToken(
+      new Response(null, {
+        headers: { "X-Deluno-Access-Token": "new-token", "X-Deluno-Access-Token-Expires": "2026-11-09T00:00:00Z" }
+      })
+    );
+
+    expect(localStorage.getItem("deluno-auth-token")).toBe("new-token");
+    expect(localStorage.getItem("deluno-auth-expires")).toBe("2026-11-09T00:00:00Z");
+    expect(seen).toEqual(["new-token"]);
+  });
+
+  it("leaves the token alone when the server sends no renewal", () => {
+    seedSession("2026-10-10T00:00:00Z");
+    applyRenewedToken(new Response(null));
+    expect(localStorage.getItem("deluno-auth-token")).toBe("old-token");
+  });
+
+  it("says why the session ended", () => {
+    const now = new Date("2026-10-20T00:00:00Z");
+    expect(describeSessionEnd("2026-10-10T00:00:00Z", true, now)).toContain("30 days");
+    expect(describeSessionEnd("2026-10-10T00:00:00Z", false, now)).toContain("7 days");
+    expect(describeSessionEnd("2026-11-10T00:00:00Z", false, now)).toContain("password changed");
+    expect(describeSessionEnd(null, false, now)).toContain("password changed");
+  });
+
+  it("an expired session returns to the original page after sign-in", async () => {
+    seedSession("2020-01-01T00:00:00Z", true);
+    const replace = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { pathname: "/movies/42", search: "?tab=files", hash: "", replace }
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
+
+    await authedFetch("/api/anything");
+
+    expect(replace).toHaveBeenCalledWith("/login?return=" + encodeURIComponent("/movies/42?tab=files"));
+    expect(readSignOutReason()).toContain("30 days");
+    expect(localStorage.getItem("deluno-auth-token")).toBeNull();
+  });
+});

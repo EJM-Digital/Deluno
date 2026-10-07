@@ -51,7 +51,7 @@ describe("LogFilesCard (#867)", () => {
 
     await waitFor(() => expect(screen.getByText("deluno-2026-09-27.jsonl")).toBeTruthy());
     expect(screen.getByText("deluno-2026-09-26.jsonl")).toBeTruthy();
-    expect(screen.getByText("2 files")).toBeTruthy();
+    expect(screen.getByText("2 files, 2.5 KB in all")).toBeTruthy();
   });
 
   it("downloads a file when its action is clicked", async () => {

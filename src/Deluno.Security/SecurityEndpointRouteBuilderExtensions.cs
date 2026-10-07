@@ -57,7 +57,7 @@ public static class SecurityEndpointRouteBuilderExtensions
                 return Results.Unauthorized();
             }
 
-            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, login));
+            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, login, request.KeepSignedIn));
         })
             .AllowAnonymous()
             .WithMetadata(new DelunoPublicEndpointAttribute());
