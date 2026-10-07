@@ -55,7 +55,7 @@ public sealed class TrackerIndexersTests
         var engine = new Mock<ITrackerEngine>();
         engine.Setup(instance => instance.SearchAsync(It.IsAny<TrackerConnection>(), It.IsAny<TrackerQuery>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TrackerException(
-                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.",
+                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Preferences, General, gets Deluno past it; if one is set, it could not get through either.",
                 new TrackerBlockedException("1337x.to is behind a Cloudflare check.")));
         var indexers = new TrackerIndexers(Catalog, engine.Object);
         var indexer = CreateIndexer("indexer-1", "1337x", definitionId: "1337x");
@@ -207,6 +207,23 @@ public sealed class TrackerIndexersTests
         var connection = await indexers.ConnectAsync(indexer, CancellationToken.None);
 
         Assert.Null(connection.HelperProxy);
+    }
+
+    // #1143 -- a per-indexer FlareSolverr/Byparr proxy is a Cloudflare helper,
+    // so it gets the same longer budget as the helper set in Preferences.
+    [Fact]
+    public async Task An_indexer_with_its_own_flaresolverr_proxy_gets_the_long_budget()
+    {
+        var proxy = new ProxyItem(
+            Id: "proxy-1", Name: "FlareSolverr", ProxyType: ProxyTypes.FlareSolverr, Address: "http://127.0.0.1:8191",
+            Username: null, Password: null, IsEnabled: true, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
+        var indexers = new TrackerIndexers(Catalog, engine: null!, connections: ConnectionsReturning([proxy]));
+        var withProxy = CreateIndexer("indexer-1", "1337x", definitionId: "1337x") with { ProxyId = "proxy-1" };
+        var without = CreateIndexer("indexer-2", "1337x", definitionId: "1337x");
+
+        Assert.Equal(TimeSpan.FromSeconds(150), await indexers.BudgetAsync(CancellationToken.None, withProxy));
+        Assert.Equal(TimeSpan.FromSeconds(45), await indexers.BudgetAsync(CancellationToken.None, without));
+        Assert.Equal(TimeSpan.FromSeconds(45), await indexers.BudgetAsync(CancellationToken.None));
     }
 
     private static IConnectionsRepository ConnectionsReturning(IReadOnlyList<ProxyItem> proxies)

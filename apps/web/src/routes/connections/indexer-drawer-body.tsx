@@ -21,6 +21,7 @@ import { describeCallLimitStatus, formatSeconds, healthChip, relative, vipWarnin
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
+import { MessageWithPreferencesLink, mentionsCloudflare } from "./preferences-link";
 export function IndexerDrawerBody({
   form,
   setForm,
@@ -37,7 +38,10 @@ export function IndexerDrawerBody({
   busy,
   onReset,
   onAcknowledgeVip,
-  onRemove
+  onRemove,
+  testMessage = null,
+  routeOnAdd = true,
+  onRouteOnAddChange = () => {}
 }: {
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
@@ -57,6 +61,11 @@ export function IndexerDrawerBody({
   onReset: () => void;
   onAcknowledgeVip: () => void;
   onRemove: () => void;
+  /** What the Test button last said, so a Cloudflare note is not repeated beside it. */
+  testMessage?: string | null;
+  /** For a new indexer: whether Add also switches it on in Library Routing (#1135). */
+  routeOnAdd?: boolean;
+  onRouteOnAddChange?: (value: boolean) => void;
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
   const chip = editing ? healthChip(editing) : null;
@@ -90,7 +99,7 @@ export function IndexerDrawerBody({
           </Field>
         </FieldRow>
         {form.protocol === "tracker" ? (
-          <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} />
+          <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} cloudflareExplained={mentionsCloudflare(testMessage) || mentionsCloudflare(editing?.lastHealthMessage)} />
         ) : (
         <>
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
@@ -121,6 +130,9 @@ export function IndexerDrawerBody({
             <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom priority" customPlaceholder="1–50" />
           </Field>
         </FieldRow>
+        {editing ? null : (
+          <SwitchRow label="Search it in my libraries" description={`Switches this indexer on in Library Routing for your ${form.scope === "movies" ? "movie" : form.scope === "tv" ? "TV" : "movie and TV"} libraries, so they search it straight away. Turn off to choose in Library Routing yourself.`} checked={routeOnAdd} onCheckedChange={onRouteOnAddChange} />
+        )}
         <Field label="Tags" optional help="Leave blank to search this indexer for any title. With tags set, Deluno searches it only for a title that shares one of them — for example, keep an anime indexer to anime titles.">
           <TagPicker label="Indexer tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
         </Field>
@@ -260,7 +272,7 @@ export function IndexerDrawerBody({
           <Field label="What MULTI means here" error={errors.multiLanguages} help="This indexer's own languages for a release tagged MULTI, e.g. Original, French. Leave blank to use Deluno's default of 'Multilingual'.">
             <Input value={form.multiLanguages} onChange={(event) => { clearError("multiLanguages"); setForm((current) => ({ ...current, multiLanguages: event.target.value })); }} placeholder="Original, French" />
           </Field>
-          <Field label="Proxy" help="Send this indexer's requests through one of your configured proxies instead of connecting directly.">
+          <Field label="Proxy" help="Send this indexer's requests through one of your configured proxies instead of connecting directly. A FlareSolverr / Byparr proxy chosen here is this indexer's own Cloudflare helper and wins over the one set for every tracker in Preferences, General.">
             <Select
               value={form.proxyId}
               onChange={(event) => setForm((current) => ({ ...current, proxyId: event.target.value }))}
@@ -359,13 +371,13 @@ export function IndexerDrawerBody({
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>
             <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
-            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
+            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
             {editing.lastHealthFailure ? (
               <>
                 <dt className="text-muted-foreground">Cause</dt>
                 <dd className="text-foreground">
                   <span>{editing.lastHealthFailure.summary}</span>
-                  <span className="mt-1 block text-muted-foreground">{editing.lastHealthFailure.nextAction}</span>
+                  {mentionsCloudflare(editing.lastHealthFailure.nextAction) && mentionsCloudflare(editing.lastHealthMessage) ? null : <span className="mt-1 block text-muted-foreground"><MessageWithPreferencesLink text={editing.lastHealthFailure.nextAction} /></span>}
                   {editing.lastHealthFailure.retryAfterUtc ? <span className="mt-1 block text-muted-foreground">Next eligible attempt: {relative(editing.lastHealthFailure.retryAfterUtc)}</span> : null}
                 </dd>
               </>

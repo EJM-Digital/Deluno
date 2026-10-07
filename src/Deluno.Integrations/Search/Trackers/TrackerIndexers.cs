@@ -101,12 +101,32 @@ public sealed class TrackerIndexers(
     /// Longer with a Cloudflare helper, which can take most of a minute to clear
     /// a check: 49 seconds for 1337x on the rig.
     /// </summary>
-    public async Task<TimeSpan> BudgetAsync(CancellationToken cancellationToken)
-        => budget is { } fixedBudget
-            ? fixedBudget
-            : cloudflareHelper is not null && await cloudflareHelper.IsConfiguredAsync(cancellationToken)
-            ? TimeSpan.FromSeconds(150)
-            : TimeSpan.FromSeconds(45);
+    public async Task<TimeSpan> BudgetAsync(CancellationToken cancellationToken, IndexerItem? indexer = null)
+    {
+        if (budget is { } fixedBudget)
+        {
+            return fixedBudget;
+        }
+
+        // The helper set in Preferences, General, or this indexer's own
+        // FlareSolverr/Byparr proxy (#1143): either one is a Cloudflare helper
+        // that can take 14 seconds a page, so both get the longer budget.
+        if (cloudflareHelper is not null && await cloudflareHelper.IsConfiguredAsync(cancellationToken))
+        {
+            return TimeSpan.FromSeconds(150);
+        }
+
+        if (indexer is not null && connections is not null)
+        {
+            var proxy = await Deluno.Connections.Data.IndexerProxyResolver.ResolveAsync(indexer, connections, cancellationToken);
+            if (proxy is not null && string.Equals(proxy.ProxyType, ProxyTypes.FlareSolverr, StringComparison.OrdinalIgnoreCase))
+            {
+                return TimeSpan.FromSeconds(150);
+            }
+        }
+
+        return TimeSpan.FromSeconds(45);
+    }
 
     public async Task<XDocument> SearchAsync(IndexerItem indexer, TrackerQuery query, CancellationToken cancellationToken)
     {
@@ -142,7 +162,7 @@ public sealed class TrackerIndexers(
 
         // A Cloudflare helper can take most of a minute to clear a check: 49
         // seconds for 1337x on the rig, against the 45 a test used to get (#628).
-        var budget = await BudgetAsync(cancellationToken);
+        var budget = await BudgetAsync(cancellationToken, indexer);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

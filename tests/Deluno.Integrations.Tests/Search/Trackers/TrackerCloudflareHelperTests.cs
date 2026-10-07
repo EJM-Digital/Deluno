@@ -117,7 +117,7 @@ public sealed class TrackerCloudflareHelperTests
             () => engine.SearchAsync(connection, new TrackerQuery("x"), CancellationToken.None));
 
         Assert.Equal(
-            "cloudflared.example is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Settings.",
+            "cloudflared.example is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Preferences, General.",
             failure.Message);
         Assert.DoesNotContain("could not be reached", failure.Message, StringComparison.Ordinal);
         Assert.Equal(["cloudflared.example"], site.Hosts);

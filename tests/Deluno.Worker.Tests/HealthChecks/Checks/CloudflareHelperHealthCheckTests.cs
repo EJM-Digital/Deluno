@@ -9,7 +9,7 @@ using Moq;
 namespace Deluno.Worker.Tests.HealthChecks.Checks;
 
 /// <summary>
-/// #1027: the Cloudflare helper set in Settings is checked on Health, so a
+/// #1027: the Cloudflare helper set in Preferences, General is checked on Health, so a
 /// helper that is not running shows up before an indexer test trips on it.
 /// </summary>
 public sealed class CloudflareHelperHealthCheckTests

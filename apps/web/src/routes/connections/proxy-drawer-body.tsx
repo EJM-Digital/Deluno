@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import type { ProxyForm } from "./forms";
+import { PreferencesLink } from "./preferences-link";
 
 const PROXY_TYPE_OPTIONS = [
   { value: "http", label: "HTTP" },
@@ -16,8 +17,7 @@ const PROXY_TYPE_OPTIONS = [
 ];
 
 /**
- * A single Indexer Proxy's own settings (#748): what Prowlarr's Indexer
- * Proxies page offers per proxy, kept to what an indexer's drawer actually
+ * A single proxy's own settings (#748), kept to what an indexer's drawer
  * needs to point at one — type, address, and optional credentials.
  */
 export function ProxyDrawerBody({
@@ -47,9 +47,9 @@ export function ProxyDrawerBody({
         <Field
           label="Address"
           error={errors.address}
-          help={form.proxyType === "flaresolverr" ? "The FlareSolverr or Byparr API address, e.g. http://localhost:8191." : "The proxy address, e.g. socks5://192.168.1.1:1080 or http://proxy.example.test:8080."}
+          help={form.proxyType === "flaresolverr" ? <>The FlareSolverr or Byparr address, e.g. http://127.0.0.1:8191. This is a Cloudflare helper for the indexers assigned to it only. One helper for every tracker is set in Preferences, General, and this one wins for its own indexers. <PreferencesLink /></> : "The proxy address, e.g. socks5://192.168.1.1:1080 or http://proxy.example.test:8080."}
         >
-          <Input value={form.address} onChange={(event) => { clearError("address"); setForm((current) => ({ ...current, address: event.target.value })); }} className="font-mono text-(length:--type-caption)" placeholder="socks5://192.168.1.1:1080" autoComplete="off" spellCheck={false} />
+          <Input value={form.address} onChange={(event) => { clearError("address"); setForm((current) => ({ ...current, address: event.target.value })); }} className="font-mono text-(length:--type-caption)" placeholder={form.proxyType === "flaresolverr" ? "http://127.0.0.1:8191" : form.proxyType === "http" ? "http://proxy.example.test:8080" : form.proxyType === "socks4" ? "socks4://192.168.1.1:1080" : "socks5://192.168.1.1:1080"} autoComplete="off" spellCheck={false} />
         </Field>
         {form.proxyType !== "flaresolverr" ? (
           <FieldRow>
