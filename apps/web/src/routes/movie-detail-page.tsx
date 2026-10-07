@@ -67,7 +67,7 @@ import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
-import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
+import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason } from "../lib/release-candidate-status";
 import {
   candidateSortValue,
   filterCandidates,
@@ -1210,7 +1210,7 @@ export function MovieDetailPage() {
                     <ListCell mobile>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
                       {candidate.decisionStatus?.toLowerCase() === "rejected" && candidate.decisionReasons?.[0] ? (
-                        <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{candidate.decisionReasons[0]}</span>
+                        <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{plainCandidateReason(candidate.decisionReasons[0])}</span>
                       ) : null}
                     </ListCell>
                   </ListRow>
@@ -1686,7 +1686,7 @@ export function MovieDetailPage() {
             state={openCandidate?.downloadUrl ? (forceRequiredNotice ? "error" : "clean") : "error"}
             message={
               openCandidate?.downloadUrl
-                ? (forceRequiredNotice ?? openCandidate.summary)
+                ? (forceRequiredNotice ?? "Ready to send.")
                 : "This candidate has no downloadable URL yet"
             }
             saveType="button"
@@ -1726,13 +1726,13 @@ export function MovieDetailPage() {
                   ...(openCandidate.releaseGroup ? [{ label: "Release group", value: openCandidate.releaseGroup }] : [])
                 ]}
               />
-              <p className="text-(length:--type-caption) leading-snug text-muted-foreground">{openCandidate.summary}</p>
+              <p className="text-(length:--type-caption) leading-snug text-muted-foreground">{candidateExplanation(openCandidate).summary}</p>
             </DrawerSection>
 
-            {openCandidate.decisionReasons?.length ? (
+            {candidateExplanation(openCandidate).reasons.length ? (
               <DrawerSection title={likesCandidate(openCandidate) ? "Why Deluno likes it" : "How Deluno reached this"}>
                 <ul className="grid gap-1">
-                  {openCandidate.decisionReasons.slice(0, 6).map((reason) => (
+                  {candidateExplanation(openCandidate).reasons.slice(0, 6).map((reason) => (
                     <li key={reason} className="text-(length:--type-body-sm) text-muted-foreground">
                       {reason}
                     </li>
@@ -1753,6 +1753,8 @@ export function MovieDetailPage() {
               </DrawerSection>
             ) : null}
 
+            {/* A release Deluno already prefers needs no override (#1138). */}
+            {openCandidateNeedsForce ? (
             <DrawerSection>
               <div className="rounded-[10px] border border-warning/30 px-(--field-pad-x) py-2">
                 <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap)">
@@ -1802,6 +1804,7 @@ export function MovieDetailPage() {
                 ) : null}
               </div>
             </DrawerSection>
+            ) : null}
           </>
         ) : null}
       </Drawer>

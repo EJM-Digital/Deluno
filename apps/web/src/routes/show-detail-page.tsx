@@ -51,7 +51,7 @@ import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
-import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
+import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason, plainSearchResult } from "../lib/release-candidate-status";
 import {
   candidateSortValue,
   filterCandidates,
@@ -1480,7 +1480,7 @@ export function ShowDetailPage() {
                     <ListCell mobile>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
                       {candidate.decisionStatus?.toLowerCase() === "rejected" && candidate.decisionReasons?.[0] ? (
-                        <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{candidate.decisionReasons[0]}</span>
+                        <span className="mt-1 block text-(length:--type-caption) text-muted-foreground">{plainCandidateReason(candidate.decisionReasons[0])}</span>
                       ) : null}
                     </ListCell>
                   </ListRow>
@@ -1608,7 +1608,10 @@ export function ShowDetailPage() {
                       >
                         <ListNameCell name={formatEpisodeCode(episode, showAbsolute)} sub={episode.title ?? "Episode title pending"} />
                         <ListCell primary={episode.airDateUtc ? formatAirDateTime(episode.airDateUtc, preferences) : "—"} />
-                        <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
+                        <ListCell
+                          primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"}
+                          secondary={episode.lastSearchResult ? plainSearchResult(episode.lastSearchResult) : undefined}
+                        />
                         <ListCell>
                           {/* An episode is a title. Same five marks (DESIGN-001). */}
                           <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
@@ -2250,6 +2253,7 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Quality cutoff met", value: openEpisode.qualityCutoffMet ? "Yes" : "No" },
                   { label: "Last searched", value: openEpisode.lastSearchUtc ? formatPreferenceDateTime(openEpisode.lastSearchUtc, preferences) : "Never" },
+                  ...(openEpisode.lastSearchResult ? [{ label: "What happened", value: plainSearchResult(openEpisode.lastSearchResult) }] : []),
                   {
                     label: "Next eligible search",
                     value: openEpisode.nextEligibleSearchUtc ? formatPreferenceDateTime(openEpisode.nextEligibleSearchUtc, preferences) : "As soon as a cycle runs"
@@ -2312,7 +2316,7 @@ export function ShowDetailPage() {
             state={openCandidate?.downloadUrl ? (forceRequiredNotice ? "error" : "clean") : "error"}
             message={
               openCandidate?.downloadUrl
-                ? (forceRequiredNotice ?? openCandidate.summary)
+                ? (forceRequiredNotice ?? "Ready to send.")
                 : "This candidate has no downloadable URL yet"
             }
             saveType="button"
@@ -2352,13 +2356,13 @@ export function ShowDetailPage() {
                   ...(openCandidate.releaseGroup ? [{ label: "Release group", value: openCandidate.releaseGroup }] : [])
                 ]}
               />
-              <p className="text-(length:--type-caption) leading-snug text-muted-foreground">{openCandidate.summary}</p>
+              <p className="text-(length:--type-caption) leading-snug text-muted-foreground">{candidateExplanation(openCandidate).summary}</p>
             </DrawerSection>
 
-            {openCandidate.decisionReasons?.length ? (
+            {candidateExplanation(openCandidate).reasons.length ? (
               <DrawerSection title={likesCandidate(openCandidate) ? "Why Deluno likes it" : "How Deluno reached this"}>
                 <ul className="grid gap-1">
-                  {openCandidate.decisionReasons.slice(0, 6).map((reason) => (
+                  {candidateExplanation(openCandidate).reasons.slice(0, 6).map((reason) => (
                     <li key={reason} className="text-(length:--type-body-sm) text-muted-foreground">
                       {reason}
                     </li>
@@ -2379,6 +2383,8 @@ export function ShowDetailPage() {
               </DrawerSection>
             ) : null}
 
+            {/* A release Deluno already prefers needs no override (#1138). */}
+            {openCandidateNeedsForce ? (
             <DrawerSection>
               <div className="rounded-[10px] border border-warning/30 px-(--field-pad-x) py-2">
                 <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap)">
@@ -2428,6 +2434,7 @@ export function ShowDetailPage() {
                 ) : null}
               </div>
             </DrawerSection>
+            ) : null}
           </>
         ) : null}
       </Drawer>

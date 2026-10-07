@@ -3765,7 +3765,8 @@ public sealed partial class ImportPipelineService(
                 preferenceEvaluations.Skip(1).ToArray(),
                 seriesId: knownSeriesId,
                 upgradeUntilCutoff: library.UpgradeUntilCutoff,
-                upgradeUnknownItems: library.UpgradeUnknownItems);
+                upgradeUnknownItems: library.UpgradeUnknownItems,
+                resultNote: ImportOriginNote(preview.SourcePath, library, dispatch is not null));
             // The repository's legacy single-item boolean means "a new series
             // row was created", not "the import was recorded". A download
             // tied to an existing series therefore used to report a successful

@@ -47,4 +47,7 @@ public sealed record ExistingSeriesImportRequest(
     /// the default for a completed download (a season pack episode says so
     /// itself via <see cref="ImportedEpisodeItem.FromSeasonPack"/>).
     /// </summary>
-    string EpisodeImportSource = "download");
+    string EpisodeImportSource = "download",
+
+    /// <summary>Where the files came from, said as each imported episode's "last attempt" (#1151), e.g. a processor's cleaned output. Null keeps the default wording.</summary>
+    string? ResultNote = null);
