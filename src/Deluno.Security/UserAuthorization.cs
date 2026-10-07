@@ -13,15 +13,27 @@ public static class UserAuthorization
     internal const string UserItemKey = "deluno.user";
     internal const string ApiKeyItemKey = "deluno.apiKey";
     private const string UserTokenPurpose = "Deluno.UserAccessToken.v1";
-    private static readonly TimeSpan DefaultAccessTokenLifetime = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// #1165: a session lasts 7 days, or 30 when the person ticked "Keep me
+    /// signed in on this device". Either one renews itself while in use: a
+    /// request that finds the token past halfway through its life gets a fresh
+    /// token back in <see cref="RenewedTokenHeader"/>.
+    /// </summary>
+    public static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan KeepSignedInLifetime = TimeSpan.FromDays(30);
+
+    public const string RenewedTokenHeader = "X-Deluno-Access-Token";
+    public const string RenewedTokenExpiresHeader = "X-Deluno-Access-Token-Expires";
 
     public static LoginResponse IssueLoginResponse(
         IDataProtectionProvider dataProtectionProvider,
         TimeProvider timeProvider,
-        UserItem item)
+        UserItem item,
+        bool keepSignedIn = false)
     {
         var issuedUtc = timeProvider.GetUtcNow();
-        var expiresUtc = issuedUtc.Add(DefaultAccessTokenLifetime);
+        var expiresUtc = issuedUtc.Add(keepSignedIn ? KeepSignedInLifetime : SessionLifetime);
         return new LoginResponse(
             AccessToken: IssueAccessToken(dataProtectionProvider, item, issuedUtc, expiresUtc),
             ExpiresUtc: expiresUtc,
@@ -112,7 +124,51 @@ public static class UserAuthorization
         }
 
         httpContext.Items[UserItemKey] = current;
+        TryRenewToken(httpContext, current);
         return null;
+    }
+
+    /// <summary>
+    /// #1165: sliding renewal. When the presented token has used more than half
+    /// of its life, hand back a fresh one with the same length so a page that
+    /// is open or in use never reaches the end of its session. The security
+    /// stamp rides in the new token, so a password change or sign-out still
+    /// ends every session.
+    /// </summary>
+    private static void TryRenewToken(HttpContext httpContext, UserItem current)
+    {
+        try
+        {
+            var token = ReadToken(httpContext);
+            if (string.IsNullOrWhiteSpace(token) || IsApiKeyToken(token) || httpContext.Response.HasStarted)
+            {
+                return;
+            }
+
+            var provider = httpContext.RequestServices.GetRequiredService<IDataProtectionProvider>();
+            var json = provider.CreateProtector(UserTokenPurpose).Unprotect(token);
+            var payload = JsonSerializer.Deserialize<UserTokenPayload>(json);
+            if (payload is null)
+            {
+                return;
+            }
+
+            var timeProvider = httpContext.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System;
+            var now = timeProvider.GetUtcNow();
+            var lifetime = payload.ExpiresUtc - payload.IssuedUtc;
+            if (lifetime <= TimeSpan.Zero || payload.ExpiresUtc - now > lifetime / 2)
+            {
+                return;
+            }
+
+            var expiresUtc = now.Add(lifetime);
+            httpContext.Response.Headers[RenewedTokenHeader] = IssueAccessToken(provider, current, now, expiresUtc);
+            httpContext.Response.Headers[RenewedTokenExpiresHeader] = expiresUtc.ToString("O");
+        }
+        catch
+        {
+            // Renewal is a convenience; a failure must never fail the request.
+        }
     }
 
     /// <summary>
