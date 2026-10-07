@@ -267,6 +267,18 @@ describe("the search-on-add choice", () => {
   });
 });
 
+describe("the metadata search status", () => {
+  it("says which sources a show search is waiting on, and that a movie search waits on TMDb", () => {
+    renderDialog([], "shows", {}, { isSearchingMetadata: true });
+    expect(screen.getByText("Waiting on TheTVDB and TMDb...")).toBeInTheDocument();
+  });
+
+  it("says a movie search is waiting on TMDb", () => {
+    renderDialog([], "movies", {}, { isSearchingMetadata: true });
+    expect(screen.getByText("Waiting on TMDb...")).toBeInTheDocument();
+  });
+});
+
 describe("the library and quality profile choice", () => {
   const libraries = [
     { id: "lib-1080", name: "Movies 1080p", qualityProfileId: "p-1080" },

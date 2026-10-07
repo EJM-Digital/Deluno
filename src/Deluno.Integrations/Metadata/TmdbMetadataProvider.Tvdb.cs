@@ -25,12 +25,24 @@ public sealed partial class TmdbMetadataProvider
     private static readonly ConcurrentDictionary<string, (DateTimeOffset Expires, object Value)> TvdbMemory = new();
     private static readonly ConcurrentDictionary<string, string> TmdbToTvdbIds = new();
 
+    /// <summary>
+    /// How long a TV search waits for TheTVDB before showing TMDb's answer alone (#1163). A typed
+    /// search is a person waiting at a box; a source that is slow today costs its own matches, not
+    /// twenty-five seconds of everyone's time.
+    /// </summary>
+    private static readonly TimeSpan TvdbSearchBudget = TimeSpan.FromSeconds(5);
+
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
-        var results = await SearchTmdbAsync(request, cancellationToken);
         var isIdentity = !string.IsNullOrWhiteSpace(request.IdSource) || !string.IsNullOrWhiteSpace(request.ProviderId);
+        if (NormalizeMediaType(request.MediaType) == "tv" && !isIdentity)
+        {
+            return await SearchTvAsync(request, cancellationToken);
+        }
+
+        var results = await SearchTmdbAsync(request, cancellationToken);
         if (NormalizeMediaType(request.MediaType) != "tv")
         {
             return isIdentity ? await ApplyLanguageAsync(results, cancellationToken) : results;
@@ -38,19 +50,14 @@ public sealed partial class TmdbMetadataProvider
 
         try
         {
-            if (isIdentity)
+            // An identity search returns the one title; TheTVDB only adds to it.
+            var overlaid = new List<MetadataSearchResult>(results.Count);
+            foreach (var result in results)
             {
-                // An identity search returns the one title; TheTVDB only adds to it.
-                var overlaid = new List<MetadataSearchResult>(results.Count);
-                foreach (var result in results)
-                {
-                    overlaid.Add(await ApplyLanguageAsync(await OverlayTvdbAsync(result, cancellationToken), cancellationToken));
-                }
-
-                return overlaid;
+                overlaid.Add(await ApplyLanguageAsync(await OverlayTvdbAsync(result, cancellationToken), cancellationToken));
             }
 
-            return await MergeTvdbSearchAsync(request, results, cancellationToken);
+            return overlaid;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -58,6 +65,103 @@ public sealed partial class TmdbMetadataProvider
             logger.LogInformation(exception, "TheTVDB could not add to a TV search; showing TMDb's results.");
             return results;
         }
+    }
+
+    /// <summary>
+    /// A typed TV search: TMDb and TheTVDB asked at the same time, not one after the other, with
+    /// TheTVDB given a few seconds to answer. What comes back is ranked by how well each title
+    /// matches what was typed and lists a show once (#1163).
+    /// </summary>
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchTvAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var tmdbTask = SearchTmdbAsync(request, cancellationToken);
+        var tvdbTask = FindTvdbHitsAsync(request, cancellationToken);
+
+        IReadOnlyList<MetadataSearchResult> tmdbResults;
+        try
+        {
+            tmdbResults = await tmdbTask;
+        }
+        catch
+        {
+            ObserveLater(tvdbTask);
+            throw;
+        }
+
+        IReadOnlyList<TvdbSeriesRecord>? hits = null;
+        try
+        {
+            hits = await tvdbTask.WaitAsync(TvdbSearchBudget, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            ObserveLater(tvdbTask);
+            logger.LogInformation("TheTVDB did not answer a TV search within {Seconds} seconds; showing TMDb's results.", TvdbSearchBudget.TotalSeconds);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // TheTVDB is the preferred source, not a required one.
+            logger.LogInformation(exception, "TheTVDB could not add to a TV search; showing TMDb's results.");
+        }
+
+        try
+        {
+            return await MergeTvdbSearchAsync(request, tmdbResults, hits, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogInformation(exception, "TheTVDB could not add to a TV search; showing TMDb's results.");
+            return RankSearchResults(request, tmdbResults);
+        }
+    }
+
+    private static void ObserveLater(Task task)
+        => _ = task.ContinueWith(
+            static finished => _ = finished.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+
+    /// <summary>The results in match order with each show once, ranked against the title as typed (the year, if one was typed, is the year filter).</summary>
+    private IReadOnlyList<MetadataSearchResult> RankSearchResults(MetadataLookupRequest request, IReadOnlyList<MetadataSearchResult> results)
+    {
+        var query = request.Query?.Trim() ?? string.Empty;
+        int? year = request.Year;
+        if (year is null
+            && MetadataQueryYear.TrySplit(query, timeProvider.GetUtcNow().Year, out var title, out var typedYear)
+            && results.Any(result => result.Year == typedYear))
+        {
+            query = title;
+            year = typedYear;
+        }
+
+        return MetadataSearchRanking.Rank(results, query, year);
+    }
+
+    /// <summary>TheTVDB's matches for what was typed, with a typed year used as the year filter when that finds something.</summary>
+    private async Task<IReadOnlyList<TvdbSeriesRecord>?> FindTvdbHitsAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var query = request.Query?.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return null;
+        }
+
+        var year = request.Year;
+        if (year is null && MetadataQueryYear.TrySplit(query, timeProvider.GetUtcNow().Year, out var title, out var typedYear))
+        {
+            var byYear = await TvdbSearchAsync(title, typedYear, cancellationToken);
+            if (byYear is { Count: > 0 })
+            {
+                return byYear;
+            }
+        }
+
+        return await TvdbSearchAsync(query, year, cancellationToken);
     }
 
     public async Task<MetadataProviderRecordLookup> ResolveProviderRecordAsync(
@@ -160,36 +264,19 @@ public sealed partial class TmdbMetadataProvider
     }
 
     /// <summary>
-    /// TheTVDB's hits first, each tied to a TMDb identity through TheTVDB's own
-    /// remote ids so the title Deluno stores keeps the id every existing show
-    /// already has. Results only TMDb found follow, untouched.
+    /// TheTVDB's hits, each tied to a TMDb identity through TheTVDB's own remote ids so the title
+    /// Deluno stores keeps the id every existing show already has, merged with what TMDb found
+    /// and ranked by how well each title matches what was typed (#1163).
     /// </summary>
     private async Task<IReadOnlyList<MetadataSearchResult>> MergeTvdbSearchAsync(
         MetadataLookupRequest request,
         IReadOnlyList<MetadataSearchResult> tmdbResults,
+        IReadOnlyList<TvdbSeriesRecord>? hits,
         CancellationToken cancellationToken)
     {
-        var query = request.Query?.Trim();
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return tmdbResults;
-        }
-
-        var year = request.Year;
-        if (year is null && MetadataQueryYear.TrySplit(query, timeProvider.GetUtcNow().Year, out var title, out var typedYear))
-        {
-            var byYear = await TvdbSearchAsync(title, typedYear, cancellationToken);
-            if (byYear is { Count: > 0 })
-            {
-                query = title;
-                year = typedYear;
-            }
-        }
-
-        var hits = await TvdbSearchAsync(query, year, cancellationToken);
         if (hits is not { Count: > 0 })
         {
-            return tmdbResults;
+            return RankSearchResults(request, tmdbResults);
         }
 
         var byTmdbId = tmdbResults
@@ -197,7 +284,8 @@ public sealed partial class TmdbMetadataProvider
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var merged = new List<MetadataSearchResult>();
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var extraTmdbLookups = 0;
+        var needTmdbRecord = new List<TvdbSeriesRecord>();
+        var typed = request.Query?.Trim() ?? string.Empty;
 
         foreach (var hit in hits)
         {
@@ -213,21 +301,56 @@ public sealed partial class TmdbMetadataProvider
             {
                 merged.Add(ApplyTvdb(tmdb, hit));
             }
-            else if (extraTmdbLookups < 4)
+            else if (needTmdbRecord.Count < 4 && IsRealMatch(hit, typed))
             {
-                extraTmdbLookups++;
-                var lookup = await ResolveTmdbProviderRecordAsync(
-                    new MetadataLookupRequest(hit.Title, "tv", hit.Year, hit.TmdbId),
-                    cancellationToken);
-                if (lookup.Status == MetadataProviderRecordStatus.Found && lookup.Result is not null)
-                {
-                    merged.Add(ApplyTvdb(lookup.Result, hit));
-                }
+                // Only a TheTVDB match that really is the title typed is worth a TMDb round
+                // trip; the loose ones (Frieden for Frieren) were each costing seconds.
+                needTmdbRecord.Add(hit);
             }
         }
 
+        if (needTmdbRecord.Count > 0)
+        {
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            budget.CancelAfter(TvdbSearchBudget);
+            var lookups = await Task.WhenAll(needTmdbRecord.Select(async hit =>
+            {
+                try
+                {
+                    var lookup = await ResolveTmdbProviderRecordAsync(
+                        new MetadataLookupRequest(hit.Title, "tv", hit.Year, hit.TmdbId),
+                        budget.Token);
+                    return lookup.Status == MetadataProviderRecordStatus.Found && lookup.Result is not null
+                        ? ApplyTvdb(lookup.Result, hit)
+                        : null;
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return null;
+                }
+            }));
+            merged.AddRange(lookups.OfType<MetadataSearchResult>());
+        }
+
         merged.AddRange(tmdbResults.Where(result => !used.Contains(result.ProviderId)));
-        return await LocalizeArtworkAsync(merged.Take(12).ToArray(), cancellationToken);
+        var ranked = RankSearchResults(request, merged);
+        return await LocalizeArtworkAsync(ranked.Take(12).ToArray(), cancellationToken);
+    }
+
+    private static bool IsRealMatch(TvdbSeriesRecord hit, string typed)
+    {
+        var query = MetadataSearchRanking.Normalize(typed);
+        if (query.Length == 0)
+        {
+            return true;
+        }
+
+        return MetadataSearchRanking.Score(
+            new MetadataSearchResult(
+                "tvdb", hit.TvdbId ?? string.Empty, "tv", hit.Title, hit.OriginalTitle, hit.Year, null, null, null, null, [], [], null, null,
+                AlternateTitles: hit.Aliases),
+            typed,
+            null) >= MetadataSearchRanking.StillTyping;
     }
 
     /// <summary>One TMDb result, with TheTVDB's record for the same show laid over it.</summary>

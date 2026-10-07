@@ -89,7 +89,7 @@ export function LibraryCreateDialog({
               }} placeholder={variant === "movies" ? "Search movies, for example Top Gun" : "Search TV shows, for example Severance"} /></div>
               <p className="mt-2 text-xs text-muted-foreground"><span className="inline-flex items-center gap-2">
                 {isSearchingMetadata ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                {metadataStatus?.isConfigured === false ? "Metadata matching is currently unavailable." : isSearchingMetadata ? "Searching metadata..." : "Matches auto-refresh as you type, or press Enter to refresh now."}
+                {metadataStatus?.isConfigured === false ? "Metadata matching is currently unavailable." : isSearchingMetadata ? (variant === "movies" ? "Waiting on TMDb..." : "Waiting on TheTVDB and TMDb...") : "Matches auto-refresh as you type, or press Enter to refresh now."}
               </span></p>
             </form>
 
