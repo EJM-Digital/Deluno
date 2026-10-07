@@ -104,6 +104,28 @@ public sealed class EpisodeSearchJobHandler(
         var targetEpisode = inventory?.Episodes.FirstOrDefault(
             episode => string.Equals(episode.EpisodeId, payload.EpisodeId, StringComparison.OrdinalIgnoreCase));
         var numberingScheme = inventory?.Numbering?.NumberingScheme;
+
+        // An episode that has not aired is not searched yet (#1173), allowing a day for the usual early release.
+        // Its air date is known, so the next look is the day before it, not a retry window away.
+        if (targetEpisode?.AirDateUtc is { } airsUtc && airsUtc > now.AddDays(1))
+        {
+            var lookAgain = airsUtc.AddDays(-1);
+            var unaired = $"S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2} airs on {airsUtc:d MMMM}, so Deluno will not look for it before then.";
+            await seriesCatalogRepository.RecordSearchAttemptAsync(
+                payload.SeriesId,
+                payload.EpisodeId,
+                payload.LibraryId,
+                "automatic",
+                "checked",
+                now,
+                lookAgain,
+                unaired,
+                null,
+                null,
+                null,
+                cancellationToken);
+            return $"Skipped episode S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}: it has not aired yet.";
+        }
         // An episode must not inherit a series-level snapshot for a different
         // file. Query by the exact path; if no episode snapshot exists the
         // decision engine holds automatic replacement until the independent
@@ -146,7 +168,8 @@ public sealed class EpisodeSearchJobHandler(
                 // query as the series. The payload's title is the episode's,
                 // kept for Activity, and searching by it found nothing (#590).
                 Title: inventory?.Title ?? payload.Title,
-                Year: null,
+                // The show's first-air year, so a same-name remake's release is refused before the grab (#1166).
+                Year: seriesItem?.StartYear,
                 MediaType: "tv",
                 CurrentQuality: currentQuality,
                 TargetQuality: targetQuality,
@@ -172,7 +195,8 @@ public sealed class EpisodeSearchJobHandler(
                 ImdbId: seriesItem?.ImdbId,
                 Genres: seriesItem?.Genres,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem?.MetadataJson),
-                SeasonsWithRemovedEpisodes: inventory?.SeasonsWithRemovedEpisodes()).WithProfile(profileRules),
+                SeasonsWithRemovedEpisodes: inventory?.SeasonsWithRemovedEpisodes(),
+                EpisodeTitles: inventory?.EpisodeTitlesForSeason(payload.SeasonNumber)).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;
@@ -235,7 +259,8 @@ public sealed class EpisodeSearchJobHandler(
                 episodeTitleTags,
                 "episode",
                 payload.EpisodeId,
-                cancellationToken);
+                cancellationToken,
+                    clientChoiceReason: decisionPlan.ClientChoiceReason);
 
             await jobQueueRepository.RecordDownloadDispatchAsync(
                 payload.LibraryId,
@@ -281,6 +306,19 @@ public sealed class EpisodeSearchJobHandler(
             "episode",
             payload.EpisodeId,
             cancellationToken);
+
+        // "held" alone told nobody anything (#1159): say what happened, in words.
+        if (outcome is "held" or "checked" && !string.IsNullOrWhiteSpace(searchResult))
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "episode.search.result",
+                $"S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}: {searchResult}",
+                null,
+                job.Id,
+                "episode",
+                payload.EpisodeId,
+                cancellationToken);
+        }
 
         return $"Finished searching for episode S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}.";
     }

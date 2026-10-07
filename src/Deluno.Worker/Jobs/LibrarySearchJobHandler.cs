@@ -378,7 +378,8 @@ public abstract class LibrarySearchJobHandler(
                     movieTitleTags,
                     "movie",
                     candidate.MovieId,
-                    cancellationToken);
+                    cancellationToken,
+                    clientChoiceReason: decisionPlan.ClientChoiceReason);
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,
@@ -1036,7 +1037,8 @@ public abstract class LibrarySearchJobHandler(
                     seriesTitleTags,
                     "series",
                     candidate.SeriesId,
-                    cancellationToken);
+                    cancellationToken,
+                    clientChoiceReason: decisionPlan.ClientChoiceReason);
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,

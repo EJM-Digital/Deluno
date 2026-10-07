@@ -119,7 +119,8 @@ internal static class SearchExecutionSupport
         IReadOnlyList<string>? titleTags,
         string entityType,
         string entityId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? clientChoiceReason = null)
     {
         if (!grabResult.Succeeded)
         {
@@ -130,7 +131,8 @@ internal static class SearchExecutionSupport
             downloadClientId,
             titleTags,
             cancellationToken);
-        if (routingReason is null)
+        routingReason = string.Join(" ", new[] { clientChoiceReason, routingReason }.Where(text => !string.IsNullOrWhiteSpace(text)));
+        if (routingReason.Length == 0)
         {
             return;
         }

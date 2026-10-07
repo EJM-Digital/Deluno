@@ -71,6 +71,12 @@ public static class ImportFailurePolicy
     /// <summary>Downloaded fine; Deluno could not work out which title it is.</summary>
     public const string Unmatched = "unmatched";
 
+    /// <summary>
+    /// The release is for another show of the same name, or carries another episode's title (#1166, #1173). Any
+    /// copy of that release is just as wrong, so it is refused at once.
+    /// </summary>
+    public const string WrongRelease = "wrongRelease";
+
     /// <summary>Failed, with no recorded reason.</summary>
     public const string ImportFailed = "importFailed";
 
@@ -190,7 +196,7 @@ public static class ImportFailurePolicy
     [
         NoVideoStream, LikelySample, UnsupportedFile,
         MediaProbeRejected, MediaProbeUnreadable,
-        Unmatched, ImportFailed, ReplacementRejected,
+        Unmatched, WrongRelease, ImportFailed, ReplacementRejected,
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
         ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure,
@@ -204,7 +210,7 @@ public static class ImportFailurePolicy
     {
         // Deluno has read the file and knows what it is. A second attempt at
         // the same release fetches the same bytes.
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected => BlockDecision.Immediately,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or WrongRelease => BlockDecision.Immediately,
 
         // The release claimed to be an upgrade and, on inspection, was lower
         // resolution or a shorter cut than what is already held. It
@@ -270,7 +276,7 @@ public static class ImportFailurePolicy
     /// </summary>
     public static string CategoryFor(string reasonCode) => reasonCode switch
     {
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure or DeadOrBrokenLink or DownloadIntegrityFailed => FailureCategories.BadFile,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or WrongRelease or ProcessorRejected or ManualFailure or DeadOrBrokenLink or DownloadIntegrityFailed => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
         Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled or ClientReportedFailure => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup
