@@ -157,10 +157,17 @@ public sealed class DelunoServer : IDisposable
         _app.UseStaticFiles();
         _app.UseDelunoCorrelation();
 
+        // Routing first, so the sign-in check below can see which endpoint a
+        // request is for and let a public one (the poster route, #1146) through.
+        _app.UseRouting();
+
         _app.Use(async (context, next) =>
         {
             var path = context.Request.Path;
-            if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
+            // Posters are long-cached files; no-store would stop the browser
+            // keeping them, exactly as in Deluno.Host.
+            if ((path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
+                 !path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase)) ||
                 path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
             {
                 context.Response.Headers.CacheControl = "no-store";
@@ -168,27 +175,7 @@ public sealed class DelunoServer : IDisposable
             await next();
         });
 
-        _app.Use(async (context, next) =>
-        {
-            var path = context.Request.Path;
-            var requiresAuth =
-                (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
-                 !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)) ||
-                path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
-
-            if (!requiresAuth) { await next(); return; }
-
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
-            if (denied is not null) { await denied.ExecuteAsync(context); return; }
-
-            var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveScopes(path, context.Request.Method));
-            if (scopeDenied is not null) { await scopeDenied.ExecuteAsync(context); return; }
-
-            await next();
-        });
+        _app.UseDelunoSignInGate(ResolveScopes);
 
         // The same map Deluno.Host uses. This was fifteen hand-maintained
         // calls where the host made twenty-three, so the installed app had no
