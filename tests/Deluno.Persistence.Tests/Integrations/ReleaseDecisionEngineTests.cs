@@ -1186,6 +1186,57 @@ public sealed class ReleaseDecisionEngineTests
         }
     }
 
+    private static ReleasePreferencePlan QualityLadderPlan()
+        => new(
+            Id: "ladder-test",
+            Version: "1",
+            MediaType: "tv",
+            Families:
+            [
+                new PreferenceFamily(
+                    "quality",
+                    "Quality",
+                    1,
+                    PreferenceIntent.Ranked,
+                    [
+                        new PreferenceFamilyLevel("web-2160", 0, ["quality.web-2160p"]),
+                        new PreferenceFamilyLevel("web-1080", 1, ["quality.web-1080p"])
+                    ],
+                    TargetLevelId: "web-2160")
+            ],
+            DimensionOrder: ["quality"]);
+
+    private static ReleaseDecision DecideLadder(string releaseName, string quality, string currentQuality)
+        => ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: releaseName,
+            Quality: quality,
+            CurrentQuality: currentQuality,
+            TargetQuality: "WEB 2160p",
+            SizeBytes: 8_000_000_000,
+            Seeders: 60,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: QualityLadderPlan(),
+            CurrentFilePresent: true));
+
+    [Fact]
+    public void Decide_sends_a_higher_quality_tier_on_the_installed_files_known_quality_without_probe_evidence()
+    {
+        var decision = DecideLadder("Show.S01E01.2160p.WEB-DL.DDP5.1.H.265-GRP", "WEB 2160p", "WEB 1080p");
+
+        Assert.True(decision.Status == "preferred", $"{decision.Status}: {decision.Summary} | {string.Join("; ", decision.RiskFlags)}");
+        Assert.DoesNotContain(decision.RiskFlags, risk => risk.Contains("cannot prove", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_still_holds_a_same_quality_candidate_without_probe_evidence()
+    {
+        var decision = DecideLadder("Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP", "WEB 1080p", "WEB 1080p");
+
+        Assert.Equal("held", decision.Status);
+    }
+
     private static ReleasePreferencePlan SnapshotPlan()
         => new(
             Id: "snapshot-test",
