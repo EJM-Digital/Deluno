@@ -352,6 +352,15 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// One-off repair (#1174): a library file linked to several episodes of a show
+    /// when its name says which one(s). Keeps the episode(s) the name gives, clears
+    /// the wrong links (file, size, quality; wanted again as Missing), and returns
+    /// what was cleared so the caller can write it to Activity. Safe to run again.
+    /// </summary>
+    Task<IReadOnlyList<WrongEpisodeFileLinkRepair>> RepairWrongEpisodeFileLinksAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<WrongEpisodeFileLinkRepair>>([]);
+
+    /// <summary>
     /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
     /// (#1070). One answer per item, in order.
     /// </summary>

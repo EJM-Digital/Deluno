@@ -1301,6 +1301,13 @@ public sealed class ExistingLibraryImportService(
             SeriesNumberingSchemes.Scene
         })
         {
+            // #1174: an explicit SxxEyy name is for those episodes only.
+            if (scheme != SeriesNumberingSchemes.Scene &&
+                SeriesNumberingResolver.NamesSeasonAndEpisode(filePath))
+            {
+                continue;
+            }
+
             var parsed = SeriesNumberingResolver.ParseFileName(filePath, scheme);
             foreach (var episode in parsed.Matches)
             {
