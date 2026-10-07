@@ -76,3 +76,12 @@ describe("describeSearchNow (#594)", () => {
     expect(describeSearchNow({ outcome: "checked" })).toBeNull();
   });
 });
+
+describe("posterSearchResult (#1156)", () => {
+  it("says where a release went, or why nothing happened", async () => {
+    const { posterSearchResult } = await import("./search-reasons");
+    expect(posterSearchResult({ releaseName: "X", dispatchStatus: "sent", downloadClientName: "qBittorrent" }, false)).toBe("Sent to qBittorrent");
+    expect(posterSearchResult({ outcome: "checked" }, true)).toBe("Nothing better found");
+    expect(posterSearchResult({ outcome: "checked" }, false)).toBe("Nothing found yet");
+  });
+});

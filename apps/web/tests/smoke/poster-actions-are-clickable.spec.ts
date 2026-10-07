@@ -27,6 +27,10 @@ test("clicking a poster's Search icon runs the search and does not open the titl
 
     expect(page.url()).toBe(urlBefore);
 
+    // The poster says what the search did, in words, and it stays readable after the pointer moves off (#1156).
+    const result = page.getByRole("status", { name: `Result for ${title}` });
+    await expect(result).toHaveText(/^(Sent to .+|Nothing found yet|Nothing better found|Found one, .+|Your download client refused it)$/);
+
     // The rest of the poster still opens the title.
     // Low on the poster: clear of the select circle in the top-left corner and the centred action icons.
     const box = await open.boundingBox();

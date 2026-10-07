@@ -230,6 +230,9 @@ export function PathInput({
     }
   }
 
+  // Only the examples that make sense on the server's own platform. Until the
+  // server has answered we do not know, so none are offered yet.
+  const serverIsWindows = browserData?.windows;
   const dockerPresets = [
     "/downloads",
     "/data/downloads",
@@ -305,7 +308,7 @@ export function PathInput({
       ) : null}
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="flex max-w-2xl flex-col gap-0 p-0" aria-label={browseTitle}>
+        <SheetContent side="right" className="flex max-w-2xl flex-col gap-0 p-0" aria-label={browseTitle} description="Browse the folders on the Deluno server and choose the one to use, or type a path.">
           <div className="border-b border-hairline px-(--tile-pad) py-[calc(var(--tile-pad)*0.85)]">
             <div className="flex items-start justify-between gap-(--grid-gap) pr-10">
               <div className="space-y-1">
@@ -314,7 +317,7 @@ export function PathInput({
                   {browseTitle}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Browse folders visible to the Deluno server, or enter a Docker, NAS, UNC, or mounted path manually.
+                  Pick the folder Deluno should use. These are the folders the Deluno server can see, which are not always the ones on this device.
                 </p>
               </div>
               {browserData?.currentPath ? (
@@ -331,22 +334,25 @@ export function PathInput({
           </div>
 
           <div className="border-b border-hairline px-(--tile-pad) py-[calc(var(--tile-pad)*0.7)]">
-            <div className="mb-3 grid gap-2 md:grid-cols-3">
+            <div className="mb-3 grid gap-2 md:grid-cols-2">
               <PathModeCard
                 icon={Server}
                 title="Server browse"
                 copy="Shows drives and folders the Deluno backend can access."
               />
-              <PathModeCard
-                icon={TerminalSquare}
-                title="Docker / container"
-                copy="Use container paths like /downloads or /media when Deluno runs in Docker."
-              />
-              <PathModeCard
-                icon={Network}
-                title="Network / UNC"
-                copy="Use paths such as \\\\nas\\media when the server account can access them."
-              />
+              {serverIsWindows ? (
+                <PathModeCard
+                  icon={Network}
+                  title="Network share"
+                  copy={"Use a path such as \\\\nas\\media when the account Deluno runs as can open it."}
+                />
+              ) : (
+                <PathModeCard
+                  icon={TerminalSquare}
+                  title="Docker / container"
+                  copy="Use container paths like /downloads or /media when Deluno runs in Docker."
+                />
+              )}
             </div>
 
             <div className="mb-3 rounded-2xl border border-hairline bg-surface-1 p-3">
@@ -354,7 +360,7 @@ export function PathInput({
                 <Input
                   value={manualPath}
                   onChange={(event) => setManualPath(event.target.value)}
-                  placeholder="Type or paste a path, e.g. /data/media or \\\\nas\\media"
+                  placeholder={serverIsWindows ? "Type or paste a path, e.g. D:\\Media or \\\\nas\\media" : "Type or paste a path, e.g. /data/media"}
                   className="font-mono"
                 />
                 <Button type="button" onClick={handleManualUse} disabled={!manualPath.trim()} className="shrink-0">
@@ -376,7 +382,7 @@ export function PathInput({
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {[...dockerPresets, ...windowsPresets].map((presetPath) => (
+                {(serverIsWindows === undefined ? [] : serverIsWindows ? windowsPresets : dockerPresets).map((presetPath) => (
                   <Button
                     key={presetPath}
                     type="button"

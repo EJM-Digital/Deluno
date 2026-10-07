@@ -1171,6 +1171,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 result.IndexerName,
                 result.DispatchStatus,
                 result.DispatchMessage,
+                result.DownloadClientName,
                 failures = result.Failures ?? [],
                 candidates = MediaSearchCandidateView.ForAll(result.Candidates)
             });

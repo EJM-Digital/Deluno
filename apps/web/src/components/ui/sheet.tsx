@@ -11,13 +11,19 @@ export function SheetContent({
   className,
   children,
   side = "right",
+  description,
   ...props
-}: Dialog.DialogContentProps & { side?: "left" | "right" | "bottom" }) {
+}: Dialog.DialogContentProps & {
+  side?: "left" | "right" | "bottom";
+  /** What the panel is for, read out to screen readers. Defaults to its label. */
+  description?: string;
+}) {
   const isBottom = side === "bottom";
   const accessibleLabel =
     typeof props["aria-label"] === "string" && props["aria-label"].trim().length > 0
       ? props["aria-label"]
       : "Panel";
+  const accessibleDescription = description ?? (accessibleLabel === "Panel" ? "Details and actions." : `Details and actions for ${accessibleLabel}.`);
 
   return (
     <Dialog.Portal>
@@ -47,7 +53,7 @@ export function SheetContent({
       >
         <Dialog.Title className="sr-only">{accessibleLabel}</Dialog.Title>
         <Dialog.Description className="sr-only">
-          Use this panel to review details and take related actions.
+          {accessibleDescription}
         </Dialog.Description>
         {children}
         <Dialog.Close

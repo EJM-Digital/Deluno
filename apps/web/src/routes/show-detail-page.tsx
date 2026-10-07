@@ -2121,7 +2121,6 @@ export function ShowDetailPage() {
         footer={
           <DrawerFooter
             state="clean"
-            note={openEpisode?.wantedReason}
             readOnly
             saveLabel="Close"
             onCancel={() => setOpenEpisodeId(null)}
@@ -2253,7 +2252,7 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Quality cutoff met", value: openEpisode.qualityCutoffMet ? "Yes" : "No" },
                   { label: "Last searched", value: openEpisode.lastSearchUtc ? formatPreferenceDateTime(openEpisode.lastSearchUtc, preferences) : "Never" },
-                  ...(openEpisode.lastSearchResult ? [{ label: "What happened", value: plainSearchResult(openEpisode.lastSearchResult) }] : []),
+                  ...(openEpisode.lastSearchResult && plainSearchResult(openEpisode.lastSearchResult).trim() !== (openEpisode.wantedReason ?? "").trim() ? [{ label: "What happened", value: plainSearchResult(openEpisode.lastSearchResult) }] : []),
                   {
                     label: "Next eligible search",
                     value: openEpisode.nextEligibleSearchUtc ? formatPreferenceDateTime(openEpisode.nextEligibleSearchUtc, preferences) : "As soon as a cycle runs"
