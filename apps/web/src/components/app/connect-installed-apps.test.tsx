@@ -175,3 +175,44 @@ describe("Weir account (#1061, #968)", () => {
     expect(screen.queryByLabelText("Weir password")).toBeNull();
   });
 });
+
+describe("The panel follows the connections (#1130)", () => {
+  afterEach(() => fetchJson.mockReset());
+
+  it("lists the apps as a table with a name, a status and an action column", async () => {
+    fetchJson.mockResolvedValueOnce([qbittorrent, nzbget]);
+    show();
+
+    await screen.findByRole("button", { name: "Connect qBittorrent" });
+    expect(screen.getAllByRole("row").length).toBeGreaterThanOrEqual(3); // header + one per app
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
+  });
+
+  it("tells the screen each time one more app is connected, so its table can show it", async () => {
+    fetchJson
+      .mockResolvedValueOnce([qbittorrent, nzbget])
+      .mockResolvedValueOnce({ kind: "qbittorrent", name: "qBittorrent", healthy: true, message: "qBittorrent is connected." })
+      .mockResolvedValueOnce([{ ...qbittorrent, connected: true }, nzbget]);
+    const onConnected = vi.fn();
+    show({ onConnected });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect qBittorrent" }));
+
+    await waitFor(() => expect(onConnected).toHaveBeenCalledTimes(1));
+    expect(await screen.findAllByText("Connected")).toHaveLength(2);
+  });
+
+  it("gets out of the way once everything is connected, saying so in one line", async () => {
+    fetchJson
+      .mockResolvedValueOnce([qbittorrent])
+      .mockResolvedValueOnce({ kind: "qbittorrent", name: "qBittorrent", healthy: true, message: "qBittorrent is connected." })
+      .mockResolvedValueOnce([{ ...qbittorrent, connected: true }]);
+    show({ hideConnected: true });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect qBittorrent" }));
+
+    expect(await screen.findByText("qBittorrent is connected.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect all" })).toBeNull();
+    expect(screen.queryByRole("row")).toBeNull();
+  });
+});

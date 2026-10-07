@@ -1065,6 +1065,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           <DetectedComponents
             category="download-client"
             configuredKinds={clients.map((item) => item.protocol)}
+            onConnected={() => revalidator.revalidate()}
             onUse={(status) => openPrefilledClient(status)}
             onNeedsSignIn={(status, result) => openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false)}
           />
