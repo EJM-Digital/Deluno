@@ -87,6 +87,7 @@ GET /api/download-clients/orphans
 GET /api/download-clients/path-mappings
 GET /api/download-clients/telemetry
 GET /api/download-clients/throughput
+GET /api/download-clients/usenet-provider
 GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview
 GET /api/download-clients/{id}/path-mappings
 GET /api/download-dispatches
@@ -307,11 +308,13 @@ POST /api/download-clients/leftovers/cleanup
 POST /api/download-clients/orphans/keep
 POST /api/download-clients/orphans/remove
 POST /api/download-clients/test
+POST /api/download-clients/usenet-provider
 POST /api/download-clients/{clientId}/categories/check
 POST /api/download-clients/{clientId}/queue/actions
 POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore
 POST /api/download-clients/{clientId}/queue/{queueItemId}/remove
 POST /api/download-clients/{clientId}/resume
+POST /api/download-clients/{clientId}/reveal-login
 POST /api/download-clients/{clientId}/warnings/clear
 POST /api/download-clients/{clientId}/webhook
 POST /api/download-clients/{id}/path-mappings
