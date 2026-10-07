@@ -37,6 +37,56 @@ public sealed class FolderChainTests
     }
 
     [Fact]
+    public async Task Where_it_downloads_is_checked_apart_from_where_it_finishes()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: true);
+        var incomplete = Path.Combine(Path.GetTempPath(), "deluno-incomplete-ok");
+        client.Result = Ready(scene.Downloads, incomplete);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var link = Link(report, "incomplete");
+        Assert.Equal("ok", link.GetProperty("status").GetString());
+        Assert.Contains("keeps", link.GetProperty("message").GetString());
+        Assert.Equal(incomplete, report.GetProperty("clients")[0].GetProperty("incompleteFolder").GetString());
+        Assert.True(report.GetProperty("allMatch").GetBoolean(), report.ToString());
+    }
+
+    [Theory]
+    [InlineData("", "the same as")]
+    [InlineData("partial", "inside")]
+    public async Task An_in_progress_folder_that_is_or_sits_inside_the_finished_folder_is_flagged(string below, string how)
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: true);
+        client.Result = Ready(scene.Downloads, below.Length == 0 ? scene.Downloads : Path.Combine(scene.Downloads, below));
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var link = Link(report, "incomplete");
+        Assert.Equal("problem", link.GetProperty("status").GetString());
+        Assert.Contains(how, link.GetProperty("message").GetString());
+        Assert.Contains("Half-finished files", link.GetProperty("message").GetString());
+        Assert.False(report.GetProperty("allMatch").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_client_that_does_not_say_where_it_downloads_is_listed_as_not_known()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: true);
+        client.Result = Ready(scene.Downloads) with { IncompletePath = null };
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        Assert.Equal("unknown", Link(report, "incomplete").GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task A_library_with_no_processor_expects_a_folder_in_the_singular()
     {
         var client = new FakeClient();
@@ -186,8 +236,13 @@ public sealed class FolderChainTests
     private static IEnumerable<string?> Steps(JsonElement report)
         => report.GetProperty("libraryLinks").EnumerateArray().Select(link => link.GetProperty("step").GetString());
 
-    private static DownloadClientCategoryCheckResult Ready(string savePath)
-        => new("c", "Fake", "movies", DownloadClientCategoryStatuses.Ready, $"Fake saves movies to {savePath}.", Supported: true, Found: true, SavePath: savePath);
+    /// <summary>A client that finishes in <paramref name="savePath"/> and (unless told otherwise) keeps downloads in progress in a folder of its own (#1164).</summary>
+    private static DownloadClientCategoryCheckResult Ready(string savePath, string? incompletePath = null)
+        => new("c", "Fake", "movies", DownloadClientCategoryStatuses.Ready, $"Fake saves movies to {savePath}.", Supported: true, Found: true, SavePath: savePath,
+            IncompletePath: incompletePath ?? Path.Combine(Path.GetTempPath(), "deluno-incomplete-" + Guid.NewGuid().ToString("N")));
+
+    private static JsonElement Link(JsonElement report, string step)
+        => report.GetProperty("clients")[0].GetProperty("links").EnumerateArray().First(link => link.GetProperty("step").GetString() == step);
 
     private static async Task<JsonElement> ChainAsync(ApplicationTestHost app, string libraryId)
     {
