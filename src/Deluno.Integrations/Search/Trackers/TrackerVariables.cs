@@ -30,6 +30,13 @@ public static class TrackerVariables
 
             var given = connection.Settings.GetValueOrDefault(setting.Name);
             var value = string.IsNullOrEmpty(given) ? setting.Default : given;
+            // Switches that only made results readable to other apps: Deluno needs
+            // them on, so it turns them on itself and does not ask (#1137).
+            if (TrackerSettingWording.AlwaysOn.Contains(setting.Name))
+            {
+                value = "true";
+            }
+
             variables[".Config." + setting.Name] = setting.Type switch
             {
                 "checkbox" => IsChecked(value) ? True : null,
