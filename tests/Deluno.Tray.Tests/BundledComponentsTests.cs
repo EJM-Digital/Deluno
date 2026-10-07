@@ -120,7 +120,7 @@ public sealed class BundledComponentsTests
         // (.../releases/latest), which downloads as HTML far short of
         // minimumBytes -- exactly the clean-VM failure this fixes.
         Assert.Null(nzbget.Url);
-        Assert.Equal("nzbget/nzbget", nzbget.GithubRepo);
+        Assert.Equal("nzbgetcom/nzbget", nzbget.GithubRepo);
         Assert.False(string.IsNullOrWhiteSpace(nzbget.GithubAssetPattern));
     }
 

@@ -39,13 +39,20 @@ public sealed class InstalledComponentWirer(
     /// <param name="DefaultPassword">The app's own shipped password, used when the installer generated none (#1061).</param>
     private sealed record ClientRecipe(string Name, string Protocol, string MoviesCategory, string TvCategory, bool NeedsSignIn, string? DefaultUsername = null, string? DefaultPassword = null);
 
+    /// <summary>The categories come from <see cref="InstalledClientCategories"/>, the ones the installer creates in the client (#1133).</summary>
+    private static ClientRecipe Recipe(string name, string protocol, string kind, bool needsSignIn, string? username = null, string? password = null)
+    {
+        var (movies, tv) = InstalledClientCategories.For(kind);
+        return new ClientRecipe(name, protocol, movies, tv, needsSignIn, username, password);
+    }
+
     private static readonly IReadOnlyDictionary<string, ClientRecipe> Clients = new Dictionary<string, ClientRecipe>(StringComparer.OrdinalIgnoreCase)
     {
-        ["qbittorrent"] = new("qBittorrent", "qbittorrent", "deluno-movies", "deluno-tv", true),
-        ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", false),
-        ["deluge"] = new("Deluge", "deluge", "deluno-movies", "deluno-tv", false, null, "deluge"),
-        ["sabnzbd"] = new("SABnzbd", "sabnzbd", "Movies", "TV", true),
-        ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", false, "nzbget", "tegbzn6789")
+        ["qbittorrent"] = Recipe("qBittorrent", "qbittorrent", "qbittorrent", true),
+        ["transmission"] = Recipe("Transmission", "transmission", "transmission", false),
+        ["deluge"] = Recipe("Deluge", "deluge", "deluge", false, null, "deluge"),
+        ["sabnzbd"] = Recipe("SABnzbd", "sabnzbd", "sabnzbd", true),
+        ["nzbget"] = Recipe("NZBGet", "nzbget", "nzbget", false, "nzbget", "tegbzn6789")
     };
 
 

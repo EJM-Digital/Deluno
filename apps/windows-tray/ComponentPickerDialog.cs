@@ -1,4 +1,4 @@
-using Deluno.Api.Network;
+﻿using Deluno.Api.Network;
 
 namespace Deluno.Tray;
 
@@ -22,6 +22,18 @@ public sealed class ComponentPickerDialog : Form
     private readonly Button _btnInstall;
     private readonly Button _btnSkip;
     private readonly Button _btnLicences;
+    private readonly Label _lblFolders;
+    private readonly Label _lblCompleted;
+    private readonly TextBox _completedRoot;
+    private readonly Button _btnBrowseCompleted;
+    private readonly Label _lblIncomplete;
+    private readonly TextBox _incompleteRoot;
+    private readonly Button _btnBrowseIncomplete;
+    private readonly ListView _progressList;
+    private readonly Label _summary;
+    private readonly Button _btnOpen;
+    private readonly Button _btnClose;
+    private readonly Dictionary<string, ListViewItem> _progressRows = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(BundledComponentSpec Spec, bool AlreadyInstalled)> _entries;
     private readonly ComponentInstallService _installer;
 
@@ -36,7 +48,7 @@ public sealed class ComponentPickerDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(460, 400);
+        ClientSize = new Size(460, 500);
         Font = new Font("Segoe UI", 9f);
 
         var lblTitle = new Label
@@ -80,24 +92,83 @@ public sealed class ComponentPickerDialog : Form
             }
         };
 
-        _btnLicences = new Button { Text = "View licences", Location = new Point(16, 252), Size = new Size(130, 26) };
+        _btnLicences = new Button { Text = "View licences", Location = new Point(16, 250), Size = new Size(130, 26) };
         _btnLicences.Click += (_, _) => ShowLicences();
+
+        var layout = DownloadLayout.Default();
+        _lblFolders = new Label
+        {
+            Text = "Where the download clients you tick save their files. Deluno sets every one of them to these.",
+            Location = new Point(16, 288),
+            Size = new Size(428, 34)
+        };
+        _lblCompleted = new Label { Text = "Finished downloads (a Movies and a TV folder go inside)", AutoSize = true, Location = new Point(16, 326) };
+        _completedRoot = new TextBox { Text = layout.CompletedRoot, Location = new Point(16, 346), Size = new Size(338, 23) };
+        _btnBrowseCompleted = new Button { Text = "Browseâ€¦", Location = new Point(362, 345), Size = new Size(82, 25) };
+        _btnBrowseCompleted.Click += (_, _) => Browse(_completedRoot);
+        _lblIncomplete = new Label { Text = "Downloads in progress (one folder per client goes inside)", AutoSize = true, Location = new Point(16, 376) };
+        _incompleteRoot = new TextBox { Text = layout.IncompleteRoot, Location = new Point(16, 396), Size = new Size(338, 23) };
+        _btnBrowseIncomplete = new Button { Text = "Browseâ€¦", Location = new Point(362, 395), Size = new Size(82, 25) };
+        _btnBrowseIncomplete.Click += (_, _) => Browse(_incompleteRoot);
 
         _status = new Label
         {
-            Location = new Point(16, 288),
-            Size = new Size(428, 60),
+            Location = new Point(16, 426),
+            Size = new Size(428, 32),
             ForeColor = SystemColors.GrayText,
             Text = "Each ticked item runs its own installer, downloaded from the project's official source and verified before it runs."
         };
 
-        _btnInstall = new Button { Text = "Install selected", Location = new Point(216, 360), Size = new Size(120, 28) };
+        _btnInstall = new Button { Text = "Install selected", Location = new Point(216, 462), Size = new Size(120, 28) };
         _btnInstall.Click += async (_, _) => await RunInstallAsync();
 
-        _btnSkip = new Button { Text = "Skip", DialogResult = DialogResult.Cancel, Location = new Point(344, 360), Size = new Size(100, 28) };
+        _btnSkip = new Button { Text = "Skip", DialogResult = DialogResult.Cancel, Location = new Point(344, 462), Size = new Size(100, 28) };
 
-        Controls.AddRange([lblTitle, _list, _btnLicences, _status, _btnInstall, _btnSkip]);
+        // The progress and finish view (#1140), shown in place of the picker once Install is pressed.
+        _progressList = new ListView
+        {
+            Location = new Point(16, 44),
+            Size = new Size(428, 220),
+            View = View.Details,
+            FullRowSelect = true,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            Visible = false
+        };
+        _progressList.Columns.Add("Component", 110);
+        _progressList.Columns.Add("What is happening", 300);
+        _summary = new Label { Location = new Point(16, 272), Size = new Size(428, 150), Visible = false };
+        _btnOpen = new Button { Text = "Open Deluno", Location = new Point(216, 462), Size = new Size(120, 28), Visible = false, Enabled = false };
+        _btnOpen.Click += (_, _) => OpenDeluno();
+        _btnClose = new Button { Text = "Close", DialogResult = DialogResult.OK, Location = new Point(344, 462), Size = new Size(100, 28), Visible = false, Enabled = false };
+
+        Controls.AddRange([lblTitle, _list, _btnLicences, _lblFolders, _lblCompleted, _completedRoot, _btnBrowseCompleted, _lblIncomplete, _incompleteRoot, _btnBrowseIncomplete,
+            _status, _btnInstall, _btnSkip, _progressList, _summary, _btnOpen, _btnClose]);
         CancelButton = _btnSkip;
+        _title = lblTitle;
+    }
+
+    private Label? _title;
+
+    private static void Browse(TextBox target)
+    {
+        using var folders = new FolderBrowserDialog { SelectedPath = target.Text, UseDescriptionForTitle = true, Description = "Choose a folder" };
+        if (folders.ShowDialog() == DialogResult.OK)
+        {
+            target.Text = folders.SelectedPath;
+        }
+    }
+
+    private static void OpenDeluno()
+    {
+        // Only because the person pressed the button. Deluno may still be starting; the page loads once it is up.
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://localhost:{AppSettings.Load().Port}") { UseShellExecute = true });
+        }
+        catch
+        {
+            // Nothing to do: the tray's Open Deluno does the same.
+        }
     }
 
     private void ShowLicences()
@@ -125,33 +196,112 @@ public sealed class ComponentPickerDialog : Form
             return;
         }
 
-        _btnInstall.Enabled = false;
-        _btnSkip.Enabled = false;
+        var layout = new DownloadLayout(_completedRoot.Text.Trim(), _incompleteRoot.Text.Trim());
+        if (ticked.Any(spec => spec.Category == BundledComponentSpec.DownloadClientCategory) && layout.Problem() is { } problem)
+        {
+            _status.ForeColor = Color.Firebrick;
+            _status.Text = problem;
+            return;
+        }
+
+        ShowProgressView(ticked);
         var results = new List<ComponentInstallResult>();
         foreach (var spec in ticked)
         {
-            _status.Text = $"Installing {spec.DisplayName}…";
-            var result = await _installer.InstallAsync(spec, CancellationToken.None);
+            // On a worker thread so the window keeps repainting while an installer is hashed, run or waited on.
+            var result = await Task.Run(() => _installer.InstallAsync(spec, CancellationToken.None, progress => BeginInvoke(() => ShowProgress(progress)), layout));
             results.Add(result);
         }
 
         Results = results;
-        var failed = results.Where(r => r.Outcome is ComponentInstallOutcome.DownloadFailed or ComponentInstallOutcome.VerificationFailed or ComponentInstallOutcome.InstallerFailed).ToList();
-        _status.Text = failed.Count == 0
-            ? "Done. Deluno's setup wizard will pick these up automatically."
-            : $"{results.Count - failed.Count} of {results.Count} finished. {string.Join(" ", failed.Select(f => f.Message))}";
+        ShowFinish(ticked, results);
+    }
 
-        if (failed.Count == 0)
+    private void ShowProgressView(IReadOnlyList<BundledComponentSpec> ticked)
+    {
+        foreach (var control in new Control[] { _list, _btnLicences, _lblFolders, _lblCompleted, _completedRoot, _btnBrowseCompleted, _lblIncomplete, _incompleteRoot, _btnBrowseIncomplete, _status, _btnInstall, _btnSkip })
         {
-            DialogResult = DialogResult.OK;
-            Close();
+            control.Visible = false;
         }
-        else
+
+        _title!.Text = "Installing what you ticked. This can take a few minutes.";
+        _progressList.Visible = true;
+        _summary.Visible = true;
+        _btnOpen.Visible = true;
+        _btnClose.Visible = true;
+        // Closing the window mid-install would leave an installer running with nobody told how it went.
+        ControlBox = false;
+        CancelButton = null;
+        foreach (var spec in ticked)
         {
-            _btnSkip.Text = "Close";
-            _btnSkip.Enabled = true;
-            _btnInstall.Visible = false;
+            var row = new ListViewItem(spec.DisplayName);
+            row.SubItems.Add("Waiting");
+            _progressList.Items.Add(row);
+            _progressRows[spec.Kind] = row;
         }
+    }
+
+    private void ShowProgress(ComponentProgress progress)
+    {
+        if (!_progressRows.TryGetValue(progress.Kind, out var row))
+        {
+            return;
+        }
+
+        row.SubItems[1].Text = Describe(progress);
+        row.ForeColor = progress.Stage == ComponentStage.Failed ? Color.Firebrick : SystemColors.WindowText;
+    }
+
+    /// <summary>The words shown for one step: what is being done, or, for a failure, why.</summary>
+    internal static string Describe(ComponentProgress progress) => progress.Stage switch
+    {
+        ComponentStage.Waiting => "Waiting",
+        ComponentStage.Downloading => "Downloading…",
+        ComponentStage.Checking => "Checking it is the genuine installer…",
+        ComponentStage.Installing => "Installing…",
+        ComponentStage.Starting => "Started, waiting until it answers…",
+        ComponentStage.SettingUp => "Setting up its categories and folders…",
+        ComponentStage.Done => string.IsNullOrWhiteSpace(progress.Detail) ? "Done" : progress.Detail!,
+        _ => $"Failed: {progress.Detail}"
+    };
+
+    private void ShowFinish(IReadOnlyList<BundledComponentSpec> ticked, IReadOnlyList<ComponentInstallResult> results)
+    {
+        _title!.Text = "Finished.";
+        _summary.Text = Summarise(ticked, results);
+        _btnOpen.Enabled = true;
+        _btnClose.Enabled = true;
+        ControlBox = true;
+        AcceptButton = _btnOpen;
+    }
+
+    /// <summary>What was installed and what was not, in plain words, for the finish window (#1140).</summary>
+    internal static string Summarise(IReadOnlyList<BundledComponentSpec> ticked, IReadOnlyList<ComponentInstallResult> results)
+    {
+        string NameOf(ComponentInstallResult result) => ticked.FirstOrDefault(spec => spec.Kind == result.Kind)?.DisplayName ?? result.Kind;
+        var installed = results.Where(r => r.Outcome is ComponentInstallOutcome.Installed or ComponentInstallOutcome.AlreadyInstalled).ToList();
+        var needsSetup = results.Where(r => r.Outcome == ComponentInstallOutcome.InstalledNeedsSetup).ToList();
+        var failed = results.Except(installed).Except(needsSetup).ToList();
+
+        var lines = new List<string>();
+        if (installed.Count > 0)
+        {
+            lines.Add("Installed: " + string.Join(", ", installed.Select(NameOf)) + ".");
+        }
+
+        foreach (var result in needsSetup)
+        {
+            lines.Add($"Installed, but needs a look: {result.Message}");
+        }
+
+        foreach (var result in failed)
+        {
+            lines.Add($"Not installed: {NameOf(result)}. {result.Message}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Open Deluno to connect what was installed. If the page does not load yet, give Deluno a moment and refresh.");
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>Shown once, from first run. Never blocks first run itself on a failure here.</summary>

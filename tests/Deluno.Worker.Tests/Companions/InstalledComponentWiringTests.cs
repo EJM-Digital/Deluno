@@ -43,7 +43,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
 
     [Theory]
     [InlineData("qbittorrent", "qBittorrent", 8081, "deluno-movies", "deluno-tv", "deluno", "Zx-secret", true)]
-    [InlineData("transmission", "Transmission", 9091, "deluno-movies", "deluno-tv", null, null, false)]
+    [InlineData("transmission", "Transmission", 9091, "Movies", "TV", null, null, false)]
     // Deluge and NZBGet are given no login by the installer, so Deluno connects with the one each ships with (#1061).
     [InlineData("deluge", "Deluge", 8112, "deluno-movies", "deluno-tv", null, "deluge", false)]
     [InlineData("sabnzbd", "SABnzbd", 8080, "Movies", "TV", null, "api-key-1", true)]

@@ -76,7 +76,7 @@ public static class ConnectionUpdateDecision
             return new ConnectionUpdateOption(
                 ConnectionUpdateModes.NotChecked,
                 null,
-                $"Deluno hasn't checked {facts.Latest} yet. Read the release notes.");
+                $"Deluno hasn't checked {facts.Latest} yet, so it won't update {name} for you. To update now, update it in {name} itself. Deluno offers Update now here once a Deluno release has checked {facts.Latest}; the release notes say what changed.");
         }
 
         return new ConnectionUpdateOption(ConnectionUpdateModes.Manual, null, LooksLikeDocker(facts.Host) ? DockerHowTo : ElsewhereHowTo);

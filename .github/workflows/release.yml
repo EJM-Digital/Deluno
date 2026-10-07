@@ -66,6 +66,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/verify-ci-for-release.mjs
 
+      # The download clients the installer puts on are pinned; a pin more than a minor version behind the project, or a
+      # project that was archived, stops the release until the pin is bumped with the project's published checksum (#1131).
+      - name: The installer's pinned download clients are not stale
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-component-pins.mjs
+
   # Does not wait either: the golden path is run on this commit's own build before the tag is made, and whoever ran it
   # recorded the result as a commit status. A tag made without one fails at once, saying what to run
   # (docs/golden-path.md).
