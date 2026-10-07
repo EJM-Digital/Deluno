@@ -75,6 +75,38 @@ public sealed class ProcessorFailureReportHandlerTests
         Assert.Equal("movie-1", payload.RootElement.GetProperty("targetEntityId").GetString());
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task The_reason_and_answer_say_who_removed_the_download(bool? sourceRemoved, bool processorRemoved)
+    {
+        GivenTheDispatch();
+        BlockedRelease? refused = null;
+        _blocked.Setup(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()))
+            .Callback<BlockedRelease, CancellationToken>((release, _) => refused = release)
+            .ReturnsAsync((BlockedRelease release, CancellationToken _) => release with { Id = "blocked-1" });
+        _scheduler.Setup(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Job("search-1"));
+
+        var outcome = await Handler().HandleRejectedAsync(Report("movies", sourceRemoved), CancellationToken.None);
+
+        Assert.True(outcome.Acted);
+        if (processorRemoved)
+        {
+            Assert.Contains("and removed it", refused!.Reason, StringComparison.Ordinal);
+            Assert.Contains("and removed it", outcome.Message, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain("removed it", refused!.Reason, StringComparison.Ordinal);
+            Assert.Contains("Weir refused it", refused.Reason, StringComparison.Ordinal);
+            Assert.Contains("Deluno will remove it from qBittorrent once its sharing time is up", refused.Reason, StringComparison.Ordinal);
+            Assert.DoesNotContain("and removed it", outcome.Message, StringComparison.Ordinal);
+            Assert.Contains("left it for Deluno to remove", outcome.Message, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public async Task A_release_chosen_on_search_is_refused_but_nothing_is_searched_for_and_the_answer_says_why()
     {
@@ -244,7 +276,7 @@ public sealed class ProcessorFailureReportHandlerTests
             });
     }
 
-    private static ProcessorFailureReport Report(string mediaType)
+    private static ProcessorFailureReport Report(string mediaType, bool? sourceRemoved = null)
     {
         var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
         return new ProcessorFailureReport(
@@ -255,7 +287,8 @@ public sealed class ProcessorFailureReportHandlerTests
                 DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
             "Weir",
             "No usable audio track",
-            "guardrail");
+            "guardrail",
+            sourceRemoved);
     }
 
     private static JobQueueItem Job(string id)
