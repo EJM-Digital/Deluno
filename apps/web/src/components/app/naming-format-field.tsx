@@ -46,17 +46,17 @@ const PRESETS: Record<NamingFormatKind, FormatPreset[]> = {
   ],
   "episode-file": [
     { label: "Standard episode", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}", hint: "Severance - S01E01 - Good News About Hell", description: "Best default. Human-readable and compatible with media servers." },
-    { label: "With quality", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title} [{Quality}]", hint: "Severance - S01E01 - Good News About Hell [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
+    { label: "With quality", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title} [{Quality}]", hint: "Severance - S01E01 - Good News About Hell [WEB-DL 1080p]", description: "Adds the quality after the episode title." },
     { label: "Episode code only", value: "S{Season:00}E{Episode:00} - {Episode Title}", hint: "S01E01 - Good News About Hell", description: "Compact. Useful when files already sit inside the series folder." }
   ],
   "daily-episode-file": [
     { label: "Standard daily episode", value: "{Series Title} - {Air-Date} - {Episode Title}", hint: "The Daily Show - 2022-09-30 - Guest Episode", description: "Best default for dated shows. The date is the episode's own identity, not a season/episode guess." },
-    { label: "With quality", value: "{Series Title} - {Air-Date} - {Episode Title} [{Quality}]", hint: "The Daily Show - 2022-09-30 - Guest Episode [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
+    { label: "With quality", value: "{Series Title} - {Air-Date} - {Episode Title} [{Quality}]", hint: "The Daily Show - 2022-09-30 - Guest Episode [WEB-DL 1080p]", description: "Adds the quality after the guest or episode title." },
     { label: "Date only", value: "{Series Title} - {Air-Date}", hint: "The Daily Show - 2022-09-30", description: "Compact. Useful when a dated show rarely has a distinct episode title." }
   ],
   "anime-episode-file": [
     { label: "Standard anime episode", value: "{Series Title} - {absolute:000} - {Episode Title}", hint: "One Piece - 042 - Ship Overboard!", description: "Best default for absolute-numbered shows: one running episode count instead of season/episode." },
-    { label: "With quality", value: "{Series Title} - {absolute:000} - {Episode Title} [{Quality}]", hint: "One Piece - 042 - Ship Overboard! [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
+    { label: "With quality", value: "{Series Title} - {absolute:000} - {Episode Title} [{Quality}]", hint: "One Piece - 042 - Ship Overboard! [WEB-DL 1080p]", description: "Adds the quality after the episode's name." },
     { label: "Season and absolute", value: "{Series Title} - S{Season:00}E{Episode:00} - {absolute:000} - {Episode Title}", hint: "One Piece - S01E42 - 042 - Ship Overboard!", description: "Keeps season/episode for media servers while still recording the absolute count." }
   ],
   "destination-movie": [
@@ -156,6 +156,18 @@ const TOKENS: Record<NamingFormatKind, FormatToken[]> = {
   ]
 };
 
+/** What each kind of format names, so the help under each section says its own thing (#1162). */
+const KIND_NOUN: Record<NamingFormatKind, string> = {
+  "movie-folder": "movie folders",
+  "series-folder": "show folders",
+  "movie-file": "movie files",
+  "episode-file": "episode files",
+  "daily-episode-file": "daily-show episode files",
+  "anime-episode-file": "anime episode files",
+  "destination-movie": "movie destination folders",
+  "destination-series": "show destination folders"
+};
+
 export function NamingFormatField({
   value,
   onChange,
@@ -180,7 +192,7 @@ export function NamingFormatField({
       label: "Custom pattern",
       value: "__custom__",
       hint: "Build your own",
-      description: "Use tokens to create a format that fits your library."
+      description: `Build your own pattern for ${KIND_NOUN[kind]} from tokens.`
     }
   ];
 
@@ -200,7 +212,7 @@ export function NamingFormatField({
     <div className={cn("grid gap-3", className)}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-(length:--type-caption) font-medium text-foreground">Format</span>
-        <span className="text-(length:--type-caption) text-muted-foreground">Choose how Deluno names these files and folders.</span>
+        <span className="text-(length:--type-caption) text-muted-foreground">{`Choose how Deluno names ${KIND_NOUN[kind]}.`}</span>
       </div>
       <div
         role="radiogroup"
