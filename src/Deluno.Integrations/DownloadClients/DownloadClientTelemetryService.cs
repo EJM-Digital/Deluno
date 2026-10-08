@@ -53,7 +53,9 @@ public sealed class DownloadClientTelemetryService(
     // service built by hand, which then reads the clients itself.
     IDownloadTelemetrySnapshotStore? snapshotStore = null,
     // #1117: where the version a client reports is kept for the Connections screens.
-    IConnectionVersionStore? connectionVersions = null)
+    IConnectionVersionStore? connectionVersions = null,
+    // The live verdict is written back to the stored client, so the list and the drawer say what the Dashboard says.
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IDownloadClientTelemetryService
 {
     private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
@@ -222,6 +224,7 @@ public sealed class DownloadClientTelemetryService(
         // (#280).
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
+        var liveAnswered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var listedQueueItemIdsByClientId = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
         var outsideByClientId = new Dictionary<string, (IReadOnlyList<DownloadQueueItem> Queue, IReadOnlyList<DownloadClientHistoryItem> History)>(StringComparer.OrdinalIgnoreCase);
         var orderedClients = clients
@@ -287,6 +290,7 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await liveByClientId[client.Id];
             if (liveSnapshot is not null)
             {
+                liveAnswered.Add(client.Id);
                 // Ownership is asked about the ids this client actually
                 // reports, archived dispatches included, so it never depends
                 // on how many newer dispatches came after Deluno sent a
@@ -428,7 +432,72 @@ public sealed class DownloadClientTelemetryService(
             }).ToArray();
         }
 
+        await SyncStoredClientHealthAsync(orderedClients, healthAnnotatedSnapshots, liveAnswered, cancellationToken);
+
         return (orderedClients, result, settledDispatchesByClientId, overviewSummary, capturedUtc);
+    }
+
+    /// <summary>
+    /// One verdict for "is this client answering": the live reading. A client whose login test passed but whose
+    /// polls now fail (Deluge hung on a magnet, 9 Oct) used to stay "Healthy" in Download Clients, whose status is
+    /// the last test, while the Dashboard, which reads the live telemetry, said "not answering". The live verdict
+    /// is written to the stored client when it changes: a failing poll (after the grace the telemetry already gives
+    /// a single timeout) marks it unreachable, and a clean poll clears an unreachable mark. A "degraded" stored
+    /// by a test (for instance a Usenet client with no provider) is not touched by a clean poll.
+    /// </summary>
+    internal static (string Status, string Message, IntegrationFailure? Failure)? LiveHealthToStore(string? storedStatus, DownloadClientTelemetrySnapshot snapshot)
+    {
+        var storedUnreachable = string.Equals(storedStatus, "unreachable", StringComparison.OrdinalIgnoreCase);
+        if (snapshot.LastFailure is { } liveFailure)
+        {
+            return storedUnreachable ? null : ("unreachable", liveFailure.Summary, liveFailure);
+        }
+
+        return storedUnreachable && string.Equals(snapshot.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
+            ? ("healthy", "Answering again.", null)
+            : null;
+    }
+
+    private async Task SyncStoredClientHealthAsync(
+        IReadOnlyList<DownloadClientItem> clients,
+        IReadOnlyList<DownloadClientTelemetrySnapshot> snapshots,
+        IReadOnlySet<string> liveAnswered,
+        CancellationToken cancellationToken)
+    {
+        foreach (var client in clients)
+        {
+            if (!client.IsEnabled || !liveAnswered.Contains(client.Id))
+            {
+                continue;
+            }
+
+            var snapshot = snapshots.FirstOrDefault(item => string.Equals(item.ClientId, client.Id, StringComparison.OrdinalIgnoreCase));
+            if (snapshot is null)
+            {
+                continue;
+            }
+
+            var verdict = LiveHealthToStore(client.HealthStatus, snapshot);
+            if (verdict is null)
+            {
+                continue;
+            }
+
+            var (status, message, failure) = verdict.Value;
+            try
+            {
+                await connectionsRepository.UpdateDownloadClientHealthAsync(
+                    client.Id, status, message, failure?.LegacyCategory, null, cancellationToken, failure);
+                if (realtimeEventPublisher is not null)
+                {
+                    await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", client.Id, cancellationToken);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Writing the verdict down is a courtesy to the other screens; the poll itself carries on.
+            }
+        }
     }
 
     /// <summary>

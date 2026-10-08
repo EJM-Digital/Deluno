@@ -65,6 +65,36 @@ public sealed class AnActiveDownloadIsNeverCalledStalledByOneTimeoutTests
         Assert.Same(timedOut, DownloadClientTelemetryService.HoldLastGoodReading(clientId, timedOut));
     }
 
+    // Golden path, 9 Oct: Deluge hung on a magnet. Download Clients (the last login test) said Healthy while the
+    // Dashboard (the live poll) said "not answering". The live verdict is the one that is written down.
+    [Fact]
+    public void A_client_whose_polls_fail_is_stored_as_not_answering_even_though_its_login_test_passed()
+    {
+        var verdict = DownloadClientTelemetryService.LiveHealthToStore("healthy", Reading("c1", "degraded", failed: true));
+
+        Assert.NotNull(verdict);
+        Assert.Equal("unreachable", verdict!.Value.Status);
+        Assert.Contains("timed out", verdict.Value.Message);
+        Assert.NotNull(verdict.Value.Failure);
+    }
+
+    [Fact]
+    public void A_client_already_stored_as_not_answering_is_not_written_again_on_every_poll()
+    {
+        Assert.Null(DownloadClientTelemetryService.LiveHealthToStore("unreachable", Reading("c1", "degraded", failed: true)));
+    }
+
+    [Fact]
+    public void A_clean_poll_clears_a_not_answering_mark_but_leaves_a_degraded_that_a_test_stored()
+    {
+        var cleared = DownloadClientTelemetryService.LiveHealthToStore("unreachable", Reading("c1", "healthy", failed: false));
+        Assert.Equal("healthy", cleared!.Value.Status);
+
+        // A Usenet client with no provider yet is "degraded" from its test; a clean poll does not hide that.
+        Assert.Null(DownloadClientTelemetryService.LiveHealthToStore("degraded", Reading("c1", "healthy", failed: false)));
+        Assert.Null(DownloadClientTelemetryService.LiveHealthToStore("healthy", Reading("c1", "healthy", failed: false)));
+    }
+
     private static RecoveryQueueSnapshot Snapshot(string status, string error, double speedMbps)
         => new(status, error, "/downloads/Example.Show.S01E01", speedMbps, Now.AddHours(-1), 600, "Example.Show.S01E01.1080p-GRP", Peers: 12);
 
