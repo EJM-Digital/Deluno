@@ -5,6 +5,35 @@ using Velopack.Sources;
 
 namespace Deluno.Tray;
 
+/// <summary>Tells a feed that is simply not there from a check that really failed.</summary>
+public static class UpdateFeedErrors
+{
+    public static bool IsNotFound(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound })
+            {
+                return true;
+            }
+
+            if (current is System.Net.WebException { Response: System.Net.HttpWebResponse { StatusCode: System.Net.HttpStatusCode.NotFound } })
+            {
+                return true;
+            }
+
+            // Some layers keep only the text: "Response status code does not indicate success: 404 (Not Found)."
+            if (current is HttpRequestException or System.Net.WebException or InvalidOperationException
+                && (current.Message.Contains("404", StringComparison.Ordinal) || current.Message.Contains("Not Found", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger) : IUpdateOrchestrator
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -44,7 +73,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
             _runtime.MarkChecking();
 
-            var update = await manager.CheckForUpdatesAsync();
+            var update = await CheckQuietlyAsync(manager);
             var checkedUtc = DateTimeOffset.UtcNow;
 
             if (update is null)
@@ -97,7 +126,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
             if (_availableUpdate is null)
             {
-                var update = await manager.CheckForUpdatesAsync();
+                var update = await CheckQuietlyAsync(manager);
                 if (update is null)
                 {
                     _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
@@ -145,7 +174,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             {
                 if (_availableUpdate is null)
                 {
-                    _availableUpdate = await manager.CheckForUpdatesAsync();
+                    _availableUpdate = await CheckQuietlyAsync(manager);
                     if (_availableUpdate is null)
                     {
                         _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
@@ -206,7 +235,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             {
                 if (_availableUpdate is null)
                 {
-                    _availableUpdate = await manager.CheckForUpdatesAsync();
+                    _availableUpdate = await CheckQuietlyAsync(manager);
                     if (_availableUpdate is null)
                     {
                         _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
@@ -337,6 +366,23 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
         var restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
         _runtime.MarkDownloaded(DateTimeOffset.UtcNow, restartRequired);
+    }
+
+    /// <summary>
+    /// Asks the feed for an update. A feed that answers 404 (nothing published for this channel yet, or a repository the
+    /// updater cannot see) means there is no update, so it is not an error and not a warning in the log.
+    /// </summary>
+    private async Task<UpdateInfo?> CheckQuietlyAsync(UpdateManager manager)
+    {
+        try
+        {
+            return await manager.CheckForUpdatesAsync();
+        }
+        catch (Exception ex) when (UpdateFeedErrors.IsNotFound(ex))
+        {
+            logger.LogInformation("No update feed is published for this channel yet ({Message}); treating it as up to date.", ex.Message);
+            return null;
+        }
     }
 
     private UpdateManager GetOrCreateManager(AppSettings settings)
