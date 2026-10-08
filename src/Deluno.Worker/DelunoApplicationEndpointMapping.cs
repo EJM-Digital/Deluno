@@ -37,6 +37,7 @@ using Deluno.Worker.Dashboard;
 using Deluno.Worker.SystemReadings;
 using Deluno.Series;
 using Deluno.Movies.Testing;
+using Deluno.Worker.Testing;
 
 namespace Deluno.Worker;
 
@@ -139,6 +140,12 @@ public static class DelunoApplicationEndpointMapping
         if (configuration.GetValue<bool>("Testing:EnableLargeLibrarySeedEndpoint"))
         {
             writeEndpoints.MapDelunoMoviesLargeLibrarySeedEndpoints();
+        }
+
+        // #1178 — same guard: lets a smoke test make the server raise realtime events.
+        if (configuration.GetValue<bool>("Testing:EnableRealtimePushEndpoint"))
+        {
+            writeEndpoints.MapDelunoRealtimePushTestEndpoints();
         }
 
         return endpoints;
