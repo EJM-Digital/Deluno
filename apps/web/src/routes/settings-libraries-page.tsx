@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -65,7 +66,11 @@ export async function settingsLibrariesLoader(): Promise<LoaderData> {
   return { libraries, settings, qualityProfiles };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged", "SettingsChanged", "QualityProfileChanged"] };
+
 export function SettingsLibrariesPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { libraries, settings, qualityProfiles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const location = useLocation();

@@ -106,12 +106,11 @@ import {
  * the tab is on screen (#1081). Everything else is read when the screen opens
  * and when something it shows changes. The screen opens on what it last showed.
  */
-const ACTIVE_REFRESH = { refetchInterval: 10_000, pauseWhenHidden: true } as const;
 
 export const activitySources = defineSources({
-  jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true"), ...ACTIVE_REFRESH },
-  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[], ...ACTIVE_REFRESH },
-  dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[], ...ACTIVE_REFRESH },
+  jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true") },
+  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
+  dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[] },
   movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
   seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary }
 });

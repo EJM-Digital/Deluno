@@ -11,6 +11,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -39,7 +41,11 @@ export async function settingsQualityLoader(): Promise<LoaderData> {
   return { qualityModel: await fetchJson<QualityModelSnapshot>("/api/quality-model") };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["QualityProfileChanged"], areas: [ConfigAreas.qualityModel] };
+
 export function SettingsQualityPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { qualityModel: loaded } = useLoaderData() as LoaderData;
   const [saved, setSaved] = useState(loaded);
   const [model, setModel] = useState(loaded);

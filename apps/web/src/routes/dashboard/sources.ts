@@ -20,7 +20,6 @@ import {
   type SeriesUpcomingEpisodeItem,
   type SetupProgressItem
 } from "../../lib/api";
-import { usePollInterval } from "../../lib/realtime-state";
 import { queryClient, defineSources, useRouteSources, type RouteSource } from "../../lib/route-cache";
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
 import { sharedSources } from "../../lib/shared-sources";
@@ -50,8 +49,8 @@ export const summaryQuery = {
 } as const;
 
 export function useDashboardSummary() {
-  // A safety net for while the connection is down; with it up there is no timer at all.
-  return useQuery({ ...summaryQuery, refetchInterval: usePollInterval(60_000) });
+  // No timer: the server pushes the changed sections, and a reconnect reads the summary once.
+  return useQuery(summaryQuery);
 }
 
 /** Ask for a fresh summary now (the realtime nudge, a reconnect, a Retry). */
@@ -85,16 +84,16 @@ export const liveSources = defineSources({
   boardDispatches: source<DownloadDispatchItem[]>("dashboard-board-dispatches", "Sent downloads for the board", () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=300&includeArchived=true"), []),
   handoffs: { ...sharedSources.handoffs, fallback: [] },
   indexers: { ...sharedSources.indexers, fallback: [] },
-  // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
-  throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
+  // The speed over the last six hours: the readings the server stores, kept current by the pushed events.
+  throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }) },
   // What each indexer did today (queries, grabs, failures, when it last answered): a stored count, cached on the server for a minute.
-  scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null), refetchInterval: 60_000 },
-  // The newest Activity, for the Latest stream: read from the stored list, refreshed behind realtime as a safety net. The summary carries only eight rows, most of them routine.
-  latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []), refetchInterval: 120_000 },
+  scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null) },
+  // The newest Activity, for the Latest stream: read from the stored list, kept current by the pushed events. The summary carries only eight rows, most of them routine.
+  latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []) },
   // Download clients with their on/off switch (the summary lists only the enabled ones): a switched-off client is a grey light.
   clients: { ...sharedSources.downloadClients, fallback: [] },
   // Today's arrivals and upgrades, what was refused, requests in flight and what retention will give back: stored rows, cached on the server for five seconds.
-  liveExtras: { ...source<DashboardLiveExtras | null>("dashboard-live-extras", "Today on Live", fetchLiveExtras, null), refetchInterval: 30_000 }
+  liveExtras: { ...source<DashboardLiveExtras | null>("dashboard-live-extras", "Today on Live", fetchLiveExtras, null) }
 });
 
 export interface SetupState {

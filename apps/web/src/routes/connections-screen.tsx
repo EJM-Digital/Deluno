@@ -26,8 +26,9 @@ import {
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
-import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
-import { useLiveInterval } from "../hooks/use-live-interval";
+import { useCoalescedSourceRefresh } from "../lib/live-refresh";
+import { patchTelemetryProgress } from "../lib/download-telemetry";
+import { RealtimeGroups, useLiveEvent, useLiveWatching, useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
@@ -375,12 +376,25 @@ export function IndexersPage() {
   );
 }
 
+/**
+ * Keeps the Download Clients tab's figures moving (#1179): each pushed progress reading is written
+ * into the telemetry the tab already holds (that download's progress and speed, and the client's
+ * speed), so nothing is fetched for it. Mounted only on that tab, because watching progress makes
+ * the server read the clients every second.
+ */
+function ClientProgressFeed() {
+  useLiveWatching();
+  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (reading) => {
+    queryClient.setQueryData<DownloadTelemetryOverview | null>(indexersSources.telemetry.key, (current) => patchTelemetryProgress(current, reading) ?? null);
+  });
+  return null;
+}
+
 function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof indexersSources>; revalidator: RouteSourceState<typeof indexersSources>["revalidator"] }) {
   const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync } = data;
   const location = useLocation();
   const navigate = useNavigate();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
-  const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
   const section: Section = indexersSectionFor(location.pathname);
@@ -389,25 +403,21 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setLiveOutboundThrottle(outboundThrottle);
   }, [outboundThrottle]);
 
-  // Worker-driven (#937), not a page setInterval: this stays live at its
-  // real 5 s rate hidden or minimised instead of falling under Chrome's
-  // background timer throttling and jumping on return.
-  useLiveInterval(() => {
-    if (section !== "indexers") return;
-    void fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle")
-      .then(setLiveOutboundThrottle)
-      .catch(() => undefined);
-  }, 5000);
-
-  // Download progress only moves the figures of the download clients, so it
-  // asks for those and nothing else: not the indexers, the libraries or the routing.
-  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, () => {
-    const now = Date.now();
-    if (section === "clients" && now - lastTelemetryRefresh.current > 5000) {
-      lastTelemetryRefresh.current = now;
-      void queryClient.invalidateQueries({ queryKey: indexersSources.telemetry.key, exact: true });
-    }
-  });
+  // Find & Download follows the server (#1179): each event names the lists it moves and only those
+  // are read again. Nothing asks on a timer; a reconnect reads the screen once.
+  const refresh = useCoalescedSourceRefresh();
+  useSignalREvent("OutboundThrottleChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.outboundThrottle));
+  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.indexers, indexersSources.scoreboard, indexersSources.routing));
+  useSignalREvent("IndexerProxyChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.proxies));
+  useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.clients, indexersSources.pathMappings, indexersSources.routing, indexersSources.telemetry));
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.indexers, indexersSources.clients));
+  useSignalREvent("LibraryChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.libraries, indexersSources.routing));
+  useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, () => refresh(indexersSources.settings));
+  useSignalREvent("ConnectionChecked", RealtimeGroups.Dashboard, () => refresh(indexersSources.indexers, indexersSources.clients));
+  useLiveEvent("ClientStateChanged", () => refresh(indexersSources.clients, indexersSources.telemetry));
+  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, () => refresh(indexersSources.telemetry));
+  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, () => refresh(indexersSources.telemetry));
+  useSignalREvent("QueueItemStatusChanged", RealtimeGroups.Queue, () => refresh(indexersSources.telemetry));
 
   const telemetryByClient = useMemo(() => new Map<string, DownloadClientTelemetrySnapshot>(telemetry?.clients.map((item) => [item.clientId, item]) ?? []), [telemetry]);
   const { versions } = useConnectionVersions();
@@ -992,6 +1002,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     <div className="grid gap-(--page-gap)">
       <PageToolbar tabs={TABS} actions={toolbarAction} />
 
+      {section === "clients" ? <ClientProgressFeed /> : null}
       {section === "scoreboard" ? <IndexerScoreboard snapshot={scoreboard} /> : null}
 
       {section === "indexers" ? (

@@ -11,6 +11,8 @@
 import { TagPicker } from "../components/app/tag-picker";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { FlaskConical, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -127,7 +129,11 @@ export async function settingsDestinationRulesLoader(): Promise<LoaderData> {
   return { libraries: overview.libraries, settings: overview.settings, destinationRules, policySets: overview.policySets, tags };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged", "PolicySetChanged"], areas: [ConfigAreas.destinationRules, ConfigAreas.tags] };
+
 export function SettingsDestinationRulesPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { destinationRules, tags, settings, libraries, policySets } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const sorted = useMemo(() => [...destinationRules].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name)), [destinationRules]);

@@ -10,6 +10,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { TagPicker, joinTagList, parseTagList } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -155,7 +157,11 @@ function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) 
   );
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["IndexerChanged", "SettingsChanged"], areas: [ConfigAreas.releaseRules] };
+
 export function SettingsReleaseRulesPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { profiles, indexers, settings, ruleMode = "combine" } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [dragId, setDragId] = useState<string | null>(null);

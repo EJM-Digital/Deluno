@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCoalescedRevalidate, useLiveInterval } from "../hooks/use-live-interval";
-import { usePollInterval } from "./realtime-state";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
@@ -128,7 +127,7 @@ function snapshotFromCache(): AttentionSnapshot | null {
   };
 }
 
-export function useAttention(pollMs = 45000) {
+export function useAttention(_pollMs?: number) {
   const [snapshot, setSnapshot] = useState<AttentionSnapshot>(() => snapshotFromCache() ?? empty);
   // Guards against a second call landing while the batch below is still in
   // flight (#937). Nothing here waited its turn: the 45s ticker, every
@@ -195,9 +194,6 @@ export function useAttention(pollMs = 45000) {
     const timer = window.setTimeout(() => void load(), 400);
     return () => window.clearTimeout(timer);
   }, [load]);
-
-  // The safety-net read runs only while the realtime connection is down (#1097): connected, every change is pushed and no timer runs.
-  useLiveInterval(() => void load(), usePollInterval(pollMs));
 
   // Whatever a screen reads and finds changed (Transfers finishing a leftover
   // folder scan, Activity dismissing a failure) moves the count now, without a

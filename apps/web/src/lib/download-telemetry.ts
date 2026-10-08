@@ -1,4 +1,4 @@
-import type { DownloadClientTelemetrySnapshot } from "./api";
+import type { DownloadClientTelemetrySnapshot, DownloadTelemetryOverview } from "./api";
 
 export const downloadQueueStatuses = {
   downloading: "downloading",
@@ -126,4 +126,31 @@ export function authModeLabel(mode: string) {
     default:
       return "Auth unknown";
   }
+}
+
+/**
+ * A pushed progress reading for one download, written into the client telemetry the Download
+ * Clients tab shows (#1179): that item's progress and speed change, and the client's and the
+ * overall speed move by the difference. Returns the same object when the download is not in the
+ * overview, so the caller can leave the cache alone.
+ */
+export function patchTelemetryProgress(
+  overview: DownloadTelemetryOverview | null | undefined,
+  reading: { id: string; progress: number; speedMbps: number }
+): DownloadTelemetryOverview | null | undefined {
+  if (!overview) return overview;
+  let speedChange = 0;
+  let found = false;
+  const clients = overview.clients.map((client) => {
+    const index = client.queue.findIndex((item) => item.id === reading.id);
+    if (index < 0) return client;
+    found = true;
+    const before = client.queue[index]!;
+    const delta = reading.speedMbps - before.speedMbps;
+    speedChange += delta;
+    const queue = client.queue.map((item, position) => (position === index ? { ...item, progress: reading.progress, speedMbps: reading.speedMbps } : item));
+    return { ...client, queue, summary: { ...client.summary, totalSpeedMbps: Math.max(0, client.summary.totalSpeedMbps + delta) } };
+  });
+  if (!found) return overview;
+  return { ...overview, clients, summary: { ...overview.summary, totalSpeedMbps: Math.max(0, overview.summary.totalSpeedMbps + speedChange) } };
 }

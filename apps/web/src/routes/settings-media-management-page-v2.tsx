@@ -12,6 +12,7 @@ import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -88,7 +89,11 @@ export async function settingsMediaManagementLoader(): Promise<LoaderData> {
   return { ...overview, processorConnections };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged", "LibraryChanged"] };
+
 export function SettingsMediaManagementPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const location = useLocation();
   if (location.pathname.startsWith("/settings/import-policy")) return <ImportPolicyPage />;
   return location.pathname.startsWith("/settings/processing") ? <ProcessingWorkflowPage /> : <FileHandlingPage />;

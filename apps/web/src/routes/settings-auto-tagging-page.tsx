@@ -14,6 +14,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Play, Plus, X } from "lucide-react";
 import { TagPicker, joinTagList, parseTagList } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
@@ -85,7 +87,11 @@ const YES_NO_OPTIONS = [
   { value: "false", label: "No" }
 ];
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged", "QualityProfileChanged"], areas: [ConfigAreas.autoTagging, ConfigAreas.tags] };
+
 export function SettingsAutoTaggingPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { rules, libraries, qualityProfiles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
