@@ -23,6 +23,7 @@ const authedFetch = vi.hoisted(() => vi.fn((_path: string, _init?: RequestInit) 
 vi.mock("../../lib/use-auth", () => ({ authedFetch }));
 
 const { NotificationsBell } = await import("./notifications-bell");
+const { queryClient } = await import("../../lib/route-cache");
 
 const attention: AttentionSnapshot = {
   failedJobs: 2,
@@ -100,6 +101,7 @@ async function openPanel() {
 describe("notifications bell (#907)", () => {
   afterEach(() => {
     fetchPageItems.mockReset();
+    queryClient.clear();
     navigate.mockReset();
   });
 
@@ -260,6 +262,7 @@ describe("notifications bell (#907)", () => {
 describe("the bell shows what matters, not routine job noise (#916)", () => {
   afterEach(() => {
     fetchPageItems.mockReset();
+    queryClient.clear();
     navigate.mockReset();
   });
 
@@ -321,6 +324,7 @@ describe("the bell shows what matters, not routine job noise (#916)", () => {
 describe("the bell is two sections, with the same buttons System's Health shows (#1098)", () => {
   afterEach(() => {
     fetchPageItems.mockReset();
+    queryClient.clear();
     navigate.mockReset();
     authedFetch.mockClear();
   });

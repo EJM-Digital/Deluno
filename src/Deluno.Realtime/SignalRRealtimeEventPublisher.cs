@@ -81,21 +81,39 @@ public sealed class SignalRRealtimeEventPublisher(
         string severity,
         string createdUtc,
         CancellationToken cancellationToken)
+        => PublishActivityEventAddedAsync(new ActivityEventPush(id, message, category, severity, createdUtc), cancellationToken);
+
+    public Task PublishActivityEventAddedAsync(ActivityEventPush push, CancellationToken cancellationToken)
     {
         Enqueue(
             "ActivityEventAdded",
             RealtimeGroups.Activity,
             new
             {
-                id,
-                message,
-                category,
-                label = Deluno.Contracts.ActivityEventLabels.For(category),
-                severity,
-                createdUtc
+                id = push.Id,
+                message = push.Message,
+                category = push.Category,
+                label = Deluno.Contracts.ActivityEventLabels.For(push.Category),
+                severity = push.Severity,
+                createdUtc = push.CreatedUtc,
+                relatedEntityType = push.RelatedEntityType,
+                relatedEntityId = push.RelatedEntityId,
+                relatedJobId = push.RelatedJobId,
+                title = push.Title,
+                filePath = push.FilePath,
+                sourceName = push.SourceName,
+                reasonGroup = push.ReasonGroup,
+                type = ActivityHistory.TypeOf(push.Category),
+                source = ActivityHistory.SourceOf(push.Category),
+                outcome = ActivityHistory.OutcomeOf(push.Category),
+                detailsJson = ShortDetails(push.DetailsJson)
             });
         return Task.CompletedTask;
     }
+
+    /// <summary>The details a row opens with, only when small enough to ride along on every push.</summary>
+    private static string? ShortDetails(string? detailsJson)
+        => string.IsNullOrWhiteSpace(detailsJson) || detailsJson.Length > 4096 ? null : detailsJson;
 
     public Task PublishQueueItemAddedAsync(
         string id,

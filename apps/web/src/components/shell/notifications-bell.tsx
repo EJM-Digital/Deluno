@@ -25,6 +25,7 @@
  * Contract: GET /api/activity?pageSize=…, realtime `ActivityEventAdded`.
  */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
@@ -35,6 +36,8 @@ import { useAction } from "../../routes/dashboard/downloads-kit";
 import { AlsoWorthALook, bellRowElement } from "../../routes/dashboard/needs-you";
 import { bellRows, type BellRow } from "../../lib/bell-rows";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
+import { queryClient } from "../../lib/route-cache";
+import { activityItemFromPush, prependOnce } from "../../lib/activity-live-patch";
 import { useDisplayPreferences } from "../../lib/display-preferences";
 import { activityLinkForEvent, activityLinkForStatus } from "../../lib/activity-history";
 import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
@@ -42,6 +45,9 @@ import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
 
 const LIMIT = 10;
+
+/** The Recent list lives in the shared cache, so it can be kept current whether the panel is open or not (#1179). */
+const RECENT_KEY = ["bell", "recent"] as const;
 
 /**
  * How far back the bell reads before filtering (#916). Routine job noise
@@ -76,6 +82,8 @@ function needsAttention(severity: ActivityEventItem["severity"]): boolean {
   return severity === "error" || severity === "warning";
 }
 
+const NO_EVENTS: ActivityEventItem[] = [];
+
 export function NotificationsBell({ attention }: { attention: AttentionSnapshot }) {
   const navigate = useNavigate();
   const { preferences } = useDisplayPreferences();
@@ -96,8 +104,18 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const { leftovers, suggestions } = attention.needs.alsoWorthALook;
 
   const [open, setOpen] = useState(false);
-  const [events, setEvents] = useState<ActivityEventItem[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // Read the first time the panel opens; after that the pushes below keep it current, open or closed.
+  const recent = useQuery(
+    {
+      queryKey: RECENT_KEY,
+      queryFn: async () => bellEvents(await fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${FETCH_PAGE_SIZE}`)),
+      enabled: open,
+      staleTime: Infinity
+    },
+    queryClient
+  );
+  const events = recent.data ?? NO_EVENTS;
+  const loaded = recent.status !== "pending";
   const [anchor, setAnchor] = useState<{ top: number; right: number; width: number } | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -110,56 +128,13 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
     if (returnFocus) triggerRef.current?.focus();
   }
 
-  // Seeded once, the first time the panel is opened -- the bell sits in the
-  // shell on every screen, and most of them never open it, so there is no
-  // reason to hold its own list warm from the moment the app loads.
-  useEffect(() => {
-    if (!open || loaded) return;
-    let cancelled = false;
-    fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${FETCH_PAGE_SIZE}`)
-      .then((items) => {
-        if (cancelled) return;
-        setEvents(bellEvents(items));
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, loaded]);
-
-  // Live while open, from the same feed Activity and the dashboard ticker
-  // read. A freshly arrived envelope does not carry where the event links to
-  // (see `use-signalr.tsx`'s `ActivityEventAddedEvent`), so a brand-new row
-  // falls back to its own Activity entry until the panel is reopened and
-  // refetches the fuller shape -- the same trade the ticker already makes.
+  // A new event goes into the cached list the moment it is pushed, whether the panel is open or not. A list that was
+  // never read is left alone: opening the panel reads it, and it is complete then.
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
-    if (!open) return;
-    // A routine job's own lifecycle noise never made it worth waking up for;
-    // it is filtered out here the same as it is on the seeded fetch, rather
-    // than arriving live and then never being folded away like its seeded
-    // siblings.
+    // A routine job's own lifecycle noise never made it worth waking up for; it is filtered out here the same as it
+    // is on the first read, rather than arriving live and then never being folded away like its siblings.
     if (!mattersToTheBell(event)) return;
-    setEvents((current) => {
-      if (current.some((item) => item.id === event.id)) return current;
-      return [
-        {
-          id: event.id,
-          message: event.message,
-          category: event.category,
-          label: event.label,
-          severity: event.severity,
-          detailsJson: null,
-          relatedJobId: null,
-          relatedEntityType: null,
-          relatedEntityId: null,
-          createdUtc: event.createdUtc
-        },
-        ...current
-      ].slice(0, LIMIT);
-    });
+    queryClient.setQueryData<ActivityEventItem[]>(RECENT_KEY, (current) => (current ? prependOnce(current, activityItemFromPush(event), LIMIT) : current));
   });
 
   useEffect(() => {

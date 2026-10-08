@@ -23,12 +23,11 @@
 import { FilterChips } from "../components/ui/filter-chips";
 import { JobDrawer } from "../components/app/job-drawer";
 import type { Tone } from "../lib/status-tones";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { defineSources, queryClient, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
-import { RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ApiRequestError,
@@ -62,10 +61,10 @@ import {
   type ListColumn
 } from "../components/ui/list-card";
 import { useListColumns } from "../lib/use-list-columns";
-import { PageToolbar } from "../components/ui/page-toolbar";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
-import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, useLiveEvent, useSignalREvent } from "../lib/use-signalr";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { eventLabel } from "../lib/activity-format";
 import { recoveryDecisions, type AlertAction } from "../lib/alert-actions";
@@ -101,17 +100,14 @@ import {
 } from "../lib/season-pack-leftovers";
 
 /**
- * Active work needs a short refresh, so only the lists that move (jobs,
- * failures, events, sends) are asked again every ten seconds, and only while
- * the tab is on screen (#1081). Everything else is read when the screen opens
- * and when something it shows changes. The screen opens on what it last showed.
+ * Nothing here is read on a timer (#1179): the lists are read when the screen opens, and each one again, once,
+ * when the server says what it shows changed (see the events in ActivityPageBody). The screen opens on what it last showed.
  */
-const ACTIVE_REFRESH = { refetchInterval: 10_000, pauseWhenHidden: true } as const;
 
 export const activitySources = defineSources({
-  jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true"), ...ACTIVE_REFRESH },
-  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[], ...ACTIVE_REFRESH },
-  dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[], ...ACTIVE_REFRESH },
+  jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true") },
+  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
+  dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[] },
   movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
   seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary }
 });
@@ -181,7 +177,6 @@ const EMPTY_STATUS: Record<ActivityStatus, { title: string; description: string 
 };
 
 function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSourceData<typeof activitySources>; revalidator: RouteSourceState<typeof activitySources>["revalidator"] }) {
-  const lastDispatchRefresh = useRef(0);
   // The chosen status is in the address too, so a link can land on it (#1114). No status means All; the links
   // from before the tabs became chips still work: section=jobs is In progress, imports is Needs a decision,
   // events is All.
@@ -208,15 +203,36 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const list = { ...columnsList, sort: columnsList.sort ?? ACTIVITY_DEFAULT_SORT };
   const { filters, setFilters, clearFilters, history, events: historyEvents, folded: foldedActivity, filtered } = useActivityHistory({ enabled: historyOn, onOpenEvent: setOpenEvent, sort });
 
-  const scheduleDispatchRefresh = () => {
-    const now = Date.now();
-    if (revalidator.state !== "idle" || now - lastDispatchRefresh.current < 5_000) return;
-    lastDispatchRefresh.current = now;
-    revalidator.revalidate();
-  };
+  // Each list is read again, once, a moment after the server says what it shows changed; a burst is one read (#1179).
+  const readJobs = useCoalescedRevalidate(() => {
+    void queryClient.invalidateQueries({ queryKey: activitySources.jobs.key });
+    void queryClient.invalidateQueries({ queryKey: activitySources.failedJobs.key });
+  }, 1_000);
+  const readDispatches = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: activitySources.dispatches.key }), 1_000);
+  const readRecovery = useCoalescedRevalidate(() => {
+    void queryClient.invalidateQueries({ queryKey: activitySources.movieRecovery.key });
+    void queryClient.invalidateQueries({ queryKey: activitySources.seriesRecovery.key });
+  }, 1_000);
+  const readProcessing = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "processing"] }), 1_000);
+  const readDownloadHealth = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "download-health"] }), 1_000);
+  const readClients = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "download-client"] }), 1_500);
 
-  useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
-  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  // Open while this screen is, so the server knows someone is watching and sends these (#1179).
+  useLiveEvent("JobChanged", readJobs);
+  useLiveEvent("JourneyStageChanged", readDispatches);
+  useLiveEvent("RecoveryCaseChanged", readRecovery);
+  useLiveEvent("ProcessorHandoffChanged", readProcessing);
+  useLiveEvent("ClientStateChanged", readClients);
+  useLiveEvent("DownloadProgress", readClients);
+  useLiveEvent("QueueItemAdded", readClients);
+  useLiveEvent("QueueItemRemoved", readClients);
+  useLiveEvent("QueueItemStatusChanged", readClients);
+  useSignalREvent("DownloadHealthChanged", RealtimeGroups.Dashboard, readDownloadHealth);
+  useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, readDispatches);
+  useSignalREvent("DispatchGrabCompleted", RealtimeGroups.Queue, readDispatches);
+  useSignalREvent("DispatchDetected", RealtimeGroups.Queue, readDispatches);
+  useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, readDispatches);
+  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, readDispatches);
 
   const { dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
   // A job with another attempt coming belongs with the work in flight, not
@@ -321,20 +337,17 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       if (error instanceof ApiRequestError && error.status === 404) return [] as ProcessorHandoffItem[];
       throw error;
     }),
-    enabled: liveStep === "processing",
-    refetchInterval: 10_000
+    enabled: liveStep === "processing"
   });
   const healthRecords = useQuery({
     queryKey: ["activity-live", "download-health"],
     queryFn: () => fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=60"),
-    enabled: liveStep === "download-health",
-    refetchInterval: 10_000
+    enabled: liveStep === "download-health"
   });
   const clientTelemetry = useQuery({
     queryKey: ["activity-live", "download-client"],
     queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
-    enabled: liveStep === "download-client",
-    refetchInterval: 10_000
+    enabled: liveStep === "download-client"
   });
   const liveQuery = liveStep === "processing" ? handoffs : liveStep === "download-health" ? healthRecords : liveStep === "download-client" ? clientTelemetry : null;
   const liveEntries = useMemo<LiveStepEntry[]>(() => {
@@ -506,15 +519,6 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             onValueChange={setStatus}
             options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
           />
-        }
-      />
-
-      <PageToolbar
-        actions={
-          <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
         }
       />
 

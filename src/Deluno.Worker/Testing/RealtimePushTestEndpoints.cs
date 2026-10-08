@@ -56,11 +56,20 @@ public static class RealtimePushTestEndpoints
             }
 
             await publisher.PublishActivityEventAddedAsync(
-                request.Id ?? Guid.NewGuid().ToString("N"),
-                request.Message,
-                request.Category ?? "search",
-                request.Severity ?? "info",
-                timeProvider.GetUtcNow().ToString("O"),
+                new ActivityEventPush(
+                    request.Id ?? Guid.NewGuid().ToString("N"),
+                    request.Message,
+                    request.Category ?? "search",
+                    request.Severity ?? "info",
+                    timeProvider.GetUtcNow().ToString("O"),
+                    request.RelatedEntityType,
+                    request.RelatedEntityId,
+                    request.RelatedJobId,
+                    request.Title,
+                    request.FilePath,
+                    request.SourceName,
+                    request.ReasonGroup,
+                    request.DetailsJson),
                 cancellationToken);
             return Results.NoContent();
         });
@@ -80,6 +89,39 @@ public static class RealtimePushTestEndpoints
             }
 
             await publisher.PublishLiveEventAsync(request.EventName, request.Payload, cancellationToken);
+            return Results.NoContent();
+        });
+
+        // Any dashboard-subject or Live-subject event with a payload the test writes (AttentionChanged,
+        // ConnectivityChanged, DownloadHealthChanged, JobChanged and so on), so a screen's reaction to it
+        // can be checked with no reload.
+        endpoints.MapPost("/api/testing/realtime/event", async (
+            HttpContext httpContext,
+            [FromBody] PushEventRequest request,
+            IRealtimeEventPublisher publisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest();
+            }
+
+            object payload = (object?)request.Payload ?? new { };
+            if (string.Equals(request.Subject, "live", StringComparison.OrdinalIgnoreCase))
+            {
+                await publisher.PublishLiveEventAsync(request.Name, payload, cancellationToken);
+            }
+            else
+            {
+                await publisher.PublishDashboardEventAsync(request.Name, payload, cancellationToken);
+            }
+
             return Results.NoContent();
         });
 
@@ -110,6 +152,20 @@ public static class RealtimePushTestEndpoints
 
 public sealed record PushDownloadProgressRequest(string Id, string? Title, double Progress, double SpeedMbps, string? Eta, string? Status);
 
-public sealed record PushActivityRequest(string Message, string? Id, string? Category, string? Severity);
+public sealed record PushActivityRequest(
+    string Message,
+    string? Id,
+    string? Category,
+    string? Severity,
+    string? RelatedEntityType = null,
+    string? RelatedEntityId = null,
+    string? RelatedJobId = null,
+    string? Title = null,
+    string? FilePath = null,
+    string? SourceName = null,
+    string? ReasonGroup = null,
+    string? DetailsJson = null);
 
 public sealed record PushLiveEventRequest(string EventName, System.Text.Json.JsonElement Payload);
+
+public sealed record PushEventRequest(string Name, string? Subject, System.Text.Json.JsonElement? Payload);

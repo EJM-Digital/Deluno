@@ -245,6 +245,44 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task An_activity_push_carries_what_the_row_concerns_so_a_screen_can_draw_it_without_asking_again()
+    {
+        await StartWithAnOpeningEventAsync();
+
+        await _publisher.PublishActivityEventAddedAsync(
+            new ActivityEventPush(
+                "a9", "Imported Dune", "download.import.completed", "success", "2026-10-01T12:00:00Z",
+                "movie", "m1", "j1", "Dune", "/films/Dune.mkv", "qBittorrent", null, "{\"title\":\"Dune\"}"),
+            CancellationToken.None);
+        var pushed = (await WaitForAsync(RealtimeGroups.Activity, "ActivityEventAdded", 1)).Single();
+        var json = System.Text.Json.JsonSerializer.Serialize(pushed.Data, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        Assert.Contains("\"relatedEntityType\":\"movie\"", json);
+        Assert.Contains("\"relatedEntityId\":\"m1\"", json);
+        Assert.Contains("\"relatedJobId\":\"j1\"", json);
+        Assert.Contains("\"title\":\"Dune\"", json);
+        Assert.Contains("\"type\":\"imported\"", json);
+        Assert.Contains("\"outcome\":\"good\"", json);
+        Assert.Contains("\"detailsJson\":", json);
+    }
+
+    [Fact]
+    public async Task A_change_the_bell_counts_is_announced_on_the_dashboard_beside_its_live_event()
+    {
+        await StartWithAnOpeningEventAsync();
+        var at = _clock.GetUtcNow().ToString("O");
+
+        await _publisher.PublishRecoveryCaseChangedAsync(new RecoveryCaseChangedEvent("c1", "opened", "no_match", "Dune", "movie", null, at), CancellationToken.None);
+        await _publisher.PublishConnectivityChangedAsync(new ConnectivityChangedEvent(true, at, at, "Internet down"), CancellationToken.None);
+        await _publisher.PublishDownloadHealthChangedAsync("c1", CancellationToken.None);
+
+        Assert.Single(await WaitForAsync(RealtimeGroups.Dashboard, LiveEventNames.AttentionChanged, 1));
+        Assert.Single(await WaitForAsync(RealtimeGroups.Dashboard, LiveEventNames.ConnectivityChanged, 1));
+        Assert.Single(await WaitForAsync(RealtimeGroups.Dashboard, LiveEventNames.DownloadHealthChanged, 1));
+        Assert.Single(await WaitForAsync(LiveRealtimeSubject.Name, LiveEventNames.RecoveryCaseChanged, 1));
+    }
+
+    [Fact]
     public void Watching_makes_the_clients_asked_every_second_only_while_something_is_downloading()
     {
         Assert.Equal(TimeSpan.FromSeconds(1), DownloadProgressPublisher.NextInterval(moving: true, watched: true));
