@@ -85,7 +85,7 @@ export function applyJourneyStage(client: Cache, event: JourneyStageChangedEvent
       if (stage === "archived") return known ? list.filter((item) => item.id !== event.dispatchId) : undefined;
       const change = (item: DownloadDispatchItem): DownloadDispatchItem => {
         if (stage === "import_succeeded") return { ...item, importStatus: "imported", importCompletedUtc: event.at };
-        if (stage === "import_failed" || stage.startsWith("webhook-failed")) return { ...item, importStatus: "failed", importFailureMessage: event.detail ?? item.importFailureMessage };
+        if (stage === "import_failed" || stage.startsWith("webhook-failed")) return { ...item, importStatus: "failed", importCompletedUtc: event.at, importFailureMessage: event.detail ?? item.importFailureMessage };
         if (stage === "grab_failed") return { ...item, grabStatus: "failed", grabMessage: event.detail ?? item.grabMessage };
         if (stage === "grab_succeeded") return { ...item, grabStatus: "succeeded", grabAttemptedUtc: event.at };
         if (stage === "detection_succeeded") return { ...item, detectedUtc: event.at };
