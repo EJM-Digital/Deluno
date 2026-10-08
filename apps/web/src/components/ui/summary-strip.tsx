@@ -14,6 +14,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
+import { plainTitle } from "../../lib/plain-title";
 
 export interface SummaryCell {
   label: React.ReactNode;
@@ -67,7 +68,7 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
               {cell.value}
             </span>
             {cell.help !== undefined ? (
-              <span className="block truncate text-(length:--type-caption) text-muted-foreground">{cell.help}</span>
+              <span title={plainTitle(cell.help)} className="block truncate text-(length:--type-caption) text-muted-foreground">{cell.help}</span>
             ) : null}
             {cell.fill !== undefined ? (
               <span aria-hidden className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-surface-3">

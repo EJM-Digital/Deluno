@@ -91,6 +91,12 @@ async function seedLongData(page: Page, seriesId: string) {
       queue: [], history: [], capturedUtc: now, historyTruncated: false, clientWarnings: ["Disk is nearly full, downloads may stop."]
     }]
   })));
+  // Transfers (#1162): hand-offs whose Source / Output are long, so a cell that outgrows its row shows.
+  await page.route("**/api/integrations/processors/handoffs**", (route) => route.fulfill(json(Array.from({ length: 5 }, (_, index) => ({
+    id: `fit-handoff-${index}`, libraryId: "fit-library", mediaType: "tv", clientId: client.id, queueItemId: `fit-queue-${index}`, releaseName: LONG_RELEASE.replace("S01E01", `S01E0${index + 2}`),
+    sourcePath: `C:\\Downloads\\Completed\\TV\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}.mkv`, processorName: "A Very Long Processor Connector Name", status: "completed",
+    outputPath: `D:\\Processed Output\\Television\\${LONG_SHOW}\\Season 01\\${LONG_SHOW} - S01E0${index} - ${LONG_RELEASE}.mkv`, importJobId: null, failureMessage: null, createdUtc: now, updatedUtc: now
+  })))));
   await page.route("**/api/blocked-releases", (route) => route.request().method() === "GET"
     ? route.fulfill(json(Array.from({ length: 4 }, (_, index) => ({
         id: `fit-block-${index}`, releaseKey: `key-${index}`, releaseName: `${LONG_RELEASE}.${index}`, indexerName: indexers[0].name, mediaType: "tv", entityId: null, title: LONG_SHOW,
@@ -198,6 +204,39 @@ function measure(checkRepeats: boolean) {
       const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
       if (overlapX > 2 && overlapY > 2) found.push(`Dashboard cards overlap by ${Math.round(overlapX)}x${Math.round(overlapY)}px (${(cards[first].textContent ?? "").trim().slice(0, 20)} / ${(cards[second].textContent ?? "").trim().slice(0, 20)})`);
     }
+  }
+
+  // Text that runs out of its row: a cell taller than the row it sits in prints over the next row (#1162).
+  for (const row of Array.from(document.querySelectorAll<HTMLElement>("[role=row]"))) {
+    if (isHiddenOrTiny(row)) continue;
+    const rowBox = row.getBoundingClientRect();
+    for (const el of Array.from(row.querySelectorAll<HTMLElement>("span, p, div"))) {
+      if (!Array.from(el.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && (child.textContent ?? "").trim())) continue;
+      const box = el.getBoundingClientRect();
+      // A clamped or clipped value is cut on purpose (its full text is the tooltip or the drawer): only visible overflow prints over a neighbour.
+      let clipped = false;
+      for (let owner: HTMLElement | null = el; owner && owner !== row; owner = owner.parentElement) if (getComputedStyle(owner).overflowY !== "visible") clipped = true;
+      if (clipped) continue; // what an ancestor clips is not on screen
+      const textBottom = Math.max(box.bottom, box.top + el.scrollHeight);
+      if (box.height > 1 && textBottom > rowBox.bottom + 1) {
+        found.push(`text "${(el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 30)}" (${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 4).join(".")}) runs ${Math.round(textBottom - rowBox.bottom)}px below its row`);
+        break;
+      }
+    }
+  }
+
+  // A value the screen cuts short (an ellipsis or a line clamp) carries its full text as a tooltip, or sits in a row
+  // that opens a drawer holding it (#1168).
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+    if (el.children.length > 0 && !Array.from(el.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && (child.textContent ?? "").trim())) continue;
+    const text = (el.textContent ?? "").trim();
+    if (!text || isHiddenOrTiny(el)) continue;
+    const style = getComputedStyle(el);
+    const cutSideways = style.textOverflow === "ellipsis" && style.overflowX !== "visible" && el.scrollWidth > el.clientWidth + 1;
+    const cutTall = style.getPropertyValue("-webkit-line-clamp") !== "none" && style.overflowY !== "visible" && el.scrollHeight > el.clientHeight + 1;
+    if (!cutSideways && !cutTall) continue;
+    if (el.closest("[title], [aria-label], [role=row][tabindex], [data-fit-ignore]")) continue;
+    found.push(`cut text "${text.replace(/\s+/g, " ").slice(0, 40)}" has no tooltip and no drawer`);
   }
 
   const controls = document.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [role=button]");
@@ -331,6 +370,30 @@ test.describe("every screen fits three widths", () => {
       expect(offenders, offenders.join("\n")).toEqual([]);
     });
   }
+
+  // #1162 line 1: at 1920 a Source / Output value that runs to three lines grew its cell but not its row, and the next
+  // row's text printed over it. Long Source and Output values (seeded above) must leave every row clear of the next.
+  test("Transfers rows with long Source and Output values grow with them at 1920", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await authenticateAndNavigate(page, "/movies");
+    const { seriesId } = await seedTitles(page);
+    await seedLongData(page, seriesId);
+    await page.goto("/queue");
+    await expect(page.getByText("Processing connector").first()).toBeVisible();
+    const rows = page.locator("[role=row]").filter({ hasText: "A Very Long Processor Connector Name" });
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeGreaterThanOrEqual(3);
+    const boxes = await rows.evaluateAll((elements) => elements.map((row) => {
+      const rect = row.getBoundingClientRect();
+      // scrollHeight: a clamped box reports its clamped height while its text runs on below it.
+      const inner = Array.from(row.querySelectorAll("span")).map((span) => Math.max(span.getBoundingClientRect().bottom, span.getBoundingClientRect().top + span.scrollHeight));
+      return { top: rect.top, bottom: rect.bottom, lowestText: Math.max(...inner) };
+    }));
+    for (let index = 0; index < boxes.length; index += 1) {
+      expect(boxes[index].lowestText, `row ${index + 1}'s text ends below its row`).toBeLessThanOrEqual(boxes[index].bottom + 1);
+      if (index > 0) expect(boxes[index].top, `row ${index + 1} starts inside row ${index}`).toBeGreaterThanOrEqual(boxes[index - 1].bottom - 1);
+    }
+  });
 
   // D1 (8 Oct walk): the phone's More menu opened half off the screen, because the sheet moved itself by minus half its
   // width twice (a Tailwind translate and the animation's own).

@@ -1358,7 +1358,7 @@ function ServicesStep({
               <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 {connectedClients.map((client) => (
                   <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground">
-                    <span className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
+                    <span title={`${client.name}${client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}`} className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
                     <Chip tone="ok">Connected</Chip>
                   </li>
                 ))}
@@ -2093,7 +2093,7 @@ function FinishStep({
                   <div className="flex h-16 w-11 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">No art</div>
                 )}
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
+                  <span title={item.title} className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
                   {item.rating ? <span className="mt-1 block text-(length:--type-caption) tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
                   {/*

@@ -10,6 +10,7 @@
  * Closing while dirty is the caller's decision (see useUnsavedChanges).
  */
 import * as Dialog from "@radix-ui/react-dialog";
+import { plainTitle } from "../../lib/plain-title";
 import { X, Check, CircleAlert, Loader2, CircleDot, type LucideIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
@@ -34,7 +35,7 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
     <>
       <header className="flex min-h-(--drawer-header-height) shrink-0 items-center justify-between gap-(--grid-gap) border-b border-hairline px-6">
         <div className="min-w-0">
-          <Dialog.Title title={typeof title === "string" ? title : undefined} className="line-clamp-2 break-words text-(length:--type-title-sm) font-semibold leading-tight tracking-[-0.01em]">
+          <Dialog.Title title={plainTitle(title)} className="line-clamp-2 break-words text-(length:--type-title-sm) font-semibold leading-tight tracking-[-0.01em]">
             {title}
           </Dialog.Title>
           <Dialog.Description className={cn("mt-0.5 truncate text-(length:--type-caption) text-muted-foreground", !description && "sr-only")}>

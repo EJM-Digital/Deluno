@@ -1,3 +1,4 @@
+import { plainTitle } from "../../lib/plain-title";
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -30,7 +31,7 @@ export function Disclosure({ title, summary, open, onOpenChange, children, class
         <span className="min-w-0">
           <span className="block text-(length:--type-body-sm) font-medium text-foreground">{title}</span>
           {summary ? (
-            <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{summary}</span>
+            <span title={plainTitle(summary)} className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{summary}</span>
           ) : null}
         </span>
         <ChevronDown
