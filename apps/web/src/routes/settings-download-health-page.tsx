@@ -26,7 +26,8 @@
  * purge-all-strikes (#826), both part of the same engine rather than
  * separate screens.
  */
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { PageLink } from "../components/app/page-link";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
@@ -58,7 +59,7 @@ import { formatEventAge } from "../lib/activity-format";
 import { activityLinkForStatus } from "../lib/activity-history";
 import { useDisplayPreferences } from "../lib/display-preferences";
 
-const RULE_KIND_COPY: Record<string, { label: string; description: string; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
+const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
     label: "No progress",
     description: "Nothing has arrived at all, whatever the client's other numbers say."
@@ -86,11 +87,11 @@ const RULE_KIND_COPY: Record<string, { label: string; description: string; thres
   },
   "dangerous-file": {
     label: "Dangerous or junk file",
-    description: "A file inside the download matches the content blocklist (Automation & Recovery, Failed Downloads, Content blocklist). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below."
+    description: <>A file inside the download matches the content blocklist (<PageLink page="failedDownloads" label="Automation & Recovery, Failed Downloads, Content blocklist" />). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below.</>
   },
   "client-failure": {
     label: "Client-reported failure",
-    description: "The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on Automation & Recovery, Failed Downloads."
+    description: <>The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on <PageLink page="failedDownloads" />.</>
   },
   "magnet-metadata": {
     label: "Magnet stuck fetching metadata",
