@@ -435,7 +435,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                       onClick={() => navigate(entry.href)}
                       title={`${entry.name} · ${entry.detail}`}
                       className={cn(
-                        "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-(length:--type-micro) leading-tight transition-colors",
+                        "w-full whitespace-normal break-words rounded-[6px] border px-1.5 py-1 text-left text-(length:--type-micro) leading-tight transition-colors",
                         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                         entry.mark.monitored
                           ? "border-hairline bg-surface-2 text-foreground hover:bg-surface-3"
@@ -448,9 +448,10 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                           is a second way of saying the same thing and left a
                           month grid where every colour meant something different
                           from the shelf it links to. */}
-                      <TitleMarkDot item={entry.mark} size={7} className="mr-1 align-middle" />
+                      <TitleMarkDot item={entry.mark} size={7} className="align-middle md:mr-1" />
                       {!entry.mark.monitored ? <span className="sr-only">Not monitored. </span> : null}
-                      <span className="font-semibold">{entry.sub}</span> {entry.name}
+                      {/* A phone's day cell is about 37px wide: only the dot shows there, and the words are read out and one tap away. */}
+                      <span className="sr-only md:not-sr-only"><span className="font-semibold">{entry.sub}</span> {entry.name}</span>
                     </button>
                   ))}
                   {cell.entries.length > 3 ? (

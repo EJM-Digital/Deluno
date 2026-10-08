@@ -78,7 +78,7 @@ export function ListGroupHeader({
     <div
       role="row"
       className={cn(
-        "sticky top-0 z-10 flex h-(--list-group-height) items-center gap-2 border-y border-hairline bg-surface-3 px-(--card-pad-x)",
+        "sticky top-0 z-10 flex min-h-(--list-group-height) flex-wrap items-center gap-x-2 gap-y-1 border-y border-hairline bg-surface-3 px-(--card-pad-x) py-1",
         "text-(length:--type-caption) font-semibold uppercase tracking-[0.12em] text-foreground"
       )}
     >
@@ -89,7 +89,7 @@ export function ListGroupHeader({
       {detail !== undefined ? (
         <span className="truncate font-normal normal-case tracking-normal text-muted-foreground">{detail}</span>
       ) : null}
-      {actions ? <span className="ml-auto flex shrink-0 items-center gap-2">{actions}</span> : null}
+      {actions ? <span className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">{actions}</span> : null}
     </div>
   );
 }
