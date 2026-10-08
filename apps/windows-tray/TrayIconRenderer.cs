@@ -1,61 +1,149 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace Deluno.Tray;
 
-// All geometry mirrors favicon.svg (100×100 viewBox) scaled to 16×16 (factor 0.16).
-// Screen : x=2.5 y=4 w=11 h=8  (70%×50% of icon, centred)
-// Tabs   : w=2 h=1.5, straddling left (x=2.5) and right (x=13.5) screen edges
-// Play ▶ : vertices (6.5,6.5) (6.5,9.5) (9.5,8)  — ~40% of screen height
+/// <summary>
+/// The tray icon: the Deluno brand icon, with one small mark in the bottom-right corner only when something differs
+/// (docs/tray-standard.md). It is drawn at the size the shell asks for a notification-area icon, from the matching
+/// frame of the brand icon, with a thin outline round the mark so it reads on a light and a dark taskbar.
+/// </summary>
 [SupportedOSPlatform("windows")]
 public static class TrayIconRenderer
 {
-    private static readonly Icon? BrandIcon = LoadBrandIcon();
+    private static readonly Lazy<byte[]?> BrandIconBytes = new(LoadBrandIconBytes);
 
-    public static Icon Render(TrayState state)
+    private static readonly Color Red = Color.FromArgb(0xE5, 0x39, 0x35);
+    private static readonly Color Blue = Color.FromArgb(0x1E, 0x88, 0xE5);
+    private static readonly Color Grey = Color.FromArgb(0x9E, 0x9E, 0x9E);
+    private static readonly Color PausedFill = Color.FromArgb(0x42, 0x42, 0x42);
+
+    /// <summary>The size of a notification-area icon on this display.</summary>
+    public static Size ShellSmallIconSize => SystemInformation.SmallIconSize;
+
+    /// <summary>An icon the caller owns and must dispose: disposing also frees the Windows icon handle.</summary>
+    public static OwnedIcon Render(TrayBadge badge) => Render(badge, ShellSmallIconSize.Width);
+
+    public static OwnedIcon Render(TrayBadge badge, int size)
     {
-        if (BrandIcon is not null)
-        {
-            return (Icon)BrandIcon.Clone();
-        }
-
-        const int size = 16;
-        using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
-        using var g   = Graphics.FromImage(bmp);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(Color.Transparent);
-
-        using var bgBrush = new SolidBrush(StateColor(state));
-        g.FillRectangle(bgBrush, 0, 0, size - 1, size - 1);
-
-        using var pen   = new Pen(Color.White, 1.1f);
-        using var brush = new SolidBrush(Color.White);
-
-        // Screen outline
-        DrawRoundedRect(g, pen, 2.5f, 4f, 11f, 8f, 1.1f);
-
-        // Film strip tabs — left edge (straddle x=2.5)
-        g.FillRectangle(brush, 1.5f, 5.8f, 2f, 1.4f);
-        g.FillRectangle(brush, 1.5f, 8.8f, 2f, 1.4f);
-
-        // Film strip tabs — right edge (straddle x=13.5)
-        g.FillRectangle(brush, 12.5f, 5.8f, 2f, 1.4f);
-        g.FillRectangle(brush, 12.5f, 8.8f, 2f, 1.4f);
-
-        // Play triangle
-        g.FillPolygon(brush, new PointF[]
-        {
-            new(6.5f, 6.5f),
-            new(6.5f, 9.5f),
-            new(9.5f, 8f),
-        });
-
-        return Icon.FromHandle(bmp.GetHicon());
+        using var bitmap = RenderBitmap(badge, size);
+        var handle = bitmap.GetHicon();
+        return new OwnedIcon(handle);
     }
 
-    private static Icon? LoadBrandIcon()
+    /// <summary>The icon as a bitmap: the brand frame for this size, and the mark when there is one.</summary>
+    public static Bitmap RenderBitmap(TrayBadge badge, int size)
+    {
+        var bitmap = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bitmap);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.Clear(Color.Transparent);
+
+        using (var brand = LoadBrandFrame(size))
+        {
+            if (brand is not null)
+            {
+                g.DrawImage(brand, new Rectangle(0, 0, size, size));
+            }
+            else
+            {
+                // The brand icon is embedded in every build; this only keeps a missing resource from drawing nothing.
+                using var tile = new SolidBrush(Color.FromArgb(0x1F, 0x1F, 0x23));
+                g.FillEllipse(tile, 0, 0, size - 1, size - 1);
+            }
+        }
+
+        if (badge != TrayBadge.None)
+        {
+            DrawBadge(g, badge, size);
+        }
+
+        return bitmap;
+    }
+
+    /// <summary>The mark's box: bottom-right, about 60 percent of the icon.</summary>
+    public static Rectangle BadgeBounds(int size)
+    {
+        var diameter = Math.Max(8, (int)Math.Round(size * 0.6));
+        return new Rectangle(size - diameter, size - diameter, diameter, diameter);
+    }
+
+    private static void DrawBadge(Graphics g, TrayBadge badge, int size)
+    {
+        var bounds = BadgeBounds(size);
+
+        // Outline: a thin dark ring outside a thin white ring, so the mark reads on light and dark backgrounds.
+        using (var dark = new SolidBrush(Color.FromArgb(200, 0x10, 0x10, 0x10)))
+        {
+            g.FillEllipse(dark, bounds);
+        }
+
+        var inner = Rectangle.Inflate(bounds, -1, -1);
+        using (var white = new SolidBrush(Color.White))
+        {
+            g.FillEllipse(white, inner);
+        }
+
+        var fillBounds = Rectangle.Inflate(inner, -1, -1);
+        switch (badge)
+        {
+            case TrayBadge.NeedsYou:
+                using (var fill = new SolidBrush(Red)) { g.FillEllipse(fill, fillBounds); }
+                break;
+            case TrayBadge.UpdateReady:
+                using (var fill = new SolidBrush(Blue)) { g.FillEllipse(fill, fillBounds); }
+                break;
+            case TrayBadge.Starting:
+                // A grey ring: grey disc with the middle left light.
+                using (var fill = new SolidBrush(Grey)) { g.FillEllipse(fill, fillBounds); }
+                var hole = Rectangle.Inflate(fillBounds, -Math.Max(1, fillBounds.Width / 4), -Math.Max(1, fillBounds.Height / 4));
+                using (var middle = new SolidBrush(Color.White)) { g.FillEllipse(middle, hole); }
+                break;
+            case TrayBadge.Paused:
+                // Two bars on a dark disc.
+                using (var fill = new SolidBrush(PausedFill)) { g.FillEllipse(fill, fillBounds); }
+                var barWidth = Math.Max(1, fillBounds.Width / 5);
+                var barHeight = Math.Max(2, fillBounds.Height / 2);
+                var top = fillBounds.Y + (fillBounds.Height - barHeight) / 2;
+                var gap = Math.Max(1, barWidth);
+                var left = fillBounds.X + (fillBounds.Width - (barWidth * 2 + gap)) / 2;
+                using (var bars = new SolidBrush(Color.White))
+                {
+                    g.FillRectangle(bars, left, top, barWidth, barHeight);
+                    g.FillRectangle(bars, left + barWidth + gap, top, barWidth, barHeight);
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>The brand icon's own frame for this size (16, 20, 24, 32, 40, 48, 64, 128 or 256), or the nearest.</summary>
+    private static Bitmap? LoadBrandFrame(int size)
+    {
+        var bytes = BrandIconBytes.Value;
+        if (bytes is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            using var icon = new Icon(stream, new Size(size, size));
+            return icon.ToBitmap();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[]? LoadBrandIconBytes()
     {
         const string resourceSuffix = "Assets.deluno.ico";
         var assembly = Assembly.GetExecutingAssembly();
@@ -72,27 +160,39 @@ public static class TrayIconRenderer
             return null;
         }
 
-        return new Icon(stream);
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.ToArray();
+    }
+}
+
+/// <summary>An icon built from a Windows icon handle, which it frees when disposed (Icon.FromHandle does not).</summary>
+[SupportedOSPlatform("windows")]
+public sealed class OwnedIcon : IDisposable
+{
+    private IntPtr _handle;
+
+    internal OwnedIcon(IntPtr handle)
+    {
+        _handle = handle;
+        Icon = Icon.FromHandle(handle);
     }
 
-    private static void DrawRoundedRect(Graphics g, Pen pen, float x, float y, float w, float h, float r)
+    public Icon Icon { get; }
+
+    public void Dispose()
     {
-        using var path = new GraphicsPath();
-        path.AddArc(x, y, r * 2, r * 2, 180, 90);
-        path.AddArc(x + w - r * 2, y, r * 2, r * 2, 270, 90);
-        path.AddArc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 0, 90);
-        path.AddArc(x, y + h - r * 2, r * 2, r * 2, 90, 90);
-        path.CloseFigure();
-        g.DrawPath(pen, path);
+        if (_handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Icon.Dispose();
+        DestroyIcon(_handle);
+        _handle = IntPtr.Zero;
     }
 
-    private static Color StateColor(TrayState state) => state switch
-    {
-        TrayState.Running  => Color.FromArgb(0xF5, 0xA6, 0x23),  // brand orange
-        TrayState.Degraded => Color.FromArgb(0xF5, 0x9E, 0x0B),  // amber
-        TrayState.Error    => Color.FromArgb(0xEF, 0x44, 0x44),  // red
-        TrayState.Starting => Color.FromArgb(0xF5, 0xA6, 0x23),  // brand orange
-        TrayState.Updating => Color.FromArgb(0x63, 0x66, 0xF1),  // indigo
-        _                  => Color.FromArgb(0x6B, 0x72, 0x80),  // gray
-    };
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(IntPtr handle);
 }

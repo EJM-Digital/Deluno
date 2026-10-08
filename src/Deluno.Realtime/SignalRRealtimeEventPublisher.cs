@@ -28,6 +28,13 @@ public sealed class SignalRRealtimeEventPublisher(
             FullMode = BoundedChannelFullMode.DropOldest
         });
 
+    /// <summary>
+    /// Raised with the event name each time an event is published, on the thread that published it. For in-process
+    /// listeners that follow server pushes without a socket, such as the Windows tray icon's needs-you mark.
+    /// A listener must return quickly and must not throw.
+    /// </summary>
+    public event Action<string>? EventPublished;
+
     private readonly object _ringLock = new();
     private readonly Queue<RealtimeEnvelope> _ring = new();
     private long _seq;
@@ -455,6 +462,15 @@ public sealed class SignalRRealtimeEventPublisher(
         if (!string.Equals(eventName, LiveEventNames.DashboardSummaryUpdated, StringComparison.Ordinal))
         {
             NoteDashboardChange(eventName);
+        }
+
+        try
+        {
+            EventPublished?.Invoke(eventName);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "A listener of realtime event {EventName} failed.", eventName);
         }
     }
 

@@ -1,86 +1,84 @@
 using Deluno.Api.Network;
+using Deluno.Api.Updates;
+using Deluno.Platform.Data;
+using Deluno.Realtime;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
-using System.Reflection;
 
 namespace Deluno.Tray;
 
-public enum TrayState
-{
-    Starting,
-    Running,
-    Degraded,
-    Error,
-    Updating,
-    Stopped
-}
-
+/// <summary>
+/// The notification-area icon, its mark, its hover text and its menu, as docs/tray-standard.md sets them. What each of
+/// those says is decided in <see cref="TrayModel"/> (TrayBadges, TrayHoverText, TrayMenuState); this class draws it and
+/// acts on the clicks.
+/// </summary>
 public sealed class TrayApplication : ApplicationContext
 {
     private readonly NotifyIcon _notify;
-    private readonly ToolStripMenuItem _openItem;
-    private readonly ToolStripMenuItem _openUpdatesItem;
-    private readonly ToolStripMenuItem _restartItem;
-    private readonly ToolStripMenuItem _startStopItem;
-    private readonly ToolStripMenuItem _serviceModeItem;
-    private readonly ToolStripMenuItem _allowLanItem;
-    private readonly ToolStripMenuItem _letAnyAddressInItem;
-    private readonly ToolStripMenuItem _readdTorrentsItem;
-    private readonly ToolStripMenuItem _installAppsItem;
+    private readonly ContextMenuStrip _menu;
+    private readonly Control _ui = new();
+    private readonly List<(TrayMenuId Id, ToolStripItem Item)> _items = [];
+    private readonly List<(TrayMenuId Id, ToolStripItem Item)> _advancedItems = [];
     private readonly System.Windows.Forms.Timer _pendingInstallsTimer = new() { Interval = 5000 };
-    private bool _installPickerOpen;
-    private DateTimeOffset? _offeredFor;
+    private readonly OpenClickGate _openGate = new(TimeSpan.FromMilliseconds(SystemInformation.DoubleClickTime));
+    private readonly ISignInEntry _signIn = new RunKeySignInEntry();
     private readonly DelunoServer _server;
     private readonly HostRestartSupervisor _supervisor;
-    private TrayState _state = TrayState.Starting;
+    private readonly IDisposable? _secondLaunch;
+    private TrayStatus _status;
+    private OwnedIcon? _icon;
+    private TrayBadge? _badge;
+    private string _hover = string.Empty;
+    private Action? _balloonClick;
+    private bool _installPickerOpen;
+    private bool _quitting;
+    private DateTimeOffset? _offeredFor;
+    private TrayAttentionWatcher? _watcher;
+    private VelopackUpdateOrchestrator? _updates;
+    private string? _announcedUpdate;
 
     public TrayApplication()
     {
         _server = new DelunoServer();
+        _ui.CreateControl();
+        _ = _ui.Handle;
 
-        _openItem = new ToolStripMenuItem("Open Deluno", null, OnOpen);
-        _openUpdatesItem = new ToolStripMenuItem("Open Updates", null, OnOpenUpdates);
-        _restartItem = new ToolStripMenuItem("Restart", null, OnRestart) { Enabled = false };
-        _startStopItem = new ToolStripMenuItem("Stop", null, OnStartStop) { Enabled = false };
-        _serviceModeItem = new ToolStripMenuItem("Run as Service...", null, OnServiceMode);
-        _allowLanItem = new ToolStripMenuItem("Allow other devices on your network...", null, OnAllowLan) { Visible = false };
-        _letAnyAddressInItem = new ToolStripMenuItem("Let any address in...", null, OnLetAnyAddressIn);
-
-        _readdTorrentsItem = new ToolStripMenuItem("Add Transmission's torrents back...", null, OnReaddTorrents) { Visible = false };
-
-        _installAppsItem = new ToolStripMenuItem("Try again: install apps...", null, OnInstallApps) { Visible = false };
-
-        var aboutItem = new ToolStripMenuItem($"Deluno v{Deluno.Api.DelunoVersion.Running}") { Enabled = false };
-
-        var menu = new ContextMenuStrip();
-        menu.Items.AddRange([
-            _openItem,
-            _openUpdatesItem,
-            _allowLanItem,
-            _readdTorrentsItem,
-            _installAppsItem,
-            new ToolStripSeparator(),
-            _restartItem,
-            _startStopItem,
-            new ToolStripSeparator(),
-            _serviceModeItem,
-            _letAnyAddressInItem,
-            new ToolStripSeparator(),
-            aboutItem,
-            new ToolStripMenuItem("Quit", null, OnQuit)
-        ]);
-
-        _notify = new NotifyIcon
+        _status = new TrayStatus
         {
-            Text = "Deluno - Starting",
-            Icon = TrayIconRenderer.Render(TrayState.Starting),
-            ContextMenuStrip = menu,
-            Visible = true
+            Version = Deluno.Api.DelunoVersion.Running,
+            Port = DelunoServer.PortOverride ?? AppSettings.Load().Port,
+            StartsWithWindows = SafeSignInEnabled()
         };
-        _notify.DoubleClick += OnOpen;
-        menu.Opening += (_, _) => RefreshInstallAppsItem();
+
+        _menu = new ContextMenuStrip { ShowItemToolTips = true };
+        BuildMenu(TrayMenuState.Build(_status));
+
+        _notify = new NotifyIcon { ContextMenuStrip = _menu, Visible = false };
+        // Shown at once, in the Starting state: never only after the server is up.
+        ApplyStatus();
+        _notify.Visible = true;
+
+        _notify.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                OpenFromIcon();
+            }
+        };
+        _notify.DoubleClick += (_, _) => OpenFromIcon();
+        _notify.BalloonTipClicked += (_, _) =>
+        {
+            var action = _balloonClick;
+            _balloonClick = null;
+            action?.Invoke();
+        };
+        _menu.Opening += (_, _) => RefreshLocalStatus();
         _pendingInstallsTimer.Tick += (_, _) => CheckPendingInstalls();
         _pendingInstallsTimer.Start();
-        menu.Opening += (_, _) => _readdTorrentsItem.Visible = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is { } pending && (pending.Summary is null || pending.Torrents.Count > 0);
+
+        _secondLaunch = SecondLaunchSignal.Listen(() => InvokeOnUiThread(ShowAlreadyRunning));
+
+        VelopackUpdateOrchestrator.CleanStopBeforeApply = StopHostForUpdateAsync;
 
         _supervisor = new HostRestartSupervisor(
             _ => _server.StartAsync(),
@@ -88,35 +86,261 @@ public sealed class TrayApplication : ApplicationContext
             {
                 Restarting = (attempt, max, pause) => InvokeOnUiThread(() =>
                 {
-                    SetState(TrayState.Starting);
-                    _notify.Text = Truncate($"Deluno stopped - starting again (try {attempt} of {max})");
-                    _notify.ShowBalloonTip(10000, "Deluno stopped by itself", HostRestartReporter.RestartingMessage(attempt, max, pause), ToolTipIcon.Warning);
+                    Change(s => s with { State = TrayState.Starting, RestartNote = $"starting again (try {attempt} of {max})" });
+                    Balloon("Deluno stopped by itself", HostRestartReporter.RestartingMessage(attempt, max, pause), ToolTipIcon.Warning, problem: false);
                 }),
                 Recovered = () => InvokeOnUiThread(() =>
                 {
-                    SetState(TrayState.Running);
-                    _notify.ShowBalloonTip(10000, "Deluno is running again", "Deluno stopped by itself and has been started again.", ToolTipIcon.Info);
+                    OnHostStarted(announce: false);
+                    Balloon("Deluno is running again", "Deluno stopped by itself and has been started again.", ToolTipIcon.Info, OpenDeluno);
                 }),
                 AttemptFailed = (_, ex) => TryWriteStartupLog(ex),
                 GaveUp = max => InvokeOnUiThread(() =>
                 {
-                    SetState(TrayState.Error);
-                    _notify.Text = Truncate("Deluno stopped - choose Restart");
-                    _notify.ShowBalloonTip(30000, "Deluno stopped", HostRestartReporter.GaveUpMessage(max), ToolTipIcon.Error);
+                    Change(s => s with { State = TrayState.Error, RestartNote = null });
+                    Balloon("Deluno stopped", HostRestartReporter.GaveUpMessage(max), ToolTipIcon.Error, () => _ = RestartHostAsync());
                 })
             },
             stopHost: () => _server.StopAsync());
         _server.StoppedUnexpectedly += () => _ = _supervisor.HandleUnexpectedStopAsync();
-        SetState(TrayState.Starting);
+
+        // A downloaded update is applied at the next start, before the host runs, so it starts clean.
         _ = StartServerAsync();
         _ = StartInstalledComponentsAsync();
     }
 
-    /// <summary>
-    /// After a restart, starts the download clients Deluno itself started at
-    /// install if they are not answering (#1051, #1052). Never blocks or fails
-    /// the tray; what it did is written to component-startup.log.
-    /// </summary>
+    // ------------------------------------------------------------------ status, icon, hover text, menu
+
+    private static bool SafeSignInEnabled()
+    {
+        try { return new RunKeySignInEntry().IsEnabled(); } catch { return false; }
+    }
+
+    /// <summary>Changes the status and redraws whatever it moves: the mark, the hover text and the menu.</summary>
+    private void Change(Func<TrayStatus, TrayStatus> change)
+    {
+        _status = change(_status);
+        ApplyStatus();
+    }
+
+    private void ApplyStatus()
+    {
+        var badge = TrayBadges.Choose(_status);
+        if (_badge != badge || _icon is null)
+        {
+            var previous = _icon;
+            var next = TrayIconRenderer.Render(badge);
+            _notify.Icon = next.Icon;
+            _icon = next;
+            _badge = badge;
+            // The shell has taken the new icon; free the one it replaced.
+            previous?.Dispose();
+        }
+
+        var hover = TrayHoverText.Build(_status);
+        if (!string.Equals(hover, _hover, StringComparison.Ordinal))
+        {
+            _hover = hover;
+            _notify.Text = hover;
+        }
+
+        ApplyMenu(TrayMenuState.Build(_status));
+    }
+
+    private void BuildMenu(TrayMenuState state)
+    {
+        var handlers = Handlers();
+        foreach (var entry in state.Entries)
+        {
+            ToolStripItem item = entry.Id == TrayMenuId.Separator ? new ToolStripSeparator() : MakeItem(entry, handlers);
+            if (entry.Id == TrayMenuId.Advanced && item is ToolStripMenuItem advanced)
+            {
+                foreach (var child in state.AdvancedEntries)
+                {
+                    var childItem = MakeItem(child, handlers);
+                    advanced.DropDownItems.Add(childItem);
+                    _advancedItems.Add((child.Id, childItem));
+                }
+            }
+
+            _menu.Items.Add(item);
+            _items.Add((entry.Id, item));
+        }
+    }
+
+    private static ToolStripMenuItem MakeItem(TrayMenuEntry entry, Dictionary<TrayMenuId, EventHandler> handlers)
+    {
+        var item = new ToolStripMenuItem(entry.Text);
+        if (handlers.TryGetValue(entry.Id, out var handler))
+        {
+            item.Click += handler;
+        }
+
+        if (entry.Bold)
+        {
+            item.Font = new Font(item.Font, FontStyle.Bold);
+        }
+
+        return item;
+    }
+
+    private void ApplyMenu(TrayMenuState state)
+    {
+        for (var i = 0; i < state.Entries.Count && i < _items.Count; i++)
+        {
+            Apply(state.Entries[i], _items[i].Item);
+        }
+
+        for (var i = 0; i < state.AdvancedEntries.Count && i < _advancedItems.Count; i++)
+        {
+            Apply(state.AdvancedEntries[i], _advancedItems[i].Item);
+        }
+    }
+
+    private static void Apply(TrayMenuEntry entry, ToolStripItem item)
+    {
+        item.Visible = entry.Visible;
+        if (item is ToolStripSeparator)
+        {
+            return;
+        }
+
+        item.Text = entry.Text;
+        item.Enabled = entry.Enabled;
+        item.ToolTipText = entry.ToolTip;
+        if (item is ToolStripMenuItem menuItem)
+        {
+            menuItem.Checked = entry.Checked;
+        }
+    }
+
+    private Dictionary<TrayMenuId, EventHandler> Handlers() => new()
+    {
+        [TrayMenuId.ReaddTransmission] = OnReaddTorrents,
+        [TrayMenuId.InstallApps] = OnInstallApps,
+        [TrayMenuId.Open] = (_, _) => OpenFromMenu(),
+        [TrayMenuId.PauseResume] = OnPauseResume,
+        [TrayMenuId.Restart] = (_, _) => _ = RestartHostAsync(),
+        [TrayMenuId.CopyAddress] = OnCopyAddress,
+        [TrayMenuId.AllowLan] = OnAllowLan,
+        [TrayMenuId.OnlyThisPc] = OnOnlyThisPc,
+        [TrayMenuId.ChangePort] = OnChangePort,
+        [TrayMenuId.OpenData] = (_, _) => OpenFolder(AppSettings.Load().DataRoot),
+        [TrayMenuId.OpenLogs] = (_, _) => OpenFolder(LogsFolder()),
+        [TrayMenuId.StartWithWindows] = OnStartWithWindows,
+        [TrayMenuId.Update] = OnUpdateItem,
+        [TrayMenuId.Report] = (_, _) => OpenFolder(LogsFolder()),
+        [TrayMenuId.RunAsService] = OnServiceMode,
+        [TrayMenuId.LetAnyAddressIn] = OnLetAnyAddressIn,
+        [TrayMenuId.Quit] = OnQuit
+    };
+
+    /// <summary>What a menu opening reads fresh: the sign-in tick and whatever is waiting to be installed or added back.</summary>
+    private void RefreshLocalStatus()
+    {
+        try
+        {
+            var pending = Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot());
+            var readd = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is { } transmission && (transmission.Summary is null || transmission.Torrents.Count > 0);
+            Change(s => s with
+            {
+                StartsWithWindows = SafeSignInEnabled(),
+                InstallAppsText = pending is null ? null : PendingInstallRecorder.MenuText(pending, DateTimeOffset.UtcNow, DisplayNameOf),
+                TransmissionReaddPending = readd
+            });
+        }
+        catch
+        {
+            // The menu still opens; a line that could not be read stays as it was.
+        }
+    }
+
+    private static TrayLanState LanStateOf(LanAccessStatus? lan) => lan?.State switch
+    {
+        LanAccessStates.Open => TrayLanState.Open,
+        LanAccessStates.Blocked => TrayLanState.Blocked,
+        _ => TrayLanState.NotAvailable
+    };
+
+    // ------------------------------------------------------------------ opening
+
+    private string? LiveAddress => _server.ListeningPort is { } port ? $"http://localhost:{port}" : null;
+
+    private void OpenFromIcon()
+    {
+        // A left click opens once, and the double-click that follows it does not open again.
+        if (_openGate.ShouldOpen(DateTimeOffset.UtcNow))
+        {
+            OpenDeluno();
+        }
+    }
+
+    private void OpenFromMenu() => OpenDeluno();
+
+    private void OpenDeluno() => OpenAddress(string.Empty);
+
+    private void OpenUpdatesPage() => OpenAddress("/system/updates");
+
+    /// <summary>Opens a page at the port Deluno is really listening on, or says why it cannot yet. Only ever from a click.</summary>
+    private void OpenAddress(string path)
+    {
+        if (_status.State == TrayState.Running && LiveAddress is { } address)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(address + path) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Balloon("Deluno could not open your browser", ex.Message, ToolTipIcon.Warning, problem: true);
+            }
+
+            return;
+        }
+
+        var why = _status.State switch
+        {
+            TrayState.Starting => "Deluno is still starting. Click the icon again in a moment.",
+            TrayState.Updating => "Deluno is updating. Click the icon again in a moment.",
+            _ => "Deluno is not running. Choose Restart Deluno from the icon menu."
+        };
+        Balloon("Deluno can't open yet", why, ToolTipIcon.Info, problem: false);
+    }
+
+    private void ShowAlreadyRunning()
+    {
+        var text = LiveAddress is { } address ? address : "Deluno is still starting.";
+        Balloon("Deluno is already running", text, ToolTipIcon.Info, OpenDeluno);
+    }
+
+    private static void OpenFolder(string folder)
+    {
+        try
+        {
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true });
+        }
+        catch
+        {
+            // A folder that cannot be opened is not worth stopping the tray for.
+        }
+    }
+
+    /// <summary>The application log, in the data folder. Report a problem opens it too, while the repository is private.</summary>
+    private static string LogsFolder() => Path.Combine(AppSettings.Load().DataRoot, "logs");
+
+    // ------------------------------------------------------------------ balloons
+
+    /// <summary>Shows a balloon; a click runs <paramref name="onClick"/>. Information stays 10 seconds, a problem 30.</summary>
+    private void Balloon(string title, string text, ToolTipIcon icon, Action? onClick = null, bool? problem = null)
+    {
+        _balloonClick = onClick;
+        var isProblem = problem ?? icon is ToolTipIcon.Error or ToolTipIcon.Warning;
+        _notify.ShowBalloonTip(TrayBalloons.DurationFor(isProblem), title, text, icon);
+    }
+
+    // ------------------------------------------------------------------ host
+
     private async Task StartInstalledComponentsAsync()
     {
         try
@@ -165,7 +389,7 @@ public sealed class TrayApplication : ApplicationContext
                 new FileInstallLog(), CancellationToken.None).ConfigureAwait(false);
             if (daemonSummary is not null)
             {
-                InvokeOnUiThread(() => _notify.ShowBalloonTip(30000, "Transmission was moved", daemonSummary, ToolTipIcon.Info));
+                InvokeOnUiThread(() => Balloon("Transmission was moved", daemonSummary, ToolTipIcon.Info, problem: true));
             }
 
             var result = await ComponentStateMigration.RunAsync(
@@ -174,7 +398,7 @@ public sealed class TrayApplication : ApplicationContext
                 new FileStartedComponentsRegistry(), spec?.DefaultPort ?? 9091, null, new FileInstallLog(), CancellationToken.None).ConfigureAwait(false);
             if (result.TransmissionFolderRecreated)
             {
-                InvokeOnUiThread(() => _notify.ShowBalloonTip(30000, "Transmission was reset", TransmissionReadd.NoticeText + " Choose \"Add Transmission's torrents back\" from the Deluno icon menu.", ToolTipIcon.Warning));
+                InvokeOnUiThread(() => Balloon("Transmission was reset", TransmissionReadd.NoticeText + " Choose \"Add Transmission's torrents back\" from the Deluno icon menu.", ToolTipIcon.Warning, () => OnReaddTorrents(null, EventArgs.Empty), problem: true));
             }
         }
         catch
@@ -194,11 +418,11 @@ public sealed class TrayApplication : ApplicationContext
             var dataRoot = ComponentPaths.DataRoot();
             if (_installPickerOpen || Deluno.Contracts.PendingComponentInstalls.Read(dataRoot) is not { } pending)
             {
-                RefreshInstallAppsItem();
+                RefreshLocalStatus();
                 return;
             }
 
-            RefreshInstallAppsItem();
+            RefreshLocalStatus();
             if (pending.AskedByPerson)
             {
                 Deluno.Contracts.PendingComponentInstalls.MarkAsked(dataRoot);
@@ -207,7 +431,7 @@ public sealed class TrayApplication : ApplicationContext
             else if (PendingInstallRecorder.ReadyToOffer(pending, DateTimeOffset.UtcNow) && _offeredFor != (pending.RetryAfterUtc ?? DateTimeOffset.MinValue))
             {
                 _offeredFor = pending.RetryAfterUtc ?? DateTimeOffset.MinValue;
-                _notify.ShowBalloonTip(30000, "GitHub's limit has lifted", "Choose \"Try again\" from the Deluno icon menu to install " + string.Join(", ", pending.Kinds.Select(DisplayNameOf)) + ".", ToolTipIcon.Info);
+                Balloon("GitHub's limit has lifted", "Choose \"Try again\" from the Deluno icon menu to install " + string.Join(", ", pending.Kinds.Select(DisplayNameOf)) + ".", ToolTipIcon.Info, () => OnInstallApps(null, EventArgs.Empty), problem: true);
             }
         }
         catch
@@ -218,16 +442,6 @@ public sealed class TrayApplication : ApplicationContext
 
     private static string DisplayNameOf(string kind)
         => BundledComponents.Load().FirstOrDefault(spec => string.Equals(spec.Kind, kind, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? kind;
-
-    private void RefreshInstallAppsItem()
-    {
-        var pending = Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot());
-        _installAppsItem.Visible = pending is not null;
-        if (pending is not null)
-        {
-            _installAppsItem.Text = PendingInstallRecorder.MenuText(pending, DateTimeOffset.UtcNow, DisplayNameOf);
-        }
-    }
 
     private void OnInstallApps(object? sender, EventArgs e)
     {
@@ -252,7 +466,7 @@ public sealed class TrayApplication : ApplicationContext
         finally
         {
             _installPickerOpen = false;
-            RefreshInstallAppsItem();
+            RefreshLocalStatus();
         }
     }
 
@@ -274,77 +488,153 @@ public sealed class TrayApplication : ApplicationContext
         MessageBox.Show(message, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
-    private static string Truncate(string text) => text.Length > 63 ? text.Substring(0, 60) + "..." : text;
-
-    private void SetState(TrayState state)
+    /// <summary>Starts the web host, or throws. The supervisor, a restart and a port change all start it this way.</summary>
+    private async Task StartHostAsync()
     {
-        _state = state;
-        _notify.Icon = TrayIconRenderer.Render(state);
-        _notify.Text = state switch
-        {
-            TrayState.Starting => "Deluno - Starting",
-            TrayState.Running => BuildRunningTooltip(),
-            TrayState.Degraded => "Deluno - Running with warnings",
-            TrayState.Error => "Deluno - Failed to start (see %LocalAppData%\\Deluno\\logs)",
-            TrayState.Updating => "Deluno - Updating",
-            TrayState.Stopped => "Deluno - Stopped",
-            _ => "Deluno"
-        };
-
-        _openItem.Enabled = state is TrayState.Running or TrayState.Degraded;
-        _openUpdatesItem.Enabled = state is TrayState.Running or TrayState.Degraded;
-        _restartItem.Enabled = state is TrayState.Running or TrayState.Degraded or TrayState.Error;
-        _startStopItem.Enabled = state is not TrayState.Starting and not TrayState.Updating;
-        _startStopItem.Text = state is TrayState.Stopped ? "Start" : "Stop";
-    }
-
-    /// <summary>
-    /// NotifyIcon tooltip text is capped at 63 chars by Win32. Show the
-    /// most useful single line: prefer the LAN URL (what other devices use)
-    /// and fall back to localhost. Full URL list lives in the startup log.
-    /// </summary>
-    private string BuildRunningTooltip()
-    {
-        var port = _server.ListeningPort ?? AppSettings.Load().Port;
-        var urls = _server.ReachableUrls;
-        var lan = urls.FirstOrDefault(u => !u.Contains("localhost", StringComparison.OrdinalIgnoreCase));
-        var primary = lan ?? $"http://localhost:{port}/";
-        var text = $"Deluno - {primary.TrimEnd('/')}";
-        // Truncate hard so the tooltip doesn't get silently chopped by Win32.
-        return text.Length > 63 ? text.Substring(0, 60) + "..." : text;
+        await _server.StartAsync();
+        _supervisor.NoteStarted();
     }
 
     private async Task StartServerAsync()
     {
         try
         {
-            SetState(TrayState.Starting);
-            await _server.StartAsync();
-            _supervisor.NoteStarted();
+            Change(s => s with { State = TrayState.Starting, RestartNote = null });
+            await StartHostAsync();
             InvokeOnUiThread(() =>
             {
-                SetState(TrayState.Running);
-                _allowLanItem.Visible = _server.LanAccess?.CanAllow == true;
-                ShowReachableUrlsBalloon();
+                OnHostStarted(announce: true);
             });
         }
         catch (Exception ex)
         {
             InvokeOnUiThread(() =>
             {
-                SetState(TrayState.Error);
-                // Persistent (~30s) so the user has time to read it. Also write the
-                // full stack trace to the startup log for diagnosis later.
-                _notify.ShowBalloonTip(30000, "Deluno failed to start", ex.Message + "  (see %LocalAppData%\\Deluno\\logs\\tray-startup.log)", ToolTipIcon.Error);
+                Change(s => s with { State = TrayState.Error, RestartNote = null });
+                // Persistent (~30s) so the person has time to read it. The full stack trace goes to the startup log.
+                Balloon("Deluno failed to start", ex.Message + "  (see the logs folder: choose Open logs folder)", ToolTipIcon.Error, () => OpenFolder(LogsFolder()));
                 TryWriteStartupLog(ex);
             });
         }
     }
 
+    /// <summary>The host is listening: take its live address, follow its pushes and its update state.</summary>
+    private void OnHostStarted(bool announce)
+    {
+        var port = _server.ListeningPort ?? _status.Port;
+        Change(s => s with
+        {
+            State = TrayState.Running,
+            RestartNote = null,
+            Port = port,
+            Address = $"http://localhost:{port}",
+            Lan = LanStateOf(_server.LanAccess)
+        });
+
+        AttachToHost();
+        if (announce)
+        {
+            ShowReachableUrlsBalloon();
+        }
+    }
+
+    private void AttachToHost()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        if (_updates is not null)
+        {
+            _updates.Changed -= OnUpdateChanged;
+            _updates = null;
+        }
+
+        if (_server.Services is not { } services)
+        {
+            return;
+        }
+
+        _watcher = new TrayAttentionWatcher(services, signals => InvokeOnUiThread(() => OnSignals(signals)));
+        _watcher.Schedule();
+
+        if (services.GetService(typeof(IUpdateOrchestrator)) is VelopackUpdateOrchestrator orchestrator)
+        {
+            _updates = orchestrator;
+            orchestrator.Changed += OnUpdateChanged;
+            OnUpdateChanged();
+        }
+    }
+
+    private void OnSignals(TrayServerSignals signals)
+        => Change(s => s with
+        {
+            NeedsLookCount = signals.Attention.Count,
+            HealthProblem = signals.Attention.HealthProblem,
+            AutomationPaused = signals.AutomationPaused
+        });
+
+    private void OnUpdateChanged() => InvokeOnUiThread(() =>
+    {
+        if (_updates is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshot = _updates.Snapshot();
+            var update = TrayUpdate.Describe(snapshot.IsInstalled, snapshot.State, snapshot.LatestVersion, snapshot.UpdateAvailable, snapshot.RestartRequired);
+            Change(s => s with { Update = update });
+
+            // An update that could not be applied leaves the host stopped: start it again.
+            if (snapshot.State == UpdateStates.Error && _status.State == TrayState.Updating)
+            {
+                _ = RestartHostAsync();
+            }
+
+            AnnounceUpdate(update);
+        }
+        catch
+        {
+            // The menu keeps its last wording.
+        }
+    });
+
+    /// <summary>One balloon per update: when it is ready, or (when updates are not downloaded by themselves) when it is found. A click opens System, Updates.</summary>
+    private void AnnounceUpdate(TrayUpdate update)
+    {
+        if (!update.HasUpdate)
+        {
+            return;
+        }
+
+        var key = $"{update.Action}:{update.Version}";
+        if (key == _announcedUpdate)
+        {
+            return;
+        }
+
+        if (update.Action == UpdateMenuAction.Download && AppSettings.Load().UpdateMode != UpdateModes.NotifyOnly)
+        {
+            // Deluno downloads it by itself; the balloon comes when it is ready.
+            return;
+        }
+
+        _announcedUpdate = key;
+        var version = update.Version is null ? string.Empty : $" (v{update.Version})";
+        Balloon(
+            update.Action == UpdateMenuAction.Restart ? "A Deluno update is ready" : "A Deluno update is available",
+            $"Click here to open System > Updates{version}.",
+            ToolTipIcon.Info,
+            OpenUpdatesPage);
+    }
+
     private void ShowReachableUrlsBalloon()
     {
         var urls = _server.ReachableUrls;
-        if (urls.Count == 0) return;
+        if (urls.Count == 0)
+        {
+            return;
+        }
 
         var lanUrls = urls.Where(u => !u.Contains("localhost", StringComparison.OrdinalIgnoreCase)).ToList();
         var title = "Deluno is running";
@@ -353,17 +643,79 @@ public sealed class TrayApplication : ApplicationContext
             : $"LAN: {lanUrls[0]}{(lanUrls.Count > 1 ? $" (+{lanUrls.Count - 1} more)" : string.Empty)}";
 
         // Other devices are turned away until the firewall lets them in (#623).
-        if (_server.LanAccess?.State == LanAccessStates.Blocked)
+        var blocked = _server.LanAccess?.State == LanAccessStates.Blocked;
+        if (blocked)
         {
-            body += "  - Windows Firewall blocks other devices. Right-click the Deluno icon and choose Allow other devices.";
+            body += "  - Windows Firewall blocks other devices. Click here to allow them.";
         }
-        _notify.ShowBalloonTip(10000, title, body, ToolTipIcon.Info);
+
+        Balloon(title, body, ToolTipIcon.Info, blocked ? () => OnAllowLan(null, EventArgs.Empty) : OpenDeluno, problem: blocked);
     }
 
-    /// <summary>
-    /// Asks Windows, through its permission prompt, to let other devices reach
-    /// Deluno, and says what happened (#623).
-    /// </summary>
+    private async Task RestartHostAsync()
+    {
+        _supervisor.Cancel();
+        Change(s => s with { State = TrayState.Starting, RestartNote = null });
+        await _server.StopAsync();
+        await StartServerAsync();
+    }
+
+    /// <summary>Stops the host cleanly before an update restarts the app, and keeps the supervisor from starting it again.</summary>
+    private async Task StopHostForUpdateAsync()
+    {
+        _supervisor.Cancel();
+        InvokeOnUiThread(() => Change(s => s with { State = TrayState.Updating }));
+        await _server.StopAsync();
+    }
+
+    // ------------------------------------------------------------------ menu actions
+
+    private async void OnPauseResume(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (_server.Services is not { } services)
+            {
+                return;
+            }
+
+            // The Automation setting behind the Dashboard's "Automation is paused" notice and its Resume button.
+            var resume = _status.AutomationPaused;
+            var repository = services.GetRequiredService<IPlatformSettingsRepository>();
+            var snapshot = await repository.SetGlobalAutomationEnabledAsync(resume, CancellationToken.None);
+            await services.GetRequiredService<Deluno.Contracts.IRealtimeEventPublisher>().PublishEntityChangedAsync("Settings", "settings", CancellationToken.None);
+            Change(s => s with { AutomationPaused = !snapshot.AutoStartJobs });
+        }
+        catch (Exception ex)
+        {
+            Balloon("Deluno could not change automation", ex.Message, ToolTipIcon.Warning, problem: true);
+        }
+    }
+
+    private void OnCopyAddress(object? sender, EventArgs e)
+    {
+        // The address other devices use when the firewall lets them in; otherwise this PC's.
+        var lan = _status.Lan == TrayLanState.Open
+            ? _server.ReachableUrls.FirstOrDefault(u => !u.Contains("localhost", StringComparison.OrdinalIgnoreCase))
+            : null;
+        var address = lan?.TrimEnd('/') ?? LiveAddress;
+        if (address is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(address);
+            Balloon("Address copied", address, ToolTipIcon.Info, problem: false);
+        }
+        catch
+        {
+            Balloon("Deluno could not copy the address", address, ToolTipIcon.Warning, problem: true);
+        }
+    }
+
+    /// <summary>Asks Windows, through its permission prompt, to let other devices reach Deluno, and says what happened (#623).</summary>
     private async void OnAllowLan(object? sender, EventArgs e)
     {
         if (_server.Firewall is null)
@@ -371,27 +723,158 @@ public sealed class TrayApplication : ApplicationContext
             return;
         }
 
-        _allowLanItem.Enabled = false;
+        Change(s => s with { LanBusy = true });
         var status = await _server.Firewall.AllowAsync(CancellationToken.None);
+        await _server.RefreshLanAccessAsync(CancellationToken.None);
         InvokeOnUiThread(() =>
         {
-            _allowLanItem.Enabled = true;
-            _allowLanItem.Visible = status.CanAllow;
-            _notify.ShowBalloonTip(
-                10000,
+            Change(s => s with { LanBusy = false, Lan = LanStateOf(_server.LanAccess) });
+            Balloon(
                 status.State == LanAccessStates.Open ? "Other devices can reach Deluno" : "Other devices still cannot reach Deluno",
                 status.Message,
                 status.State == LanAccessStates.Open ? ToolTipIcon.Info : ToolTipIcon.Warning);
         });
     }
 
+    /// <summary>Removes Deluno's own firewall rule, so only this PC can open Deluno. Windows asks for permission.</summary>
+    private async void OnOnlyThisPc(object? sender, EventArgs e)
+    {
+        if (_server.Firewall is not { } firewall)
+        {
+            return;
+        }
+
+        Change(s => s with { LanBusy = true });
+        try
+        {
+            var hadOwnRule = firewall.HasOwnRule();
+            var removed = hadOwnRule ? await firewall.RemoveAsync(CancellationToken.None) : null;
+            await _server.RefreshLanAccessAsync(CancellationToken.None);
+            InvokeOnUiThread(() =>
+            {
+                Change(s => s with { LanBusy = false, Lan = LanStateOf(_server.LanAccess) });
+                if (!hadOwnRule)
+                {
+                    Balloon("Another firewall rule lets devices in", "Deluno did not add that rule, so it can't remove it. Remove it in Windows Defender Firewall to keep Deluno on this PC only.", ToolTipIcon.Warning);
+                }
+                else if (removed?.Declined == true)
+                {
+                    Balloon("Other devices can still reach Deluno", "Windows asked for permission to change the firewall, and it was not given.", ToolTipIcon.Warning);
+                }
+                else if (_server.LanAccess?.State == LanAccessStates.Open)
+                {
+                    Balloon("Other devices can still reach Deluno", "A different firewall rule still lets them in.", ToolTipIcon.Warning);
+                }
+                else
+                {
+                    Balloon("Only this PC can reach Deluno", "Other devices on your network are turned away. Choose Allow other devices on your network to let them in again.", ToolTipIcon.Info);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            InvokeOnUiThread(() =>
+            {
+                Change(s => s with { LanBusy = false });
+                Balloon("Deluno could not change the firewall", ex.Message, ToolTipIcon.Warning);
+            });
+        }
+    }
+
+    private async void OnChangePort(object? sender, EventArgs e)
+    {
+        var current = _server.ListeningPort ?? _status.Port;
+        var chosen = PortDialog.Ask(current, PortChoice.IsInUse, _icon?.Icon);
+        if (chosen is not { } port)
+        {
+            return;
+        }
+
+        var changer = new PortChanger(PortChoice.IsInUse, RestartOnPortAsync);
+        var result = await changer.ChangeAsync(current, port);
+        InvokeOnUiThread(() =>
+        {
+            switch (result.Outcome)
+            {
+                case PortChangeOutcome.Changed:
+                    // The address is shown; nothing opens by itself. A click on the balloon opens it.
+                    Balloon($"Deluno is now at port {result.Port}", $"http://localhost:{result.Port} - click to open. Bookmarks to the old address will stop working.", ToolTipIcon.Info, OpenDeluno);
+                    break;
+                case PortChangeOutcome.RolledBack:
+                    Balloon("Deluno stayed on its old port", result.Message, ToolTipIcon.Warning, () => OpenFolder(LogsFolder()), problem: true);
+                    break;
+                case PortChangeOutcome.Failed:
+                    Change(s => s with { State = TrayState.Error });
+                    Balloon("Deluno stopped", result.Message, ToolTipIcon.Error, () => _ = RestartHostAsync());
+                    break;
+                case PortChangeOutcome.Refused:
+                    Balloon("That port can't be used", result.Message, ToolTipIcon.Warning, problem: true);
+                    break;
+            }
+        });
+    }
+
+    /// <summary>Saves the port and starts the host on it. Throws when it cannot start, so the change can roll back.</summary>
+    private async Task RestartOnPortAsync(int port)
+    {
+        _supervisor.Cancel();
+        var settings = AppSettings.Load();
+        settings.Port = port;
+        settings.Save();
+        // A --port start only lasted for one run; the person's choice here is the one that counts now.
+        DelunoServer.PortOverride = null;
+
+        // A rollback continues off the UI thread, so the icon is only touched through the UI thread.
+        InvokeOnUiThread(() => Change(s => s with { State = TrayState.Starting, RestartNote = null }));
+        await _server.StopAsync();
+        await StartHostAsync();
+        InvokeOnUiThread(() => OnHostStarted(announce: false));
+    }
+
+    private void OnStartWithWindows(object? sender, EventArgs e)
+    {
+        try
+        {
+            var on = RunKeySignInEntry.Toggle(_signIn);
+            Change(s => s with { StartsWithWindows = on });
+        }
+        catch (Exception ex)
+        {
+            Balloon("Deluno could not change Start with Windows", ex.Message, ToolTipIcon.Warning, problem: true);
+        }
+    }
+
+    private async void OnUpdateItem(object? sender, EventArgs e)
+    {
+        try
+        {
+            switch (_status.Update.Action)
+            {
+                case UpdateMenuAction.OpenUpdatePage:
+                    OpenUpdatesPage();
+                    break;
+                case UpdateMenuAction.Check when _updates is not null:
+                    await _updates.CheckForUpdatesAsync(CancellationToken.None);
+                    break;
+                case UpdateMenuAction.Download when _updates is not null:
+                    await _updates.DownloadUpdatesAsync(CancellationToken.None);
+                    break;
+                case UpdateMenuAction.Restart when _updates is not null:
+                    // The orchestrator stops the host cleanly (StopHostForUpdateAsync), then applies and restarts.
+                    await _updates.ApplyAndRestartNowAsync(CancellationToken.None);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Balloon("Deluno could not update", ex.Message, ToolTipIcon.Warning, problem: true);
+        }
+    }
+
     /// <summary>
-    /// The Windows tray recovery action for Allowed Hosts (#939): if every
-    /// address Deluno can be reached on ends up refused, this needs no
-    /// working web UI to fix -- it writes the same
-    /// <c>Security:AllowedHosts:ForceDisabled</c> override
-    /// docs/security-allowed-hosts.md documents for the config file, then
-    /// restarts the embedded server so it takes effect immediately.
+    /// The Windows tray recovery action for Allowed Hosts (#939): if every address Deluno can be reached on ends up
+    /// refused, this needs no working web UI to fix -- it writes the same <c>Security:AllowedHosts:ForceDisabled</c>
+    /// override docs/security-allowed-hosts.md documents, then restarts the embedded server so it takes effect.
     /// </summary>
     private async void OnLetAnyAddressIn(object? sender, EventArgs e)
     {
@@ -410,20 +893,66 @@ public sealed class TrayApplication : ApplicationContext
         settings.AllowedHostsForceDisabled = true;
         settings.Save();
 
-        _letAnyAddressInItem.Enabled = false;
+        await RestartHostAsync();
+        InvokeOnUiThread(() => Balloon(
+            "Deluno answers on any address again",
+            "Allowed Hosts is off until you turn it back on from System → Security.",
+            ToolTipIcon.Info));
+    }
+
+    private async void OnServiceMode(object? sender, EventArgs e)
+    {
+        using var dialog = new ServiceModeDialog();
+        if (dialog.ShowDialog() != DialogResult.OK)
+        {
+            return;
+        }
+
+        Change(s => s with { State = TrayState.Updating });
         _supervisor.Cancel();
         await _server.StopAsync();
-        await StartServerAsync();
-        InvokeOnUiThread(() =>
-        {
-            _letAnyAddressInItem.Enabled = true;
-            _notify.ShowBalloonTip(
-                10000,
-                "Deluno answers on any address again",
-                "Allowed Hosts is off until you turn it back on from System → Security.",
-                ToolTipIcon.Info);
-        });
+        ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
+        Application.Exit();
     }
+
+    /// <summary>
+    /// Quit stops Deluno and closes the icon, without freezing the icon while the host stops. A downloaded update is
+    /// installed as the app exits.
+    /// </summary>
+    private async void OnQuit(object? sender, EventArgs e)
+    {
+        if (_quitting)
+        {
+            return;
+        }
+
+        _quitting = true;
+        _supervisor.Cancel();
+        Change(s => s with { State = TrayState.Updating });
+        try
+        {
+            var updates = _updates ?? new VelopackUpdateOrchestrator(NullLogger<VelopackUpdateOrchestrator>.Instance);
+            updates.ApplyPendingOnExit();
+        }
+        catch
+        {
+            // The update is still there at the next start.
+        }
+
+        try
+        {
+            await Task.Run(() => _server.StopAsync()).WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        catch
+        {
+            // Quit anyway: the process ending stops what is left.
+        }
+
+        _notify.Visible = false;
+        Application.Exit();
+    }
+
+    // ------------------------------------------------------------------ plumbing
 
     private static void TryWriteStartupLog(Exception ex)
     {
@@ -443,74 +972,16 @@ public sealed class TrayApplication : ApplicationContext
         }
     }
 
-    private void OnOpen(object? sender, EventArgs e)
+    private void InvokeOnUiThread(Action action)
     {
-        if (_state is TrayState.Running or TrayState.Degraded)
-        {
-            var port = AppSettings.Load().Port;
-            Process.Start(new ProcessStartInfo($"http://localhost:{port}") { UseShellExecute = true });
-        }
-    }
-
-    private void OnOpenUpdates(object? sender, EventArgs e)
-    {
-        if (_state is TrayState.Running or TrayState.Degraded)
-        {
-            var port = AppSettings.Load().Port;
-            Process.Start(new ProcessStartInfo($"http://localhost:{port}/system/updates") { UseShellExecute = true });
-        }
-    }
-
-    private async void OnRestart(object? sender, EventArgs e)
-    {
-        _restartItem.Enabled = false;
-        _supervisor.Cancel();
-        await _server.StopAsync();
-        await StartServerAsync();
-    }
-
-    private async void OnStartStop(object? sender, EventArgs e)
-    {
-        _supervisor.Cancel();
-        if (_state is TrayState.Stopped)
-        {
-            await StartServerAsync();
-        }
-        else
-        {
-            await _server.StopAsync();
-            InvokeOnUiThread(() => SetState(TrayState.Stopped));
-        }
-    }
-
-    private async void OnServiceMode(object? sender, EventArgs e)
-    {
-        using var dialog = new ServiceModeDialog();
-        if (dialog.ShowDialog() != DialogResult.OK)
+        if (_ui.IsDisposed)
         {
             return;
         }
 
-        SetState(TrayState.Updating);
-        _supervisor.Cancel();
-        await _server.StopAsync();
-        ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
-        Application.Exit();
-    }
-
-    private void OnQuit(object? sender, EventArgs e)
-    {
-        _supervisor.Cancel();
-        _server.StopAsync().GetAwaiter().GetResult();
-        _notify.Visible = false;
-        Application.Exit();
-    }
-
-    private void InvokeOnUiThread(Action action)
-    {
-        if (_notify.ContextMenuStrip?.InvokeRequired == true)
+        if (_ui.InvokeRequired)
         {
-            _notify.ContextMenuStrip.Invoke(action);
+            _ui.BeginInvoke(action);
         }
         else
         {
@@ -522,9 +993,14 @@ public sealed class TrayApplication : ApplicationContext
     {
         if (disposing)
         {
+            _watcher?.Dispose();
+            _secondLaunch?.Dispose();
+            _pendingInstallsTimer.Dispose();
             _notify.Visible = false;
             _notify.Dispose();
+            _icon?.Dispose();
             _server.Dispose();
+            _ui.Dispose();
         }
 
         base.Dispose(disposing);

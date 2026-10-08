@@ -5,6 +5,22 @@ namespace Deluno.Platform.Tests.Updates;
 public sealed class UpdateStateMachineTests
 {
     [Fact]
+    public void Every_state_change_tells_a_listener_but_a_progress_tick_does_not()
+    {
+        var state = new UpdateStateMachine();
+        var changes = 0;
+        state.Changed += () => changes++;
+
+        state.MarkChecking();
+        state.MarkUpdateAvailable(DateTimeOffset.UtcNow, "1.3.0");
+        state.MarkDownloading();
+        state.ReportProgress(40);
+        state.MarkDownloaded(DateTimeOffset.UtcNow);
+
+        Assert.Equal(4, changes);
+    }
+
+    [Fact]
     public void MarkChecking_sets_checking_and_clears_error()
     {
         var state = new UpdateStateMachine();

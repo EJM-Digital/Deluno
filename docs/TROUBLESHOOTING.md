@@ -122,18 +122,18 @@ Primary backup/restore procedure:
 
 ### Issue: Deluno Starts But Nothing Loads
 
-For installed Windows builds, verify Deluno is running from the tray and listening on the expected local port.
+For installed Windows builds, verify Deluno is running from the tray and listening on the expected local port (7879 unless you changed it from the tray icon, Change port).
 
 Recommended launch:
 
 ```powershell
-curl http://127.0.0.1:5099/health
+curl http://127.0.0.1:7879/health
 ```
 
 Then open:
 
 ```text
-http://127.0.0.1:5099
+http://127.0.0.1:7879
 ```
 
 If it still fails:
