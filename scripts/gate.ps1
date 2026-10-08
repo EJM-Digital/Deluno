@@ -52,8 +52,15 @@ Write-Host ("  OK  Release build ({0:mm\:ss})" -f $build.Elapsed)
 
 $powershell = (Get-Command powershell.exe).Source
 $npm = (Get-Command npm.cmd).Source
+# Release is built once, above. Neither the backend tests nor the smoke host build
+# it again: two builds at the same moment raced for the same output files and the
+# smoke host failed to start ("Process from config.webServer was not able to start").
+$env:DELUNO_SMOKE_NO_BUILD = "1"
+# Tests that time an endpoint against a budget (Category=Timing) do not run beside
+# the web tests, which starve the machine: an endpoint that answers in 12 ms alone
+# took 754 ms there. They run on their own once the parallel steps are done.
 $steps = @(
-    @{ Name = "Backend tests"; File = $powershell; Arguments = "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1" },
+    @{ Name = "Backend tests"; File = $powershell; Arguments = "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Filter `"Category!=Timing`"" },
     @{ Name = "ci:check"; File = $npm; Arguments = "run ci:check" },
     @{ Name = "Web tests"; File = $npm; Arguments = "run test:web" }
 )
@@ -84,6 +91,18 @@ foreach ($entry in $running) {
         Write-Host ("  XX  {0} failed with exit code {1} ({2:mm\:ss}); log: {3}" -f $entry.Name, $code, $elapsed, $entry.Log) -ForegroundColor Red
         Get-Content $entry.Log -Tail 25 | ForEach-Object { Write-Host "      $_" }
     }
+}
+
+$timing = [System.Diagnostics.Stopwatch]::StartNew()
+$timingLog = Join-Path $logDir "Timingtests.log"
+& dotnet test (Join-Path $Root "tests\Deluno.Persistence.Tests\Deluno.Persistence.Tests.csproj") --configuration Release --no-build --no-restore `
+    --filter "Category=Timing" *> $timingLog
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ("  OK  Timing tests, run alone ({0:mm\:ss})" -f $timing.Elapsed)
+} else {
+    $failed++
+    Write-Host ("  XX  Timing tests failed, run alone ({0:mm\:ss}); log: {1}" -f $timing.Elapsed, $timingLog) -ForegroundColor Red
+    Get-Content $timingLog -Tail 25 | ForEach-Object { Write-Host "      $_" }
 }
 
 Write-Host ("Gate finished in {0:mm\:ss} ({1})" -f $total.Elapsed, $(if ($Serial) { "serial" } else { "parallel" }))

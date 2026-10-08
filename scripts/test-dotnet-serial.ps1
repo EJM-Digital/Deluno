@@ -1,5 +1,12 @@
 param(
-    [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
+    # The gate has just built Release and runs the smoke host's `dotnet run` beside
+    # this script. A second build here raced that one for the same output files and
+    # the smoke host failed to start, so the gate passes -NoBuild. Run by hand, leave
+    # it off: the build below is what keeps a local run honest.
+    [switch]$NoBuild,
+    # A dotnet test filter applied to every project, e.g. "Category!=Timing".
+    [string]$Filter = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,11 +41,16 @@ if ($projects.Count -eq 0) {
 # So the build happens here, in the one place that knows which configuration
 # the tests use. It is a no-op of a few seconds when the output is current,
 # including on CI.
-Write-Host "Building Release before testing it."
-& $dotnet.Source build (Join-Path $Root "Deluno.slnx") --configuration Release --nologo -v minimal
-if ($LASTEXITCODE -ne 0) {
-    throw "Release build failed, so the tests below would have run against stale binaries."
+if ($NoBuild) {
+    Write-Host "Using the Release build the caller has just made."
+} else {
+    Write-Host "Building Release before testing it."
+    & $dotnet.Source build (Join-Path $Root "Deluno.slnx") --configuration Release --nologo -v minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release build failed, so the tests below would have run against stale binaries."
+    }
 }
+$filterArguments = if ($Filter) { @("--filter", $Filter) } else { @() }
 
 Write-Host ""
 Write-Host "Running $($projects.Count) .NET test projects serially."
@@ -78,7 +90,7 @@ foreach ($project in $projects) {
     # tests' connections mid-query (ObjectDisposedException on sqlite3). They
     # now use SqliteDatabaseConnectionFactory.ClearPools() for their own files.
     & $dotnet.Source test $project.FullName --configuration Release --no-build --no-restore `
-        --logger "trx;LogFileName=backend-tests.trx"
+        --logger "trx;LogFileName=backend-tests.trx" @filterArguments
     if ($LASTEXITCODE -ne 0) {
         $failed.Add($project.Name)
     }
