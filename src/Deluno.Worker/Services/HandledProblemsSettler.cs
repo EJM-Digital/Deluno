@@ -211,7 +211,7 @@ public sealed class HandledProblemsSettler(
         var now = (clock ?? TimeProvider.System).GetUtcNow();
         var told = 0;
         var finished = await processors.ListProcessorHandoffsWithStatusAsync(
-            [ProcessorHandoffStatuses.Dismissed, ProcessorHandoffStatuses.Completed], cancellationToken) ?? [];
+            [ProcessorHandoffStatuses.Dismissed], cancellationToken) ?? [];
         foreach (var handoff in finished.Where(item => !string.IsNullOrWhiteSpace(item.ImportJobId) && now - item.UpdatedUtc < OutcomeWindow))
         {
             if (await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is not { Status: "completed" }

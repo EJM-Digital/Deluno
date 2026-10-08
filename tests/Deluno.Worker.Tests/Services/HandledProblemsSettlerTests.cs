@@ -241,4 +241,17 @@ public sealed class HandledProblemsSettlerTests
         connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
             It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task An_old_completed_hand_off_with_no_outcome_record_is_not_reported()
+    {
+        var processors = Processors(WithImport("completed", null));
+        Listed();
+        var connections = Connections();
+
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+
+        connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
+            It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
