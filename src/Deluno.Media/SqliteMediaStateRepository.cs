@@ -1104,10 +1104,17 @@ public sealed class SqliteMediaStateRepository(
         ImportRecoveryCaseScope scope,
         string reason,
         CancellationToken cancellationToken)
+        => (await SettleImportRecoveryCasesListedAsync(kind, scope, reason, cancellationToken)).Count;
+
+    public async Task<IReadOnlyList<SettledRecoveryCase>> SettleImportRecoveryCasesListedAsync(
+        MediaKind kind,
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken)
     {
         if (scope.IsEmpty)
         {
-            return 0;
+            return [];
         }
 
         var map = MediaTableMap.For(kind);
@@ -1117,7 +1124,7 @@ public sealed class SqliteMediaStateRepository(
             cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        var settled = new List<string>();
+        var settled = new List<SettledRecoveryCase>();
         using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -1157,17 +1164,17 @@ public sealed class SqliteMediaStateRepository(
                 WHERE status = 'open'
                   AND json_valid(details_json)
                   AND ({string.Join(" OR ", matches)})
-                RETURNING id;
+                RETURNING id, title, failure_kind;
                 """;
             AddParameter(update, "@now", now);
             await using var reader = await update.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                settled.Add(reader.GetString(0));
+                settled.Add(new SettledRecoveryCase(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
             }
         }
 
-        foreach (var caseId in settled)
+        foreach (var caseId in settled.Select(item => item.CaseId))
         {
             using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
@@ -1183,14 +1190,14 @@ public sealed class SqliteMediaStateRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        foreach (var caseId in settled)
+        foreach (var caseId in settled.Select(item => item.CaseId))
         {
             await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
                 new RecoveryCaseChangedEvent(caseId, "closed", null, null, kind == MediaKind.Movie ? "movie" : "series", null, now),
                 cancellationToken));
         }
 
-        return settled.Count;
+        return settled;
     }
 
     /// <summary>
@@ -1489,7 +1496,7 @@ public sealed class SqliteMediaStateRepository(
                 status,
                 summary,
                 recommended_action,
-                {(includeDetails ? "details_json" : "NULL")},
+                {(includeDetails ? "details_json" : ImportRecoveryKeyDetails.TrimSql("details_json"))},
                 detected_utc,
                 resolved_utc
             FROM {map.RecoveryTable}
