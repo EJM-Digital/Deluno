@@ -176,6 +176,34 @@ describe("Weir account (#1061, #968)", () => {
   });
 });
 
+describe("Weir account inside the guided setup's own form (#1132)", () => {
+  afterEach(() => fetchJson.mockReset());
+
+  it("sends the Weir account from inside another form without submitting that form", async () => {
+    fetchJson
+      .mockResolvedValueOnce([weirNew])
+      .mockResolvedValueOnce({ kind: "weir", name: "Weir", healthy: true, message: "Weir is connected." })
+      .mockResolvedValueOnce([{ ...weirNew, connected: true }]);
+    const outerSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
+    render(
+      <MemoryRouter>
+        <form onSubmit={outerSubmit}>
+          <ConnectInstalledApps />
+        </form>
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Weir" }));
+    fireEvent.change(screen.getByLabelText("Weir username"), { target: { value: "james" } });
+    fireEvent.change(screen.getByLabelText("Weir password"), { target: { value: "pw" } });
+    fireEvent.change(screen.getByLabelText("Confirm Weir password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Weir account and connect" }));
+
+    expect(await screen.findByText("Weir is connected.")).toBeTruthy();
+    expect(fetchJson).toHaveBeenCalledWith("/api/system/bundled-components/weir/connect", expect.objectContaining({ method: "POST" }));
+    expect(outerSubmit).not.toHaveBeenCalled();
+  });
+});
+
 describe("The panel follows the connections (#1130)", () => {
   afterEach(() => fetchJson.mockReset());
 

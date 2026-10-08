@@ -52,7 +52,7 @@ import {
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch, useAuth } from "../lib/use-auth";
-import { cn, plainAddress } from "../lib/utils";
+import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
@@ -205,6 +205,9 @@ interface GuideForm {
   mediaIntent: "movies" | "tv" | "both";
   movieRootPath: string;
   seriesRootPath: string;
+  /** Optional: where the download clients finish Movies / TV. Blank means Deluno reads it from the connected clients. */
+  movieDownloadsPath: string;
+  seriesDownloadsPath: string;
   qualityPreset: "" | "balanced1080p" | "premium4k";
   formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | "archive";
   indexerName: string;
@@ -323,13 +326,53 @@ export function buildIndexerAutomationFields(automation: AutomationChoices) {
 function toSetupDraft(form: GuideForm) {
   return {
     mode: form.mode, mediaIntent: form.mediaIntent, movieRootPath: form.movieRootPath, seriesRootPath: form.seriesRootPath,
+    movieDownloadsPath: form.movieDownloadsPath, seriesDownloadsPath: form.seriesDownloadsPath,
     qualityPreset: form.qualityPreset, formatGoal: form.formatGoal,
     indexerName: form.indexerName, indexerProtocol: form.indexerProtocol, indexerUrl: form.indexerUrl,
     clientName: form.clientName, clientProtocol: form.clientProtocol, clientHost: form.clientHost, clientPort: form.clientPort,
     backupEnabled: form.backupEnabled,
     firstTitleType: form.firstTitleType, firstTitle: form.firstTitle, firstTitleYear: form.firstTitleYear,
-    firstTitleMonitored: form.firstTitleMonitored
+    firstTitleMonitored: form.firstTitleMonitored,
+    // The Yes/No answers are saved too, so a reload restores them (#1132). Unanswered stays out.
+    skipSignInLocalNetwork: form.skipSignInLocalNetwork,
+    updateAutomatically: form.updateAutomatically,
+    automation: answeredAutomation(form.automation)
   };
+}
+
+/** What is still missing before Start works, named exactly (never a guess at the wrong thing). */
+export function describeMissingForFinish(form: GuideForm): string {
+  const missing: string[] = [];
+  const hasMovies = form.mediaIntent === "movies" || form.mediaIntent === "both";
+  const hasTv = form.mediaIntent === "tv" || form.mediaIntent === "both";
+  if (!((hasMovies && form.movieRootPath.trim()) || (hasTv && form.seriesRootPath.trim()))) missing.push("a library root folder");
+  if (!form.qualityPreset) missing.push("a picture quality");
+  if (!form.formatGoal) missing.push("a release preference");
+  if (form.skipSignInLocalNetwork === null) missing.push("an answer to \"Skip sign-in for devices on your home network?\"");
+  if (form.updateAutomatically === null) missing.push("an answer to \"Update automatically, or ask you first?\"");
+  if (!hasAnsweredAllAutomationQuestions(form.automation)) missing.push("an answer to every automation question");
+  if (missing.length === 0) return "Everything is chosen.";
+  return `Still needed before Deluno can create the baseline: ${missing.join(", ")}.`;
+}
+
+/** Only the questions that have an explicit Yes or No. */
+export function answeredAutomation(automation: AutomationChoices): Record<string, boolean> {
+  const answered: Record<string, boolean> = {};
+  for (const key of Object.keys(automation) as AutomationChoiceKey[]) {
+    const value = automation[key];
+    if (typeof value === "boolean") answered[key] = value;
+  }
+  return answered;
+}
+
+/** A saved draft's automation answers, limited to the questions Deluno still asks. */
+export function restoreDraftAutomation(saved: Record<string, boolean> | null | undefined): AutomationChoices {
+  const restored: AutomationChoices = { ...AUTOMATION_UNANSWERED };
+  if (!saved) return restored;
+  for (const key of Object.keys(restored) as AutomationChoiceKey[]) {
+    if (typeof saved[key] === "boolean") restored[key] = saved[key];
+  }
+  return restored;
 }
 
 export type SetupStage = 1 | 2;
@@ -536,6 +579,8 @@ export function SetupGuidePage() {
     mediaIntent: data.draft.mediaIntent as GuideForm["mediaIntent"],
     movieRootPath: data.draft.movieRootPath || data.settings.movieRootPath || "",
     seriesRootPath: data.draft.seriesRootPath || data.settings.seriesRootPath || "",
+    movieDownloadsPath: data.draft.movieDownloadsPath ?? "",
+    seriesDownloadsPath: data.draft.seriesDownloadsPath ?? "",
     qualityPreset: data.draft.qualityPreset as GuideForm["qualityPreset"],
     formatGoal: resolveDraftFormatGoal(data.draft.formatGoal),
     indexerName: data.draft.indexerName || data.indexers[0]?.name,
@@ -554,14 +599,14 @@ export function SetupGuidePage() {
     firstTitleYear: data.draft.firstTitleYear,
     firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null,
-    automation: { ...AUTOMATION_UNANSWERED },
+    automation: restoreDraftAutomation(data.draft.automation),
     restrictAllowedHosts: data.allowedHosts.enabled,
     allowedHostsSelection: data.allowedHosts.allowedHosts.length
       ? data.allowedHosts.allowedHosts
       : [data.allowedHosts.currentHost],
     // #993: unanswered by default (#936) -- Start stays disabled until this
     // has an explicit Yes or No, same as every Automation question.
-    skipSignInLocalNetwork: null,
+    skipSignInLocalNetwork: typeof data.draft.skipSignInLocalNetwork === "boolean" ? data.draft.skipSignInLocalNetwork : null,
     localNetworkAllowList: data.localNetworkAuth.allowList,
     // #1034 Stage 1 "Time and region": the browser/OS already knows a
     // sensible default (same fields Settings -> Interface edits) -- this is
@@ -575,7 +620,7 @@ export function SetupGuidePage() {
     timezone: data.settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     // #1034 Stage 1 "Updates": unanswered by default (#936) -- Start stays
     // disabled until this has an explicit Yes or No.
-    updateAutomatically: null
+    updateAutomatically: typeof data.draft.updateAutomatically === "boolean" ? data.draft.updateAutomatically : null
   }));
 
   const current = STEPS[stepIndex];
@@ -938,7 +983,7 @@ export function SetupGuidePage() {
                 currentHost={data.allowedHosts.currentHost}
               />
             ) : null}
-            {current.id === "network" ? <NetworkStep address={plainAddress(data.allowedHosts.currentHost)} /> : null}
+            {current.id === "network" ? <NetworkStep address={addressForOtherDevices(data.allowedHosts.currentHost, data.allowedHosts.detectedHosts) ?? undefined} /> : null}
             {current.id === "updates" ? <UpdatesStep form={form} patch={patch} channel={data.updatePreferences.channel} /> : null}
             {current.id === "mode" ? <ModeStep form={form} patch={patch} onSkip={skipWizard} /> : null}
             {current.id === "folders" ? <FoldersStep form={form} patch={patch} /> : null}
@@ -1145,9 +1190,19 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
             <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\\Media\\Movies or /media/movies" browseTitle="Choose movies root" />
           </FieldShell>
         ) : null}
+        {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
+          <FieldShell icon={FolderTree} label="Movies downloads folder (optional)" copy="Where your download client finishes Movies. Leave it blank and Deluno reads it from the download clients you connected.">
+            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\films" browseTitle="Choose Movies downloads folder" />
+          </FieldShell>
+        ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="TV root" copy="Where series folders should live.">
             <PathInput value={form.seriesRootPath} onChange={(value) => patch({ seriesRootPath: value })} placeholder="D:\\Media\\TV or /media/tv" browseTitle="Choose TV root" />
+          </FieldShell>
+        ) : null}
+        {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
+          <FieldShell icon={FolderTree} label="TV downloads folder (optional)" copy="Where your download client finishes TV. Leave it blank and Deluno reads it from the download clients you connected.">
+            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\shows" browseTitle="Choose TV downloads folder" />
           </FieldShell>
         ) : null}
       </div>
@@ -1255,9 +1310,9 @@ function ServicesStep({
   onTestClient: () => void;
 }) {
   return (
-    <div className="grid gap-(--grid-gap) xl:grid-cols-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-(--grid-gap) xl:grid-cols-2">
       <FieldShell icon={RadioTower} label="Search source" copy="Required for operational readiness. Connect and test the source Deluno will use to find releases.">
-        <div className="grid gap-3">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <PresetRadioGroup
             label="Search source presets"
             options={INDEXER_SETUP_PRESETS.map((preset) => ({
@@ -1295,12 +1350,12 @@ function ServicesStep({
       </FieldShell>
 
       <FieldShell icon={DownloadCloud} label="Download client" copy="The external client owns downloading; Deluno orchestrates, observes, and imports.">
-        <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           {connectedClients.length > 0 ? (
             // #1132: clients that are already connected are used as they are. Nothing is asked again.
-            <div className="grid gap-2 rounded-xl border border-hairline bg-surface-2 p-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl border border-hairline bg-surface-2 p-3">
               <p className="text-sm font-semibold text-foreground">Already connected. Deluno will use these.</p>
-              <ul className="grid gap-1.5">
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 {connectedClients.map((client) => (
                   <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground">
                     <span className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
@@ -1323,7 +1378,7 @@ function ServicesStep({
             </p>
           )}
           {connectedClients.length === 0 || addingClient ? (
-            <div className="grid gap-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           <PresetRadioGroup
             label="Download client presets"
             options={CLIENT_SETUP_PRESETS.map((preset) => ({
@@ -1397,7 +1452,7 @@ export function ConnectAppsStep({
   hasInstalled: boolean;
 }) {
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <ConnectInstalledApps onChange={onChange} />
       {hasInstalled ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -1676,7 +1731,7 @@ function AddressesStep({
  * firewall already lets other devices reach Deluno, or on a host with no
  * firewall for Deluno to look after -- there is nothing to ask in that case.
  */
-function NetworkStep({ address }: { address: string }) {
+function NetworkStep({ address }: { address?: string }) {
   return (
     <FieldShell
       icon={MonitorSmartphone}
@@ -1936,7 +1991,7 @@ function FinishStep({
       </div>
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
-          Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline.
+          {describeMissingForFinish(form)}
         </p>
       ) : connectionTestsRequired ? (
         // Not a blocker: the baseline can be created now and connected later.
@@ -2177,7 +2232,7 @@ function PresetRadioGroup({ label, options }: { label: string; options: PresetRa
   }
 
   return (
-    <div role="radiogroup" aria-label={label} className="grid gap-2 sm:grid-cols-2">
+    <div role="radiogroup" aria-label={label} className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
       {options.map((option, index) => (
         <button
           key={option.id}
@@ -2228,10 +2283,10 @@ function ChoiceCard({ active, icon: Icon, title, copy, onClick }: { active: bool
 
 function FieldShell({ icon: Icon, label, copy, children }: { icon: LucideIcon; label: string; copy: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
+    <div className="min-w-0 rounded-2xl border border-hairline bg-surface-1 p-4">
       <div className="mb-4 flex gap-3">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold text-foreground">{label}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{copy}</p>
         </div>
@@ -2460,10 +2515,10 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   const indexer = await ensureIndexer(data.indexers, form, input.indexerTested, createdEntities);
   const clients = await ensureClients(input.liveClients, form, input.clientTested, createdEntities);
   const movieLibrary = canCreateMovies
-    ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, movieProfile?.id ?? null, form, createdEntities)
+    ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, form.movieDownloadsPath, movieProfile?.id ?? null, form, createdEntities)
     : null;
   const tvLibrary = canCreateTv
-    ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, tvProfile?.id ?? null, form, createdEntities)
+    ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, form.seriesDownloadsPath, tvProfile?.id ?? null, form, createdEntities)
     : null;
 
   // A library made a moment ago has no sources to lose; one that was already there keeps its own unless an indexer is named.
@@ -2473,6 +2528,21 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
     routable(movieLibrary) ? saveRouting(movieLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve(),
     routable(tvLibrary) ? saveRouting(tvLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve()
   ]);
+
+  // The folder each new library's downloads finish in: the one typed, else the one the connected
+  // clients already save into (the picker's completed folder with Movies and TV). Without it the
+  // folder check says "Can't tell" and a processor has no folder to watch.
+  const noDownloadsFolder: string[] = [];
+  for (const [library, typed, rootPath, label] of [
+    [movieLibrary, form.movieDownloadsPath, form.movieRootPath, "Movies"],
+    [tvLibrary, form.seriesDownloadsPath, form.seriesRootPath, "TV"]
+  ] as const) {
+    const isNew = library && createdEntities.some((entity) => entity.kind === "library" && entity.id === library.id);
+    if (!library || !isNew || typed.trim()) continue;
+    const folder = clients.length > 0 ? await detectLibraryDownloadsFolder(library.id).catch(() => null) : null;
+    const saved = folder ? await saveLibraryDownloadsFolder(library, rootPath, folder).then(() => true, () => false) : false;
+    if (!saved) noDownloadsFolder.push(label);
+  }
 
   // The answers go in last, and the one that can refuse goes first: if it refuses, the
   // libraries above are removed again and none of the answers has been applied.
@@ -2509,7 +2579,9 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   const completionResult = {
     message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.${
       firstTitleProblem ? ` The first title was not added: ${firstTitleProblem}` : ""
-    }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}`,
+    }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}${
+      noDownloadsFolder.length > 0 ? ` Deluno could not tell where your download clients finish ${noDownloadsFolder.join(" and ")}, so no downloads folder is set yet. Set it on the library so the folder check and your processor can work.` : ""
+    }`,
     libraries: [movieLibrary?.name, tvLibrary?.name].filter((item): item is string => Boolean(item)),
     qualityProfiles: [movieProfile?.name, tvProfile?.name].filter((item, index, arr): item is string => Boolean(item) && arr.indexOf(item) === index),
     customFormatCount: createdEntities.filter((item) => item.kind === "customFormat").length,
@@ -2711,10 +2783,38 @@ function buildClientPayload(form: GuideForm) {
   };
 }
 
+/**
+ * The one folder every connected client that has a folder of its own for this library's category saves into
+ * (#1132). Null when none says, or when they disagree (the folder check then names the clash).
+ */
+export async function detectLibraryDownloadsFolder(libraryId: string): Promise<string | null> {
+  const report = await fetchJson<{ libraries?: { destinations?: { saveFolder?: string | null; savedBy?: string }[] }[] }>(
+    `/api/integrations/processors/download-destinations?libraryId=${encodeURIComponent(libraryId)}`
+  );
+  const folders = (report?.libraries ?? [])
+    .flatMap((item) => item.destinations ?? [])
+    .filter((destination) => destination.savedBy === "client-category" && destination.saveFolder?.trim())
+    .map((destination) => destination.saveFolder!.trim());
+  const key = (folder: string) => folder.replace(/[\\/]+$/, "").toLowerCase();
+  return folders.length > 0 && folders.every((folder) => key(folder) === key(folders[0])) ? folders[0] : null;
+}
+
+async function saveLibraryDownloadsFolder(library: LibraryItem, rootPath: string, downloadsPath: string) {
+  const response = await authedFetch(`/api/libraries/${library.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: library.name, rootPath: library.rootPath || rootPath, downloadsPath })
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorText(response, "The downloads folder could not be saved."));
+  }
+}
+
 async function ensureLibrary(
   existing: LibraryItem[],
   mediaType: "movies" | "tv",
   rootPath: string,
+  downloadsPath: string,
   qualityProfileId: string | null,
   form: GuideForm,
   createdEntities: CreatedEntity[]
@@ -2730,7 +2830,7 @@ async function ensureLibrary(
       mediaType,
       purpose: "Main library",
       rootPath,
-      downloadsPath: null,
+      downloadsPath: downloadsPath.trim() || null,
       qualityProfileId,
       // #936: nothing automatic is on until the Automation step says so.
       ...buildLibraryAutomationFields(form.automation),

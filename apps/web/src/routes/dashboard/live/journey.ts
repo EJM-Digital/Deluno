@@ -282,7 +282,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       state = item.status === "paused" ? { tone: "idle", label: "Paused" } : item.status === "notTransferring" ? { tone: "info", label: "Checking files" } : { tone: "info", label: "Downloading" };
     } else if (IN_PROCESSOR.includes(item.status) || (handoff && isWithProcessor(handoff.status))) {
       stage = "processor";
-      state = handoff ? handoffState(handoff) : item.status === "processingFailed" ? { tone: "bad", label: "Processor failed" } : { tone: "info", label: item.status === "waitingForProcessor" ? "Being handed over" : "Being cleaned" };
+      state = handoff ? handoffState(handoff) : item.status === "processingFailed" ? { tone: "bad", label: "Processor failed" } : { tone: "info", label: item.status === "waitingForProcessor" ? BEING_HANDED_OVER : "Being cleaned" };
     } else if (IMPORTING.includes(item.status)) {
       stage = "importing";
       state = item.status === "importFailed" ? { tone: "bad", label: "Import failed" } : item.status === "importQueued" ? { tone: "info", label: "Import queued" } : { tone: "info", label: "Ready to import" };
@@ -424,10 +424,19 @@ function protocolOf(word: string | null | undefined): JourneyCard["protocol"] {
   return undefined;
 }
 
+/** The hand-off has not been submitted yet: the processor has not been given the files, so it is not working on anything. */
+export const WAITING_FOR_PROCESSOR = "Waiting for the processor";
+const BEING_HANDED_OVER = "Being handed over";
+
+/** True only once the processor really has the title; "waiting to submit" is not working. */
+export function processorHasStarted(card: Pick<JourneyCard, "state">): boolean {
+  return card.state.label !== WAITING_FOR_PROCESSOR && card.state.label !== BEING_HANDED_OVER;
+}
+
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
   const status = handoff.status.toLowerCase();
   if (isProcessorFailure(status) || handoff.failureMessage) return { tone: "bad", label: "Processor failed" };
-  if (status === "waiting") return { tone: "info", label: "Waiting for the processor" };
+  if (status === "waiting") return { tone: "info", label: WAITING_FOR_PROCESSOR };
   if (status === "completed") return { tone: "ok", label: "Returned" };
   return { tone: "info", label: "Being cleaned" };
 }

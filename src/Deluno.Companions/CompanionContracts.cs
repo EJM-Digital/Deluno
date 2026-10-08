@@ -40,7 +40,9 @@ public sealed record CompanionInstallRequest(IReadOnlyList<string>? ToolIds);
 public sealed record WeirAccountState(bool Installed, bool NeedsAccount, bool AccountExists);
 
 /// <param name="NeedsSignIn">The person still has to type their Weir username and password.</param>
-public sealed record WeirConnectOutcome(bool Healthy, string Message, bool NeedsSignIn);
+/// <param name="ProcessorConnectionId">The processor connection made for Weir, so libraries that refine before import can be linked to it. Null when nothing was made.</param>
+/// <param name="ProcessorConnectionName">That connection's name.</param>
+public sealed record WeirConnectOutcome(bool Healthy, string Message, bool NeedsSignIn, string? ProcessorConnectionId = null, string? ProcessorConnectionName = null);
 
 /// <summary>Links Weir and Deluno with the account the person gives, held in memory for that call only.</summary>
 public interface IWeirConnector
