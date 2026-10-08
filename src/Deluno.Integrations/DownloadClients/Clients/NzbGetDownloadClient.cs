@@ -7,8 +7,10 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
+public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, TimeSpan? readBackDelay = null) : DownloadClientBase
 {
+    private readonly TimeSpan _readBackDelay = readBackDelay ?? TimeSpan.FromMilliseconds(500);
+
     public override string Protocol => "nzbget";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, false, true, "basic", SupportsQueueReorder: true);
 
@@ -112,6 +114,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         {
             health = "degraded";
             message = UsenetProviderText.NoProvider;
+            // A client with no news server shows that, never "Paused": a fresh NZBGet starts paused, which would hide it.
+            clientPaused = false;
         }
 
         return CreateSnapshot(
@@ -153,11 +157,30 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 return new(client.Id, client.Name, false, $"{client.Name} did not accept the provider.");
             }
 
-            await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("reload", []), cancellationToken);
-            var after = await ReadOptionsAsync(http, baseUri, cancellationToken);
-            return after is not null && NzbGetServerPlan.HasWorkingServer(after)
-                ? new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.")
-                : new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");
+            try
+            {
+                await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("reload", []), cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                // NZBGet drops the connection while it restarts its own services; the read-back below waits for it.
+            }
+
+            // NZBGet applies a reload a moment after it answers, and answers `config` from the old settings until
+            // then. So the read-back asks again for a bounded time, and only counts the provider that was just
+            // written (its address), never an older one that was already there.
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                var after = await ReadOptionsAsync(http, baseUri, cancellationToken);
+                if (after is not null && NzbGetServerPlan.HasWorkingServer(after, request.Host))
+                {
+                    return new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.");
+                }
+
+                await Task.Delay(_readBackDelay, cancellationToken);
+            }
+
+            return new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
