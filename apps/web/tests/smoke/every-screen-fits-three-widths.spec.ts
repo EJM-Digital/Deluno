@@ -262,7 +262,6 @@ test.describe("every screen fits three widths", () => {
       const offenders: string[] = [];
       const only = process.env.FIT_ONLY;
       for (const route of [...new Set([...routes, ...titles])].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
-        const started = Date.now();
         await page.goto(route);
         await data.settled();
         // A title page lays itself out again when its metadata arrives (#1179): measure when two looks agree.
@@ -274,7 +273,6 @@ test.describe("every screen fits three widths", () => {
           return same;
         }, { timeout: 8_000 }).toBe(true);
         const problems = JSON.parse(previous) as string[];
-        console.log(`${route} ${Date.now() - started}ms`);
         const shown = route.startsWith("/movies/") ? "a film page" : route.startsWith("/tv/") ? "a show page" : route;
         if (problems.length > 0) offenders.push(`${shown}: ${problems.slice(0, 5).join("; ")}`);
       }

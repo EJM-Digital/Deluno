@@ -1353,7 +1353,7 @@ export function ShowDetailPage() {
                 Edit metadata
               </Button>
               <Button variant="destructive" className="w-full" disabled={busyAction !== null} onClick={() => setIsRemoveConfirmationOpen(true)}>
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="hidden h-4 w-4 min-[420px]:block" />
                 Remove from Deluno
               </Button>
               </TitleActionGrid>
