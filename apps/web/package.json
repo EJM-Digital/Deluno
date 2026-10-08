@@ -18,7 +18,8 @@
     "validate:ui-primitives": "ts-node scripts/validate-ui-primitives.ts",
     "validate:ui-typography": "ts-node scripts/validate-ui-typography.ts",
     "validate:copy": "ts-node scripts/validate-copy.ts",
-    "prebuild": "npm run lint && npm run validate:ui-spacing && npm run validate:ui-primitives && npm run validate:job-status && npm run validate:ui-typography && npm run validate:copy"
+    "validate:live-timers": "ts-node scripts/validate-live-timers.ts",
+    "prebuild": "npm run lint && npm run validate:ui-spacing && npm run validate:ui-primitives && npm run validate:job-status && npm run validate:ui-typography && npm run validate:copy && npm run validate:live-timers"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

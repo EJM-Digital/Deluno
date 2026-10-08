@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { KeyRound, LockKeyhole, Plus, ShieldAlert, Wifi, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { plainAddress } from "../lib/utils";
@@ -27,7 +29,11 @@ export async function systemSecurityLoader(): Promise<SystemSecurityLoaderData> 
   return { allowedHosts, localNetworkAuth };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { areas: [ConfigAreas.security] };
+
 export function SystemSecurityPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { allowedHosts, localNetworkAuth } = useLoaderData() as SystemSecurityLoaderData;
   const revalidator = useRevalidator();
 

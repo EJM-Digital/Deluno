@@ -13,6 +13,8 @@ import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Loader2, Plus, RotateCcw, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
@@ -186,7 +188,11 @@ export async function settingsNotificationsLoader(): Promise<LoaderData> {
   return { settings, webhooks, deliveries, preferences };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"], areas: [ConfigAreas.notifications] };
+
 export function SettingsNotificationsPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { settings, webhooks, deliveries, preferences } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");

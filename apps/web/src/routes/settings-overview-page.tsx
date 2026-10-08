@@ -1,4 +1,5 @@
 import { Link, useLoaderData } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { CheckCircle2 } from "lucide-react";
 import {
   fetchJson,
@@ -38,7 +39,11 @@ export async function settingsOverviewLoader(): Promise<SettingsOverviewLoaderDa
   return { downloadClients, indexers, intakeSources, libraries, policySets, qualityProfiles, settings };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"] };
+
 export function SettingsOverviewPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const loaderData = useLoaderData() as SettingsOverviewLoaderData;
 
   const { downloadClients, indexers, intakeSources, libraries, policySets, qualityProfiles, settings } = loaderData;

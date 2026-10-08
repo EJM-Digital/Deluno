@@ -1,5 +1,5 @@
 import { toneSortValue } from "../lib/status-tones";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defineSources, queryClient, refetchSources, sourceLoader, useRouteSources, type RouteSource, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { sharedSources } from "../lib/shared-sources";
@@ -34,7 +34,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { AuditTimeline, AuditTimelineFilters, useAuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
-import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { useCoalescedSourceRefresh } from "../lib/live-refresh";
+import { RealtimeGroups, useLiveEvent, useSignalREvent } from "../lib/use-signalr";
 import { categoryLabel } from "../lib/activity-format";
 import {
   fetchJson, fetchPageItems,
@@ -237,14 +238,25 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
     ]);
   });
 
-  const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
-  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => n + 1));
-  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
-  // #909: a health check starting or clearing revalidates the whole loader,
-  // the same coarse refresh SettingsChanged and friends already use here --
-  // health rows are read once per page load, not worth a live socket of
-  // their own.
-  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => revalidator.revalidate());
+  // Every list on this screen follows the server (#1179): an event names the lists it moves and
+  // only those are read again. No timer asks, and a reconnect reads the screen once.
+  const refresh = useCoalescedSourceRefresh();
+  const { healthChecks: healthSource, indexers: indexersSource, downloadClients: clientsSource, processors: processorsSource } = systemSources;
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => refresh(healthSource, indexersSource, clientsSource, processorsSource));
+  useSignalREvent("MonitoringChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.monitoring));
+  useSignalREvent("BackupChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.backups, systemSources.backupSettings));
+  useSignalREvent("UpdateStatusChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.updateStatus));
+  useSignalREvent("RecycleBinChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.recycleBin, systemSources.recycleBinSettings));
+  useSignalREvent("SystemTaskChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.systemTasks));
+  useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.settings, systemSources.lanAccess));
+  useSignalREvent("LibraryChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.libraries));
+  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => refresh(indexersSource));
+  useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => refresh(clientsSource));
+  useSignalREvent("AutomationStateChanged", RealtimeGroups.Dashboard, () => refresh(systemSources.automation, systemSources.retryWindows));
+  useSignalREvent("SearchRunCompleted", RealtimeGroups.Dashboard, () => refresh(systemSources.searchCycles, systemSources.retryWindows));
+  useLiveEvent("JobChanged", () => refresh(systemSources.jobs, systemSources.failedJobs));
+  useLiveEvent("SearchCycleProgress", () => refresh(systemSources.searchCycles, systemSources.automation));
+  useLiveEvent("ClientStateChanged", () => refresh(clientsSource));
 
   // The timeline has its own tab; repeating all 500 events here made Health
   // three times taller than everything on it that actually answers "is it well?".
@@ -430,7 +442,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
     <SystemShell>
       <SummaryStrip
         cells={[
-          { label: "Running jobs", value: String(liveActiveJobs), help: liveActiveJobs ? "queued or working" : "nothing queued" },
+          { label: "Running jobs", value: String(activeJobs), help: activeJobs ? "queued or working" : "nothing queued" },
           { label: "Search sources", value: `${healthyIndexers}/${indexers.length}`, help: healthyIndexers === indexers.length ? "all responding" : "one is not responding", tone: indexers.length && healthyIndexers < indexers.length ? "warning" : undefined },
           { label: "Download clients", value: `${healthyClients}/${downloadClients.length}`, help: healthyClients === downloadClients.length ? "all responding" : "one is not responding", tone: downloadClients.length && healthyClients < downloadClients.length ? "warning" : undefined },
           ...(enabledProcessors.length
@@ -736,6 +748,15 @@ function RecycleBinCard({
   const [cleanupPreview, setCleanupPreview] = useState<RecycleBinCleanupPreview | null>(null);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
+  // Files going in or out of the bin, and the bin's own settings, arrive as a newer answer; typed-in edits are kept (#1179).
+  const dirtyNow = useRef(dirty);
+  dirtyNow.current = dirty;
+  useEffect(() => { setItems(initialItems); }, [initialItems]);
+  useEffect(() => {
+    if (dirtyNow.current) return;
+    setSavedSettings(initialSettings);
+    setSettings(initialSettings);
+  }, [initialSettings]);
 
   async function reload() {
     const [nextItems, nextSettings] = await Promise.all([
@@ -1118,6 +1139,16 @@ function BackupCard({
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
+  // A backup made, deleted or rescheduled anywhere (a scheduled one included) arrives as a newer list;
+  // typed-in schedule edits are never overwritten by it (#1179).
+  const dirtyNow = useRef(dirty);
+  dirtyNow.current = dirty;
+  useEffect(() => { setBackups(initialBackups); }, [initialBackups]);
+  useEffect(() => {
+    if (dirtyNow.current) return;
+    setSavedSettings(initialSettings);
+    setSettings(initialSettings);
+  }, [initialSettings]);
   const scheduleState: DrawerSaveState = resolveDrawerSaveState(scheduleSaveState, dirty);
   useUnsavedChanges(dirty, "Your backup schedule edits have not been saved.", saveSchedule);
 
@@ -1417,6 +1448,8 @@ function ReleaseNotesBody({ text }: { text: string }) {
 
 function UpgradeCard({ status, children }: { status: UpdateStatusResponse; children: ReactNode }) {
   const [current, setCurrent] = useState(status);
+  // A newer answer (a version applied, a check run elsewhere) replaces the one shown (#1179).
+  useEffect(() => { setCurrent(status); }, [status]);
   const [savedPreferences, setSavedPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [preferences, setPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [busyAction, setBusyAction] = useState<"check" | "download" | "prepare" | "restart" | "prefs" | null>(null);

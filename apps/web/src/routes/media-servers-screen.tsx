@@ -2,6 +2,8 @@ import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import type { IntegrationFailure, LibraryItem, QualityProfileItem } from "../lib/api/types";
@@ -133,7 +135,11 @@ function same(left: ServerForm, right: ServerForm) {
  * last test, beside the address, so it is always clear which machine a row
  * reaches - two servers on the same default port are otherwise easy to mix up.
  */
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged", "QualityProfileChanged"], areas: [ConfigAreas.mediaServers] };
+
 export function MediaServersPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { servers, collections, seerrServers, seerrCleanups, libraries, qualityProfiles } = useLoaderData() as {
     servers: MediaServerConnection[];
     collections: LeavingSoonCollection[];

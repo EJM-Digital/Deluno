@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Field } from "../components/ui/field";
 import { Loader2, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -52,7 +53,11 @@ const cloudflareHelperKindOptions = [
   { value: "byparr", label: "Byparr" }
 ];
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"] };
+
 export function SettingsGeneralPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { settings } = useLoaderData() as LoaderData;
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 

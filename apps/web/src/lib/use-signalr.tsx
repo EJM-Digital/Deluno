@@ -169,6 +169,11 @@ export interface DashboardSummaryChangedEvent {
   asOfUtc: string;
 }
 
+/** A Settings area was saved somewhere (#1179): `area` is a name from ConfigAreas in SystemChangeEvents.cs. */
+export interface ConfigChangedEvent {
+  area: string;
+}
+
 export interface EntityChangedEvent {
   id: string;
 }
@@ -256,6 +261,16 @@ type EventMap = {
   SystemOverviewChanged: SystemOverviewChangedEvent;
   SystemLogEntry: SystemLogEntry;
   ConnectionChecked: ConnectionCheckedEvent;
+  BackupChanged: EntityChangedEvent;
+  UpdateStatusChanged: EntityChangedEvent;
+  RecycleBinChanged: EntityChangedEvent;
+  SystemTaskChanged: EntityChangedEvent;
+  MonitoringChanged: EntityChangedEvent;
+  SystemDatabasesChanged: EntityChangedEvent;
+  OutboundThrottleChanged: EntityChangedEvent;
+  CompanionJobChanged: EntityChangedEvent;
+  BundledComponentChanged: EntityChangedEvent;
+  ConfigChanged: ConfigChangedEvent;
 };
 
 export type SignalREventName = keyof EventMap;
@@ -473,16 +488,21 @@ export function SignalRProvider({
      * seq) the server answers resync-required and every useSignalRResync
      * subscriber is told to refetch from REST.
      */
+    let attachedBefore = false;
     const attach = async (connection: signalR.HubConnection) => {
       joined.clear();
       await reconcile();
+      // The first connect of a page has nothing to catch up on: every screen has just loaded
+      // its data, so the server's answer to "resume from nothing" must not refetch it all (#1179).
+      const firstConnect = !attachedBefore;
+      attachedBefore = true;
       try {
         const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()]);
         if (result.status === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
         } else if (result.status === "ResyncRequired") {
           lastSeqRef.current = 0;
-          for (const h of resyncHandlersRef.current) h();
+          if (!firstConnect) for (const h of resyncHandlersRef.current) h();
         }
       } catch (error) {
         if (DEBUG) console.debug("[WS] resume failed", error);
@@ -534,6 +554,7 @@ export function SignalRProvider({
     // invocation counts as client activity to the server, so this alone is
     // enough -- it does not depend on the framework's own keep-alive timer
     // also getting through.
+    // display-clock: the hub keep-alive ping; it fetches no data.
     const stopPingNudge = subscribeTick(20_000, () => {
       if (builder.state === signalR.HubConnectionState.Connected) {
         void builder.invoke("Ping").catch(() => {
@@ -655,6 +676,35 @@ export function useSignalREvent<T extends SignalREventName>(
     const stable = (p: SignalREventPayload<T>) => handlerRef.current(p);
     return ctx.subscribe(event, stableSubjects, stable);
   }, [ctx, event, stableSubjects]);
+}
+
+/**
+ * The same as `useSignalREvent` for several events at once (#1179): one subscription per name,
+ * one handler, joined on the same subjects. The names are read when the component first renders
+ * with this list, so pass a constant list.
+ */
+export function useSignalREvents(
+  events: readonly SignalREventName[],
+  subjects: RealtimeSubject,
+  handler: (name: SignalREventName, payload: unknown) => void
+) {
+  const ctx = useContext(SignalRContext);
+  const subjectKey = typeof subjects === "string" ? subjects : subjects.join("");
+  const eventKey = events.join("");
+  const stableSubjects = useMemo(
+    () => [...new Set(subjectKey ? subjectKey.split("") : [])],
+    [subjectKey]
+  );
+  const handlerRef = useRef(handler);
+  useEffect(() => { handlerRef.current = handler; });
+
+  useEffect(() => {
+    if (!ctx || !eventKey) return;
+    const stops = (eventKey.split("") as SignalREventName[]).map((name) =>
+      ctx.subscribe(name, stableSubjects, (payload: unknown) => handlerRef.current(name, payload))
+    );
+    return () => { for (const stop of stops) stop(); };
+  }, [ctx, eventKey, stableSubjects]);
 }
 
 /**
