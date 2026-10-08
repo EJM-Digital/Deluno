@@ -2,8 +2,8 @@
  * WebSocket connection status badge — appears in the topbar.
  *
  * · connected    → silent (no visual noise in steady state)
- * · reconnecting → amber pulse dot + "Reconnecting"
- * · disconnected → red dot + "Offline"
+ * · reconnecting → amber pulse dot + "Not live: reconnecting"
+ * · disconnected → red dot + "Not live: trying again"
  * · connecting   → subtle spinner
  *
  * Also acts as an ARIA live region so screen readers announce
@@ -38,14 +38,14 @@ const STATUS_CONFIG: Record<SignalRStatus, Config> = {
   },
   reconnecting: {
     dot: "bg-warning animate-pulse",
-    label: "Reconnecting",
+    label: "Not live: reconnecting",
     ring: "border-warning/25 bg-warning/10 text-warning",
     animate: false,
     visible: true
   },
   disconnected: {
     dot: "bg-destructive",
-    label: "Offline",
+    label: "Not live: trying again",
     ring: "border-destructive/25 text-destructive",
     animate: false,
     visible: true
@@ -62,7 +62,9 @@ export function WsStatusBadge({ className }: { className?: string }) {
     <span
       role="status"
       aria-live="polite"
-      aria-label={`WebSocket: ${cfg.label}`}
+      aria-label={status === "connecting" ? cfg.label : `${cfg.label}. Live updates are paused, so the numbers on screen may be out of date.`}
+      title={status === "connecting" ? undefined : "Live updates are paused, so the numbers on screen may be out of date. Deluno keeps trying to reconnect."}
+      data-realtime-status={status}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-(length:--shell-subtle-size) font-medium",
         cfg.ring,

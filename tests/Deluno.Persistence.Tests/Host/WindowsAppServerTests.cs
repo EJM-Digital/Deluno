@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -152,6 +154,51 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
         var response = await _client.GetAsync("/api/v1/auth/bootstrap-status");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// #1178: a browser that signs in, joins the screen subjects and asks to resume
+    /// is pushed what the server raises, over each transport SignalR can fall back
+    /// to, through the same pipeline the Windows app runs.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpTransportType.WebSockets)]
+    [InlineData(HttpTransportType.ServerSentEvents)]
+    [InlineData(HttpTransportType.LongPolling)]
+    public async Task A_signed_in_browser_that_joins_the_subjects_is_pushed_what_the_server_raises(HttpTransportType transport)
+    {
+        var token = await SignInAsync();
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(_client.BaseAddress!, "/hubs/deluno"), options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                options.Transports = transport;
+            })
+            .Build();
+        var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        connection.On<System.Text.Json.JsonElement>("RealtimeEvent", envelope => received.Enqueue(envelope.GetProperty("name").GetString()!));
+
+        await connection.StartAsync();
+        await connection.InvokeAsync("Subscribe", new[] { "dashboard", "queue", "activity", "live" });
+        await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", 0L, new[] { "dashboard", "queue", "activity", "live" });
+
+        var watchers = _app.Services.GetRequiredService<Deluno.Contracts.IRealtimeWatchers>();
+        Assert.Equal(1, watchers.Count("live"));
+
+        // The publisher is what turns an event into a push; the host's other background work is left out of this fixture.
+        var publisher = _app.Services.GetRequiredService<Deluno.Contracts.IRealtimeEventPublisher>();
+        await ((IHostedService)publisher).StartAsync(CancellationToken.None);
+        await publisher.PublishDownloadProgressAsync("d1", "A film", 50, 3.5, null, "downloading", CancellationToken.None);
+        await publisher.PublishActivityEventAddedAsync("a1", "Searched", "search", "info", DateTimeOffset.UtcNow.ToString("O"), CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline && !(received.Contains("DownloadProgress") && received.Contains("ActivityEventAdded")))
+        {
+            await Task.Delay(100);
+        }
+
+        Assert.Contains("DownloadProgress", received);
+        Assert.Contains("ActivityEventAdded", received);
     }
 
     /// <summary>Creates the first account through the real API and signs in as it.</summary>

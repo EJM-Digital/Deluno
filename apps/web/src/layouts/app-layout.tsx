@@ -916,7 +916,7 @@ function ContentTopbar({
           <Moon className={cn("absolute transition duration-300", TOPBAR_ICON, resolvedTheme === "dark" ? "scale-100 opacity-100" : "scale-75 opacity-0 rotate-90")} strokeWidth={1.75} />
         </button>
 
-        <WsStatusBadge className="hidden xl:inline-flex" />
+        <WsStatusBadge className="hidden sm:inline-flex" />
       </div>
 
       {searchOpen ? (

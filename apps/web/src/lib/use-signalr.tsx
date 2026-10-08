@@ -310,7 +310,8 @@ const SignalRContext = createContext<SignalRContextValue | null>(null);
 /* ── Provider ────────────────────────────────────────────────────── */
 const HUB_URL = "/hubs/deluno";
 const DEBUG = import.meta.env.VITE_WS_DEBUG === "1";
-const INITIAL_START_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000, 30_000] as const;
+/** Waits between attempts to bring the connection up; the last one repeats for as long as the page is open. */
+const START_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000, 30_000] as const;
 
 type AnyHandler = (payload: unknown) => void;
 
@@ -341,13 +342,13 @@ export function SignalRProvider({
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
 
-  const invokeSubjects = useCallback((method: "Subscribe" | "Unsubscribe", subjects: string[]) => {
-    const connection = connectionRef.current;
-    if (!connection || connection.state !== signalR.HubConnectionState.Connected || subjects.length === 0) return;
-    void connection.invoke(method, subjects).catch((error) => {
-      if (DEBUG) console.debug(`[WS] ${method.toLowerCase()} failed`, error);
-    });
-  }, []);
+  /**
+   * Brings the hub's subjects in line with what screens want, whenever either changes (#1178).
+   * Set by the connection effect below; a no-op while there is no connection. It never drops a
+   * request: a subject asked for while the connection is starting, down or reconnecting is
+   * simply sent the moment it is up, and every change is sent in order.
+   */
+  const reconcileRef = useRef<() => Promise<void>>(async () => {});
 
   const subscribe = useCallback(<T extends SignalREventName>(
     event: T,
@@ -361,23 +362,21 @@ export function SignalRProvider({
     requestedSubjects.forEach((subject) => {
       subjectCountsRef.current.set(subject, (subjectCountsRef.current.get(subject) ?? 0) + 1);
     });
-    invokeSubjects("Subscribe", requestedSubjects);
+    void reconcileRef.current();
 
     return () => {
       map.get(event)?.delete(handler as AnyHandler);
-      const removedSubjects: string[] = [];
       requestedSubjects.forEach((subject) => {
         const count = subjectCountsRef.current.get(subject) ?? 0;
         if (count <= 1) {
           subjectCountsRef.current.delete(subject);
-          removedSubjects.push(subject);
         } else {
           subjectCountsRef.current.set(subject, count - 1);
         }
       });
-      invokeSubjects("Unsubscribe", removedSubjects);
+      void reconcileRef.current();
     };
-  }, [invokeSubjects]);
+  }, []);
 
   const subscribeResync = useCallback((handler: () => void) => {
     resyncHandlersRef.current.add(handler);
@@ -405,6 +404,58 @@ export function SignalRProvider({
   }, []);
 
   useEffect(() => {
+    /** Subjects this connection has joined on the hub. Empty for every new connection, since the hub forgets a dropped one. */
+    const joined = new Set<string>();
+    let disposed = false;
+    let chain: Promise<void> = Promise.resolve();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /** Sends one batch; if the hub refuses the batch, sends each subject alone so one bad subject cannot cost the rest. */
+    const send = async (method: "Subscribe" | "Unsubscribe", subjects: string[], done: (subject: string) => void) => {
+      let allSent = true;
+      try {
+        await builder.invoke(method, subjects);
+        subjects.forEach(done);
+        return true;
+      } catch (error) {
+        if (DEBUG) console.debug(`[WS] ${method.toLowerCase()} failed`, error);
+        if (subjects.length === 1) return false;
+      }
+      for (const subject of subjects) {
+        try {
+          await builder.invoke(method, [subject]);
+          done(subject);
+        } catch {
+          allSent = false;
+        }
+      }
+      return allSent;
+    };
+
+    const reconcileNow = async () => {
+      if (disposed || builder.state !== signalR.HubConnectionState.Connected) return;
+      const wanted = subjectCountsRef.current;
+      const toAdd = [...wanted.keys()].filter((subject) => !joined.has(subject));
+      const toRemove = [...joined].filter((subject) => !wanted.has(subject));
+      let ok = true;
+      if (toRemove.length > 0) ok = (await send("Unsubscribe", toRemove, (subject) => joined.delete(subject))) && ok;
+      if (toAdd.length > 0) ok = (await send("Subscribe", toAdd, (subject) => joined.add(subject))) && ok;
+      if (!ok && !disposed && retryTimer === null) {
+        // A refused or interrupted request is tried again, never forgotten.
+        retryTimer = globalThis.setTimeout(() => {
+          retryTimer = null;
+          void reconcile();
+        }, 2_000);
+      }
+    };
+
+    /** Every subject change goes through this one queue, so requests reach the hub in the order they were made. */
+    const reconcile = () => {
+      chain = chain.then(reconcileNow, reconcileNow);
+      return chain;
+    };
+    reconcileRef.current = reconcile;
+
     /**
      * Applies one envelope: advances lastSeq and dispatches it. Idempotent
      * against replays, since the seq check runs first.
@@ -416,18 +467,17 @@ export function SignalRProvider({
     };
 
     /**
-     * Asks the hub to fill the gap since lastSeqRef. Inside the resume
+     * Joins every subject the screens want (nothing is joined on a new connection),
+     * then asks the hub to fill the gap since lastSeqRef. Inside the resume
      * window this replays what was missed; beyond it (or with no prior
      * seq) the server answers resync-required and every useSignalRResync
      * subscriber is told to refetch from REST.
      */
-    const resume = async (connection: signalR.HubConnection) => {
+    const attach = async (connection: signalR.HubConnection) => {
+      joined.clear();
+      await reconcile();
       try {
-        const subjects = [...subjectCountsRef.current.keys()];
-        if (subjects.length > 0) {
-          await connection.invoke("Subscribe", subjects);
-        }
-        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, subjects);
+        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()]);
         if (result.status === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
         } else if (result.status === "ResyncRequired") {
@@ -452,12 +502,23 @@ export function SignalRProvider({
 
     builder.on("RealtimeEvent", (envelope: RealtimeEnvelope) => applyEnvelope(envelope));
 
-    builder.onreconnecting(() => setStatus("reconnecting"));
-    builder.onreconnected(() => {
-      setStatus("connected");
-      void resume(builder);
+    builder.onreconnecting(() => {
+      joined.clear();
+      if (!disposed) setStatus("reconnecting");
     });
-    builder.onclose(() => setStatus("disconnected"));
+    builder.onreconnected(() => {
+      if (disposed) return;
+      setStatus("connected");
+      void attach(builder);
+    });
+    // Declared before the handlers that use it; set once the start loop exists.
+    let restart: () => void = () => {};
+    builder.onclose(() => {
+      joined.clear();
+      if (disposed) return;
+      setStatus("disconnected");
+      restart();
+    });
 
     connectionRef.current = builder;
 
@@ -481,46 +542,58 @@ export function SignalRProvider({
       }
     });
 
-    let disposed = false;
+    /**
+     * Brings the connection up, and keeps trying for as long as the page is open: SignalR's own
+     * automatic reconnect gives up after its last delay, and a screen left open overnight must
+     * still come back by itself (#1178). Only one loop runs at a time.
+     */
+    let starting = false;
     const startWithRetry = async () => {
-      for (let attempt = 0; attempt < INITIAL_START_RETRY_DELAYS_MS.length; attempt++) {
-        const delay = INITIAL_START_RETRY_DELAYS_MS[attempt];
-        if (delay > 0) {
-          setStatus("reconnecting");
-          await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
-        }
-        if (disposed) return;
+      if (starting) return;
+      starting = true;
+      try {
+        for (let attempt = 0; !disposed; attempt++) {
+          const delay = START_RETRY_DELAYS_MS[Math.min(attempt, START_RETRY_DELAYS_MS.length - 1)];
+          if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+          if (disposed) return;
 
-        try {
-          await builder.start();
-          if (disposed) {
-            await builder.stop();
+          try {
+            await builder.start();
+            if (disposed) {
+              await builder.stop();
+              return;
+            }
+            setStatus("connected");
+            void attach(builder);
             return;
-          }
-          setStatus("connected");
-          void resume(builder);
-          return;
-        } catch {
-          if (attempt === INITIAL_START_RETRY_DELAYS_MS.length - 1) {
-            setStatus("disconnected");
+          } catch {
+            if (!disposed) setStatus("disconnected");
           }
         }
+      } finally {
+        starting = false;
       }
     };
+    restart = () => void startWithRetry();
 
     setStatus("connecting");
     void startWithRetry();
 
     return () => {
       disposed = true;
+      if (retryTimer !== null) globalThis.clearTimeout(retryTimer);
+      reconcileRef.current = async () => {};
       stopPingNudge();
       void builder.stop();
       connectionRef.current = null;
     };
   }, [accessToken, deliver]);
 
+  // One stable object per status, so a screen's subscription is not torn down and rebuilt by an unrelated render.
+  const contextValue = useMemo(() => ({ status, subscribe, subscribeResync }), [status, subscribe, subscribeResync]);
+
   return (
-    <SignalRContext.Provider value={{ status, subscribe, subscribeResync }}>
+    <SignalRContext.Provider value={contextValue}>
       {children}
     </SignalRContext.Provider>
   );
