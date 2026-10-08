@@ -21,6 +21,11 @@ public static class ManualImportFolderScanner
     /// <summary>A 4-digit year between 1900 and 2099, the same window the release parser elsewhere in Deluno uses.</summary>
     private static readonly Regex YearPattern = new(@"(?<!\d)(19\d{2}|20\d{2})(?!\d)", RegexOptions.Compiled);
 
+    /// <summary>A tracker or index site's advert in front of a release name: "www.UIndex.org - ", "[ site.com ] ".</summary>
+    private static readonly Regex SitePrefixPattern = new(
+        @"^\s*(?:\[\s*[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*\]\s*|(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:org|com|net|info|to|cc|me|io|tv|ws|xyz|biz|eu|co|se|nl)\s+-\s+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Where a release name's title ends and its quality/source/codec noise
     /// begins — S01E02, 1080p, WEB-DL and the like. Everything from the first
@@ -52,6 +57,12 @@ public static class ManualImportFolderScanner
     public static (string? Title, int? Year) GuessTitleAndYear(string fileName)
     {
         var raw = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return (null, null);
+        }
+
+        raw = SitePrefixPattern.Replace(raw, string.Empty);
         if (string.IsNullOrWhiteSpace(raw))
         {
             return (null, null);
