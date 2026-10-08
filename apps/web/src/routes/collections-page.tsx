@@ -14,6 +14,8 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { fetchJson, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -46,6 +48,9 @@ export async function collectionsLoader(): Promise<CollectionsLoaderData> {
 export function CollectionsPage() {
   const { collections, libraries, qualityProfiles, membersByCollection } = useLoaderData() as CollectionsLoaderData;
   const revalidator = useRevalidator();
+  // Which films of a collection are held changes when any film does, and a collection sync reports as a change to films (#1179).
+  const readAgain = useCoalescedRevalidate(() => revalidator.revalidate(), 500);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, readAgain);
   const movieLibraries = useMemo(() => libraries.filter((library) => library.mediaType === "movies"), [libraries]);
   const [addOpen, setAddOpen] = useState(false);
   const [providerId, setProviderId] = useState("");

@@ -10,6 +10,8 @@
 import { useMemo, useState } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { fetchJson, type SeriesSeasonPassItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
@@ -50,6 +52,10 @@ export function groupSeasonPassBySeries(seasons: SeriesSeasonPassItem[]): Series
 export function SeasonPassPage() {
   const data = useLoaderData() as SeasonPassLoaderData;
   const revalidator = useRevalidator();
+  // Which episodes are held or wanted changes as shows and episodes do (#1179).
+  const readAgain = useCoalescedRevalidate(() => revalidator.revalidate(), 500);
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, readAgain);
+  useSignalREvent("EpisodeChanged", RealtimeGroups.Dashboard, readAgain);
   const [busy, setBusy] = useState<string | null>(null);
 
   const { seasons } = data;

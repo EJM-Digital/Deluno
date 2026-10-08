@@ -110,6 +110,7 @@ import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
+import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
 
 /**
@@ -179,55 +180,91 @@ interface MovieWorkflowStatus {
 
 type DetailSection = "destination" | "history";
 
+/**
+ * The page is read in groups, so a live change re-reads only the groups it can
+ * move (#1179) while the loader reads them all.
+ */
+function movieGroups(id: string): TitleGroups<MovieDetailLoaderData> {
+  return {
+    // The film itself, its copy, libraries, tags and routing.
+    title: async () => {
+      const [movie, metadataIssue, workflowStatus, removalPreview, copy, memberships] = await Promise.all([
+        fetchJson<MovieListItem>(`/api/movies/${id}`),
+        fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
+        fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null),
+        fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
+        // What the copy on disk is, in Deluno's own words. The file name is a
+        // preference and may say none of it.
+        fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null),
+        // The libraries this film is in, as a person chose them (#530).
+        fetchJson<LibraryMembership[]>(`/api/movies/${id}/libraries/`).catch(() => [] as LibraryMembership[])
+      ]);
+      // #990: which indexers/clients this title uses, and why — needs the
+      // library only known once `movie` itself is back, so it is fetched after.
+      const titleRouting = await loadTitleRoutingAsync(movie.libraryId, id);
+      return { movie, metadataIssue, workflowStatus, removalPreview, copy, memberships, titleRouting };
+    },
+    // What was searched, sent, decided and noted for this film.
+    history: async () => {
+      const [searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers] = await Promise.all([
+        fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
+        // Archived rows included on purpose: an import archives its dispatch the
+        // moment it succeeds, so a history that hides them shows nothing was ever
+        // sent for the very titles Deluno did download. Asked for by title, because
+        // the newest twenty rows across the whole library are not this title's.
+        fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=movies&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
+        fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&pageSize=20`),
+        fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&pageSize=40`),
+        fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=movies&entityId=${encodeURIComponent(id)}`).catch(() => []),
+        // Caught rather than awaited into the failure: a page that will not open
+        // because it could not find out why a download is stuck is worse than a
+        // page that simply does not mention it.
+        fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null)
+      ]);
+      return { searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers };
+    },
+    recovery: async () => ({
+      importRecovery: await fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500")
+    }),
+    // Which type each held subtitle is — plain, hearing-impaired or forced
+    // (#923), and what has already been tried (#840). Caught rather than
+    // awaited into the failure: a page that cannot show them should still open.
+    subtitles: async () => {
+      const [subtitles, subtitleHistory] = await Promise.all([
+        fetchJson<MediaSubtitleRow[]>(`/api/movies/${id}/subtitles`).catch(() => [] as MediaSubtitleRow[]),
+        fetchJson<MediaSubtitleAttemptHistoryEntry[]>(`/api/movies/${id}/subtitles/history`).catch(() => [] as MediaSubtitleAttemptHistoryEntry[])
+      ]);
+      return { subtitles, subtitleHistory };
+    },
+    // Things that change on their own screens, not with this film.
+    shared: async () => {
+      const [libraries, subtitleLanguageOptions] = await Promise.all([
+        fetchJson<LibraryItem[]>("/api/libraries"),
+        // For the per-title override picker (#843).
+        fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
+      ]);
+      return { libraries, subtitleLanguageOptions };
+    }
+  };
+}
+
+/** What a change to the film moves (#1179). */
+const MOVIE_EVENT_GROUPS: TitleEventGroups = {
+  MovieChanged: ["title", "subtitles", "recovery", "history"],
+  ImportStateChanged: ["title", "history", "recovery"],
+  JourneyStageChanged: ["history", "title"],
+  RecoveryCaseChanged: ["recovery", "title"],
+  ReleasesTurnedDown: ["history"]
+};
+
 export async function movieDetailLoader({
   params
 }: {
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
-  const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships, subtitles, subtitleLanguageOptions, subtitleHistory] = await Promise.all([
-    fetchJson<MovieListItem>(`/api/movies/${id}`),
-    fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
-    fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
-    // Archived rows included on purpose: an import archives its dispatch the
-    // moment it succeeds, so a history that hides them shows nothing was ever
-    // sent for the very titles Deluno did download. Asked for by title, because
-    // the newest twenty rows across the whole library are not this title's.
-    fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=movies&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
-    fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&pageSize=20`),
-    fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&pageSize=40`),
-    fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null),
-    fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=movies&entityId=${encodeURIComponent(id)}`).catch(() => []),
-    fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
-    // Caught rather than awaited into the failure: a page that will not open
-    // because it could not find out why a download is stuck is worse than a
-    // page that simply does not mention it.
-    fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null),
-    // What the copy on disk is, in Deluno's own words. The file name is a
-    // preference and may say none of it.
-    fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null),
-    // The libraries this film is in, as a person chose them (#530).
-    fetchJson<LibraryMembership[]>(`/api/movies/${id}/libraries/`).catch(() => [] as LibraryMembership[]),
-    // Which type each held subtitle is — plain, hearing-impaired or forced
-    // (#923). Caught rather than awaited into the failure: a page that
-    // cannot show its subtitle types is not a page that should not open.
-    fetchJson<MediaSubtitleRow[]>(`/api/movies/${id}/subtitles`).catch(() => [] as MediaSubtitleRow[]),
-    // For the per-title override picker (#843) — the same names the
-    // library's own subtitle-languages screen uses.
-    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[]),
-    // #840: what has already been tried, shown beside what is currently held.
-    fetchJson<MediaSubtitleAttemptHistoryEntry[]>(`/api/movies/${id}/subtitles/history`)
-      .catch(() => [] as MediaSubtitleAttemptHistoryEntry[])
-  ]);
-
-  // #990: which indexers/clients this title uses, and why — needs the
-  // library only known once `movie` itself is back, so it is fetched after
-  // the batch above rather than inside it.
-  const titleRouting = await loadTitleRoutingAsync(movie.libraryId, id);
-
-  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitleHistory, subtitles, subtitleLanguageOptions, titleRouting, workflowStatus };
+  const groups = movieGroups(params.id!);
+  const parts = await Promise.all(Object.values(groups).map((read) => read()));
+  return Object.assign({}, ...parts) as MovieDetailLoaderData;
 }
 
 /**
@@ -257,7 +294,9 @@ async function loadTitleRoutingAsync(libraryId: string | null | undefined, title
 }
 
 export function MovieDetailPage() {
-  const loaderData = useLoaderData() as MovieDetailLoaderData;
+  const routeData = useLoaderData() as MovieDetailLoaderData;
+  // Reads again only what a change to this film can move, as the server announces it (#1179).
+  const loaderData = useTitleLive(routeData.movie.id, routeData, useMemo(() => movieGroups(routeData.movie.id), [routeData.movie.id]), MOVIE_EVENT_GROUPS);
   const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitleHistory, subtitles, subtitleLanguageOptions, titleRouting, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();

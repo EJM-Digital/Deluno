@@ -118,6 +118,7 @@ import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRu
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 import { seasonMonitorState } from "./season-pass-page";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
+import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -165,48 +166,79 @@ interface NumberingDraft {
   }>;
 }
 
+/**
+ * The page is read in groups, so a live change re-reads only the groups it can
+ * move (#1179) while the loader reads them all.
+ */
+function showGroups(id: string): TitleGroups<ShowDetailLoaderData> {
+  return {
+    // The show itself, its libraries, tags and routing.
+    title: async () => {
+      const [series, metadataIssue, removalPreview, memberships] = await Promise.all([
+        fetchJson<SeriesListItem>(`/api/series/${id}`),
+        fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
+        fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
+        // The library this show is in, as a person chose it (#530).
+        fetchJson<LibraryMembership[]>(`/api/series/${id}/libraries/`).catch(() => [] as LibraryMembership[])
+      ]);
+      // #990: which indexers/clients this title uses, and why — needs the
+      // library only known once `series` itself is back, so it is fetched after.
+      const titleRouting = await loadTitleRoutingAsync(series.libraryId, id);
+      return { series, metadataIssue, removalPreview, memberships, titleRouting };
+    },
+    // Every season and episode, with what is held and what is wanted.
+    inventory: async () => ({ inventory: await fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`) }),
+    // What was searched, sent, decided and noted for this show.
+    history: async () => {
+      const [searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers] = await Promise.all([
+        fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
+        // Archived rows included on purpose: an import archives its dispatch the
+        // moment it succeeds, so a history that hides them shows nothing was ever
+        // sent for the very shows Deluno did download. Asked for by title, because
+        // the newest twenty rows across the whole library are not this show's.
+        fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=tv&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
+        fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=series&relatedEntityId=${id}&pageSize=20`),
+        fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&pageSize=40`),
+        fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=tv&entityId=${encodeURIComponent(id)}`).catch(() => []),
+        // Caught rather than awaited into the failure: a page that will not open
+        // because it could not find out why a download is stuck is worse than a
+        // page that simply does not mention it.
+        fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null)
+      ]);
+      return { searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers };
+    },
+    recovery: async () => ({
+      importRecovery: await fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500")
+    }),
+    // Things that change on their own screens, not with this show.
+    shared: async () => {
+      const [libraries, subtitleLanguageOptions] = await Promise.all([
+        fetchJson<LibraryItem[]>("/api/libraries"),
+        // For the per-title override picker (#843).
+        fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
+      ]);
+      return { libraries, subtitleLanguageOptions };
+    }
+  };
+}
+
+/** What a change to the show moves (#1179). */
+const SHOW_EVENT_GROUPS: TitleEventGroups = {
+  SeriesChanged: ["title", "inventory", "recovery", "history"],
+  ImportStateChanged: ["inventory", "history", "recovery"],
+  JourneyStageChanged: ["history", "inventory"],
+  RecoveryCaseChanged: ["recovery", "inventory"],
+  ReleasesTurnedDown: ["history"]
+};
+
 export async function showDetailLoader({
   params
 }: {
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
-  const id = params.id!;
-  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers, memberships, subtitleLanguageOptions] =
-    await Promise.all([
-      fetchJson<SeriesListItem>(`/api/series/${id}`),
-      fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
-      fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
-      // Archived rows included on purpose: an import archives its dispatch the
-      // moment it succeeds, so a history that hides them shows nothing was ever
-      // sent for the very shows Deluno did download. Asked for by title, because
-      // the newest twenty rows across the whole library are not this show's.
-      fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=tv&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
-      fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500"),
-      fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`),
-      fetchPageItems<ActivityEventItem>(
-        `/api/activity?relatedEntityType=series&relatedEntityId=${id}&pageSize=20`
-      ),
-      fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&pageSize=40`),
-      fetchJson<LibraryItem[]>("/api/libraries"),
-      fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=tv&entityId=${encodeURIComponent(id)}`).catch(() => []),
-      fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
-      // Caught rather than awaited into the failure: a page that will not open
-      // because it could not find out why a download is stuck is worse than a
-      // page that simply does not mention it.
-      fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null),
-      // The library this show is in, as a person chose it (#530).
-      fetchJson<LibraryMembership[]>(`/api/series/${id}/libraries/`).catch(() => [] as LibraryMembership[]),
-      // For the per-title override picker (#843) — the same names the
-      // library's own subtitle-languages screen uses.
-      fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
-    ]);
-
-  // #990: which indexers/clients this title uses, and why — needs the
-  // library only known once `series` itself is back, so it is fetched after
-  // the batch above rather than inside it.
-  const titleRouting = await loadTitleRoutingAsync(series.libraryId, id);
-
-  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches, subtitleLanguageOptions, titleRouting };
+  const groups = showGroups(params.id!);
+  const parts = await Promise.all(Object.values(groups).map((read) => read()));
+  return Object.assign({}, ...parts) as ShowDetailLoaderData;
 }
 
 /**
@@ -236,7 +268,9 @@ async function loadTitleRoutingAsync(libraryId: string | null | undefined, title
 }
 
 export function ShowDetailPage() {
-  const loaderData = useLoaderData() as ShowDetailLoaderData;
+  const routeData = useLoaderData() as ShowDetailLoaderData;
+  // Reads again only what a change to this show can move, as the server announces it (#1179).
+  const loaderData = useTitleLive(routeData.series.id, routeData, useMemo(() => showGroups(routeData.series.id), [routeData.series.id]), SHOW_EVENT_GROUPS);
   const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, subtitleLanguageOptions, titleRouting } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();

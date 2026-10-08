@@ -65,8 +65,38 @@ public static class RealtimePushTestEndpoints
             return Results.NoContent();
         });
 
+        // A film, show or episode changed (#1179): the same announcement the database write raises.
+        endpoints.MapPost("/api/testing/realtime/title-changed", async (
+            HttpContext httpContext,
+            [FromBody] PushTitleChangedRequest request,
+            IRealtimeEventPublisher publisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.Equals(request.EntityType, "Episode", StringComparison.OrdinalIgnoreCase))
+            {
+                await publisher.PublishEntityChangedAsync("Episode", request.Id, cancellationToken);
+            }
+            else
+            {
+                await publisher.PublishTitleChangedAsync(
+                    string.Equals(request.EntityType, "Series", StringComparison.OrdinalIgnoreCase) ? "Series" : "Movie",
+                    request.Id,
+                    request.LibraryIds ?? [],
+                    cancellationToken);
+            }
+
+            return Results.NoContent();
+        });
+
         endpoints.MapGet("/api/testing/realtime/watchers", async (
             HttpContext httpContext,
+            string? title,
             IRealtimeWatchers watchers,
             CancellationToken cancellationToken) =>
         {
@@ -82,7 +112,8 @@ public static class RealtimePushTestEndpoints
                 dashboard = watchers.Count(RealtimeGroups.Dashboard),
                 queue = watchers.Count(RealtimeGroups.Queue),
                 activity = watchers.Count(RealtimeGroups.Activity),
-                live = watchers.Count(RealtimeGroups.Live)
+                live = watchers.Count(RealtimeGroups.Live),
+                title = string.IsNullOrWhiteSpace(title) ? 0 : watchers.Count(RealtimeGroups.Title(title))
             });
         });
 
@@ -91,5 +122,7 @@ public static class RealtimePushTestEndpoints
 }
 
 public sealed record PushDownloadProgressRequest(string Id, string? Title, double Progress, double SpeedMbps, string? Eta, string? Status);
+
+public sealed record PushTitleChangedRequest(string EntityType, string Id, string[]? LibraryIds);
 
 public sealed record PushActivityRequest(string Message, string? Id, string? Category, string? Severity);
