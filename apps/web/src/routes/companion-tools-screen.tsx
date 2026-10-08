@@ -2,7 +2,8 @@ import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { ExternalLink, Loader2 } from "lucide-react";
-import { fetchJson } from "../lib/api";
+import { fetchJson, type BundledComponentStatus } from "../lib/api";
+import { withInstalledApps, type CompanionTool, type CompanionToolsResponse } from "./companion-tools-merge";
 import { authedFetch } from "../lib/use-auth";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
@@ -16,26 +17,16 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
-/** Mirrors `Deluno.Companions.CompanionToolStatus`. */
-interface CompanionTool {
-  id: string;
-  name: string;
-  description: string;
-  state: "not-installed" | "installed" | "connected" | string;
-  connectionName: string | null;
-  /** Where the tool answers on this computer, when Deluno knows it. */
-  url?: string | null;
-  job: { status: "queued" | "running" | "done" | "skipped" | "failed" | string; step: string; message: string; updatedUtc: string } | null;
-}
-
-interface CompanionToolsResponse {
-  availability: { available: boolean; reason: string | null };
-  tools: CompanionTool[];
-  uninstallNote: string;
+async function loadCompanionTools(): Promise<CompanionToolsResponse> {
+  const [tools, installed] = await Promise.all([
+    fetchJson<CompanionToolsResponse>("/api/companion-tools"),
+    fetchJson<BundledComponentStatus[]>("/api/system/bundled-components").catch(() => [] as BundledComponentStatus[])
+  ]);
+  return withInstalledApps(tools, installed);
 }
 
 export async function companionToolsLoader() {
-  return fetchJson<CompanionToolsResponse>("/api/companion-tools");
+  return loadCompanionTools();
 }
 
 function stateChip(tool: CompanionTool): { tone: "ok" | "info" | "warn" | "bad" | "idle"; label: string } {
@@ -70,12 +61,12 @@ export function CompanionToolsPage() {
   // The server says when a setup moves on (#1179), so a finished or failed job shows up at once,
   // in a backgrounded window too, and nothing asks on a timer.
   const reload = useCoalescedRevalidate(() => {
-    void fetchJson<CompanionToolsResponse>("/api/companion-tools").then(setData).catch(() => undefined);
+    void loadCompanionTools().then(setData).catch(() => undefined);
   }, 300);
   useSignalREvent("CompanionJobChanged", RealtimeGroups.Dashboard, reload);
 
   const open = data.tools.find((tool) => tool.id === openId) ?? null;
-  const selectable = (tool: CompanionTool) => data.availability.available && tool.state !== "connected" && !working;
+  const selectable = (tool: CompanionTool) => data.availability.available && tool.state !== "connected" && !working && !tool.installedByInstaller;
 
   async function install() {
     setBusy(true);
@@ -92,7 +83,7 @@ export function CompanionToolsPage() {
         return;
       }
       setSelected([]);
-      setData(await fetchJson<CompanionToolsResponse>("/api/companion-tools"));
+      setData(await loadCompanionTools());
     } finally {
       setBusy(false);
     }
@@ -135,7 +126,7 @@ export function CompanionToolsPage() {
                 <ListRow key={tool.id} onClick={() => { setOpenId(tool.id); }} selected={openId === tool.id}>
                   <ListNameCell name={tool.name} sub={tool.description} />
                   <ListCell
-                    primary={tool.state === "connected" ? `Connected as “${tool.connectionName}”` : tool.state === "installed" ? "Installed" : "Not installed"}
+                    primary={tool.state === "connected" ? `Connected as “${tool.connectionName ?? tool.name}”` : tool.state === "installed" ? "Installed" : "Not installed"}
                   />
                   <ListCell primary={tool.job?.message ?? <span className="text-muted-foreground">—</span>} />
                   <ListCell mobile><Chip tone={chip.tone}>{chip.label}</Chip></ListCell>
@@ -173,7 +164,7 @@ export function CompanionToolsPage() {
           <>
             <DrawerSection title="Status" aside={stateChip(open).label}>
               <p className="text-(length:--type-body-sm) text-foreground">
-                {open.job?.message ?? (open.state === "connected" ? `Connected to Deluno as “${open.connectionName}”.` : open.state === "installed" ? "Installed on this computer but not connected to Deluno yet. Tick it and set it up to connect it." : "Not installed. Tick it and set it up.")}
+                {open.job?.message ?? (open.state === "connected" ? `Connected to Deluno as “${open.connectionName ?? open.name}”.` : open.state === "installed" ? open.installedByInstaller ? "Installed on this computer but not connected to Deluno yet. Connect it under Download Clients." : "Installed on this computer but not connected to Deluno yet. Tick it and set it up to connect it." : "Not installed. Tick it and set it up.")}
               </p>
               {open.job?.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Working" /> : null}
             </DrawerSection>

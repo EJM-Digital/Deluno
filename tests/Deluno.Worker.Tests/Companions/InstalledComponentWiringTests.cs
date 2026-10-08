@@ -27,6 +27,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
     private readonly FileInstalledComponentRecord _record;
     private string _testStatus = "healthy";
     private string _testMessage = "Connected.";
+    private string? _testCategory;
 
     public InstalledComponentWiringTests()
     {
@@ -46,6 +47,8 @@ public sealed class InstalledComponentWiringTests : IDisposable
     [InlineData("transmission", "Transmission", 9091, "Movies", "TV", null, null, false)]
     // Deluge and NZBGet are given no login by the installer, so Deluno connects with the one each ships with (#1061).
     [InlineData("deluge", "Deluge", 8112, "deluno-movies", "deluno-tv", null, "deluge", false)]
+    // Deluge's web password is one the installer generated and kept; Deluno connects with that, not the shipped one.
+    [InlineData("deluge", "Deluge", 8112, "deluno-movies", "deluno-tv", null, "Generated-pw-9", true)]
     [InlineData("sabnzbd", "SABnzbd", 8080, "Movies", "TV", null, "api-key-1", true)]
     [InlineData("nzbget", "NZBGet", 6789, "Movies", "TV", "nzbget", "tegbzn6789", false)]
     public async Task Each_installed_download_client_is_added_when_asked_with_its_own_port_categories_and_sign_in(
@@ -393,6 +396,23 @@ public sealed class InstalledComponentWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Use_saves_a_usenet_client_that_signs_in_but_has_no_provider_and_says_what_is_missing()
+    {
+        _testStatus = "degraded";
+        _testMessage = Deluno.Connections.Usenet.UsenetProviderText.NoProvider;
+        _testCategory = "configuration";
+
+        var result = await NewWirer().ConnectAsync("nzbget", null, null, Url, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result.Healthy, "it is connected; the missing provider is said in the message");
+        Assert.False(result.NeedsSignIn);
+        Assert.Contains("No Usenet provider set up", result.Message, StringComparison.Ordinal);
+        Assert.Single(_created);
+        Assert.Contains(_health, item => item.Status == "degraded");
+    }
+
+    [Fact]
     public async Task A_saved_client_with_no_port_is_the_same_client_as_one_on_that_kinds_default_port()
     {
         var connections = FakeConnections();
@@ -478,6 +498,6 @@ public sealed class InstalledComponentWiringTests : IDisposable
     private sealed class FakeTester(InstalledComponentWiringTests owner) : IDownloadClientTester
     {
         public Task<(string HealthStatus, string Message, string? FailureCategory)> TestAsync(DownloadClientItem client, CancellationToken cancellationToken)
-            => Task.FromResult<(string, string, string?)>((owner._testStatus, owner._testMessage, null));
+            => Task.FromResult<(string, string, string?)>((owner._testStatus, owner._testMessage, owner._testCategory));
     }
 }

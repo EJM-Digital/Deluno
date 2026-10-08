@@ -8,8 +8,10 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
+public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, TimeSpan? readBackDelay = null) : DownloadClientBase
 {
+    private readonly TimeSpan _readBackDelay = readBackDelay ?? TimeSpan.FromMilliseconds(500);
+
     public override string Protocol => "sabnzbd";
 
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(
@@ -164,6 +166,8 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         {
             health = "degraded";
             message = UsenetProviderText.NoProvider;
+            // A client with no news server shows that, never "Paused".
+            clientPaused = false;
         }
 
         // #813: SABnzbd's own queue-level warnings (disk-full, a failed
@@ -236,7 +240,18 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
                 return new(client.Id, client.Name, false, $"{client.Name} did not accept the provider (it answered {(int)response.StatusCode}).");
             }
 
-            var after = await ReadHasProviderAsync(http, baseUri, client.Secret, cancellationToken);
+            // SABnzbd can take a moment to show a server it was just given, so the read-back asks again for a bounded time.
+            bool? after = null;
+            for (var attempt = 0; attempt < 10 && after != true; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    await Task.Delay(_readBackDelay, cancellationToken);
+                }
+
+                after = await ReadHasProviderAsync(http, baseUri, client.Secret, cancellationToken);
+            }
+
             return after == true
                 ? new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.")
                 : new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");

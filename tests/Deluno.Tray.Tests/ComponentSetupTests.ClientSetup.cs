@@ -117,6 +117,33 @@ public sealed partial class ComponentSetupTests
         Assert.Contains("qBittorrent", problem);
     }
 
+    [Fact]
+    public async Task Qbittorrent_5_answering_a_right_login_with_204_and_no_body_is_set_up()
+    {
+        var client = new ScriptedClient(seen => seen.Path.EndsWith("/login", StringComparison.Ordinal)
+            ? (HttpStatusCode.NoContent, string.Empty)
+            : (HttpStatusCode.OK, "5.2.1"));
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("qbittorrent"), TestLayout(), new BundledComponentCredentials("deluno", "pw"), CancellationToken.None);
+
+        Assert.Null(problem);
+        Assert.Equal(2, client.Requests.Count(r => r.Path.EndsWith("/createCategory", StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, "Fails.", HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.Unauthorized, "", HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.NoContent, "", HttpStatusCode.Forbidden)]
+    public async Task Qbittorrent_refusing_the_login_is_still_reported(HttpStatusCode login, string body, HttpStatusCode version)
+    {
+        var client = new ScriptedClient(seen => seen.Path.EndsWith("/login", StringComparison.Ordinal) ? (login, body) : (seen.Path.EndsWith("/version", StringComparison.Ordinal) ? (version, "") : (HttpStatusCode.OK, "")));
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("qbittorrent"), TestLayout(), new BundledComponentCredentials("deluno", "pw"), CancellationToken.None);
+
+        Assert.Contains("did not accept the sign-in", problem);
+        Assert.DoesNotContain(client.Requests, r => r.Path.EndsWith("/createCategory", StringComparison.Ordinal));
+    }
+
     // ---- Transmission ----------------------------------------------------------------------------
 
     [Fact]
@@ -205,11 +232,47 @@ public sealed partial class ComponentSetupTests
 
     // ---- SABnzbd ---------------------------------------------------------------------------------
 
+    /// <summary>A SABnzbd that keeps what it is told, and can lose the first category writes the way a first start rewriting its own defaults would.</summary>
+    private sealed class FakeSabnzbd(int categoryWritesToLose = 0, bool neverKeepsCategories = false)
+    {
+        private readonly Dictionary<string, string> _misc = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _categories = new(StringComparer.OrdinalIgnoreCase);
+        private int _lost;
+
+        public (HttpStatusCode, string) Answer(Seen seen)
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(seen.Query);
+            switch (query["mode"])
+            {
+                case "set_config" when query["section"] == "misc":
+                    _misc[query["keyword"]!] = query["value"]!;
+                    break;
+                case "set_config" when query["section"] == "categories":
+                    if (neverKeepsCategories || _lost++ < categoryWritesToLose)
+                    {
+                        break; // answered "ok", kept nothing
+                    }
+
+                    _categories[query["name"]!] = query["dir"]!;
+                    break;
+                case "get_config" when query["section"] == "misc":
+                    return (HttpStatusCode.OK, JsonSerializer.Serialize(new { config = new { misc = _misc } }));
+                case "get_config" when query["section"] == "categories":
+                    return (HttpStatusCode.OK, JsonSerializer.Serialize(new
+                    {
+                        config = new { categories = _categories.Select(c => new { name = c.Key, dir = c.Value }).ToArray() }
+                    }));
+            }
+
+            return (HttpStatusCode.OK, """{"status":true}""");
+        }
+    }
+
     [Fact]
     public async Task Sabnzbd_gets_its_two_folders_and_a_category_with_a_folder_each()
     {
         var layout = TestLayout();
-        var client = new ScriptedClient(_ => (HttpStatusCode.OK, """{"status":true}"""));
+        var client = new ScriptedClient(new FakeSabnzbd().Answer);
 
         var problem = await ConfiguratorFor(client).ConfigureAsync(Load("sabnzbd"), layout, new BundledComponentCredentials(string.Empty, "the-key"), CancellationToken.None);
 
@@ -220,6 +283,40 @@ public sealed partial class ComponentSetupTests
         Assert.Contains(queries, query => query.Contains("keyword=complete_dir") && query.Contains("value=" + layout.CompletedRoot));
         Assert.Contains(queries, query => query.Contains("section=categories") && query.Contains("name=Movies") && query.Contains("dir=" + layout.CompletedFolder("Movies")));
         Assert.Contains(queries, query => query.Contains("section=categories") && query.Contains("name=TV") && query.Contains("dir=" + layout.CompletedFolder("TV")));
+        Assert.Contains(queries, query => query.Contains("mode=get_config") && query.Contains("section=categories"));
+    }
+
+    [Fact]
+    public async Task Sabnzbd_that_loses_the_first_category_writes_is_written_again_until_the_folders_hold()
+    {
+        var layout = TestLayout();
+        var log = new RecordingLog();
+        var client = new ScriptedClient(new FakeSabnzbd(categoryWritesToLose: 2).Answer);
+        var configurator = new DownloadClientConfigurator(() => client, TimeSpan.Zero, log);
+
+        var problem = await configurator.ConfigureAsync(Load("sabnzbd"), layout, new BundledComponentCredentials(string.Empty, "the-key"), CancellationToken.None);
+
+        Assert.Null(problem);
+        Assert.True(client.Requests.Count(r => r.Query.Contains("section=categories") && r.Query.Contains("mode=set_config")) > 2, "the lost writes are made again");
+        Assert.Contains(log.Lines, line => line.Contains("Movies=" + layout.CompletedFolder("Movies")));
+    }
+
+    [Fact]
+    public async Task Sabnzbd_that_never_keeps_the_category_folders_is_reported_not_called_set_up()
+    {
+        var client = new ScriptedClient(new FakeSabnzbd(neverKeepsCategories: true).Answer);
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("sabnzbd"), TestLayout(), new BundledComponentCredentials(string.Empty, "the-key"), CancellationToken.None);
+
+        Assert.Contains("would not keep", problem);
+        Assert.Contains("Movies=(no category)", problem);
+    }
+
+    private sealed class RecordingLog : IInstallLog
+    {
+        public List<string> Lines { get; } = [];
+
+        public void Write(string line) => Lines.Add(line);
     }
 
     [Fact]
@@ -253,6 +350,7 @@ public sealed partial class ComponentSetupTests
                 "config" => NzbgetConfig,
                 "saveconfig" => """{"result":true}""",
                 "version" => """{"result":"26.3"}""",
+                "status" => """{"result":{"DownloadPaused":false,"PostPaused":false,"ScanPaused":false}}""",
                 _ => """{"result":true}"""
             });
         });
@@ -260,7 +358,7 @@ public sealed partial class ComponentSetupTests
         var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), layout, null, CancellationToken.None);
 
         Assert.Null(problem);
-        Assert.Equal(new[] { "config", "saveconfig", "reload", "version" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
+        Assert.Equal(new[] { "config", "saveconfig", "reload", "version", "resumedownload", "resumepost", "resumescan", "status" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
         var saved = JsonDocument.Parse(client.Requests[1].Body).RootElement.GetProperty("params")[0].EnumerateArray()
             .ToDictionary(item => item.GetProperty("Name").GetString()!, item => item.GetProperty("Value").GetString()!);
         Assert.Equal(layout.CompletedRoot, saved["DestDir"]);
@@ -272,6 +370,53 @@ public sealed partial class ComponentSetupTests
         Assert.Equal("Music", saved["Category3.Name"]);
         Assert.Equal(@"C:\ProgramData\NZBGet", saved["MainDir"]);
         Assert.True(client.Requests.All(r => r.Request.Headers.Authorization?.Scheme == "Basic"));
+    }
+
+    [Fact]
+    public async Task A_fresh_nzbget_that_starts_paused_is_resumed_and_checked_before_it_is_called_set_up()
+    {
+        var paused = true;
+        var client = new ScriptedClient(seen =>
+        {
+            var method = JsonDocument.Parse(seen.Body).RootElement.GetProperty("method").GetString();
+            if (method is "resumedownload" or "resumepost" or "resumescan")
+            {
+                paused = false;
+            }
+
+            return (HttpStatusCode.OK, method switch
+            {
+                "config" => NzbgetConfig,
+                "version" => """{"result":"26.3"}""",
+                "status" => $$$"""{"result":{"DownloadPaused":{{{(paused ? "true" : "false")}}},"PostPaused":{{{(paused ? "true" : "false")}}},"ScanPaused":false}}""",
+                _ => """{"result":true}"""
+            });
+        });
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), TestLayout(), null, CancellationToken.None);
+
+        Assert.Null(problem);
+        Assert.False(paused);
+    }
+
+    [Fact]
+    public async Task An_nzbget_that_stays_paused_is_reported()
+    {
+        var client = new ScriptedClient(seen =>
+        {
+            var method = JsonDocument.Parse(seen.Body).RootElement.GetProperty("method").GetString();
+            return (HttpStatusCode.OK, method switch
+            {
+                "config" => NzbgetConfig,
+                "version" => """{"result":"26.3"}""",
+                "status" => """{"result":{"DownloadPaused":true,"PostPaused":true,"ScanPaused":true}}""",
+                _ => """{"result":true}"""
+            });
+        });
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), TestLayout(), null, CancellationToken.None);
+
+        Assert.Contains("still paused", problem);
     }
 
     [Fact]
