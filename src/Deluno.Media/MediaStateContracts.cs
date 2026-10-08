@@ -536,6 +536,13 @@ public interface IMediaStateRepository
         string reason,
         CancellationToken cancellationToken);
 
+    /// <summary>The same, naming each case it closed, so a caller can say so in Activity.</summary>
+    Task<IReadOnlyList<SettledRecoveryCase>> SettleImportRecoveryCasesListedAsync(
+        MediaKind kind,
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// Closes the open download or import cases whose film or episode now holds its file (#1167), writing
     /// <c>case_settled</c> on each. A case is matched by the title it carries, with or without details, so the
