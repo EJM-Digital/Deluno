@@ -237,6 +237,7 @@ GET /api/subtitle-languages
 GET /api/subtitle-providers/
 GET /api/subtitles/wanted
 GET /api/system/bundled-components
+GET /api/system/component-recovery
 GET /api/system/connectivity
 GET /api/system/databases
 GET /api/system/health/
@@ -480,6 +481,8 @@ POST /api/subtitle-providers/{key}/test
 POST /api/subtitles/wanted/search-all
 POST /api/system/bundled-components/connect-all
 POST /api/system/bundled-components/{kind}/connect
+POST /api/system/component-recovery/{kind}/dismiss
+POST /api/system/component-recovery/{kind}/readd
 POST /api/system/health/background-problems/{key}/retry
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
