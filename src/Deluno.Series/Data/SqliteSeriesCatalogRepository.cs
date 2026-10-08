@@ -3980,6 +3980,8 @@ public sealed class SqliteSeriesCatalogRepository(
             await wanted.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The show-level note may name the same file; leave nothing that reads as "removed outside Deluno".
+        await DetachSeriesLevelFileRecordsAsync(connection, transaction, seriesId, filePath, recycleBinOnly: false, cancellationToken);
         await RefreshSeriesRungsAsync(connection, transaction, [seriesId], timeProvider.GetUtcNow(), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
@@ -4417,38 +4419,122 @@ public sealed class SqliteSeriesCatalogRepository(
             return true;
         }
 
-        using var series = connection.CreateCommand();
-        series.Transaction = transaction;
-        series.CommandText =
-            """
-            UPDATE series_wanted_state
-            SET has_file = 0,
-                wanted_status = 'missing',
-                wanted_reason = 'The file is gone from disk, so Deluno stopped wanting this show.',
-                missing_since_utc = COALESCE(missing_since_utc, @now),
-                missing_detected_utc = @now,
-                last_verified_utc = @now,
-                updated_utc = @now
-            WHERE series_id = @seriesId
-              AND library_id = @libraryId
-              AND file_path = @filePath;
-            """;
-        AddParameter(series, "@seriesId", seriesId);
-        AddParameter(series, "@libraryId", libraryId);
-        AddParameter(series, "@filePath", filePath);
-        AddParameter(series, "@now", now);
-        if (await series.ExecuteNonQueryAsync(cancellationToken) == 0)
+        // A show-level file record is only a note of the latest file Deluno holds for the show. When that
+        // file is gone the note is corrected, nothing more: the show is never unmonitored for it, because
+        // what is gone is one file, and the episodes each carry their own file and their own flag.
+        return await DetachSeriesLevelFileRecordsAsync(
+            connection, transaction, seriesId, filePath, recycleBinOnly: false, cancellationToken) > 0;
+    }
+
+    /// <summary>
+    /// Corrects the show-level file notes (series_wanted_state) that name a file the show no longer holds:
+    /// the note moves to another file an episode still holds, or is cleared. Never changes the show's
+    /// monitored flag. Matches the exact path, or (recycleBinOnly) any path inside a recycle bin folder.
+    /// </summary>
+    private async Task<int> DetachSeriesLevelFileRecordsAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        string? seriesId,
+        string? filePath,
+        bool recycleBinOnly,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
+        var affected = new List<(string SeriesId, string LibraryId)>();
+        using (var read = connection.CreateCommand())
         {
-            return false;
+            read.Transaction = transaction;
+            read.CommandText =
+                $"""
+                SELECT series_id, library_id
+                FROM series_wanted_state
+                WHERE has_file = 1
+                  AND file_path IS NOT NULL
+                  AND (@seriesId IS NULL OR series_id = @seriesId)
+                  AND {(recycleBinOnly ? "file_path LIKE '%.deluno-recycle-bin%'" : "file_path = @filePath COLLATE NOCASE")};
+                """;
+            AddParameter(read, "@seriesId", seriesId);
+            if (!recycleBinOnly)
+            {
+                AddParameter(read, "@filePath", filePath);
+            }
+
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                affected.Add((reader.GetString(0), reader.GetString(1)));
+            }
         }
 
-        using var monitored = connection.CreateCommand();
-        monitored.Transaction = transaction;
-        monitored.CommandText = "UPDATE series_entries SET monitored = 0, updated_utc = @now WHERE id = @seriesId;";
-        AddParameter(monitored, "@seriesId", seriesId);
-        AddParameter(monitored, "@now", now);
-        await monitored.ExecuteNonQueryAsync(cancellationToken);
-        return true;
+        foreach (var (affectedSeries, libraryId) in affected)
+        {
+            using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText =
+                """
+                UPDATE series_wanted_state
+                SET file_path = (
+                        SELECT e.file_path FROM episode_entries e
+                        WHERE e.series_id = @seriesId AND e.has_file = 1 AND e.file_path IS NOT NULL
+                          AND e.file_path NOT LIKE '%.deluno-recycle-bin%'
+                        ORDER BY e.imported_utc DESC LIMIT 1),
+                    file_size_bytes = (
+                        SELECT e.file_size_bytes FROM episode_entries e
+                        WHERE e.series_id = @seriesId AND e.has_file = 1 AND e.file_path IS NOT NULL
+                          AND e.file_path NOT LIKE '%.deluno-recycle-bin%'
+                        ORDER BY e.imported_utc DESC LIMIT 1),
+                    updated_utc = @now
+                WHERE series_id = @seriesId AND library_id = @libraryId;
+                """;
+            AddParameter(update, "@seriesId", affectedSeries);
+            AddParameter(update, "@libraryId", libraryId);
+            AddParameter(update, "@now", now);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+
+            using var flag = connection.CreateCommand();
+            flag.Transaction = transaction;
+            flag.CommandText =
+                "UPDATE series_wanted_state SET has_file = CASE WHEN file_path IS NULL THEN 0 ELSE 1 END WHERE series_id = @seriesId AND library_id = @libraryId;";
+            AddParameter(flag, "@seriesId", affectedSeries);
+            AddParameter(flag, "@libraryId", libraryId);
+            await flag.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (affected.Count > 0)
+        {
+            await RefreshSeriesRungsAsync(
+                connection, transaction, affected.Select(item => item.SeriesId).Distinct().ToArray(),
+                timeProvider.GetUtcNow(), cancellationToken);
+        }
+
+        return affected.Count;
+    }
+
+    public async Task<int> DetachSeriesFileRecordsAsync(
+        string? seriesId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var count = await DetachSeriesLevelFileRecordsAsync(
+            connection, transaction, seriesId, filePath, recycleBinOnly: false, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return count;
+    }
+
+    public async Task<int> ClearSeriesFileRecordsInRecycleBinAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var count = await DetachSeriesLevelFileRecordsAsync(
+            connection, transaction, null, null, recycleBinOnly: true, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return count;
     }
 
     public async Task RecordSearchAttemptAsync(
