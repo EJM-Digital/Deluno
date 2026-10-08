@@ -1,4 +1,4 @@
-import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
+import { SecretUnreadableNotice, repeatsSecretNotice } from "../../components/app/secret-unreadable-notice";
 import { ConnectionUpdatePanel } from "../../components/app/connection-update-panel";
 import { useEffect, useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
@@ -330,7 +330,7 @@ export function ClientDrawerBody({
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
-            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
+            {editing.lastHealthMessage && !repeatsSecretNotice(editing, editing.lastHealthMessage) ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
             {editing.lastHealthFailure ? (
               <>
                 <dt className="text-muted-foreground">Cause</dt>
