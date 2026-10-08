@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAND_MIN_PX, cardsBudget, gridRows, JOURNEY_PX, GRID_AREAS, GRID_COLUMNS, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./layout";
+import { BAND_MIN_PX, GRID_MIN_PX, cardsBudget, gridRows, JOURNEY_PX, GRID_AREAS, GRID_COLUMNS, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./layout";
 
 describe("page layout from the measured main area", () => {
   it("puts the right column beside the page from about 1056px of main area", () => {
@@ -57,5 +57,13 @@ describe("the shared page grid", () => {
     expect(cardsBudget(500, 120)).toBe(380);
     expect(cardsBudget(undefined, 120)).toBeUndefined();
     expect(cardsBudget(100, 120)).toBe(0);
+  });
+});
+
+describe("the least height the shared grid is drawn in", () => {
+  it("is exactly what the three rows and their gaps take at their smallest, so a shorter tab scrolls instead of overlapping", () => {
+    const rows = gridRows(GRID_MIN_PX, GRID_MIN_PX);
+    expect(rows.band + rows.journey + rows.low + 24).toBe(GRID_MIN_PX);
+    expect(rows.band).toBe(BAND_MIN_PX);
   });
 });
