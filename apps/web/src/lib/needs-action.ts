@@ -62,6 +62,8 @@ export function isDispatchFailure(dispatch: DownloadDispatchItem) {
 }
 
 export function queueItemNeedsAttention(item: DownloadQueueItem) {
+  // A download that is in the library has nothing left to ask of anyone, whatever its client said on the way.
+  if (item.status === downloadQueueStatuses.imported) return false;
   return item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length);
 }
 

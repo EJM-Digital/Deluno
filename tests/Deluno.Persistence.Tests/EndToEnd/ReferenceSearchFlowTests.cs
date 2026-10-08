@@ -230,6 +230,30 @@ public sealed class ReferenceSearchFlowTests
         Assert.Null(await pipeline.ChooseDownloadClientAsync(torznab.Id, usenetOnly));
     }
 
+    // Golden path rc.30.9: with Deluge switched off, "Send anyway" chose Deluge anyway and the send was never made.
+    [Fact]
+    public async Task A_forced_send_only_considers_clients_that_are_switched_on_and_says_so_when_none_is()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var deluge = await HealthyClientAsync(connections, "Deluge", "deluge");
+        var qbit = await HealthyClientAsync(connections, "qBittorrent", "qbittorrent");
+        var links = Request(time, [indexer], [(deluge, 1), (qbit, 2)]).DownloadClients;
+
+        await connections.UpdateDownloadClientAsync(deluge.Id, new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, IsEnabled: false), CancellationToken.None);
+
+        Assert.Equal(qbit.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links))?.DownloadClientId);
+
+        await connections.UpdateDownloadClientAsync(qbit.Id, new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, IsEnabled: false), CancellationToken.None);
+
+        Assert.Null(await pipeline.ChooseDownloadClientAsync(indexer.Id, links));
+        var said = await pipeline.ExplainNoDownloadClientAsync(indexer.Id, links);
+        Assert.Contains("switched off", said);
+        Assert.Contains("Deluge", said);
+    }
+
     /// <summary>
     /// Radarr/Sonarr's own tag rule (#808): a client carrying tags is used
     /// only for a title sharing one of them, so an anime library can keep its

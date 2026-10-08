@@ -35,6 +35,16 @@ public interface IAcquisitionDecisionPipeline
         IReadOnlyList<string>? titleTags = null);
 
     /// <summary>
+    /// Why <see cref="ChooseDownloadClientAsync"/> found nothing, when the reason is that every routed client is
+    /// switched off; null for any other reason (no client of the right kind, say), which the caller words itself.
+    /// </summary>
+    Task<string?> ExplainNoDownloadClientAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// The plain-English reason a title's tags sent it to this client rather
     /// than another one routed to the same library (#808) — null when the
     /// client is untagged, because an untagged client takes any title and
@@ -308,6 +318,12 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 
+        // A client that is switched off takes nothing: a send to it was held back and never sent again
+        // (golden path rc.30.9). Only enabled clients are considered.
+        byPriority = byPriority
+            .Where(client => !clients.TryGetValue(client.DownloadClientId, out var detail) || detail.IsEnabled)
+            .ToArray();
+
         string? TagsOf(LibraryDownloadClientLinkItem client)
             => clients.TryGetValue(client.DownloadClientId, out var detail) ? detail.Tags : null;
 
@@ -336,6 +352,30 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 TagsOf,
                 titleTags)
             .FirstOrDefault();
+    }
+
+    public async Task<string?> ExplainNoDownloadClientAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default)
+    {
+        if (connectionsRepository is null || routedClients.Count == 0)
+        {
+            return null;
+        }
+
+        var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var routed = routedClients.Where(client => clients.ContainsKey(client.DownloadClientId)).ToArray();
+        if (routed.Length == 0 || routed.Any(client => clients[client.DownloadClientId].IsEnabled))
+        {
+            return null;
+        }
+
+        var names = string.Join(", ", routed.Select(client => clients[client.DownloadClientId].Name));
+        return routed.Length == 1
+            ? $"{names} is switched off, so nothing can be sent to it. Switch it on in Download clients, or route another client to this library."
+            : $"Every download client for this library is switched off ({names}), so nothing can be sent. Switch one on in Download clients.";
     }
 
     public async Task<string?> ExplainDownloadClientRoutingAsync(

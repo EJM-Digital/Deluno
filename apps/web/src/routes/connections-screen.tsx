@@ -318,20 +318,32 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
 }
 
 /** The body of PUT/POST /api/download-clients — shared by Save and Test, same reason as buildIndexerSavePayload (#626). */
-export function buildClientSavePayload(form: ClientForm) {
+export function buildClientSavePayload(form: ClientForm, saved?: ClientForm) {
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
   const port = Number(form.port || preset?.defaultPort || 8080);
   const urlBase = form.urlBase.trim().replace(/^\/|\/$/g, "");
+  // Saving a saved client sends its address only when somebody edited it. The host, port and URL stay exactly as
+  // stored otherwise, so changing the priority cannot rewrite them (golden path rc.30.9).
+  const addressEdited = !saved
+    || form.host.trim() !== saved.host.trim()
+    || form.port.trim() !== saved.port.trim()
+    || form.useSsl !== saved.useSsl
+    || form.urlBase.trim() !== saved.urlBase.trim();
+  const address = addressEdited
+    ? {
+        host: form.host.trim(),
+        port,
+        endpointUrl: `${form.useSsl ? "https" : "http"}://${form.host.trim()}:${port}${urlBase ? `/${urlBase}` : ""}`,
+        useSsl: form.useSsl,
+        urlBase: urlBase || undefined
+      }
+    : {};
   return {
     name: form.name.trim(),
     protocol: form.protocol,
-    host: form.host.trim(),
-    port,
+    ...address,
     username: form.username || undefined,
     password: form.password || undefined,
-    endpointUrl: `${form.useSsl ? "https" : "http"}://${form.host.trim()}:${port}${urlBase ? `/${urlBase}` : ""}`,
-    useSsl: form.useSsl,
-    urlBase: urlBase || undefined,
     moviesCategory: form.moviesCategory,
     tvCategory: form.tvCategory,
     categoryTemplate: form.moviesCategory,
@@ -798,7 +810,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       } else if (drawer.kind === "client") {
         const payload = clientPayload();
         if (drawer.id) {
-          await send(`/api/download-clients/${drawer.id}`, "PUT", payload, "Download client could not be saved.");
+          await send(`/api/download-clients/${drawer.id}`, "PUT", buildClientSavePayload(clientForm, clientInitial), "Download client could not be saved.");
           const settled = { ...clientForm, password: "" };
           setClientForm(settled);
           setClientInitial(settled);

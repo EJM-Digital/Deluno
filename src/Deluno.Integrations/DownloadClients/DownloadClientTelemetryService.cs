@@ -1017,11 +1017,20 @@ public sealed class DownloadClientTelemetryService(
 
         if (!actionResult.Succeeded)
         {
-            return new QueueRemovalResult(client.Id, queueItemId, reason, false, actionResult.Message, false, false, dispatch?.EntityId, dispatch?.MediaType)
+            // The client answered but no longer holds it (removed by hand, or by an earlier pass): there is
+            // nothing left to remove, so the record is closed and the removal carries on instead of failing.
+            if (!actionResult.Refused && dispatch is not null && await ClientAnswersWithoutItemAsync(client, queueItemId, cancellationToken))
             {
-                Failure = actionResult.Failure,
-                Refused = actionResult.Refused
-            };
+                await NoteRemovedByDelunoAsync(client, queueItemId, cancellationToken);
+            }
+            else
+            {
+                return new QueueRemovalResult(client.Id, queueItemId, reason, false, actionResult.Message, false, false, dispatch?.EntityId, dispatch?.MediaType)
+                {
+                    Failure = actionResult.Failure,
+                    Refused = actionResult.Refused
+                };
+            }
         }
 
         var blocklisted = false;
@@ -1090,6 +1099,23 @@ public sealed class DownloadClientTelemetryService(
             queueRemovalTags);
 
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
+    }
+
+    /// <summary>True when the client answers a live look and shows no queue or history item with this id.</summary>
+    private async Task<bool> ClientAnswersWithoutItemAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await GetLiveSnapshotCoreAsync(client, timeProvider.GetUtcNow(), cancellationToken);
+            return snapshot is { LastFailure: null }
+                && string.Equals(snapshot.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
+                && !snapshot.Queue.Any(item => string.Equals(item.Id, queueItemId, StringComparison.OrdinalIgnoreCase))
+                && !snapshot.History.Any(item => string.Equals(item.Id, queueItemId, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The Activity line for a removal asked for by flags: it says what was actually done, part by part.</summary>
@@ -1242,7 +1268,7 @@ public sealed class DownloadClientTelemetryService(
     /// </summary>
     private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
     {
-        if (dispatchProblemLog is null || string.IsNullOrWhiteSpace(queueItemId))
+        if (string.IsNullOrWhiteSpace(queueItemId))
         {
             return;
         }
@@ -1252,7 +1278,38 @@ public sealed class DownloadClientTelemetryService(
             var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
             if (dispatch is not null)
             {
-                await dispatchProblemLog.RecordAcknowledgedAsync(dispatch.Id, "vanished-downloading", cancellationToken);
+                if (dispatchProblemLog is not null)
+                {
+                    await dispatchProblemLog.RecordAcknowledgedAsync(dispatch.Id, "vanished-downloading", cancellationToken);
+                }
+
+                // Deluno took this download out of the client itself, so its record is closed with it. Left
+                // open, the title kept reading "downloading ... on its way", a new pick said "already
+                // downloading" and the activity row never ended (golden path, rc.30.9).
+                await dispatchesRepository.ArchiveDispatchAsync(
+                    dispatch.Id, $"Deluno removed this download from {client.Name}.", cancellationToken);
+
+                // What was open about a download that is gone has nothing left to answer: the recovery cases
+                // written for it close, and a hand-off that ended badly stops asking for a decision.
+                if (recoveryHandler is not null)
+                {
+                    await recoveryHandler.HandleDispatchSettledAsync(dispatch.Id, $"Deluno removed this download from {client.Name} itself.", cancellationToken);
+                }
+
+                var handoff = await processorRepository.FindProcessorHandoffForDownloadAsync(client.Id, queueItemId, cancellationToken);
+                if (handoff is not null && ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
+                {
+                    await processorRepository.UpdateProcessorHandoffAsync(
+                        handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+                    await activityFeedRepository.RecordActivityAsync(
+                        "processing.dismissed",
+                        $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno removed the download.",
+                        System.Text.Json.JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
+                        cancellationToken);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -3367,6 +3424,13 @@ public sealed class DownloadClientTelemetryService(
         queue = queue.Select(item =>
             item.Status == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refused
                 ? item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refused }
+                : item).ToArray();
+
+        // A download that is in the library has nothing left to ask of anyone, whatever its client said on the way
+        // (a tracker that refused a connection, say): the row reads "In library", not "Needs action" (golden path rc.30.9).
+        queue = queue.Select(item =>
+            item.Status == DownloadQueueStatuses.Imported && (item.ErrorMessage is not null || item.Failure is not null)
+                ? item with { ErrorMessage = null, Failure = null }
                 : item).ToArray();
 
         // One failure, one row (#1167): a failure belongs to the copy that owns the hand-off. Another client's

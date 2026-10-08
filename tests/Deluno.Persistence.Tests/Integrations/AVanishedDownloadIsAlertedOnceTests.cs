@@ -249,7 +249,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
                 new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "basic"),
                 new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0),
                 queue, history, Now);
-            var clientDispatches = new[] { (await Dispatches.GetDispatchAsync(DispatchId, CancellationToken.None))! };
+            var clientDispatches = new[] { (await Dispatches.GetDispatchIncludingArchivedAsync(DispatchId, CancellationToken.None))! };
             await _service.RecordWhatTheClientShowsAsync(snapshot, clientDispatches, CancellationToken.None);
         }
 

@@ -1034,6 +1034,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 };
             }
 
+            if (string.IsNullOrWhiteSpace(request.OutputPath) &&
+                ProcessorOutputPathPolicy.OutputPathFromFiles(request.OutputFiles) is { } derivedOutputPath)
+            {
+                request = request with { OutputPath = derivedOutputPath };
+            }
+
             var processorName = library.ProcessorName ?? (string.IsNullOrWhiteSpace(request.ProcessorName)
                 ? "External processor"
                 : request.ProcessorName.Trim());
@@ -1407,7 +1413,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return errors;
         }
 
-        if (status == "completed" && string.IsNullOrWhiteSpace(request.OutputPath))
+        if (status == "completed" && string.IsNullOrWhiteSpace(request.OutputPath) &&
+            !(request.OutputFiles is { Count: > 0 } files && files.Any(file => !string.IsNullOrWhiteSpace(file))))
         {
             errors["outputPath"] = ["Completed processor events must include the cleaned output path."];
         }
@@ -1417,12 +1424,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             errors["message"] = ["Failed processor events should explain what went wrong."];
         }
 
-        // OutputFiles names files inside OutputPath; naming files with nowhere
-        // to find them is not a claim Deluno can check (#619).
-        if (request.OutputFiles is { Count: > 0 } && string.IsNullOrWhiteSpace(request.OutputPath))
-        {
-            errors["outputPath"] = ["OutputFiles was reported without an OutputPath to find them in."];
-        }
+        // OutputFiles without an OutputPath is accepted (Weir reports a partly failed hand-off that way, golden
+        // path rc.30.9): the folder is worked out from the files themselves once their paths are translated.
 
         // How much one report may say (#1023), before Deluno looks for any of it.
         foreach (var (field, messages) in ProcessorEventLimits.Check(request.OutputFiles))

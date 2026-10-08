@@ -146,11 +146,14 @@ public sealed class UsenetProviderTests
 
         public int ConfigReads { get; private set; }
 
+        public List<string> Methods { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
             using var document = System.Text.Json.JsonDocument.Parse(body);
             var method = document.RootElement.GetProperty("method").GetString();
+            Methods.Add(method!);
             string answer;
             switch (method)
             {
@@ -234,6 +237,25 @@ public sealed class UsenetProviderTests
 
         Assert.All(results, result => Assert.True(result.Saved, result.Message));
         Assert.Equal(["NZBGet", "SABnzbd"], retested.Order().ToArray());
+    }
+
+    // Golden path, rc.30.9: saving the provider reloads NZBGet, which comes back paused and not routed.
+    [Fact]
+    public async Task Saving_the_provider_resumes_NZBGet_and_routes_a_client_no_library_sends_to_yet()
+    {
+        var connections = new Moq.Mock<Deluno.Connections.Data.IConnectionsRepository>();
+        connections.Setup(c => c.ListDownloadClientsAsync(Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DownloadClientItem>)new[] { NzbGetClient() });
+        var handler = new NzbGetHandler(0);
+        var registry = new DownloadClientRegistry([new NzbGetDownloadClient(new Factory(handler), TimeSpan.Zero)]);
+
+        await new UsenetProviderService(connections.Object, registry).SaveAsync(Provider, CancellationToken.None);
+
+        Assert.Contains("resumedownload", handler.Methods);
+        Assert.Contains("resumepost", handler.Methods);
+        Assert.Contains("resumescan", handler.Methods);
+        Assert.True(handler.Methods.LastIndexOf("resumedownload") > handler.Methods.LastIndexOf("reload"), "resumed only after the reload");
+        connections.Verify(c => c.RouteUnroutedDownloadClientAsync("nzb-1", Moq.It.IsAny<CancellationToken>()), Moq.Times.Once);
     }
 
     [Fact]
