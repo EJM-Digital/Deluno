@@ -76,6 +76,13 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             addTimePairs.Add(new("savepath", client.Location));
         }
+        else
+        {
+            // No folder of Deluno's own: the category's save folder is the one the library watches, and
+            // qBittorrent only uses it for a torrent it manages automatically. Asked for here so it holds
+            // whatever qBittorrent's default mode is (golden path, rc.30.8: grabs landed in the completed root).
+            addTimePairs.Add(new("autoTMM", "true"));
+        }
 
         // A .torrent Deluno fetched with a tracker's sign-in goes up as a file;
         // qBittorrent could not fetch it by URL itself (#606).
@@ -243,6 +250,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             {
                 await TrySetLocationAsync(http, client, added!, cancellationToken);
             }
+            else
+            {
+                await TrySetAutoManagementAsync(http, added!, cancellationToken);
+            }
         }
 
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to qBittorrent.") with
@@ -318,6 +329,29 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
             // Left alone: the add-time category field already took.
+        }
+    }
+
+    /// <summary>
+    /// Automatic Torrent Management on for the torrent just added, so it saves into its category's folder.
+    /// Setting the category after the add can leave a torrent on manual management, and a manual torrent
+    /// keeps its own save path; this makes the category folder the one in force. Best-effort.
+    /// </summary>
+    private static async Task TrySetAutoManagementAsync(HttpClient http, string hash, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pairs = new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("enable", "true")
+            };
+            using var response = await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            // Left alone: the add-time autoTMM field already asked for it.
         }
     }
 
@@ -690,6 +724,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 using var defaultResponse = await http.GetAsync("api/v2/app/defaultSavePath", cancellationToken);
                 var defaultSavePath = defaultResponse.IsSuccessStatusCode ? (await defaultResponse.Content.ReadAsStringAsync(cancellationToken)).Trim() : null;
                 savePath = ClientPaths.ClientFolder(defaultSavePath, savePath) ?? savePath;
+            }
+
+            // The folder a torrent really lands in is not always the category's. Deluno sends this client's own
+            // Location with every torrent, and qBittorrent saves it there whatever the category says; without
+            // one Deluno asks for automatic management so the category's folder is the one in force. Report
+            // the folder in force, so the check cannot say Matches while torrents land somewhere else.
+            if (!string.IsNullOrWhiteSpace(client.Location))
+            {
+                var location = client.Location.Trim();
+                var incomplete = await ReadIncompletePathAsync(http, location, cancellationToken);
+                return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Ready,
+                    $"Deluno sends every torrent to {location} in qBittorrent, whatever its {normalizedCategory} category says.",
+                    Supported: true, Found: true, SavePath: location, IncompletePath: incomplete);
             }
 
             // Where a torrent is written while it downloads (#1164): the temporary path when qBittorrent
