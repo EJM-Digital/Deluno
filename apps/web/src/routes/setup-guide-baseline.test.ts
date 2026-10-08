@@ -11,7 +11,7 @@ vi.mock("../lib/use-auth", () => ({
   useAuth: () => ({ user: null })
 }));
 
-const { createBaseline } = await import("./setup-guide-page");
+const { createBaseline, detectLibraryDownloadsFolder } = await import("./setup-guide-page");
 type Input = Parameters<typeof createBaseline>[0];
 
 const NO = {
@@ -193,5 +193,21 @@ describe("guided setup after installing with the picker (#1132)", () => {
 
     expect(downloadsSaves()).toEqual([]);
     expect(result.message).toContain("could not tell where your download clients finish Movies and TV");
+  });
+});
+
+describe("detectLibraryDownloadsFolder", () => {
+  const report = (folders: string[]) => ({
+    libraries: [{ destinations: folders.map((saveFolder) => ({ saveFolder, savedBy: "client-category" })) }]
+  });
+
+  it("finds the one folder when qBittorrent writes it with / and the others with \\", async () => {
+    fetchJsonMock.mockResolvedValue(report(["C:/Downloads/Completed/Movies", "C:\\Downloads\\Completed\\Movies", "c:\\downloads\\completed\\movies\\"]));
+    expect(await detectLibraryDownloadsFolder("lib")).toBe("C:/Downloads/Completed/Movies");
+  });
+
+  it("stays empty when the clients really disagree", async () => {
+    fetchJsonMock.mockResolvedValue(report(["C:/Downloads/Completed/Movies", "D:\\Downloads\\Movies"]));
+    expect(await detectLibraryDownloadsFolder("lib")).toBeNull();
   });
 });

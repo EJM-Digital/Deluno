@@ -206,3 +206,132 @@ public sealed class DirectoryListingLatestReleaseTests
         Assert.Equal(["weir"], flagged);
     }
 }
+
+// Golden path, rc.30.8: GitHub's anonymous limit (60 calls an hour per public address) stopped NZBGet and Weir, and the
+// picker said the release could not be found. The limit is now told apart, with when it lifts.
+public sealed class GithubRateLimitTests
+{
+    private sealed class Limited(System.Net.HttpStatusCode status, params (string Name, string Value)[] headers) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = new HttpResponseMessage(status) { Content = new StringContent("""{"message":"API rate limit exceeded"}""") };
+            foreach (var (name, value) in headers)
+            {
+                response.Headers.TryAddWithoutValidation(name, value);
+            }
+
+            return Task.FromResult(response);
+        }
+    }
+
+    private static BundledComponentSpec Nzbget() => BundledComponents.Load().Single(s => s.Kind == "nzbget");
+
+    [Fact]
+    public async Task A_403_with_no_calls_left_is_the_rate_limit_and_carries_its_reset_time()
+    {
+        var reset = DateTimeOffset.UtcNow.AddMinutes(37).ToUnixTimeSeconds();
+        var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None,
+            new Limited(System.Net.HttpStatusCode.Forbidden, ("X-RateLimit-Remaining", "0"), ("X-RateLimit-Reset", reset.ToString())));
+
+        Assert.True(lookup.RateLimited);
+        Assert.Null(lookup.Asset);
+        Assert.Equal(reset, lookup.LimitResetsUtc!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task A_429_with_a_retry_after_is_the_rate_limit_too()
+    {
+        var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None,
+            new Limited((System.Net.HttpStatusCode)429, ("Retry-After", "600")));
+
+        Assert.True(lookup.RateLimited);
+        Assert.InRange(lookup.LimitResetsUtc!.Value, DateTimeOffset.UtcNow.AddMinutes(9), DateTimeOffset.UtcNow.AddMinutes(11));
+    }
+
+    [Fact]
+    public async Task A_403_with_calls_left_is_not_the_rate_limit()
+    {
+        var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None,
+            new Limited(System.Net.HttpStatusCode.Forbidden, ("X-RateLimit-Remaining", "12")));
+
+        Assert.False(lookup.RateLimited);
+        Assert.Null(lookup.Asset);
+    }
+
+    [Fact]
+    public async Task A_missing_release_is_not_the_rate_limit()
+    {
+        var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None, new Limited(System.Net.HttpStatusCode.NotFound));
+
+        Assert.False(lookup.RateLimited);
+    }
+
+    [Fact]
+    public void The_message_names_the_limit_and_when_it_lifts_in_plain_words()
+    {
+        var text = GithubLatestRelease.RateLimitMessage("NZBGet", new DateTimeOffset(2026, 10, 8, 21, 21, 0, TimeSpan.Zero));
+
+        Assert.Contains("hourly limit", text);
+        Assert.Contains("NZBGet", text);
+        Assert.Contains("Try again", text);
+        Assert.DoesNotContain("Could not find", text);
+        Assert.Contains("hourly limit", GithubLatestRelease.RateLimitMessage("Weir", null));
+    }
+}
+
+public sealed class PendingInstallRecorderTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "deluno-pending-" + Guid.NewGuid().ToString("N")[..8]);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch (IOException) { }
+    }
+
+    [Fact]
+    public void An_app_stopped_by_the_limit_is_kept_with_when_to_try_again_and_comes_off_once_installed()
+    {
+        var retry = DateTimeOffset.UtcNow.AddMinutes(40);
+        PendingInstallRecorder.Record(
+        [
+            new ComponentInstallResult("qbittorrent", ComponentInstallOutcome.Installed, "ok"),
+            new ComponentInstallResult("nzbget", ComponentInstallOutcome.DownloadFailed, "limit", retry),
+            new ComponentInstallResult("weir", ComponentInstallOutcome.DownloadFailed, "limit", retry)
+        ], _root);
+
+        var pending = Deluno.Contracts.PendingComponentInstalls.Read(_root)!;
+        Assert.Equal(["nzbget", "weir"], pending.Kinds);
+        Assert.Equal(retry.ToUnixTimeSeconds(), pending.RetryAfterUtc!.Value.ToUnixTimeSeconds());
+        Assert.False(PendingInstallRecorder.ReadyToOffer(pending, DateTimeOffset.UtcNow));
+        Assert.True(PendingInstallRecorder.ReadyToOffer(pending, retry.AddSeconds(1)));
+        Assert.Contains("NZBGet, Weir", PendingInstallRecorder.MenuText(pending, DateTimeOffset.UtcNow, kind => kind == "nzbget" ? "NZBGet" : "Weir"));
+
+        PendingInstallRecorder.Record([new ComponentInstallResult("nzbget", ComponentInstallOutcome.Installed, "ok")], _root);
+        Assert.Equal(["weir"], Deluno.Contracts.PendingComponentInstalls.Read(_root)!.Kinds);
+
+        PendingInstallRecorder.Record([new ComponentInstallResult("weir", ComponentInstallOutcome.Installed, "ok")], _root);
+        Assert.Null(Deluno.Contracts.PendingComponentInstalls.Read(_root));
+    }
+
+    [Fact]
+    public void A_failure_that_is_not_the_limit_is_not_kept()
+    {
+        PendingInstallRecorder.Record([new ComponentInstallResult("nzbget", ComponentInstallOutcome.DownloadFailed, "No source")], _root);
+
+        Assert.Null(Deluno.Contracts.PendingComponentInstalls.Read(_root));
+    }
+
+    [Fact]
+    public void A_persons_ask_is_acted_on_once()
+    {
+        Deluno.Contracts.PendingComponentInstalls.Add(_root, ["nzbget"], null, askedByPerson: true, reason: null);
+        Assert.True(Deluno.Contracts.PendingComponentInstalls.Read(_root)!.AskedByPerson);
+
+        PendingInstallRecorder.Record([], _root);
+
+        var after = Deluno.Contracts.PendingComponentInstalls.Read(_root)!;
+        Assert.False(after.AskedByPerson);
+        Assert.Equal(["nzbget"], after.Kinds);
+    }
+}

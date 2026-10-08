@@ -25,6 +25,10 @@ public sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _allowLanItem;
     private readonly ToolStripMenuItem _letAnyAddressInItem;
     private readonly ToolStripMenuItem _readdTorrentsItem;
+    private readonly ToolStripMenuItem _installAppsItem;
+    private readonly System.Windows.Forms.Timer _pendingInstallsTimer = new() { Interval = 5000 };
+    private bool _installPickerOpen;
+    private DateTimeOffset? _offeredFor;
     private readonly DelunoServer _server;
     private readonly HostRestartSupervisor _supervisor;
     private TrayState _state = TrayState.Starting;
@@ -43,6 +47,8 @@ public sealed class TrayApplication : ApplicationContext
 
         _readdTorrentsItem = new ToolStripMenuItem("Add Transmission's torrents back...", null, OnReaddTorrents) { Visible = false };
 
+        _installAppsItem = new ToolStripMenuItem("Try again: install apps...", null, OnInstallApps) { Visible = false };
+
         var aboutItem = new ToolStripMenuItem($"Deluno v{Deluno.Api.DelunoVersion.Running}") { Enabled = false };
 
         var menu = new ContextMenuStrip();
@@ -51,6 +57,7 @@ public sealed class TrayApplication : ApplicationContext
             _openUpdatesItem,
             _allowLanItem,
             _readdTorrentsItem,
+            _installAppsItem,
             new ToolStripSeparator(),
             _restartItem,
             _startStopItem,
@@ -70,6 +77,9 @@ public sealed class TrayApplication : ApplicationContext
             Visible = true
         };
         _notify.DoubleClick += OnOpen;
+        menu.Opening += (_, _) => RefreshInstallAppsItem();
+        _pendingInstallsTimer.Tick += (_, _) => CheckPendingInstalls();
+        _pendingInstallsTimer.Start();
         menu.Opening += (_, _) => _readdTorrentsItem.Visible = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is { } pending && (pending.Summary is null || pending.Torrents.Count > 0);
 
         _supervisor = new HostRestartSupervisor(
@@ -170,6 +180,79 @@ public sealed class TrayApplication : ApplicationContext
         catch
         {
             // A folder that could not be moved is still where it was; the client starts from it.
+        }
+    }
+
+    /// <summary>
+    /// Apps still to install: ones GitHub's limit stopped at set-up, or ones asked for on the Companion Tools page.
+    /// An ask opens the picker at once, once; a wait is only offered, with a balloon, when the limit has lifted.
+    /// </summary>
+    private void CheckPendingInstalls()
+    {
+        try
+        {
+            var dataRoot = ComponentPaths.DataRoot();
+            if (_installPickerOpen || Deluno.Contracts.PendingComponentInstalls.Read(dataRoot) is not { } pending)
+            {
+                RefreshInstallAppsItem();
+                return;
+            }
+
+            RefreshInstallAppsItem();
+            if (pending.AskedByPerson)
+            {
+                Deluno.Contracts.PendingComponentInstalls.MarkAsked(dataRoot);
+                ShowInstallPicker(pending.Kinds);
+            }
+            else if (PendingInstallRecorder.ReadyToOffer(pending, DateTimeOffset.UtcNow) && _offeredFor != (pending.RetryAfterUtc ?? DateTimeOffset.MinValue))
+            {
+                _offeredFor = pending.RetryAfterUtc ?? DateTimeOffset.MinValue;
+                _notify.ShowBalloonTip(30000, "GitHub's limit has lifted", "Choose \"Try again\" from the Deluno icon menu to install " + string.Join(", ", pending.Kinds.Select(DisplayNameOf)) + ".", ToolTipIcon.Info);
+            }
+        }
+        catch
+        {
+            // The menu item is still there to try by hand.
+        }
+    }
+
+    private static string DisplayNameOf(string kind)
+        => BundledComponents.Load().FirstOrDefault(spec => string.Equals(spec.Kind, kind, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? kind;
+
+    private void RefreshInstallAppsItem()
+    {
+        var pending = Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot());
+        _installAppsItem.Visible = pending is not null;
+        if (pending is not null)
+        {
+            _installAppsItem.Text = PendingInstallRecorder.MenuText(pending, DateTimeOffset.UtcNow, DisplayNameOf);
+        }
+    }
+
+    private void OnInstallApps(object? sender, EventArgs e)
+    {
+        if (Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot()) is { } pending)
+        {
+            ShowInstallPicker(pending.Kinds);
+        }
+    }
+
+    private void ShowInstallPicker(IReadOnlyCollection<string> kinds)
+    {
+        if (_installPickerOpen)
+        {
+            return;
+        }
+
+        _installPickerOpen = true;
+        try
+        {
+            ComponentPickerDialog.ShowFor(kinds);
+        }
+        finally
+        {
+            _installPickerOpen = false;
+            RefreshInstallAppsItem();
         }
     }
 
