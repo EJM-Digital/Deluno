@@ -171,6 +171,8 @@ export interface DashboardSummaryChangedEvent {
 
 export interface EntityChangedEvent {
   id: string;
+  /** On a film or show change: the library it is in, when it is in just one. */
+  libraryId?: string | null;
 }
 
 export interface DispatchGrabAttemptEvent {
@@ -270,7 +272,9 @@ export const RealtimeGroups = {
   Activity: "activity",
   /** Joined only while Live or Transfers is open: tells the server someone is watching, so it reads the download clients every second (#1097). */
   Live: "live",
-  Library: (libraryId: string) => `library:${libraryId}`
+  Library: (libraryId: string) => `library:${libraryId}`,
+  /** One film or show: a title page joins this and hears only about its own title (#1179). */
+  Title: (titleId: string) => `title:${titleId}`
 } as const;
 
 /** Wire shape for every push: a monotonic sequence, the event name, a timestamp, and its payload. */
