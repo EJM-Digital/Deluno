@@ -5,7 +5,7 @@ The owner, 7 Oct: finish the torrent round of the live test, then fix and close 
 ## The rules for every fix
 
 - **Before touching an issue,** run `./scripts/issue-audit.ps1 <n>` and answer every acceptance line.
-- **Tests do what the user does:** a real request or a Playwright click, never an attribute or label check. See [[feedback-deluno-prove-live-before-close]], recorded in #1158.
+- **Tests do what the user does:** a real request or a Playwright click, never an attribute or label check. See [[feedback-deluno-prove-live-before-close]], recorded in #1158. The per-issue map of those tests is [live-test-rc30-user-action-tests.md](live-test-rc30-user-action-tests.md).
 - **Nothing closes without live proof on the rig,** clicked or watched, with the evidence in the closing note. Green tests and a code read never close a user-facing issue.
 - **One builder per area,** each in its own worktree. Builders never run `npm install` in a junctioned worktree. The coordinator merges onto `main`, runs `npm run gate` once for the batch, and re-runs only the affected steps after a small fix.
 - **Commit messages say `Refs #NNN`.** Never put close, fixes or resolves next to a number.
