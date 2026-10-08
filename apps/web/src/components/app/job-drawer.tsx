@@ -2,15 +2,16 @@
  * One job opened: the run, why it failed, what it was for, and Dismiss for a failed one.
  * Shared by System's Background jobs and Activity's title jobs, so a job reads the same wherever it opens.
  */
+import { Link } from "react-router-dom";
 import { Button } from "../ui/button";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 import { getJobStatusLabel, isJobFailed, type JobStatus } from "../../lib/job-status-constants";
-import { detailFields } from "../../lib/detail-fields";
+import { detailFields, fixLinkForActivity } from "../../lib/detail-fields";
 import { isChosenOnSearch, relatedEntityLabel } from "../../lib/dispatch-target";
 import type { JobQueueItem } from "../../lib/api";
 
-export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem | null; busy: boolean; onClose: () => void; onDismiss: (job: JobQueueItem) => void }) {
+export function JobDrawer({ job, busy, onClose, onDismiss, onRetry }: { job: JobQueueItem | null; busy: boolean; onClose: () => void; onDismiss: (job: JobQueueItem) => void; onRetry?: (job: JobQueueItem) => void }) {
   const { preferences } = useDisplayPreferences();
   return (
     <Drawer
@@ -56,6 +57,33 @@ export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem
           {detailFields(job.payloadJson).length ? (
             <DrawerSection title="What was asked">
               <DrawerFacts items={detailFields(job.payloadJson).map((field) => ({ label: field.label, value: field.value, mono: field.mono }))} />
+            </DrawerSection>
+          ) : null}
+
+          {isJobFailed(job.status as JobStatus) ? (
+            <DrawerSection title="Put it right">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* #1151: every red entry says where to fix it, and an import offers to run again. */}
+                {job.jobType === "filesystem.import.execute" && onRetry ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    title="Tries the failed imports again. Files already in your library are not touched."
+                    onClick={() => onRetry(job)}
+                    disabled={busy}
+                  >
+                    Try again
+                  </Button>
+                ) : null}
+                <Link
+                  to={fixLinkForActivity("job.dead-letter", "problem")!.to}
+                  onClick={onClose}
+                  className="text-(length:--type-caption) font-semibold text-primary hover:underline"
+                >
+                  {fixLinkForActivity("job.dead-letter", "problem")!.label}
+                </Link>
+              </div>
             </DrawerSection>
           ) : null}
 
