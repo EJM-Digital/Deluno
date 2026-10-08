@@ -580,6 +580,9 @@ public sealed class ComponentInstallService(
             return null;
         }
 
+        // An older install may still have the component's folder in the install root: bring it over first, so nothing is lost (#1177).
+        await ComponentStateMigration.RunAsync(ComponentPaths.InstallRoot(), ComponentPaths.DataRoot(), [], null, null, spec.DefaultPort, null, _log, cancellationToken);
+
         // SABnzbd and NZBGet get the login the person chose in the picker (#1142); qBittorrent a generated one.
         var credentials = string.IsNullOrWhiteSpace(spec.CredentialsUsername)
             ? null
@@ -588,7 +591,7 @@ public sealed class ComponentInstallService(
         string? content;
         if (!string.IsNullOrWhiteSpace(spec.ConfigTemplateSourcePath))
         {
-            var template = _templates.ReadAllText(Environment.ExpandEnvironmentVariables(spec.ConfigTemplateSourcePath));
+            var template = _templates.ReadAllText(ComponentPaths.Expand(spec.ConfigTemplateSourcePath));
             content = template is null
                 ? null
                 : ComponentConfig.ApplyReplacements(template, spec.ConfigReplacements ?? new Dictionary<string, string>(), credentials);
@@ -623,7 +626,7 @@ public sealed class ComponentInstallService(
             return loginProblem;
         }
 
-        var configPath = Environment.ExpandEnvironmentVariables(spec.ConfigFilePath);
+        var configPath = ComponentPaths.Expand(spec.ConfigFilePath);
         var written = await _configWriter.WriteIfAbsentAsync(configPath, content, cancellationToken);
         if (written && credentials is not null)
         {
@@ -671,10 +674,10 @@ public sealed class ComponentInstallService(
             // failure here does not fail the whole install; it degrades to
             // "the Web UI came up but has no host configured yet", which is
             // still an improvement over not starting at all.
-            _processStarter.Start(Environment.ExpandEnvironmentVariables(spec.PreStartCommand), ComponentAutoStarter.ExpandArgs(spec.PreStartArgs), spec.StartHidden);
+            _processStarter.Start(ComponentPaths.Expand(spec.PreStartCommand), ComponentAutoStarter.ExpandArgs(spec.PreStartArgs), spec.StartHidden);
         }
 
-        var command = Environment.ExpandEnvironmentVariables(spec.PostInstallCommand!);
+        var command = ComponentPaths.Expand(spec.PostInstallCommand!);
         var started = _processStarter.Start(command, ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
         if (started is null)
         {

@@ -39,7 +39,7 @@ public sealed class AppSettingsTests : IDisposable
 
         Assert.Equal(legacyDataRoot, settings.DataRoot);
 
-        var primaryConfigPath = Path.Combine(_root, "local", "Deluno", "config", "deluno.json");
+        var primaryConfigPath = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
         Assert.True(File.Exists(primaryConfigPath));
 
         var persisted = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(primaryConfigPath), SerializerOptions);
@@ -53,7 +53,7 @@ public sealed class AppSettingsTests : IDisposable
         var settings = AppSettings.Load();
 
         Assert.Equal(Path.Combine(_root, "local", "DelunoData"), settings.DataRoot);
-        Assert.False(File.Exists(Path.Combine(_root, "local", "Deluno", "config", "deluno.json")));
+        Assert.False(File.Exists(Path.Combine(_root, "local", "DelunoConfig", "deluno.json")));
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class AppSettingsTests : IDisposable
         Assert.False(settings.AutoCheckUpdates);
         Assert.Equal("https://example.invalid/Deluno", settings.UpdateSource);
 
-        var primaryConfigPath = Path.Combine(_root, "local", "Deluno", "config", "deluno.json");
+        var primaryConfigPath = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
         Assert.True(File.Exists(primaryConfigPath));
 
         var persisted = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(primaryConfigPath), SerializerOptions);
@@ -114,6 +114,42 @@ public sealed class AppSettingsTests : IDisposable
 
         var reloaded = AppSettings.Load();
         Assert.True(reloaded.AllowedHostsForceDisabled);
+    }
+
+    /// <summary>#1177: the pointer to a custom data root lives outside the install folder Velopack's Setup replaces.</summary>
+    [Fact]
+    public void A_custom_data_root_is_still_found_after_the_install_folder_is_removed()
+    {
+        var custom = Path.Combine(_root, "elsewhere", "MyData");
+        var settings = AppSettings.Load();
+        settings.DataRoot = custom;
+        settings.Save();
+        var install = Path.Combine(_root, "local", "Deluno");
+        Directory.CreateDirectory(Path.Combine(install, "current"));
+
+        Directory.Delete(install, recursive: true);
+
+        Assert.Equal(custom, AppSettings.Load().DataRoot);
+        Assert.False(Directory.Exists(Path.Combine(install, "config")));
+    }
+
+    [Fact]
+    public void A_pointer_kept_in_the_install_folder_is_read_and_copied_to_the_new_place()
+    {
+        var custom = Path.Combine(_root, "elsewhere", "OldData");
+        var old = Path.Combine(_root, "local", "Deluno", "config", "deluno.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(old)!);
+        File.WriteAllText(old, JsonSerializer.Serialize(new { dataRoot = custom, port = 7881 }, SerializerOptions));
+
+        var loaded = AppSettings.Load();
+
+        Assert.Equal(custom, loaded.DataRoot);
+        Assert.Equal(7881, loaded.Port);
+        var current = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
+        Assert.True(File.Exists(current));
+
+        Directory.Delete(Path.Combine(_root, "local", "Deluno"), recursive: true);
+        Assert.Equal(custom, AppSettings.Load().DataRoot);
     }
 
     public void Dispose()

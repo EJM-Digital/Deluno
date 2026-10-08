@@ -103,6 +103,12 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
                 "nzbget" => await NzbgetAsync(http, layout, incomplete, credentials, cancellationToken),
                 _ => null
             };
+            if (result is null && string.Equals(spec.Kind, "transmission", StringComparison.OrdinalIgnoreCase))
+            {
+                // Kept in the data root so a lost Transmission folder can be written again with these folders (#1177).
+                DownloadLayoutRecord.Save(ComponentPaths.DataRoot(), layout);
+            }
+
             return result is null ? null : $"Deluno could not finish setting up {spec.DisplayName}: {result}";
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or IOException)

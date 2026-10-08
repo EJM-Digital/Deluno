@@ -119,11 +119,8 @@ public interface IStartedComponentsRegistry
 
 public sealed class FileStartedComponentsRegistry(string? path = null) : IStartedComponentsRegistry
 {
-    private readonly string _path = path ?? Path.Combine(
-        Environment.GetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA") is { Length: > 0 } testRoot
-            ? testRoot
-            : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Deluno", "config", "started-components.json");
+    // Under the data root, not the install root Velopack replaces on a reinstall (#1177).
+    private readonly string _path = path ?? Path.Combine(ComponentPaths.DataRoot(), "config", "started-components.json");
 
     public IReadOnlyList<string> Read()
     {
@@ -192,10 +189,10 @@ public sealed class ComponentAutoStarter(
 
             if (!string.IsNullOrWhiteSpace(spec.PreStartCommand))
             {
-                starter.Start(Environment.ExpandEnvironmentVariables(spec.PreStartCommand), ExpandArgs(spec.PreStartArgs), spec.StartHidden);
+                starter.Start(ComponentPaths.Expand(spec.PreStartCommand), ExpandArgs(spec.PreStartArgs), spec.StartHidden);
             }
 
-            var process = starter.Start(Environment.ExpandEnvironmentVariables(spec.PostInstallCommand!), ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
+            var process = starter.Start(ComponentPaths.Expand(spec.PostInstallCommand!), ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
             log?.Invoke(process is null
                 ? $"{spec.DisplayName} was not running after sign-in and Deluno could not start it."
                 : $"{spec.DisplayName} was not running after sign-in, so Deluno started it.");
@@ -209,7 +206,7 @@ public sealed class ComponentAutoStarter(
     }
 
     public static string? ExpandArgs(string? arguments)
-        => string.IsNullOrWhiteSpace(arguments) ? arguments : Environment.ExpandEnvironmentVariables(arguments);
+        => string.IsNullOrWhiteSpace(arguments) ? arguments : ComponentPaths.Expand(arguments);
 }
 
 /// <summary>
