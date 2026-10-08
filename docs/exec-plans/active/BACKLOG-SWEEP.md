@@ -28,6 +28,10 @@ exists to stop.
 you must name the unmet line and the evidence that would close it. *Broad
 issue*, *epic*, *only a slice* and *more work exists* are not reasons.
 
+**A UI or behaviour issue closes only with live proof on the rig.** Passing tests
+are not enough. The closing note says what was done on the rig, what was seen,
+and on which build.
+
 **Tripwire:** merging a second pull request against an issue whose `Audited`
 column is still `no` means you are working without a finish line. Stop and
 audit.
