@@ -293,6 +293,90 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Contains("No indexer was asked", plan.Summary, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #1184: a pacing slot the caller can only get after waiting at least <c>needs</c>. The feed read that raises a
+    /// search has just used the slot of the indexer it read.
+    /// </summary>
+    private static IOutboundRequestThrottle ThrottleNeedingAWaitOf(TimeSpan needs, List<TimeSpan>? offered = null)
+    {
+        var throttle = new Mock<IOutboundRequestThrottle>();
+        throttle
+            .Setup(service => service.TryAcquireAsync(It.IsAny<string>(), It.IsAny<OutboundRate>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, OutboundRate _, TimeSpan maxWait, CancellationToken _) =>
+            {
+                offered?.Add(maxWait);
+                return new ValueTask<TimeSpan?>(maxWait >= needs ? needs : null);
+            });
+        return throttle.Object;
+    }
+
+    private const string ExactTargetFeed =
+        "<rss><channel><item><title>Big.Buck.Bunny.2008.1080p.WEB-DL.x264-GOLDEN</title>" +
+        "<link>https://fixture.invalid/release/1</link>" +
+        "<enclosure url=\"https://fixture.invalid/release/1.nzb\" length=\"1700000000\" type=\"application/x-nzb\" /></item></channel></rss>";
+
+    /// <summary>
+    /// #1184: the indexer whose new release started a search is waited for through its whole request interval, so
+    /// the search still sees its exact-target release. Without that, the ordinary twenty-second wait lapses on an
+    /// indexer with a longer interval and the search is decided without the very release that raised it.
+    /// </summary>
+    [Fact]
+    public async Task A_search_started_by_an_indexers_new_release_waits_for_that_indexers_slot_and_sees_its_release()
+    {
+        var indexer = CreateIndexer("usenet-indexer", "Usenet indexer") with { RequestIntervalSeconds = 60 };
+        var offered = new List<TimeSpan>();
+        var planner = CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(ExactTargetFeed),
+            throttleOverride: ThrottleNeedingAWaitOf(TimeSpan.FromSeconds(60), offered));
+
+        var ordinary = await planner.BuildPlanAsync(
+            "Big Buck Bunny", 2008, "movies", null, "WEB 1080p", [CreateSource(indexer)], cancellationToken: CancellationToken.None);
+        var patient = await planner.BuildPlanAsync(
+            "Big Buck Bunny", 2008, "movies", null, "WEB 1080p", [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None, patientIndexerIds: ["usenet-indexer"]);
+
+        // An ordinary search is paced out after twenty seconds, exactly as before.
+        Assert.Equal(MediaSearchReasons.IndexersBusy, ordinary.Reason);
+        Assert.Empty(ordinary.Candidates);
+        Assert.Equal(TimeSpan.FromSeconds(20), offered[0]);
+
+        // The search that indexer started waited its interval plus a margin, and has the release.
+        Assert.True(offered[1] >= TimeSpan.FromSeconds(60));
+        var candidate = Assert.Single(patient.Candidates);
+        Assert.Contains("GOLDEN", candidate.ReleaseName, StringComparison.Ordinal);
+        Assert.Empty(patient.IndexersNotHeardFrom ?? []);
+        Assert.True(AcquisitionDecisionPipeline.IsSafeForAutomaticDispatch(candidate), $"{candidate.DecisionStatus} cutoff={candidate.MeetsCutoff} delta={candidate.QualityDelta}");
+    }
+
+    /// <summary>
+    /// #1184: an indexer a search could not hear from is named, with when to ask again, even when another indexer
+    /// answered. The handler uses it to re-queue a feed-started search shortly instead of waiting a retry window.
+    /// </summary>
+    [Fact]
+    public async Task An_indexer_skipped_for_pacing_is_named_with_when_to_ask_it_again()
+    {
+        var slow = CreateIndexer("slow-indexer", "Slow indexer") with { BaseUrl = "https://slow.invalid/api", RequestIntervalSeconds = 90 };
+        var quick = CreateIndexer("quick-indexer", "Quick indexer") with { BaseUrl = "https://quick.invalid/api" };
+        var connections = new Mock<IConnectionsRepository>();
+        connections
+            .Setup(repository => repository.ListIndexersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([slow, quick]);
+        var throttle = new Mock<IOutboundRequestThrottle>();
+        throttle
+            .Setup(service => service.TryAcquireAsync(It.IsAny<string>(), It.IsAny<OutboundRate>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Returns((string host, OutboundRate _, TimeSpan _, CancellationToken _) =>
+                new ValueTask<TimeSpan?>(host.StartsWith("slow", StringComparison.Ordinal) ? null : TimeSpan.Zero));
+
+        var plan = await CreatePlanner(connections.Object, new FixedFeedHandler(ExactTargetFeed), throttleOverride: throttle.Object).BuildPlanAsync(
+            "Big Buck Bunny", 2008, "movies", null, "WEB 1080p", [CreateSource(slow), CreateSource(quick)], cancellationToken: CancellationToken.None);
+
+        Assert.NotEmpty(plan.Candidates);
+        var missed = Assert.Single(plan.IndexersNotHeardFrom ?? []);
+        Assert.Equal("slow-indexer", missed.IndexerId);
+        Assert.Equal(TimeSpan.FromSeconds(90) + TimeSpan.FromMinutes(1), missed.AskAgainAfter);
+    }
+
     [Fact]
     public async Task Empty_feed_returns_no_results_reason()
     {
@@ -1199,7 +1283,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         bool indexersBusy = false,
         Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null,
         IIndexerAuthFailureRecorder? authFailureRecorder = null,
-        IRealtimeEventPublisher? realtime = null)
+        IRealtimeEventPublisher? realtime = null,
+        IOutboundRequestThrottle? throttleOverride = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -1231,7 +1316,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             resiliencePolicy ?? new PassthroughResiliencePolicy(),
             quality.Object,
             new DisabledRankingModelService(),
-            throttle.Object,
+            throttleOverride ?? throttle.Object,
             logger ?? NullLogger<FeedMediaSearchPlanner>.Instance,
             guidePackageStore: guidePackageStore,
             trackerIndexers: trackerIndexers,

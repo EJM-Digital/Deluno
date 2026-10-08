@@ -45,4 +45,13 @@ public sealed record MediaSearchPlan(
     string Summary,
     string Reason = MediaSearchReasons.Ok,
     bool CandidatesTruncatedByIndexer = false,
-    IReadOnlyList<IntegrationFailure>? Failures = null);
+    IReadOnlyList<IntegrationFailure>? Failures = null,
+    /// <summary>
+    /// Indexers the search was meant to ask but did not hear from: skipped for pacing or a query limit, or
+    /// failed (#1184). A decision made without them is partial, so a search started because one of them
+    /// showed a new release asks again shortly rather than waiting out the normal retry window.
+    /// </summary>
+    IReadOnlyList<IndexerNotHeardFrom>? IndexersNotHeardFrom = null);
+
+/// <summary>An indexer a search did not hear from, and how long to wait before asking it again.</summary>
+public sealed record IndexerNotHeardFrom(string IndexerId, string IndexerName, TimeSpan AskAgainAfter);

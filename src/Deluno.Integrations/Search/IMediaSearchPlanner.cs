@@ -70,5 +70,10 @@ public interface IMediaSearchPlanner
         /// <summary>The provider's titles for the searched season's episodes, by episode number (#1173).</summary>
         IReadOnlyDictionary<int, string>? episodeTitles = null,
         bool queryIsATitle = true,
-        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null);
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null,
+        /// <summary>
+        /// Indexers whose new release started this search (#1184). Each is waited for through its whole request
+        /// interval instead of being skipped for pacing after the usual twenty seconds.
+        /// </summary>
+        IReadOnlyCollection<string>? patientIndexerIds = null);
 }
