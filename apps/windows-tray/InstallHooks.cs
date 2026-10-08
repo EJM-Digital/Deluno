@@ -92,7 +92,33 @@ internal static class InstallHooks
         // unconditionally at the top of Main instead.
         Program.EnsureWinFormsBootstrap();
         Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
+        AskStartWithWindows();
         RunComponentPicker();
+    }
+
+    /// <summary>Test seam: how the question is put to the person. Null means it could not be shown.</summary>
+    internal static Func<bool?> StartWithWindowsAnswer { get; set; } = StartWithWindowsQuestion.AskWithMessageBox;
+
+    /// <summary>Test seam: where a Yes is written.</summary>
+    internal static Func<ISignInEntry> SignInEntryFactory { get; set; } = () => new RunKeySignInEntry();
+
+    /// <summary>
+    /// "Start Deluno when you sign in to Windows?" - once, in first run, which a person installing sees once.
+    /// Nothing is on unless the answer is Yes; the tray menu's Start with Windows tick can change it later.
+    /// </summary>
+    internal static void AskStartWithWindows()
+    {
+        try
+        {
+            var answer = StartWithWindowsAnswer();
+            StartWithWindowsQuestion.Apply(answer, SignInEntryFactory());
+            LogHook($"start with Windows: {(answer == true ? "yes" : answer == false ? "no" : "not asked")}.");
+        }
+        catch (Exception ex)
+        {
+            // First run must finish whatever happens here; the tray menu still has the tick.
+            LogHook($"start with Windows question failed: {ex.Message}");
+        }
     }
 
     private static void RunComponentPicker()
