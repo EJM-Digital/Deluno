@@ -68,6 +68,7 @@ import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying,
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
+import { dispatchWasImported } from "../lib/dispatch-final-state";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
@@ -2733,9 +2734,9 @@ function processorConnectionTone(connection: ProcessorConnectionItem): NonNullab
   return "idle";
 }
 
-function dispatchStageLabel(dispatch: DownloadDispatchItem) {
+export function dispatchStageLabel(dispatch: DownloadDispatchItem) {
   if (isDispatchFailure(dispatch)) return "Needs attention";
-  if (dispatch.importStatus === "completed" || dispatch.importCompletedUtc) return "Imported";
+  if (dispatchWasImported(dispatch)) return "Imported";
   if (dispatch.importStatus) return `Import ${dispatch.importStatus}`;
   if (dispatch.detectedUtc || dispatch.grabStatus === "detected") return "Detected by client";
   if (dispatch.grabStatus) return `Grab ${dispatch.grabStatus}`;

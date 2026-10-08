@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem } from "./api";
-import { dispatchStanding } from "./dispatch-final-state";
+import { dispatchImportEnded, dispatchStanding, dispatchWasImported } from "./dispatch-final-state";
 
 const sent = (over: Partial<DownloadDispatchItem> = {}) => ({ id: "d", status: "sent", ...over }) as DownloadDispatchItem;
 
@@ -46,5 +46,25 @@ describe("dispatchStanding (#1179)", () => {
     const removed = dispatchStanding(sent({ importStatus: "failed", importFailureMessage: "Download was removed from the client" }));
     expect(removed?.pill.label).toBe("Removed");
     expect(dispatchStanding(sent({ importStatus: "imported", importCompletedUtc: done }))?.pill.label).toBe("Imported");
+  });
+});
+
+describe("one rule for imported (golden path rc.30.8)", () => {
+  const refusedSample = sent({
+    importStatus: "failed",
+    importCompletedUtc: "2026-10-08T05:00:00Z",
+    importFailureCode: "likelySample",
+    importFailureMessage: "The detected runtime is under two minutes, so Deluno is treating this as a likely sample."
+  });
+
+  it("never calls a refused import imported, whatever time is on the row", () => {
+    expect(dispatchWasImported(refusedSample)).toBe(false);
+    expect(dispatchImportEnded(refusedSample)).toBe(true);
+    expect(dispatchWasImported(sent({ importCompletedUtc: "2026-10-08T05:00:00Z", importFailureMessage: "refused" }))).toBe(false);
+  });
+
+  it("reads Imported on a real import only", () => {
+    expect(dispatchWasImported(sent({ importStatus: "imported" }))).toBe(true);
+    expect(dispatchImportEnded(sent())).toBe(false);
   });
 });
