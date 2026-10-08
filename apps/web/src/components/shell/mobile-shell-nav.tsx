@@ -237,7 +237,6 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-dynamic-base font-semibold text-foreground">{user.displayName}</p>
-                <p className="truncate text-(length:--shell-subtle-size) text-muted-foreground">@{user.username}</p>
               </div>
             </div>
           ) : null}
