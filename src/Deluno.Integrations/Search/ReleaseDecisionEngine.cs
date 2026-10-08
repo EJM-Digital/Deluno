@@ -540,7 +540,28 @@ public static partial class ReleaseDecisionEngine
                 || input.CurrentPreferenceEvaluation is not null
                 || !string.IsNullOrWhiteSpace(input.CurrentReleaseName)
                 || !string.IsNullOrWhiteSpace(input.CurrentQuality);
-            if (installedFilePresent && currentFacts is null)
+            // #1169/#1157: the installed file's quality is a recorded fact
+            // (its file record), not a guess from a name. A move to a higher
+            // quality tier needs nothing else, so a missing probe snapshot
+            // must not hold it. Only the quality family is built from this;
+            // every other trait stays unknown, so same-quality, custom-format
+            // and preference upgrades still wait for real probe evidence.
+            var sentOnQualityAlone = false;
+            if (installedFilePresent && currentFacts is null && currentRank > 0 && qualityDelta > 0 && !hardReject)
+            {
+                var qualityOnlyComparison = ReleasePreferenceEvaluator.Compare(
+                    preferencePlan,
+                    ReleasePreferenceFactFactory.FromReleaseName(preferencePlan, null, normalizedCurrent, evidenceSource: "installed-file-record"),
+                    candidateFacts);
+                if (qualityOnlyComparison.Status == PreferenceCandidateStatus.Upgrade)
+                {
+                    preferenceComparison = qualityOnlyComparison;
+                    sentOnQualityAlone = true;
+                    reasons.Add($"The installed file is {normalizedCurrent}; this is a higher quality tier, so it is sent on quality alone.");
+                }
+            }
+
+            if (installedFilePresent && currentFacts is null && !sentOnQualityAlone)
             {
                 // A title that already has a file must not be treated like a
                 // missing title just because its old snapshot disappeared or

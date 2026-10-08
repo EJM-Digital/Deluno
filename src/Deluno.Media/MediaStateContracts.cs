@@ -493,7 +493,7 @@ public interface IMediaStateRepository
     Task<WantedReevaluationResult> ReevaluateTitleUnderProfileAsync(
         MediaKind kind,
         string titleId,
-        string profileId,
+        string? profileId,
         CancellationToken cancellationToken);
 
     /// <summary>The title's own quality profile (#1157), or null when it follows its library's.</summary>

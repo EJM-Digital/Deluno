@@ -7,6 +7,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 
@@ -42,7 +43,8 @@ public sealed class ProcessorHandoffWatcher(
     IProcessorConnectionService processorConnections,
     IActivityFeedRepository activityFeed,
     IMovieCatalogRepository movieCatalogRepository,
-    ISeriesCatalogRepository seriesCatalogRepository)
+    ISeriesCatalogRepository seriesCatalogRepository,
+    IProcessorOutputImportQueue? outputImports = null)
 {
     /// <summary>
     /// A processor that has just accepted a hand-off may not have written it
@@ -52,6 +54,16 @@ public sealed class ProcessorHandoffWatcher(
 
     /// <summary>How long a hand-off may wait to be sent before it is reported as never picked up (#1155).</summary>
     public static readonly TimeSpan WaitingToBeSentLimit = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// How long a hand-off may sit with a processor that says it is finished, or has never heard of it, before
+    /// Deluno stops waiting and settles it itself (#1155): import the output that is on disk, send it again once,
+    /// then ask the person.
+    /// </summary>
+    public static readonly TimeSpan ResolveAfter = WaitingToBeSentLimit;
+
+    /// <summary>Starts the notice saved on a hand-off Deluno has already sent a second time.</summary>
+    public const string SentAgainNotice = "Deluno sent this to the processor again because it had no record of a finished copy.";
 
     /// <summary>How long a processor can be unreachable before Deluno says so.</summary>
     public static readonly TimeSpan UnreachableNoticeAfter = TimeSpan.FromHours(1);
@@ -113,6 +125,14 @@ public sealed class ProcessorHandoffWatcher(
             if (string.Equals(handoff.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase) &&
                 now - handoff.UpdatedUtc >= WaitingToBeSentLimit)
             {
+                // The processor may well have done the work already, and its output
+                // be sitting in the ready folder: take that before giving up (#1155).
+                if (libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase)) is { } waitingLibrary
+                    && await TryImportOutputAsync(handoff, waitingLibrary, null, null, cancellationToken))
+                {
+                    continue;
+                }
+
                 var waitingProcessor = string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "The processor" : handoff.ProcessorName;
                 var neverSent = $"{waitingProcessor} never picked up {handoff.ReleaseName}: Deluno could not send it. Check the processor's connection, then send it again.";
                 await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, neverSent, cancellationToken);
@@ -187,7 +207,13 @@ public sealed class ProcessorHandoffWatcher(
                     break;
 
                 case ProcessorAnswer.NotFound when now - handoff.UpdatedUtc >= NotFoundGrace:
-                    await RecordLostAsync(handoff, library, processorName, now, cancellationToken);
+                    // Its output may be in the ready folder all the same, and a hand-off it
+                    // lost is sent again once before a person is asked (#1155).
+                    if (!await ResolveStuckAsync(handoff, library, connection, null, now, cancellationToken))
+                    {
+                        await RecordLostAsync(handoff, library, processorName, now, cancellationToken);
+                    }
+
                     break;
 
                 case ProcessorAnswer.NotFound:
@@ -198,6 +224,133 @@ public sealed class ProcessorHandoffWatcher(
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// A hand-off that has waited past its limit settles itself (#1155): the output that is on disk is imported;
+    /// failing that the hand-off is sent again, once; failing that the person is asked, with a retry.
+    /// </summary>
+    /// <returns>True when this dealt with the hand-off (and the caller has nothing more to do).</returns>
+    private async Task<bool> ResolveStuckAsync(
+        ProcessorHandoffItem handoff,
+        LibraryItem library,
+        ProcessorConnectionItem connection,
+        ProcessorHandoffStatusResult? answer,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (outputImports is null)
+        {
+            return false;
+        }
+
+        var mappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+        var reported = answer?.OutputPath is { Length: > 0 } said
+            ? mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(said, mappings) ?? said : said
+            : null;
+        if (await TryImportOutputAsync(handoff, library, connection, reported, cancellationToken))
+        {
+            return true;
+        }
+
+        var processorName = connection.Name;
+        if (string.IsNullOrEmpty(handoff.FailureMessage) || !handoff.FailureMessage.StartsWith(SentAgainNotice, StringComparison.Ordinal))
+        {
+            var outbound = mappings.Count > 0
+                ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, mappings) ?? handoff.SourcePath }
+                : handoff;
+            var submission = await processorConnections.SubmitAsync(connection, outbound, cancellationToken);
+            if (submission.IsAccepted)
+            {
+                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
+                await activityFeed.RecordActivityAsync(
+                    "processing.resubmitted",
+                    $"{processorName} had no finished copy of {handoff.ReleaseName} {Describe(now - handoff.UpdatedUtc)} after it was handed over, so Deluno sent it again.",
+                    JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName, handoff.SourcePath }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return true;
+            }
+        }
+
+        var summary = $"{processorName} never picked up {handoff.ReleaseName}: Deluno sent it twice and nothing came back. Send it again once {processorName} is working, or import the original.";
+        await EndAsync(handoff, ProcessorHandoffStatuses.Lost, summary, cancellationToken);
+        await RaiseRecoveryCaseAsync(
+            handoff,
+            library,
+            "processor-lost",
+            summary,
+            "Import the original, hand it to the processor again, or search for another release.",
+            cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// The processor's finished copy of this download, when it is on disk where Deluno can read it: the path the
+    /// processor reported, or the ready folder's own folder for this download. Queued through the one way a
+    /// processed file is imported, which checks it is this download's.
+    /// </summary>
+    private async Task<bool> TryImportOutputAsync(
+        ProcessorHandoffItem handoff,
+        LibraryItem library,
+        ProcessorConnectionItem? connection,
+        string? reportedOutput,
+        CancellationToken cancellationToken)
+    {
+        if (outputImports is null || string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
+        {
+            return false;
+        }
+
+        string? output = null;
+        if (!string.IsNullOrWhiteSpace(reportedOutput)
+            && (File.Exists(reportedOutput) || Directory.Exists(reportedOutput))
+            && ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(reportedOutput, library.ProcessorOutputPath)
+            && ProcessorOutputPathPolicy.IsOutputAbout(reportedOutput, library.ProcessorOutputPath, handoff.SourcePath))
+        {
+            output = reportedOutput;
+        }
+
+        output ??= WorkPlanner.FindCorrelatedProcessorOutputs(library.ProcessorOutputPath, handoff.SourcePath).FirstOrDefault();
+        if (output is null)
+        {
+            return false;
+        }
+
+        var name = connection?.Name ?? handoff.ProcessorName ?? "The processor";
+        if (await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+        {
+            var deleted = ProcessorOutputPathPolicy.DeleteSecondCopy(output, library.ProcessorOutputPath, handoff.SourcePath);
+            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, null, null, cancellationToken);
+            await activityFeed.RecordActivityAsync(
+                "processing.output.already-imported",
+                deleted
+                    ? $"{name} had a second copy of {handoff.ReleaseName}, which Deluno had already imported. Deluno deleted the second copy."
+                    : $"{name} finished {handoff.ReleaseName}, which Deluno had already imported. There was nothing to import.",
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = output, Deleted = deleted }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+            return true;
+        }
+
+        var import = await outputImports.QueueAsync(library, handoff, output, "processor-watch", cancellationToken);
+        var notImported = import.NotImportedBecause is { } removed
+            ? $"{name} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {output}."
+            : null;
+        await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
+        await activityFeed.RecordActivityAsync(
+            import.NotImportedBecause is not null ? "filesystem.import.not-imported" : "processing.completed.import-queued",
+            notImported ?? $"{name} had finished {handoff.ReleaseName} without Deluno hearing of it; Deluno found the cleaned file and queued it for import.",
+            JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = output, import.JobId, import.DispatchId }),
+            import.JobId,
+            "processor-handoff",
+            handoff.Id,
+            cancellationToken);
+        return true;
     }
 
     /// <summary>
@@ -264,6 +417,11 @@ public sealed class ProcessorHandoffWatcher(
                 // Deluno's answering streak restarts whenever the processor
                 // does, which would put the limit off every time.
                 var finishedFor = now - (answer.LastChangedUtc ?? answeringSince ?? handoff.UpdatedUtc);
+                if (finishedFor >= ResolveAfter && await ResolveStuckAsync(handoff, library, connection, answer, now, cancellationToken))
+                {
+                    return;
+                }
+
                 if (finishedFor > limit)
                 {
                     await GiveUpAsync(

@@ -18,7 +18,12 @@ public sealed record ReleaseTitleExpectation(
     /// The provider's titles for the episodes of <see cref="Season"/>, by episode number (#1173). A release whose
     /// name carries another episode's title is refused for this one.
     /// </summary>
-    IReadOnlyDictionary<int, string>? EpisodeTitles = null);
+    IReadOnlyDictionary<int, string>? EpisodeTitles = null,
+    /// <summary>
+    /// The provider's episode titles for every season, by season then episode number, for a search of the whole show
+    /// that has no target episode: a release is then checked against its own SxxEyy (#1173).
+    /// </summary>
+    IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? SeasonEpisodeTitles = null);
 
 /// <summary>
 /// Whether a release's name is for the title searched (#613).
@@ -278,11 +283,35 @@ public static partial class ReleaseTitleMatch
             : $"This release is from {releaseYear}; {expected.Title} is from {year}.";
     }
 
+    /// <summary>
+    /// A search of the whole show has no target episode, but a release still says which one it is (SxxEyy) and may
+    /// carry that episode's title; the two are compared with the provider's titles for that season (#1173).
+    /// </summary>
+    private static string? WholeShowTitleMismatch(string rest, ReleaseTitleExpectation expected)
+    {
+        if (expected.SeasonEpisodeTitles is not { Count: > 0 } bySeason)
+        {
+            return null;
+        }
+
+        var marker = SeasonEpisode().Match(rest);
+        if (!marker.Success || marker.Groups["last"].Success)
+        {
+            return null;
+        }
+
+        var season = int.Parse(marker.Groups["season"].Value, CultureInfo.InvariantCulture);
+        var episode = int.Parse(marker.Groups["episode"].Value, CultureInfo.InvariantCulture);
+        return bySeason.TryGetValue(season, out var titles)
+            ? EpisodeTitleMismatch(rest[(marker.Index + marker.Length)..], season, episode, expected with { EpisodeTitles = titles })
+            : null;
+    }
+
     private static string? EpisodeMismatch(string rest, ReleaseTitleExpectation expected)
     {
         if (expected.Season is null && expected.Episode is null && expected.AbsoluteNumber is null && expected.AirDate is null)
         {
-            return null;
+            return WholeShowTitleMismatch(rest, expected);
         }
 
         var episode = SeasonEpisode().Match(rest);

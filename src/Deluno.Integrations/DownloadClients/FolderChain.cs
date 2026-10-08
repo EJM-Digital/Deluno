@@ -326,21 +326,22 @@ public sealed class FolderChainService(
             usesProcessor ? library.ProcessorOutputPath : null,
             library.RootPath,
             chains,
-            await LibraryLinksAsync(library, usesProcessor, kind, chains.Count, Timeout, cancellationToken, usesProcessor ? await ProcessorWatchLinkAsync(library, cancellationToken) : null));
+            await LibraryLinksAsync(library, usesProcessor, kind, chains.Count, Timeout, cancellationToken, usesProcessor ? await ProcessorFolderLinksAsync(library, cancellationToken) : null));
     }
 
     /// <summary>
-    /// #1144: the folder the library's processor says it watches, found in its own library-folders list by the
-    /// library's id and translated through the connection's path mappings, set against the processed folder set
-    /// here. Null when the processor cannot be asked or says nothing about this library (not reported, as before).
+    /// #1144: what the library's processor says about its folders, found in its own library-folders list by the
+    /// library's id and translated through the connection's path mappings. Two lines: the folder it watches (its
+    /// input) against this library's downloads folder, and the folder it writes to (its output) against the ready
+    /// folder set here. An empty list when the processor cannot be asked or reports nothing for this library.
     /// </summary>
-    private async Task<FolderChainLink?> ProcessorWatchLinkAsync(LibraryItem library, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FolderChainLink>> ProcessorFolderLinksAsync(LibraryItem library, CancellationToken cancellationToken)
     {
         if (processors is null || processorService is null
             || (string.IsNullOrWhiteSpace(library.ProcessorConnectionId) && string.IsNullOrWhiteSpace(library.ProcessorName))
             || await processors.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken) is not { } connection)
         {
-            return null;
+            return [];
         }
 
         try
@@ -348,35 +349,47 @@ public sealed class FolderChainService(
             var support = await WithTimeoutAsync(token => processorService.GetStatusSupportAsync(connection, token), Timeout, cancellationToken);
             if (support.Answer != ProcessorAnswer.Answered)
             {
-                return null;
+                return [];
             }
 
             var folders = support.HasLibraryFolders
                 ? await WithTimeoutAsync(token => processorService.GetLibraryFoldersAsync(connection, token), Timeout, cancellationToken)
                 : [];
-            var watched = ProcessorLibraryFolder.ForLibrary(folders, library.Id)?.WatchedFolder
-                ?? support.WatchedPath;
-            if (string.IsNullOrWhiteSpace(watched))
-            {
-                return null;
-            }
-
+            var entry = ProcessorLibraryFolder.ForLibrary(folders, library.Id);
+            var watched = entry?.WatchedFolder ?? support.WatchedPath;
+            var output = entry?.OutputFolder;
             var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-            var here = mappings.Count > 0 ? Deluno.Platform.Processing.ProcessorPathMappingTranslator.ToDeluno(watched, mappings) ?? watched : watched;
-            if (string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
+            string? Here(string? path) => string.IsNullOrWhiteSpace(path)
+                ? null
+                : mappings.Count > 0 ? Deluno.Platform.Processing.ProcessorPathMappingTranslator.ToDeluno(path, mappings) ?? path : path;
+
+            var links = new List<FolderChainLink>();
+            if (Here(watched) is { } watchedHere)
             {
-                return new("processor", FolderChainStatuses.Unknown, $"{connection.Name} says it watches {here} for the {library.Name} library, but no ready folder is set here to compare it with.", here);
+                links.Add(string.IsNullOrWhiteSpace(library.DownloadsPath)
+                    ? new("processor", FolderChainStatuses.Unknown, $"{connection.Name} says it watches {watchedHere} for the {library.Name} library, but no downloads folder is set here to compare it with.", watchedHere)
+                    : SamePath(watchedHere, library.DownloadsPath)
+                        ? new("processor", FolderChainStatuses.Ok, $"{connection.Name} watches {watchedHere} for the {library.Name} library, the downloads folder set here.", watchedHere)
+                        : new("processor", FolderChainStatuses.Problem, $"{connection.Name} watches {watchedHere} for the {library.Name} library, but the downloads folder set here is {library.DownloadsPath}. Point {connection.Name} at {library.DownloadsPath}, or change the downloads folder to match.", watchedHere));
             }
 
-            return SamePath(here, library.ProcessorOutputPath)
-                ? new("processor", FolderChainStatuses.Ok, $"{connection.Name} watches {here} for the {library.Name} library, the ready folder set here.", here)
-                : new("processor", FolderChainStatuses.Problem, $"{connection.Name} watches {here} for the {library.Name} library, but the ready folder set here is {library.ProcessorOutputPath}. Point {connection.Name} at {library.ProcessorOutputPath}, or change the ready folder to match.", here);
+            if (Here(output) is { } outputHere)
+            {
+                links.Add(string.IsNullOrWhiteSpace(library.ProcessorOutputPath)
+                    ? new("processor-output", FolderChainStatuses.Unknown, $"{connection.Name} says it writes to {outputHere} for the {library.Name} library, but no ready folder is set here to compare it with.", outputHere)
+                    : SamePath(outputHere, library.ProcessorOutputPath)
+                        ? new("processor-output", FolderChainStatuses.Ok, $"{connection.Name} writes to {outputHere} for the {library.Name} library, the ready folder set here.", outputHere)
+                        : new("processor-output", FolderChainStatuses.Problem, $"{connection.Name} writes to {outputHere} for the {library.Name} library, but the ready folder set here is {library.ProcessorOutputPath}. Point {connection.Name} at {library.ProcessorOutputPath}, or change the ready folder to match.", outputHere));
+            }
+
+            return links;
         }
         catch (TimeoutException)
         {
-            return null;
+            return [];
         }
     }
+
 
     /// <summary>Runs work but stops waiting for it after the timeout, even when the work ignores its token.</summary>
     internal static async Task<T> WithTimeoutAsync<T>(Func<CancellationToken, Task<T>> work, TimeSpan timeout, CancellationToken cancellationToken)
@@ -563,7 +576,7 @@ public sealed class FolderChainService(
                 clientFolder);
     }
 
-    private static async Task<IReadOnlyList<FolderChainLink>> LibraryLinksAsync(LibraryItem library, bool usesProcessor, string kind, int clientCount, TimeSpan timeout, CancellationToken cancellationToken, FolderChainLink? processorWatch = null)
+    private static async Task<IReadOnlyList<FolderChainLink>> LibraryLinksAsync(LibraryItem library, bool usesProcessor, string kind, int clientCount, TimeSpan timeout, CancellationToken cancellationToken, IReadOnlyList<FolderChainLink>? processorLinks = null)
     {
         var links = new List<FolderChainLink>();
         if (clientCount == 0)
@@ -592,9 +605,9 @@ public sealed class FolderChainService(
             links.Add(await ready);
         }
 
-        if (processorWatch is not null)
+        if (processorLinks is { Count: > 0 })
         {
-            links.Add(processorWatch);
+            links.AddRange(processorLinks);
         }
 
         links.Add(await root);

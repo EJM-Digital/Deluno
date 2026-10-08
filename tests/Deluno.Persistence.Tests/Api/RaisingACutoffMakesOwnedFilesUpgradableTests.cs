@@ -127,6 +127,47 @@ public sealed class RaisingACutoffMakesOwnedFilesUpgradableTests
     }
 
     [Fact]
+    public async Task Sending_no_profile_puts_a_title_back_on_its_librarys_profile_for_films_and_shows()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var movieLibraryProfile = await CreateProfileAsync(app, "Movies 1080p", "movies", "WEB 1080p");
+        var movieFourK = await CreateProfileAsync(app, "Movies 4K Streaming", "movies", "WEB 2160p");
+        var movieLibrary = await CreateLibraryAsync(app, "movies", movieLibraryProfile);
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        var mediaState = app.Services.GetRequiredService<IMediaStateRepository>();
+        var movieId = await ImportFilmAsync(app, movieLibrary, movies);
+
+        var set = await app.Client.PostAsJsonAsync("/api/movies/bulk/quality-profile", new { movieIds = new[] { movieId }, qualityProfileId = movieFourK });
+        Assert.True(set.IsSuccessStatusCode);
+        Assert.Equal("upgrade", (await WantedAsync(mediaState, movieId)).WantedStatus);
+
+        var cleared = await app.Client.PostAsJsonAsync("/api/movies/bulk/quality-profile", new { movieIds = new[] { movieId }, qualityProfileId = (string?)null });
+        Assert.True(cleared.IsSuccessStatusCode, await cleared.Content.ReadAsStringAsync());
+        Assert.Null(await mediaState.GetTitleQualityProfileIdAsync(MediaKind.Movie, movieId, CancellationToken.None));
+        var back = await WantedAsync(mediaState, movieId);
+        Assert.Equal("covered", back.WantedStatus);
+        Assert.Equal("WEB 1080p", back.TargetQuality);
+
+        var tvLibraryProfile = await CreateProfileAsync(app, "TV 1080p Streaming", "tv", "WEB 1080p");
+        var tvFourK = await CreateProfileAsync(app, "TV / 4K Streaming", "tv", "WEB 2160p");
+        var tvLibrary = await CreateLibraryAsync(app, "tv", tvLibraryProfile);
+        var series = app.Services.GetRequiredService<ISeriesCatalogRepository>();
+        var seriesId = await ImportShowAsync(app, tvLibrary, series);
+
+        await app.Client.PostAsJsonAsync("/api/series/bulk/quality-profile", new { seriesIds = new[] { seriesId }, qualityProfileId = tvFourK });
+        Assert.All(await EpisodesAsync(series, seriesId), episode => Assert.Equal("upgrade", episode.WantedStatus));
+
+        var clearedShow = await app.Client.PostAsJsonAsync("/api/series/bulk/quality-profile", new { seriesIds = new[] { seriesId }, qualityProfileId = (string?)null });
+        Assert.True(clearedShow.IsSuccessStatusCode, await clearedShow.Content.ReadAsStringAsync());
+        Assert.Null(await mediaState.GetTitleQualityProfileIdAsync(MediaKind.Series, seriesId, CancellationToken.None));
+        Assert.All(await EpisodesAsync(series, seriesId), episode =>
+        {
+            Assert.Equal("covered", episode.WantedStatus);
+            Assert.Equal("WEB 1080p", episode.TargetQuality);
+        });
+    }
+
+    [Fact]
     public async Task Giving_a_library_another_profile_rechecks_its_titles_and_refuses_a_profile_for_the_other_kind_of_media()
     {
         await using var app = await ApplicationTestHost.StartAsync();

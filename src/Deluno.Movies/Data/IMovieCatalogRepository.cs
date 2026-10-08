@@ -389,7 +389,7 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<bool> DeleteAsync(string movieId, CancellationToken cancellationToken);
 
     /// <summary>Update quality profile for a movie</summary>
-    Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken);
+    Task<bool> UpdateQualityProfileAsync(string movieId, string? qualityProfileId, CancellationToken cancellationToken);
 
     /// <summary>
     /// The per-title quality profile override <see cref="UpdateQualityProfileAsync"/>
