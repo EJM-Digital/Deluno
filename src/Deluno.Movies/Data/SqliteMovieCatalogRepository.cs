@@ -3003,6 +3003,12 @@ public sealed class SqliteMovieCatalogRepository(
         CancellationToken cancellationToken)
         => SharedMediaState.SettleImportRecoveryCasesAsync(MediaKind.Movie, scope, reason, cancellationToken);
 
+    public Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(CancellationToken cancellationToken)
+        => SharedMediaState.SettleCasesOfTitlesHoldingFilesAsync(MediaKind.Movie, cancellationToken);
+
+    public Task<TitleFileHolds> GetTitleFileHoldsAsync(IReadOnlyCollection<string> entityIds, CancellationToken cancellationToken)
+        => SharedMediaState.GetTitleFileHoldsAsync(MediaKind.Movie, entityIds, cancellationToken);
+
     public async Task AddImportRecoveryEventAsync(
         string caseId,
         string eventKind,

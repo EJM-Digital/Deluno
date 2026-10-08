@@ -9,6 +9,7 @@ export const PROCESSOR_OUTCOME_DELIVERY = {
   pending: "pending",
   delivered: "delivered",
   refused: "refused",
+  settled: "settled",
   givenUp: "given-up"
 } as const;
 
@@ -46,6 +47,8 @@ export function processorOutcomeSummary(
         detail: outcome.processorSaid,
         canSendAgain: true
       };
+    case PROCESSOR_OUTCOME_DELIVERY.settled:
+      return { said, heard: "It kept its earlier answer, so Deluno stopped telling it", detail: outcome.processorSaid, canSendAgain: false };
     case PROCESSOR_OUTCOME_DELIVERY.refused:
       return { said, heard: "Refused", detail: outcome.processorSaid, canSendAgain: true };
     default:

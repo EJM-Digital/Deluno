@@ -2,6 +2,7 @@ using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Movies.Data;
@@ -38,7 +39,8 @@ public sealed class ProcessorOutputImportQueue(
         ProcessorHandoffItem handoff,
         string outputPath,
         string source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? retriedBecause = null)
     {
         outputPath = ImportPathFor(outputPath, library.MediaType);
         var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
@@ -106,7 +108,8 @@ public sealed class ProcessorOutputImportQueue(
             // What the processor was given, so the import can compare what it
             // handed back against it (#574).
             ProcessedFromPath: handoff.SourcePath,
-            HandoffId: handoff.Id);
+            HandoffId: handoff.Id,
+            RetriedBecause: retriedBecause);
 
         var job = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
@@ -159,7 +162,13 @@ public sealed class ProcessorOutputImportQueue(
         // Only an import that failed or gave up is owed a second go. One still queued, running or
         // finished is not: the same output is never imported twice.
         if (string.IsNullOrWhiteSpace(handoff.ImportJobId)
-            || await jobQueueRepository.GetAsync(handoff.ImportJobId, cancellationToken) is not { Status: "failed" or "dead-letter" })
+            || await jobQueueRepository.GetAsync(handoff.ImportJobId, cancellationToken) is not { Status: "failed" or "dead-letter" } job)
+        {
+            return false;
+        }
+
+        // Once: a job that is the retry itself, and gave up again, is a person's to retry.
+        if (JobActivityQuiet.IsQuiet(job.PayloadJson))
         {
             return false;
         }

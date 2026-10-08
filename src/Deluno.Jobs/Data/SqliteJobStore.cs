@@ -93,17 +93,20 @@ public sealed class SqliteJobStore(
             // It still runs again. There is just one row for it.
             await ReviveDeadLetteredJobAsync(connection, transaction, duplicate.Id, job, now, cancellationToken);
 
-            await InsertActivityAsync(
-                connection,
-                transaction,
-                category: "job.revived",
-                message: $"Retrying {JobTypeLabels.ForSentence(duplicate.JobType)}, which had previously given up.",
-                detailsJson: job.PayloadJson,
-                relatedJobId: duplicate.Id,
-                relatedEntityType: duplicate.RelatedEntityType,
-                relatedEntityId: duplicate.RelatedEntityId,
-                createdUtc: now,
-                cancellationToken: cancellationToken);
+            if (!JobActivityQuiet.IsQuiet(job.PayloadJson))
+            {
+                await InsertActivityAsync(
+                    connection,
+                    transaction,
+                    category: "job.revived",
+                    message: $"Retrying {JobTypeLabels.ForSentence(duplicate.JobType)}, which had previously given up.",
+                    detailsJson: job.PayloadJson,
+                    relatedJobId: duplicate.Id,
+                    relatedEntityType: duplicate.RelatedEntityType,
+                    relatedEntityId: duplicate.RelatedEntityId,
+                    createdUtc: now,
+                    cancellationToken: cancellationToken);
+            }
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -1225,29 +1228,36 @@ public sealed class SqliteJobStore(
         await MarkAutomationStateCompletedAsync(connection, transaction, job, now, cancellationToken);
         await MarkSubtitlesDueAfterImportAsync(connection, transaction, job, cancellationToken);
 
-        await InsertActivityAsync(
-            connection,
-            transaction,
-            category: "job.completed",
-            message: completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
-            detailsJson: job.PayloadJson,
-            relatedJobId: job.Id,
-            relatedEntityType: job.RelatedEntityType,
-            relatedEntityId: job.RelatedEntityId,
-            createdUtc: now,
-            cancellationToken: cancellationToken);
+        var quietCompletion = JobActivityQuiet.IsQuiet(job.PayloadJson);
+        if (!quietCompletion)
+        {
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.completed",
+                message: completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
+                detailsJson: job.PayloadJson,
+                relatedJobId: job.Id,
+                relatedEntityType: job.RelatedEntityType,
+                relatedEntityId: job.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+        }
 
         await transaction.CommitAsync(cancellationToken);
         if (LibrarySearchJobTypes.IsLibrarySearch(job.JobType) && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", job.RelatedEntityId, cancellationToken);
         await realtimeEventPublisher.PublishQueueItemRemovedAsync(job.Id, cancellationToken);
-        await realtimeEventPublisher.PublishActivityEventAddedAsync(
-            Guid.CreateVersion7().ToString("N"),
-            completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
-            "job.completed",
-            SeverityForCategory("job.completed"),
-            now.ToString("O"),
-            cancellationToken);
+        if (!quietCompletion)
+        {
+            await realtimeEventPublisher.PublishActivityEventAddedAsync(
+                Guid.CreateVersion7().ToString("N"),
+                completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
+                "job.completed",
+                SeverityForCategory("job.completed"),
+                now.ToString("O"),
+                cancellationToken);
+        }
         if (job.JobType == "filesystem.import.execute")
         {
             await realtimeEventPublisher.PublishImportStateChangedAsync(

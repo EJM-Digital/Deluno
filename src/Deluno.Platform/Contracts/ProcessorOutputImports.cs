@@ -30,7 +30,8 @@ public interface IProcessorOutputImportQueue
         ProcessorHandoffItem handoff,
         string outputPath,
         string source,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? retriedBecause = null);
 
     /// <summary>
     /// Whether the download behind this hand-off was already imported (#1155):

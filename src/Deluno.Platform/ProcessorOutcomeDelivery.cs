@@ -287,6 +287,9 @@ public static class ProcessorOutcomeDelivery
             ProcessorOutcomeDeliveries.Delivered => (
                 "processing.outcome-reported",
                 $"{said}{tries}. {(record.Released ? "It released its copy." : record.ProcessorSaid ?? "It kept its copy.")}".TrimEnd()),
+            ProcessorOutcomeDeliveries.Settled => (
+                "processing.outcome-kept",
+                $"{record.ProcessorName} kept its earlier answer about {record.ReleaseName}, so Deluno stopped telling it. {record.ProcessorSaid}".TrimEnd()),
             ProcessorOutcomeDeliveries.Pending => (
                 "processing.outcome-delayed",
                 $"Deluno could not tell {record.ProcessorName} what became of {record.ReleaseName} yet, and will keep trying. {record.ProcessorSaid}".TrimEnd()),

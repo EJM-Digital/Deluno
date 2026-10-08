@@ -537,6 +537,21 @@ public interface IMediaStateRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Closes the open download or import cases whose film or episode now holds its file (#1167), writing
+    /// <c>case_settled</c> on each. A case is matched by the title it carries, with or without details, so the
+    /// cases older builds wrote with none are settled too. Returns the cases it closed.
+    /// </summary>
+    Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(
+        MediaKind kind,
+        CancellationToken cancellationToken);
+
+    /// <summary>Of these film or episode ids, the ones that hold a file, and when it arrived.</summary>
+    Task<TitleFileHolds> GetTitleFileHoldsAsync(
+        MediaKind kind,
+        IReadOnlyCollection<string> entityIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// What a probe read out of the file, onto the wanted-state row that holds
     /// it.
     ///

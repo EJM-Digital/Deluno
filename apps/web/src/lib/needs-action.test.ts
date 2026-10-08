@@ -346,6 +346,50 @@ describe("needsAction: one failure is one row (#1167)", () => {
   });
 });
 
+// #1167: Oppenheimer REPACK was a recovery case and a failed hand-off; Nosferatu a recovery case and a dispatch failure.
+describe("needsAction merges the records of one download by the download's own key", () => {
+  const handoff = { id: "h-new", clientId: "client-1", queueItemId: "hash-1", releaseName: "Oppenheimer", status: "failed", failureMessage: "x", importJobId: null } as unknown as ProcessorHandoffItem;
+  const caseFor = (details: object | null) => ({
+    ...recovery([]),
+    openCount: 1,
+    recentCases: [{
+      id: "case-1", title: "Oppenheimer", failureKind: "processor-held", summary: "s", recommendedAction: "r",
+      detailsJson: details ? JSON.stringify(details) : null, detectedUtc: "2026-09-20T03:00:00Z"
+    }]
+  }) as unknown as MovieImportRecoverySummary;
+
+  it("shows a case that names the download's client entry once, as the failed hand-off, whichever hand-off id it carries", () => {
+    const result = needsAction({
+      movieRecovery: caseFor({ handoffId: "h-older-dismissed-away", clientId: "client-1", queueItemId: "hash-1" }),
+      seriesRecovery: noSeriesRecovery,
+      handoffs: [handoff]
+    });
+    expect(result.failedHandoffs.map((item) => item.id)).toEqual(["h-new"]);
+    expect(result.recoveryCases).toEqual([]);
+    expect(result.total).toBe(1);
+  });
+
+  it("shows a dispatch failure once, as the case that names the same client entry", () => {
+    const result = needsAction({
+      movieRecovery: caseFor({ clientId: "client-1", queueItemId: "hash-1" }),
+      seriesRecovery: noSeriesRecovery,
+      dispatches: [dispatch({ id: "d1", torrentHashOrItemId: "hash-1" })]
+    });
+    expect(result.recoveryCases.map((item) => item.id)).toEqual(["case-1"]);
+    expect(result.failedDownloads).toEqual([]);
+    expect(result.total).toBe(1);
+  });
+
+  it("keeps a case that names a different download", () => {
+    const result = needsAction({
+      movieRecovery: caseFor({ clientId: "client-1", queueItemId: "hash-9" }),
+      seriesRecovery: noSeriesRecovery,
+      handoffs: [handoff]
+    });
+    expect(result.total).toBe(2);
+  });
+});
+
 describe("plainFailure", () => {
   it("never leaves a bare 'Error: timed out'", () => {
     expect(plainFailure("Error: timed out", "Sending it to Weir")).toBe("Sending it to Weir timed out. If the title is already where it belongs, dismiss this; otherwise try again.");
