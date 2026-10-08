@@ -110,6 +110,11 @@ export interface ListColumn<T = never> extends Omit<ListColumnSpec<T>, "label" |
   align?: "start" | "end";
   /** Keep visible on narrow screens. */
   mobile?: boolean;
+  /**
+   * The track on a phone. Each row is its own grid, so an "auto" track is as wide as that row's own chip or button
+   * and the rows stop lining up; a fixed width keeps them in line where that matters (#1130).
+   */
+  mobileWidth?: string;
   /** Visually hidden header text (e.g. for the switch column when obvious). */
   srOnly?: boolean;
 }
@@ -190,7 +195,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
     .concat(chevron ? [LIST_TRACK.chevron] : [])
     .join(" ");
   const mobileTemplate = state.columns
-    .map(({ column, originalIndex }) => (originalIndex === 0 ? "minmax(0,1fr)" : (column as ListColumn<T>).mobile ? "auto" : null) as string | null)
+    .map(({ column, originalIndex }) => (originalIndex === 0 ? "minmax(0,1fr)" : (column as ListColumn<T>).mobile ? ((column as ListColumn<T>).mobileWidth ?? "auto") : null) as string | null)
     .filter((track): track is string => Boolean(track))
     .concat(chevron ? [LIST_TRACK.chevron] : [])
     .join(" ");
