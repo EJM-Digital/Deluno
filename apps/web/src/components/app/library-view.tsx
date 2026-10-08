@@ -478,6 +478,20 @@ export function LibraryView({
     }
   }, [buildCatalogueParams, fetchCataloguePage, setSelectedIds]);
 
+  // The filter pills' counts and the total move when any title changes (unmonitoring one moves it
+  // between pills), so they are read again on every change, as one small request (#1179).
+  const refreshCountsQuietly = useCallback(async () => {
+    const token = silentReloadToken.current;
+    try {
+      const first = await fetchCataloguePage(buildCatalogueParams(undefined, 1));
+      if (token !== silentReloadToken.current) return;
+      setFacets(first.page.facets);
+      setTotalCount(first.page.totalCount ?? libraryItemsRef.current.length);
+    } catch {
+      // The counts on screen are still right as of the last read; the next change reads again.
+    }
+  }, [buildCatalogueParams, fetchCataloguePage]);
+
   const followLiveChanges = useCoalescedRevalidate(() => {
     // The first load is still filling the shelf and will already hold what changed.
     if (isFillingRef.current) {
@@ -496,6 +510,7 @@ export function LibraryView({
       return;
     }
 
+    void refreshCountsQuietly();
     void (async () => {
       try {
         const route = variant === "movies" ? "movies" : "series";
