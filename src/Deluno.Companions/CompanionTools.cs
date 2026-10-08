@@ -510,6 +510,7 @@ public sealed class WeirCompanion(
             return new WeirConnectOutcome(false, $"{Name} is installed but did not start answering. Start it from the Start menu and try again.", false);
         }
 
+        ProcessorConnectionItem? processor = null;
         using var cookies = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer(), UseCookies = true };
         using var http = new HttpClient(cookies) { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(30) };
         try
@@ -535,7 +536,7 @@ public sealed class WeirCompanion(
             var managerId = manager.GetProperty("id").GetInt32();
             var secret = await PostAsync(http, $"/api/v1/media-managers/connections/{managerId}/webhook-secret", csrf => new { csrf_token = csrf }, cancellationToken);
 
-            await AddProcessorConnectionAsync(
+            processor = await AddProcessorConnectionAsync(
                 baseUrl,
                 secret.GetProperty("webhook_url_path").GetString()!,
                 secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
@@ -552,7 +553,7 @@ public sealed class WeirCompanion(
             return new WeirConnectOutcome(false, $"{Name} did not answer as expected. Check it is running and try again.", false);
         }
 
-        return new WeirConnectOutcome(true, $"{Name} is connected to Deluno both ways. Choose it as the processor on a library that should be cleaned before import.", false);
+        return new WeirConnectOutcome(true, $"{Name} is connected to Deluno both ways. Libraries that refine before import now hand their downloads to it.", false, processor?.Id, processor?.Name);
     }
     /// <summary>
     /// Adds Weir as a processor connection with Weir's own health address, tests it, and says

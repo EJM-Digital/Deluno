@@ -10,6 +10,7 @@
  * /api/series/{id}/search, /grab, /episodes/search, /seasons/{n}/search,
  * /automation/defer, /automation/skip-once, /api/series/bulk.
  */
+import { importWorkflowLabel } from "../lib/import-workflow";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
@@ -1710,7 +1711,7 @@ export function ShowDetailPage() {
                 ["Library", library?.name ?? "Not linked"],
                 ["Root folder", library?.rootPath || "No root configured"],
                 ["Downloads folder", library?.downloadsPath || "Download client default"],
-                ["Import workflow", library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import"],
+                ["Import workflow", importWorkflowLabel(library?.importWorkflow)],
                 ["Current quality", wantedItem?.currentQuality ?? "Unknown"],
                 ["Target quality", wantedItem?.targetQuality ?? "WEB 1080p"]
               ].map(([label, value]) => (

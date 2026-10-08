@@ -8,6 +8,7 @@
  * Contracts: PATCH /api/settings, PUT /api/libraries/{id}/workflow,
  * GET/POST/DELETE /api/integrations/processors/connections (+ /{id}/test).
  */
+import { IMPORT_WORKFLOW_HELP, IMPORT_WORKFLOW_LABELS, importWorkflowLabel } from "../lib/import-workflow";
 import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -989,7 +990,7 @@ function ProcessingWorkflowPage() {
               return (
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawer.kind === "library" && drawer.id === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
-                  <ListCell primary={refined ? "Process, then import" : "Import immediately"} secondary={refined ? library.processorName || "Waits for cleaned output" : "Use the finished download"} />
+                  <ListCell primary={importWorkflowLabel(library.importWorkflow)} secondary={refined ? library.processorName || "Waits for cleaned output" : "Use the finished download"} />
                   <ListCell mono primary={refined ? library.processorOutputPath || <span className="font-sans text-warning">Not set</span> : <span className="font-sans text-muted-foreground">—</span>} secondary={refined ? `Gives up after ${Math.round((library.processorTimeoutMinutes || DEFAULT_STALL_MINUTES) / 60)} h with no progress` : undefined} />
                   <ListCell primary={(library.cleanupMode ?? "keep-source") === "remove-source-after-import" ? "Remove downloaded file" : "Keep downloaded file"} secondary={library.removeEmptySourceFolders ? "Also remove empty folders" : undefined} />
                   <ListCell primary={refined ? FAILURE_OPTIONS.find((option) => option.value === library.processorFailureMode)?.label ?? library.processorFailureMode : <span className="text-muted-foreground">—</span>} />
@@ -1107,11 +1108,11 @@ function ProcessingWorkflowPage() {
         {drawer.kind === "library" ? (
           <>
             <DrawerSection title="Import timing">
-              <Field label="When a download finishes" help={<>Choose whether Deluno should use the download as soon as it is complete, or wait for {processorProduct ?? "an external processor"} to produce a cleaned file.</>}>
+              <Field label="When a download finishes" help={<>{IMPORT_WORKFLOW_LABELS.standard}: {IMPORT_WORKFLOW_HELP.standard} {IMPORT_WORKFLOW_LABELS["refine-before-import"]}: Deluno waits for {processorProduct ?? "your processor"} to clean the download, then imports the cleaned file.</>}>
                 <SegmentedControl<"standard" | "refine-before-import">
                   value={workflow.importWorkflow as "standard" | "refine-before-import"}
                   onValueChange={(importWorkflow) => setWorkflow((current) => ({ ...current, importWorkflow }))}
-                  options={[{ value: "standard", label: "Import immediately" }, { value: "refine-before-import", label: "Wait for processing" }]}
+                  options={[{ value: "standard", label: IMPORT_WORKFLOW_LABELS.standard }, { value: "refine-before-import", label: IMPORT_WORKFLOW_LABELS["refine-before-import"] }]}
                   aria-label="Import timing"
                 />
               </Field>
