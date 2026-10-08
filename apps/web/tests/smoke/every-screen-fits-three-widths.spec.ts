@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { trackDataRequests } from "../helpers/data-settled";
@@ -13,6 +16,10 @@ import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
 // the button, a row, cell or panel that runs past the screen's edge inside a parent that hides it, and Dashboard cards
 // that overlap. The screens that failed are visited with long names (the data below): the Dashboard, the blocklist,
 // the calendar, a show's episodes, the setup guide and the download clients.
+// The last walk (8 Oct, issue 1168) added what a phone and a laptop still lost on real data, and each is checked on every
+// screen above: a row whose name has no room (Transfers' Needs attention rows under their buttons), a value cut short
+// that a phone cannot read (a tooltip is not enough with no hover: the row must open its drawer, or the value must wrap),
+// and a column heading or label cut with nothing to say the rest.
 
 const SIZES = [
   { width: 1920, height: 1080 },
@@ -30,9 +37,10 @@ async function authHeaders(page: Page) {
 const seeded: { movieId: string; seriesId: string }[] = [];
 const seededIndexerIds: string[] = [];
 const seededClientIds: string[] = [];
+const seededLibraryIds: string[] = [];
 
 test.afterEach(async ({ page }) => {
-  if (seeded.length === 0 && seededIndexerIds.length === 0 && seededClientIds.length === 0) return; // skipped on the phone project: nothing to remove
+  if (seeded.length === 0 && seededIndexerIds.length === 0 && seededClientIds.length === 0 && seededLibraryIds.length === 0) return; // skipped on the phone project: nothing to remove
   const headers = await authHeaders(page);
   for (const { movieId, seriesId } of seeded.splice(0)) {
     await page.request.post("/api/movies/bulk", { headers, data: { movieIds: [movieId], operation: "remove" } });
@@ -40,6 +48,7 @@ test.afterEach(async ({ page }) => {
   }
   for (const id of seededIndexerIds.splice(0)) await page.request.delete(`/api/indexers/${id}`, { headers });
   for (const id of seededClientIds.splice(0)) await page.request.delete(`/api/download-clients/${id}`, { headers });
+  for (const id of seededLibraryIds.splice(0)) await page.request.delete(`/api/libraries/${id}`, { headers });
 });
 
 const LONG_RELEASE = "The.Extremely.Long.Named.Documentary.Series.S01E01.Part.One.The.Beginning.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1.HEVC-LONGGROUPNAME";
@@ -69,6 +78,21 @@ async function seedLongData(page: Page, seriesId: string) {
   })).json() as { id: string; name: string };
   seededClientIds.push(client.id);
 
+  // Settings > Libraries (F10): a library with a long "advanced source" under a long folder, as the rig has.
+  for (const [kind, folder] of [["movies", "Movies"], ["tv", "TV"]] as const) {
+    // The folders must exist on the machine the smoke host runs on, so they are made under its temp folder, deep enough to run long.
+    const downloads = path.join(os.tmpdir(), "deluno-fit-check", "Completed", LONG_SHOW, folder);
+    fs.mkdirSync(downloads, { recursive: true });
+    const response = await page.request.post("/api/libraries", {
+      headers,
+      data: {
+        name: `Fit check ${folder} ${Date.now()}`, mediaType: kind, purpose: "Main library", rootPath: os.tmpdir(), downloadsPath: downloads,
+        autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalMinutes: 12, retryDelayHours: 6, maxItemsPerRun: 10
+      }
+    });
+    if (response.ok()) seededLibraryIds.push(((await response.json()) as { id: string }).id);
+  }
+
   const now = new Date().toISOString();
   // The guided setup saves its draft as it goes; a held-open save is not what this test measures.
   await page.route("**/api/setup/draft", (route) => route.request().method() === "PUT" ? route.fulfill(json({})) : route.continue());
@@ -92,10 +116,16 @@ async function seedLongData(page: Page, seriesId: string) {
     }]
   })));
   // Transfers (#1162): hand-offs whose Source / Output are long, so a cell that outgrows its row shows.
-  await page.route("**/api/integrations/processors/handoffs**", (route) => route.fulfill(json(Array.from({ length: 5 }, (_, index) => ({
+  await page.route("**/api/integrations/processors/handoffs**", (route) => route.fulfill(json(Array.from({ length: 7 }, (_, index) => ({
     id: `fit-handoff-${index}`, libraryId: "fit-library", mediaType: "tv", clientId: client.id, queueItemId: `fit-queue-${index}`, releaseName: LONG_RELEASE.replace("S01E01", `S01E0${index + 2}`),
-    sourcePath: `C:\\Downloads\\Completed\\TV\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}.mkv`, processorName: "A Very Long Processor Connector Name", status: "completed",
-    outputPath: `D:\\Processed Output\\Television\\${LONG_SHOW}\\Season 01\\${LONG_SHOW} - S01E0${index} - ${LONG_RELEASE}.mkv`, importJobId: null, failureMessage: null, createdUtc: now, updatedUtc: now
+    sourcePath: `C:\\Downloads\\Completed\\TV\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}.mkv`, processorName: "A Very Long Processor Connector Name", status: index >= 5 ? "failed" : "completed",
+    outputPath: `D:\\Processed Output\\Television\\${LONG_SHOW}\\Season 01\\${LONG_SHOW} - S01E0${index} - ${LONG_RELEASE}.mkv`, importJobId: null, failureMessage: index >= 5 ? `${LONG_RELEASE} was refused by the processor because the file inside it could not be read` : null, createdUtc: now, updatedUtc: now
+  })))));
+  // Needs attention (#1162): releases held for a yes, whose names, qualities and reasons are long, beside four buttons.
+  await page.route("**/api/attention/held-releases", (route) => route.fulfill(json(Array.from({ length: 3 }, (_, index) => ({
+    historyId: `fit-held-${index}`, mediaType: index === 1 ? "series" : "movie", id: `fit-held-title-${index}`, episodeId: null, title: index === 1 ? LONG_SHOW : `${LONG_SHOW} The Movie`, year: 2024, episodeLabel: index === 1 ? "S01E02" : null,
+    libraryId: "fit-library", releaseName: `${LONG_RELEASE}.${index}`, indexerName: indexers[0].name, indexerId: indexers[0].id, downloadUrl: null, quality: "2160p UHD BluRay REMUX", sizeBytes: 54_000_000_000,
+    seeders: 3, reason: "This release is much larger than the size you chose for this quality and would need an OK before it is sent.", heldUtc: now
   })))));
   await page.route("**/api/blocked-releases", (route) => route.request().method() === "GET"
     ? route.fulfill(json(Array.from({ length: 4 }, (_, index) => ({
@@ -137,7 +167,7 @@ async function seedTitles(page: Page) {
 const RECORD_PAGES = new Set(["/system/audit", "/system/security"]);
 
 /** Runs in the page: what is wrong with the layout right now, in words. */
-function measure(checkRepeats: boolean) {
+function measure({ checkRepeats, phone }: { checkRepeats: boolean; phone: boolean }) {
   const doc = document.documentElement;
   const width = doc.clientWidth;
   const found: string[] = [];
@@ -225,19 +255,37 @@ function measure(checkRepeats: boolean) {
     }
   }
 
-  // A value the screen cuts short (an ellipsis or a line clamp) carries its full text as a tooltip, or sits in a row
-  // that opens a drawer holding it (#1168).
+  // A row's name has room: the first cell a row shows is not squeezed to nothing by the buttons beside it (Transfers' Needs
+  // attention on a phone showed three rows with no name at all, only their switch and buttons).
+  for (const row of Array.from(document.querySelectorAll<HTMLElement>("[role=row]"))) {
+    if (isHiddenOrTiny(row)) continue;
+    const first = Array.from(row.querySelectorAll<HTMLElement>(":scope > [role=cell]")).find((cell) => getComputedStyle(cell).display !== "none");
+    if (!first || !(first.textContent ?? "").trim()) continue;
+    const box = first.getBoundingClientRect();
+    if (box.width < 56) found.push(`row "${(first.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 30)}" has only ${Math.round(box.width)}px for its name`);
+  }
+
+  // A value the screen cuts short (an ellipsis or a line clamp, or a box that hides what runs past it) carries its full
+  // text as a tooltip, or sits in a row that opens a drawer holding it (#1168). A phone has no hover, so there a tooltip
+  // is not a way to read it: only a row that opens its drawer is, or the value is not cut at all.
+  const cutHeadings: string[] = [];
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
     if (el.children.length > 0 && !Array.from(el.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && (child.textContent ?? "").trim())) continue;
     const text = (el.textContent ?? "").trim();
     if (!text || isHiddenOrTiny(el)) continue;
     const style = getComputedStyle(el);
-    const cutSideways = style.textOverflow === "ellipsis" && style.overflowX !== "visible" && el.scrollWidth > el.clientWidth + 1;
-    const cutTall = style.getPropertyValue("-webkit-line-clamp") !== "none" && style.overflowY !== "visible" && el.scrollHeight > el.clientHeight + 1;
+    const hides = style.overflowX === "hidden" || style.overflowX === "clip";
+    const cutSideways = hides && (style.textOverflow === "ellipsis" || style.whiteSpace === "nowrap") && el.scrollWidth > el.clientWidth + 1;
+    const cutTall = style.getPropertyValue("-webkit-line-clamp") !== "none" && style.overflowY !== "visible" && el.scrollHeight > el.clientHeight + 3;
     if (!cutSideways && !cutTall) continue;
-    if (el.closest("[title], [aria-label], [role=row][tabindex], [data-fit-ignore]")) continue;
-    found.push(`cut text "${text.replace(/\s+/g, " ").slice(0, 40)}" has no tooltip and no drawer`);
+    if (el.closest("[role=row][tabindex], [data-fit-ignore]")) continue;
+    const label = `${text.replace(/\s+/g, " ").slice(0, 40)}" (${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 3).join(".")}`;
+    // A heading or a column heading is cut short with nothing to read the rest by, tooltip or no: say it whole or wrap it.
+    if (el.closest("h1, h2, h3, h4, [role=columnheader]")) { cutHeadings.push(label); continue; }
+    if (phone) found.push(`cut text "${label}" cannot be read on a phone: it neither wraps nor sits in a row that opens`);
+    else if (!el.closest("[title], [aria-label]")) found.push(`cut text "${label}" has no tooltip and no drawer`);
   }
+  for (const label of cutHeadings) found.push(`heading "${label}" is cut`);
 
   const controls = document.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [role=button]");
   for (const control of Array.from(controls)) {
@@ -300,13 +348,14 @@ test.describe("every screen fits three widths", () => {
 
       const offenders: string[] = [];
       const only = process.env.FIT_ONLY;
-      for (const route of [...new Set([...routes, ...titles])].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
+      // The Dashboard's System tab (its cards cut captions the Live tab does not) is a page of its own to the walk.
+      for (const route of [...new Set([...routes, "/?tab=system", ...titles])].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
         await page.goto(route);
         await data.settled();
         // A title page lays itself out again when its metadata arrives (#1179): measure when two looks agree.
         let previous = "";
         await expect.poll(async () => {
-          const now = JSON.stringify(await page.evaluate(measure, !RECORD_PAGES.has(route)));
+          const now = JSON.stringify(await page.evaluate(measure, { checkRepeats: !RECORD_PAGES.has(route), phone: size.width < 768 }));
           const same = now === previous;
           previous = now;
           return same;
@@ -349,7 +398,7 @@ test.describe("every screen fits three widths", () => {
           await page.waitForTimeout(1500);
         }
         await page.waitForTimeout(300);
-        const problems = await page.evaluate(measure, false);
+        const problems = await page.evaluate(measure, { checkRepeats: false, phone: size.width < 768 });
         // The page's container hides what runs past its edge, so look at everything inside it.
         problems.push(...await page.evaluate(() => {
           const width = document.documentElement.clientWidth;
@@ -414,5 +463,101 @@ test.describe("every screen fits three widths", () => {
     const label = (await destination.boundingBox())!;
     expect(label.x).toBeGreaterThanOrEqual(0);
     expect(label.x + label.width).toBeLessThanOrEqual(390);
+  });
+});
+
+// The 8 Oct walk, items F8 and F9: a film's History tab prints a "Quality / language" heading, and a show page's long
+// synopsis is clamped to the room its header has. Neither showed on an empty library, so a film with a video file and a
+// 355-character synopsis on both pages are served here, and what is cut must be readable: a heading is not cut, and a
+// clamped synopsis offers "More" in view.
+test.describe("a title page's History heading and synopsis are readable", () => {
+  test.skip(({ isMobile }) => isMobile, "Sizes are set in the test itself.");
+
+  const SYNOPSIS = "A documentary crew follows a small town through one long winter, and the longer they stay the less sure they are of what they came to film. ".repeat(3).trim().slice(0, 355);
+
+  for (const size of [SIZES[1], SIZES[2]]) {
+    test(`the History heading and the synopsis fit at ${size.width}x${size.height}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize(size);
+      await authenticateAndNavigate(page, "/movies");
+      const { routes: titles } = await seedTitles(page);
+      const [moviePath, showPath] = titles;
+      const movieId = moviePath.split("/").pop()!;
+      await page.route(new RegExp(`/api/(movies|series)/(${movieId}|${showPath.split("/").pop()})$`), async (route) => {
+        if (route.request().method() !== "GET") return route.continue();
+        const response = await route.fetch();
+        const body = await response.json() as Record<string, unknown>;
+        return route.fulfill({ response, json: { ...body, overview: SYNOPSIS } });
+      });
+      await page.route(`**/api/movies/${movieId}/files`, (route) => route.request().method() === "GET"
+        ? route.fulfill(json([{
+            path: `D:\Movies\Fit check\${LONG_RELEASE}.mkv`, sizeBytes: 54_000_000_000, kind: "video", isPrimary: true, quality: "2160p UHD BluRay REMUX",
+            videoCodec: "hevc", audioCodec: "truehd", audioChannels: "7.1", language: null, hearingImpaired: null
+          }]))
+        : route.continue());
+
+      const offenders: string[] = [];
+      await page.goto(moviePath);
+      await page.getByRole("tab", { name: "History" }).or(page.getByRole("radio", { name: "History" })).or(page.getByRole("button", { name: "History", exact: true })).first().click();
+      await expect(page.getByText("Quality / language").first()).toBeVisible();
+      const heading = await page.getByRole("columnheader", { name: "Quality / language" }).first().evaluate((el) => {
+        const cuts = Array.from(el.querySelectorAll<HTMLElement>("*")).concat(el as HTMLElement).filter((node) => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 3);
+        return cuts.length === 0;
+      });
+      if (!heading) offenders.push("the film History tab cuts its \"Quality / language\" heading");
+
+      for (const path of [moviePath, showPath]) {
+        await page.goto(path);
+        const synopsis = page.getByTestId("title-synopsis");
+        await expect(synopsis).toBeVisible();
+        await expect(synopsis).toContainText("documentary crew");
+        const state = await synopsis.evaluate((box) => {
+          const paragraph = box.querySelector("p")!;
+          const cut = paragraph.scrollHeight > paragraph.clientHeight + 1;
+          const more = box.querySelector<HTMLElement>("button[aria-label='Read the full synopsis']");
+          const boxRect = box.getBoundingClientRect();
+          const moreRect = more?.getBoundingClientRect();
+          const moreInside = Boolean(moreRect && moreRect.bottom <= boxRect.bottom + 1 && moreRect.top >= boxRect.top - 1 && moreRect.height > 4);
+          return { cut, hasMore: Boolean(more), moreInside };
+        });
+        if (state.cut && !state.moreInside) offenders.push(`${path.startsWith("/movies") ? "the film" : "the show"} page clamps its synopsis and shows no "More" to read the rest`);
+      }
+      expect(offenders, offenders.join("\n")).toEqual([]);
+    });
+  }
+});
+
+// #1162 line 1 on a phone (F2 and F4): every row of Transfers' Needs attention shows its name and opens its drawer, and a
+// drawer says its whole description instead of cutting it to one line.
+test.describe("Needs attention rows open on a phone", () => {
+  test.skip(({ isMobile }) => isMobile, "Sizes are set in the test itself.");
+
+  test("every row names itself and opens a drawer whose description is not cut", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize(SIZES[2]);
+    await authenticateAndNavigate(page, "/movies");
+    const { seriesId } = await seedTitles(page);
+    await seedLongData(page, seriesId);
+    await page.goto("/queue");
+    const table = page.getByRole("region", { name: "Needs attention" });
+    await expect(table).toBeVisible();
+    const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
+    const count = await rows.count();
+    expect(count).toBeGreaterThanOrEqual(5);
+    const offenders: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const row = rows.nth(index);
+      const name = (await row.getByRole("cell").first().innerText()).trim().split("\n")[0];
+      if (!name) offenders.push(`row ${index + 1} shows no name`);
+      await row.getByRole("cell").first().click();
+      const drawer = page.getByRole("dialog");
+      if (!(await drawer.isVisible({ timeout: 2_000 }).catch(() => false))) { offenders.push(`"${name.slice(0, 40)}" opens no drawer`); continue; }
+      await page.waitForTimeout(500); // the drawer slides in
+      const problems = await page.evaluate(measure, { checkRepeats: false, phone: true });
+      for (const problem of problems) offenders.push(`"${name.slice(0, 30)}" drawer: ${problem}`);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
   });
 });
