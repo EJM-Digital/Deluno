@@ -281,7 +281,8 @@ function measure({ checkRepeats, phone }: { checkRepeats: boolean; phone: boolea
     if (el.closest("[role=row][tabindex], [data-fit-ignore]")) continue;
     const label = `${text.replace(/\s+/g, " ").slice(0, 40)}" (${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 3).join(".")}`;
     // A heading or a column heading is cut short with nothing to read the rest by, tooltip or no: say it whole or wrap it.
-    if (el.closest("h1, h2, h3, h4, [role=columnheader]")) { cutHeadings.push(label); continue; }
+    // (A title page's h1 is the title in one line with its full name as a tooltip, the approved header: its own spec holds its height.)
+    if (el.closest("h2, h3, h4, [role=columnheader]")) { cutHeadings.push(label); continue; }
     if (phone) found.push(`cut text "${label}" cannot be read on a phone: it neither wraps nor sits in a row that opens`);
     else if (!el.closest("[title], [aria-label]")) found.push(`cut text "${label}" has no tooltip and no drawer`);
   }

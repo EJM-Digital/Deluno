@@ -1358,7 +1358,7 @@ function ServicesStep({
               <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 {connectedClients.map((client) => (
                   <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground">
-                    <span title={`${client.name}${client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}`} className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
+                    <span title={`${client.name}${client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}`} className="min-w-0 truncate max-md:whitespace-normal max-md:break-words">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
                     <Chip tone="ok">Connected</Chip>
                   </li>
                 ))}
