@@ -260,6 +260,7 @@ public static class DelunoRequestPipeline
         });
         app.UseDelunoApiUnmatchedPathGuard();
         app.UseDelunoCorrelation();
+        app.UseDelunoConfigChangedPush();
         app.UseAuthentication();
         app.UseAuthorization();
 

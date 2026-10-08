@@ -107,7 +107,7 @@ public static class RealtimePushTestEndpoints
                 return denied;
             }
 
-            if (string.IsNullOrWhiteSpace(request.Name))
+            if (string.IsNullOrWhiteSpace(request.EventNameOrName))
             {
                 return Results.BadRequest();
             }
@@ -115,11 +115,11 @@ public static class RealtimePushTestEndpoints
             object payload = (object?)request.Payload ?? new { };
             if (string.Equals(request.Subject, "live", StringComparison.OrdinalIgnoreCase))
             {
-                await publisher.PublishLiveEventAsync(request.Name, payload, cancellationToken);
+                await publisher.PublishLiveEventAsync(request.EventNameOrName!, payload, cancellationToken);
             }
             else
             {
-                await publisher.PublishDashboardEventAsync(request.Name, payload, cancellationToken);
+                await publisher.PublishDashboardEventAsync(request.EventNameOrName!, payload, cancellationToken);
             }
 
             return Results.NoContent();
@@ -154,7 +154,6 @@ public static class RealtimePushTestEndpoints
             return Results.NoContent();
         });
 
-            string? title,
         endpoints.MapGet("/api/testing/realtime/watchers", async (
             HttpContext httpContext,
             string? title,
@@ -173,7 +172,8 @@ public static class RealtimePushTestEndpoints
                 dashboard = watchers.Count(RealtimeGroups.Dashboard),
                 queue = watchers.Count(RealtimeGroups.Queue),
                 activity = watchers.Count(RealtimeGroups.Activity),
-                live = watchers.Count(RealtimeGroups.Live)
+                live = watchers.Count(RealtimeGroups.Live),
+                title = string.IsNullOrWhiteSpace(title) ? 0 : watchers.Count(RealtimeGroups.Title(title))
             });
         });
 
@@ -201,4 +201,8 @@ public sealed record PushActivityRequest(
 
 public sealed record PushLiveEventRequest(string EventName, System.Text.Json.JsonElement Payload);
 
-public sealed record PushEventRequest(string Name, string? Subject, System.Text.Json.JsonElement? Payload);
+// Name or EventName: the Activity and System browser tests were written with one each.
+public sealed record PushEventRequest(string? Name, string? Subject, System.Text.Json.JsonElement? Payload, string? EventName = null)
+{
+    public string? EventNameOrName => string.IsNullOrWhiteSpace(Name) ? EventName : Name;
+}

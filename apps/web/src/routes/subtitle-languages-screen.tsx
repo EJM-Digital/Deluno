@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson, type PlatformSettingsSnapshot } from "../lib/api";
@@ -105,7 +107,11 @@ function terms(typed: string): string[] {
  * content modification, adaptive searching — land as more rows in the drawer
  * rather than another screen.</p>
  */
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged", "SettingsChanged"], areas: [ConfigAreas.subtitles] };
+
 export function SubtitleLanguagesPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { libraries, languages, settings } = useLoaderData() as {
     libraries: LibraryItem[];
     languages: SubtitleLanguageOption[];

@@ -34,7 +34,10 @@ import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { automationNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
-import { useLiveInterval } from "../hooks/use-live-interval";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { ConfigAreas } from "../lib/config-areas";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { RealtimeGroups, useLiveEvent, useSignalREvent } from "../lib/use-signalr";
 import {
   fetchJson, fetchPageItems,
   type LibraryAutomationStateItem,
@@ -227,17 +230,38 @@ function contentBlocklistFrom(settings: ContentBlocklistSettings): ContentBlockl
   };
 }
 
+/** What else on the page reads again when it changes: libraries, settings, the quality model and the download-health rules. */
+const SEARCH_PAGE_REFRESH: LiveRefreshSpec = {
+  events: ["LibraryChanged", "SettingsChanged", "QualityProfileChanged"],
+  areas: [ConfigAreas.downloadHealth, ConfigAreas.qualityModel]
+};
+
 export function SearchCyclesPage() {
-  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings, contentBlocklist: loadedContentBlocklist } = useLoaderData() as LoaderData;
+  const { automationStates: loadedAutomationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles: loadedSearchCycles, blockedReleases, failureRules, recycleBinSettings, contentBlocklist: loadedContentBlocklist } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const contentBlocklistMutation = useApiMutation<ContentBlocklistSettings, ContentBlocklistSettings>("/api/download-health/content-blocklist", "PUT");
 
-  // A fallback poll, kept running while the tab is hidden so the schedule is
-  // already current when it is looked at (#641).
-  useLiveInterval(() => revalidator.revalidate(), 10_000);
+  // The schedule follows the server (#1179): when a library's automation moves, a search cycle
+  // starts, advances or finishes, only the two lists that show it are read again, and nothing
+  // asks on a timer. Everything else on the page is read again when its own data changes.
+  const [liveSchedule, setLiveSchedule] = useState<{ source: unknown; automationStates: LibraryAutomationStateItem[]; searchCycles: SearchCycleRunItem[] } | null>(null);
+  const loadedSchedule = useMemo(() => ({ automationStates: loadedAutomationStates, searchCycles: loadedSearchCycles }), [loadedAutomationStates, loadedSearchCycles]);
+  // A newer answer from the loader replaces whatever was pushed in before it.
+  const automationStates = liveSchedule && liveSchedule.source === loadedSchedule ? liveSchedule.automationStates : loadedAutomationStates;
+  const searchCycles = liveSchedule && liveSchedule.source === loadedSchedule ? liveSchedule.searchCycles : loadedSearchCycles;
+  const reloadSchedule = useCoalescedRevalidate(() => {
+    void Promise.all([
+      fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
+      fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50")
+    ]).then(([nextStates, nextCycles]) => setLiveSchedule({ source: loadedSchedule, automationStates: nextStates, searchCycles: nextCycles })).catch(() => undefined);
+  }, 400);
+  useSignalREvent("AutomationStateChanged", RealtimeGroups.Dashboard, reloadSchedule);
+  useSignalREvent("SearchRunCompleted", RealtimeGroups.Dashboard, reloadSchedule);
+  useLiveEvent("SearchCycleProgress", reloadSchedule);
+  useLiveRefresh(SEARCH_PAGE_REFRESH);
 
   const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : location.pathname.endsWith("/blocklist") ? "blocklist" : "overview";
   const scheduleLibraries = useMemo(

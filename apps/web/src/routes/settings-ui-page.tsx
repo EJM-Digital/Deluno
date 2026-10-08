@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTheme } from "next-themes";
 import { useLoaderData } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -54,7 +55,11 @@ interface UiForm {
   timezone: string;
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"] };
+
 export function SettingsUiPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { settings } = useLoaderData() as LoaderData;
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const { setColorMode } = useColorMode();

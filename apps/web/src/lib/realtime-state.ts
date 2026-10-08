@@ -5,8 +5,8 @@ import { useSyncExternalStore } from "react";
  *
  * Kept outside React so the shared route cache and any screen can ask without
  * importing the SignalR provider (which imports the cache). While it is up the
- * server pushes every change and no screen needs a polling timer; the timers
- * return as a safety net only while it is down.
+ * server pushes every change and no screen polls. While it is down a screen says
+ * so (the Not live badge) and catches up once on reconnect (#1179).
  */
 let connected = false;
 const listeners = new Set<() => void>();
@@ -31,14 +31,4 @@ function subscribe(listener: () => void) {
 /** True while the realtime connection is up. Re-renders when it changes. */
 export function useRealtimeConnected(): boolean {
   return useSyncExternalStore(subscribe, isRealtimeConnected, () => false);
-}
-
-/**
- * A polling interval that exists only as a safety net: `ms` while the realtime
- * connection is down, `false` (no timer at all) while it is up. For any query
- * that sets its own `refetchInterval`.
- */
-export function usePollInterval(ms: number | undefined): number | false {
-  const up = useRealtimeConnected();
-  return !up && ms ? ms : false;
 }

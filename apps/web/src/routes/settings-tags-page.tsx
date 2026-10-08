@@ -3,6 +3,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { describeTagInUse, describeTagUsage, tagUserKindLabel, unusedTags } from "../lib/tag-users";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -50,7 +52,11 @@ export async function settingsTagsLoader(): Promise<LoaderData> {
   return { ...overview, tags, usage };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { areas: [ConfigAreas.tags] };
+
 export function SettingsTagsPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { tags, usage } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const usageById = useMemo(() => new Map(usage.map((item) => [item.id, item])), [usage]);

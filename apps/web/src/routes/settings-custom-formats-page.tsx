@@ -16,6 +16,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { FlaskConical, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -261,7 +263,11 @@ type DrawerMode =
   | { kind: "import" }
   | null;
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["QualityProfileChanged", "PolicySetChanged", "SettingsChanged"], areas: [ConfigAreas.customFormats] };
+
 export function SettingsCustomFormatsPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck, guideVersions, ruleMigration } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");

@@ -10,6 +10,8 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -96,7 +98,11 @@ export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoad
   };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["PolicySetChanged", "LibraryChanged", "QualityProfileChanged"], areas: [ConfigAreas.customFormats, ConfigAreas.destinationRules] };
+
 export function SettingsPolicySetsPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { libraries, qualityProfiles, customFormats, destinationRules, policySets, mediaPlanScenarios } = useLoaderData() as SettingsPolicySetsLoaderData;
   const revalidator = useRevalidator();
   const location = useLocation();

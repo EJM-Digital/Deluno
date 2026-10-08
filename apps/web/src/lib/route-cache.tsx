@@ -1,6 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { QueryClient, useQueries, type QueryKey } from "@tanstack/react-query";
-import { useRealtimeConnected } from "./realtime-state";
 
 /**
  * One cache for the whole app (#1081).
@@ -20,11 +19,10 @@ export const queryClient = new QueryClient({
     // to catch up on when it is looked at again. Refetching on focus would
     // put back the refresh-on-return #641 removed.
     //
-    // refetchIntervalInBackground is a global default (#937): any query that
-    // sets its own `refetchInterval` is a safety net behind realtime, so it is
-    // safe for the poll to keep running while hidden. A query that opts out
-    // can still set the option to false itself.
-    queries: { retry: 1, refetchOnWindowFocus: false, refetchIntervalInBackground: true }
+    // No query refreshes on a timer (#1179): the server pushes every change,
+    // and a reconnect reads each screen once. scripts/validate-live-timers.ts
+    // fails the build on a new refetchInterval.
+    queries: { retry: 1, refetchOnWindowFocus: false }
   }
 });
 
@@ -50,13 +48,6 @@ export interface RouteSource<T> {
   label: string;
   fetch: () => Promise<T>;
   fallback?: T;
-  /**
-   * Refresh on this cadence while the screen is open, but only as a safety net: while the realtime
-   * connection is up the server pushes every change and this timer does not run (#1097).
-   */
-  refetchInterval?: number;
-  /** Stop that cadence while the tab is hidden, and catch up the moment it is shown. */
-  pauseWhenHidden?: boolean;
   /** Only read on these sections of a screen that hosts several (the caller names the section). */
   sections?: readonly string[];
   /** On these sections the screen cannot draw without it, fallback or not. */
@@ -130,30 +121,13 @@ export interface RouteSourceState<S extends RouteSources> {
 
 export function useRouteSources<S extends RouteSources>(sources: S, section?: string): RouteSourceState<S> {
   const names = useMemo(() => activeNames(sources, section), [sources, section]);
-  // Timers exist only while realtime is down: one rule here covers every screen that reads through sources (#1097).
-  const realtimeUp = useRealtimeConnected();
   const results = useQueries({
     queries: names.map((name) => ({
       ...queryOptions(sources[name]),
-      refetchInterval: realtimeUp ? false : (sources[name].refetchInterval ?? false),
-      refetchIntervalInBackground: !sources[name].pauseWhenHidden,
       // Coming back to a screen shows its last answer and asks again.
       refetchOnMount: true
     }))
   });
-
-  // A source that pauses while the tab is hidden is brought up to date the
-  // moment the tab is shown again.
-  useEffect(() => {
-    const paused = realtimeUp ? [] : names.filter((name) => sources[name].pauseWhenHidden && sources[name].refetchInterval);
-    if (paused.length === 0 || typeof document === "undefined") return undefined;
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      for (const name of paused) void queryClient.invalidateQueries({ queryKey: sources[name].key, exact: true });
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [names, sources, realtimeUp]);
 
   // useQueries hands back a fresh array every render; the pieces below only
   // depend on what actually changed.

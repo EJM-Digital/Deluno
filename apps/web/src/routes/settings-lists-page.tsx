@@ -12,6 +12,7 @@
 import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Eye, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
 import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
@@ -134,7 +135,11 @@ export async function settingsListsLoader(): Promise<LoaderData> {
   return { ...overview, exclusions, traktStatus };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["IntakeSourceChanged", "LibraryChanged", "SettingsChanged"] };
+
 export function SettingsListsPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { intakeSources, libraries, exclusions, traktStatus, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();

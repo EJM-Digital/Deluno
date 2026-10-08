@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { useCoalescedRevalidate } from "../../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
@@ -86,6 +88,11 @@ export function ConnectInstalledApps({
     }
   }, [onConnected]);
 
+  // Each app shows as connected the moment it is, not when the last one is: the server says when
+  // one is wired (#1179), so nothing asks on a timer while Connect all runs.
+  const reload = useCoalescedRevalidate(() => { void refresh(); }, 200);
+  useSignalREvent("BundledComponentChanged", RealtimeGroups.Dashboard, reload);
+
   useEffect(() => {
     let active = true;
     void fetchJson<BundledComponentStatus[]>("/api/system/bundled-components")
@@ -144,8 +151,6 @@ export function ConnectInstalledApps({
   async function connectAll() {
     setBusy("all");
     setWeirError(null);
-    // Each app shows as connected the moment it is, not when the last one is.
-    const watch = window.setInterval(() => void refresh(), 1000);
     try {
       const response = await connectAllInstalledApps();
       for (const result of response.results) {
@@ -155,7 +160,6 @@ export function ConnectInstalledApps({
     } catch (error) {
       setWeirError(error instanceof Error ? error.message : "The apps could not be connected.");
     } finally {
-      window.clearInterval(watch);
       setBusy(null);
     }
   }
