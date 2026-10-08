@@ -257,7 +257,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         // What the genre filter can offer. Its own endpoint rather than a facet
         // on the page, because it is asked for once when somebody opens the
         // filter panel and never again while they page through results.
-        // What this shelf can be asked, ordered by, and draw â€” declared once,
+        // What this shelf can be asked, ordered by, and draw — declared once,
         // per media kind, and served rather than copied into the browser.
         //
         // The browser used to keep its own sort list beside the server's and its
@@ -326,7 +326,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             // The custom narrowing, flat on the query string rather than a JSON
             // blob: these travel in a URL people bookmark, share and read.
             //
-            // One `f` per condition â€” `f=quality:in:WEB 2160p|Remux 2160p` â€” read
+            // One `f` per condition — `f=quality:in:WEB 2160p|Remux 2160p` — read
             // against the field registry for this media kind. The nine named
             // parameters below it are what this shipped with, kept because URLs
             // outlive deploys, and translated into the same conditions.
@@ -940,7 +940,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         // Why a title will not download, and what could be done about it.
         //
         // The question a person asks of a title that never arrives is not "what
-        // is its wanted status" â€” it is "why is nothing happening". Every media
+        // is its wanted status" — it is "why is nothing happening". Every media
         // manager accumulates records that quietly answer that and never say
         // so: a client that already holds the release, a processor still
         // holding the file, an exclusion added when it was removed. This says
@@ -993,8 +993,8 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         // Clear what is standing in the way, deliberately and on the record.
         //
-        // Destructive across systems Deluno does not own â€” it removes a
-        // download and its files, and restarts a processor hand-off â€” so it is
+        // Destructive across systems Deluno does not own — it removes a
+        // download and its files, and restarts a processor hand-off — so it is
         // a POST that reports every step, rather than something that happens
         // quietly on the way to a search.
         movies.MapPost("/{id}/force-redownload", async (
@@ -1041,7 +1041,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             // And then actually look for it. Clearing the obstacles and stopping
             // there would leave the person exactly where they were, one button
-            // press poorer â€” "force a re-download" has to end in a download
+            // press poorer — "force a re-download" has to end in a download
             // being looked for, or the word force is a lie.
             //
             // The search runs whether or not anything was cleared: someone who
@@ -1817,7 +1817,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
                     // PUT replaces the override set: a field that arrives blank clears the
                     // stored value. Treating blank as "keep" made a manual override
-                    // impossible to undo â€” you could only replace it with other text.
+                    // impossible to undo — you could only replace it with other text.
                     NormalizeOverride(request.OriginalTitle),
                     NormalizeOverride(request.Overview),
                     NormalizeOverride(request.PosterUrl),
@@ -2029,8 +2029,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 //
                 // AddAsync dedupes: adding a title the catalogue already holds
                 // returns the row it already has. Passing false here then went
-                // on to overwrite it â€” EnsureWantedStateAsync upserts with
-                // `has_file = excluded.has_file` â€” so re-adding a film you
+                // on to overwrite it — EnsureWantedStateAsync upserts with
+                // `has_file = excluded.has_file` — so re-adding a film you
                 // already had wiped the record that its file existed, while
                 // leaving the file and its path on the entry untouched.
                 //
@@ -2038,7 +2038,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 // lab, and the reason reconciliation then called that same file
                 // an orphan: the tracked-file query selects on has_file = 1, so
                 // a file whose flag has been cleared is a file nothing owns.
-                // Worse than cosmetic â€” the title goes back on the wanted list
+                // Worse than cosmetic — the title goes back on the wanted list
                 // and Deluno re-downloads what it is already holding.
                 var judge = TitleQualityProfile.Apply(library, ownProfile);
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
@@ -2195,7 +2195,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
           It has always been settable one film at a time and never in bulk,
           which is the wrong way round: minimum availability is the setting you
-          change after realising a whole shelf is wrong â€” every film you added
+          change after realising a whole shelf is wrong — every film you added
           from a "coming soon" list sitting at Announced and burning searches on
           releases that do not exist yet.
         */
@@ -3635,7 +3635,7 @@ public static class MoviesEndpointRouteBuilderExtensions
     /// Hand a provider result to the catalogue.
     ///
     /// <para>This used to spell the mapping out as sixteen positional
-    /// arguments, and it never passed <c>Status</c> or <c>Studio</c> â€” the two
+    /// arguments, and it never passed <c>Status</c> or <c>Studio</c> — the two
     /// fields V0020 added a column for. The write succeeded, the endpoint
     /// returned 200, and the filter over the column returned nothing. The
     /// mapping now lives in <c>CatalogueMetadata</c>, once.</para>
@@ -3840,14 +3840,14 @@ public static class MoviesEndpointRouteBuilderExtensions
         if (enqueued == 0)
         {
             return remaining > 0
-                ? "Nothing can be refreshed right now â€” everything stale was tried recently and is waiting out its cooldown."
+                ? "Nothing can be refreshed right now — everything stale was tried recently and is waiting out its cooldown."
                 : "Nothing needs refreshing.";
         }
 
         var queued = $"Queued {enqueued:N0} title{(enqueued == 1 ? string.Empty : "s")}";
 
         return remaining > 0
-            ? $"{queued}. Another {remaining:N0} still to go â€” Deluno keeps working through them in the background."
+            ? $"{queued}. Another {remaining:N0} still to go — Deluno keeps working through them in the background."
             : $"{queued}. That is everything that needs refreshing.";
     }
 
