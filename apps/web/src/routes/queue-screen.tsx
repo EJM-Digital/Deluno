@@ -1,7 +1,7 @@
 /**
  * Transfers — the live hand-off view, on the shared grammar.
  *
- *   PageToolbar  (Refresh · Manual import)
+ *   PageToolbar  (Manual import)
  *   SummaryStrip (downloading · speed · ready to import · needs action · clients)
  *   ListCard     downloads        → drawer: progress · health · import · actions
  *   ListCard     needs attention  → only when something does (recovery, failed jobs)
@@ -22,12 +22,12 @@ import { eventLabel } from "../lib/activity-format";
 import { handoffCanBeSentAgain } from "../lib/alert-actions";
 import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, heldReleasesSource, heldReleaseTitle, type HeldReleaseRow } from "../lib/held-releases";
 import { plainSearchResult } from "../lib/release-candidate-status";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload, Zap } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Loader2, Pause, Play, RotateCw, Trash2, Upload, Zap } from "lucide-react";
 import {
   ApiRequestError,
   emptyPlatformSettingsSnapshot,
@@ -87,7 +87,8 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { ColumnPicker } from "../components/ui/column-picker";
 import { realtimeToast, toast } from "../components/shell/toaster";
-import { RealtimeGroups, useLiveWatching, useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
@@ -204,27 +205,16 @@ export function QueuePage() {
 
 function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof queueSources>; revalidator: RouteSourceState<typeof queueSources>["revalidator"] }) {
   const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans, heldReleases } = data;
-  const lastDispatchRefresh = useRef(0);
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
 
-  const scheduleDispatchRefresh = () => {
-    const now = Date.now();
-    if (revalidator.state !== "idle" || now - lastDispatchRefresh.current < 5_000) return;
-    lastDispatchRefresh.current = now;
-    revalidator.revalidate();
-  };
-
-  // Transfers is open: the server reads the download clients every second while something downloads (#1097).
-  useLiveWatching();
-  useSignalREvent("DispatchGrabCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
-  useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
-  useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, scheduleDispatchRefresh);
-  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
-  // A manual import has no dispatch, so its row only moves to done when the job itself says it finished (#1171).
-  useSignalREvent("ImportStateChanged", RealtimeGroups.Queue, () => {
-    if (revalidator.state === "idle") revalidator.revalidate();
-  });
+  // Transfers is live: pushes patch the lists this screen reads (queue-live.ts). Only the lists with no
+  // patch of their own are read again, once, after a burst; there is no timer and no Refresh.
+  const refreshDispatches = useCoalescedRefresh([queueSources.dispatches.key, queueSources.telemetry.key, queueSources.activityEvents.key]);
+  const refreshActivity = useCoalescedRefresh([queueSources.activityEvents.key]);
+  const refreshJobs = useCoalescedRefresh([queueSources.jobs.key]);
+  const refreshTelemetry = useCoalescedRefresh([queueSources.telemetry.key]);
+  useTransfersLiveEvents(refreshDispatches, refreshActivity, refreshJobs, refreshTelemetry);
   useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => {
     realtimeToast.info(`Sent "${event.releaseName}" to ${event.clientName}`);
   });
@@ -1098,10 +1088,6 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       <PageToolbar
         actions={
           <>
-            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-              {revalidator.state !== "idle" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Refresh
-            </Button>
             <Button type="button" onClick={() => { setManualMessage(null); setManualState("clean"); setDrawer({ kind: "manual" }); }}>
               <Upload className="h-4 w-4" />
               Manual import
@@ -2133,7 +2119,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         ) : (
           <ListEmpty
             title={busyKey?.startsWith("dispatch:") ? "Loading transfer history" : "Transfer details unavailable"}
-            description="The transfer row is still visible, but its full server-side timeline could not be loaded. Refresh and try again."
+            description="The transfer row is still visible, but its full server-side timeline could not be loaded. Close it and open it again to try again."
           />
         )}
       </Drawer>
