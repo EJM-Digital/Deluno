@@ -1465,6 +1465,15 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
     if (preferences) return savePreferences(preferences);
   });
 
+  // The update behaviour saved from another tab announces itself as a changed update status, and the status
+  // itself may be exactly the same. The form reads it again then, unless it holds edits that are not saved
+  // yet, which are never overwritten (#1179).
+  const preferencesDirtyNow = useRef(preferencesDirty);
+  preferencesDirtyNow.current = preferencesDirty;
+  useSignalREvent("UpdateStatusChanged", RealtimeGroups.Dashboard, () => {
+    if (!preferencesDirtyNow.current) void loadPreferences();
+  });
+
   async function refreshStatus() {
     const next = await fetchJson<UpdateStatusResponse>("/api/updates/status");
     setCurrent(next);
