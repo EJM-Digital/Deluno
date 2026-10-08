@@ -88,6 +88,7 @@ public static class DelunoApplicationComposition
         services.AddHostedService<Deluno.Connections.Data.IndexerNamesUpgradeService>();
         // #1174: after every module has its schema, clears an episode wrongly linked to another episode's file.
         services.AddHostedService<Services.EpisodeFileLinkRepairService>();
+        services.AddHostedService<Services.MislabelledEpisodeFileRepairService>();
         services.AddScoped<Deluno.Platform.Contracts.IProcessorHandoffTitleResolver, Services.ProcessorHandoffTitleResolver>();
         services.AddScoped<Deluno.Platform.Contracts.IArtworkRemoteUrls, Services.ArtworkRemoteUrls>();
         services.AddScoped<Companions.InstalledComponentWirer>();
