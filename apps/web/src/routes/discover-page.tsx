@@ -333,7 +333,7 @@ function DiscoverPosterCard({ item, onAdd }: { item: DiscoverItem; onAdd: () => 
         </div>
       ) : null}
       <div className="p-2">
-        <p className="truncate text-(length:--type-body-sm) font-semibold text-foreground" title={item.title}>{item.title}</p>
+        <p className="truncate max-md:whitespace-normal max-md:break-words text-(length:--type-body-sm) font-semibold text-foreground" title={item.title}>{item.title}</p>
         <p className="text-(length:--type-caption) text-muted-foreground">
           {item.year ?? "Unknown year"}
           {item.rating ? ` · ${item.rating.toFixed(1)}` : ""}

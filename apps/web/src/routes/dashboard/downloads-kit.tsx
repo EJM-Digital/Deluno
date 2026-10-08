@@ -66,7 +66,7 @@ export function FactRow({ label, children }: { label: string; children: ReactNod
   return (
     <div className="flex items-baseline justify-between gap-3 px-(--card-pad-x) py-1.5 text-(length:--type-body-sm)">
       <span className="shrink-0 whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate text-right font-medium text-foreground">{children}</span>
+      <span className="min-w-0 truncate max-md:whitespace-normal max-md:break-words text-right font-medium text-foreground">{children}</span>
     </div>
   );
 }

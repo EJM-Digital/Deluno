@@ -1187,22 +1187,22 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
       <div className="grid gap-(--grid-gap) lg:grid-cols-2">
         {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="Movies root" copy="Where movie folders should live. UNC, Docker mount, mapped drives, and local paths are supported.">
-            <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\\Media\\Movies or /media/movies" browseTitle="Choose movies root" />
+            <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\Media\Movies or /media/movies" browseTitle="Choose movies root" />
           </FieldShell>
         ) : null}
         {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="Movies downloads folder (optional)" copy="Where your download client finishes Movies. Leave it blank and Deluno reads it from the download clients you connected.">
-            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\films" browseTitle="Choose Movies downloads folder" />
+            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\Downloads\Completed\films" browseTitle="Choose Movies downloads folder" />
           </FieldShell>
         ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="TV root" copy="Where series folders should live.">
-            <PathInput value={form.seriesRootPath} onChange={(value) => patch({ seriesRootPath: value })} placeholder="D:\\Media\\TV or /media/tv" browseTitle="Choose TV root" />
+            <PathInput value={form.seriesRootPath} onChange={(value) => patch({ seriesRootPath: value })} placeholder="D:\Media\TV or /media/tv" browseTitle="Choose TV root" />
           </FieldShell>
         ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
-          <FieldShell icon={FolderTree} label="TV downloads folder (optional)" copy="Where your download client finishes TV. Leave it blank and Deluno reads it from the download clients you connected.">
-            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\shows" browseTitle="Choose TV downloads folder" />
+          <FieldShell icon={FolderTree} label="TV downloads folder (optional)" copy="Where your download client finishes TV. Blank is read from the same clients.">
+            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\Downloads\Completed\shows" browseTitle="Choose TV downloads folder" />
           </FieldShell>
         ) : null}
       </div>

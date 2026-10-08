@@ -144,7 +144,7 @@ export function InstanceCard({ instance, summary, health, short, onJump }: { ins
 function Column({ colour, label, value, unit, sub, values, scale }: { colour: string; label: string; value: string; unit: string; sub: string; values: readonly number[]; scale: TraceScale }): JSX.Element {
   return (
     <div className="sy-col" style={{ "--m": colour } as CSSProperties}>
-      <span className="sy-mh"><i />{label}</span>
+      <span className="sy-mh" title={label}><i />{label}</span>
       <span className="sy-v">{value}<small>{unit}</small></span>
       <span className="sy-sub" title={sub}>{sub}</span>
       <TraceChart values={values} scale={scale} colour={colour} />
@@ -213,6 +213,8 @@ export function networkChecks(network: SystemOverview["network"]): Check[] {
 
 export function NetworkCard({ overview }: { overview: SystemOverview | null }): JSX.Element {
   const network = overview?.network;
+  // The whole line is the tooltip of the cut one: the adapter name alone told nothing of the rest (#1168).
+  const networkLine = network ? [`↑ ${mbps(network.outBytesPerSec)} out`, linkText(network.linkMbps), network.ip].filter(Boolean).join(" · ") : "";
   return (
     <section className="sy-card sy-tile sy-net" aria-label="Network">
       <div className="sy-top">
@@ -222,9 +224,9 @@ export function NetworkCard({ overview }: { overview: SystemOverview | null }): 
       {network ? (
         <div className="sy-net2">
           <div className="sy-col" style={{ "--m": CYAN } as CSSProperties}>
-            <span className="sy-mh"><i />{network.adapter ?? "Network"}</span>
+            <span className="sy-mh" title={network.adapter ?? "Network"}><i />{network.adapter ?? "Network"}</span>
             <span className="sy-v">{mbps(network.inBytesPerSec)}<small> MB/s in</small></span>
-            <span className="sy-sub" title={network.adapter ?? undefined}>{[`↑ ${mbps(network.outBytesPerSec)} out`, linkText(network.linkMbps), network.ip].filter(Boolean).join(" · ")}</span>
+            <span className="sy-sub" title={networkLine}>{networkLine}</span>
             <TraceChart values={overview?.history.netIn ?? []} scale={{ kind: "rate" }} colour={CYAN} />
           </div>
           <div className="sy-col sy-checks2">

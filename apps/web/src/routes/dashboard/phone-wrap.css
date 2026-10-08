@@ -1,0 +1,24 @@
+/*
+ * A phone has no hover, so a caption the Dashboard cuts with an ellipsis can never be read there (#1168). Below the
+ * width where the cards stack, every caption says all of its words and wraps instead. The desktop looks, which cut
+ * the caption and give it a tooltip, are untouched.
+ */
+@media (max-width: 767px) {
+  .lb-aside, .lb-op .lb-txt, .lb-then li a, .lb-tile .lb-fig small,
+  .lj-nm, .lj-ct, .lj-s, .lj-s-text, .lj-xl > span:first-child,
+  .lsh-status > span, .ls-num, .ls-nm, .lact-dense .lact-w, .ltd-br > span:first-child,
+  .sy-card-h > .sy-muted, .sy-facts span, .sy-facts b, .sy-facts em, .sy-col .sy-sub, .sy-mh,
+  .sy-reach span i, .sy-drive .sy-n, .sy-drive .sy-io > span:first-child, .sy-chk .sy-t b, .sy-chk .sy-btn,
+  .sy-conn-h > div .sy-muted, .sy-ct-row .sy-nm b, .sy-ct-row .sy-nm span, .sy-tk-row .sy-nm,
+  .sy-tk-row .sy-nm span.sy-why, .sy-log .sy-msg, .sy-bk-h .sy-muted {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    height: auto;
+    line-height: 1.35;
+  }
+  .sy-chk .sy-t span { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .sy-col { grid-template-rows: auto auto auto minmax(0, 1fr); }
+  .sy-reach span { height: auto; min-height: 17px; white-space: normal; }
+}

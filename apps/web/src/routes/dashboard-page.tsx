@@ -24,6 +24,7 @@ import { SystemTab } from "./dashboard/system-tab";
 import type { DashboardSummary } from "../lib/api";
 import { liveSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
 import { useDashboardAttention } from "./dashboard/use-dashboard-attention";
+import "./dashboard/phone-wrap.css";
 
 export const DASHBOARD_TABS = ["live", "system"] as const;
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];

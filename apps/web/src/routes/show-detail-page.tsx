@@ -1226,7 +1226,7 @@ export function ShowDetailPage() {
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
               {logoUrl ? <ArtworkImage fallback={null} src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? series.title}>{metaText("LocalizedTitle") ?? series.title}</h1>
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:line-clamp-2 xl:break-words xl:text-3xl" title={metaText("LocalizedTitle") ?? series.title}>{metaText("LocalizedTitle") ?? series.title}</h1>
                 {/* The shield, beside the title — one control, both shelves. */}
                 <button
                   type="button"
@@ -1311,7 +1311,7 @@ export function ShowDetailPage() {
                 ].filter((fact) => fact.value).map((fact) => (
                   <div key={fact.label} className="min-w-0">
                     <dt className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{fact.label}</dt>
-                    <dd className="truncate text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
+                    <dd className="truncate max-md:whitespace-normal max-md:break-words text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
                   </div>
                 ))}
               </dl>
