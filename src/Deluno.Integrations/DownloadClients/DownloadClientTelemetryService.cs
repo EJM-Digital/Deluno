@@ -937,6 +937,8 @@ public sealed class DownloadClientTelemetryService(
         {
             QueueRemovalReasons.Failed => new QueueRemovalOptions(true, true, true, false),
             QueueRemovalReasons.Unwanted => new QueueRemovalOptions(true, false, false, true),
+            QueueRemovalReasons.Reclaim => new QueueRemovalOptions(true, false, false, false),
+            QueueRemovalReasons.GaveUp => new QueueRemovalOptions(true, false, false, false),
             _ => new QueueRemovalOptions(false, false, false, false)
         };
 
@@ -1121,6 +1123,8 @@ public sealed class DownloadClientTelemetryService(
             QueueRemovalReasons.Unwanted => unmonitored
                 ? $"You said you don't want \"{title}\" any more: removed from {clientName}, deleted its files, and stopped wanting it."
                 : $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
+            QueueRemovalReasons.GaveUp => $"You gave up on \"{title}\": removed from {clientName} and deleted its files.",
+            QueueRemovalReasons.Reclaim => $"You removed the leftover copy of \"{title}\" from {clientName} and deleted its files. The library file was not touched.",
             _ => $"You told Deluno to stop tracking \"{title}\"; {clientName} still has it, untouched."
         };
 
@@ -1610,7 +1614,8 @@ public sealed class DownloadClientTelemetryService(
                     RuleId: record?.RuleId,
                     RuleActionPreset: record?.RuleActionPreset,
                     NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes),
-                    RuleStrikeLimit: record?.RuleStrikeLimit);
+                    RuleStrikeLimit: record?.RuleStrikeLimit,
+                    SpellStartedUtc: record?.FirstObservedUtc);
             }).ToArray()
         }).ToArray();
 
@@ -1672,7 +1677,7 @@ public sealed class DownloadClientTelemetryService(
                                 Kind: "hardlink-lost",
                                 Summary: "Unlinked from your library",
                                 Evidence: hold.Detail,
-                                RecommendedAction: "It's safe to reclaim: stop seeding and delete it from the sharing list on the Dashboard.",
+                                RecommendedAction: "It's safe to reclaim: use Remove this copy below to take it out of the client and free its space. The library file is not touched.",
                                 CanSafelyRetry: false,
                                 CanSafelyRemove: true)
                         ]
@@ -1874,7 +1879,7 @@ public sealed class DownloadClientTelemetryService(
                                 dispatch.EntityId,
                                 item.Title,
                                 ImportFailurePolicy.DownloadStalled,
-                                StalledReason(struck, client.Name),
+                                StalledReason(struck, client.Name, overview.CapturedUtc),
                                 dispatch.TorrentHashOrItemId ?? item.Id,
                                 client.Id,
                                 client.Name,
@@ -1976,7 +1981,7 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name)} {PlainRemediation(applied, client.Name)}";
+                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
@@ -2074,24 +2079,34 @@ public sealed class DownloadClientTelemetryService(
     /// Why the release was refused, for the blocklist row. The strikes say how
     /// long it went on, because "stalled" on its own reads like a moment.
     /// </summary>
-    internal static string StalledReason(DownloadHealthFinding finding, string clientName)
+    internal static string StalledReason(DownloadHealthFinding finding, string clientName, DateTimeOffset? nowUtc = null)
     {
         // "Nothing arriving" is only a finding once it has gone on for half an
         // hour, so that half hour came before the first strike.
         var nothingArriving = string.Equals(finding.Kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase);
-        var lasted = DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
-        var forHowLong = lasted.TotalMinutes switch
-        {
-            <= 0 => string.Empty,
-            < 60 => $" for {lasted.TotalMinutes:0} minutes",
-            60 => " for an hour",
-            _ => $" for {lasted.TotalHours:0.#} hours"
-        };
+        // The spell's real start says how long it has lasted. Counting strikes of the default half hour said "4 hours"
+        // for a rule set to strike every minute, which had been going for fifteen.
+        var lasted = finding.SpellStartedUtc is { } started && nowUtc is { } now
+            ? now - started
+            : DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
+        var forHowLong = PlainDuration(lasted) is { Length: > 0 } words ? $" for {words}" : string.Empty;
         var what = nothingArriving
             ? $"Nothing arrived in {clientName}{forHowLong}"
             : $"{clientName} showed it stalled or in error{forHowLong}";
         return $"{what}, so Deluno stopped waiting for it and will not pick it again.";
     }
+
+    /// <summary>How long, in everyday words: nothing under a minute, then minutes, an hour, hours, days.</summary>
+    internal static string PlainDuration(TimeSpan lasted)
+        => lasted.TotalMinutes switch
+        {
+            < 1 => string.Empty,
+            < 1.5 => "a minute",
+            < 59.5 => $"{Math.Round(lasted.TotalMinutes):0} minutes",
+            < 90 => "an hour",
+            < 48 * 60 => $"{lasted.TotalHours:0.#} hours",
+            _ => $"{Math.Round(lasted.TotalDays):0} days"
+        };
 
     /// <summary>
     /// Queues the retry search that follows a failed grab, scoped to exactly
@@ -3207,7 +3222,7 @@ public sealed class DownloadClientTelemetryService(
                     : item.Status;
                 // The job ran to its end, but the import itself was refused (an unreadable file, say): the row says
                 // what Activity says, not "Imported".
-                if (status == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                if (status == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refusedImport)
                 {
                     return item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refusedImport };
                 }
@@ -3270,7 +3285,7 @@ public sealed class DownloadClientTelemetryService(
                 var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);
                 // The processor's output came back and the import job finished, but the import was refused
                 // (an unreadable file after an integrity failure, say): Transfers agrees with Activity.
-                if (queueStatus == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                if (queueStatus == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refusedImport)
                 {
                     return resolvedItem with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = resolvedItem.ErrorMessage ?? refusedImport };
                 }
@@ -3345,6 +3360,14 @@ public sealed class DownloadClientTelemetryService(
 
             return resolvedItem;
         }).ToArray();
+
+        // One rule for "imported", on every path above: a download whose latest send had its import refused is
+        // never in the library, whichever record (a finished hand-off, a title that holds a file) said so. The
+        // archived sends are read too, since a refusal that was dismissed is still a refusal.
+        queue = queue.Select(item =>
+            item.Status == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refused
+                ? item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refused }
+                : item).ToArray();
 
         // One failure, one row (#1167): a failure belongs to the copy that owns the hand-off. Another client's
         // copy of the same release, with no hand-off of its own, is not a second problem.

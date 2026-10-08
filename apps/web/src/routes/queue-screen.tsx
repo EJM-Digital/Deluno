@@ -68,6 +68,7 @@ import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying,
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
+import { dispatchWasImported } from "../lib/dispatch-final-state";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
@@ -842,7 +843,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   {spin(`handoff:search-again:${handoff.id}`)}
                   Search for another release
                 </Button>,
-                "Gives up on this release, never picks it again, and looks for a different one."
+                "Gives up on this release, takes its download out of your client with its files, never picks it again, and searches for a different one right now."
               )}
               {line(
                 <Button type="button" variant="outline" size="sm" onClick={() => void keepWaiting(handoff)} disabled={busy}>
@@ -1723,10 +1724,21 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                       <span className="text-(length:--type-body-sm) text-foreground">{finding.summary}</span>
                       {/* #981: unlinked-from-library is a live fact mirrored
                           from the sharing pass, not a per-item strike record -
-                          there is nothing here to ignore for a week. Its own
-                          recommended action already points at the Dashboard's
-                          sharing list, where reclaiming it is a real action. */}
-                      {finding.kind === "hardlink-lost" ? null : (
+                          there is nothing here to ignore for a week. A real one
+                          offers the fix instead: take the leftover copy out. */}
+                      {finding.kind === "hardlink-lost" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void removeWithReason(openQueueItem, "reclaim")}
+                          disabled={busyKey !== null || removalReasonBusy !== null}
+                          title="Take this copy out of the client and delete its files. The library file is not touched."
+                        >
+                          {removalReasonBusy === "reclaim" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Remove this copy
+                        </Button>
+                      ) : (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2733,9 +2745,9 @@ function processorConnectionTone(connection: ProcessorConnectionItem): NonNullab
   return "idle";
 }
 
-function dispatchStageLabel(dispatch: DownloadDispatchItem) {
+export function dispatchStageLabel(dispatch: DownloadDispatchItem) {
   if (isDispatchFailure(dispatch)) return "Needs attention";
-  if (dispatch.importStatus === "completed" || dispatch.importCompletedUtc) return "Imported";
+  if (dispatchWasImported(dispatch)) return "Imported";
   if (dispatch.importStatus) return `Import ${dispatch.importStatus}`;
   if (dispatch.detectedUtc || dispatch.grabStatus === "detected") return "Detected by client";
   if (dispatch.grabStatus) return `Grab ${dispatch.grabStatus}`;
