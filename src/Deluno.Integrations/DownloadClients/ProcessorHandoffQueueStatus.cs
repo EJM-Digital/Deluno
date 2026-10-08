@@ -34,8 +34,14 @@ public static class ProcessorHandoffQueueStatus
 
             case ProcessorHandoffStatuses.Dismissed:
                 // Closed on purpose, by a person or because the title was imported another way.
-                // It is history, never a problem: the client's own reading says where it is.
-                return fallback;
+                // It is history, never a problem: the client's own reading says where it is. Except when its import
+                // ran to its end (a partial result Deluno imported by its main video, #1182): that download is in
+                // the library, not "Ready to import".
+                return !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                    && jobsById.TryGetValue(handoff.ImportJobId, out var dismissedImport)
+                    && dismissedImport.Status == "completed"
+                        ? DownloadQueueStatuses.Imported
+                        : fallback;
 
             case ProcessorHandoffStatuses.Released:
                 // The original is going through the ordinary import, so the
