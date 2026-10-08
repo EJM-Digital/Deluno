@@ -283,8 +283,17 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
   /* ------------------------------------------------------------- derived */
   const queue = useMemo(
-    () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({ ...item, clientProtocol: client.protocol }))),
-    [telemetry.clients]
+    () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({
+      ...item,
+      clientProtocol: client.protocol,
+      // Until the hand-off exists the processor is not yet being waited for: the download has finished and is
+      // being moved or handed over, and the row says that.
+      status: item.status === downloadQueueStatuses.waitingForProcessor
+        && !processorHandoffs.some((handoff) => handoffDownloadKey(handoff.clientId, handoff.queueItemId) === handoffDownloadKey(item.clientId, item.id))
+        ? downloadQueueStatuses.handingOver
+        : item.status
+    }))),
+    [telemetry.clients, processorHandoffs]
   );
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
   const importReady = queue.filter((item) => isImportReadyStatus(item.status));
@@ -2417,6 +2426,7 @@ function handoffDownloadKey(clientId: string, queueItemId: string) {
 }
 
 function pipelineStage(item: DownloadQueueItem) {
+  if (item.status === downloadQueueStatuses.handingOver) return "Handing over";
   if (item.status === downloadQueueStatuses.waitingForProcessor) return "Processing connector";
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Checking media";
   if (item.status === downloadQueueStatuses.importQueued) return "Importing & naming";
@@ -2431,6 +2441,7 @@ function pipelineStage(item: DownloadQueueItem) {
 function pipelineDetail(item: DownloadQueueItem) {
   if (item.failure) return item.failure.summary || item.failure.message || item.failure.nextAction;
   if (item.errorMessage) return item.errorMessage;
+  if (item.status === downloadQueueStatuses.handingOver) return "The download has finished and is being moved or handed over.";
   if (item.status === downloadQueueStatuses.waitingForProcessor) return "Waiting for the cleaned output before import.";
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Media quality and processor output are being checked.";
   if (item.status === downloadQueueStatuses.importQueued) return "The destination and final name are being applied.";

@@ -206,6 +206,21 @@ public sealed class AStrikeIsAProblemThatLastsTests
         Assert.Equal("cleanup.strikeThreshold", await read.ExecuteScalarAsync());
     }
 
+    [Fact]
+    public async Task A_failed_hand_off_on_a_finished_download_is_shown_but_never_struck()
+    {
+        using var world = await World.CreateAsync();
+        var failedHandoff = new DownloadHealthObservation(Client, Torrent, Release, "post-processing-failed", "critical", "The processor refused the hand-off.");
+
+        var strikes = new List<int>();
+        for (var minute = 0; minute <= 120; minute += 10)
+        {
+            strikes.Add(Assert.Single(await world.SeeAsync(Start.AddMinutes(minute), failedHandoff)).StrikeCount);
+        }
+
+        Assert.All(strikes, count => Assert.Equal(0, count));
+    }
+
     private static DownloadHealthObservation Stalled()
         => new(Client, Torrent, Release, DownloadHealthStrikes.ClientStalled, "critical", "Queue status: stalled.");
 

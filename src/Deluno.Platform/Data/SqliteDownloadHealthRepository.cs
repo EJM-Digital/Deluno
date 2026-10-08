@@ -98,7 +98,11 @@ public sealed class SqliteDownloadHealthRepository(
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
-                since, now, DownloadHealthStrikes.For(since + outageOverlap, now, window), record?.IgnoredUntilUtc,
+                since, now,
+                // Only a problem with getting the bytes earns strikes (#560, #1154). A failed hand-off or import
+                // on a finished download is shown, but it is not struck, so it never reads "53 strikes so far".
+                DownloadHealthStrikes.Counts(observation.Kind) ? DownloadHealthStrikes.For(since + outageOverlap, now, window) : 0,
+                record?.IgnoredUntilUtc,
                 observation.RuleId, observation.RuleStrikeLimit, observation.RuleTimerMinutes, observation.RuleActionPreset);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);

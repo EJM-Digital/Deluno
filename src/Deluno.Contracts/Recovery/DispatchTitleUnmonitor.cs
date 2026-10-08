@@ -22,6 +22,13 @@ public interface IDispatchTitleUnmonitorService
     /// <c>false</c> when nothing matching was found to unmonitor.
     /// </summary>
     Task<bool> UnmonitorAsync(string entityType, string entityId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the title (for an episode, that episode) holds its file now. Null when this
+    /// engine cannot say, so a caller never decides on a guess.
+    /// </summary>
+    Task<bool?> HasFileAsync(string entityType, string entityId, CancellationToken cancellationToken)
+        => Task.FromResult<bool?>(null);
 }
 
 /// <summary>Marks a per-engine implementation so a composite can gather every one registered (see <see cref="IDispatchTitleUnmonitorService"/>).</summary>

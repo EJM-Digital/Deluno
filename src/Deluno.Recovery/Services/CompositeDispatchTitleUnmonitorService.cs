@@ -12,6 +12,19 @@ public sealed class CompositeDispatchTitleUnmonitorService(IEnumerable<IDispatch
 {
     public bool CanHandle(string entityType) => components.Any(component => component.CanHandle(entityType));
 
+    public async Task<bool?> HasFileAsync(string entityType, string entityId, CancellationToken cancellationToken)
+    {
+        foreach (var component in components)
+        {
+            if (component.CanHandle(entityType))
+            {
+                return await component.HasFileAsync(entityType, entityId, cancellationToken);
+            }
+        }
+
+        return null;
+    }
+
     public async Task<bool> UnmonitorAsync(string entityType, string entityId, CancellationToken cancellationToken)
     {
         foreach (var component in components)
