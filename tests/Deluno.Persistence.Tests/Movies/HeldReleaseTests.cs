@@ -1,9 +1,11 @@
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -84,7 +86,7 @@ public sealed class HeldReleaseTests
     public async Task The_stored_plan_keeps_the_held_candidates_link_when_a_search_with_many_releases_is_trimmed()
     {
         var many = string.Join(",", Enumerable.Range(0, 20).Select(index => $$"""{"releaseName":"R{{index}}","decisionStatus":"held","downloadUrl":"https://indexer.example/get/{{index}}"}"""));
-        var plan = """{"bestCandidate":{"releaseName":"Best","indexerName":"Nyaa","decisionStatus":"held","downloadUrl":"https://indexer.example/get/best"},"candidates":[""" + many + "]}";
+        var plan = """{"bestCandidate":{"releaseName":"Many.Releases.2008.1080p.WEB-GRP","indexerName":"Nyaa","decisionStatus":"held","downloadUrl":"https://indexer.example/get/best"},"candidates":[""" + many + "]}";
         var (storage, movies) = await CreateAsync();
         using var _ = storage;
         await HeldMovieAsync(movies, "Many Releases", plan: plan);
@@ -92,6 +94,123 @@ public sealed class HeldReleaseTests
         var item = Assert.Single(await new SqliteHeldReleaseReader(storage.Factory).ListAsync(50, CancellationToken.None));
 
         Assert.Equal("https://indexer.example/get/best", item.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task A_film_that_has_its_file_since_is_not_listed_and_approving_it_is_refused_in_plain_words()
+    {
+        var (storage, movies) = await CreateAsync();
+        using var _ = storage;
+        var id = await HeldMovieAsync(movies, "Big Buck Bunny");
+        var reader = new SqliteHeldReleaseReader(storage.Factory);
+        var held = Assert.Single(await reader.ListAsync(50, CancellationToken.None));
+
+        await movies.EnsureWantedStateAsync(id, "lib", "covered", "Has its file", hasFile: true, "WEB 2160p", "WEB 1080p", true, CancellationToken.None);
+
+        Assert.Empty(await reader.ListAsync(50, CancellationToken.None));
+        var check = await reader.CheckAsync(held.HistoryId, CancellationToken.None);
+        Assert.False(check!.IsOffered);
+        Assert.Contains("no longer needs a release", check.Refusal);
+    }
+
+    [Fact]
+    public async Task A_film_release_the_title_rules_refuse_now_is_not_listed_and_approving_it_is_refused()
+    {
+        var (storage, movies) = await CreateAsync();
+        using var _ = storage;
+        await HeldMovieAsync(movies, "Something Else Entirely");
+        var reader = new SqliteHeldReleaseReader(storage.Factory);
+
+        Assert.Empty(await reader.ListAsync(50, CancellationToken.None));
+    }
+
+    private const string SimpsonsPlan =
+        """{"bestCandidate":{"releaseName":"The.Simpsons.S38E02.The.Childrens.Book.Job.1080p.DSNP.WEB-DL.DDP5.1.H.264-FLUX","indexerName":"EZTV","indexerId":"ix2","quality":"WEB 1080p","sizeBytes":719000000,"seeders":9,"downloadUrl":"https://indexer.example/get/2","decisionStatus":"held","summary":"Eligible under the typed release plan."}}""";
+
+    private static async Task<(string SeriesId, string[] EpisodeIds, SqliteSeriesCatalogRepository Series)> HeldSeriesAsync(TestStorage storage, string wantedStatusOfEpisode2, string plan = SimpsonsPlan)
+    {
+        var time = new FixedTimeProvider(Now);
+        var series = new SqliteSeriesCatalogRepository(storage.Factory, time);
+        var added = await series.AddAsync(new CreateSeriesRequest("The Simpsons", 1989, null), CancellationToken.None);
+        var ids = new List<string>();
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None))
+        {
+            foreach (var (number, title, status) in new[] { (1, "The Childrens Book Job", "covered"), (2, "Another Story Altogether", wantedStatusOfEpisode2) })
+            {
+                var episodeId = Guid.CreateVersion7().ToString("N");
+                ids.Add(episodeId);
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    INSERT INTO episode_entries (id, series_id, season_number, episode_number, title, monitored, has_file, created_utc, updated_utc)
+                    VALUES (@id, @series, 38, @number, @title, 1, 0, @now, @now);
+                    INSERT INTO episode_wanted_state (episode_id, series_id, library_id, wanted_status, wanted_reason, updated_utc)
+                    VALUES (@id, @series, 'lib', @status, 'test', @now);
+                    """;
+                foreach (var (name, value) in new (string, object)[] { ("@id", episodeId), ("@series", added.Id), ("@number", number), ("@title", title), ("@status", status), ("@now", Now.ToString("O")) })
+                {
+                    var parameter = command.CreateParameter();
+                    parameter.ParameterName = name;
+                    parameter.Value = value;
+                    command.Parameters.Add(parameter);
+                }
+
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+        }
+
+        await series.RecordSearchAttemptAsync(added.Id, ids[1], "lib", "automatic", "held", Now.AddHours(-1), null, "Held.", "name", "EZTV", plan, CancellationToken.None);
+        return (added.Id, [.. ids], series);
+    }
+
+    [Fact]
+    public async Task An_episode_that_has_its_file_since_is_not_listed()
+    {
+        var (storage, _) = await CreateAsync();
+        using var _ = storage;
+        // Episode 2 is covered. The held release was written by an older build.
+        await HeldSeriesAsync(storage, "covered", SimpsonsPlan.Replace("S38E02.The.Childrens.Book.Job", "S38E02.Another.Story.Altogether"));
+
+        Assert.Empty(await new SqliteHeldReleaseReader(storage.Factory).ListAsync(50, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_held_release_carrying_another_episodes_title_is_not_listed_and_approving_it_gives_the_reason()
+    {
+        var (storage, _) = await CreateAsync();
+        using var _ = storage;
+        // Episode 2 still missing, but the release names S38E02 with the title of S38E01.
+        var (_, _, series) = await HeldSeriesAsync(storage, "missing");
+        var reader = new SqliteHeldReleaseReader(storage.Factory);
+
+        Assert.Empty(await reader.ListAsync(50, CancellationToken.None));
+        var historyId = (await reader.CheckAsync(await FirstHistoryIdAsync(storage), CancellationToken.None))!;
+        Assert.False(historyId.IsOffered);
+        Assert.False(string.IsNullOrWhiteSpace(historyId.Refusal));
+    }
+
+    [Fact]
+    public async Task A_still_valid_held_episode_is_listed_and_approvable()
+    {
+        var (storage, _) = await CreateAsync();
+        using var _ = storage;
+        await HeldSeriesAsync(storage, "missing", SimpsonsPlan.Replace("S38E02.The.Childrens.Book.Job", "S38E02.Another.Story.Altogether"));
+        var reader = new SqliteHeldReleaseReader(storage.Factory);
+
+        var item = Assert.Single(await reader.ListAsync(50, CancellationToken.None));
+
+        Assert.Equal("S38E02", item.EpisodeLabel);
+        var check = await reader.CheckAsync(item.HistoryId, CancellationToken.None);
+        Assert.True(check!.IsOffered);
+        Assert.Null(check.Refusal);
+    }
+
+    private static async Task<string> FirstHistoryIdAsync(TestStorage storage)
+    {
+        await using var connection = await storage.Factory.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM series_search_history WHERE outcome = 'held' LIMIT 1;";
+        return (string)(await command.ExecuteScalarAsync(CancellationToken.None))!;
     }
 
     [Fact]

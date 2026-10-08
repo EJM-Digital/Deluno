@@ -279,6 +279,7 @@ GET /health
 PATCH /api/settings/
 POST /api/activity/clear
 POST /api/api-keys/
+POST /api/attention/held-releases/{historyId}/approve
 POST /api/attention/held-releases/{historyId}/dismiss
 POST /api/attention/no-release/{mediaType}/{id}/dismiss
 POST /api/auth/bootstrap
