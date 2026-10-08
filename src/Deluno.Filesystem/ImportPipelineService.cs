@@ -398,7 +398,13 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status409Conflict, wrongRelease);
         }
 
-        if (File.Exists(preview.DestinationPath) && !request.Overwrite)
+        // A title removed without its files and added again finds its own file still at the
+        // destination. The identical file is the title's file: link it, never overwrite it.
+        var adoptExisting = File.Exists(preview.DestinationPath)
+            && !request.Overwrite
+            && IsSameContent(preview.SourcePath, preview.DestinationPath);
+
+        if (File.Exists(preview.DestinationPath) && !request.Overwrite && !adoptExisting)
         {
             const string message = "The destination file already exists. Enable overwrite or choose a different naming/routing rule.";
             await RecordImportFailureAsync(
@@ -593,7 +599,10 @@ public sealed partial class ImportPipelineService(
         // marker records enough to finish or undo the import automatically on
         // the next startup (#913) - it is deleted the moment the file is
         // safely placed or the attempt is rolled back.
-        WriteRestartMarker(stagingPath, preview.SourcePath, preview.DestinationPath, mediaType, TitleForActivity(request.Preview));
+        if (!adoptExisting)
+        {
+            WriteRestartMarker(stagingPath, preview.SourcePath, preview.DestinationPath, mediaType, TitleForActivity(request.Preview));
+        }
 
         try
         {
@@ -604,64 +613,73 @@ public sealed partial class ImportPipelineService(
                 File.Move(preview.DestinationPath, backupPath, overwrite: true);
             }
 
-            if (mode == "hardlink")
+            if (adoptExisting)
             {
-                if (!preview.HardlinkAvailable)
-                {
-                    const string message = "Hardlinking is not available for these paths. Use copy fallback or choose paths on the same filesystem.";
-                    if (!request.AllowCopyFallback)
-                    {
-                        RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
-                        await RecordImportFailureAsync(
-                            request,
-                            request.Preview,
-                            "hardlinkUnavailable",
-                            message,
-                            "Enable copy fallback or place downloads and the library on the same filesystem so hardlinks can be created.",
-                            cancellationToken);
-                        return Failed(StatusCodes.Status400BadRequest, message);
-                    }
-
-                    AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
-                    usedFallback = true;
-                    mode = "copy";
-                }
-                else if (!TryCreateHardlink(preview.SourcePath, stagingPath, out var hardlinkError))
-                {
-                    if (!request.AllowCopyFallback)
-                    {
-                        RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
-                        await RecordImportFailureAsync(
-                            request,
-                            request.Preview,
-                            "hardlinkFailed",
-                            hardlinkError,
-                            "Enable copy fallback, check filesystem permissions, or import from a path where the OS allows hardlinks.",
-                            cancellationToken);
-                        return Failed(StatusCodes.Status400BadRequest, hardlinkError);
-                    }
-
-                    TryDelete(stagingPath);
-                    AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
-                    usedFallback = true;
-                    mode = "copy";
-                }
-            }
-            else if (mode == "move")
-            {
-                File.Move(preview.SourcePath, stagingPath, overwrite: false);
-                restoreSourceOnFailure = true;
+                // Nothing to place: the destination already holds this very file.
+                mode = "copy";
             }
             else
             {
-                AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
-                mode = "copy";
+                if (mode == "hardlink")
+                {
+                    if (!preview.HardlinkAvailable)
+                    {
+                        const string message = "Hardlinking is not available for these paths. Use copy fallback or choose paths on the same filesystem.";
+                        if (!request.AllowCopyFallback)
+                        {
+                            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+                            await RecordImportFailureAsync(
+                                request,
+                                request.Preview,
+                                "hardlinkUnavailable",
+                                message,
+                                "Enable copy fallback or place downloads and the library on the same filesystem so hardlinks can be created.",
+                                cancellationToken);
+                            return Failed(StatusCodes.Status400BadRequest, message);
+                        }
+
+                        AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
+                        usedFallback = true;
+                        mode = "copy";
+                    }
+                    else if (!TryCreateHardlink(preview.SourcePath, stagingPath, out var hardlinkError))
+                    {
+                        if (!request.AllowCopyFallback)
+                        {
+                            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+                            await RecordImportFailureAsync(
+                                request,
+                                request.Preview,
+                                "hardlinkFailed",
+                                hardlinkError,
+                                "Enable copy fallback, check filesystem permissions, or import from a path where the OS allows hardlinks.",
+                                cancellationToken);
+                            return Failed(StatusCodes.Status400BadRequest, hardlinkError);
+                        }
+
+                        TryDelete(stagingPath);
+                        AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
+                        usedFallback = true;
+                        mode = "copy";
+                    }
+                }
+                else if (mode == "move")
+                {
+                    File.Move(preview.SourcePath, stagingPath, overwrite: false);
+                    restoreSourceOnFailure = true;
+                }
+                else
+                {
+                    AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
+                    mode = "copy";
+                }
+
+                var stagedSize = VerifyStagedImport(stagingPath);
+                File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
+                VerifyFinalImport(preview.DestinationPath, stagedSize);
+                DeleteRestartMarker(stagingPath);
             }
 
-            var stagedSize = VerifyStagedImport(stagingPath);
-            File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
-            VerifyFinalImport(preview.DestinationPath, stagedSize);
-            DeleteRestartMarker(stagingPath);
             await ApplyImportPermissionsAsync(preview.DestinationPath, settings, cancellationToken);
 
             var catalogImportResult = await MarkCatalogImportedAsync(
@@ -773,7 +791,8 @@ public sealed partial class ImportPipelineService(
 
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
-                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary,
+                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary
+                    + (adoptExisting ? " The identical file was already in the library, so Deluno linked it to the title instead of copying it again." : string.Empty),
                 JsonSerializer.Serialize(provenance),
                 null,
                 mediaType == "tv" ? "series" : "movie",
@@ -914,7 +933,7 @@ public sealed partial class ImportPipelineService(
         }
         catch (UnauthorizedAccessException)
         {
-            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure, keepDestination: adoptExisting);
             const string message = "Deluno does not have permission to import this file.";
             await RecordImportFailureAsync(
                 request,
@@ -927,7 +946,7 @@ public sealed partial class ImportPipelineService(
         }
         catch (IOException ioException)
         {
-            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure, keepDestination: adoptExisting);
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -942,7 +961,7 @@ public sealed partial class ImportPipelineService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure, keepDestination: adoptExisting);
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -4536,6 +4555,53 @@ public sealed partial class ImportPipelineService(
         public string Summary => Messages.Count == 0 ? string.Empty : " " + string.Join(" ", Messages);
     }
 
+    /// <summary>
+    /// True when two files are the same bytes: same size and the same content in the
+    /// head, middle and tail of the file (a full hash of a film over a share is slow).
+    /// </summary>
+    internal static bool IsSameContent(string firstPath, string secondPath)
+    {
+        try
+        {
+            var first = new FileInfo(firstPath);
+            var second = new FileInfo(secondPath);
+            if (!first.Exists || !second.Exists || first.Length != second.Length || first.Length == 0)
+            {
+                return false;
+            }
+
+            const int chunk = 1024 * 1024;
+            var length = first.Length;
+            long[] offsets = [0, Math.Max(0, length / 2 - chunk / 2), Math.Max(0, length - chunk)];
+            using var a = new FileStream(firstPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var b = new FileStream(secondPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var bufferA = new byte[chunk];
+            var bufferB = new byte[chunk];
+            foreach (var offset in offsets.Distinct())
+            {
+                var count = (int)Math.Min(chunk, length - offset);
+                a.Seek(offset, SeekOrigin.Begin);
+                b.Seek(offset, SeekOrigin.Begin);
+                a.ReadExactly(bufferA, 0, count);
+                b.ReadExactly(bufferB, 0, count);
+                if (!bufferA.AsSpan(0, count).SequenceEqual(bufferB.AsSpan(0, count)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static void AtomicCopy(string sourcePath, string destinationPath, bool overwrite)
     {
         var temporaryPath = BuildTemporaryPath(destinationPath, ".deluno-copy");
@@ -4595,11 +4661,15 @@ public sealed partial class ImportPipelineService(
         string destinationPath,
         string stagingPath,
         string? backupPath,
-        bool restoreSourceOnFailure)
+        bool restoreSourceOnFailure,
+        bool keepDestination = false)
     {
         RestoreMovedSourceIfNeeded(sourcePath, destinationPath, stagingPath, restoreSourceOnFailure);
         TryDelete(stagingPath);
-        TryDelete(destinationPath);
+        if (!keepDestination)
+        {
+            TryDelete(destinationPath);
+        }
         if (File.Exists(backupPath))
         {
             File.Move(backupPath, destinationPath, overwrite: true);

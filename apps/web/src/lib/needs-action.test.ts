@@ -180,6 +180,22 @@ describe("needsAction", () => {
     expect(result.total).toBe(1);
   });
 
+  it("lists a failed hand-off's download once, as the hand-off row, not also as the client's item", () => {
+    const handoff = {
+      id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "client-1", queueItemId: "hash-1", releaseName: "Oppenheimer.2023.REPACK",
+      sourcePath: "/downloads/oppenheimer", processorName: "Weir", status: "failed", outputPath: null, importJobId: null,
+      failureMessage: "The processor refused the hand-off with HTTP 400", createdUtc: "2026-10-07T03:00:00Z", updatedUtc: "2026-10-07T03:00:00Z"
+    } as ProcessorHandoffItem;
+    const item = { id: "hash-1", clientId: "client-1", status: "processingFailed", errorMessage: handoff.failureMessage };
+    const telemetry = { clients: [{ queue: [item] }] } as unknown as DownloadTelemetryOverview;
+
+    const result = needsAction({ telemetry, handoffs: [handoff] });
+
+    expect(result.failedHandoffs).toHaveLength(1);
+    expect(result.queueAttention).toHaveLength(0);
+    expect(result.total).toBe(1);
+  });
+
   it("counts each orphaned download folder once, beside everything else (#588)", () => {
     const orphan = {
       path: "C:\\Deluno\\Downloads-Complete\\TV\\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.1",

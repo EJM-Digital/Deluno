@@ -154,6 +154,8 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
       .filter((dispatch) => coveredByCase.has(dispatch.id) && dispatch.torrentHashOrItemId)
       .map((dispatch) => `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase())
   );
+  // The download of a failed hand-off is that hand-off's row, which carries the fixes: it is not also listed as the client's item.
+  for (const handoff of failedHandoffs) coveredClientItems.add(`${handoff.clientId}:${handoff.queueItemId}`.toLowerCase());
   const queueAttention = unfilteredQueueAttention.filter((item) => !coveredClientItems.has(`${item.clientId}:${item.id}`.toLowerCase()));
   const byTitleAndRelease = new Map<string, FailedDownloadRow>();
   for (const dispatch of (sources.dispatches ?? []).filter(isDispatchFailure)) {

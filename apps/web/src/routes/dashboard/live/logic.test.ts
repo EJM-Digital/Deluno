@@ -112,7 +112,7 @@ describe("the journey of a title", () => {
     expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:a"]);
     expect(grouped.downloading[0]).toMatchObject({ client: "Deluge", indexer: "NZBgeek", progress: 40, state: { label: "Downloading", tone: "info" } });
     expect(grouped.importing.map((card) => card.key)).toEqual(["c1:c"]);
-    expect(grouped.processor[0].state.label).toBe("Waiting for the processor");
+    expect(grouped.processor[0].state.label).toBe("Being handed over");
     expect(cards.some((card) => card.key === "c1:e")).toBe(false);
   });
 

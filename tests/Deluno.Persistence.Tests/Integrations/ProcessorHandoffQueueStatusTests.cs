@@ -50,6 +50,14 @@ public sealed class ProcessorHandoffQueueStatusTests
             ProcessorHandoffQueueStatus.Resolve(Handoff(status), Jobs(), DownloadQueueStatuses.ImportReady));
     }
 
+    [Fact]
+    public void A_dismissed_hand_off_is_never_a_problem()
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.Imported,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("dismissed"), Jobs(), DownloadQueueStatuses.Imported));
+    }
+
     [Theory]
     [InlineData("rejected")]
     [InlineData("timed-out")]

@@ -19,6 +19,11 @@ public sealed class SeriesDispatchTitleUnmonitorService(ISeriesCatalogRepository
 {
     public bool CanHandle(string entityType) => entityType is "series" or "episode";
 
+    public async Task<bool?> HasFileAsync(string entityType, string entityId, CancellationToken cancellationToken)
+        => entityType == "episode"
+            ? !string.IsNullOrWhiteSpace(await catalogRepository.GetEpisodeFilePathAsync(entityId, cancellationToken))
+            : null;
+
     public async Task<bool> UnmonitorAsync(string entityType, string entityId, CancellationToken cancellationToken)
     {
         if (entityType == "episode")

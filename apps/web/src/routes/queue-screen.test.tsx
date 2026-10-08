@@ -986,6 +986,39 @@ describe("Transfers: one line per download, help said once", () => {
   });
 });
 
+/** Rig, 8 Oct (#1155): for a few seconds the download has finished and no hand-off exists yet. */
+describe("Transfers: before the hand-off exists", () => {
+  afterEach(() => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
+    queueLoaderData.processorHandoffs = [];
+  });
+
+  it("says the download is being handed over, not that it waits for the processor", () => {
+    const item = {
+      id: "qbit-9", clientId: "qbit-client", clientName: "qBittorrent", protocol: "qbittorrent", mediaType: "movies",
+      title: "Just.Finished.2026.1080p-GROUP", releaseName: "Just.Finished.2026.1080p-GROUP", category: "movies", status: "waitingForProcessor", progress: 100, speedMbps: 0,
+      etaSeconds: 0, sizeBytes: 1_000_000_000, downloadedBytes: 1_000_000_000, peers: 0, indexerName: "Fixture indexer",
+      errorMessage: null, addedUtc: new Date().toISOString(), sourcePath: null, libraryId: null, healthFindings: null
+    } as DownloadQueueItem;
+    queueLoaderData.telemetry = {
+      ...queueLoaderData.telemetry,
+      clients: [{
+        clientId: "qbit-client", clientName: "qBittorrent", protocol: "qbittorrent", endpointUrl: null, healthStatus: "healthy", lastHealthMessage: null,
+        capabilities: { supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true, supportsRecheck: true, supportsImportPath: true, authMode: "form" },
+        summary: { activeCount: 0, queuedCount: 0, completedCount: 1, stalledCount: 0, processingCount: 1, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 1 },
+        queue: [item], history: [], capturedUtc: new Date().toISOString(), historyTruncated: false
+      }]
+    };
+    queueLoaderData.processorHandoffs = [];
+
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    expect(screen.getAllByText("Handing over").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Waiting for processor/i)).toBeNull();
+    expect(screen.queryByText(/Waiting for the cleaned output/i)).toBeNull();
+  });
+});
+
 /**
  * #1171: a one-file manual import says whose show it is, will not queue a TV
  * file that matched nothing, and cannot be queued twice.

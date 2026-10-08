@@ -2578,6 +2578,73 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// A title removed without its files and added again finds its own identical file still at the
+    /// destination. The import takes that file as the title's, deletes the second copy and never
+    /// overwrites; a different file at the destination is still refused.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_title_that_came_back_while_its_old_file_sits_at_the_destination_adopts_it_only_when_identical(bool identical)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Nosferatu.1922.WEB.1080p.mkv");
+        var bytes = Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray();
+        await File.WriteAllBytesAsync(sourcePath, bytes);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var destinationPath = Path.Combine(movieRootPath, "Nosferatu (1922)", "Nosferatu (1922) [WEB 1080p].mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        var existing = (byte[])bytes.Clone();
+        if (!identical)
+        {
+            existing[100] ^= 0xFF;
+            existing[existing.Length - 5] ^= 0xFF;
+        }
+        await File.WriteAllBytesAsync(destinationPath, existing);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Nosferatu", Year: 1922, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null, ImdbId: "tt0013442"),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.Equal(existing, await File.ReadAllBytesAsync(destinationPath));
+        if (identical)
+        {
+            Assert.True(result.Succeeded);
+            Assert.True(result.Response?.CatalogUpdated);
+            Assert.False(File.Exists(sourcePath), "the second copy is deleted");
+            var movie = Assert.Single(await movies.ListAsync(CancellationToken.None));
+            Assert.Equal("Nosferatu", movie.Title);
+        }
+        else
+        {
+            Assert.False(result.Succeeded);
+            Assert.Equal(409, result.StatusCode);
+            Assert.True(File.Exists(sourcePath));
+        }
+    }
+
+    /// <summary>
     /// The opt-in "remove source after import" setting still governs a
     /// hardlink import unchanged (#936: never flip an existing install's
     /// automatic behaviour on) - a hardlinked source is the same bytes as the
@@ -4111,6 +4178,69 @@ public sealed class ImportPipelineServiceTests
             && e.Message.Contains("S01E01") && e.Message.Contains("now shows its own file") && e.Message.Contains("Chernobyl.S01E01"));
 
         Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #1174: an episode whose link the earlier repair cleared, with its own correctly named file still in the show's
+    /// folder, is linked again by a library check, and by reviewing the existing files; a file named for another
+    /// episode is never taken for it.
+    /// </summary>
+    [Theory]
+    [InlineData("check")]
+    [InlineData("review")]
+    public async Task An_episode_that_shows_no_file_gets_its_own_file_from_the_shows_folder(string how)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        var seriesRoot = Path.Combine(storage.DataRoot, "series");
+        var folder = Directory.CreateDirectory(Path.Combine(seriesRoot, "The Twilight Zone (1959)")).FullName;
+        var library = await CreateTvLibraryAsync(libraries, seriesRoot, Path.Combine(storage.DataRoot, "downloads"));
+        var first = Path.Combine(folder, "The Twilight Zone - S01E01 - Where Is Everybody [WEB 1080p].mkv");
+        var second = Path.Combine(folder, "The Twilight Zone - S01E02 - One for the Angels [WEB 1080p].mkv");
+        var stray = Path.Combine(folder, "The Twilight Zone - S01E09 - Mr. Denton on Doomsday [WEB 1080p].mkv");
+        await File.WriteAllBytesAsync(first, new byte[16]);
+        await File.WriteAllBytesAsync(second, new byte[24]);
+        await File.WriteAllBytesAsync(stray, new byte[8]);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        await seriesRepository.ImportExistingAsync(
+            library.Id, "The Twilight Zone", 1959, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: first, FileSizeBytes: 16),
+                new ImportedEpisodeItem(1, 2, HasFile: false, FilePath: null, FileSizeBytes: null),
+                new ImportedEpisodeItem(1, 3, HasFile: false, FilePath: null, FileSizeBytes: null)
+            ],
+            CancellationToken.None);
+        var seriesId = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None)).Id;
+        Assert.Null(await LinkedFileAsync(storage, seriesId, 2));
+
+        if (how == "check")
+        {
+            var relinked = Assert.Single(await seriesRepository.RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken.None));
+            Assert.Equal(2, relinked.EpisodeNumber);
+            Assert.Empty(await seriesRepository.RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken.None));
+        }
+        else
+        {
+            await seriesRepository.ImportExistingAsync(
+                library.Id, "The Twilight Zone", 1959, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+                null, null,
+                [
+                    new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: first, FileSizeBytes: 16),
+                    new ImportedEpisodeItem(1, 2, HasFile: true, FilePath: second, FileSizeBytes: 24)
+                ],
+                CancellationToken.None);
+        }
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        var two = detail!.Episodes.Single(e => e.EpisodeNumber == 2);
+        Assert.True(two.HasFile);
+        Assert.NotEqual("missing", two.WantedStatus);
+        Assert.Equal(second, await LinkedFileAsync(storage, seriesId, 2));
+        Assert.False(detail.Episodes.Single(e => e.EpisodeNumber == 3).HasFile);
     }
 
     /// <summary>#761: a dated show is named with DailyEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>

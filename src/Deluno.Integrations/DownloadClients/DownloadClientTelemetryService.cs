@@ -319,18 +319,23 @@ public sealed class DownloadClientTelemetryService(
                 // lists (an empty own list is not "the client lost it"), so it
                 // reads the whole answer while only Deluno's own is kept.
                 liveSnapshot = await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken, split.WholeAnswer);
-                snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
-                    EnrichQueueImportState(
-                        EnrichWithDispatchHistory(
-                            liveSnapshot,
-                            clientDispatches,
-                            capturedUtc),
-                        libraries,
+                var enriched = EnrichQueueImportState(
+                    EnrichWithDispatchHistory(
+                        liveSnapshot,
                         clientDispatches,
+                        capturedUtc),
+                    libraries,
+                    clientDispatches,
+                    settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    importJobs,
+                    handoffs,
+                    routeCategoriesByLibrary);
+                snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
+                    await DemoteImportedWithoutItsFileAsync(
+                        enriched,
                         settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-                        importJobs,
-                        handoffs,
-                        routeCategoriesByLibrary)));
+                        titleUnmonitorService,
+                        cancellationToken)));
                 continue;
             }
 
@@ -3089,6 +3094,48 @@ public sealed class DownloadClientTelemetryService(
             History = historyItems.Take(DownloadClientTelemetryLimits.HistoryWindow).ToArray(),
             HistoryTruncated = snapshot.HistoryTruncated || historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow
         };
+    }
+
+    /// <summary>
+    /// "In library" is a claim about the title, so it needs the title to hold its file. A download
+    /// whose import was recorded but whose film or episode has no file (removed and added again,
+    /// or the link cleared by a repair) reads as ready to import, never as in the library.
+    /// </summary>
+    internal static async Task<DownloadClientTelemetrySnapshot> DemoteImportedWithoutItsFileAsync(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches,
+        IDispatchTitleUnmonitorService? titleFiles,
+        CancellationToken cancellationToken)
+    {
+        if (titleFiles is null || !snapshot.Queue.Any(item => item.Status == DownloadQueueStatuses.Imported))
+        {
+            return snapshot;
+        }
+
+        var queue = new List<DownloadQueueItem>(snapshot.Queue.Count);
+        foreach (var item in snapshot.Queue)
+        {
+            if (item.Status == DownloadQueueStatuses.Imported)
+            {
+                var dispatch = settledDispatches
+                    .Where(candidate =>
+                        string.Equals(candidate.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(candidate.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(candidate => candidate.CreatedUtc)
+                    .FirstOrDefault();
+                if (dispatch is not null
+                    && !string.IsNullOrWhiteSpace(dispatch.EntityId)
+                    && await titleFiles.HasFileAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) == false)
+                {
+                    queue.Add(item with { Status = DownloadQueueStatuses.ImportReady });
+                    continue;
+                }
+            }
+
+            queue.Add(item);
+        }
+
+        return snapshot with { Queue = queue };
     }
 
     internal static DownloadClientTelemetrySnapshot EnrichQueueImportState(
