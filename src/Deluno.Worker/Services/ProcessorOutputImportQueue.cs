@@ -223,14 +223,14 @@ internal static class CatalogueImportNaming
 
         if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
         {
-            var film = (await movieCatalogRepository.ListAsync(cancellationToken))
+            var film = ((await movieCatalogRepository.ListAsync(cancellationToken)) ?? [])
                 .FirstOrDefault(item => ReleaseTitleMatch.Clean(item.Title) == wanted && (year is null || item.ReleaseYear == year));
             return film is null ? null : dispatch with { EntityId = film.Id };
         }
 
         if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
         {
-            var show = (await seriesCatalogRepository.ListAsync(cancellationToken))
+            var show = ((await seriesCatalogRepository.ListAsync(cancellationToken)) ?? [])
                 .FirstOrDefault(item => ReleaseTitleMatch.Clean(item.Title) == wanted);
             return show is null ? null : dispatch with { EntityId = show.Id };
         }
