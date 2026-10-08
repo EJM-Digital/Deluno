@@ -57,6 +57,25 @@ describe("needsAction", () => {
     expect(result.total).toBe(1);
   });
 
+  // #1167: the Nosferatu import was listed as its dead-lettered job and again as its recovery case.
+  it("lists an import that failed once, not as the failed job and again as its case", () => {
+    const job = {
+      id: "job-1", jobType: "filesystem.import.execute", status: "dead-letter", attempts: 3, maxAttempts: 3, nextAttemptUtc: null,
+      payloadJson: JSON.stringify({ DispatchId: "d1" }), lastError: "The destination file already exists."
+    } as never;
+    const otherJob = { ...(job as object), id: "job-2", payloadJson: JSON.stringify({ DispatchId: "d-other" }) } as never;
+
+    const result = needsAction({
+      movieRecovery: recovery([{ id: "case-1", dispatchId: "d1" }]),
+      seriesRecovery: noSeriesRecovery,
+      dispatches: [dispatch({ id: "d1" })],
+      failedJobs: [job, otherJob]
+    });
+
+    expect(result.recoveryCases.map((item) => item.id)).toEqual(["case-1"]);
+    expect(result.failedImportJobs.map((item) => item.id)).toEqual(["job-2"]);
+  });
+
   it("folds a release refused on every cycle into one row that says how often", () => {
     const blocked = (id: string, createdUtc: string) =>
       dispatch({ id, status: "blocked", grabStatus: "blocked", grabFailureCode: null, releaseName: "Big.Buck.Bunny.2008.1080p.WEB-DL-DELUNO", entityId: "movie-bbb", createdUtc });

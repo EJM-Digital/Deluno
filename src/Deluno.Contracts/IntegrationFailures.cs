@@ -99,7 +99,10 @@ public sealed record IntegrationFailure(
 
     /// <summary>A short sentence suitable for Health, Activity, and transfer cards.</summary>
     public string Summary
-        => $"{ServiceName} {Operation} failed: {Message}";
+        // "Deluno import" + "import" read "Deluno import import failed".
+        => ServiceName.EndsWith(Operation, StringComparison.OrdinalIgnoreCase)
+            ? $"{ServiceName} failed: {Message}"
+            : $"{ServiceName} {Operation} failed: {Message}";
 
     /// <summary>What Deluno can safely tell the person to do next.</summary>
     public string NextAction => Kind switch
