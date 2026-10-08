@@ -61,8 +61,9 @@ routes get you back in without a browser session:
 ## Enforcement
 
 A single middleware (`Deluno.Security.Hardening.DelunoAllowedHostsMiddleware`)
-runs ahead of routing in both `Deluno.Host/Program.cs` and the Windows tray's
-embedded server (`apps/windows-tray/DelunoServer.cs`), so it covers the web
+runs ahead of routing in every host through the shared request pipeline
+(`Deluno.Worker/DelunoRequestPipeline.cs`, used by `Deluno.Host/Program.cs`, the
+Windows tray's embedded server `apps/windows-tray/DelunoServer.cs` and the Windows service), so it covers the web
 UI, the JSON API, SignalR/websocket upgrades, and the external integration
 API (`docs/external-integration-api.md`) alike. `X-Forwarded-Host` is honoured
 via `ForwardedHeadersMiddleware`, and a refused host is logged once (not once
