@@ -100,6 +100,8 @@ internal static class InstallHooks
         try
         {
             var results = ComponentPickerDialog.ShowOnce();
+            // An app GitHub's limit stopped is kept for the tray to offer again once the limit lifts.
+            PendingInstallRecorder.Record(results);
             foreach (var result in results)
             {
                 LogHook($"component '{result.Kind}': {result.Outcome}: {result.Message}");
