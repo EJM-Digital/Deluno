@@ -1192,7 +1192,7 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
         ) : null}
         {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="Movies downloads folder (optional)" copy="Where your download client finishes Movies. Leave it blank and Deluno reads it from the download clients you connected.">
-            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\Movies" browseTitle="Choose Movies downloads folder" />
+            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\films" browseTitle="Choose Movies downloads folder" />
           </FieldShell>
         ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
@@ -1202,7 +1202,7 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
         ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="TV downloads folder (optional)" copy="Where your download client finishes TV. Leave it blank and Deluno reads it from the download clients you connected.">
-            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\TV" browseTitle="Choose TV downloads folder" />
+            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\shows" browseTitle="Choose TV downloads folder" />
           </FieldShell>
         ) : null}
       </div>
