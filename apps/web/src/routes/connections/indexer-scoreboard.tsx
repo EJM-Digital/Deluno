@@ -7,6 +7,13 @@ import { SummaryStrip } from "../../components/ui/summary-strip";
 const numberFormat = new Intl.NumberFormat();
 const percentFormat = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 });
 
+/** A removed indexer's history can carry no name at all: say what it is rather than print a row with no label. */
+function scoreboardName(row: Pick<IndexerScoreboardRow, "name" | "healthStatus">) {
+  const name = row.name?.trim();
+  if (name) return name;
+  return row.healthStatus === "removed" ? "A removed indexer" : "An unnamed indexer";
+}
+
 export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSnapshot }) {
   const rows = snapshot.indexers;
   return (
@@ -67,7 +74,7 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
               listId="indexer-scoreboard"
               items={rows}
               columns={[
-                { id: "indexer", label: "Indexer", sort: (row) => row.name.toLowerCase() },
+                { id: "indexer", label: "Indexer", sort: (row) => scoreboardName(row).toLowerCase() },
                 { id: "queries", label: "Queries", sort: (row) => row.totalQueries },
                 { id: "response", label: "Response", sort: (row) => row.averageResponseMilliseconds },
                 { id: "failureRate", label: "Failure rate", sort: (row) => row.failureRate },
@@ -78,7 +85,7 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
             >
               {(rows) => rows.map((row) => (
                 <ListRow key={row.id}>
-                  <ListNameCell name={row.name} sub={row.recommendation} />
+                  <ListNameCell name={scoreboardName(row)} sub={row.recommendation} />
                   <ListCell numeric primary={numberFormat.format(row.totalQueries)} secondary={`Search ${numberFormat.format(row.searchQueries)} · RSS ${numberFormat.format(row.rssQueries)} · Auth ${numberFormat.format(row.authQueries)}`} />
                   <ListCell numeric primary={row.averageResponseMilliseconds === null ? "—" : `${numberFormat.format(Math.round(row.averageResponseMilliseconds))} ms`} secondary={numberFormat.format(row.candidatesReturned) + " candidates"} />
                   <ListCell numeric primary={<span className={row.failureRate >= 0.25 ? "text-destructive" : "text-foreground"}>{formatPercent(row.failureRate)}</span>} secondary={`${numberFormat.format(row.failedQueries)} failed`} />
@@ -127,7 +134,7 @@ function ScoreboardBars({
               <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center justify-between gap-3 text-(length:--type-caption)">
-                    <span className="truncate font-medium text-foreground">{row.name}</span>
+                    <span className="truncate font-medium text-foreground">{scoreboardName(row)}</span>
                     <span className="shrink-0 tabular-nums text-muted-foreground">{format(reading)}</span>
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-3">
