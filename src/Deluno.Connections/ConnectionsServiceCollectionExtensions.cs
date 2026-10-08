@@ -27,7 +27,8 @@ public static class ConnectionsServiceCollectionExtensions
         services.AddSingleton<IIndexerProxyHttpClientFactory, IndexerProxyHttpClientFactory>();
         // #1117: the newest stable release of each project a connection can be, read from its public feed in the
         // background at most once a day. Weir's feed is added by the companions module, which owns its repository name.
-        services.AddHttpClient(Versions.LatestReleaseService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient(Versions.LatestReleaseService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15))
+            .AddHttpMessageHandler(() => new Deluno.Infrastructure.Http.GitHubApiConditionalHandler());
         services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubTagsFeed(Versions.ConnectionProjects.Qbittorrent, "qbittorrent/qBittorrent", "release-"));
         services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubReleasesFeed(Versions.ConnectionProjects.Transmission, "transmission/transmission"));
         services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubTagsFeed(Versions.ConnectionProjects.Deluge, "deluge-torrent/deluge", "deluge-"));
