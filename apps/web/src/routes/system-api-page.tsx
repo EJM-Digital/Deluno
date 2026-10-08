@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { BookOpenText, Copy, KeyRound, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
 import { Badge } from "../components/ui/badge";
@@ -39,7 +41,11 @@ export async function systemApiLoader(): Promise<SystemApiLoaderData> {
   return { apiKeys, scopeTemplates };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { areas: [ConfigAreas.security] };
+
 export function SystemApiPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const loaderData = useLoaderData() as SystemApiLoaderData;
   const apiKeys = loaderData.apiKeys;
   const scopeTemplates = loaderData.scopeTemplates;

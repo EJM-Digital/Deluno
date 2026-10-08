@@ -30,7 +30,8 @@ public sealed class InstalledComponentWirer(
     IActivityFeedRepository activity,
     IDownloadClientRegistry? registry = null,
     IBundledComponentDetection? detection = null,
-    Deluno.Contracts.IHealthCheckRepository? healthChecks = null)
+    Deluno.Contracts.IHealthCheckRepository? healthChecks = null,
+    IRealtimeEventPublisher? realtime = null)
     : IInstalledComponentConnector, IDownloadClientDeletedHook
 {
     public const string ActivityCategory = "installer.components.connected";
@@ -169,6 +170,7 @@ public sealed class InstalledComponentWirer(
         if (ok)
         {
             record.MarkWired(kind);
+            await realtime.PublishBundledComponentChangedAsync(kind, cancellationToken);
             await RefreshHealthAsync(cancellationToken);
             await activity.RecordActivityAsync(ActivityCategory, $"You connected {name} to Deluno from the apps you installed. Its connection test passed.", null, null, null, null, cancellationToken);
             return new InstalledComponentConnectResult(kind, name, true, $"{name} is connected.");
@@ -196,6 +198,7 @@ public sealed class InstalledComponentWirer(
         if (outcome.Healthy)
         {
             record.MarkWired(CompanionToolIds.Weir);
+            await realtime.PublishBundledComponentChangedAsync(CompanionToolIds.Weir, cancellationToken);
             await activity.RecordActivityAsync(ActivityCategory, "You connected Weir to Deluno from the apps you installed, with your own Weir account. Deluno did not keep the account's password.", null, null, null, null, cancellationToken);
         }
 

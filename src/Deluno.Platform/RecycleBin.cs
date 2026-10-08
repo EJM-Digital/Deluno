@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -133,7 +134,8 @@ public interface IRecycleBinService
 public sealed class RecycleBinService(
     IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
-    ILogger<RecycleBinService> logger)
+    ILogger<RecycleBinService> logger,
+    IRealtimeEventPublisher? realtime = null)
     : IRecycleBinService
 {
     private const int DefaultRetentionDays = 30;
@@ -532,6 +534,7 @@ public sealed class RecycleBinService(
             }
 
             File.Move(temporary, StatePath, overwrite: true);
+            await realtime.PublishRecycleBinChangedAsync(cancellationToken);
         }
         finally
         {

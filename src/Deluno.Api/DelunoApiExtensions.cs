@@ -33,6 +33,7 @@ public static class DelunoApiExtensions
         services.AddSingleton<DatabaseIntegrityService>();
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseIntegrityService>());
         services.AddHostedService<SystemLogPushService>();
+        services.AddHostedService<SystemChangeWatcher>();
         services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.AddSingleton<DashboardMetricsCache>();

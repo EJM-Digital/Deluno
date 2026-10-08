@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Notifications;
@@ -30,6 +31,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     private readonly IReleaseNotesProvider _releaseNotesProvider;
     private readonly TimeProvider _timeProvider;
     private readonly IActivityFeedRepository? _activityFeed;
+    private readonly IRealtimeEventPublisher? _realtime;
     private bool _versionCheckedThisRun;
 
     public DefaultUpdateOrchestrator(
@@ -38,9 +40,11 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         IOutboundNotificationService outboundNotificationService,
         IReleaseNotesProvider? releaseNotesProvider = null,
         TimeProvider? timeProvider = null,
-        IActivityFeedRepository? activityFeed = null)
+        IActivityFeedRepository? activityFeed = null,
+        IRealtimeEventPublisher? realtime = null)
     {
         _activityFeed = activityFeed;
+        _realtime = realtime;
         _currentVersion = DelunoVersion.Running;
         _installKind = IsRunningInDocker() ? UpdateInstallKinds.Docker : UpdateInstallKinds.Manual;
         var dataRoot = Path.GetFullPath(storageOptions.Value.DataRoot);
@@ -64,24 +68,28 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     public async Task<UpdateStatusResponse> CheckForUpdatesAsync(CancellationToken cancellationToken)
     {
         var history = await DetectAppliedUpdateOnceAsync(cancellationToken);
+        await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
         return BuildStatus(history);
     }
 
     public async Task<UpdateStatusResponse> DownloadUpdatesAsync(CancellationToken cancellationToken)
     {
         var history = await DetectAppliedUpdateOnceAsync(cancellationToken);
+        await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
         return BuildStatus(history);
     }
 
     public async Task<UpdateStatusResponse> PrepareApplyOnNextRestartAsync(CancellationToken cancellationToken)
     {
         var history = await DetectAppliedUpdateOnceAsync(cancellationToken);
+        await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
         return BuildStatus(history);
     }
 
     public async Task<UpdateStatusResponse> ApplyAndRestartNowAsync(CancellationToken cancellationToken)
     {
         var history = await DetectAppliedUpdateOnceAsync(cancellationToken);
+        await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
         return BuildStatus(history);
     }
 
@@ -111,6 +119,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
                 AutoCheck = request.AutoCheck ?? current.AutoCheck
             };
             await WritePreferencesAsync(next, cancellationToken);
+            await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
             return ToResponse(next);
         }
         finally
@@ -220,6 +229,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
             }
 
             await WriteHistoryAsync(history, cancellationToken);
+            await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
             return history;
         }
         finally

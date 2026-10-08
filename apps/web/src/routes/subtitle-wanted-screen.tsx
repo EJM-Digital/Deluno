@@ -8,6 +8,8 @@
  */
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson } from "../lib/api";
@@ -61,7 +63,11 @@ function rowLabel(row: SubtitleWantedRow): string {
   return row.year ? `${row.year}` : "";
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["MovieChanged", "EpisodeChanged"], areas: [ConfigAreas.subtitles] };
+
 export function SubtitleWantedPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { wanted } = useLoaderData() as { wanted: SubtitleWantedRow[] };
   const revalidator = useRevalidator();
   const [searching, setSearching] = useState<"all" | string | null>(null);

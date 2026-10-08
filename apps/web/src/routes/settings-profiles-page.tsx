@@ -13,6 +13,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -150,7 +152,11 @@ export async function settingsProfilesLoader(): Promise<LoaderData> {
   return { ...overview, customFormats, qualityModel, guide };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["QualityProfileChanged", "LibraryChanged"], areas: [ConfigAreas.customFormats, ConfigAreas.qualityModel] };
+
 export function SettingsProfilesPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { libraries, qualityProfiles, customFormats, qualityModel, guide } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
 

@@ -32,6 +32,7 @@ import type { Tone } from "../lib/status-tones";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -88,7 +89,11 @@ export async function indexerHistoryLoader(): Promise<LoaderData> {
   return { page };
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["IndexerChanged"] };
+
 export function IndexerHistoryPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { page } = useLoaderData() as LoaderData;
   const { preferences } = useDisplayPreferences();
   const revalidator = useRevalidator();

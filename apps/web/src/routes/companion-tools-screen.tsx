@@ -4,7 +4,8 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { useLiveInterval } from "../hooks/use-live-interval";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -66,13 +67,12 @@ export function CompanionToolsPage() {
   useEffect(() => setData(loaded), [loaded]);
 
   const working = data.tools.some((tool) => tool.job?.status === "running" || tool.job?.status === "queued");
-  // Worker-driven (#937): a setup left running in a backgrounded or
-  // minimised window still polls at its real 2 s rate, so a finished or
-  // failed job shows up without waiting for the tab to be looked at again.
-  useLiveInterval(() => {
-    if (!working) return;
+  // The server says when a setup moves on (#1179), so a finished or failed job shows up at once,
+  // in a backgrounded window too, and nothing asks on a timer.
+  const reload = useCoalescedRevalidate(() => {
     void fetchJson<CompanionToolsResponse>("/api/companion-tools").then(setData).catch(() => undefined);
-  }, 2000);
+  }, 300);
+  useSignalREvent("CompanionJobChanged", RealtimeGroups.Dashboard, reload);
 
   const open = data.tools.find((tool) => tool.id === openId) ?? null;
   const selectable = (tool: CompanionTool) => data.availability.available && tool.state !== "connected" && !working;

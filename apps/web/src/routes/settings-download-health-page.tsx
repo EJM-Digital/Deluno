@@ -28,6 +28,8 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -512,7 +514,11 @@ function actionLabel(preset: string) {
   return ACTION_COPY[preset]?.label ?? preset;
 }
 
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"], areas: [ConfigAreas.downloadHealth] };
+
 export function SettingsDownloadHealthPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { rules, ignoreEntries, settings, connectivityCheckSkips } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });

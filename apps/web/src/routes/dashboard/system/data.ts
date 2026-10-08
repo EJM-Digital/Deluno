@@ -8,9 +8,8 @@ import { useCallback } from "react";
 import { fetchJson, type BackupItem, type BackupSettingsSnapshot, type HealthCheckListResponse } from "../../../lib/api";
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
 import type { SystemDatabasesResponse, SystemLogEntry, SystemLogResponse } from "../../../lib/api/types/system-log";
-import { usePollInterval } from "../../../lib/realtime-state";
 import { defineSources, queryClient } from "../../../lib/route-cache";
-import { useLiveEvent } from "../../../lib/use-signalr";
+import { RealtimeGroups, useLiveEvent, useSignalREvent } from "../../../lib/use-signalr";
 import { liveSources } from "../sources";
 
 export const systemSources = defineSources({
@@ -39,9 +38,7 @@ export function useSystemOverview(): SystemOverview | null {
         return null;
       }
     },
-    staleTime: 1_000,
-    // A safety net for while the connection is down; with it up the server pushes a reading every 2 seconds.
-    refetchInterval: usePollInterval(10_000)
+    staleTime: 1_000
   });
   useLiveEvent("SystemOverviewChanged", useCallback((event: SystemOverview) => {
     if (event && event.instance) queryClient.setQueryData(OVERVIEW_KEY, event);
@@ -68,8 +65,7 @@ export function useSystemLog(): SystemLogResponse | null {
         return null;
       }
     },
-    staleTime: 5_000,
-    refetchInterval: usePollInterval(30_000)
+    staleTime: 5_000
   });
   useLiveEvent("SystemLogEntry", useCallback((entry: SystemLogEntry) => {
     if (!entry || typeof entry.id !== "string") return;
@@ -98,8 +94,11 @@ export function useSystemDatabases(): SystemDatabasesResponse | null {
         return null;
       }
     },
-    staleTime: 30_000,
-    refetchInterval: usePollInterval(120_000)
+    staleTime: 30_000
   });
+  // The sizes and the dates of the last check change on the server's say-so (#1179): no timer asks.
+  useSignalREvent("SystemDatabasesChanged", RealtimeGroups.Dashboard, useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: DATABASES_KEY, exact: true });
+  }, []));
   return query.data ?? null;
 }

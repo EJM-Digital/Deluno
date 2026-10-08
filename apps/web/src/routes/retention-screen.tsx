@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Loader2, Play } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
@@ -246,7 +248,11 @@ function levelLabel(level: Level) {
  * the title waits the rule's days, and is removed on its day if it still
  * matches and nobody kept it - or waits for a person, for a rule that asks first.
  */
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["LibraryChanged"], areas: [ConfigAreas.retention, ConfigAreas.mediaServers] };
+
 export function RetentionPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { rules, servers, marks, keeps, fields } = useLoaderData() as Awaited<ReturnType<typeof retentionLoader>>;
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();

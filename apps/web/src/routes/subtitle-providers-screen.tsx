@@ -1,6 +1,8 @@
 import { toneSortValue } from "../lib/status-tones";
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { ConfigAreas } from "../lib/config-areas";
 import { Check, TestTube2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson, readValidationProblem } from "../lib/api";
@@ -76,7 +78,11 @@ const SCOPE_LABEL: Record<SubtitleProviderOption["scope"], string> = {
  * nothing at all, and they are first, so somebody can watch the whole loop work
  * before deciding whether to sign up for anything.</p>
  */
+/** What makes this page read its data again (#1179). */
+const SETTINGS_REFRESH: LiveRefreshSpec = { areas: [ConfigAreas.subtitles] };
+
 export function SubtitleProvidersPage() {
+  useLiveRefresh(SETTINGS_REFRESH);
   const { providers } = useLoaderData() as { providers: SubtitleProviderOption[] };
   const revalidator = useRevalidator();
 

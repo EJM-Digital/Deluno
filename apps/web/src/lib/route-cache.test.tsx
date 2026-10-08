@@ -158,13 +158,13 @@ describe("route sources", () => {
 });
 
 /**
- * #1097: a refetchInterval is a safety net. While the realtime connection is up
- * the server pushes every change and no timer runs; the timers return the moment
- * it is down.
+ * #1179: no screen reads its data on a timer. The server pushes every change and a
+ * reconnect reads each screen once, so a source is read when it is opened and again
+ * only when something invalidates it, whether or not the connection is up.
  */
-describe("polling timers while realtime is up", () => {
-  function Ticking({ fetch }: { fetch: () => Promise<number> }) {
-    const sources = defineSources({ n: { key: ["t", "ticking"], label: "Count", fetch, refetchInterval: 40 } });
+describe("no polling timers", () => {
+  function Quiet({ fetch }: { fetch: () => Promise<number> }) {
+    const sources = defineSources({ n: { key: ["t", "quiet"], label: "Count", fetch } });
     const state = useRouteSources(sources);
     return <p>n: {String(state.data.n)}</p>;
   }
@@ -176,21 +176,11 @@ describe("polling timers while realtime is up", () => {
     setRealtimeConnected(false);
   });
 
-  it("runs the timer while realtime is down", async () => {
+  it.each([true, false])("reads a source once and runs no timer with realtime up = %s", async (up) => {
+    setRealtimeConnected(up);
     let calls = 0;
     const fetch = vi.fn(() => Promise.resolve(++calls));
-    render(<QueryClientProvider client={queryClient}><Ticking fetch={fetch} /></QueryClientProvider>);
-
-    await sleep(300);
-
-    expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("runs no timer at all while realtime is up", async () => {
-    setRealtimeConnected(true);
-    let calls = 0;
-    const fetch = vi.fn(() => Promise.resolve(++calls));
-    render(<QueryClientProvider client={queryClient}><Ticking fetch={fetch} /></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><Quiet fetch={fetch} /></QueryClientProvider>);
 
     await sleep(300);
 
@@ -198,21 +188,16 @@ describe("polling timers while realtime is up", () => {
     setRealtimeConnected(false);
   });
 
-  it("stops when the connection comes up and starts again when it drops", async () => {
+  it("reads a source again when something invalidates it", async () => {
     let calls = 0;
     const fetch = vi.fn(() => Promise.resolve(++calls));
-    render(<QueryClientProvider client={queryClient}><Ticking fetch={fetch} /></QueryClientProvider>);
-    await sleep(150);
-    expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    render(<QueryClientProvider client={queryClient}><Quiet fetch={fetch} /></QueryClientProvider>);
+    await sleep(50);
+    expect(fetch).toHaveBeenCalledTimes(1);
 
-    await act(async () => setRealtimeConnected(true));
-    await sleep(80);
-    const whileUp = fetch.mock.calls.length;
-    await sleep(300);
-    expect(fetch.mock.calls.length).toBe(whileUp);
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ["t", "quiet"], exact: true }); });
+    await sleep(50);
 
-    await act(async () => setRealtimeConnected(false));
-    await sleep(300);
-    expect(fetch.mock.calls.length).toBeGreaterThan(whileUp);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

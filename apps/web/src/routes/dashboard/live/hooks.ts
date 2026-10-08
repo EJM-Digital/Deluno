@@ -13,6 +13,7 @@ import { fetchByName, fetchMovieTitles, fetchSeriesTitles, NO_TITLES, nameSearch
 /** The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden). */
 export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());
+  // display-clock: only advances the time shown on screen ("3 min ago"); it fetches nothing.
   useLiveInterval(() => setNow(Date.now()), intervalMs);
   return now;
 }
