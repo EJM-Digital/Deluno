@@ -10,14 +10,17 @@
         Start-NewznabStub.ps1.
 
     The generated video has real moving frames and a tone, long enough (600 s) that Deluno does not take it
-    for a sample (under two minutes) and big enough (about 1.1 GB by default) to clear both floors it meets:
-    Weir's 50 MB floor, and Deluno's own film size minimum. Deluno judges a film's size against the quality
-    in its name, for a 2-hour runtime when it knows none (Big Buck Bunny has no runtime in Deluno). The
-    minimum for WEB 720p is 0.8 GB (Settings > Quality, Size Rules; the table is src/Deluno.Quality/
-    QualityTypicalSizes.cs), so 1.1 GB sits comfortably above it and still under about 1.5 GB. The default
-    name says WEB 720p for that reason: the guided setup's Balanced 1080p profile accepts it, and a name that
-    said Bluray 1080p (2.2 GB minimum) would need a file twice the size. A film named for a quality whose
-    minimum is above its size is refused ("Send anyway" is then needed), so keep name and size in step.
+    for a sample (under two minutes) and sized to clear both of Deluno's film size rules it meets, plus
+    Weir's 50 MB floor. Deluno judges a film's size against the quality in its name and the film's runtime:
+    the minimum and maximum in src/Deluno.Quality/QualityTypicalSizes.cs are per 2 hours, scaled by the
+    runtime. Big Buck Bunny is 8 minutes on TMDb, so once Deluno knows that, WEB 720p allows at most 0.5 GB
+    (a 1.1 GB file is refused: "above the 0.5 GB maximum ... for a 8-minute runtime", golden path rc.30.10),
+    while with no runtime known it assumes 2 hours and WEB 720p needs at least 0.8 GB. No single WEB 720p
+    size fits both. WEB 1080p does: 1.5 GB minimum for 2 hours, 25 GB per 2 hours scaled to about 1.67 GB for
+    8 minutes. So the default name says WEB 1080p, which is also exactly what the guided setup's Balanced
+    1080p profile targets (so it is the best match, not a lower quality held for review), and the default
+    video is about 1.6 GB, inside both ranges. A film named for a quality whose range excludes its size is
+    refused ("Send anyway" is then needed), so keep name, size and runtime in step.
     ffmpeg is
     looked for, in order: -FfmpegPath, Deluno's installed copy (%LOCALAPPDATA%\Deluno\current\tools\ffmpeg),
     tools\ffmpeg\win-x64 in a repository checkout, then PATH. It uses only encoders every ffmpeg build has
@@ -29,13 +32,16 @@
     Where the release goes. Created when missing; an earlier release in it is replaced.
 
 .PARAMETER Name
-    The release name. Defaults to a Big Buck Bunny (2008, Creative Commons) WEB 720p release name Deluno can match on TMDb.
+    The release name. Defaults to a Big Buck Bunny (2008, Creative Commons) WEB 1080p release name Deluno can match on TMDb.
 
 .PARAMETER SourceFile
     A video to use as it is. Must be at least -MinimumMegabytes, or Weir would skip it.
 
 .PARAMETER MinimumMegabytes
-    The smallest the video may be. Defaults to 1100, above Deluno's 0.8 GB film minimum for WEB 720p (and Weir's 50 MB floor), under about 1.5 GB.
+    The smallest the video may be. Defaults to 1550, above Deluno's 1.5 GB film minimum for WEB 1080p at the 2-hour default runtime (1536 MB) and Weir's 50 MB floor.
+
+.PARAMETER VideoMegabitsPerSecond
+    The first video bitrate tried. Defaults to 22.5, which makes about 1.6 GB for 600 s (the file must stay under about 1.67 GB, the WEB 1080p maximum for Big Buck Bunny's 8-minute runtime). The rates tried after it are only used when the file is under -MinimumMegabytes.
 
 .EXAMPLE
     ./New-UsenetRelease.ps1 -OutDirectory C:\golden\usenet\release
@@ -43,10 +49,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $OutDirectory,
-    [string] $Name = 'Big.Buck.Bunny.2008.720p.WEB-DL.x264-GOLDEN',
+    [string] $Name = 'Big.Buck.Bunny.2008.1080p.WEB-DL.x264-GOLDEN',
     [string] $SourceFile,
     [string] $FfmpegPath,
-    [int] $MinimumMegabytes = 1100,
+    [int] $MinimumMegabytes = 1550,
+    [double] $VideoMegabitsPerSecond = 22.5,
     [int] $DurationSeconds = 600,
     [int] $PartSizeKilobytes = 700,
     [string] $Group = 'alt.binaries.golden'
@@ -84,8 +91,8 @@ if ($SourceFile) {
 }
 else {
     $ffmpeg = Find-Ffmpeg
-    # Noise keeps the frames from compressing to nothing; the video bitrate sets the size (16 Mbit/s is about 1.15 GB for 600 s).
-    foreach ($rate in 16, 20, 26) {
+    # Noise keeps the frames from compressing to nothing; the video bitrate sets the size (22.5 Mbit/s is about 1.6 GB for 600 s).
+    foreach ($rate in $VideoMegabitsPerSecond, ($VideoMegabitsPerSecond + 3), ($VideoMegabitsPerSecond + 6)) {
         Write-Host "Making a $DurationSeconds s test video with $ffmpeg ($rate Mbit/s)"
         $ffArgs = @('-y', '-v', 'error',
             '-f', 'lavfi', '-i', "testsrc2=size=1280x720:rate=24:duration=$DurationSeconds",

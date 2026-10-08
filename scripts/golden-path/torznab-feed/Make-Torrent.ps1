@@ -1,5 +1,6 @@
-# Golden path: makes a single-file .torrent. With -File it hashes the real file; with -Dummy -Length N it makes a torrent nobody can download.
-# with -Dummy -Length N it makes a torrent nobody can ever download (random piece hashes, a tracker that does not exist).
+# Golden path: makes a single-file .torrent. With -File it hashes the real file (and names no tracker, so the client that finds the
+# file completes at once with no tracker error); with -Dummy -Length N it makes a torrent nobody can ever download (random piece
+# hashes, a tracker that does not exist).
 param([string]$File, [string]$Out, [string]$Name, [switch]$Dummy, [long]$Length = 30MB, [int]$PieceKb = 256)
 $ErrorActionPreference = 'Stop'
 function BStr([string]$s) { $b = [Text.Encoding]::UTF8.GetBytes($s); [Text.Encoding]::ASCII.GetBytes("$($b.Length):") + $b }
@@ -16,7 +17,14 @@ else { $fi = Get-Item $File; $total = $fi.Length; if (-not $Name) { $Name = $fi.
 # info dict, keys in sorted order: length, name, piece length, pieces
 $info = JoinBytes @([Text.Encoding]::ASCII.GetBytes('d'), (BStr 'length'), (BInt $total), (BStr 'name'), (BStr $Name), (BStr 'piece length'), (BInt $pieceLen), (BStr 'pieces'), ([Text.Encoding]::ASCII.GetBytes("$($pieces.Length):")), $pieces, [Text.Encoding]::ASCII.GetBytes('e'))
 $sha1 = [Security.Cryptography.SHA1]::Create(); $infoHash = ([BitConverter]::ToString($sha1.ComputeHash($info))).Replace('-', '').ToLowerInvariant()
-$torrent = JoinBytes @([Text.Encoding]::ASCII.GetBytes('d'), (BStr 'announce'), (BStr 'http://127.0.0.1:9/announce'), (BStr 'info'), $info, [Text.Encoding]::ASCII.GetBytes('e'))
+# A torrent over a real file has no tracker at all. Giving it one that nobody answers (127.0.0.1:9) made Deluge report
+# "Error: No connection could be made because the target machine actively refused it" on a torrent that was 100% done
+# and seeding, and Deluno called that finished download Stalled / "queue failed" and did not hand it off (golden path
+# rc.30.10). A dummy torrent keeps its dead tracker: it is meant to stall.
+$parts = @([Text.Encoding]::ASCII.GetBytes('d'))
+if ($Dummy) { $parts += (BStr 'announce'); $parts += (BStr 'http://127.0.0.1:9/announce') }
+$parts += (BStr 'info'); $parts += $info; $parts += [Text.Encoding]::ASCII.GetBytes('e')
+$torrent = JoinBytes $parts
 [IO.File]::WriteAllBytes($Out, $torrent)
 [pscustomobject]@{ infohash = $infoHash; size = $total; name = $Name; file = (Split-Path $Out -Leaf) } | ConvertTo-Json -Compress
 
