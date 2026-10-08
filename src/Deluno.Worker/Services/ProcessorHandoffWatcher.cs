@@ -88,6 +88,10 @@ public sealed class ProcessorHandoffWatcher(
         CancellationToken cancellationToken,
         IReadOnlyList<LibraryItem>? allLibraries = null)
     {
+        // Hand-offs that are over but still owe something (#1155).
+        await SettleReturnedTitlesAsync(allLibraries ?? libraries, now, cancellationToken);
+        await SettleSupersededAsync(allLibraries ?? libraries, now, cancellationToken);
+
         // Exactly the hand-offs a processor still has, however much history sits
         // in front of them (#571).
         var handoffs = await processorRepository.ListProcessorHandoffsWithStatusAsync(
@@ -226,6 +230,117 @@ public sealed class ProcessorHandoffWatcher(
         }
     }
 
+    /// <summary>How far back a finished hand-off is looked at again for a title that came back.</summary>
+    private static readonly TimeSpan ReturnedTitleWindow = TimeSpan.FromDays(60);
+
+    /// <summary>
+    /// A finished hand-off whose import went into a title that was then removed and added again settles itself (#1155):
+    /// the processor's output, if it is still on disk, is imported into the title that is there now; if it is gone, the
+    /// download is handed over afresh, once. A title that already has its file is left alone.
+    /// </summary>
+    private async Task SettleReturnedTitlesAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (outputImports is null)
+        {
+            return;
+        }
+
+        var finished = await processorRepository.ListProcessorHandoffsWithStatusAsync([ProcessorHandoffStatuses.Completed], cancellationToken);
+        foreach (var handoff in finished.Where(item => now - item.UpdatedUtc < ReturnedTitleWindow))
+        {
+            var library = libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (library is null || !ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
+            {
+                continue;
+            }
+
+            // Once: settling changes the hand-off, which puts it after the title's arrival.
+            if (await outputImports.TitleCameBackWithoutItsFileAsync(handoff, cancellationToken) is not { } addedUtc
+                || handoff.UpdatedUtc >= addedUtc)
+            {
+                continue;
+            }
+
+            var output = !string.IsNullOrWhiteSpace(handoff.OutputPath) && (File.Exists(handoff.OutputPath) || Directory.Exists(handoff.OutputPath))
+                ? handoff.OutputPath
+                : null;
+            var queuedMessage = $"{handoff.ReleaseName} was imported into a title that was since removed and added again, so Deluno queued the processor's finished copy for the title that is there now.";
+            if (await TryImportOutputAsync(handoff, library, null, output, cancellationToken, queuedMessage))
+            {
+                continue;
+            }
+
+            var connection = await processorRepository.FindProcessorConnectionAsync(handoff.ProcessorConnectionId ?? library.ProcessorConnectionId, handoff.ProcessorName ?? library.ProcessorName, cancellationToken);
+            if (connection is not { IsEnabled: true })
+            {
+                continue;
+            }
+
+            var mappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+            var outbound = mappings.Count > 0
+                ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, mappings) ?? handoff.SourcePath }
+                : handoff;
+            var submission = await processorConnections.SubmitAsync(connection, outbound, cancellationToken);
+            if (!submission.IsAccepted)
+            {
+                continue;
+            }
+
+            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
+            await activityFeed.RecordActivityAsync(
+                "processing.resubmitted",
+                $"{handoff.ReleaseName} was imported into a title that was since removed and added again, and {connection.Name} no longer has the finished copy, so Deluno handed the download over again.",
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName, handoff.SourcePath }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// A hand-off that went wrong needs nobody once the same film or episode has been imported through another download
+    /// (#1155): it is dismissed, its Needs action entry closes, and Activity says so once.
+    /// </summary>
+    private async Task SettleSupersededAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (outputImports is null)
+        {
+            return;
+        }
+
+        var wrong = await processorRepository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WentWrong, cancellationToken);
+        foreach (var handoff in wrong)
+        {
+            var library = libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (library is null || !await outputImports.TitleHasFileFromAnotherDownloadAsync(handoff, cancellationToken))
+            {
+                continue;
+            }
+
+            var message = $"{handoff.ReleaseName} did not go through the processor, but the title was imported from another download, so Deluno closed this one.";
+            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+            var scope = new Deluno.Contracts.ImportRecoveryCaseScope([], []) { HandoffIds = [handoff.Id] };
+            if (DelunoValueNormalizers.NormalizeMediaType(library.MediaType) == "tv")
+            {
+                await seriesCatalogRepository.SettleImportRecoveryCasesAsync(scope, message, cancellationToken);
+            }
+            else
+            {
+                await movieCatalogRepository.SettleImportRecoveryCasesAsync(scope, message, cancellationToken);
+            }
+
+            await activityFeed.RecordActivityAsync(
+                "processing.superseded",
+                message,
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+        }
+    }
+
     /// <summary>
     /// A hand-off that has waited past its limit settles itself (#1155): the output that is on disk is imported;
     /// failing that the hand-off is sent again, once; failing that the person is asked, with a retry.
@@ -297,7 +412,8 @@ public sealed class ProcessorHandoffWatcher(
         LibraryItem library,
         ProcessorConnectionItem? connection,
         string? reportedOutput,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? queuedMessage = null)
     {
         if (outputImports is null || string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
         {
@@ -344,7 +460,7 @@ public sealed class ProcessorHandoffWatcher(
         await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
         await activityFeed.RecordActivityAsync(
             import.NotImportedBecause is not null ? "filesystem.import.not-imported" : "processing.completed.import-queued",
-            notImported ?? $"{name} had finished {handoff.ReleaseName} without Deluno hearing of it; Deluno found the cleaned file and queued it for import.",
+            notImported ?? queuedMessage ?? $"{name} had finished {handoff.ReleaseName} without Deluno hearing of it; Deluno found the cleaned file and queued it for import.",
             JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = output, import.JobId, import.DispatchId }),
             import.JobId,
             "processor-handoff",

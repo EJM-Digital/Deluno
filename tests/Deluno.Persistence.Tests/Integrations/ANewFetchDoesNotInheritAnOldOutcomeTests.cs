@@ -47,6 +47,19 @@ public sealed class ANewFetchDoesNotInheritAnOldOutcomeTests
     }
 
     /// <summary>
+    /// A later grab of the same release (a title added again finds the download already there) does not
+    /// make the hand-off an earlier attempt's when the client has held the download since before it (#1155).
+    /// </summary>
+    [Fact]
+    public void A_later_grab_of_a_download_the_client_already_held_does_not_hide_its_completed_handoff()
+    {
+        var made = Handoff(Today.AddHours(-1));
+        var held = QueueItem() with { AddedUtc = Today.AddHours(-3) };
+
+        Assert.False(DownloadClientTelemetryService.IsFromAnEarlierAttempt(made, held, [Dispatch(Today)]));
+    }
+
+    /// <summary>
     /// With nothing to compare against, the hand-off stays. Losing the
     /// Processing stage for an item Deluno cannot place is worse than showing a
     /// stale one.

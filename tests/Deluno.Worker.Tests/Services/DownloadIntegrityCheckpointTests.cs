@@ -192,6 +192,43 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>#1155: a file that passed is not checked, or written about, again on the next poll while it is unchanged.</summary>
+    [Fact]
+    public async Task A_file_that_passed_is_checked_and_recorded_once_across_polls()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+        var telemetry = Telemetry(out var file);
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+        var probes = 0;
+
+        for (var poll = 0; poll < 2; poll++)
+        {
+            await RunWithProbe(scheduler, telemetry, blocked, checkEnabled: true, (_, _) =>
+            {
+                probes++;
+                return Task.FromResult(Probe.Ok().Info);
+            }, activity);
+        }
+
+        Assert.Equal(1, probes);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityPassedCategory,
+            It.IsAny<string>(),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+
+        // Changed on disk, it is checked afresh.
+        File.AppendAllText(file, "more");
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
+        await RunWithProbe(scheduler, telemetry, blocked, checkEnabled: true, (_, _) => Task.FromResult(Probe.Ok().Info), activity);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityPassedCategory,
+            It.IsAny<string>(),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
     /// <summary>
     /// #917: the check runs the same way whether the library hands its
     /// downloads to a processor first or imports them directly -- a failure

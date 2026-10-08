@@ -45,7 +45,14 @@ public sealed class ProcessorOutputImportQueue(
         // Deluno is the main stop against duplicate processing (#1155): a
         // processor that sends an output for a download whose file Deluno has
         // already imported is sending a second copy.
-        if (await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken))
+        // Unless that import went into a title that has since been removed and added again: the
+        // title that is there has no file, and this output is the one it is waiting for (#1155).
+        var cameBack = await FindReturnedTitleAsync(handoff, cancellationToken);
+        if (cameBack is not null)
+        {
+            dispatch = cameBack.Link;
+        }
+        else if (await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken))
         {
             return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, AlreadyImported: true);
         }
@@ -93,7 +100,7 @@ public sealed class ProcessorOutputImportQueue(
             Overwrite: dispatch?.ReplacementAuthorized == true,
             AllowCopyFallback: true,
             ForceReplacement: dispatch?.ForceReplacementAuthorized == true,
-            DispatchId: dispatch?.DispatchId,
+            DispatchId: (string.IsNullOrEmpty(dispatch?.DispatchId) ? null : dispatch.DispatchId),
             ExpectedExistingPath: dispatch?.ReplacementExpectedPath,
             ReplacementTargets: dispatch?.ReplacementTargets,
             // What the processor was given, so the import can compare what it
@@ -111,11 +118,88 @@ public sealed class ProcessorOutputImportQueue(
                 IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
             cancellationToken);
 
-        return new ProcessorOutputImport(job.Id, dispatch?.DispatchId, dispatch?.EntityId);
+        return new ProcessorOutputImport(job.Id, (string.IsNullOrEmpty(dispatch?.DispatchId) ? null : dispatch.DispatchId), dispatch?.EntityId);
     }
 
-    public Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
-        => ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken);
+    public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => await FindReturnedTitleAsync(handoff, cancellationToken) is null
+            && await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken);
+
+    public async Task<DateTimeOffset?> TitleCameBackWithoutItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => (await FindReturnedTitleAsync(handoff, cancellationToken))?.AddedUtc;
+
+    public async Task<bool> TitleHasFileFromAnotherDownloadAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
+        if (link is null || string.IsNullOrWhiteSpace(link.EntityId))
+        {
+            return false;
+        }
+
+        var hasFile = string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
+            ? (await movieCatalogRepository.GetByIdAsync(link.EntityId, cancellationToken))?.HasFile == true
+            : string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken));
+        if (!hasFile)
+        {
+            return false;
+        }
+
+        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(500, null, cancellationToken, includeArchived: true);
+        return dispatches.Any(dispatch =>
+            string.Equals(dispatch.EntityId, link.EntityId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
+            && dispatch.CreatedUtc > handoff.CreatedUtc
+            && !(string.Equals(dispatch.DownloadClientId, handoff.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, handoff.ReleaseName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// The title this hand-off's download is for now, when it was added after the hand-off was made
+    /// and holds no file; null otherwise. Found by the latest grab of the release, and
+    /// failing that (the grab's title is gone) by the same name and year.
+    /// </summary>
+    private async Task<ReturnedTitle?> FindReturnedTitleAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
+        var isTv = string.Equals(handoff.MediaType, "tv", StringComparison.OrdinalIgnoreCase);
+        if (link is null && !isTv)
+        {
+            link = new DispatchCatalogueLink(string.Empty, "movie", string.Empty);
+        }
+
+        if (link is null)
+        {
+            return null;
+        }
+
+        if (string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+        {
+            var film = string.IsNullOrWhiteSpace(link.EntityId) ? null : await movieCatalogRepository.GetByIdAsync(link.EntityId, cancellationToken);
+            if (film is null)
+            {
+                var again = await CatalogueImportNaming.FindReAddedTitleAsync(link, handoff.ReleaseName, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+                film = again is null ? null : await movieCatalogRepository.GetByIdAsync(again.EntityId, cancellationToken);
+            }
+
+            return film is { HasFile: false } && film.CreatedUtc > handoff.CreatedUtc
+                ? new ReturnedTitle(link with { EntityId = film.Id }, film.CreatedUtc)
+                : null;
+        }
+
+        if (string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase)
+            && await seriesCatalogRepository.GetEpisodeSeriesIdAsync(link.EntityId, cancellationToken) is { } seriesId
+            && await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken) is { } show
+            && show.CreatedUtc > handoff.CreatedUtc
+            && string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken)))
+        {
+            return new ReturnedTitle(link, show.CreatedUtc);
+        }
+
+        return null;
+    }
+
+    private sealed record ReturnedTitle(DispatchCatalogueLink Link, DateTimeOffset AddedUtc);
 
     /// <summary>
     /// What to import when a processor hands back a folder (#619): a film is its
