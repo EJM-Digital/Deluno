@@ -20,7 +20,9 @@ This file is the small entry point for agent work. It is a map, not the full man
 - **Closing issues: `docs/exec-plans/active/BACKLOG-SWEEP.md`.** Run
   `./scripts/issue-audit.ps1 <number>` before touching an issue and answer every
   acceptance line. The list is the whole contract; do not add to it. The burden
-  is on leaving an issue open, not on closing it.
+  is on leaving an issue open, not on closing it. A UI or behaviour issue closes
+  only with live proof on the rig: what was done and what was seen, on which
+  build, written in the closing note.
 - **The bar, and the standing check every change is measured against: `docs/PRODUCT_NORTH_STAR.md`.** Read it first. It records what Deluno replaces and what "better, not merely present" means; it is where [#194](https://github.com/jampat000/Deluno/issues/194) lives now that the issue is closed.
 - What each top-level folder is: the Repository map in `docs/README.md`
 - Product scope: `docs/deluno-capability-map.md`

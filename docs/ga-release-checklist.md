@@ -57,6 +57,13 @@ without a signature.
   step for a release build, not one to wave through with the rest.
 - CI is green on the exact commit that will be tagged: `ci.yml` has a push (or manual) run for that commit whose `ci-passed` job passed. **Tag only after that.** The release workflow's first job (`ci-passed`, `scripts/verify-ci-for-release.mjs`) checks it and fails at once if not. If the commit's own push run only skipped jobs because the change was documents, run `ci.yml` by hand on the commit first (`gh workflow run ci.yml --ref <commit>`).
 - The single `release.yml` run succeeded end to end: `windows` and `docker` built, `publish` pushed the image, created the GitHub Release with its assets and `SHA256SUMS.txt`, and moved the moving image tags last. Open the run, the GitHub Release and `docker pull ghcr.io/jampat000/deluno:<version>` to see it; do not report a release done on the tag alone.
+- The golden path (`docs/golden-path.md`) has passed on the exact commit that will be tagged, on a clean VM. Tag only after that; the release's `golden-path` job checks the record and does not wait. A person checks, by clicking and watching:
+  - The installer runs on the clean VM and offers the download clients and Weir.
+  - Setup asks each automatic choice as Yes or No, and Connect Weir works.
+  - One torrent film, one Usenet film and one TV episode download, are cleaned and imported with a poster, and Activity tells each story in plain words.
+  - A stalled or failed download is replaced or offered **Try again**, and a removed title comes back from the recycle bin.
+  - Every screen is clicked through (next item).
+- Every screen has been clicked through on the candidate build: every screen in the menu, at a wide desktop width, a laptop width and phone width. Nothing is broken, empty by mistake or showing an internal code, and every counted problem can be cleared on the screen. Do this before each tag and after each batch of fixes. Record it as the "5 Every screen" row of the live-test table in the release evidence (`docs/release-evidence-template.md`), with the build tested and the issue number of anything found.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
   - `dotnet test Deluno.slnx --configuration Release`
