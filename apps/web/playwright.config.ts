@@ -18,7 +18,10 @@ const dotnetCommand = process.platform === "win32" && fs.existsSync(repoLocalDot
 // Start from the project rather than a previously compiled DLL. This keeps the
 // browser suite honest when an API route has just been added: it must exercise
 // the source revision under test, not an older artifact left in bin/Release.
-const backendCommand = `${dotnetCommand} run --project ../../src/Deluno.Host/Deluno.Host.csproj --configuration Release --no-launch-profile`;
+// The gate builds Release once before starting this beside the backend tests, and
+// sets DELUNO_SMOKE_NO_BUILD so this does not build it a second time at the same
+// moment (the two builds raced for the same output files and the host failed to start).
+const backendCommand = `${dotnetCommand} run --project ../../src/Deluno.Host/Deluno.Host.csproj --configuration Release --no-launch-profile${process.env.DELUNO_SMOKE_NO_BUILD === "1" ? " --no-build" : ""}`;
 
 /**
  * #291 — decision: `baseURL` stays on the preview server, and a named set of

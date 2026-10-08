@@ -19,6 +19,7 @@ namespace Deluno.Persistence.Tests.Api;
 /// costs every time still does. The numbers are printed so a change can be read
 /// against them.</para>
 /// </summary>
+[Trait("Category", "Timing")]
 public sealed class ScreenEndpointsStayFastTests(ITestOutputHelper output, ScreenEndpointsStayFastTests.SeededHost seeded)
     : IClassFixture<ScreenEndpointsStayFastTests.SeededHost>
 {

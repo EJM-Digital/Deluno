@@ -344,6 +344,7 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task A_big_library_answers_inside_the_budget_cold_and_warm()
     {
         await using var app = await ApplicationTestHost.StartAsync();
