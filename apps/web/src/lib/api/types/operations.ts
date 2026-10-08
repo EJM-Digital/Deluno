@@ -26,6 +26,11 @@ export interface JobQueueItem {
   // screens could not tell a job that will try again from one that stopped (#562).
   maxAttempts: number;
   lastAttemptUtc: string | null;
+  /** The episode a search is for, such as "Severance S02E10" (#1180). Null for a job that is not about an episode. */
+  target?: string | null;
+  /** The show an episode search belongs to, so a show-wide search reads as one entry. */
+  showId?: string | null;
+  showTitle?: string | null;
   nextAttemptUtc: string | null;
 }
 
