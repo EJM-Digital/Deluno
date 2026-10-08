@@ -365,3 +365,20 @@ describe("dropOrder", () => {
     expect(dropOrder(["a", "b", "c", "d"], ["a", "b", "c"], ["a", "b", "c", "d"], mids, "c", 10)).toEqual(["c", "a", "b", "d"]);
   });
 });
+
+describe("values a row cuts short stay reachable (#1168)", () => {
+  it("gives a plain-text cell its full value as a tooltip and lets a second line wrap to two lines", () => {
+    const path = "C:/Downloads/Completed/A.Very.Long.Release.Name.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP/file.mkv";
+    render(
+      <ListTable chevron={false} columns={[{ id: "a", label: "A", sortable: false }]}>
+        <ListRow>
+          <ListCell primary={path} secondary={`From ${path}`} />
+        </ListRow>
+      </ListTable>
+    );
+    expect(screen.getByTitle(path)).toBeInTheDocument();
+    const secondary = screen.getByTitle(`From ${path}`);
+    expect(secondary.className).toContain("line-clamp-2");
+    expect(secondary.className).not.toContain("truncate");
+  });
+});

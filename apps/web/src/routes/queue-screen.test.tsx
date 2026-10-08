@@ -1163,3 +1163,37 @@ describe("Needs attention: the count matches the rows", () => {
     expect(screen.getByRole("switch", { name: "Select Left.Over" })).toBeVisible();
   });
 });
+
+/** #1168: one download is one row, whichever stage it has reached. */
+describe("Transfers: a download is in one table only", () => {
+  afterEach(() => {
+    queueLoaderData.processorHandoffs = [];
+    queueLoaderData.jobs = [];
+    queueLoaderData.failedJobs = [];
+  });
+
+  it("lists a failed import under Needs attention only, and says the connector's stage once", async () => {
+    const { repeatedSentences } = await import("../test/repeated-text");
+    const name = "Nosferatu.2024.1080p.WEB-DL-GRP";
+    const job = { id: "job-n", jobType: "filesystem.import.execute", label: "Import", source: "x", sourceLabel: "x", status: "failed", attempts: 3, lastError: "The destination already holds a different file.", payloadJson: JSON.stringify({ title: name, sourcePath: `C:/Downloads/Completed/${name}` }), createdUtc: "2026-10-01T00:00:00Z", scheduledUtc: "2026-10-01T00:00:00Z", startedUtc: null, completedUtc: null, leasedUntilUtc: null, workerId: null, relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null } as never;
+    queueLoaderData.jobs = [job] as never;
+    queueLoaderData.failedJobs = [job] as never;
+    queueLoaderData.processorHandoffs = [
+      { id: "hn", libraryId: "l", mediaType: "movies", clientId: "gone-client", queueItemId: "gone", releaseName: name, sourcePath: `C:/Downloads/Completed/${name}`, processorName: "Weir", status: "completed", outputPath: `C:/Out/${name}.mkv`, importJobId: "job-n", failureMessage: null, createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T00:00:00Z" }
+    ] as never;
+
+    const { container } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    const rows = Array.from(container.querySelectorAll('[role="row"]')).filter((row) => row.textContent?.includes(name));
+    expect(rows).toHaveLength(1);
+    expect(repeatedSentences(container, 25)).toEqual([]);
+  });
+});
+
+describe("the connector's sub-line (#1168)", () => {
+  it("is dropped when it only repeats the stage", async () => {
+    const { connectorSubLine } = await import("./queue-screen");
+    expect(connectorSubLine({ status: "completed", outputPath: "C:/Out/a.mkv" }, null)).toBeUndefined();
+    expect(connectorSubLine({ status: "started", outputPath: null }, "Weir: working on it")).toBe("Weir: working on it");
+  });
+});

@@ -67,6 +67,7 @@ import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
+import { placeDownloadsOnce } from "../lib/transfer-stages";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
@@ -326,7 +327,20 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     return map;
   }, [processorHandoffs]);
   const queueDownloadKeys = useMemo(() => new Set(queue.map((item) => handoffDownloadKey(item.clientId, item.id))), [queue]);
-  const handoffsWithoutARow = processorHandoffs.filter((handoff) => !queueDownloadKeys.has(handoffDownloadKey(handoff.clientId, handoff.queueItemId)));
+  // ...and a download whose import has started, or that failed, is shown only in that table (#1168).
+  const placed = useMemo(
+    () => placeDownloadsOnce({
+      handoffs: processorHandoffs.filter((handoff) => !queueDownloadKeys.has(handoffDownloadKey(handoff.clientId, handoff.queueItemId))),
+      importJobs,
+      failedImportJobs,
+      failedHandoffs: failedProcessorHandoffs,
+      failedDownloads,
+      queueAttention
+    }),
+    [processorHandoffs, queueDownloadKeys, importJobs, failedImportJobs, failedProcessorHandoffs, failedDownloads, queueAttention]
+  );
+  const handoffsWithoutARow = placed.handoffs;
+  const importJobsHere = placed.importJobs;
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
   const needsActionCount = attention.total + heldReleases.length;
@@ -351,6 +365,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   /** The processor's own reason is said once, in the Import box with its fixes, not again as the client's health (#1151). */
   const processorOwnsFailure = Boolean(openQueueHandoff) && openQueueItem?.status === downloadQueueStatuses.processingFailed;
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
+  const openImportJob = openActivity?.id.startsWith("import:") ? jobs.find((job) => `import:${job.id}` === openActivity.id) ?? null : null;
+  const openImportInfo = openImportJob ? parseImportJobPayload(openImportJob.payloadJson) : null;
   const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
   const openDispatchDetail = drawer?.kind === "dispatch" ? dispatchDetails[drawer.id] ?? null : null;
@@ -1253,7 +1269,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               {(rows) => rows.map((handoff) => (
                 <ListRow key={handoff.id} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })} selected={openActivity?.id === `processor:${handoff.id}`}>
                   <ListNameCell name={handoff.releaseName} sub={handoff.mediaType === "tv" ? "TV" : "Movies"} />
-                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)) ?? (handoff.outputPath ? "Output received" : "Waiting for output")} />
+                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={connectorSubLine(handoff, processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)))} />
                   <ListCell primary={processorStageLabel(handoff.status)} secondary={handoff.failureMessage ?? undefined} />
                   <ListCell primary={handoff.outputPath ?? handoff.sourcePath} secondary={handoff.outputPath ? `From ${handoff.sourcePath}` : "Source hand-off"} />
                   <ListCell mobile><Chip tone={processorTone(handoff)}>{processorStatusLabel(handoff.status)}</Chip></ListCell>
@@ -1262,7 +1278,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             </ListTable>
           ) : (
             processorHandoffs.length ? (
-            <ListEmpty title="Everything with the processor is in the list above" description="Each download shows what the processor is doing in its Stage column." />
+            <ListEmpty title="Everything with the processor is listed elsewhere on this page" description="A download shows what the processor is doing in its own row, or sits with its import or its problem." />
           ) : (
             <ListEmpty title="No media is being processed" description="The connector is configured. When Deluno hands media to it, its status and returned output will appear here." />
           )
@@ -1270,14 +1286,14 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </ListCard>
       ) : null}
 
-      {importJobs.length ? (
+      {importJobsHere.length ? (
         <ListCard
           title="Import & naming"
-          count={`${activeImportJobs} active · latest ${importJobs.length}`}
+          count={`${activeImportJobs} active · latest ${importJobsHere.length}`}
         >
           <ListTable
             listId="transfers-imports"
-            items={importJobs}
+            items={importJobsHere}
             columns={[
               { id: "media", label: "Media", sort: (job) => (parseImportJobPayload(job.payloadJson)?.title || parseImportJobPayload(job.payloadJson)?.fileName || jobTitle(job)).toLowerCase() },
               { id: "destination", label: "Source / destination", width: "minmax(0,2fr)", sort: (job) => (parseImportJobPayload(job.payloadJson)?.destinationPath ?? "").toLowerCase() },
@@ -2055,13 +2071,12 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </DrawerSection>
             ) : null}
 
-            {openDispatchDetail.dispatch.importedFilePath || openDispatchDetail.dispatch.importFailureMessage || openDispatchDetail.dispatch.grabFailureCode ? (
+            {openDispatchDetail.dispatch.importedFilePath || openDispatchDetail.dispatch.grabFailureCode ? (
               <DrawerSection title="File and outcome">
                 <div className="grid gap-1.5">
                   {openDispatchDetail.dispatch.importedFilePath ? <Fact label="Imported file" value={openDispatchDetail.dispatch.importedFilePath} mono /> : null}
                   {openDispatchDetail.dispatch.downloadedBytes ? <Fact label="Downloaded" value={formatBytes(openDispatchDetail.dispatch.downloadedBytes)} /> : null}
                   {openDispatchDetail.dispatch.grabFailureCode ? <Fact label="Grab issue" value={openDispatchDetail.dispatch.grabFailureCode} /> : null}
-                  {openDispatchDetail.dispatch.importFailureMessage ? <Fact label="Import issue" value={openDispatchDetail.dispatch.importFailureMessage} /> : null}
                 </div>
               </DrawerSection>
             ) : null}
@@ -2116,7 +2131,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                         <span className="text-(length:--type-body-sm) font-medium text-foreground">{timelineEventLabel(event.eventType)}</span>
                         <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{formatAgo(event.timestamp, preferences)}</span>
                       </div>
-                      {timelineEventDetail(event) ? <span className="text-(length:--type-caption) text-muted-foreground">{timelineEventDetail(event)}</span> : null}
+                      {timelineEventDetail(event, openDispatchDetail.dispatch.importFailureMessage) ? <span className="text-(length:--type-caption) text-muted-foreground">{timelineEventDetail(event, openDispatchDetail.dispatch.importFailureMessage)}</span> : null}
                     </div>
                   ))}
                 </div>
@@ -2150,6 +2165,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               {openActivity.extra ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
               <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
               <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
+              {openHandoff ? <Fact label="From" value={openHandoff.sourcePath} mono /> : null}
+              {openHandoff?.outputPath ? <Fact label="Output" value={openHandoff.outputPath} mono /> : null}
+              {openImportInfo?.sourcePath ? <Fact label="From" value={openImportInfo.sourcePath} mono /> : null}
+              {openImportInfo?.destinationPath ? <Fact label="Destination" value={openImportInfo.destinationPath} mono /> : null}
             </div>
           </DrawerSection>
         ) : null}
@@ -2254,7 +2273,7 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
   return (
     <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
       <span className="shrink-0 text-(length:--type-caption) text-muted-foreground">{label}</span>
-      <span className={`min-w-0 truncate text-right text-(length:--type-caption) text-foreground ${mono ? "font-mono" : ""}`} title={value}>
+      <span className={`min-w-0 text-right text-(length:--type-caption) text-foreground [overflow-wrap:anywhere] ${mono ? "font-mono" : ""}`} title={value}>
         {value}
       </span>
     </div>
@@ -2583,6 +2602,12 @@ function processorStageLabel(status: string) {
 
 }
 
+/** What the Connector cell adds under its name: never the words the Stage cell and the Status chip already say (#1168). */
+export function connectorSubLine(handoff: Pick<ProcessorHandoffItem, "status" | "outputPath">, says: string | null) {
+  const line = says ?? (handoff.outputPath ? "Output received" : "Waiting for output");
+  return line === processorStageLabel(handoff.status) ? undefined : line;
+}
+
 function processorStatusLabel(status: string) {
   return processorStageLabel(status);
 }
@@ -2651,8 +2676,10 @@ function timelineEventLabel(eventType: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function timelineEventDetail(event: { eventType: string; detailsJson: string | null }) {
+function timelineEventDetail(event: { eventType: string; detailsJson: string | null }, alreadyShown?: string | null) {
   if (!event.detailsJson) return null;
+  // The import failure is said once, in the Import line above (#1168).
+  if (alreadyShown && event.detailsJson.includes(alreadyShown.slice(0, 40))) return null;
   if (event.eventType.toLowerCase() === "file_provenance_recorded") {
     return "Recorded the original release, rename, destination, matched rules and immutable preference-plan proof.";
   }

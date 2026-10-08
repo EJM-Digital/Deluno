@@ -34,7 +34,7 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
     <>
       <header className="flex min-h-(--drawer-header-height) shrink-0 items-center justify-between gap-(--grid-gap) border-b border-hairline px-6">
         <div className="min-w-0">
-          <Dialog.Title className="truncate text-(length:--type-title-sm) font-semibold leading-tight tracking-[-0.01em]">
+          <Dialog.Title title={typeof title === "string" ? title : undefined} className="line-clamp-2 break-words text-(length:--type-title-sm) font-semibold leading-tight tracking-[-0.01em]">
             {title}
           </Dialog.Title>
           <Dialog.Description className={cn("mt-0.5 truncate text-(length:--type-caption) text-muted-foreground", !description && "sr-only")}>
