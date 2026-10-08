@@ -65,8 +65,9 @@ public interface IDownloadClientConfigurator
 /// the <see cref="DownloadLayout"/>, through the client's own Web UI or RPC on this computer. Nothing
 /// else in the client is touched.
 /// </summary>
-public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handlerFactory = null, TimeSpan? retryDelay = null) : IDownloadClientConfigurator
+public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handlerFactory = null, TimeSpan? retryDelay = null, IInstallLog? log = null) : IDownloadClientConfigurator
 {
+    private readonly IInstallLog? _log = log;
     private readonly Func<HttpMessageHandler> _handler = handlerFactory ?? (() => new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, UseCookies = true, CookieContainer = new CookieContainer() });
     private readonly TimeSpan _retryDelay = retryDelay ?? TimeSpan.FromMilliseconds(500);
 
@@ -131,10 +132,22 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
         http.DefaultRequestHeaders.TryAddWithoutValidation("Origin", http.BaseAddress!.GetLeftPart(UriPartial.Authority));
         using (var login = await http.PostAsync("api/v2/auth/login", Form(("username", credentials.Username), ("password", credentials.Password)), cancellationToken))
         {
+            // qBittorrent 4.x answers 200 "Ok." or "Fails."; 5.2.1 answers a right login with 204 and no body.
+            // So a 2xx counts unless the body says it failed, and an answer that does not say "Ok." is settled
+            // by asking for the version with the session just made, which a wrong login cannot do.
             var body = await login.Content.ReadAsStringAsync(cancellationToken);
-            if (!login.IsSuccessStatusCode || !body.Contains("Ok", StringComparison.OrdinalIgnoreCase))
+            if (!login.IsSuccessStatusCode || body.Contains("Fails", StringComparison.OrdinalIgnoreCase))
             {
                 return "qBittorrent did not accept the sign-in Deluno set up for it.";
+            }
+
+            if (!body.Contains("Ok", StringComparison.OrdinalIgnoreCase))
+            {
+                using var version = await http.GetAsync("api/v2/app/version", cancellationToken);
+                if (!version.IsSuccessStatusCode)
+                {
+                    return "qBittorrent did not accept the sign-in Deluno set up for it.";
+                }
             }
         }
 
@@ -323,23 +336,117 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
             return response.IsSuccessStatusCode;
         }
 
-        static string E(string value) => Uri.EscapeDataString(value);
-        if (!await SetAsync($"section=misc&keyword=download_dir&value={E(incomplete)}")
-            || !await SetAsync($"section=misc&keyword=complete_dir&value={E(layout.CompletedRoot)}"))
+        async Task<JsonElement?> GetAsync(string section)
         {
-            return "SABnzbd would not take its download folders.";
-        }
-
-        var (movies, tv) = InstalledClientCategories.For("sabnzbd");
-        foreach (var (category, folder) in new[] { (movies, layout.CompletedFolder("Movies")), (tv, layout.CompletedFolder("TV")) })
-        {
-            if (!await SetAsync($"section=categories&name={E(category)}&dir={E(folder)}"))
+            try
             {
-                return $"SABnzbd would not create its {category} category.";
+                using var response = await http.GetAsync($"api?mode=get_config&output=json&apikey={Uri.EscapeDataString(apiKey)}&section={section}", cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                return document.RootElement.Clone();
+            }
+            catch (Exception exception) when (exception is HttpRequestException or JsonException)
+            {
+                return null;
             }
         }
 
-        return null;
+        static string E(string value) => Uri.EscapeDataString(value);
+        static string Norm(string? path) => (path ?? string.Empty).Trim().Replace('/', '\\').TrimEnd('\\');
+
+        var (movies, tv) = InstalledClientCategories.For("sabnzbd");
+        var wanted = new[] { (movies, layout.CompletedFolder("Movies")), (tv, layout.CompletedFolder("TV")) };
+
+        // SABnzbd answers "ok" to a write and can still lose it (it may not be ready, or it rewrites its own
+        // default categories on its first start). So write, read the settings back, and only call it done when
+        // they hold and still hold a moment later; otherwise write again, for a bounded time.
+        var lastRead = "nothing read";
+        for (var attempt = 1; attempt <= SabnzbdAttempts; attempt++)
+        {
+            var written = await SetAsync($"section=misc&keyword=download_dir&value={E(incomplete)}")
+                && await SetAsync($"section=misc&keyword=complete_dir&value={E(layout.CompletedRoot)}");
+            foreach (var (category, folder) in wanted)
+            {
+                written &= await SetAsync($"section=categories&name={E(category)}&dir={E(folder)}");
+            }
+
+            if (written)
+            {
+                for (var look = 0; look < 2; look++)
+                {
+                    var (holds, read) = SabnzbdHolds(await GetAsync("misc"), await GetAsync("categories"), incomplete, layout.CompletedRoot, wanted, Norm);
+                    lastRead = read;
+                    if (!holds)
+                    {
+                        break;
+                    }
+
+                    if (look == 1)
+                    {
+                        _log?.Write($"SABnzbd: read back after {attempt} attempt(s): {read}");
+                        return null;
+                    }
+
+                    await Task.Delay(_retryDelay * 4, cancellationToken);
+                }
+            }
+
+            await Task.Delay(_retryDelay * 2, cancellationToken);
+        }
+
+        _log?.Write($"SABnzbd: the settings did not hold; last read: {lastRead}");
+        return $"SABnzbd would not keep its download folders and categories (it showed: {lastRead}).";
+    }
+
+    private const int SabnzbdAttempts = 12;
+
+    /// <summary>Whether SABnzbd's own answer shows both download folders and a folder on each wanted category, and a short plain account of what it showed.</summary>
+    private static (bool Holds, string Read) SabnzbdHolds(
+        JsonElement? misc, JsonElement? categories, string incomplete, string completed,
+        IReadOnlyList<(string Category, string Folder)> wanted, Func<string?, string> norm)
+    {
+        static JsonElement? Find(JsonElement? root, string section)
+            => root is { ValueKind: JsonValueKind.Object } element
+               && element.TryGetProperty("config", out var config) && config.ValueKind == JsonValueKind.Object
+               && config.TryGetProperty(section, out var found) ? found : null;
+
+        var parts = new List<string>();
+        var holds = true;
+        var settings = Find(misc, "misc");
+        string? Setting(string key) => settings is { ValueKind: JsonValueKind.Object } s && s.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        foreach (var (key, expected) in new[] { ("download_dir", incomplete), ("complete_dir", completed) })
+        {
+            var actual = Setting(key);
+            parts.Add($"{key}={(string.IsNullOrEmpty(actual) ? "(none)" : actual)}");
+            holds &= string.Equals(norm(actual), norm(expected), StringComparison.OrdinalIgnoreCase);
+        }
+
+        var list = Find(categories, "categories");
+        foreach (var (category, folder) in wanted)
+        {
+            string? actual = null;
+            if (list is { ValueKind: JsonValueKind.Array } array)
+            {
+                foreach (var item in array.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("name", out var name)
+                        && string.Equals(name.GetString(), category, StringComparison.OrdinalIgnoreCase))
+                    {
+                        actual = item.TryGetProperty("dir", out var dir) && dir.ValueKind == JsonValueKind.String ? dir.GetString() : string.Empty;
+                        break;
+                    }
+                }
+            }
+
+            parts.Add($"{category}={(actual is null ? "(no category)" : string.IsNullOrEmpty(actual) ? "(no folder)" : actual)}");
+            holds &= actual is not null && string.Equals(norm(actual), norm(folder), StringComparison.OrdinalIgnoreCase);
+        }
+
+        return (holds, string.Join("; ", parts));
     }
 
     // ---- NZBGet: read the whole config, change the folders and two categories, save, reload ---------
@@ -401,7 +508,7 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
                 var version = await Call("version");
                 if (version.TryGetProperty("result", out _))
                 {
-                    return null;
+                    return await ResumeAsync();
                 }
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
@@ -411,6 +518,33 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
         }
 
         return "NZBGet did not come back after saving its settings.";
+
+        // A fresh NZBGet starts with its download, post-processing and scan queues all paused, which looks like
+        // "Paused" in Deluno and downloads nothing. A new install must not be paused: resume them and read the
+        // status back until none is.
+        async Task<string?> ResumeAsync()
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                foreach (var method in new[] { "resumedownload", "resumepost", "resumescan" })
+                {
+                    await Call(method);
+                }
+
+                var status = await Call("status");
+                if (status.TryGetProperty("result", out var state) && state.ValueKind == JsonValueKind.Object
+                    && !IsTrue(state, "DownloadPaused") && !IsTrue(state, "PostPaused") && !IsTrue(state, "ScanPaused"))
+                {
+                    return null;
+                }
+
+                await Task.Delay(_retryDelay, cancellationToken);
+            }
+
+            return "NZBGet is still paused. Press Resume in NZBGet.";
+        }
+
+        static bool IsTrue(JsonElement state, string name) => state.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
     }
 
     private static FormUrlEncodedContent Form(params (string Key, string Value)[] fields)

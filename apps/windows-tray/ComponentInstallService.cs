@@ -205,7 +205,7 @@ public sealed class ComponentInstallService(
     Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null,
     IDownloadClientConfigurator? clientConfigurator = null)
 {
-    private readonly IDownloadClientConfigurator _clientConfigurator = clientConfigurator ?? new DownloadClientConfigurator();
+    private readonly IDownloadClientConfigurator _clientConfigurator = clientConfigurator ?? new DownloadClientConfigurator(log: installLog ?? new FileInstallLog());
     private readonly IInstallLog _log = installLog ?? new FileInstallLog();
     // Test-only (#1158): a local Weir build the person driving a golden-path run named, installed instead of Weir's newest release.
     private readonly Func<BundledComponentSpec, LocalWeirBuild?> _localBuild = localBuild ?? (spec => LocalWeirBuild.Find(
