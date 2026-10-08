@@ -10,6 +10,10 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatc
         "^library:[A-Za-z0-9-]{1,64}$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex TitleSubjectPattern = new(
+        "^title:[A-Za-z0-9-]{1,64}$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     /// <summary>
     /// Adds this connection to the screen subjects it is currently rendering.
     /// Subject names are deliberately constrained because they are client-controlled
@@ -120,6 +124,7 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatc
 
     private static bool IsValidSubject(string subject) =>
         subject is RealtimeGroups.Dashboard or RealtimeGroups.Queue or RealtimeGroups.Activity or RealtimeGroups.Live
-        || LibrarySubjectPattern.IsMatch(subject);
+        || LibrarySubjectPattern.IsMatch(subject)
+        || TitleSubjectPattern.IsMatch(subject);
 }
 

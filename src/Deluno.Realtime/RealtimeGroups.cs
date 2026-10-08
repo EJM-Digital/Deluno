@@ -12,5 +12,8 @@ public static class RealtimeGroups
     /// <summary>Joined only while Live or Transfers is open: the signal that someone is watching (#1097).</summary>
     public const string Live = Deluno.Contracts.LiveRealtimeSubject.Name;
 
+    /// <summary>One film or show: its page joins this, so it hears only about its own title (#1179).</summary>
+    public static string Title(string titleId) => $"title:{titleId}";
+
     public static string Library(string libraryId) => $"library:{libraryId}";
 }
