@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Microsoft.AspNetCore.Builder;
@@ -96,6 +97,106 @@ public static class AttentionEndpoints
 
             await dismissals.DismissAsync(AttentionDismissalStore.HeldReleaseKey(historyId), cancellationToken);
             return Results.NoContent();
+        });
+
+        // Approve a held release (#1159). It is judged again against today's rules first: a title that has its file
+        // since, a newer search, or a release the current title rules refuse is answered 409 with the plain reason.
+        // Otherwise it is sent exactly as the title's own grab does, and the held row is answered.
+        endpoints.MapPost("/api/attention/held-releases/{historyId}/approve", async (
+            string historyId,
+            IHeldReleaseReader heldReader,
+            AttentionDismissalStore dismissals,
+            Deluno.Movies.Data.IMovieCatalogRepository movieRepository,
+            Deluno.Series.Data.ISeriesCatalogRepository seriesRepository,
+            IMediaStateRepository mediaStateRepository,
+            Deluno.Platform.Data.IPlatformSettingsRepository platformSettingsRepository,
+            Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
+            Deluno.Quality.Data.IQualityRepository qualityRepository,
+            Deluno.Jobs.Data.IJobQueueRepository jobQueueRepository,
+            Deluno.Integrations.Search.IAcquisitionDecisionPipeline acquisitionPipeline,
+            Deluno.Integrations.DownloadClients.IDownloadClientGrabService downloadClientGrabService,
+            Deluno.Jobs.Data.IActivityFeedRepository activityFeedRepository,
+            TimeProvider timeProvider,
+            Deluno.Quality.Guides.IGuidePackageStore guidePackageStore,
+            Deluno.Quality.Data.IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IMediaTagStore tagStore,
+            Deluno.Integrations.DownloadClients.IDownloadClientTelemetryService downloadClientTelemetry,
+            CancellationToken cancellationToken) =>
+        {
+            var check = await heldReader.CheckAsync(historyId, cancellationToken);
+            if (check is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (check.Refusal is not null)
+            {
+                return Results.Json(new { code = "held-release-refused", message = check.Refusal }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            var item = check.Item;
+            var isMovie = item.MediaType == "movie";
+            ActiveDownloadCheck? activeDownloadCheck;
+            if (isMovie)
+            {
+                activeDownloadCheck = ActiveDownloadChecks.ForWholeTitle(item.Id, item.Title, downloadClientTelemetry);
+            }
+            else
+            {
+                var inventory = await seriesRepository.GetInventoryDetailAsync(item.Id, cancellationToken);
+                activeDownloadCheck = inventory is null
+                    ? null
+                    : Deluno.Series.Services.SeriesManualSendGuard.Build(
+                        item.Id,
+                        inventory.Title,
+                        [.. inventory.Episodes.Select(episode => (episode.EpisodeId, episode.SeasonNumber, episode.EpisodeNumber))],
+                        item.ReleaseName,
+                        downloadClientTelemetry);
+            }
+
+            var result = await MediaGrabHandler.ExecuteAsync(
+                isMovie ? MediaKind.Movie : MediaKind.Series,
+                item.Id,
+                new MediaReleaseGrabRequest(
+                    item.ReleaseName, item.IndexerId, item.IndexerName, item.DownloadUrl, item.Quality, item.SizeBytes, item.Seeders,
+                    Force: true, OverrideReason: "You approved this release from Needs action."),
+                mediaStateRepository,
+                platformSettingsRepository,
+                librariesRepository,
+                qualityRepository,
+                jobQueueRepository,
+                acquisitionPipeline,
+                downloadClientGrabService,
+                activityFeedRepository,
+                timeProvider,
+                (mediaId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token) =>
+                    isMovie
+                        ? movieRepository.RecordSearchAttemptAsync(mediaId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token)
+                        : seriesRepository.RecordSearchAttemptAsync(mediaId, null, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token),
+                cancellationToken,
+                guidePackageStore,
+                releasePreferencePlanRepository,
+                item.LibraryId,
+                tagStore,
+                activeDownloadCheck);
+
+            if (result.ActiveDownload is not null)
+            {
+                return ActiveDownloadResponse.Conflict(result.ActiveDownload);
+            }
+
+            if (result.NotFound)
+            {
+                return Results.NotFound();
+            }
+
+            if (result.ValidationErrors is not null)
+            {
+                return Results.ValidationProblem(result.ValidationErrors);
+            }
+
+            await dismissals.DismissAsync(AttentionDismissalStore.HeldReleaseKey(historyId), cancellationToken);
+            return Results.Ok(new { result.ReleaseName, result.IndexerName, result.DispatchStatus, result.DispatchMessage });
         });
 
         return endpoints;

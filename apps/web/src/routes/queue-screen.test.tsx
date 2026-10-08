@@ -1058,9 +1058,9 @@ describe("a release held for approval (#1159)", () => {
     expect(screen.getByRole("button", { name: "Dismiss The.Wire.S01E04.1080p.WEB-GRP" })).toBeVisible();
   });
 
-  it("approving sends that exact release with force, then stops listing it", async () => {
+  it("approving asks the server to judge and send that release, and never calls the grab route itself", async () => {
     queueLoaderData.heldReleases = [row];
-    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    authedFetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ message: "That title or episode no longer needs a release: the file you wanted is already there." }) });
 
     render(
       <MemoryRouter>
@@ -1069,10 +1069,8 @@ describe("a release held for approval (#1159)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Approve The.Wire.S01E04.1080p.WEB-GRP" }));
 
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/attention/held-releases/h1/dismiss", { method: "POST" }));
-    const grab = authedFetchMock.mock.calls.find((call) => String(call[0]).startsWith("/api/series/s1/grab"));
-    expect(grab).toBeTruthy();
-    expect(JSON.parse((grab![1] as { body: string }).body)).toMatchObject({ releaseName: row.releaseName, downloadUrl: "https://x/get", force: true });
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/attention/held-releases/h1/approve", { method: "POST" }));
+    expect(authedFetchMock.mock.calls.some((call) => String(call[0]).includes("/grab"))).toBe(false);
   });
 });
 

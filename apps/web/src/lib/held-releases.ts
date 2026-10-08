@@ -2,8 +2,8 @@
  * A release a search held for review (#1159): usable, but not safe to send on its own, so a person says yes.
  * Transfers lists it under Needs action with the candidate and three answers.
  *
- * - Approve sends exactly that release (the title's grab route with force, the same call the release drawer's
- *   "Send anyway" makes), then stops listing it.
+ * - Approve asks the server to judge the release again and send it (it refuses with a plain reason when the title
+ *   or episode no longer wants it or today's rules refuse that release), then stops listing it.
  * - Find another refuses that release and searches again.
  * - Dismiss stops listing it and changes nothing else.
  */
@@ -49,21 +49,6 @@ function collection(row: HeldReleaseRow): "movies" | "series" {
   return row.mediaType === "movie" ? "movies" : "series";
 }
 
-/** The body the grab route takes to send this exact release past the hold. */
-export function heldReleaseGrabBody(row: HeldReleaseRow) {
-  return {
-    releaseName: row.releaseName,
-    indexerId: row.indexerId,
-    indexerName: row.indexerName,
-    candidateQuality: row.quality,
-    downloadUrl: row.downloadUrl,
-    sizeBytes: row.sizeBytes,
-    seeders: row.seeders,
-    force: true,
-    overrideReason: "You approved this release from Needs action."
-  };
-}
-
 async function failure(response: Response, fallback: string): Promise<Error> {
   const body = (await response.json().catch(() => null)) as { message?: string; errors?: Record<string, string[]> } | null;
   const first = body?.errors ? Object.values(body.errors).flat()[0] : undefined;
@@ -75,15 +60,10 @@ export async function dismissHeldRelease(row: HeldReleaseRow): Promise<void> {
   if (!response.ok) throw await failure(response, "That could not be dismissed.");
 }
 
+/** The server judges the release again against today's rules, refuses with a plain reason (409) or sends it and answers the row. */
 export async function approveHeldRelease(row: HeldReleaseRow): Promise<void> {
-  const query = row.libraryId ? `?libraryId=${encodeURIComponent(row.libraryId)}` : "";
-  const response = await authedFetch(`/api/${collection(row)}/${encodeURIComponent(row.id)}/grab${query}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(heldReleaseGrabBody(row))
-  });
+  const response = await authedFetch(`/api/attention/held-releases/${encodeURIComponent(row.historyId)}/approve`, { method: "POST" });
   if (!response.ok) throw await failure(response, `${row.releaseName} could not be sent to a download client.`);
-  await dismissHeldRelease(row);
 }
 
 export async function findAnotherForHeldRelease(row: HeldReleaseRow): Promise<void> {
