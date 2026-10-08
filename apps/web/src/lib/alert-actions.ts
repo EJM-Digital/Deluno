@@ -194,9 +194,9 @@ export function failedImportActions(job: Pick<JobQueueItem, "id">): AlertActions
   return [
     {
       id: `job-retry:${job.id}`,
-      label: "Retry",
-      hint: "Tries the failed imports again. Files already in your library are not touched.",
-      request: { method: "POST", path: "/api/jobs/retry-failed", done: "Failed imports requeued", failure: "The failed imports could not be tried again." }
+      label: "Try again",
+      hint: "Tries this import again. Files already in your library are not touched.",
+      request: { method: "POST", path: `/api/jobs/${encodeURIComponent(job.id)}/retry`, done: "Import tried again", failure: "That import could not be tried again." }
     },
     dismiss(`job-dismiss:${job.id}`, { method: "POST", path: `/api/jobs/${encodeURIComponent(job.id)}/dismiss`, done: "Import dismissed", failure: "That import could not be dismissed." })
   ];

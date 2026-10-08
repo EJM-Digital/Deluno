@@ -319,17 +319,21 @@ public sealed class DownloadClientTelemetryService(
                 // lists (an empty own list is not "the client lost it"), so it
                 // reads the whole answer while only Deluno's own is kept.
                 liveSnapshot = await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken, split.WholeAnswer);
+                var withHistory = EnrichWithDispatchHistory(
+                    liveSnapshot,
+                    clientDispatches,
+                    capturedUtc);
+                var settledForThisClient = settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>());
                 var enriched = EnrichQueueImportState(
-                    EnrichWithDispatchHistory(
-                        liveSnapshot,
-                        clientDispatches,
-                        capturedUtc),
+                    withHistory,
                     libraries,
                     clientDispatches,
-                    settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    settledForThisClient,
                     importJobs,
                     handoffs,
-                    routeCategoriesByLibrary);
+                    routeCategoriesByLibrary,
+                    await EntitiesHoldingAFileAsync(withHistory, settledForThisClient, titleUnmonitorService, cancellationToken),
+                    capturedUtc);
                 snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
                     await DemoteImportedWithoutItsFileAsync(
                         enriched,
@@ -3145,7 +3149,9 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<DownloadDispatchItem> settledDispatches,
         IReadOnlyList<JobQueueItem> importJobs,
         IReadOnlyList<ProcessorHandoffItem> handoffs,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary,
+        IReadOnlySet<string>? entitiesWithFile = null,
+        DateTimeOffset? nowUtc = null)
     {
         if (snapshot.Queue.Count == 0)
         {
@@ -3241,6 +3247,17 @@ public sealed class DownloadClientTelemetryService(
                 return resolvedItem with { Status = DownloadQueueStatuses.Imported };
             }
 
+            // A hand-off a person dismissed, or one the processor finished whose output is gone,
+            // for a download whose title holds its file now (it was imported another way, or
+            // relinked to its own file) is done, not waiting for anything (#1155).
+            if (handoff is not null
+                && TitleHoldsFile(item, settledDispatches, entitiesWithFile)
+                && (handoff.Status == ProcessorHandoffStatuses.Dismissed
+                    || (handoff.Status == ProcessorHandoffStatuses.Completed && string.IsNullOrWhiteSpace(handoff.ImportJobId))))
+            {
+                return resolvedItem with { Status = DownloadQueueStatuses.Imported };
+            }
+
             if (handoff is not null)
             {
                 var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);
@@ -3290,6 +3307,25 @@ public sealed class DownloadClientTelemetryService(
 
             if (library is not null && ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
+                // No hand-off of its own. Only briefly is that the planner about to make one (#1155).
+                // When another copy of the same release holds the hand-off, or the title already has
+                // its file, the row says so; after a few minutes with neither it says what is wrong.
+                if (TitleHoldsFile(item, settledDispatches, entitiesWithFile))
+                {
+                    return resolvedItem with { Status = DownloadQueueStatuses.Imported };
+                }
+
+                if (AnotherCopyHasTheHandoff(item, handoffs))
+                {
+                    return resolvedItem with { Status = DownloadQueueStatuses.HandedOverElsewhere };
+                }
+
+                var finishedUtc = FinishedUtcOf(item, dispatches);
+                if (finishedUtc is { } finished && (nowUtc ?? DateTimeOffset.UtcNow) - finished >= NoHandoffNoticeAfter)
+                {
+                    return resolvedItem with { Status = DownloadQueueStatuses.NotHandedOver };
+                }
+
                 return resolvedItem with { Status = DownloadQueueStatuses.WaitingForProcessor };
             }
 
@@ -3301,6 +3337,73 @@ public sealed class DownloadClientTelemetryService(
             Queue = queue,
             Summary = Summarize(queue)
         };
+    }
+    /// <summary>How long a finished download may have no hand-off before the row says something is wrong.</summary>
+    internal static readonly TimeSpan NoHandoffNoticeAfter = TimeSpan.FromMinutes(10);
+
+    private static DateTimeOffset? FinishedUtcOf(DownloadQueueItem item, IReadOnlyList<DownloadDispatchItem> dispatches)
+        => dispatches
+            .Where(dispatch => string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .Select(dispatch => dispatch.ClientCompletedUtc)
+            .FirstOrDefault();
+
+    private static bool AnotherCopyHasTheHandoff(DownloadQueueItem item, IReadOnlyList<ProcessorHandoffItem> handoffs)
+        => handoffs.Any(other =>
+            string.Equals(other.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase)
+            && !(string.Equals(other.ClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(other.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
+            && (ProcessorHandoffStatuses.IsWithProcessor(other.Status)
+                || other.Status is ProcessorHandoffStatuses.Completed or ProcessorHandoffStatuses.Dismissed));
+
+    private static DownloadDispatchItem? LatestDispatchOf(DownloadQueueItem item, IReadOnlyList<DownloadDispatchItem> dispatches)
+        => dispatches
+            .Where(candidate => string.Equals(candidate.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(candidate.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(candidate => candidate.CreatedUtc)
+            .FirstOrDefault();
+
+    private static bool TitleHoldsFile(DownloadQueueItem item, IReadOnlyList<DownloadDispatchItem> settledDispatches, IReadOnlySet<string>? entitiesWithFile)
+    {
+        if (entitiesWithFile is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        var dispatch = LatestDispatchOf(item, settledDispatches);
+        return dispatch is not null && !string.IsNullOrWhiteSpace(dispatch.EntityId) && entitiesWithFile.Contains(dispatch.EntityId);
+    }
+
+    /// <summary>The titles, among those this client's finished downloads were grabbed for, that hold a file now.</summary>
+    internal static async Task<IReadOnlySet<string>> EntitiesHoldingAFileAsync(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches,
+        IDispatchTitleUnmonitorService? titleFiles,
+        CancellationToken cancellationToken)
+    {
+        var holding = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (titleFiles is null)
+        {
+            return holding;
+        }
+
+        var asked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in snapshot.Queue.Where(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed))
+        {
+            var dispatch = LatestDispatchOf(item, settledDispatches);
+            if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId) || !asked.Add(dispatch.EntityId))
+            {
+                continue;
+            }
+
+            if (await titleFiles.HasFileAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) == true)
+            {
+                holding.Add(dispatch.EntityId);
+            }
+        }
+
+        return holding;
     }
     private static LibraryItem? ResolveLibraryForQueueItem(
         DownloadQueueItem item,

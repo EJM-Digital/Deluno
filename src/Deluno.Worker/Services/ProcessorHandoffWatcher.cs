@@ -90,6 +90,7 @@ public sealed class ProcessorHandoffWatcher(
     {
         // Hand-offs that are over but still owe something (#1155).
         await SettleReturnedTitlesAsync(allLibraries ?? libraries, now, cancellationToken);
+        await SettleFailedImportsAsync(allLibraries ?? libraries, now, cancellationToken);
         await SettleSupersededAsync(allLibraries ?? libraries, now, cancellationToken);
 
         // Exactly the hand-offs a processor still has, however much history sits
@@ -298,6 +299,58 @@ public sealed class ProcessorHandoffWatcher(
         }
     }
 
+    /// <summary>The Activity category of the one automatic second try at a failed import of a processor's output.</summary>
+    public const string ImportRetriedCategory = "processing.import-retried";
+
+    /// <summary>
+    /// A finished hand-off whose output is still on disk, while its title (the one that is there now) holds no file
+    /// and its import gave up, is imported once more (#1155), whatever the order of the title's return and the
+    /// hand-off. The import adopts an identical file already at the destination. Once: the Activity line it writes is
+    /// the record that it was tried, and a person's Try again does the rest.
+    /// </summary>
+    private async Task SettleFailedImportsAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (outputImports is null)
+        {
+            return;
+        }
+
+        var finished = await processorRepository.ListProcessorHandoffsWithStatusAsync([ProcessorHandoffStatuses.Completed], cancellationToken);
+        foreach (var handoff in finished.Where(item => now - item.UpdatedUtc < ReturnedTitleWindow))
+        {
+            var library = libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (library is null || !ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(handoff.OutputPath) || !(File.Exists(handoff.OutputPath) || Directory.Exists(handoff.OutputPath)))
+            {
+                continue;
+            }
+
+            if (!await outputImports.OwesItsTitleItsFileAsync(handoff, cancellationToken))
+            {
+                continue;
+            }
+
+            var tried = await activityFeed.ListActivityAsync(50, "processor-handoff", handoff.Id, cancellationToken);
+            if (tried.Any(entry => string.Equals(entry.Category, ImportRetriedCategory, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            await TryImportOutputAsync(
+                handoff,
+                library,
+                null,
+                handoff.OutputPath,
+                cancellationToken,
+                $"{handoff.ReleaseName} had been processed but its import gave up and the title still has no file, so Deluno tried the import again. A file already at the destination that is identical is taken as the title's file.",
+                ImportRetriedCategory);
+        }
+    }
+
     /// <summary>
     /// A hand-off that went wrong needs nobody once the same film or episode has been imported through another download
     /// (#1155): it is dismissed, its Needs action entry closes, and Activity says so once.
@@ -413,7 +466,8 @@ public sealed class ProcessorHandoffWatcher(
         ProcessorConnectionItem? connection,
         string? reportedOutput,
         CancellationToken cancellationToken,
-        string? queuedMessage = null)
+        string? queuedMessage = null,
+        string? queuedCategory = null)
     {
         if (outputImports is null || string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
         {
@@ -459,7 +513,7 @@ public sealed class ProcessorHandoffWatcher(
             : null;
         await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
         await activityFeed.RecordActivityAsync(
-            import.NotImportedBecause is not null ? "filesystem.import.not-imported" : "processing.completed.import-queued",
+            import.NotImportedBecause is not null ? "filesystem.import.not-imported" : queuedCategory ?? "processing.completed.import-queued",
             notImported ?? queuedMessage ?? $"{name} had finished {handoff.ReleaseName} without Deluno hearing of it; Deluno found the cleaned file and queued it for import.",
             JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = output, import.JobId, import.DispatchId }),
             import.JobId,
