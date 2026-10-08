@@ -19,7 +19,7 @@ import { CountUp } from "../../../components/ui/count-up";
 import { motionAllowed } from "../../../lib/page-motion";
 import { cn } from "../../../lib/utils";
 import { formatSpeed } from "../downloads-kit";
-import { IMPORTING_NOW, routeOf, type JourneyCard } from "./journey";
+import { IMPORTING_NOW, processorHasStarted, routeOf, type JourneyCard } from "./journey";
 import { LANES } from "./lanes";
 import { STARTED_LABEL } from "./provenance";
 import { detailLines, type Part } from "./detail";
@@ -98,6 +98,8 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   }
   if (card.stage === "processor") {
     if (card.state.tone === "bad") return { text: card.state.label, tone: "bad", pulse: false };
+    // Only the hand-off's real state: a hand-off still waiting to be submitted is not work in progress.
+    if (!processorHasStarted(card)) return { text: `Waiting to hand over to ${card.processor ?? "the processor"}`, tone: "info", pulse: false };
     return { text: `${card.processor ?? "The processor"} is working on it`, tone: "info", pulse: true };
   }
   if (card.stage === "importing") return { text: card.state.label, tone: card.state.tone, pulse: card.state.tone === "info" };

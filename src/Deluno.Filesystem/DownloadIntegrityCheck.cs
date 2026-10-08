@@ -17,11 +17,11 @@ public enum DownloadIntegrityOutcome
 
 /// <param name="Outcome">What Deluno decided.</param>
 /// <param name="Reason">Set only when <see cref="Outcome"/> is <see cref="DownloadIntegrityOutcome.Failed"/>.</param>
-public sealed record DownloadIntegrityResult(DownloadIntegrityOutcome Outcome, string? Reason)
+public sealed record DownloadIntegrityResult(DownloadIntegrityOutcome Outcome, string? Reason, string? Detail = null)
 {
     public static readonly DownloadIntegrityResult StillWriting = new(DownloadIntegrityOutcome.StillWriting, null);
     public static readonly DownloadIntegrityResult Passed = new(DownloadIntegrityOutcome.Pass, null);
-    public static DownloadIntegrityResult Failed(string reason) => new(DownloadIntegrityOutcome.Failed, reason);
+    public static DownloadIntegrityResult Failed(string reason, string? detail = null) => new(DownloadIntegrityOutcome.Failed, reason, detail);
 }
 
 /// <summary>
@@ -114,10 +114,13 @@ public static class DownloadIntegrityCheck
         // only a definite "failed" or a definite absence of a stream counts.
         if (probe.Status == "failed")
         {
-            return DownloadIntegrityResult.Failed(
-                probe.Message is { Length: > 0 } message
-                    ? $"The file will not open or play: {message}"
-                    : "The file will not open or play.");
+            // ffprobe's own text, when there is a plain version of it, goes to the details only.
+            return probe.Detail is { Length: > 0 } detail
+                ? DownloadIntegrityResult.Failed($"The file will not open or play. {probe.Message}", detail)
+                : DownloadIntegrityResult.Failed(
+                    probe.Message is { Length: > 0 } message
+                        ? $"The file will not open or play: {message}"
+                        : "The file will not open or play.");
         }
 
         if (probe.Status == "succeeded" && probe.VideoStreams.Count == 0)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useCoalescedRevalidate } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
@@ -164,8 +164,7 @@ export function ConnectInstalledApps({
     }
   }
 
-  async function submitWeir(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitWeir() {
     if (!username.trim() || !password) {
       setWeirError("Enter a username and password for your Weir account.");
       return;
@@ -275,7 +274,19 @@ export function ConnectInstalledApps({
           </div>
         ) : null}
         {weir && weirOpen && !weir.connected ? (
-          <form onSubmit={(event) => void submitWeir(event)} className="grid gap-2 border-t border-hairline p-(--card-pad-x)" aria-label="Your Weir account">
+          // Not a <form>: the guided setup renders this panel inside its own step form, and a nested
+          // form sends the submit to the outer one (which reloaded the page).
+          <div
+            role="group"
+            className="grid gap-2 border-t border-hairline p-(--card-pad-x)"
+            aria-label="Your Weir account"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+                event.preventDefault();
+                void submitWeir();
+              }
+            }}
+          >
             <p className="text-(length:--type-caption) text-muted-foreground">
               {creating
                 ? "Weir has no account yet. Choose your own username and password. Deluno uses them once to set Weir up and never keeps them."
@@ -293,10 +304,10 @@ export function ConnectInstalledApps({
               </Field>
             ) : null}
             {weirError ? <p className="text-(length:--type-caption) text-destructive" role="alert">{weirError}</p> : null}
-            <Button type="submit" size="sm" className="w-max" disabled={busy !== null}>
+            <Button type="button" size="sm" className="w-max" disabled={busy !== null} onClick={() => void submitWeir()}>
               {creating ? "Create Weir account and connect" : "Sign in to Weir and connect"}
             </Button>
-          </form>
+          </div>
         ) : null}
       </ListCard>
     </div>

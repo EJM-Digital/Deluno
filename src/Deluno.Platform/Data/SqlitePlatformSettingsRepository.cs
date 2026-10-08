@@ -101,6 +101,8 @@ public sealed class SqlitePlatformSettingsRepository(
             MovieRootPath: NormalizeSetupText(request.MovieRootPath),
             SeriesRootPath: NormalizeSetupText(request.SeriesRootPath),
             DownloadsPath: NormalizeSetupText(request.DownloadsPath),
+            MovieDownloadsPath: NormalizeSetupText(request.MovieDownloadsPath),
+            SeriesDownloadsPath: NormalizeSetupText(request.SeriesDownloadsPath),
             QualityPreset: NormalizeSetupChoice(request.QualityPreset, "", "", "balanced1080p", "premium4k"),
             FormatGoal: NormalizeSetupChoice(request.FormatGoal, "", "", "simpleClean", "balanced", "homeTheater", "storageSaver", "anime"),
             IndexerName: NormalizeSetupText(request.IndexerName),
@@ -117,6 +119,14 @@ public sealed class SqlitePlatformSettingsRepository(
             FirstTitle: NormalizeSetupText(request.FirstTitle),
             FirstTitleYear: NormalizeSetupText(request.FirstTitleYear),
             FirstTitleMonitored: request.FirstTitleMonitored,
+            SkipSignInLocalNetwork: request.SkipSignInLocalNetwork,
+            UpdateAutomatically: request.UpdateAutomatically,
+            Automation: request.Automation is null
+                ? null
+                : request.Automation
+                    .Where(pair => pair.Key.Length is > 0 and <= 64)
+                    .Take(64)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value),
             UpdatedUtc: updatedUtc);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

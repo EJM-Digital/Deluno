@@ -290,6 +290,8 @@ export interface SetupDraftItem {
   movieRootPath: string;
   seriesRootPath: string;
   downloadsPath: string;
+  movieDownloadsPath?: string;
+  seriesDownloadsPath?: string;
   qualityPreset: "" | "balanced1080p" | "premium4k" | string;
   formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | string;
   indexerName: string;
@@ -306,6 +308,10 @@ export interface SetupDraftItem {
   firstTitle: string;
   firstTitleYear: string;
   firstTitleMonitored: boolean;
+  /** The Yes/No answers; null / missing means "not answered yet". */
+  skipSignInLocalNetwork?: boolean | null;
+  updateAutomatically?: boolean | null;
+  automation?: Record<string, boolean> | null;
   updatedUtc: string;
 }
 

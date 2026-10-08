@@ -23,7 +23,24 @@ public sealed record MediaProbeInfo(
     /// metadata is strong evidence, unlike everything else that rule reads,
     /// which is only ever circumstantial.
     /// </summary>
-    string? EmbeddedTitle = null);
+    string? EmbeddedTitle = null,
+    /// <summary>
+    /// ffprobe's own words for a file it could not read, kept for the details view only. <see cref="Message"/>
+    /// then holds the plain-words version (see <see cref="ProbeFailureWords"/>), which is what Activity and
+    /// Transfers show. Null when the message is already plain.
+    /// </summary>
+    string? Detail = null);
+
+/// <summary>
+/// Plain words for a file ffprobe could not read, so Activity and Transfers never show ffmpeg's own text
+/// (an "EBML header parsing failed ... Invalid data found when processing input" line with a file path in it).
+/// </summary>
+public static class ProbeFailureWords
+{
+    public const string FailedMessage = "The file can't be read as video; it may be incomplete or damaged.";
+
+    public const string UnreadableMessage = "Deluno could not open the file to check it; it may be locked, or in a folder that is not reachable right now.";
+}
 
 public sealed record MediaVideoStreamInfo(
     int Index,

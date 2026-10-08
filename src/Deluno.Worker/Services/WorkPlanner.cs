@@ -1790,6 +1790,7 @@ public sealed class WorkPlanner(
                 item.SourcePath,
                 itemId = item.Id,
                 reason,
+                technicalDetail = result.Detail,
                 removedFromClient
             }, PayloadJsonOptions),
             null,

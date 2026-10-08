@@ -31,7 +31,8 @@ public sealed class InstalledComponentWirer(
     IDownloadClientRegistry? registry = null,
     IBundledComponentDetection? detection = null,
     Deluno.Contracts.IHealthCheckRepository? healthChecks = null,
-    IRealtimeEventPublisher? realtime = null)
+    IRealtimeEventPublisher? realtime = null,
+    Deluno.Libraries.Data.ILibrariesRepository? libraries = null)
     : IInstalledComponentConnector, IDownloadClientDeletedHook
 {
     public const string ActivityCategory = "installer.components.connected";
@@ -201,9 +202,53 @@ public sealed class InstalledComponentWirer(
             record.MarkWired(CompanionToolIds.Weir);
             await realtime.PublishBundledComponentChangedAsync(CompanionToolIds.Weir, cancellationToken);
             await activity.RecordActivityAsync(ActivityCategory, "You connected Weir to Deluno from the apps you installed, with your own Weir account. Deluno did not keep the account's password.", null, null, null, null, cancellationToken);
+            await LinkRefiningLibrariesAsync(outcome.ProcessorConnectionId, outcome.ProcessorConnectionName, cancellationToken);
         }
 
         return new InstalledComponentConnectResult(CompanionToolIds.Weir, "Weir", outcome.Healthy, outcome.Message, NeedsSignIn: outcome.NeedsSignIn);
+    }
+
+    /// <summary>
+    /// Every library that refines before import and has no processor yet is linked to the Weir just connected,
+    /// so its hand-offs go there (Weir's own wizard looks for exactly these libraries). A library already linked
+    /// to a processor, or named for a different one, keeps it. Each link is written to Activity.
+    /// </summary>
+    private async Task LinkRefiningLibrariesAsync(string? connectionId, string? connectionName, CancellationToken cancellationToken)
+    {
+        if (libraries is null || string.IsNullOrWhiteSpace(connectionId))
+        {
+            return;
+        }
+
+        foreach (var library in await libraries.ListLibrariesAsync(cancellationToken))
+        {
+            if (!ImportWorkflows.HandsToProcessor(library.ImportWorkflow) || !string.IsNullOrWhiteSpace(library.ProcessorConnectionId))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(library.ProcessorName) && !string.Equals(library.ProcessorName, connectionName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var linked = await libraries.UpdateLibraryWorkflowAsync(
+                library.Id,
+                new Deluno.Libraries.Contracts.UpdateLibraryWorkflowRequest(
+                    library.ImportWorkflow,
+                    connectionName,
+                    library.ProcessorOutputPath,
+                    library.ProcessorTimeoutMinutes,
+                    library.ProcessorFailureMode,
+                    library.CleanupMode,
+                    library.RemoveEmptySourceFolders,
+                    connectionId),
+                cancellationToken);
+            if (linked is not null)
+            {
+                await activity.RecordActivityAsync(ActivityCategory, $"Linked the {library.Name} library to {connectionName ?? "Weir"}, so its downloads are refined before they are imported.", null, null, null, null, cancellationToken);
+            }
+        }
     }
 
     /// <summary>

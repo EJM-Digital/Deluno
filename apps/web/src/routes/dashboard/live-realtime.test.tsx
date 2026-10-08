@@ -108,7 +108,9 @@ describe("Live applies each pushed change with no fetch after it", () => {
     const board = screen.getByRole("region", { name: /^pipeline/i });
     const titles = () => board.querySelector<HTMLElement>('[data-glide-stage="processor"]')!;
     expect(await within(board).findByText("Metropolis (1927)")).toBeInTheDocument();
-    expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Cleaner is working on it");
+    // The hand-off is only waiting to be submitted: the processor is not working on it yet.
+    expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Waiting to hand over to Cleaner");
+    expect(titles().getAttribute("aria-label")).not.toContain("is working on it");
     const before = asked.paths.length;
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "failed", processorName: "Cleaner", message: "The processor timed out.", at: at() });

@@ -3,6 +3,8 @@ namespace Deluno.Platform.Contracts;
 /// <summary>
 /// A resumable guided-setup draft. It intentionally excludes API keys, passwords,
 /// and metadata-provider secrets; users re-enter those when they choose to connect.
+/// The Yes/No answers (sign-in, updates, automation) are kept too, so a reload restores them;
+/// an answer that was never given stays null / missing.
 /// </summary>
 public sealed record SetupDraftItem(
     string Mode = "simple",
@@ -10,6 +12,8 @@ public sealed record SetupDraftItem(
     string MovieRootPath = "",
     string SeriesRootPath = "",
     string DownloadsPath = "",
+    string MovieDownloadsPath = "",
+    string SeriesDownloadsPath = "",
     string QualityPreset = "",
     string FormatGoal = "",
     string IndexerName = "",
@@ -26,6 +30,9 @@ public sealed record SetupDraftItem(
     string FirstTitle = "",
     string FirstTitleYear = "",
     bool FirstTitleMonitored = true,
+    bool? SkipSignInLocalNetwork = null,
+    bool? UpdateAutomatically = null,
+    IReadOnlyDictionary<string, bool>? Automation = null,
     DateTimeOffset UpdatedUtc = default);
 
 public sealed record UpdateSetupDraftRequest(
@@ -34,6 +41,8 @@ public sealed record UpdateSetupDraftRequest(
     string MovieRootPath = "",
     string SeriesRootPath = "",
     string DownloadsPath = "",
+    string MovieDownloadsPath = "",
+    string SeriesDownloadsPath = "",
     string QualityPreset = "",
     string FormatGoal = "",
     string IndexerName = "",
@@ -49,4 +58,7 @@ public sealed record UpdateSetupDraftRequest(
     string FirstTitleType = "movies",
     string FirstTitle = "",
     string FirstTitleYear = "",
-    bool FirstTitleMonitored = true);
+    bool FirstTitleMonitored = true,
+    bool? SkipSignInLocalNetwork = null,
+    bool? UpdateAutomatically = null,
+    IReadOnlyDictionary<string, bool>? Automation = null);

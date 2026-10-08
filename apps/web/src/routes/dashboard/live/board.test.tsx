@@ -304,6 +304,14 @@ describe("what a journey card says", () => {
     expect(statusOf(card({ stage: "processor", processor: null, state: { tone: "info", label: "Being cleaned" } }), 5).text).toBe("The processor is working on it");
   });
 
+  it("does not say the processor is working while the hand-off is only waiting to be submitted", () => {
+    const waiting = card({ stage: "processor", processor: "Weir", state: { tone: "info", label: "Waiting for the processor" } });
+    expect(statusOf(waiting, 5)).toEqual({ text: "Waiting to hand over to Weir", tone: "info", pulse: false });
+    expect(statusOf(card({ stage: "processor", processor: null, state: { tone: "info", label: "Being handed over" } }), 5).text).toBe("Waiting to hand over to the processor");
+    // ...and it is not listed under "Working on now" either.
+    expect(buildOperations([], [waiting], NO_TITLES)).toEqual([]);
+  });
+
   it("goes amber and says it is says it is not moving while a download is stuck", () => {
     const stuck = statusOf(card({ stuck: true, state: { tone: "warn", label: "Stuck" } }), 5);
     expect(stuck).toEqual({ text: "Stuck at 43% · not moving", tone: "warn", pulse: true });
