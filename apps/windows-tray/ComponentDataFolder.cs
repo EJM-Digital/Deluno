@@ -443,3 +443,97 @@ public static class TransmissionReadd
         return added == 0 ? "Transmission had no torrents to add back." : $"Deluno added {added} torrents back to Transmission.";
     }
 }
+
+/// <summary>Stops and starts Transmission's daemon the way Deluno starts it, so it picks up the folder that was written again.</summary>
+public static class TransmissionDaemon
+{
+    public static async Task<bool> RestartAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        foreach (var process in System.Diagnostics.Process.GetProcessesByName("transmission-daemon"))
+        {
+            try
+            {
+                process.Kill();
+                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Already gone.
+            }
+        }
+
+        new RealProcessStarter().Start(ComponentPaths.Expand(spec.PostInstallCommand!), ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
+        var probe = new LoopbackPortProbe();
+        for (var i = 0; i < 60; i++)
+        {
+            if (await probe.IsOpenAsync("127.0.0.1", spec.DefaultPort, cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+        }
+
+        return false;
+    }
+}
+
+/// <summary>The web app's view of the Transmission notice: the same notice file the tray menu item uses (#1177).</summary>
+public sealed class TrayComponentRecoveryNotices(
+    Func<string>? dataRoot = null,
+    Func<string, BundledComponentCredentials?>? login = null,
+    Func<BundledComponentSpec, TransmissionRpc>? rpcFor = null,
+    Func<BundledComponentSpec, CancellationToken, Task<bool>>? restart = null) : IComponentRecoveryNotices
+{
+    private string Root => (dataRoot ?? ComponentPaths.DataRoot)();
+
+    private static BundledComponentSpec Spec() => BundledComponents.Load().First(s => s.Kind == ComponentStateMigration.Transmission);
+
+    public Task<IReadOnlyList<ComponentRecoveryNotice>> ListAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ComponentRecoveryNotice> list = [];
+        if (TransmissionReadd.Pending(Root) is { } notice)
+        {
+            var count = notice.Torrents.Count;
+            var message = count > 0
+                ? $"Transmission's settings were rebuilt after Deluno was reinstalled; {count} torrent{(count == 1 ? "" : "s")} may need adding back."
+                : "Transmission's settings were rebuilt after Deluno was reinstalled; torrents it had before may need adding back.";
+            list = [new ComponentRecoveryNotice(ComponentStateMigration.Transmission, "Transmission", message, count, CanReadd: true)];
+        }
+
+        return Task.FromResult(list);
+    }
+
+    public async Task<ComponentRecoveryResult?> ReaddAsync(string kind, CancellationToken cancellationToken)
+    {
+        if (!IsTransmission(kind) || TransmissionReadd.Pending(Root) is null)
+        {
+            return null;
+        }
+
+        var spec = Spec();
+        var rpc = rpcFor?.Invoke(spec) ?? new TransmissionRpc(spec.DefaultPort, (login ?? (k => BundledComponentCredentialStores.CreateForDataRoot(Root).TryGet(k)))(ComponentStateMigration.Transmission));
+        var message = await TransmissionReadd.RunAsync(Root, rpc, ct => (restart ?? TransmissionDaemon.RestartAsync)(spec, ct), cancellationToken).ConfigureAwait(false);
+        return new ComponentRecoveryResult(TransmissionReadd.Pending(Root) is null, message);
+    }
+
+    public Task<bool> DismissAsync(string kind, CancellationToken cancellationToken)
+    {
+        if (!IsTransmission(kind) || TransmissionReadd.Pending(Root) is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            File.Delete(ComponentStateMigration.ReaddNoticePath(Root));
+            return Task.FromResult(true);
+        }
+        catch (IOException)
+        {
+            return Task.FromResult(false);
+        }
+    }
+
+    private static bool IsTransmission(string kind) => string.Equals(kind, ComponentStateMigration.Transmission, StringComparison.OrdinalIgnoreCase);
+}

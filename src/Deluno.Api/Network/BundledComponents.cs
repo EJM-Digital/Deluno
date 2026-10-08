@@ -248,3 +248,61 @@ public sealed record BundledComponentView(
     bool Connected,
     bool NeedsAccount,
     bool AccountExists);
+
+/// <summary>
+/// A bundled app whose own folder had to be rebuilt after a reinstall (#1177): what the person should know, in plain
+/// words, and whether Deluno can add the app's downloads back for them.
+/// </summary>
+public sealed record ComponentRecoveryNotice(string Kind, string DisplayName, string Message, int ItemCount, bool CanReadd);
+
+/// <summary>The answer to "Add them back".</summary>
+public sealed record ComponentRecoveryResult(bool Done, string Message);
+
+/// <summary>
+/// The Windows app (which installs and starts the bundled apps) reports a rebuilt app folder here, and adds its downloads
+/// back on the person's say-so. Other hosts have no bundled apps and report nothing.
+/// </summary>
+public interface IComponentRecoveryNotices
+{
+    Task<IReadOnlyList<ComponentRecoveryNotice>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>Adds the app's downloads back; null when there is no such notice.</summary>
+    Task<ComponentRecoveryResult?> ReaddAsync(string kind, CancellationToken cancellationToken);
+
+    /// <summary>Clears the notice without adding anything. False when there was none.</summary>
+    Task<bool> DismissAsync(string kind, CancellationToken cancellationToken);
+}
+
+public sealed class NoComponentRecoveryNotices : IComponentRecoveryNotices
+{
+    public Task<IReadOnlyList<ComponentRecoveryNotice>> ListAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<ComponentRecoveryNotice>>([]);
+
+    public Task<ComponentRecoveryResult?> ReaddAsync(string kind, CancellationToken cancellationToken)
+        => Task.FromResult<ComponentRecoveryResult?>(null);
+
+    public Task<bool> DismissAsync(string kind, CancellationToken cancellationToken) => Task.FromResult(false);
+}
+
+public static class ComponentRecoveryEndpointRouteBuilderExtensions
+{
+    public static IEndpointRouteBuilder MapDelunoComponentRecoveryEndpoints(this IEndpointRouteBuilder api)
+    {
+        api.MapGet("/system/component-recovery", async ([Microsoft.AspNetCore.Mvc.FromServices] IComponentRecoveryNotices notices, CancellationToken cancellationToken)
+                => Results.Ok(await notices.ListAsync(cancellationToken)))
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
+
+        api.MapPost("/system/component-recovery/{kind}/readd", async (string kind, [Microsoft.AspNetCore.Mvc.FromServices] IComponentRecoveryNotices notices, CancellationToken cancellationToken) =>
+            {
+                var result = await notices.ReaddAsync(kind, cancellationToken);
+                return result is null ? Results.NotFound() : Results.Ok(result);
+            })
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
+        api.MapPost("/system/component-recovery/{kind}/dismiss", async (string kind, [Microsoft.AspNetCore.Mvc.FromServices] IComponentRecoveryNotices notices, CancellationToken cancellationToken)
+                => await notices.DismissAsync(kind, cancellationToken) ? Results.NoContent() : Results.NotFound())
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
+        return api;
+    }
+}

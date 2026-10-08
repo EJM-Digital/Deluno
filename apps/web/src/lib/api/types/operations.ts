@@ -692,6 +692,20 @@ export interface BundledComponentConnectRequest {
   password?: string;
 }
 
+/** A bundled app whose own folder was rebuilt after a reinstall (GET /api/system/component-recovery, #1177). */
+export interface ComponentRecoveryNotice {
+  kind: string;
+  displayName: string;
+  message: string;
+  itemCount: number;
+  canReadd: boolean;
+}
+
+export interface ComponentRecoveryResult {
+  done: boolean;
+  message: string;
+}
+
 export interface BundledComponentConnectAllResponse {
   results: BundledComponentConnectResult[];
 }
