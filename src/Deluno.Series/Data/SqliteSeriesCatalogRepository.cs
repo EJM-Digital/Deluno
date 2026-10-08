@@ -4429,7 +4429,8 @@ public sealed class SqliteSeriesCatalogRepository(
     /// <summary>
     /// Corrects the show-level file notes (series_wanted_state) that name a file the show no longer holds:
     /// the note moves to another file an episode still holds, or is cleared. Never changes the show's
-    /// monitored flag. Matches the exact path, or (recycleBinOnly) any path inside a recycle bin folder.
+    /// monitored flag. Matches the exact path, or (recycleBinOnly) any path inside a recycle bin folder, whatever
+    /// the row's has_file says: an older library check cleared the flag and kept the path, which left a stale note.
     /// </summary>
     private async Task<int> DetachSeriesLevelFileRecordsAsync(
         DbConnection connection,
@@ -4448,8 +4449,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 $"""
                 SELECT series_id, library_id
                 FROM series_wanted_state
-                WHERE has_file = 1
-                  AND file_path IS NOT NULL
+                WHERE file_path IS NOT NULL
                   AND (@seriesId IS NULL OR series_id = @seriesId)
                   AND {(recycleBinOnly ? "file_path LIKE '%.deluno-recycle-bin%'" : "file_path = @filePath COLLATE NOCASE")};
                 """;
@@ -4533,6 +4533,34 @@ public sealed class SqliteSeriesCatalogRepository(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var count = await DetachSeriesLevelFileRecordsAsync(
             connection, transaction, null, null, recycleBinOnly: true, cancellationToken);
+
+        // A show that is monitored never "stopped being wanted": an older library check wrote that reason on shows
+        // it then left monitored. The reason is worked out again from the episodes, as every other writer does.
+        var stale = new List<string>();
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText =
+                """
+                SELECT DISTINCT w.series_id
+                FROM series_wanted_state w
+                INNER JOIN series_entries s ON s.id = w.series_id
+                WHERE s.monitored = 1
+                  AND w.wanted_reason LIKE '%stopped wanting this show%';
+                """;
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                stale.Add(reader.GetString(0));
+            }
+        }
+
+        if (stale.Count > 0)
+        {
+            await RefreshSeriesRungsAsync(connection, transaction, stale, timeProvider.GetUtcNow(), cancellationToken);
+            count += stale.Count;
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return count;
     }
@@ -4765,7 +4793,7 @@ public sealed class SqliteSeriesCatalogRepository(
             {
                 RecentCases = summary.RecentCases
                     .Take(Math.Max(limit, 0))
-                    .Select(item => includeDetails ? item : item with { DetailsJson = null })
+                    .Select(item => includeDetails ? item : item with { DetailsJson = ImportRecoveryKeyDetails.Trim(item.DetailsJson) })
                     .ToArray()
             };
     }
@@ -5052,6 +5080,12 @@ public sealed class SqliteSeriesCatalogRepository(
         string reason,
         CancellationToken cancellationToken)
         => SharedMediaState.SettleImportRecoveryCasesAsync(MediaKind.Series, scope, reason, cancellationToken);
+
+    public Task<IReadOnlyList<SettledRecoveryCase>> SettleImportRecoveryCasesListedAsync(
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken)
+        => SharedMediaState.SettleImportRecoveryCasesListedAsync(MediaKind.Series, scope, reason, cancellationToken);
 
     public Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(CancellationToken cancellationToken)
         => SharedMediaState.SettleCasesOfTitlesHoldingFilesAsync(MediaKind.Series, cancellationToken);

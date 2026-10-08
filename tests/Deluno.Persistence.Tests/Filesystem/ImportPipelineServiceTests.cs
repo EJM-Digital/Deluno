@@ -4215,6 +4215,63 @@ public sealed class ImportPipelineServiceTests
             run.Series, run.Bin, CancellationToken.None));
     }
 
+    /// <summary>
+    /// The Simpsons on rc.30.8: an older library check had set the show-level note to has_file = 0 and kept its path, size
+    /// and the reason "stopped wanting this show" on a show that is monitored. The start-up heal clears the note whatever
+    /// has_file says and works the reason out again.
+    /// </summary>
+    [Fact]
+    public async Task A_stale_show_level_note_with_no_file_flag_is_cleared_and_its_reason_recomputed()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        await using (var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None))
+        {
+            using var stale = connection.CreateCommand();
+            stale.CommandText = "UPDATE series_wanted_state SET has_file = 0, file_path = @path, file_size_bytes = 657145450, " +
+                "wanted_reason = 'The file is gone from disk, so Deluno stopped wanting this show.' WHERE series_id = @id;";
+            var path = stale.CreateParameter(); path.ParameterName = "@path"; path.Value = run.FilePath; stale.Parameters.Add(path);
+            var id = stale.CreateParameter(); id.ParameterName = "@id"; id.Value = run.SeriesId; stale.Parameters.Add(id);
+            await stale.ExecuteNonQueryAsync();
+        }
+
+        Assert.True(await Deluno.Worker.Services.MislabelledEpisodeFileRepairService.HealShowFileNotesAsync(
+            run.Series, run.Bin, CancellationToken.None) >= 1);
+
+        var note = (string?)await ScalarAsync(storage, "SELECT file_path FROM series_wanted_state WHERE series_id = @id;", run.SeriesId);
+        Assert.NotEqual(run.FilePath, note);
+        var reason = (string?)await ScalarAsync(storage, "SELECT wanted_reason FROM series_wanted_state WHERE series_id = @id;", run.SeriesId);
+        Assert.DoesNotContain("stopped wanting", reason ?? string.Empty, StringComparison.Ordinal);
+        Assert.True(await ShowIsMonitoredAsync(storage, run.SeriesId));
+        Assert.Equal(0, await Deluno.Worker.Services.MislabelledEpisodeFileRepairService.HealShowFileNotesAsync(
+            run.Series, run.Bin, CancellationToken.None));
+    }
+
+    /// <summary>A monitored show that carries the old "stopped wanting" reason, with no stale path at all, gets its reason worked out again.</summary>
+    [Fact]
+    public async Task A_monitored_show_never_keeps_the_reason_stopped_wanting_this_show()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        await using (var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None))
+        {
+            using var stale = connection.CreateCommand();
+            stale.CommandText = "UPDATE series_wanted_state SET file_path = NULL, file_size_bytes = NULL, has_file = 0, " +
+                "wanted_reason = 'The file is gone from disk, so Deluno stopped wanting this show.' WHERE series_id = @id;";
+            var id = stale.CreateParameter(); id.ParameterName = "@id"; id.Value = run.SeriesId; stale.Parameters.Add(id);
+            await stale.ExecuteNonQueryAsync();
+        }
+
+        await Deluno.Worker.Services.MislabelledEpisodeFileRepairService.HealShowFileNotesAsync(run.Series, run.Bin, CancellationToken.None);
+
+        var reason = (string?)await ScalarAsync(storage, "SELECT wanted_reason FROM series_wanted_state WHERE series_id = @id;", run.SeriesId);
+        Assert.DoesNotContain("stopped wanting", reason ?? string.Empty, StringComparison.Ordinal);
+    }
+
     /// <summary>the owner, 30 Sep: a file deleted outside Deluno unmonitors that title; for TV that is the episode, never the show.</summary>
     [Fact]
     public async Task An_episode_file_deleted_outside_deluno_unmonitors_that_episode_only()
