@@ -65,6 +65,33 @@ public static class RealtimePushTestEndpoints
             return Results.NoContent();
         });
 
+        // Any event that travels on the "dashboard" or "live" subject, with the payload the test supplies:
+        // the System, Settings, Indexers and search schedule screens (#1179).
+        endpoints.MapPost("/api/testing/realtime/event", async (
+            HttpContext httpContext,
+            [FromBody] PushEventRequest request,
+            IRealtimeEventPublisher publisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            object payload = request.Payload is { } element ? element : new { };
+            if (string.Equals(request.Subject, "live", StringComparison.OrdinalIgnoreCase))
+            {
+                await publisher.PublishLiveEventAsync(request.EventName, payload, cancellationToken);
+            }
+            else
+            {
+                await publisher.PublishDashboardEventAsync(request.EventName, payload, cancellationToken);
+            }
+
+            return Results.NoContent();
+        });
+
         endpoints.MapGet("/api/testing/realtime/watchers", async (
             HttpContext httpContext,
             IRealtimeWatchers watchers,
@@ -93,3 +120,5 @@ public static class RealtimePushTestEndpoints
 public sealed record PushDownloadProgressRequest(string Id, string? Title, double Progress, double SpeedMbps, string? Eta, string? Status);
 
 public sealed record PushActivityRequest(string Message, string? Id, string? Category, string? Severity);
+
+public sealed record PushEventRequest(string EventName, string? Subject, System.Text.Json.JsonElement? Payload);

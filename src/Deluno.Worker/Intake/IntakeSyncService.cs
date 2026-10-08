@@ -44,7 +44,8 @@ public sealed class IntakeSyncService(
     ITraktClient? traktClient = null,
     ITitleTagService? titleTagService = null,
     IAutoTaggingService? autoTagging = null,
-    IConnectionUseReporter? connectionUses = null)
+    IConnectionUseReporter? connectionUses = null,
+    IRealtimeEventPublisher? realtime = null)
     : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
     private const int PreviewLimit = 100;
@@ -263,6 +264,10 @@ public sealed class IntakeSyncService(
         {
             var failureSummary = "No compatible target library exists for this source media type.";
             await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
+            if (realtime is not null)
+            {
+                await realtime.PublishEntityChangedAsync("IntakeSource", source.Id, cancellationToken);
+            }
             await activityFeedRepository.RecordActivityAsync(
                 "intake.sync.failed",
                 $"{source.Name} sync failed: {failureSummary}",
@@ -291,6 +296,10 @@ public sealed class IntakeSyncService(
                 logger.LogWarning(ex, "Intake source {SourceId} fetch failed.", source.Id);
                 var failureSummary = $"Provider fetch failed. {PlainFailure.Describe(ex, "fetching the feed")}";
                 await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
+                if (realtime is not null)
+                {
+                    await realtime.PublishEntityChangedAsync("IntakeSource", source.Id, cancellationToken);
+                }
                 await activityFeedRepository.RecordActivityAsync(
                     "intake.sync.failed",
                     $"{source.Name} sync failed during fetch.",
@@ -597,6 +606,10 @@ public sealed class IntakeSyncService(
         var summary = $"Fetched {entries.Count}, added {added}, duplicates {duplicates}, skipped {skipped}, errors {errors}.";
 
         await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), status, summary, cancellationToken);
+        if (realtime is not null)
+        {
+            await realtime.PublishEntityChangedAsync("IntakeSource", source.Id, cancellationToken);
+        }
         await activityFeedRepository.RecordActivityAsync(
             "intake.sync.completed",
             $"{source.Name} sync completed ({status}). {summary}",

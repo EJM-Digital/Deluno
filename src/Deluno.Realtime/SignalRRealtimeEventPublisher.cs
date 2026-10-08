@@ -157,19 +157,19 @@ public sealed class SignalRRealtimeEventPublisher(
         string completedUtc,
         CancellationToken cancellationToken)
     {
-        Enqueue(
-            "SearchRunCompleted",
-            RealtimeGroups.Library(libraryId),
-            new
-            {
-                libraryId,
-                libraryName,
-                mediaType,
-                plannedCount,
-                queuedCount,
-                skippedCount,
-                completedUtc
-            });
+        var payload = new
+        {
+            libraryId,
+            libraryName,
+            mediaType,
+            plannedCount,
+            queuedCount,
+            skippedCount,
+            completedUtc
+        };
+        Enqueue("SearchRunCompleted", RealtimeGroups.Library(libraryId), payload);
+        // The search schedule lists every library, so it listens on "dashboard" instead of joining each one (#1179).
+        Enqueue("SearchRunCompleted", RealtimeGroups.Dashboard, payload);
         return Task.CompletedTask;
     }
 
@@ -311,7 +311,8 @@ public sealed class SignalRRealtimeEventPublisher(
         string entityId,
         CancellationToken cancellationToken)
     {
-        var subject = string.Equals(entityType, "Library", StringComparison.OrdinalIgnoreCase)
+        var isLibrary = string.Equals(entityType, "Library", StringComparison.OrdinalIgnoreCase);
+        var subject = isLibrary
             ? RealtimeGroups.Library(entityId)
             : RealtimeGroups.Dashboard;
 
@@ -322,6 +323,12 @@ public sealed class SignalRRealtimeEventPublisher(
             {
                 id = entityId
             });
+        if (isLibrary)
+        {
+            // Settings > Libraries and the Dashboard join "dashboard", not a library:{id} subject per library (#1179).
+            Enqueue($"{entityType}Changed", RealtimeGroups.Dashboard, new { id = entityId });
+        }
+
         return Task.CompletedTask;
     }
 
