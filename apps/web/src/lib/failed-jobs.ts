@@ -27,3 +27,9 @@ export async function dismissFailedJob(jobId: string): Promise<void> {
   // 404 means it is no longer a failed job: retried, revived or already dismissed.
   if (!response.ok && response.status !== 404) throw new Error("That job could not be dismissed.");
 }
+
+/** Tries one failed job again, and no other: Try again on a single failure (#1155). */
+export async function retryFailedJob(jobId: string): Promise<void> {
+  const response = await authedFetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+  if (!response.ok) throw new Error("That job could not be tried again.");
+}

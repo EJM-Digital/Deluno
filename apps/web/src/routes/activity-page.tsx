@@ -43,7 +43,7 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
-import { dismissFailedJob } from "../lib/failed-jobs";
+import { dismissFailedJob, retryFailedJob } from "../lib/failed-jobs";
 import { detailFields, fixLinkForActivity } from "../lib/detail-fields";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -519,8 +519,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   async function handleRetryJob(job: JobQueueItem) {
     setBusy(true);
     try {
-      const response = await authedFetch(`/api/jobs/${encodeURIComponent(job.id)}/retry`, { method: "POST" });
-      if (!response.ok) throw new Error("That job could not be tried again.");
+      await retryFailedJob(job.id);
       toast.success(`${job.label} is being tried again`);
       setOpenJobId(null);
       revalidator.revalidate();
