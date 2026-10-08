@@ -185,20 +185,25 @@ export function BlockedReleasesConsole({
             items={proposed}
             columns={[
               { id: "release", label: "Release", sort: (release) => release.releaseName.toLowerCase() },
-              { id: "what", label: "What happened", mobile: true, sort: (release) => reasonWords(release.reasonCode) },
-              { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+              { id: "what", label: "What happened", sort: (release) => reasonWords(release.reasonCode) },
+              { id: "actions", label: "", width: LIST_TRACK.action, mobileWidth: "auto", align: "end", mobile: true }
             ]}
           >
             {(rows) => rows.map((release) => (
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}
-                  sub={`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
+                  sub={
+                    <>
+                      <span className="md:hidden">{reasonWords(release.reasonCode)} · </span>
+                      {`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
+                    </>
+                  }
                 />
-                <div role="cell">
+                <div role="cell" className="hidden md:block">
                   <Chip tone="warn">{reasonWords(release.reasonCode)}</Chip>
                 </div>
-                <div role="cell" className="flex justify-end gap-2">
+                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row">
                   <Button
                     type="button"
                     size="sm"
@@ -250,9 +255,9 @@ export function BlockedReleasesConsole({
           items={refused}
           columns={[
             { id: "release", label: "Release", sort: (release) => release.releaseName.toLowerCase() },
-            { id: "why", label: "Why", mobile: true, sort: (release) => reasonWords(release.reasonCode) },
+            { id: "why", label: "Why", sort: (release) => reasonWords(release.reasonCode) },
             { id: "refused", label: "Refused", width: LIST_TRACK.status, sort: (release) => new Date(release.blockedUtc) },
-            { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+            { id: "actions", label: "", width: LIST_TRACK.action, mobileWidth: "auto", align: "end", mobile: true }
           ]}
         >
           {(rows) => refused.length === 0 ? (
@@ -265,20 +270,25 @@ export function BlockedReleasesConsole({
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}
-                  sub={`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
+                  sub={
+                    <>
+                      <span className="md:hidden">{reasonWords(release.reasonCode)} · </span>
+                      {`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
+                    </>
+                  }
                 />
-                <div role="cell" className="flex flex-wrap gap-1.5">
+                <div role="cell" className="hidden flex-wrap gap-1.5 md:flex">
                   <Chip tone="idle">{reasonWords(release.reasonCode)}</Chip>
                   <Chip tone={release.origin === "manual" ? "info" : "idle"}>{originLabel(release)}</Chip>
                 </div>
-                <div role="cell" className="text-(length:--type-caption) text-muted-foreground">
+                <div role="cell" className="hidden text-(length:--type-caption) text-muted-foreground md:block">
                   {new Date(release.blockedUtc).toLocaleDateString(undefined, {
                     day: "numeric",
                     month: "short",
                     year: "numeric"
                   })}
                 </div>
-                <div role="cell" className="flex justify-end gap-2">
+                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row">
                   <Button
                     type="button"
                     size="sm"

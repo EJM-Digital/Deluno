@@ -199,7 +199,7 @@ function niceCeiling(value: number) {
  * so every one of them lines up. `pr-2` on the numeric columns matches the number
  * inputs' own padding, which is what keeps a header label over its own digits.
  */
-const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem_5.5rem] items-center gap-(--grid-gap) px-(--card-pad-x)";
+const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_8.5rem_5.5rem] items-center gap-(--grid-gap) px-(--card-pad-x)";
 
 function SizeCard({
   scope,

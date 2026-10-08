@@ -9,7 +9,7 @@ import { cn } from "../../lib/utils";
  */
 export function TitleActionGrid({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("mt-3 grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2", className)}>
+    <div className={cn("mt-3 grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2 [&>button]:h-auto [&>button]:min-h-(--control-height) [&>button]:whitespace-normal [&>button]:py-1.5 [&>button]:leading-tight", className)}>
       {children}
     </div>
   );
