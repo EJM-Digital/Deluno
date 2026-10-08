@@ -21,7 +21,7 @@ public static class QualityServiceCollectionExtensions
             client.BaseAddress = new Uri("https://api.github.com/");
             client.Timeout = TimeSpan.FromSeconds(20);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno guide-update-check/1.0");
-        });
+        }).AddHttpMessageHandler(() => new Deluno.Infrastructure.Http.GitHubApiConditionalHandler());
         services.AddSingleton<GuideUpstreamTreeClient>();
         services.AddSingleton<IGuidePackageSyncService, GuidePackageSyncService>();
         services.AddSingleton<IGuideUpdateCheckStore, SqliteGuideUpdateCheckStore>();

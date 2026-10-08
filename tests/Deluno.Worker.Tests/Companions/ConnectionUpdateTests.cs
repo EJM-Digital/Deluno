@@ -309,6 +309,52 @@ public sealed class ConnectionUpdateTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_folder, CompanionCatalog.WeirSetupAsset)));
     }
 
+    [Fact]
+    public async Task While_GitHubs_API_limit_is_used_up_Weir_is_still_found_through_the_release_feed_release_candidates_included()
+    {
+        var setupBytes = new byte[5_100_000];
+        Random.Shared.NextBytes(setupBytes);
+        using var weir = new TinyWeir();
+        var system = WeirSystem(weir.Port);
+        var requested = new List<string>();
+        var tool = NewWeir(system.Object, Hash(setupBytes), setupBytes, apiLimited: true, requested: requested);
+
+        await tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None);
+
+        // The newest tag by version order is the 3.4.0 release candidate, over the 3.3.0 that the feed lists first.
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirChecksumsAsset}", requested);
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirSetupAsset}", requested);
+        system.Verify(item => item.RunAsync(It.Is<string>(path => path.EndsWith(CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal)), "--silent", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task The_feed_fallback_keeps_the_checksum_check_as_strict_and_never_runs_a_mismatched_installer()
+    {
+        var setupBytes = new byte[5_100_000];
+        Random.Shared.NextBytes(setupBytes);
+        using var weir = new TinyWeir();
+        var system = WeirSystem(weir.Port);
+        var tool = NewWeir(system.Object, new string('B', 64), setupBytes, apiLimited: true);
+
+        var failure = await Assert.ThrowsAsync<CompanionDownloadException>(() => tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None));
+
+        Assert.Contains("SHA-256 does not match", failure.Message, StringComparison.Ordinal);
+        system.Verify(item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task When_the_limit_is_used_up_and_the_feed_cannot_be_read_either_the_message_names_the_limit_not_the_internet()
+    {
+        using var weir = new TinyWeir();
+        var tool = NewWeir(WeirSystem(weir.Port).Object, new string('A', 64), [1], apiLimited: true, feedAvailable: false);
+
+        var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None));
+
+        Assert.Contains("used up until", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Deluno will try again then", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("internet connection", failure.Message, StringComparison.Ordinal);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static ConnectionUpdateFacts Facts(string project, string installed, string latest, string? host, string? pinned, bool installedByDeluno)
@@ -378,9 +424,13 @@ public sealed class ConnectionUpdateTests : IDisposable
     }
 
     /// <summary>A Weir whose GitHub release, installer and checksum file are answered by a stub, never the network.</summary>
-    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes)
+    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null)
     {
-        var handler = new StubGitHub(publishedHash, setupBytes);
+        // The real client sits behind the GitHub handler, which turns a used-up limit into its plain failure.
+        HttpMessageHandler handler = new Deluno.Infrastructure.Http.GitHubApiConditionalHandler(new Deluno.Infrastructure.Http.GitHubApiState(), TimeProvider.System)
+        {
+            InnerHandler = new StubGitHub(publishedHash, setupBytes, apiLimited, feedAvailable, requested)
+        };
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler, disposeHandler: false));
         return new WeirCompanion(
@@ -392,13 +442,38 @@ public sealed class ConnectionUpdateTests : IDisposable
             factory.Object);
     }
 
-    private sealed class StubGitHub(string publishedHash, byte[] setupBytes) : HttpMessageHandler
+    private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var url = request.RequestUri!.AbsoluteUri;
+            requested?.Add(url);
             HttpContent content;
-            if (url.Contains("/releases?", StringComparison.Ordinal))
+            if (apiLimited && request.RequestUri.Host == "api.github.com")
+            {
+                var limited = new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"API rate limit exceeded"}""") };
+                limited.Headers.Add("X-RateLimit-Remaining", "0");
+                limited.Headers.Add("X-RateLimit-Reset", DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds().ToString());
+                return Task.FromResult(limited);
+            }
+
+            if (url.EndsWith("/releases.atom", StringComparison.Ordinal))
+            {
+                if (!feedAvailable)
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+                }
+
+                var repository = CompanionCatalog.WeirRepository;
+                content = new StringContent($$"""
+                    <feed xmlns="http://www.w3.org/2005/Atom">
+                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.3.0"/></entry>
+                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.4.0-rc.1"/></entry>
+                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.2.0"/></entry>
+                    </feed>
+                    """, Encoding.UTF8, "application/atom+xml");
+            }
+            else if (url.Contains("/releases?", StringComparison.Ordinal))
             {
                 content = new StringContent($$"""
                     [{"tag_name":"v9.9.9","draft":true,"assets":[]},{"tag_name":"v3.3.0-rc.1","prerelease":true,"assets":[]},{"tag_name":"v3.3.0","assets":[
