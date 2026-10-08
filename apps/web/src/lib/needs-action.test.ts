@@ -139,6 +139,14 @@ describe("needsAction", () => {
     expect(result.total).toBe(2);
   });
 
+  // Golden path rc.30.9: Pausetest and Retryfilm read "In library" and "Needs action" at once.
+  it("does not ask about a download that is in the library, whatever its client said on the way", () => {
+    const inLibrary = { id: "hash-9", clientId: "deluge", releaseName: "Pausetest.2019.1080p.WEB-DL-GRP", status: "imported", errorMessage: "Deluge isn't answering." };
+    const telemetry = { clients: [{ queue: [inLibrary] }] } as unknown as DownloadTelemetryOverview;
+
+    expect(needsAction({ telemetry }).queueAttention).toEqual([]);
+  });
+
   // #914, #929: the handoff row carries Import original, Retry, Stop waiting
   // and Dismiss; the case naming the same hand-off cannot do any of that, and
   // showed the same problem twice on the rig.

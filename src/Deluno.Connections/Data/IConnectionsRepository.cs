@@ -79,6 +79,9 @@ public interface IConnectionsRepository
     Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteDownloadClientAsync(string id, CancellationToken cancellationToken);
 
+    /// <summary>Routes a download client that no library sends to yet to the libraries of the types it serves (a Usenet client waiting for its provider, golden path rc.30.9). Returns how many libraries now send to it.</summary>
+    Task<int> RouteUnroutedDownloadClientAsync(string id, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ProxyItem>> ListProxiesAsync(CancellationToken cancellationToken);
 
     Task<ProxyItem> CreateProxyAsync(CreateProxyRequest request, CancellationToken cancellationToken);

@@ -235,6 +235,54 @@ describe("client save payload (#807)", () => {
   });
 });
 
+/** Golden path rc.30.9: saving Transmission's priority rewrote its host to http://localhost:9091. */
+describe("saving a saved client keeps its address", () => {
+  const stored: DownloadClientItem = {
+    id: "client-2",
+    name: "Transmission",
+    protocol: "transmission",
+    host: "192.168.1.10",
+    port: 9091,
+    username: null,
+    endpointUrl: "http://192.168.1.10:9091/transmission/rpc",
+    useSsl: false,
+    urlBase: "",
+    addPaused: false,
+    moviesCategory: "",
+    tvCategory: "",
+    categoryTemplate: null,
+    priority: 1,
+    isEnabled: true,
+    healthStatus: "healthy",
+    lastHealthMessage: null,
+    createdUtc: "2026-01-01T00:00:00Z",
+    updatedUtc: "2026-01-01T00:00:00Z"
+  };
+
+  it("sends no host, port or URL when only the priority changed", () => {
+    const saved = clientFormFrom(stored);
+    const payload = buildClientSavePayload({ ...saved, priority: "2" }, saved) as Record<string, unknown>;
+
+    expect(payload.priority).toBe(2);
+    for (const key of ["host", "port", "endpointUrl", "useSsl", "urlBase"]) expect(payload).not.toHaveProperty(key);
+  });
+
+  it("sends the address when the host was edited", () => {
+    const saved = clientFormFrom(stored);
+    const payload = buildClientSavePayload({ ...saved, host: "nas.local" }, saved) as Record<string, unknown>;
+
+    expect(payload.host).toBe("nas.local");
+    expect(payload.endpointUrl).toBe("http://nas.local:9091");
+  });
+
+  it("keeps an address that was never stored as a host", () => {
+    const saved = clientFormFrom({ ...stored, host: null as unknown as string });
+    const payload = buildClientSavePayload({ ...saved, priority: "3" }, saved) as Record<string, unknown>;
+
+    expect(payload).not.toHaveProperty("host");
+  });
+});
+
 /**
  * #806 — one platform-wide RemoveCompletedDownloads flag applied identically
  * to every client; it is now two per-client toggles, both off unless the

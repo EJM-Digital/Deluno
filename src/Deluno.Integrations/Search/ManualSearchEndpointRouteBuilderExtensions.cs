@@ -271,7 +271,8 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["downloadClient"] = [$"No {mediaLabel} library has a download client that can take a release from {request.IndexerName ?? "this source"}. Link a matching torrent or Usenet client in Library Routing."]
+                    ["downloadClient"] = [await acquisitionPipeline.ExplainNoDownloadClientAsync(request.IndexerId, routedClients, cancellationToken)
+                        ?? $"No {mediaLabel} library has a download client that can take a release from {request.IndexerName ?? "this source"}. Link a matching torrent or Usenet client in Library Routing."]
                 });
             }
 

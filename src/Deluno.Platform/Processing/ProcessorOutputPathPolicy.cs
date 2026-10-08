@@ -7,6 +7,49 @@ namespace Deluno.Platform.Processing;
 /// </summary>
 public static class ProcessorOutputPathPolicy
 {
+    /// <summary>
+    /// The output path of a report that named its files but no folder (Weir's partly failed report, golden path
+    /// rc.30.9): the file itself for one file, otherwise the deepest folder that holds all of them.
+    /// </summary>
+    public static string? OutputPathFromFiles(IReadOnlyList<string>? outputFiles)
+    {
+        var files = (outputFiles ?? []).Where(file => !string.IsNullOrWhiteSpace(file)).Select(file => file.Trim()).ToArray();
+        if (files.Length == 0)
+        {
+            return null;
+        }
+
+        if (files.Length == 1)
+        {
+            return files[0];
+        }
+
+        try
+        {
+            var parts = files
+                .Select(file => (Path.GetDirectoryName(Path.GetFullPath(file)) ?? string.Empty)
+                    .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.None))
+                .ToArray();
+            var common = new List<string>();
+            for (var i = 0; i < parts.Min(p => p.Length); i++)
+            {
+                if (parts.Any(p => !string.Equals(p[i], parts[0][i], StringComparison.OrdinalIgnoreCase)))
+                {
+                    break;
+                }
+
+                common.Add(parts[0][i]);
+            }
+
+            var folder = string.Join(Path.DirectorySeparatorChar, common);
+            return string.IsNullOrWhiteSpace(folder) ? null : folder;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
     public static bool IsOutputOwnedByLibrary(string? outputPath, string? configuredOutputPath)
     {
         if (string.IsNullOrWhiteSpace(outputPath) || string.IsNullOrWhiteSpace(configuredOutputPath))

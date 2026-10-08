@@ -1667,6 +1667,36 @@ public sealed class SqliteConnectionsRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<int> RouteUnroutedDownloadClientAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using (var check = connection.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM library_download_client_links WHERE download_client_id = @id;";
+            AddParameter(check, "@id", id);
+            if (Convert.ToInt64(await check.ExecuteScalarAsync(cancellationToken)) > 0)
+            {
+                return 0;
+            }
+        }
+
+        var client = (await ListDownloadClientsAsync(cancellationToken)).FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (client is null)
+        {
+            return 0;
+        }
+
+        await RouteClientToLibrariesAsync(connection, client, onlyUnservedLibraries: false, cancellationToken);
+        using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM library_download_client_links WHERE download_client_id = @id;";
+        AddParameter(count, "@id", id);
+        return (int)Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken));
+    }
+
+
 
     /// <summary>
     /// #1135: a new indexer is switched on for every library of the media types it searches, so the
@@ -1697,7 +1727,10 @@ public sealed class SqliteConnectionsRepository(
     /// client serves the types its categories name (both when it names none, as Transmission). A
     /// library that already has a client is left alone: a second client is the person's choice.
     /// </summary>
-    private async Task RouteNewDownloadClientAsync(System.Data.Common.DbConnection connection, DownloadClientItem item, CancellationToken cancellationToken)
+    private Task RouteNewDownloadClientAsync(System.Data.Common.DbConnection connection, DownloadClientItem item, CancellationToken cancellationToken)
+        => RouteClientToLibrariesAsync(connection, item, onlyUnservedLibraries: true, cancellationToken);
+
+    private async Task RouteClientToLibrariesAsync(System.Data.Common.DbConnection connection, DownloadClientItem item, bool onlyUnservedLibraries, CancellationToken cancellationToken)
     {
         var movies = !string.IsNullOrWhiteSpace(item.MoviesCategory) || !string.IsNullOrWhiteSpace(item.CategoryTemplate);
         var tv = !string.IsNullOrWhiteSpace(item.TvCategory);
@@ -1714,11 +1747,12 @@ public sealed class SqliteConnectionsRepository(
             SELECT lower(hex(randomblob(16))), l.id, @clientId, 1, NULL, @now, @now
             FROM libraries l
             WHERE ((lower(l.media_type) = 'tv' AND @tv = 1) OR (lower(l.media_type) <> 'tv' AND @movies = 1))
-              AND NOT EXISTS (SELECT 1 FROM library_download_client_links k WHERE k.library_id = l.id);
+              AND (@onlyUnserved = 0 OR NOT EXISTS (SELECT 1 FROM library_download_client_links k WHERE k.library_id = l.id));
             """;
         AddParameter(command, "@clientId", item.Id);
         AddParameter(command, "@movies", movies ? 1 : 0);
         AddParameter(command, "@tv", tv ? 1 : 0);
+        AddParameter(command, "@onlyUnserved", onlyUnservedLibraries ? 1 : 0);
         AddParameter(command, "@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

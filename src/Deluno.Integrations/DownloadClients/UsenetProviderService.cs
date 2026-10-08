@@ -51,6 +51,7 @@ public sealed class UsenetProviderService(IConnectionsRepository connections, ID
                     results.Add(result);
                     if (result.Saved)
                     {
+                        await ResumeAndRouteAsync(client, implementation, cancellationToken);
                         await RetestAsync(client, cancellationToken);
                     }
                 }
@@ -62,6 +63,28 @@ public sealed class UsenetProviderService(IConnectionsRepository connections, ID
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Saving the provider reloads NZBGet, which comes back with its queues paused, so they are released again
+    /// (golden path, rc.30.9: it stayed paused). A client no library sends to yet is routed like the torrent
+    /// clients, so it is no longer "Not routed" once it has a provider.
+    /// </summary>
+    private async Task ResumeAndRouteAsync(DownloadClientItem client, IDownloadClient implementation, CancellationToken cancellationToken)
+    {
+        if (string.Equals(client.Protocol, "nzbget", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await implementation.ResumeClientAsync(client, cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException && !cancellationToken.IsCancellationRequested)
+            {
+                // Its row says it is paused; the person can resume it from there.
+            }
+        }
+
+        await connections.RouteUnroutedDownloadClientAsync(client.Id, cancellationToken);
     }
 
     /// <summary>

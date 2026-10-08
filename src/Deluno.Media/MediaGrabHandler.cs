@@ -195,7 +195,8 @@ public static class MediaGrabHandler
         {
             return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
             {
-                ["downloadClient"] = [$"{library.Name} has no download client that can take a release from {request.IndexerName ?? "this source"}. Link a matching torrent or Usenet client in Library Routing."]
+                ["downloadClient"] = [await acquisitionPipeline.ExplainNoDownloadClientAsync(request.IndexerId, routing.DownloadClients, cancellationToken)
+                    ?? $"{library.Name} has no download client that can take a release from {request.IndexerName ?? "this source"}. Link a matching torrent or Usenet client in Library Routing."]
             });
         }
 
