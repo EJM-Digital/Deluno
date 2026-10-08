@@ -309,6 +309,43 @@ describe("needsAction: what Deluno handled itself is not for the user", () => {
   });
 });
 
+describe("needsAction: one failure is one row (#1167)", () => {
+  it("shows a dead-lettered import, its recovery case and its hand-off as the one hand-off row", () => {
+    const job = {
+      id: "job-1", jobType: "filesystem.import.execute", status: "dead-letter", attempts: 3, maxAttempts: 3, nextAttemptUtc: null,
+      payloadJson: JSON.stringify({ DispatchId: "d1" }), lastError: "The import failed."
+    } as never;
+    const handoff = {
+      id: "h1", clientId: "client-1", queueItemId: "hash-1", releaseName: "Nosferatu.1922", status: "failed",
+      failureMessage: "The processor lost the audio.", importJobId: "job-1"
+    } as unknown as ProcessorHandoffItem;
+
+    const result = needsAction({
+      movieRecovery: recovery([{ id: "case-1", dispatchId: "d1" }]),
+      seriesRecovery: noSeriesRecovery,
+      dispatches: [dispatch({ id: "d1", torrentHashOrItemId: "hash-1" })],
+      failedJobs: [job],
+      handoffs: [handoff]
+    });
+
+    expect(result.failedHandoffs.map((item) => item.id)).toEqual(["h1"]);
+    expect(result.recoveryCases).toEqual([]);
+    expect(result.failedImportJobs).toEqual([]);
+    expect(result.failedDownloads).toEqual([]);
+    expect(result.total).toBe(1);
+  });
+
+  it("still lists a different film's failure beside it", () => {
+    const handoff = { id: "h1", clientId: "client-1", queueItemId: "hash-1", releaseName: "A", status: "failed", failureMessage: "x", importJobId: null } as unknown as ProcessorHandoffItem;
+    const result = needsAction({
+      seriesRecovery: noSeriesRecovery,
+      dispatches: [dispatch({ id: "d1", torrentHashOrItemId: "hash-1" }), dispatch({ id: "d2", entityId: "movie-2", torrentHashOrItemId: "hash-2" })],
+      handoffs: [handoff]
+    });
+    expect(result.total).toBe(2);
+  });
+});
+
 describe("plainFailure", () => {
   it("never leaves a bare 'Error: timed out'", () => {
     expect(plainFailure("Error: timed out", "Sending it to Weir")).toBe("Sending it to Weir timed out. If the title is already where it belongs, dismiss this; otherwise try again.");
