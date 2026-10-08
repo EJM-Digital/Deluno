@@ -843,7 +843,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   {spin(`handoff:search-again:${handoff.id}`)}
                   Search for another release
                 </Button>,
-                "Gives up on this release, never picks it again, and looks for a different one."
+                "Gives up on this release, takes its download out of your client with its files, never picks it again, and searches for a different one right now."
               )}
               {line(
                 <Button type="button" variant="outline" size="sm" onClick={() => void keepWaiting(handoff)} disabled={busy}>

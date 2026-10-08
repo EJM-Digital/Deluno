@@ -74,6 +74,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<ExternalRedownloadService>();
         Deluno.Worker.ApiParity.CommandEndpoints.AddDelunoCommands(services);
         services.AddScoped<Deluno.Platform.Contracts.IProcessorOutputImportQueue, ProcessorOutputImportQueue>();
+        services.AddScoped<Deluno.Platform.Contracts.IGivenUpDownloadRemoval, GivenUpDownloadRemoval>();
         services.AddHostedService<DelunoHeartbeatWorker>();
         services.AddHostedService<DownloadThroughputSampler>();
         services.AddHostedService<HistoryRetentionWorker>();

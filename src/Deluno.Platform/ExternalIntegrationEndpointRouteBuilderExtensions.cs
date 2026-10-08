@@ -619,7 +619,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IBlockedReleaseRepository blockedReleases,
             IJobScheduler jobScheduler,
             ILibrariesRepository librariesRepository,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            IGivenUpDownloadRemoval? givenUpDownloads = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
@@ -672,13 +673,23 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     cancellationToken);
             }
 
+            // The given-up download is still in the client, which keeps the title "on its way" and made the new
+            // search skip itself for hours. It goes first: out of the client with its files (only a download Deluno
+            // sent), its record closed. The search is a person's own and then runs at once.
+            var removal = givenUpDownloads is null
+                ? new GivenUpDownloadRemovalResult(false, null)
+                : await givenUpDownloads.RemoveAsync(dispatch, cancellationToken);
+            var removedNote = removal.Removed
+                ? " Removed it from the download client with its files."
+                : removal.Message is { Length: > 0 } why ? $" It could not be removed from the download client ({why}), so the search may wait until it is." : string.Empty;
+
             var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
             await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
 
             var message = isLost
-                ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search."
-                : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.";
+                ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search.{removedNote}"
+                : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.{removedNote}";
             var ended = await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 ProcessorHandoffStatuses.Dismissed,

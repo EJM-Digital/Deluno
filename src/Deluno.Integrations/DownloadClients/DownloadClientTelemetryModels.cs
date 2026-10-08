@@ -99,8 +99,14 @@ public static class QueueRemovalReasons
     /// </summary>
     public const string Reclaim = "reclaim";
 
+    /// <summary>
+    /// "Search for another release" on a hand-off: the release was given up on (and blocklisted by the caller), so
+    /// the download leaves the client with its files. The title stays wanted; the caller starts the search.
+    /// </summary>
+    public const string GaveUp = "gave-up";
+
     public static bool IsKnown(string reason)
-        => reason is Failed or Unwanted or Forget or Reclaim;
+        => reason is Failed or Unwanted or Forget or Reclaim or GaveUp;
 }
 
 public sealed record QueueRemovalRequest(string Reason);
