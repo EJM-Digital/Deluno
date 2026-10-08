@@ -132,13 +132,14 @@ foreach ($entry in $invariantFiles) {
 # a listener, and every read route the tray had not mapped was answered by its
 # SPA fallback with the web page and a 200.
 #
-# The fix was one composition and one endpoint map, so what this now checks is
+# The fix was one composition, one endpoint map and (#1176) one request
+# pipeline that maps it, so what this now checks is
 # that all three use them rather than hand-listing anything. Naming the risk in
 # a comment and not checking it is how the drift lasted.
 $hostWiringRequiredCalls = @(
     "AddDelunoPlatformSecrets",
     "AddDelunoApplicationModules",
-    "MapDelunoApplicationEndpoints"
+    "UseDelunoRequestPipeline"
 )
 $hostWiringFiles = @(
     @{ Path = "src\Deluno.Host\Program.cs"; Label = "src/Deluno.Host/Program.cs" },
