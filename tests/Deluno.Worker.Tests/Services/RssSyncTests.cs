@@ -95,6 +95,8 @@ public sealed class RssSyncTests
         Assert.Equal("m-general", request.RelatedEntityId);
         Assert.Contains("\"targetEntityId\":\"m-general\"", request.PayloadJson);
         Assert.Contains("\"triggeredBy\":\"rss\"", request.PayloadJson);
+        // The indexer whose release started the search is the one the search waits for (#1184).
+        Assert.Contains("\"priorityIndexerIds\":[\"idx-1\"]", request.PayloadJson);
     }
 
     [Fact]
@@ -106,6 +108,7 @@ public sealed class RssSyncTests
 
         Assert.Equal(new[] { "e-102", "e-201" }, _queued.Select(request => request.RelatedEntityId));
         Assert.All(_queued, request => Assert.Equal("episode.search", request.JobType));
+        Assert.All(_queued, request => Assert.Contains("\"priorityIndexerIds\":[\"idx-1\"]", request.PayloadJson));
         // One search of an episode at a time, whichever pass asked.
         Assert.Equal("episode.search:e-102", _queued[0].DedupeKey);
     }

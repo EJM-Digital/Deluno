@@ -201,7 +201,8 @@ public sealed class EpisodeSearchJobHandler(
                 Genres: seriesItem?.Genres,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem?.MetadataJson),
                 SeasonsWithRemovedEpisodes: inventory?.SeasonsWithRemovedEpisodes(),
-                EpisodeTitles: inventory?.EpisodeTitlesForSeason(payload.SeasonNumber)).WithProfile(profileRules),
+                EpisodeTitles: inventory?.EpisodeTitlesForSeason(payload.SeasonNumber),
+                PatientIndexerIds: payload.PriorityIndexerIds).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;
@@ -287,6 +288,44 @@ public sealed class EpisodeSearchJobHandler(
                 clientExternalId: grabResult.ExternalId,
                 startedBy: DownloadStartedBy.ForSearch("automatic", false, !string.IsNullOrWhiteSpace(currentFilePath)),
                 titleEntityId: payload.SeriesId);
+        }
+
+        // #1184: a search the feed watch started for an indexer's new release, which did not hear from that
+        // indexer, is asked again shortly instead of waiting out the normal retry window.
+        var missedFeedIndexers = SearchExecutionSupport.MissedFeedIndexers(searchPlan, outcome, payload.PriorityIndexerIds, payload.FollowUp);
+        if (missedFeedIndexers.Count > 0 && jobScheduler is not null)
+        {
+            var askAfter = missedFeedIndexers.Max(item => item.AskAgainAfter);
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    job.JobType,
+                    "rss",
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        episodeId = payload.EpisodeId,
+                        seriesId = payload.SeriesId,
+                        libraryId = payload.LibraryId,
+                        seasonNumber = payload.SeasonNumber,
+                        episodeNumber = payload.EpisodeNumber,
+                        title = payload.Title,
+                        priorityIndexerIds = payload.PriorityIndexerIds,
+                        followUp = payload.FollowUp + 1
+                    }),
+                    "episode",
+                    payload.EpisodeId,
+                    ScheduledUtc: now.Add(askAfter),
+                    IdempotencyKey: $"rss-again:{payload.EpisodeId}:{payload.FollowUp + 1}:{job.Id}",
+                    DedupeKey: $"rss-again:{payload.EpisodeId}"),
+                cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "episode.search.asked-again",
+                $"{string.Join(" and ", missedFeedIndexers.Select(item => item.IndexerName))} could not be asked in time while searching for S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}, so Deluno will ask again in a few minutes.",
+                null,
+                job.Id,
+                "episode",
+                payload.EpisodeId,
+                cancellationToken);
+            nextEligibleUtc = now.Add(askAfter);
         }
 
         await seriesCatalogRepository.RecordSearchAttemptAsync(

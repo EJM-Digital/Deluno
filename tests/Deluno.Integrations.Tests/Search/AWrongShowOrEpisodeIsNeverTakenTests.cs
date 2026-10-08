@@ -374,7 +374,8 @@ public sealed class AWrongShowOrEpisodeIsNeverTakenTests
             IReadOnlyList<int>? categoryIds = null,
             IReadOnlyDictionary<int, string>? episodeTitles = null,
             bool queryIsATitle = true,
-            IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
+            IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null,
+            IReadOnlyCollection<string>? patientIndexerIds = null)
             => Task.FromResult(plan);
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Contracts;
@@ -272,7 +273,8 @@ public abstract class LibrarySearchJobHandler(
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                      RuntimeMinutes: candidate.RuntimeMinutes,
                      EntityId: candidate.MovieId,
-                     ImdbId: candidate.ImdbId).WithProfile(profileBundle.Rules),
+                     ImdbId: candidate.ImdbId,
+                     PatientIndexerIds: payload.PriorityIndexerIds).WithProfile(profileBundle.Rules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -397,20 +399,63 @@ public abstract class LibrarySearchJobHandler(
                 }
             }
 
+            // #1184: a search the feed watch started for an indexer's new release, which did not hear from that
+            // indexer, is asked again shortly instead of waiting out the normal retry window.
+            var missedFeedIndexers = SearchExecutionSupport.MissedFeedIndexers(searchPlan, outcome, payload.PriorityIndexerIds, payload.FollowUp);
+            var askAgainAfter = missedFeedIndexers.Count > 0 ? missedFeedIndexers.Max(item => item.AskAgainAfter) : (TimeSpan?)null;
+            if (askAgainAfter is { } askAfter && jobScheduler is not null)
+            {
+                await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        job.JobType,
+                        "rss",
+                        JsonSerializer.Serialize(new
+                        {
+                            libraryId = payload.LibraryId,
+                            libraryName = payload.LibraryName,
+                            mediaType = "movies",
+                            checkMissing = true,
+                            checkUpgrades = true,
+                            maxItems = 1,
+                            retryDelayHours = payload.RetryDelayHours,
+                            triggeredBy = "rss",
+                            targetEntityId = candidate.MovieId,
+                            priorityIndexerIds = payload.PriorityIndexerIds,
+                            followUp = payload.FollowUp + 1
+                        }),
+                        "movie",
+                        candidate.MovieId,
+                        ScheduledUtc: now.Add(askAfter),
+                        IdempotencyKey: $"rss-again:{candidate.MovieId}:{payload.FollowUp + 1}:{job.Id}",
+                        DedupeKey: $"rss-again:{candidate.MovieId}"),
+                    cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "library.search.asked-again",
+                    $"{string.Join(" and ", missedFeedIndexers.Select(item => item.IndexerName))} could not be asked in time while searching for {candidate.Title}, so Deluno will ask again in a few minutes.",
+                    null,
+                    job.Id,
+                    "movie",
+                    candidate.MovieId,
+                    cancellationToken);
+            }
+            var retryWindow = askAgainAfter is { } shortWindow && jobScheduler is not null
+                ? shortWindow
+                : TimeSpan.FromHours(Math.Max(1, payload.RetryDelayHours));
+
             await movieCatalogRepository.RecordSearchAttemptAsync(
                 candidate.MovieId,
                 payload.LibraryId,
                 payload.TriggeredBy,
                 outcome,
                 now,
-                now.AddHours(Math.Max(1, payload.RetryDelayHours)),
+                now.Add(retryWindow),
                 searchResult,
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 SearchExecutionSupport.SerializeSearchPlan(searchPlan),
                 cancellationToken);
 
-            var nextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
+            var nextEligibleUtc = now.Add(retryWindow);
             await jobQueueRepository.RecordSearchRetryWindowAsync(
                 "movie",
                 candidate.MovieId,

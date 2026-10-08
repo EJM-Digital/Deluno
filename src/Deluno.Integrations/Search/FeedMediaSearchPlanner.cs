@@ -116,7 +116,8 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<int>? categoryIds = null,
         IReadOnlyDictionary<int, string>? episodeTitles = null,
         bool queryIsATitle = true,
-        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null,
+        IReadOnlyCollection<string>? patientIndexerIds = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -207,7 +208,8 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles, queryIsATitle, episodeTitlesBySeason);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds, episodeTitles, queryIsATitle, episodeTitlesBySeason,
+                     patient: patientIndexerIds is not null && patientIndexerIds.Contains(indexer.Id, StringComparer.OrdinalIgnoreCase));
                 var answer = searchResults[index];
                 await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
                     new IndexerQueryRecordedEvent(
@@ -224,6 +226,22 @@ public sealed class FeedMediaSearchPlanner(
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
+
+        // The indexers this search did not hear from (#1184): skipped for pacing or a query limit, or failed. Each
+        // is asked again after its request interval plus a minute, which also clears an indexer's first circuit break.
+        var notHeardFrom = new List<IndexerNotHeardFrom>();
+        for (var i = 0; i < sourceIndexers.Length; i++)
+        {
+            var heard = searchResults[i];
+            if (heard.Failed || heard.Outcome is "throttled" or "query_limit_reached" or "instance_query_limit_reached")
+            {
+                var missed = sourceIndexers[i].indexer;
+                notHeardFrom.Add(new IndexerNotHeardFrom(
+                    missed.Id,
+                    missed.Name,
+                    TimeSpan.FromSeconds(Math.Max(2, missed.RequestIntervalSeconds ?? 2)) + TimeSpan.FromMinutes(1)));
+            }
+        }
 
         // Indexed writes above, flattened in order here, so results stay in
         // source-then-indexer priority order regardless of who answered first.
@@ -245,7 +263,8 @@ public sealed class FeedMediaSearchPlanner(
                     BestCandidate: null,
                     Candidates: [],
                     Summary: $"No indexer was asked for {title}: each was still busy with other searches. Deluno will ask again in a few minutes.",
-                    Reason: MediaSearchReasons.IndexersBusy);
+                    Reason: MediaSearchReasons.IndexersBusy,
+                    IndexersNotHeardFrom: notHeardFrom);
             }
 
             var failedCount = searchResults.Count(result => result.Failed);
@@ -267,7 +286,8 @@ public sealed class FeedMediaSearchPlanner(
                 Failures: searchResults
                     .Where(result => result.Failure is not null)
                     .Select(result => result.Failure!)
-                    .ToArray());
+                    .ToArray(),
+                IndexersNotHeardFrom: notHeardFrom);
         }
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
@@ -319,7 +339,8 @@ public sealed class FeedMediaSearchPlanner(
             Failures: searchResults
                 .Where(result => result.Failure is not null)
                 .Select(result => result.Failure!)
-                .ToArray());
+                .ToArray(),
+            IndexersNotHeardFrom: notHeardFrom);
     }
 
     /// <summary>
@@ -381,6 +402,18 @@ public sealed class FeedMediaSearchPlanner(
     /// :9118 waited for each other, and sixty queued episode searches mostly
     /// never reached either.
     /// </summary>
+    /// <summary>
+    /// How long a search started by this indexer's own new release waits for its pacing slot (#1184): the whole
+    /// request interval plus a margin, and never less than an ordinary search waits. The feed read that raised the
+    /// search has just used the slot, so the ordinary wait could lapse on an indexer with a long interval and drop
+    /// the very indexer holding the release.
+    /// </summary>
+    internal static TimeSpan PatientThrottleWait(IndexerItem indexer)
+    {
+        var wait = TimeSpan.FromSeconds(Math.Max(2, indexer.RequestIntervalSeconds ?? 2)) + TimeSpan.FromSeconds(15);
+        return wait > MaxIndexerThrottleWait ? wait : MaxIndexerThrottleWait;
+    }
+
     public static string ThrottleKey(Uri uri) => uri.Authority.ToLowerInvariant();
 
     /// <summary>
@@ -443,7 +476,8 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<int>? categoryIds = null,
         IReadOnlyDictionary<int, string>? episodeTitles = null,
         bool queryIsATitle = true,
-        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null)
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? episodeTitlesBySeason = null,
+        bool patient = false)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -495,7 +529,7 @@ public sealed class FeedMediaSearchPlanner(
             indexer.RequestIntervalSeconds is { } interval
                 ? OutboundRate.FromInterval(TimeSpan.FromSeconds(Math.Max(2, interval)))
                 : OutboundRate.PerIndexerDefault,
-            MaxIndexerThrottleWait,
+            patient ? PatientThrottleWait(indexer) : MaxIndexerThrottleWait,
             cancellationToken);
 
         if (waited is null)
