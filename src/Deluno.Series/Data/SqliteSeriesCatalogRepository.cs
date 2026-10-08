@@ -3888,6 +3888,103 @@ public sealed class SqliteSeriesCatalogRepository(
         return results;
     }
 
+    public async Task<IReadOnlyList<EpisodeFileLink>> ListEpisodeFileLinksAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT e.id, e.series_id, s.title, COALESCE(w.library_id, ''), e.season_number, e.episode_number, e.file_path
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.has_file = 1 AND e.file_path IS NOT NULL AND e.season_number > 0;
+            """;
+        var results = new List<EpisodeFileLink>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new EpisodeFileLink(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetInt32(4), reader.GetInt32(5), reader.GetString(6)));
+        }
+
+        return results;
+    }
+
+    public async Task<bool> ClearMislabelledEpisodeFileAsync(
+        string episodeId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow().ToString("O");
+
+        string? seriesId;
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT series_id FROM episode_entries WHERE id = @episodeId AND has_file = 1 AND file_path = @filePath;";
+            AddParameter(read, "@episodeId", episodeId);
+            AddParameter(read, "@filePath", filePath);
+            seriesId = (await read.ExecuteScalarAsync(cancellationToken)) as string;
+        }
+
+        if (seriesId is null)
+        {
+            return false;
+        }
+
+        using (var episode = connection.CreateCommand())
+        {
+            episode.Transaction = transaction;
+            episode.CommandText =
+                """
+                UPDATE episode_entries
+                SET has_file = 0,
+                    file_path = NULL,
+                    file_size_bytes = NULL,
+                    imported_utc = NULL,
+                    quality_cutoff_met = 0,
+                    updated_utc = @now
+                WHERE id = @episodeId
+                  AND file_path = @filePath;
+                """;
+            AddParameter(episode, "@episodeId", episodeId);
+            AddParameter(episode, "@filePath", filePath);
+            AddParameter(episode, "@now", now);
+            await episode.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using (var wanted = connection.CreateCommand())
+        {
+            wanted.Transaction = transaction;
+            wanted.CommandText =
+                """
+                UPDATE episode_wanted_state
+                SET wanted_status = 'missing',
+                    wanted_reason = 'The file held here was a copy of another episode, so it went to the recycle bin.',
+                    current_quality = NULL,
+                    quality_cutoff_met = 0,
+                    next_eligible_search_utc = NULL,
+                    updated_utc = @now
+                WHERE episode_id = @episodeId;
+                """;
+            AddParameter(wanted, "@episodeId", episodeId);
+            AddParameter(wanted, "@now", now);
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await RefreshSeriesRungsAsync(connection, transaction, [seriesId], timeProvider.GetUtcNow(), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<IReadOnlyList<WrongEpisodeFileLinkRepair>> RepairWrongEpisodeFileLinksAsync(
         CancellationToken cancellationToken)
     {

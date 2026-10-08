@@ -184,6 +184,14 @@ public static partial class ReleaseTitleMatch
             return null;
         }
 
+        return OtherEpisodeTitleCarried(carried, episode, titles) is { } other
+            ? $"The name says S{season:D2}E{episode:D2}, but its title is S{season:D2}E{other.Number:D2}'s \"{other.Title}\"."
+            : null;
+    }
+
+    /// <summary>The other episode (not <paramref name="episode"/>) whose exact title the carried words are, or null.</summary>
+    private static (int Number, string Title)? OtherEpisodeTitleCarried(string carried, int episode, IReadOnlyDictionary<int, string> titles)
+    {
         foreach (var (number, title) in titles)
         {
             if (number == episode || string.IsNullOrWhiteSpace(title))
@@ -194,11 +202,38 @@ public static partial class ReleaseTitleMatch
             var other = Clean(title);
             if (other.Length >= 3 && TitlesAgree(carried, other))
             {
-                return $"The name says S{season:D2}E{episode:D2}, but its title is S{season:D2}E{number:D2}'s \"{title.Trim()}\".";
+                return (number, title.Trim());
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// An already-imported file's source name that says one episode but carries another's exact title (#1173): the same
+    /// rule <see cref="Mismatch"/> applies to a search, returned as the episode it really is. Null when the name is
+    /// for the show and episode in <paramref name="expected"/>, carries that episode's own title, or carries no title.
+    /// </summary>
+    public static (int OtherEpisode, string OtherTitle)? MislabelledAs(string releaseName, ReleaseTitleExpectation expected)
+    {
+        if (!expected.IsTv || expected.Episode is not { } episode || expected.EpisodeTitles is not { Count: > 0 } titles
+            || Mismatch(releaseName, expected) is not { } reason
+            || !reason.Contains("but its title is", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
+        var marker = SeasonEpisode().Match(name);
+        if (!marker.Success)
+        {
+            return null;
+        }
+
+        var carried = TitleAfterMarker(name[(marker.Index + marker.Length)..]);
+        return carried.Length > 0 && OtherEpisodeTitleCarried(carried, episode, titles) is { } other
+            ? (other.Number, other.Title)
+            : null;
     }
 
     /// <summary>
