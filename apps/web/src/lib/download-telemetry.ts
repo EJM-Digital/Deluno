@@ -14,6 +14,8 @@ export const downloadQueueStatuses = {
   processed: "processed",
   processingFailed: "processingFailed",
   waitingForProcessor: "waitingForProcessor",
+  // Finished, and not yet handed to the processor: a display state the screen derives, never sent by the server.
+  handingOver: "handingOver",
   importReady: "importReady",
   importQueued: "importQueued",
   imported: "imported",
@@ -30,6 +32,7 @@ export function isProcessingStatus(status: string) {
     downloadQueueStatuses.processed,
     downloadQueueStatuses.processingFailed,
     downloadQueueStatuses.waitingForProcessor,
+    downloadQueueStatuses.handingOver,
     downloadQueueStatuses.importQueued
   ];
   return processingStatuses.includes(status);
@@ -43,6 +46,7 @@ export function queueStatusLabel(status: string) {
       completed: "Import ready",
       importReady: "Import ready",
       waitingForProcessor: "Waiting for processor",
+      handingOver: "Handing over",
       processing: "Processing",
       processed: "Processed",
       processingFailed: "Processing failed",
