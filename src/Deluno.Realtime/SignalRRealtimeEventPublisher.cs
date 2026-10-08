@@ -196,6 +196,15 @@ public sealed class SignalRRealtimeEventPublisher(
                 errorMessage,
                 changedUtc
             });
+
+        if (TitleIdOf(entityType, entityId) is { } titleId)
+        {
+            Enqueue(
+                "ImportStateChanged",
+                RealtimeGroups.Title(titleId),
+                new { jobId, state, entityType, entityId, title, errorMessage, changedUtc });
+        }
+
         return Task.CompletedTask;
     }
 
@@ -322,8 +331,56 @@ public sealed class SignalRRealtimeEventPublisher(
             {
                 id = entityId
             });
+
+        if (IsTitleType(entityType) && entityId != "*")
+        {
+            Enqueue($"{entityType}Changed", RealtimeGroups.Title(entityId), new { id = entityId });
+        }
+
         return Task.CompletedTask;
     }
+
+    public Task PublishTitleChangedAsync(
+        string entityType,
+        string entityId,
+        IReadOnlyCollection<string> libraryIds,
+        CancellationToken cancellationToken)
+    {
+        var libraryId = libraryIds.Count == 1 ? libraryIds.First() : null;
+        var name = $"{entityType}Changed";
+        Enqueue(name, RealtimeGroups.Dashboard, new { id = entityId, libraryId });
+        Enqueue(name, RealtimeGroups.Title(entityId), new { id = entityId, libraryId });
+        foreach (var id in libraryIds)
+        {
+            Enqueue(name, RealtimeGroups.Library(id), new { id = entityId, libraryId = id });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static bool IsTitleType(string entityType)
+        => string.Equals(entityType, "Movie", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(entityType, "Series", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The film or show a pushed event is about, so a copy can go to that title's own subject (#1179).
+    /// Episodes are not a title page; their show hears about them from the write itself.
+    /// </summary>
+    private static string? TitleIdOf(string? entityType, string? entityId)
+        => !string.IsNullOrWhiteSpace(entityId) && entityType is not null
+           && (string.Equals(entityType, "movie", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(entityType, "series", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(entityType, "show", StringComparison.OrdinalIgnoreCase))
+            ? entityId
+            : null;
+
+    private static string? TitleIdOf(object payload) => payload switch
+    {
+        JourneyStageChangedEvent journey => TitleIdOf(journey.EntityType, journey.EntityId),
+        RecoveryCaseChangedEvent recovery => TitleIdOf(recovery.EntityType, recovery.EntityId),
+        ReleasesTurnedDownEvent turnedDown => TitleIdOf(turnedDown.EntityType, turnedDown.EntityId),
+        _ => null
+    };
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -529,6 +586,11 @@ public sealed class SignalRRealtimeEventPublisher(
     public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
     {
         Enqueue(eventName, LiveRealtimeSubject.Name, payload);
+        if (TitleIdOf(payload) is { } titleId)
+        {
+            Enqueue(eventName, RealtimeGroups.Title(titleId), payload);
+        }
+
         return Task.CompletedTask;
     }
 

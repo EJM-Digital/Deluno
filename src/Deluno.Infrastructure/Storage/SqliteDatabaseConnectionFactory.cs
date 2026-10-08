@@ -26,6 +26,13 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
         return 0;
     };
 
+    // Notes which title rows a write touched (#1179). Like the commit hook it is
+    // one static delegate for every connection, and the sink arrives as its state.
+    private static readonly SQLitePCL.delegate_update UpdateHook = static (state, _, _, table, rowId) =>
+    {
+        ((TitleWriteSink)state).Record(table.utf8_to_string(), rowId);
+    };
+
     public long GetWriteGeneration(string databaseName)
         => Volatile.Read(ref WriteGenerations.GetOrAdd(GetDatabasePath(databaseName), static _ => new long[1])[0]);
 
@@ -110,6 +117,19 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
         }
     }
 
+    private static TitleWriteSink? TitleSinkFor(string databasePath)
+    {
+        foreach (var database in DelunoStorageLayout.Databases)
+        {
+            if (string.Equals(Path.GetFileName(databasePath), database.FileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return TitleWriteTables.SinkFor(databasePath, database.Key);
+            }
+        }
+
+        return null;
+    }
+
     private static string BuildConnectionString(string databasePath, SqliteOpenMode mode)
         => new SqliteConnectionStringBuilder
         {
@@ -189,6 +209,12 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
                     connection.Handle,
                     CommitHook,
                     WriteGenerations.GetOrAdd(databasePath, static _ => new long[1]));
+
+                var titleSink = TitleSinkFor(databasePath);
+                if (titleSink is not null)
+                {
+                    SQLitePCL.raw.sqlite3_update_hook(connection.Handle, UpdateHook, titleSink);
+                }
             }
 
             if (applyInitializationPragmas)
