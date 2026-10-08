@@ -48,8 +48,11 @@ async function seedTitles(page: Page) {
   return [`/movies/${movie.id}`, `/tv/${series.id}`];
 }
 
+// Pages that list records (the audit trail, trusted addresses): the same reason on two records is data, not a repeated help line.
+const RECORD_PAGES = new Set(["/system/audit", "/system/security"]);
+
 /** Runs in the page: what is wrong with the layout right now, in words. */
-function measure() {
+function measure(checkRepeats: boolean) {
   const doc = document.documentElement;
   const width = doc.clientWidth;
   const found: string[] = [];
@@ -69,7 +72,7 @@ function measure() {
       if (text.length >= 25) said.set(text, (said.get(text) ?? 0) + 1);
     }
   }
-  for (const [text, count] of said) if (count > 1) found.push(`"${text.slice(0, 60)}" is said ${count} times`);
+  if (checkRepeats) for (const [text, count] of said) if (count > 1) found.push(`"${text.slice(0, 60)}" is said ${count} times`);
 
   const sidewaysScroller = (el: HTMLElement) => {
     const overflowX = getComputedStyle(el).overflowX;
@@ -138,7 +141,7 @@ test.describe("every screen fits three widths", () => {
         // A title page lays itself out again when its metadata arrives (#1179): measure when two looks agree.
         let previous = "";
         await expect.poll(async () => {
-          const now = JSON.stringify(await page.evaluate(measure));
+          const now = JSON.stringify(await page.evaluate(measure, !RECORD_PAGES.has(route)));
           const same = now === previous;
           previous = now;
           return same;
