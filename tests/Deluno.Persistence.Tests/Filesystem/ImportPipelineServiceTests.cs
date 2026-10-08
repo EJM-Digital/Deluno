@@ -4126,6 +4126,114 @@ public sealed class ImportPipelineServiceTests
         Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
     }
 
+    private static async Task<object?> ScalarAsync(TestStorage storage, string sql, string seriesId)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        var id = command.CreateParameter(); id.ParameterName = "@id"; id.Value = seriesId; command.Parameters.Add(id);
+        var value = await command.ExecuteScalarAsync();
+        return value is DBNull ? null : value;
+    }
+
+    private static async Task<bool> ShowIsMonitoredAsync(TestStorage storage, string seriesId)
+        => Convert.ToInt64(await ScalarAsync(storage, "SELECT monitored FROM series_entries WHERE id = @id;", seriesId)) == 1;
+
+    private static ILibraryFileCheckService CreateLibraryFileCheck(
+        TestStorage storage,
+        SqliteSeriesCatalogRepository series,
+        SqliteJobStore store,
+        Deluno.Platform.RecycleBinService bin)
+    {
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        var reconciliation = new FilesystemReconciliationService(
+            CreateLibrariesRepository(storage, timeProvider),
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            series,
+            store,
+            timeProvider,
+            null,
+            bin);
+        return new LibraryFileCheckService(reconciliation, store, NullLogger<LibraryFileCheckService>.Instance, series);
+    }
+
+    /// <summary>
+    /// The Simpsons, 8 Oct: the mislabelled repair binned S38E02's file and the library check then read the show-level
+    /// note of that file as "removed outside Deluno" and unmonitored the whole show.
+    /// </summary>
+    [Fact]
+    public async Task After_the_mislabelled_repair_a_library_check_leaves_the_show_monitored()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        Assert.True(await ShowIsMonitoredAsync(storage, run.SeriesId));
+
+        // The older repair left the show-level note naming the file it binned.
+        await using (var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None))
+        {
+            using var stale = connection.CreateCommand();
+            stale.CommandText = "UPDATE series_wanted_state SET has_file = 1, file_path = @path WHERE series_id = @id;";
+            var path = stale.CreateParameter(); path.ParameterName = "@path"; path.Value = run.FilePath; stale.Parameters.Add(path);
+            var id = stale.CreateParameter(); id.ParameterName = "@id"; id.Value = run.SeriesId; stale.Parameters.Add(id);
+            await stale.ExecuteNonQueryAsync();
+        }
+
+        var result = await CreateLibraryFileCheck(storage, run.Series, run.Store, run.Bin).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.MarkedMissing);
+        Assert.True(await ShowIsMonitoredAsync(storage, run.SeriesId));
+    }
+
+    /// <summary>A show-level note that points into the recycle bin is corrected at start-up and the show stays monitored.</summary>
+    [Fact]
+    public async Task A_show_level_note_pointing_at_a_recycled_file_is_cleaned_and_the_show_stays_monitored()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        var binned = Assert.Single(await run.Bin.ListAsync(CancellationToken.None));
+        await using (var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None))
+        {
+            using var stale = connection.CreateCommand();
+            stale.CommandText = "UPDATE series_wanted_state SET has_file = 1, file_path = @path WHERE series_id = @id;";
+            var path = stale.CreateParameter(); path.ParameterName = "@path"; path.Value = binned.RecyclePath; stale.Parameters.Add(path);
+            var id = stale.CreateParameter(); id.ParameterName = "@id"; id.Value = run.SeriesId; stale.Parameters.Add(id);
+            await stale.ExecuteNonQueryAsync();
+        }
+
+        Assert.Equal(1, await Deluno.Worker.Services.MislabelledEpisodeFileRepairService.HealShowFileNotesAsync(
+            run.Series, run.Bin, CancellationToken.None));
+
+        var note = (string?)await ScalarAsync(storage, "SELECT file_path FROM series_wanted_state WHERE series_id = @id;", run.SeriesId);
+        Assert.DoesNotContain("recycle-bin", note ?? string.Empty, StringComparison.Ordinal);
+        Assert.NotEqual(run.FilePath, note);
+        Assert.True(await ShowIsMonitoredAsync(storage, run.SeriesId));
+        Assert.Equal(0, await Deluno.Worker.Services.MislabelledEpisodeFileRepairService.HealShowFileNotesAsync(
+            run.Series, run.Bin, CancellationToken.None));
+    }
+
+    /// <summary>James, 30 Sep: a file deleted outside Deluno unmonitors that title; for TV that is the episode, never the show.</summary>
+    [Fact]
+    public async Task An_episode_file_deleted_outside_deluno_unmonitors_that_episode_only()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 Diary of a Chimpy Kid 1080p FOX WEB H264-ETHEL",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        File.Delete(run.FilePath);
+
+        var result = await CreateLibraryFileCheck(storage, run.Series, run.Store, run.Bin).RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.MarkedMissing);
+        Assert.True(await ShowIsMonitoredAsync(storage, run.SeriesId));
+        var detail = await run.Series.GetInventoryDetailAsync(run.SeriesId, CancellationToken.None);
+        Assert.False(detail!.Episodes.Single(e => e.EpisodeNumber == 2).Monitored);
+        Assert.True(detail.Episodes.Single(e => e.EpisodeNumber == 1).Monitored);
+    }
+
     private static async Task<string?> LinkedFileAsync(TestStorage storage, string seriesId, int episodeNumber)
     {
         await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
