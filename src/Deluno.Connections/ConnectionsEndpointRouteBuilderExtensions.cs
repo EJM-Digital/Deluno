@@ -9,6 +9,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
+using Deluno.Connections.Usenet;
 using Deluno.Contracts;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
@@ -1780,6 +1781,37 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : HealthFromStatusCode("qBittorrent", response.StatusCode);
     }
 
+    /// <summary>The shared Usenet reading (<see cref="UsenetProviderCheck"/>); null when the client could not be asked, which never turns a pass into a failure.</summary>
+    private static async Task<bool?> ReadSabnzbdHasProviderAsync(HttpClient client, Uri uri, string apiKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await client.GetAsync(new Uri(uri, $"api?mode=get_config&section=servers&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return UsenetProviderCheck.SabnzbdHasProvider(document.RootElement);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<bool?> ReadNzbGetHasProviderAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await client.PostSizedJsonAsync(new Uri(uri, "jsonrpc"), new NzbGetRequest("config", []), cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return UsenetProviderCheck.NzbGetHasProvider(document.RootElement);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestSabnzbdAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
         if (string.IsNullOrWhiteSpace(item.Secret))
@@ -1797,9 +1829,15 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         // credential on the same path as the real work.
         var url = new Uri(uri, $"api?mode=queue&output=json&apikey={Uri.EscapeDataString(item.Secret)}");
         using var response = await client.GetAsync(url, cancellationToken);
-        return response.IsSuccessStatusCode
-            ? ("healthy", $"Connected to SABnzbd at {uri.Host}:{uri.Port}.", null)
-            : HealthFromStatusCode("SABnzbd", response.StatusCode);
+        if (!response.IsSuccessStatusCode)
+        {
+            return HealthFromStatusCode("SABnzbd", response.StatusCode);
+        }
+
+        // #1142: SABnzbd with no news server answers every call happily and downloads nothing.
+        return await ReadSabnzbdHasProviderAsync(client, uri, item.Secret, cancellationToken) == false
+            ? ("degraded", UsenetProviderText.NoProvider, "configuration")
+            : ("healthy", $"Connected to SABnzbd at {uri.Host}:{uri.Port}.", null);
     }
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
@@ -1854,9 +1892,15 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             new Uri(uri, "jsonrpc"),
             new NzbGetRequest("version", []),
             cancellationToken);
-        return response.IsSuccessStatusCode
-            ? ("healthy", $"Connected to NZBGet at {uri.Host}:{uri.Port}.", null)
-            : HealthFromStatusCode("NZBGet", response.StatusCode);
+        if (!response.IsSuccessStatusCode)
+        {
+            return HealthFromStatusCode("NZBGet", response.StatusCode);
+        }
+
+        // #1142: NZBGet cannot download until a real news server is set, so the test says so too.
+        return await ReadNzbGetHasProviderAsync(client, uri, cancellationToken) == false
+            ? ("degraded", UsenetProviderText.NoProvider, "configuration")
+            : ("healthy", $"Connected to NZBGet at {uri.Host}:{uri.Port}.", null);
     }
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)

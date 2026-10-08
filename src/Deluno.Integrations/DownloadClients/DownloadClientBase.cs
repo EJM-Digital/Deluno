@@ -1,3 +1,4 @@
+using Deluno.Connections.Usenet;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 

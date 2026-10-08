@@ -1,3 +1,4 @@
+using Deluno.Connections.Usenet;
 using System.Net;
 using System.Globalization;
 using System.Net.Http.Json;
@@ -159,7 +160,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         var clientVersion = await GetVersionAsync(http, baseUri, apiKey, cancellationToken);
 
         // #1142: SABnzbd with no news server cannot download anything, yet answers every call happily.
-        if (health == "healthy" && await ReadServersAsync(http, baseUri, apiKey, cancellationToken) is { } servers && !servers.Any(IsWorkingServer))
+        if (health == "healthy" && await ReadHasProviderAsync(http, baseUri, apiKey, cancellationToken) == false)
         {
             health = "degraded";
             message = UsenetProviderText.NoProvider;
@@ -197,7 +198,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return null;
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
-        return await ReadServersAsync(http, baseUri, client.Secret, cancellationToken) is { } servers ? servers.Any(IsWorkingServer) : null;
+        return await ReadHasProviderAsync(http, baseUri, client.Secret, cancellationToken);
     }
 
     /// <summary>#1142: writes the person's news server into SABnzbd (mode=set_config, section=servers), then reads it back.</summary>
@@ -235,8 +236,8 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
                 return new(client.Id, client.Name, false, $"{client.Name} did not accept the provider (it answered {(int)response.StatusCode}).");
             }
 
-            var after = await ReadServersAsync(http, baseUri, client.Secret, cancellationToken);
-            return after is not null && after.Any(IsWorkingServer)
+            var after = await ReadHasProviderAsync(http, baseUri, client.Secret, cancellationToken);
+            return after == true
                 ? new(client.Id, client.Name, true, $"{client.Name} now uses {request.Host.Trim()}.")
                 : new(client.Id, client.Name, false, $"{client.Name} did not keep the provider. Check the address and try again.");
         }
@@ -246,34 +247,20 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         }
     }
 
-    /// <summary>SABnzbd's configured news servers, or null when it could not be asked.</summary>
-    private static async Task<IReadOnlyList<JsonElement>?> ReadServersAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    /// <summary>Whether SABnzbd has a working news server, or null when it could not be asked.</summary>
+    private static async Task<bool?> ReadHasProviderAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         try
         {
             using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=get_config&section=servers&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
             using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            if (!document.RootElement.TryGetProperty("config", out var config) || !config.TryGetProperty("servers", out var servers) || servers.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            return servers.EnumerateArray().Select(item => item.Clone()).ToArray();
+            return UsenetProviderCheck.SabnzbdHasProvider(document.RootElement);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             return null;
         }
-    }
-
-    private static bool IsWorkingServer(JsonElement server)
-    {
-        static string Text(JsonElement element, string name)
-            => element.TryGetProperty(name, out var value) ? value.ToString() : string.Empty;
-
-        var enabled = Text(server, "enable");
-        return (enabled is "1" or "true" or "True") && !UsenetProviderText.IsPlaceholder(Text(server, "host"));
     }
 
     /// <summary>#813: clears SABnzbd's own queue-level warnings so they do not reappear once handled.</summary>
