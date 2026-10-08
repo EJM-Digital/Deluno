@@ -20,6 +20,10 @@ import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
 // screen above: a row whose name has no room (Transfers' Needs attention rows under their buttons), a value cut short
 // that a phone cannot read (a tooltip is not enough with no hover: the row must open its drawer, or the value must wrap),
 // and a column heading or label cut with nothing to say the rest.
+// The closing walk (8 Oct, issue 1168 line 2) added text squeezed into a sliver (a sentence of more than 3 words in a box
+// under 60px wide, or past 6 lines in a box far narrower than its row) and text hidden by a box with no height. That is how a
+// show's synopsis, the Health and Connections rows, the Setup Overview and the Destination and History tabs lost their words
+// without scrolling, clipping a control or cutting anything with an ellipsis.
 
 const SIZES = [
   { width: 1920, height: 1080 },
@@ -53,6 +57,20 @@ test.afterEach(async ({ page }) => {
 
 const LONG_RELEASE = "The.Extremely.Long.Named.Documentary.Series.S01E01.Part.One.The.Beginning.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1.HEVC-LONGGROUPNAME";
 const LONG_SHOW = "The Extraordinarily Long Titled Documentary About Everything";
+/** A removed indexer whose history kept no name (C6). */
+function removedIndexerRow(now: string) {
+  return { id: "fit-removed", name: "", isEnabled: false, healthStatus: "removed", totalQueries: 7, failedQueries: 2, successfulGrabs: 0, lastQueryUtc: now, candidatesReturned: 0, averageResponseMilliseconds: 900 };
+}
+
+const LONG_SYNOPSIS = "A documentary crew follows a small town through one long winter, and the longer they stay the less sure they are of what they came to film. Neighbours trade stories, old rivalries thaw, and by the spring nobody can say whose film it has become.".slice(0, 355);
+const FIT_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='288' height='48'><rect width='288' height='48' fill='#888'/></svg>")}`;
+
+/** What a show from the rig brings to its header: a logo, alternate titles, genres, a long synopsis and every fact. */
+function richShow(body: Record<string, unknown>) {
+  const meta = { logoUrl: FIT_LOGO, alternateTitles: ["La Dimension Desconocida", "Das Unheimliche Zwielicht", "Al Di La Del Possibile"], Network: "A Very Long Network Name", Studio: "Cayuga Productions And Partners", OriginalLanguage: "English", Collection: "A Collection With A Rather Long Name", Director: "Rod Serling And Others", Status: "Ended", Certification: "TV-14" };
+  return { overview: LONG_SYNOPSIS, genres: "Drama, Fantasy, Science Fiction, Mystery", metadataJson: JSON.stringify(meta) };
+}
+
 const json = (body: unknown) => ({ contentType: "application/json", body: JSON.stringify(body) });
 
 /**
@@ -97,8 +115,15 @@ async function seedLongData(page: Page, seriesId: string) {
   // The guided setup saves its draft as it goes; a held-open save is not what this test measures.
   await page.route("**/api/setup/draft", (route) => route.request().method() === "PUT" ? route.fulfill(json({})) : route.continue());
   await page.route("**/api/indexers/scoreboard**", (route) => route.fulfill(json({
-    indexers: indexers.map((indexer, index) => ({ id: indexer.id, name: indexer.name, totalQueries: 2368 - index * 300, failedQueries: index, successfulGrabs: 24 - index * 5, lastQueryUtc: now, candidatesReturned: 16842 - index * 1000, averageResponseMilliseconds: 64825 - index * 9000 }))
+    indexers: indexers.map((indexer, index) => ({ id: indexer.id, name: indexer.name, totalQueries: 2368 - index * 300, failedQueries: index, successfulGrabs: 24 - index * 5, lastQueryUtc: now, candidatesReturned: 16842 - index * 1000, averageResponseMilliseconds: 64825 - index * 9000 })).concat([removedIndexerRow(now)])
   })));
+  // A show page as the rig has them: a logo, alternate titles, many facts and a synopsis (C1: the header left the synopsis no room).
+  await page.route(new RegExp(`/api/series/${seriesId}$`), async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    const body = await response.json() as Record<string, unknown>;
+    return route.fulfill({ response, json: { ...body, ...richShow(body) } });
+  });
   await page.route(/\/api\/activity\?.*pageSize=80/, (route) => route.fulfill(json({
     items: Array.from({ length: 12 }, (_, index) => ({
       id: `fit-activity-${index}`, category: "import", label: "Imported", message: `${LONG_RELEASE}.${index} was imported from the download`, severity: "success",
@@ -278,7 +303,7 @@ function measure({ checkRepeats, phone }: { checkRepeats: boolean; phone: boolea
     const cutSideways = hides && (style.textOverflow === "ellipsis" || style.whiteSpace === "nowrap") && el.scrollWidth > el.clientWidth + 1;
     const cutTall = style.getPropertyValue("-webkit-line-clamp") !== "none" && style.overflowY !== "visible" && el.scrollHeight > el.clientHeight + 3;
     if (!cutSideways && !cutTall) continue;
-    if (el.closest("[role=row][tabindex], [data-fit-ignore]")) continue;
+    if (el.closest("[role=row][tabindex], [data-fit-ignore]") || el.parentElement?.querySelector(":scope > button[aria-label='Read the full synopsis']")) continue; // a clamped synopsis offers More
     const label = `${text.replace(/\s+/g, " ").slice(0, 40)}" (${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 3).join(".")}`;
     // A heading or a column heading is cut short with nothing to read the rest by, tooltip or no: say it whole or wrap it.
     // (A title page's h1 is the title in one line with its full name as a tooltip, the approved header: its own spec holds its height.)
@@ -287,6 +312,31 @@ function measure({ checkRepeats, phone }: { checkRepeats: boolean; phone: boolea
     else if (!el.closest("[title], [aria-label]")) found.push(`cut text "${label}" has no tooltip and no drawer`);
   }
   for (const label of cutHeadings) found.push(`heading "${label}" is cut`);
+
+  // Text squeezed into a sliver: it is on screen but nobody can read it.
+  const squeezed = new Set<string>();
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+    const own = Array.from(el.childNodes).filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent ?? "").join(" ").replace(/\s+/g, " ").trim();
+    if (own.split(" ").filter(Boolean).length <= 3) continue;
+    if (isHiddenOrTiny(el) || el.closest("script, style, option, textarea, [data-fit-ignore]")) continue;
+    const style = getComputedStyle(el);
+    if (style.display === "inline" || style.display === "contents") continue; // an inline run is as wide as the block that holds it
+    const box = el.getBoundingClientRect();
+    const say = (why: string) => squeezed.add(`"${own.slice(0, 40)}" (${el.tagName.toLowerCase()}.${String(el.className).split(/\s+/).slice(0, 3).join(".")}) ${why}`);
+    // Text that is cut on one line (an ellipsis, a clamp) is the cut-text rule's, with its tooltip or drawer; this is for text that wraps.
+    const cutOnPurpose = style.whiteSpace === "nowrap" || style.textOverflow === "ellipsis" || style.getPropertyValue("-webkit-line-clamp") !== "none";
+    if (!cutOnPurpose && box.width < 60) { say(`is squeezed to ${Math.round(box.width)}px wide`); continue; }
+    const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 14) * 1.2;
+    const row = el.closest<HTMLElement>("[role=row], li, section, article, form, [role=dialog]");
+    if (!cutOnPurpose && row && el.scrollHeight / lineHeight > 6 && box.width < 120 && box.width < row.getBoundingClientRect().width * 0.5) say(`runs to ${Math.round(el.scrollHeight / lineHeight)} lines in ${Math.round(box.width)}px of a ${Math.round(row.getBoundingClientRect().width)}px row`);
+    // A box that hides what runs past it and has no height: the words are in the page and never painted.
+    for (let owner = el.parentElement; owner && owner !== document.body; owner = owner.parentElement) {
+      const hides = getComputedStyle(owner).overflowY;
+      const ownerBox = owner.getBoundingClientRect();
+      if ((hides === "hidden" || hides === "clip") && ownerBox.height < 8 && ownerBox.width > 8 && !owner.closest("[aria-hidden=true], [inert], [hidden]")) { say("is hidden by a box with no height"); break; }
+    }
+  }
+  for (const text of squeezed) found.push(`squeezed text ${text}`);
 
   const controls = document.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [role=button]");
   for (const control of Array.from(controls)) {
@@ -363,7 +413,7 @@ test.describe("every screen fits three widths", () => {
         }, { timeout: 8_000 }).toBe(true);
         const problems = JSON.parse(previous) as string[];
         const shown = route.startsWith("/movies/") ? "a film page" : route.startsWith("/tv/") ? "a show page" : route;
-        if (problems.length > 0) offenders.push(`${shown}: ${problems.slice(0, 5).join("; ")}`);
+        if (problems.length > 0) offenders.push(`${shown}: ${problems.slice(0, 12).join("; ")}`);
       }
 
       expect(offenders, offenders.join("\n")).toEqual([]);
@@ -415,7 +465,7 @@ test.describe("every screen fits three widths", () => {
           }
           return past.slice(0, 3);
         }));
-        if (problems.length > 0) offenders.push(`${step}: ${problems.slice(0, 5).join("; ")}`);
+        if (problems.length > 0) offenders.push(`${step}: ${problems.slice(0, 12).join("; ")}`);
       }
       expect(offenders, offenders.join("\n")).toEqual([]);
     });
@@ -464,6 +514,119 @@ test.describe("every screen fits three widths", () => {
     const label = (await destination.boundingBox())!;
     expect(label.x).toBeGreaterThanOrEqual(0);
     expect(label.x + label.width).toBeLessThanOrEqual(390);
+  });
+});
+
+// The closing walk (C1, C6, C8, C9): the rest of what a person reads on a title page, and the Scoreboard. A show's header has a
+// logo, alternate titles, genres and every fact, which left its synopsis 0px high at 1366; a film and a show routed to a library
+// with a long folder, and a copy with a long release name, put "Root folder" in a strip one letter wide on a phone; the History
+// tab's events are long. The squeezed-text check in measure() fails each of them.
+test.describe("a title page's header, Destination and History tabs read at every width", () => {
+  test.skip(({ isMobile }) => isMobile, "Sizes are set in the test itself.");
+
+  for (const size of SIZES) {
+    test(`the synopsis, Destination and History tabs have room at ${size.width}x${size.height}`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize(size);
+      await authenticateAndNavigate(page, "/movies");
+      const headers = await authHeaders(page);
+      const deep = path.join(os.tmpdir(), "deluno-fit-check", LONG_SHOW, "Season Packs And Specials", "Television Library");
+      fs.mkdirSync(deep, { recursive: true });
+      const stamp = Date.now();
+      const libraryIds: string[] = [];
+      for (const [kind, label] of [["movies", "Movies"], ["tv", "TV"]] as const) {
+        const response = await page.request.post("/api/libraries", {
+          headers,
+          data: { name: `Fit tabs ${label} ${stamp}`, mediaType: kind, purpose: "Main library", rootPath: deep, downloadsPath: deep, autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalMinutes: 12, retryDelayHours: 6, maxItemsPerRun: 10 }
+        });
+        expect(response.ok(), "the test library is created").toBe(true);
+        const id = ((await response.json()) as { id: string }).id;
+        seededLibraryIds.push(id);
+        libraryIds.push(id);
+      }
+      const movie = await (await page.request.post("/api/movies/", { headers, data: { title: `Fit tabs movie ${stamp}`, releaseYear: 1962, monitored: true, libraryId: libraryIds[0] } })).json() as { id: string };
+      const series = await (await page.request.post("/api/series/", { headers, data: { title: `Fit tabs show ${stamp}`, startYear: 2024, monitored: true, libraryId: libraryIds[1] } })).json() as { id: string };
+      seeded.push({ movieId: movie.id, seriesId: series.id });
+
+      await page.route(new RegExp(`/api/series/${series.id}$`), async (route) => {
+        if (route.request().method() !== "GET") return route.continue();
+        const response = await route.fetch();
+        const body = await response.json() as Record<string, unknown>;
+        return route.fulfill({ response, json: { ...body, ...richShow(body) } });
+      });
+      await page.route(`**/api/movies/${movie.id}/copy`, (route) => route.fulfill(json({
+        filePath: path.join(deep, `${LONG_RELEASE}.mkv`), fileSizeBytes: 54_000_000_000, quality: "2160p UHD BluRay REMUX", releaseName: LONG_RELEASE, releaseGroup: "LONGGROUPNAME",
+        indexerName: "A Very Long Indexer Name Number 1", downloadClientName: "A rather long download client name", grabbedUtc: new Date().toISOString(), importedUtc: new Date().toISOString(), source: "automatic", formats: []
+      })));
+      await page.route(/\/api\/activity\?relatedEntityType=(movie|series)&/, (route) => route.fulfill(json({
+        items: Array.from({ length: 4 }, (_, index) => ({
+          id: `fit-title-activity-${index}`, category: "import", label: "Failed", message: `Import a download failed on attempt ${index + 2}; Deluno scheduled the next attempt for ${LONG_RELEASE}`, severity: "warning",
+          detailsJson: null, relatedJobId: null, relatedEntityType: null, relatedEntityId: null, createdUtc: new Date(Date.now() - index * 60_000).toISOString()
+        })),
+        nextPageToken: null, hasMore: false
+      })));
+
+      const tab = (name: string) => page.getByRole("tab", { name }).or(page.getByRole("radio", { name })).or(page.getByRole("button", { name, exact: true })).first();
+      const offenders: string[] = [];
+      const look = async (what: string) => {
+        let previous = "";
+        await expect.poll(async () => {
+          const now = JSON.stringify(await page.evaluate(measure, { checkRepeats: false, phone: size.width < 768 }));
+          const same = now === previous;
+          previous = now;
+          return same;
+        }, { timeout: 8_000 }).toBe(true);
+        for (const problem of JSON.parse(previous) as string[]) offenders.push(`${what}: ${problem}`);
+      };
+
+      await page.goto(`/movies/${movie.id}`);
+      await expect(page.getByText("Release taken").first()).toBeVisible();
+      await look("film Destination");
+      await tab("History").click();
+      await expect(page.getByText("failed on attempt").first()).toBeVisible();
+      await look("film History");
+
+      await page.goto(`/tv/${series.id}`);
+      const synopsis = page.getByTestId("title-synopsis");
+      await expect(synopsis).toContainText("documentary crew");
+      // C1: at least two lines high, and More (when there is one) is the element under its own centre, so it can be pressed.
+      await expect.poll(() => synopsis.evaluate((box) => box.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
+      const more = synopsis.getByRole("button", { name: "Read the full synopsis" });
+      if (await more.count()) {
+        await expect(more).toBeVisible();
+        const covered = await more.evaluate((button) => {
+          const rect = button.getBoundingClientRect();
+          const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return !(top === button || button.contains(top));
+        });
+        if (covered) offenders.push("the show's More button is covered by other content");
+        await more.click();
+        await expect(page.getByTestId("title-synopsis-popover")).toContainText("documentary crew");
+        await page.keyboard.press("Escape");
+      }
+      await look("show header");
+      await tab("Destination").click();
+      await expect(page.getByText("Root folder").first()).toBeVisible();
+      await look("show Destination");
+      await tab("History").click();
+      await expect(page.getByText("failed on attempt").first()).toBeVisible();
+      await look("show History");
+      expect(offenders, offenders.join("\n")).toEqual([]);
+    });
+  }
+
+  // C6: a removed indexer whose history kept no name still has one on the Scoreboard, in its row and in the bar charts.
+  test("the Scoreboard names a removed indexer", async ({ page }) => {
+    await page.setViewportSize(SIZES[1]);
+    await authenticateAndNavigate(page, "/movies");
+    await page.route("**/api/indexers/scoreboard**", (route) => route.fulfill(json({
+      windowDays: 30, activeIndexers: 0, totalIndexers: 1, totalQueries: 7, totalGrabs: 0, successfulGrabs: 0, conversionRate: 0, insight: "One indexer.",
+      indexers: [{ ...removedIndexerRow(new Date().toISOString()), searchQueries: 7, rssQueries: 0, authQueries: 0, failureRate: 0.29, recommendation: "Needs attention: 29% of 7 queries failed in the last 30 days." }]
+    })));
+    await page.goto("/indexers/scoreboard");
+    await expect(page.getByText("Needs attention: 29% of 7 queries").first()).toBeVisible();
+    await expect(page.getByRole("region", { name: /Last 30 days/ }).getByText("A removed indexer")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Queries" }).getByText("A removed indexer")).toBeVisible();
   });
 });
 

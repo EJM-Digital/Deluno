@@ -145,6 +145,8 @@ interface ListTableContextValue {
   /** Index each column had in the page's own list, in display order. */
   visual: number[];
   reordered: boolean;
+  /** A phone lays each row out as a wrapping line instead of a grid: see MOBILE_FLOW. */
+  flow: boolean;
 }
 
 const ListTableContext = React.createContext<ListTableContextValue | null>(null);
@@ -204,6 +206,8 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
     .concat(chevron ? [LIST_TRACK.chevron] : [])
     .join(" ");
   const reordered = visual.some((value, index) => value !== index);
+  // A column that asks for a fixed phone track keeps the grid so its rows line up; every other table flows (C3 to C9, #1168).
+  const flow = !state.columns.some(({ column }) => Boolean((column as ListColumn<T>).mobileWidth));
 
   const movableById = React.useCallback(
     (id: string) => enabled && Boolean(state.columns.find((entry) => entry.id === id && isColumnMovable(entry.column))),
@@ -340,7 +344,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
           {chevron ? <span aria-hidden /> : null}
           {hasControls && !card ? <ColumnsButton onReset={state.reset} className="absolute right-1.5 top-1/2 -translate-y-1/2" /> : null}
         </div>
-        <ListTableContext.Provider value={{ template, mobileTemplate, chevron, visual, reordered }}>
+        <ListTableContext.Provider value={{ template, mobileTemplate, chevron, visual, reordered, flow }}>
           <div ref={bodyRef} role="rowgroup">{typeof children === "function" ? children(state.items) : children}</div>
         </ListTableContext.Provider>
       </div>
@@ -356,6 +360,18 @@ interface ListRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onCli
   selected?: boolean;
   children: React.ReactNode;
 }
+
+/**
+ * On a phone a row is a wrapping line, not a grid. In a grid the name column (1fr) and the columns beside it (auto) were
+ * sized against each other, and one long value (a path, a description, a button) took all the width and left the name a
+ * strip one word or one letter wide. Now the name asks for 9rem and the rest follow it onto the same line only while
+ * they fit; a long value goes underneath, full width, and wraps there. The chevron stays beside the name.
+ */
+const MOBILE_FLOW = [
+  "max-md:flex max-md:flex-wrap max-md:gap-y-1 max-md:py-2",
+  "max-md:[&>*]:order-2 max-md:[&>*]:min-w-0 max-md:[&>*]:max-w-full",
+  "max-md:[&>:first-child]:order-0 max-md:[&>:first-child]:grow max-md:[&>:first-child]:basis-36"
+].join(" ");
 
 /** Cells in the order the person chose. Only reordered when the cell count matches the columns; otherwise left as the page wrote them. */
 function orderedCells(children: React.ReactNode, visual: number[]): React.ReactNode {
@@ -398,6 +414,7 @@ export function ListRow({ onClick, selected = false, className, children, ...pro
       className={cn(
         "grid min-h-(--list-row-height) items-center gap-(--grid-gap) border-b border-hairline px-(--card-pad-x) last:border-b-0",
         "grid-cols-(--list-cols-mobile) md:grid-cols-(--list-cols)",
+        table.flow && MOBILE_FLOW,
         interactive && "cursor-pointer transition-colors hover:bg-surface-2/60 focus-visible:outline-hidden focus-visible:bg-surface-2/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         selected && "bg-primary/8 hover:bg-primary/10",
         className
@@ -406,7 +423,7 @@ export function ListRow({ onClick, selected = false, className, children, ...pro
     >
       {table.reordered ? orderedCells(children, table.visual) : children}
       {table.chevron ? (
-        <span aria-hidden className="flex justify-end text-muted-foreground/50">
+        <span aria-hidden className={cn("flex justify-end text-muted-foreground/50", table.flow && "max-md:order-1! max-md:w-10 max-md:shrink-0")}>
           {interactive ? <ChevronRight className="h-4 w-4" /> : null}
         </span>
       ) : null}

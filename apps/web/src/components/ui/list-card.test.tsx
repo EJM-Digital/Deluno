@@ -382,3 +382,25 @@ describe("values a row cuts short stay reachable (#1168)", () => {
     expect(secondary.className).not.toContain("truncate");
   });
 });
+
+describe("a phone row lets its name keep its room (#1168 C3 to C9)", () => {
+  const rowOf = (columns: Array<ListColumn<never>>) => {
+    render(
+      <ListTable columns={columns}>
+        <ListRow><ListCell primary="Root folder" /><ListCell primary="D:/A/Very/Long/Path" mobile /></ListRow>
+      </ListTable>
+    );
+    return screen.getAllByRole("row")[1];
+  };
+
+  it("flows as a wrapping line, so a long value goes under the name instead of squeezing it", () => {
+    const row = rowOf([{ label: "Setting" }, { label: "Value", mobile: true }]);
+    expect(row.className).toContain("max-md:flex-wrap");
+    expect(row.className).toContain("max-md:[&>:first-child]:basis-36");
+  });
+
+  it("keeps the grid when a column asks for a fixed phone track, so its rows line up", () => {
+    const row = rowOf([{ label: "Setting" }, { label: "Value", mobile: true, mobileWidth: "6rem" }]);
+    expect(row.className).not.toContain("max-md:flex-wrap");
+  });
+});
