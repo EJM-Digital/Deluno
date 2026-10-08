@@ -406,3 +406,22 @@ describe("clientsForPathMapping (#809)", () => {
     expect(shared).toEqual([]);
   });
 });
+
+// A name is kept only when a person typed it: a blank one, or the name the screen read back, is worked out from the address.
+describe("indexer save payload name", () => {
+  const blank = emptyIndexerForm();
+
+  it("keeps a typed name", () => {
+    expect(buildIndexerSavePayload({ ...blank, name: "My tracker" }, blank, false).keepName).toBe(true);
+  });
+
+  it("leaves a blank name to the address", () => {
+    expect(buildIndexerSavePayload(blank, blank, false).keepName).toBe(false);
+  });
+
+  it("does not call the name an edit read back a typed one", () => {
+    const saved = { ...blank, name: "nzbgeek.info" };
+    expect(buildIndexerSavePayload(saved, saved, true).keepName).toBe(false);
+    expect(buildIndexerSavePayload({ ...saved, name: "My geek" }, saved, true).keepName).toBe(true);
+  });
+});

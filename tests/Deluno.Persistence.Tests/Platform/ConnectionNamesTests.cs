@@ -250,6 +250,50 @@ public sealed class ConnectionNamesTests
     }
 
     [Fact]
+    public async Task An_indexer_on_this_computer_is_named_after_its_address_never_the_computers_name()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var local = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:5000/api"), CancellationToken.None);
+        var loopback = await repository.CreateIndexerAsync(Indexer(null, "http://127.0.0.1:5001/api"), CancellationToken.None);
+
+        Assert.Equal("localhost", local.Name);
+        Assert.StartsWith("127.0.0.1", loopback.Name);
+        Assert.NotEqual(Machine, local.Name);
+        Assert.NotEqual(Machine, loopback.Name);
+    }
+
+    [Fact]
+    public async Task A_name_typed_for_an_indexer_is_kept_through_later_saves_and_a_blank_one_is_named_from_its_address()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var typed = await repository.CreateIndexerAsync(Indexer("My private tracker", "https://tracker.example.test/api") with { KeepName = true }, CancellationToken.None);
+        var blank = await repository.CreateIndexerAsync(Indexer("  ", "https://www.other.example.test/api") with { KeepName = true }, CancellationToken.None);
+        // A name sent without saying it was typed is still ignored (#1076).
+        var ignored = await repository.CreateIndexerAsync(Indexer("Made up", "https://third.example.test/api"), CancellationToken.None);
+        Assert.Equal("third.example.test", ignored.Name);
+        Assert.Equal("My private tracker", typed.Name);
+        Assert.Equal("other.example.test", blank.Name);
+
+        // A save that sends the current name back (the form does, every time) changes nothing; another save keeps it.
+        var resaved = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("My private tracker", null, null, null, null, 20, null, null, null, null) with { KeepName = true }, CancellationToken.None);
+        Assert.Equal("My private tracker", resaved!.Name);
+        var listed = (await repository.ListIndexersAsync(CancellationToken.None)).Single(item => item.Id == typed.Id);
+        Assert.Equal("My private tracker", listed.Name);
+
+        // Typing another name renames it, and that one is kept too.
+        var renamed = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("Renamed tracker", null, null, null, null, null, null, null, null, null) with { KeepName = true }, CancellationToken.None);
+        Assert.Equal("Renamed tracker", renamed!.Name);
+        var again = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest(null, null, null, null, null, 30, null, null, null, null), CancellationToken.None);
+        Assert.Equal("Renamed tracker", again!.Name);
+    }
+
+    [Fact]
     public async Task An_import_list_is_named_after_its_provider_and_list()
     {
         var (storage, clock) = await StartAsync();

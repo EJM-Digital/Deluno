@@ -66,11 +66,8 @@ public static class ConnectionNames
             return tracker;
         }
 
-        if (IsLoopback(host))
-        {
-            return DelunoHostName.Current;
-        }
-
+        // An indexer is named after the address it was given, never after the machine Deluno runs on (an indexer on
+        // this machine is "localhost", the way the person wrote it).
         foreach (var prefix in new[] { "www.", "api." })
         {
             if (host.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && host.Count(c => c == '.') >= 2)

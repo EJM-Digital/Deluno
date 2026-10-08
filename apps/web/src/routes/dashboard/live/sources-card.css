@@ -20,7 +20,7 @@
   line-height: 1.2;
 }
 .ls-body { position: relative; min-height: 0; flex: 1 1 0; padding: 0 18px 14px; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
-.ls-sa { min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.ls-sa { min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .ls-sa:first-child { grid-template-rows: auto minmax(0, 1fr); }
 .ls-sa + .ls-sa { border-top: 1px solid var(--ls-line); padding-top: 8px; margin-top: 8px; }
 .ls-sa-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 0 6px; white-space: nowrap; }
@@ -28,11 +28,11 @@
 .ls-num { font-size: 11.5px; color: var(--ls-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* Indexers today: one scroll for the whole table, the headings stuck to its top. */
-.ls-scroll { overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--ls-line) transparent; }
+.ls-scroll { overflow-y: auto; min-height: 0; min-width: 0; scrollbar-width: thin; scrollbar-color: var(--ls-line) transparent; }
 .ls-head, .ls-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) 2.6rem 3.4rem 4.6rem 3.4rem; gap: 8px; align-items: center; }
 .ls-head { position: sticky; top: 0; z-index: 2; background: var(--ls-card); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ls-faint); font-weight: 600; padding: 0 8px 4px; }
 .ls-head span:nth-child(n+3) { text-align: right; }
-.ls-rows { display: grid; gap: 3px; align-content: start; }
+.ls-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; align-content: start; min-width: 0; }
 .ls-row { font-size: 12px; padding: 5px 8px; border-radius: 8px; border: 1px solid transparent; transition: background .3s, border-color .3s, box-shadow .3s; color: inherit; text-decoration: none; }
 .ls-row:nth-child(odd) { background: hsl(var(--surface-2) / .6); }
 .ls-row:hover { border-color: hsl(var(--muted-foreground) / 0.3); }
