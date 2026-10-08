@@ -38,4 +38,17 @@ public interface IProcessorOutputImportQueue
     /// library. A genuine upgrade is a newer fetch and is not.
     /// </summary>
     Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// When the title this hand-off's download is for was added, if it was added after the hand-off
+    /// was made and holds no file (#1155): the title was removed and added again, the earlier import
+    /// went into the one that was removed, and the processor's output is still owed. Null otherwise.
+    /// </summary>
+    Task<DateTimeOffset?> TitleCameBackWithoutItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the title this hand-off was for has its file now, imported through another download
+    /// fetched after this hand-off was made (#1155). Nothing is owed to such a hand-off.
+    /// </summary>
+    Task<bool> TitleHasFileFromAnotherDownloadAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }
