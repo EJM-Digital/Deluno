@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 
-export type RemovalReason = "failed" | "unwanted" | "forget";
+export type RemovalReason = "failed" | "unwanted" | "forget" | "reclaim";
 
 interface RemovalReasonDialogProps {
   open: boolean;

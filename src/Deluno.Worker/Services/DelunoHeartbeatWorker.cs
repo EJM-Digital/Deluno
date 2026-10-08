@@ -392,7 +392,8 @@ public sealed class DelunoHeartbeatWorker(
                 services.GetRequiredService<Deluno.Integrations.DownloadClients.IDownloadHealthConnectivityCheck>(),
                 stoppingToken,
                 services.GetRequiredService<ISharingRulesRepository>(),
-                services.GetRequiredService<ISharingActivityTracker>());
+                services.GetRequiredService<ISharingActivityTracker>(),
+                services.GetRequiredService<Deluno.Platform.Data.IProcessorRepository>());
         }
 
         if (lane.PlanMaintenance)

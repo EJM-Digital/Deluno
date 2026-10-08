@@ -1724,10 +1724,21 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                       <span className="text-(length:--type-body-sm) text-foreground">{finding.summary}</span>
                       {/* #981: unlinked-from-library is a live fact mirrored
                           from the sharing pass, not a per-item strike record -
-                          there is nothing here to ignore for a week. Its own
-                          recommended action already points at the Dashboard's
-                          sharing list, where reclaiming it is a real action. */}
-                      {finding.kind === "hardlink-lost" ? null : (
+                          there is nothing here to ignore for a week. A real one
+                          offers the fix instead: take the leftover copy out. */}
+                      {finding.kind === "hardlink-lost" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void removeWithReason(openQueueItem, "reclaim")}
+                          disabled={busyKey !== null || removalReasonBusy !== null}
+                          title="Take this copy out of the client and delete its files. The library file is not touched."
+                        >
+                          {removalReasonBusy === "reclaim" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Remove this copy
+                        </Button>
+                      ) : (
                         <Button
                           type="button"
                           variant="ghost"

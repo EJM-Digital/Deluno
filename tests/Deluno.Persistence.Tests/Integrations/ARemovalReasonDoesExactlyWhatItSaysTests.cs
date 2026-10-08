@@ -175,6 +175,29 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(movie!.Monitored);
     }
 
+    /// <summary>"Remove this copy" on an unlinked leftover: out of the client with its files, nothing judged.</summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("sabnzbd")]
+    public async Task Remove_this_copy_deletes_it_from_the_client_and_judges_nothing(string protocol)
+    {
+        using var world = await World.CreateAsync(protocol, TitleKind.Movie);
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Reclaim);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.Blocklisted);
+        Assert.False(result.SearchStarted);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+        Assert.True((await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None))!.Monitored);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+        Assert.Contains("library file was not touched", activity.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("qbittorrent")]
     [InlineData("sabnzbd")]

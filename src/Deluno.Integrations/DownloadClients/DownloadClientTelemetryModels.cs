@@ -93,8 +93,14 @@ public static class QueueRemovalReasons
     /// </summary>
     public const string Forget = "forget";
 
+    /// <summary>
+    /// "Remove this copy": a finished download whose files no longer share data with the library. Remove it from
+    /// the client with its files and judge nothing: no blocklist, no search, the title stays wanted as it was.
+    /// </summary>
+    public const string Reclaim = "reclaim";
+
     public static bool IsKnown(string reason)
-        => reason is Failed or Unwanted or Forget;
+        => reason is Failed or Unwanted or Forget or Reclaim;
 }
 
 public sealed record QueueRemovalRequest(string Reason);
