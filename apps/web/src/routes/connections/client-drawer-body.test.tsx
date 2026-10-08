@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { ClientDrawerBody } from "./client-drawer-body";
 import { emptyClientForm } from "./forms";
@@ -58,5 +59,47 @@ describe("ClientDrawerBody URL base field (#980)", () => {
     // client created directly with the rtorrent protocol (as the picker
     // would leave it) still has to show the field with its value editable.
     expect((screen.getByLabelText("URL base") as HTMLInputElement).placeholder).toBe("/RPC2");
+  });
+});
+
+describe("ClientDrawerBody open the client's page (#1142)", () => {
+  function renderEditing(form: ClientForm) {
+    render(
+      <QueryClientProvider client={new QueryClient()}><ClientDrawerBody
+        form={form}
+        setForm={() => {}}
+        editing={{ id: "c1", name: "Seedbox" } as never}
+        errors={{}}
+        clearError={() => {}}
+        mappings={[]}
+        newMapping={{ remotePath: "", localPath: "" }}
+        setNewMapping={() => {}}
+        busy={null}
+        onAddMapping={() => {}}
+        onRemoveMapping={() => {}}
+        onTestMapping={() => {}}
+        onRemove={() => {}}
+      /></QueryClientProvider>
+    );
+  }
+
+  it("links to the client's own web page in a new tab and prints the address, never the password", () => {
+    renderEditing({ ...emptyClientForm(), protocol: "qbittorrent", host: "192.168.1.10", port: "8080", useSsl: true, username: "me", password: "hunter2" });
+    const link = screen.getByRole("link", { name: /^Open qBittorrent.s page$/ });
+    expect(link.getAttribute("href")).toBe("https://192.168.1.10:8080/");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByText("https://192.168.1.10:8080/")).toBeTruthy();
+    expect(link.getAttribute("href")).not.toContain("hunter2");
+    expect(screen.getByText("https://192.168.1.10:8080/").textContent).not.toContain("hunter2");
+  });
+
+  it("includes the URL base where the client has one", () => {
+    renderEditing({ ...emptyClientForm(), protocol: "sabnzbd", host: "nas.local", port: "8085", urlBase: "/sab" });
+    expect(screen.getByRole("link", { name: /page$/ }).getAttribute("href")).toBe("http://nas.local:8085/sab/");
+  });
+
+  it("is not offered while adding a new client", () => {
+    renderDrawer(emptyClientForm());
+    expect(screen.queryByRole("link", { name: /page$/ })).toBeNull();
   });
 });
