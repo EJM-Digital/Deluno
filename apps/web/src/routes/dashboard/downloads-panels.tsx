@@ -98,7 +98,7 @@ export function DownloadsNow({ summary, telemetry, attention, action, live = NO_
                   </span>
                   <span className="w-9 text-right tabular-nums">{percent(item.progress)}%</span>
                 </span>
-                <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">
+                <span className="mt-0.5 block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) text-muted-foreground">
                   {formatEta(item.etaSeconds) === "–" ? "no time left given" : `${formatEta(item.etaSeconds)} left`}
                 </span>
               </ListCell>

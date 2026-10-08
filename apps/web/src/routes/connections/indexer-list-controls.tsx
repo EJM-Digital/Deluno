@@ -4,8 +4,7 @@
  * lets several indexers be changed or removed together instead of one drawer
  * edit at a time; this gives Deluno the same three things.
  */
-import { FILTER_MENU_TRIGGER, FilterChips } from "../../components/ui/filter-chips";
-import { MenuSelect } from "../../components/ui/menu-select";
+import { FilterChips, MoreFilters } from "../../components/ui/filter-chips";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import type { IndexerItem } from "../../lib/api";
@@ -121,23 +120,17 @@ export function IndexerFilterBar({ indexers, filters, onChange }: { indexers: In
   if (protocolOptions.length < 2 && privacyOptions.length < 2 && !active) return null;
   return (
     <div className="flex shrink-0 items-center gap-2" role="group" aria-label="Filter indexers">
-      {protocolOptions.length > 1 ? (
-        <MenuSelect
-          label="Filter by protocol"
-          value={filters.protocol}
-          onChange={(protocol) => onChange({ ...filters, protocol })}
-          options={[{ value: "", label: "Any protocol" }, ...protocolOptions.map((value) => ({ value, label: protocolLabel(value) }))]}
-          triggerClassName={FILTER_MENU_TRIGGER}
-        />
-      ) : null}
-      {privacyOptions.length > 1 ? (
-        <MenuSelect
-          label="Filter by privacy"
-          value={filters.privacy}
-          onChange={(privacy) => onChange({ ...filters, privacy })}
-          options={[{ value: "", label: "Any privacy" }, ...privacyOptions.map((value) => ({ value, label: value }))]}
-          triggerClassName={FILTER_MENU_TRIGGER}
-        />
+      {protocolOptions.length > 1 || privacyOptions.length > 1 ? (
+      <MoreFilters
+        groups={[
+          ...(protocolOptions.length > 1
+            ? [{ label: "Protocol", ariaLabel: "Filter by protocol", value: filters.protocol, onValueChange: (protocol: string) => onChange({ ...filters, protocol }), options: [{ value: "", label: "Any protocol" }, ...protocolOptions.map((value) => ({ value, label: protocolLabel(value) }))] }]
+            : []),
+          ...(privacyOptions.length > 1
+            ? [{ label: "Privacy", ariaLabel: "Filter by privacy", value: filters.privacy, onValueChange: (privacy: string) => onChange({ ...filters, privacy }), options: [{ value: "", label: "Any privacy" }, ...privacyOptions.map((value) => ({ value, label: value }))] }]
+            : [])
+        ]}
+      />
       ) : null}
       {active ? (
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(emptyIndexerFilters())}>

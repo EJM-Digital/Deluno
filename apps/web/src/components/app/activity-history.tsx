@@ -34,8 +34,7 @@ import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-
 import { Search, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { FILTER_MENU_TRIGGER } from "../ui/filter-chips";
-import { MenuSelect } from "../ui/menu-select";
+import { MoreFilters } from "../ui/filter-chips";
 import { HeaderTabsPortal, useHeaderSlot } from "../ui/header-tabs";
 import { cn } from "../../lib/utils";
 
@@ -47,11 +46,10 @@ const CONTROL_HEIGHT = "h-9.5";
 /** How wide each stage of the group is, in rem, for deciding which stage the title line can hold (#1115). */
 const SEARCH_OPEN_REM = 11;
 const MAGNIFIER_REM = 2.375;
-const SCOPE_FULL_REM = 18.5;
-const SCOPE_COMPACT_REM = 15.5;
+const SCOPE_FULL_REM = 8.5;
+const SCOPE_COMPACT_REM = 8;
 const CHIPS_SCROLL_REM = 9;
 
-const MENU_TRIGGER = `${CONTROL_HEIGHT} rounded-xl border border-hairline bg-card px-3 text-(length:--type-control) font-medium text-muted-foreground hover:text-foreground`;
 
 function useDebouncedWrite(value: string, urlValue: string, write: (next: string) => void) {
   useEffect(() => {
@@ -252,21 +250,12 @@ export function ActivityFilters({
         {chips}
       </div>
       <div data-activity-scope className="ml-auto flex shrink-0 items-center gap-2">
-        <MenuSelect
-          label="Filter by step"
-          value={filters.type}
-          onChange={(value) => setFilters({ type: value })}
-          options={typeOptions}
-          className={compact ? "w-30" : "w-36"}
-          triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
-        />
-        <MenuSelect
-          label="Filter by time"
-          value={filters.since}
-          onChange={(value) => setFilters({ since: value, until: "" })}
-          options={sinceOptions}
-          className={compact ? "w-30" : "w-36"}
-          triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
+        <MoreFilters
+          size={compact ? "sm" : "md"}
+          groups={[
+            { label: "Step", ariaLabel: "Filter by step", value: filters.type, onValueChange: (value) => setFilters({ type: value }), options: typeOptions },
+            { label: "Time", ariaLabel: "Filter by time", value: filters.since, onValueChange: (value) => setFilters({ since: value, until: "" }), options: sinceOptions }
+          ]}
         />
       </div>
     </div>

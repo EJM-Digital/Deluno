@@ -112,9 +112,10 @@ describe("IndexerFilterBar (#737)", () => {
   it("only offers a protocol or privacy filter when there is more than one to choose between", () => {
     const items = [indexer({ id: "1", protocol: "torznab", privacy: "private" }), indexer({ id: "2", protocol: "newznab", privacy: "private" })];
     render(<IndexerFilterBar indexers={items} filters={emptyIndexerFilters()} onChange={() => undefined} />);
-    expect(screen.getByRole("combobox", { name: "Filter by protocol" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More filters" }));
+    expect(screen.getByRole("radiogroup", { name: "Filter by protocol" })).toBeInTheDocument();
     // Every indexer here is private, so a privacy filter has nothing to narrow.
-    expect(screen.queryByRole("combobox", { name: "Filter by privacy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Filter by privacy" })).not.toBeInTheDocument();
   });
 
   it("shows Clear filters only once a filter narrows the list", () => {

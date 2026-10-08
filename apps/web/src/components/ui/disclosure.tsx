@@ -31,7 +31,7 @@ export function Disclosure({ title, summary, open, onOpenChange, children, class
         <span className="min-w-0">
           <span className="block text-(length:--type-body-sm) font-medium text-foreground">{title}</span>
           {summary ? (
-            <span title={plainTitle(summary)} className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground">{summary}</span>
+            <span title={plainTitle(summary)} className="mt-0.5 block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) text-muted-foreground">{summary}</span>
           ) : null}
         </span>
         <ChevronDown

@@ -539,7 +539,7 @@ function PosterCard({
           // The full name is in the tooltip, and the title is also the card's
           // accessible label, so nothing is lost to the ellipsis.
           <p
-            className={cn("h-lh truncate font-semibold leading-tight text-foreground", titleCls)}
+            className={cn("h-lh truncate font-semibold leading-tight text-foreground max-md:h-auto max-md:whitespace-normal max-md:break-words", titleCls)}
             title={item.localizedTitle ?? item.title}
           >
             {item.localizedTitle ?? item.title}

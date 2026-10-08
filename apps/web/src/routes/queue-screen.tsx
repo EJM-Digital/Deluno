@@ -193,7 +193,19 @@ interface ActivityEntry {
   whenUtc: string;
 }
 
-type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | null;
+type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | { kind: "attention"; id: string } | null;
+
+/** What a Needs-attention row says in full, for the rows that have no drawer of their own (a phone cannot hover to read it). */
+interface AttentionDetail {
+  title: string;
+  sub: string;
+  facts: { label: string; value: string; mono?: boolean }[];
+}
+
+/** Rows of Needs attention that stack their name, their reason and their buttons on a phone, so the buttons never squeeze the name to nothing. */
+const ATTENTION_ROW_PHONE = "max-md:grid-cols-1 max-md:gap-y-1.5 max-md:py-2.5";
+/** The buttons' cell on a phone: left-aligned under the words. */
+const ATTENTION_ACTIONS_PHONE = "max-md:text-left";
 
 export function QueuePage() {
   const state = useRouteSources(queueSources);
@@ -368,6 +380,66 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const openImportJob = openActivity?.id.startsWith("import:") ? jobs.find((job) => `import:${job.id}` === openActivity.id) ?? null : null;
   const openImportInfo = openImportJob ? parseImportJobPayload(openImportJob.payloadJson) : null;
   const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
+  const attentionDetails = useMemo(() => {
+    const map = new Map<string, AttentionDetail>();
+    for (const row of heldReleases) {
+      map.set(`held:${row.historyId}`, {
+        title: heldReleaseTitle(row),
+        sub: `Waiting for your OK · ${row.mediaType === "movie" ? "Movies" : "TV"}`,
+        facts: [
+          { label: "Release", value: row.releaseName, mono: true },
+          ...(row.quality ? [{ label: "Quality", value: row.quality }] : []),
+          ...(row.sizeBytes ? [{ label: "Size", value: formatBytes(row.sizeBytes) }] : []),
+          ...(row.indexerName ? [{ label: "From", value: row.indexerName }] : []),
+          ...(row.reason ? [{ label: "Why it is held", value: plainSearchResult(row.reason) }] : [])
+        ]
+      });
+    }
+    for (const item of recoveryCases) {
+      map.set(`recovery:${item.mediaType}:${item.id}`, {
+        title: item.title,
+        sub: item.mediaType === "movie" ? "Movies" : "TV",
+        facts: [
+          { label: "What happened", value: item.summary },
+          ...(item.recommendedAction ? [{ label: "What to do", value: item.recommendedAction }] : [])
+        ]
+      });
+    }
+    for (const job of failedImportJobs) {
+      map.set(`job:${job.id}`, {
+        title: jobTitle(job),
+        sub: "Import job",
+        facts: [
+          { label: "What happened", value: job.lastError ? plainFailure(job.lastError, "The import") : "The import failed." },
+          { label: "Attempts", value: String(job.attempts) }
+        ]
+      });
+    }
+    for (const handoff of failedProcessorHandoffs) {
+      map.set(`handoff:${handoff.id}`, {
+        title: handoff.releaseName,
+        sub: handoff.processorName ?? "Processing connector",
+        facts: [
+          { label: "What happened", value: handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `Processor reported ${processorStatusLabel(handoff.status)}.` },
+          { label: "From", value: handoff.sourcePath, mono: true },
+          ...(handoff.outputPath ? [{ label: "Output", value: handoff.outputPath, mono: true }] : [])
+        ]
+      });
+    }
+    for (const orphan of orphanedDownloads) {
+      map.set(`orphan:${orphan.path}`, {
+        title: orphan.name,
+        sub: `${orphan.libraryName} download folder`,
+        facts: [
+          { label: "What happened", value: "Left in the download folder. No client, import or hand-off is using it." },
+          { label: "Size", value: formatBytes(orphan.sizeBytes) },
+          { label: "Where", value: orphan.path, mono: true }
+        ]
+      });
+    }
+    return map;
+  }, [heldReleases, recoveryCases, failedImportJobs, failedProcessorHandoffs, orphanedDownloads]);
+  const openAttention = drawer?.kind === "attention" ? attentionDetails.get(drawer.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
   const openDispatchDetail = drawer?.kind === "dispatch" ? dispatchDetails[drawer.id] ?? null : null;
   const openFileProvenance = fileProvenanceFromTimeline(openDispatchDetail?.timeline ?? []);
@@ -1261,7 +1333,6 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               columns={[
                 { id: "media", label: "Media", sort: (handoff) => handoff.releaseName.toLowerCase() },
                 { id: "connector", label: "Connector", sort: (handoff) => (handoff.processorName ?? "Configured processor").toLowerCase() },
-                { id: "stage", label: "Stage", sort: (handoff) => processorStageLabel(handoff.status) },
                 { id: "source", label: "Source / output", width: "minmax(0,1.8fr)", sort: (handoff) => (handoff.outputPath ?? handoff.sourcePath).toLowerCase() },
                 { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (handoff) => toneSortValue(processorTone(handoff), processorStatusLabel(handoff.status)) }
               ]}
@@ -1269,8 +1340,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               {(rows) => rows.map((handoff) => (
                 <ListRow key={handoff.id} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })} selected={openActivity?.id === `processor:${handoff.id}`}>
                   <ListNameCell name={handoff.releaseName} sub={handoff.mediaType === "tv" ? "TV" : "Movies"} />
-                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={connectorSubLine(handoff, processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)))} />
-                  <ListCell primary={processorStageLabel(handoff.status)} secondary={handoff.failureMessage ?? undefined} />
+                  {/* The stage and the Status chip said the same words in every row, so the chip alone carries them; a failure's reason goes under the connector. */}
+                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={handoff.failureMessage ?? connectorSubLine(handoff, processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)))} />
                   <ListCell primary={handoff.outputPath ?? handoff.sourcePath} secondary={handoff.outputPath ? `From ${handoff.sourcePath}` : "Source hand-off"} />
                   <ListCell mobile><Chip tone={processorTone(handoff)}>{processorStatusLabel(handoff.status)}</Chip></ListCell>
                 </ListRow>
@@ -1381,9 +1452,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             chevron={false}
           >
             {heldReleases.map((row) => (
-              <ListRow key={`held:${row.historyId}`}>
+              <ListRow key={`held:${row.historyId}`} className={ATTENTION_ROW_PHONE} onClick={() => setDrawer({ kind: "attention", id: `held:${row.historyId}` })}>
                 <ListNameCell name={heldReleaseTitle(row)} sub={row.mediaType === "movie" ? "Movies" : "TV"} />
                 <ListCell
+                  mobile
                   primary={`Waiting for your OK: ${row.releaseName}`}
                   secondary={[
                     row.quality,
@@ -1392,8 +1464,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                     row.reason ? plainSearchResult(row.reason) : null
                   ].filter(Boolean).join(" · ")}
                 />
-                <ListCell mobile align="end">
-                  <span className="flex flex-wrap items-center justify-end gap-2">
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start" onClick={(event) => event.stopPropagation()}>
                     <Switch size="sm" aria-label={selectLabels.get(`held:${row.historyId}`)} checked={selectedDismissKeys.has(`held:${row.historyId}`)} onCheckedChange={(checked) => toggleDismissSelected(`held:${row.historyId}`, checked)} disabled={busyKey !== null} />
                     <Button type="button" size="sm" aria-label={`Approve ${row.releaseName}`} onClick={() => void approveHeld(row)} disabled={busyKey !== null}>
                       {busyKey === `held:approve:${row.historyId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -1411,11 +1483,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </ListRow>
             ))}
             {recoveryCases.map((item) => (
-              <ListRow key={`${item.mediaType}:${item.id}`}>
+              <ListRow key={`${item.mediaType}:${item.id}`} className={ATTENTION_ROW_PHONE} onClick={() => setDrawer({ kind: "attention", id: `recovery:${item.mediaType}:${item.id}` })}>
                 <ListNameCell name={item.title} sub={item.mediaType === "movie" ? "Movies" : "TV"} />
-                <ListCell primary={item.summary} secondary={item.recommendedAction} />
-                <ListCell mobile align="end">
-                  <span className="flex items-center justify-end gap-2">
+                <ListCell mobile primary={item.summary} secondary={item.recommendedAction} />
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start" onClick={(event) => event.stopPropagation()}>
                     <span onClick={(event) => event.stopPropagation()}>
                       <Switch size="sm" aria-label={selectLabels.get(`recovery:${item.mediaType}:${item.id}`)} checked={selectedDismissKeys.has(`recovery:${item.mediaType}:${item.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`recovery:${item.mediaType}:${item.id}`, checked)} disabled={busyKey !== null} />
                     </span>
@@ -1458,23 +1530,24 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </ListRow>
             ))}
             {queueAttention.map((item) => (
-              <ListRow key={`attention:${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })}>
+              <ListRow key={`attention:${item.clientId}:${item.id}`} className={ATTENTION_ROW_PHONE} onClick={() => setDrawer({ kind: "queue", id: item.id })}>
                 <ListNameCell name={item.title || item.releaseName} sub={item.clientName} />
                 <ListCell
+                  mobile
                   primary={attentionReason(item)}
                   secondary={attentionEvidence(item)}
                 />
-                <ListCell mobile align="end">
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
                   <span className="text-(length:--type-caption) text-muted-foreground">Open to fix</span>
                 </ListCell>
               </ListRow>
             ))}
             {failedImportJobs.map((job) => (
-              <ListRow key={`job:${job.id}`}>
+              <ListRow key={`job:${job.id}`} className={ATTENTION_ROW_PHONE} onClick={() => setDrawer({ kind: "attention", id: `job:${job.id}` })}>
                 <ListNameCell name={jobTitle(job)} sub="Import job" />
-                <ListCell primary={job.lastError ? plainFailure(job.lastError, "The import") : "The import failed."} secondary={`Attempt ${job.attempts}`} />
-                <ListCell mobile align="end">
-                  <span className="flex items-center justify-end gap-2">
+                <ListCell mobile primary={job.lastError ? plainFailure(job.lastError, "The import") : "The import failed."} secondary={`Attempt ${job.attempts}`} />
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start" onClick={(event) => event.stopPropagation()}>
                     <span onClick={(event) => event.stopPropagation()}>
                       <Switch size="sm" aria-label={selectLabels.get(`job:${job.id}`)} checked={selectedDismissKeys.has(`job:${job.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`job:${job.id}`, checked)} disabled={busyKey !== null} />
                     </span>
@@ -1488,17 +1561,20 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             {failedProcessorHandoffs.map((handoff) => (
               <ListRow
                 key={`processor-failure:${handoff.id}`}
+                className={ATTENTION_ROW_PHONE}
                 onClick={() => setDrawer(
                   // The download's own drawer holds the fixes beside the download; the hand-off drawer is for one whose download has left the client.
                   queue.some((item) => item.id === handoff.queueItemId && item.clientId === handoff.clientId)
                     ? { kind: "queue", id: handoff.queueItemId }
-                    : { kind: "activity", id: `processor:${handoff.id}` }
+                    : activity.some((entry) => entry.id === `processor:${handoff.id}`)
+                      ? { kind: "activity", id: `processor:${handoff.id}` }
+                      : { kind: "attention", id: `handoff:${handoff.id}` }
                 )}
               >
                 <ListNameCell name={handoff.releaseName} sub={handoff.processorName ?? "Processing connector"} />
-                <ListCell primary={handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
-                <ListCell mobile align="end">
-                  <span className="flex items-center justify-end gap-2">
+                <ListCell mobile primary={handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start">
                     <span onClick={(event) => event.stopPropagation()}>
                       <Switch size="sm" aria-label={selectLabels.get(`handoff:${handoff.id}`)} checked={selectedDismissKeys.has(`handoff:${handoff.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`handoff:${handoff.id}`, checked)} disabled={busyKey !== null} />
                     </span>
@@ -1508,14 +1584,15 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </ListRow>
             ))}
             {failedDownloads.map(({ dispatch, attempts }) => (
-              <ListRow key={`dispatch-failure:${dispatch.id}`} onClick={() => void showDispatch(dispatch)} selected={openDispatchSummary?.id === dispatch.id}>
+              <ListRow key={`dispatch-failure:${dispatch.id}`} className={ATTENTION_ROW_PHONE} onClick={() => void showDispatch(dispatch)} selected={openDispatchSummary?.id === dispatch.id}>
                 <ListNameCell name={dispatch.releaseName} sub={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
                 <ListCell
+                  mobile
                   primary={dispatchActivityDetail(dispatch)}
                   secondary={attempts > 1 ? `${attempts} attempts · ${dispatchFailureDetail(dispatch)}` : dispatchFailureDetail(dispatch)}
                 />
-                <ListCell mobile align="end">
-                  <span className="flex items-center justify-end gap-2">
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start">
                     <span onClick={(event) => event.stopPropagation()}>
                       <Switch size="sm" aria-label={selectLabels.get(`dispatch:${dispatch.id}`)} checked={selectedDismissKeys.has(`dispatch:${dispatch.id}`)} onCheckedChange={(checked) => toggleDismissSelected(`dispatch:${dispatch.id}`, checked)} disabled={busyKey !== null} />
                     </span>
@@ -1525,14 +1602,15 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </ListRow>
             ))}
             {orphanedDownloads.map((orphan) => (
-              <ListRow key={`orphan:${orphan.path}`}>
+              <ListRow key={`orphan:${orphan.path}`} className={ATTENTION_ROW_PHONE} onClick={() => setDrawer({ kind: "attention", id: `orphan:${orphan.path}` })}>
                 <ListNameCell name={orphan.name} sub={`${orphan.libraryName} download folder`} />
                 <ListCell
+                  mobile
                   primary="Left in the download folder. No client, import or hand-off is using it."
                   secondary={`${formatBytes(orphan.sizeBytes)} · ${orphan.path}`}
                 />
-                <ListCell mobile align="end">
-                  <span className="flex items-center justify-end gap-2">
+                <ListCell mobile align="end" className={ATTENTION_ACTIONS_PHONE}>
+                  <span className="flex flex-wrap items-center justify-end gap-2 max-md:justify-start" onClick={(event) => event.stopPropagation()}>
                     <Switch
                       size="sm"
                       aria-label={`Select ${orphan.name}`}
@@ -2148,6 +2226,26 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         )}
       </Drawer>
 
+      {/* ------------------------------------------ needs-attention drawer */}
+      <Drawer
+        open={drawer?.kind === "attention"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={openAttention?.title ?? "Needs attention"}
+        description={openAttention?.sub}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
+      >
+        {openAttention ? (
+          <DrawerSection title="What happened">
+            <div className="grid gap-1.5">
+              {openAttention.facts.map((fact) => <Fact key={fact.label} label={fact.label} value={fact.value} mono={fact.mono} />)}
+            </div>
+            <p className="text-(length:--type-caption) text-muted-foreground">The buttons for this row are on the row itself.</p>
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+
       {/* ------------------------------------------------- activity drawer */}
       <Drawer
         open={drawer?.kind === "activity"}
@@ -2162,7 +2260,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           <DrawerSection title="What happened">
             <div className="grid gap-1.5">
               <Fact label="Outcome" value={openActivity.detail} />
-              {openActivity.extra ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
+              {/* The hand-off's and the import's own paths are printed below under their names; Detail would say the same path a second time. */}
+              {openActivity.extra && ![openHandoff?.sourcePath, openHandoff?.outputPath, openImportInfo?.sourcePath, openImportInfo?.destinationPath].includes(openActivity.extra) ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
               <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
               <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
               {openHandoff ? <Fact label="From" value={openHandoff.sourcePath} mono /> : null}
@@ -2875,7 +2974,7 @@ function historySourceLabel(source: string | undefined) {
 
 function jobTitle(job: JobQueueItem) {
   const parsed = parseImportJobPayload(job.payloadJson);
-  return parsed?.title || parsed?.fileName || `Job ${job.id.slice(0, 8)}`;
+  return parsed?.title || parsed?.fileName || "A file import (no name recorded)";
 }
 
 function activityEventTitle(event: ActivityEventItem) {
