@@ -15,6 +15,8 @@ public sealed class ManualImportFolderScannerTests
     [InlineData("Arrival.2016.WEB.1080p-GROUP.mkv", "Arrival", 2016)]
     [InlineData("The.Matrix.1999.BluRay.1080p.x264-GROUP.mkv", "The Matrix", 1999)]
     [InlineData("Some Show S01E02 720p HDTV.mkv", "Some Show", null)]
+    [InlineData("www.UIndex.org - The Twilight Zone S01E04 16 Millimeter Shrine 1080p AMZN WEB-DL DD 2 0 H 264-playWEB", "The Twilight Zone", null)]
+    [InlineData("[ www.Site.com ] Example.Show.S02E01.720p.HDTV.x264-GRP.mkv", "Example Show", null)]
     public void Guesses_title_and_year_from_a_release_style_name(string fileName, string expectedTitle, int? expectedYear)
     {
         var (title, year) = ManualImportFolderScanner.GuessTitleAndYear(fileName);

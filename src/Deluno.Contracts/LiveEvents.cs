@@ -118,7 +118,7 @@ public sealed record RecoveryCaseChangedEvent(
     string? EntityId,
     string At);
 
-/// <summary>Payload of <c>JobChanged</c>. State: started, finished, retrying (failed, will be tried again), failed (given up).</summary>
+/// <summary>Payload of <c>JobChanged</c>. State: queued (added), started, waiting (handed back to wait its turn), finished, retrying (failed, will be tried again), failed (given up).</summary>
 public sealed record JobChangedEvent(
     string JobId,
     string Kind,
