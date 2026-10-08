@@ -73,6 +73,10 @@ Deluno's `scripts/golden-path/Invoke-GoldenPath.ps1 -RigHost <host> -InstallerPa
 
 It cannot tick the component picker: Setup.exe and the app take no component choice on the command line, and a silent Setup does not run the first-run hook that shows the picker or sets the firewall rule. So after the script, step 1's picker lines and everything from step 2 on are done by hand in the VM console; the script's results file lists each as manual. Steps 2 to 12 stay manual.
 
+## The Usenet film
+
+The VM has no news server and no Usenet account, and no real login is ever used. Step 5's indexer line and step 6's Usenet film use a stub that runs inside the VM, the way the torrent films use a small local Torznab feed: a news server on `127.0.0.1` (port 1119) that serves a Creative Commons film (Big Buck Bunny, 2008) as yEnc articles, and a Newznab indexer on `127.0.0.1` (port 1180) that offers it with its `.nzb`. Run Deluno's script with `-UsenetStub` (and `-DelunoUsername`/`-DelunoPassword`, the run's throwaway login, once the account exists). It makes the release with the ffmpeg Deluno ships, starts both stubs in the signed-in session, and points Deluno at them through Deluno's own API. Without the login it prints the one command to run later (`Set-UsenetStubInDeluno.ps1`, in `C:\golden\usenet-stub` in the VM). The stub's code is `scripts/golden-path/usenet-stub/` in Deluno; Weir needs nothing from it, because Weir only sees the finished download in the client's folder.
+
 ## After the run
 
 The tag is made on the commit that passed, and each release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`) confirms the record before anything is published. Issues fixed in that release close with the run's evidence in the closing note.
