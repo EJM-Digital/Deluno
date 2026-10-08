@@ -74,12 +74,22 @@ test.describe("the installed app", () => {
     await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
   });
 
-  test("does not hand the app shell back for an unknown API path", async ({ request }) => {
+  test("does not hand the app shell back for an unknown API path", async ({ page, request }) => {
     // If the fallback swallows API 404s, a broken client call looks like a
     // successful page load and the real fault is invisible.
-    const response = await request.get("/api/definitely-not-a-route");
+    //
+    // Signed out, every /api path asks for a sign-in first (#1176: the shipped
+    // host runs the same sign-in gate as the Windows app), so it does not tell
+    // an outsider which paths exist. Either way it is never the app shell.
+    const anonymous = await request.get("/api/definitely-not-a-route");
+    expect(anonymous.status()).toBe(401);
+    expect(await anonymous.text()).not.toContain('<div id="root">');
 
-    expect(response.status()).toBe(404);
-    expect(await response.text()).not.toContain('<div id="root">');
+    // Signed in, an unknown path is a plain 404.
+    await authenticateAndNavigate(page, "/");
+    const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
+    const signedIn = await page.request.get("/api/definitely-not-a-route", { headers: { Authorization: `Bearer ${token}` } });
+    expect(signedIn.status()).toBe(404);
+    expect(await signedIn.text()).not.toContain('<div id="root">');
   });
 });
