@@ -66,7 +66,8 @@ public sealed class FilesystemImportExecuteJobHandler(
                 throw new JobDeferredException(ImportFileReadiness.SettleWindow, result.Message);
             }
 
-            throw new InvalidOperationException(result.Message);
+            // The import already says why in plain words; the job keeps that, not a generic line (#1167).
+            throw new PlainFailureException(result.Message);
         }
 
         if (payload.HandoffId is { Length: > 0 } imported && processorOutcomes is not null)

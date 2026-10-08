@@ -21,7 +21,7 @@ public sealed class FilesystemImportExecuteJobHandlerTests
 
         var job = TestJobs.Create("filesystem.import.execute", payloadJson: "not json");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
     }
 
     /// <summary>
@@ -55,8 +55,10 @@ public sealed class FilesystemImportExecuteJobHandlerTests
 
         var job = TestJobs.Create("filesystem.import.execute", payloadJson: ValidPayload);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
         Assert.Equal("The file is being used by another process.", exception.Message);
+        // The job keeps the import's own reason, not "Something went wrong while import a download" (#1167).
+        Assert.Equal("The file is being used by another process.", Deluno.Contracts.PlainFailure.Describe(exception, "import a download"));
     }
 
     /// <summary>

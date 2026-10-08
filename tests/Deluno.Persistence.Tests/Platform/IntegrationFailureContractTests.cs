@@ -122,4 +122,12 @@ public sealed class IntegrationFailureContractTests
         Assert.Equal(expectedKind, failure.Kind);
         Assert.NotEmpty(failure.NextAction);
     }
+
+    [Fact]
+    public void An_import_failure_summary_does_not_say_import_twice()
+    {
+        var failure = IntegrationFailureFactory.FromLegacy("deluno", "d1", "Deluno import", "import", "rejected", "The destination file already exists.");
+
+        Assert.Equal("Deluno import failed: The destination file already exists.", failure.Summary);
+    }
 }
