@@ -3205,6 +3205,13 @@ public sealed class DownloadClientTelemetryService(
                         _ => item.Status
                     }
                     : item.Status;
+                // The job ran to its end, but the import itself was refused (an unreadable file, say): the row says
+                // what Activity says, not "Imported".
+                if (status == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                {
+                    return item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refusedImport };
+                }
+
                 return item with { Status = status };
             }
 
@@ -3261,6 +3268,13 @@ public sealed class DownloadClientTelemetryService(
             if (handoff is not null)
             {
                 var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);
+                // The processor's output came back and the import job finished, but the import was refused
+                // (an unreadable file after an integrity failure, say): Transfers agrees with Activity.
+                if (queueStatus == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                {
+                    return resolvedItem with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = resolvedItem.ErrorMessage ?? refusedImport };
+                }
+
                 return resolvedItem with
                 {
                     Status = queueStatus,
@@ -3768,6 +3782,29 @@ public sealed class DownloadClientTelemetryService(
         return latestDispatch is not null
             && string.Equals(latestDispatch.ImportFailureCode, DownloadClientFailureCodes.IntegrityCheckFailed, StringComparison.OrdinalIgnoreCase)
             ? latestDispatch.ImportFailureMessage ?? "Deluno's check of the downloaded file failed."
+            : null;
+    }
+
+    /// <summary>
+    /// Why the latest dispatch of this download had its import refused, or null when it did not. Read when a
+    /// finished import job would otherwise make the row read Imported while Activity says the import failed.
+    /// A failure Deluno's own stall rules handled (the download was replaced) is Activity's story, not this one.
+    /// </summary>
+    internal static string? ImportFailureOf(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var latestDispatch = dispatches
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
+
+        return latestDispatch is not null
+            && string.Equals(latestDispatch.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(latestDispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)
+            ? latestDispatch.ImportFailureMessage ?? "The import did not complete."
             : null;
     }
 
