@@ -56,7 +56,7 @@ public static class UpdateFeedErrors
     {
         try
         {
-            using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+            using var http = handler is null ? new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) : new HttpClient(handler, disposeHandler: false);
             http.Timeout = TimeSpan.FromSeconds(5);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Updater");
             using var response = await http.GetAsync("https://api.github.com/rate_limit", cancellationToken);

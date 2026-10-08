@@ -155,7 +155,7 @@ public sealed class InstalledComponentWirer(
         try
         {
             var resumed = await implementation.ResumeClientAsync(client, cancellationToken);
-            if (resumed.Succeeded)
+            if (resumed?.Succeeded == true)
             {
                 await activity.RecordActivityAsync(ActivityCategory, $"Made sure {recipe.Name} is not paused. A new {recipe.Name} starts with its queues paused, and nothing would have downloaded.", null, null, null, null, cancellationToken);
             }
