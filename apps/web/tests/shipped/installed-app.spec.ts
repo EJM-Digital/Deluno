@@ -62,7 +62,8 @@ test.describe("the installed app", () => {
     const response = await page.goto("/settings/libraries");
     expect(response?.status()).toBe(200);
     expect(response?.headers()["content-type"] ?? "").toContain("text/html");
-    await expect(page.getByRole("heading", { name: /Libraries/i }).first()).toBeVisible();
+    // The page heading counts them ("1 library", "2 libraries"), so either form will do.
+    await expect(page.getByRole("heading", { name: /librar(y|ies)/i }).first()).toBeVisible();
   });
 
   test("survives a reload after navigating within the app", async ({ page }) => {

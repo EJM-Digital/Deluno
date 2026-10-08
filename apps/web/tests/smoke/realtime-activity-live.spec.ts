@@ -135,15 +135,19 @@ test.describe("Activity, the bell and the outage banner are live (#1179)", () =>
     await authenticateAndNavigate(page, "/system");
     const navigations = countNavigations(page);
     const bell = page.getByRole("button", { name: /^Notifications/ });
-    await expect(bell).toHaveAccessibleName(/1 thing needs a look/, { timeout: 20_000 });
+    await expect(bell).toHaveAccessibleName(/\d+ things? needs? a look/, { timeout: 20_000 });
     await expect.poll(async () => (await watchers(page)).dashboard, { timeout: 15_000 }).toBeGreaterThan(0);
     const navigationsAfterLoad = navigations.count;
+    // The shared smoke database can hold other things that need a look by now, so count from where the bell starts.
+    const startCount = Number(/(\d+) things? needs? a look/.exec((await bell.getAttribute("aria-label")) ?? "")?.[1] ?? 0);
+    expect(startCount).toBeGreaterThan(0);
 
     // A job about a title fails too; the server announces it and the bell follows.
     failing = 2;
     expect((await server(page, "/api/testing/realtime/event", { name: "AttentionChanged", subject: "dashboard", payload: { reason: "recovery" } })).status).toBe(204);
 
-    await expect(bell).toHaveAccessibleName(/2 things need a look/, { timeout: 15_000 });
+    const plusOne = startCount + 1;
+    await expect(bell).toHaveAccessibleName(new RegExp(`${plusOne} things? needs? a look`), { timeout: 15_000 });
     expect(navigations.count, "the page reloaded or navigated").toBe(navigationsAfterLoad);
   });
 

@@ -63,7 +63,10 @@ param(
     [string] $RigCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-rig-admin.xml'),
     [string] $VmCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-goldenvm-admin.xml'),
     [string] $OutDirectory,
-    [int] $PickerWaitSeconds = 60
+    [int] $PickerWaitSeconds = 60,
+    # Install the way a person does: Setup.exe in the signed-in desktop session, so first run shows the component
+    # picker, which Invoke-ComponentPicker.ps1 then ticks. Screens are saved under <OutDirectory>\golden-screens.
+    [switch] $Interactive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,6 +94,69 @@ function Invoke-InVm([scriptblock] $Block, [object[]] $ArgumentList = @()) {
         param($text, $vmArgs, $name, $cred)
         $sb = [scriptblock]::Create($text)
         Invoke-Command -VMName $name -Credential $cred -ArgumentList $vmArgs -ScriptBlock $sb
+    }
+}
+
+# Saves the VM's screen now, under <OutDirectory>\golden-screens\<name>.png (through the host; see Get-VmScreen.ps1).
+function Save-VmScreen([string] $Name) {
+    try {
+        $hostPath = Invoke-Command -Session $rig -ArgumentList (Get-Content -Raw (Join-Path $PSScriptRoot 'Get-VmScreen.ps1')), $VmName, $Name -ScriptBlock {
+            param($scriptText, $vm, $name)
+            $file = Join-Path $env:TEMP "golden-screen-$name.png"
+            $kb = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_Keyboard |
+                Where-Object { $_.SystemName -eq (Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem -Filter "ElementName='$vm'").Name }
+            if ($kb) { $null = Invoke-CimMethod -InputObject $kb -MethodName TypeKey -Arguments @{ keyCode = [uint32]0x10 } }  # wake the display
+            Start-Sleep -Milliseconds 800
+            & ([scriptblock]::Create($scriptText)) -VmName $vm -OutPath $file -Width 1024 -Height 768 | Out-Null
+            $file
+        }
+        $dir = Join-Path $OutDirectory 'golden-screens'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Copy-Item -Path $hostPath -Destination (Join-Path $dir "$Name.png") -FromSession $rig -Force
+        Invoke-Command -Session $rig -ArgumentList $hostPath -ScriptBlock { param($p) Remove-Item -LiteralPath $p -ErrorAction SilentlyContinue }
+    } catch { Write-Host "screen '$Name' not saved: $($_.Exception.Message)" -ForegroundColor Yellow }
+}
+
+# Installs the way a person does (#1158): Setup.exe without --silent in the signed-in desktop session, so Velopack
+# starts Deluno's first run, which shows the component picker; Invoke-ComponentPicker.ps1 then ticks every component
+# in the same session. The Usenet login is a throwaway value made inside the VM for this run.
+function Invoke-InteractiveInstall([string] $SetupName) {
+    $pickerText = Get-Content -Raw (Join-Path $PSScriptRoot 'Invoke-ComponentPicker.ps1')
+    $started = Invoke-InVm {
+        param($file, $pickerText)
+        Set-Content -Path 'C:\golden\Invoke-ComponentPicker.ps1' -Value $pickerText -Encoding utf8
+        Remove-Item 'C:\golden\picker.log' -ErrorAction SilentlyContinue
+        $user = "$env:USERDOMAIN\$env:USERNAME"
+        $password = 'Gp-' + [guid]::NewGuid().ToString('N').Substring(0, 16)
+        $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
+        $setup = New-ScheduledTaskAction -Execute (Join-Path 'C:\golden' $file)
+        $picker = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\golden\Invoke-ComponentPicker.ps1 -UsenetUser deluno -UsenetPassword $password"
+        Register-ScheduledTask -TaskName 'GoldenPathSetup' -Action $setup -Principal $principal -Force | Out-Null
+        Register-ScheduledTask -TaskName 'GoldenPathPicker' -Action $picker -Principal $principal -Force | Out-Null
+        Start-ScheduledTask -TaskName 'GoldenPathPicker'
+        Start-ScheduledTask -TaskName 'GoldenPathSetup'
+        'started'
+    } @($SetupName, $pickerText)
+    Add-Result 'Setup.exe started in the desktop session' $(if ($started -eq 'started') { 'passed' } else { 'failed' }) 'Not silent: first run shows the picker.'
+
+    $deadline = (Get-Date).AddMinutes(50)
+    $shot = 0
+    $log = ''
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 20
+        $log = Invoke-InVm { if (Test-Path 'C:\golden\picker.log') { Get-Content -Raw 'C:\golden\picker.log' } else { '' } }
+        if ($shot -lt 40 -and ($shot -lt 6 -or $shot % 3 -eq 0)) { Save-VmScreen ('picker-{0:d2}' -f $shot) }
+        $shot++
+        if ($log -match '(?m) done\s*$' -or $log -match 'FAILED') { break }
+    }
+    Save-VmScreen 'picker-final'
+    Invoke-InVm { Unregister-ScheduledTask -TaskName 'GoldenPathSetup' -Confirm:$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'GoldenPathPicker' -Confirm:$false -ErrorAction SilentlyContinue }
+    $logFile = Join-Path $OutDirectory "golden-picker-$Version.log"
+    Set-Content -Path $logFile -Value $log -Encoding utf8
+    if ($log -match '(?m) done\s*$' -and $log -notmatch 'FAILED') {
+        Add-Result 'Component picker ticked and installed' 'passed' "Every row ticked and installed; what it said is in $logFile."
+    } else {
+        Add-Result 'Component picker ticked and installed' 'failed' "See $logFile and golden-screens\picker-*.png."
     }
 }
 
@@ -147,6 +213,9 @@ try {
     }
     $setupName = Split-Path $InstallerPath -Leaf
 
+    if ($Interactive) {
+        Invoke-InteractiveInstall -SetupName $setupName
+    } else {
     # 4. Silent install. Velopack's Setup takes --silent; the component picker is a first-run dialog
     #    and cannot be driven from here.
     $install = Invoke-InVm {
@@ -184,6 +253,7 @@ try {
 
     # First run (firewall step, then the picker) starts after Setup; give it time to settle or show itself.
     Start-Sleep -Seconds $PickerWaitSeconds
+    }
 
     # 5. What is installed and running.
     $state = Invoke-InVm {
