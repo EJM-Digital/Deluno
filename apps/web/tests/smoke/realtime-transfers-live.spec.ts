@@ -50,7 +50,12 @@ async function server(page: Page, path: string, body?: unknown) {
 }
 
 test.describe("Transfers is live (#1179)", () => {
-  test("a download's progress and a sent download's stage change with no reload", async ({ page }) => {
+  test("a download's progress and a sent download's stage change with no reload", async ({ page, isMobile }) => {
+    // A phone shows a download's name and state; progress, speed and the reason are columns it hides, so there the check is that
+    // the value changed on the page, not that it is on screen.
+    const shown = (text: string, timeout = 5_000) => isMobile
+      ? expect(page.getByText(text).first()).toBeAttached({ timeout })
+      : expect(page.getByText(text).first()).toBeVisible({ timeout });
     test.setTimeout(90_000);
     await authenticateAndNavigate(page, "/");
     await serveTransfers(page);
@@ -67,10 +72,10 @@ test.describe("Transfers is live (#1179)", () => {
     await expect.poll(async () => ((await server(page, "/api/testing/realtime/watchers")).json as { live: number; queue: number }).live, { timeout: 15_000 }).toBeGreaterThan(0);
 
     // Progress: Example Film One was at 61%.
-    await expect(page.getByText("61%").first()).toBeVisible();
+    await shown("61%");
     expect((await server(page, "/api/testing/realtime/download-progress", { id: "q1", progress: 77, speedMbps: 9.5, status: "downloading" })).status).toBe(204);
-    await expect(page.getByText("77%").first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("9.5 MB/s").first()).toBeVisible();
+    await shown("77%", 10_000);
+    await shown("9.5 MB/s");
 
     // Stage: Example Film Two's sent download fails to grab, so Needs action stops saying all clear.
     await expect(page.getByText("all clear")).toBeVisible();
@@ -79,7 +84,7 @@ test.describe("Transfers is live (#1179)", () => {
       payload: { dispatchId: "d2", releaseName: "Example.Film.Two.2023.1080p", mediaType: "movies", entityType: "movie", entityId: "m-d2", libraryId: "l1", stage: "grab_failed", detail: "The client refused it", at: new Date().toISOString() }
     })).status).toBe(204);
     await expect(page.getByText("all clear")).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.getByText("The client refused it").first()).toBeVisible();
+    await shown("The client refused it");
 
     expect(reloads, "the page reloaded or navigated").toBe(navigationsAfterLoad);
   });

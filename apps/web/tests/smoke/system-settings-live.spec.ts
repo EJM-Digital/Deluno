@@ -93,7 +93,12 @@ test.describe("System, Find & Download and the search schedule are live (#1179)"
     expect(navigations(), "the page reloaded or navigated").toBe(afterLoad);
   });
 
-  test("a new indexer shows on Find & Download, and the pacing figure follows the server", async ({ page, request }) => {
+  test("a new indexer shows on Find & Download, and the pacing figure follows the server", async ({ page, request, isMobile }) => {
+    // A phone lists each indexer by name; its state and pacing are columns it hides, so there the check is that the
+    // value changed on the page, not that it is on screen.
+    const shown = (locator: ReturnType<Page["getByText"]>, timeout = 5_000) => isMobile
+      ? expect(locator).toBeAttached({ timeout })
+      : expect(locator).toBeVisible({ timeout });
     test.setTimeout(90_000);
     await authenticateAndNavigate(page, "/");
     let throttle: unknown = { hosts: [] };
@@ -118,11 +123,11 @@ test.describe("System, Find & Download and the search schedule are live (#1179)"
     try {
       const row = page.getByRole("row").filter({ hasText: name });
       await expect(row).toBeVisible({ timeout: 10_000 });
-      await expect(row.getByText("Ready", { exact: true })).toBeVisible();
+      await shown(row.getByText("Ready", { exact: true }));
 
       throttle = { hosts: [{ host, waiting: 3, grantedCount: 10, refusedCount: 0, totalWaitedSeconds: 4, nextPermitInSeconds: 2 }] };
       await push(page, "OutboundThrottleChanged", { id: "outbound" });
-      await expect(row.getByText("3 requests waiting")).toBeVisible({ timeout: 10_000 });
+      await shown(row.getByText("3 requests waiting"), 10_000);
       expect(navigations(), "the page reloaded or navigated").toBe(afterLoad);
     } finally {
       await request.delete(`/api/indexers/${id}`, { headers: { Authorization: `Bearer ${token}` } });
