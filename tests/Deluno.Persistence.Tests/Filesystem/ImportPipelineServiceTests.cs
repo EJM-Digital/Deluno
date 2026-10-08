@@ -7846,6 +7846,85 @@ public sealed class ImportPipelineServiceTests
             job.PayloadJson.Contains("\"targetEntityId\":\"movie-arrival-setup\"", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>The probe as the real service now answers an unreadable file: plain words, with ffmpeg's own text as the detail.</summary>
+    private sealed class UnreadableVideoProbeService(string raw) : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(FfprobeMediaProbeService.Failed(raw));
+    }
+
+    /// <summary>
+    /// A file ffprobe cannot read is told in plain words in Activity and on the download, and ffmpeg's own text
+    /// (with its file path) is kept in the activity details only.
+    /// </summary>
+    [Fact]
+    public async Task An_unreadable_file_is_told_in_plain_words_with_ffmpegs_text_in_the_details_only()
+    {
+        const string raw = "[matroska,webm @ 000001b280590a00] EBML header parsing failed: Invalid data found when processing input";
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, new byte[4096]);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-arrival", "Arrival.2016.WEB.1080p-DELUNO", "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies, mediaProbeService: new UnreadableVideoProbeService(raw),
+            downloadDispatchesRepository: dispatches, blockedReleases: blockedReleases, jobScheduler: jobStore);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain("EBML", result.Message ?? string.Empty);
+
+        var recorded = await jobStore.ListActivityAsync(20, null, null, CancellationToken.None);
+        var failed = Assert.Single(recorded, item => item.Category == "filesystem.import.failed");
+        Assert.Contains("can't be read as video", failed.Message);
+        Assert.DoesNotContain("EBML", failed.Message);
+        Assert.DoesNotContain("Invalid data", failed.Message);
+        Assert.Contains("EBML header parsing failed", failed.DetailsJson);
+    }
+
+    [Fact]
+    public void Ffprobes_own_words_for_a_bad_or_unreachable_file_are_never_the_message()
+    {
+        const string raw = @"[matroska,webm @ 000001b280590a00] EBML header parsing failed C:\Weir\Ready\Movies\x.mkv: Invalid data found when processing input";
+        var failed = FfprobeMediaProbeService.Failed(raw);
+        Assert.Equal("failed", failed.Status);
+        Assert.Equal(ProbeFailureWords.FailedMessage, failed.Message);
+        Assert.Equal(raw, failed.Detail);
+
+        var unreadable = FfprobeMediaProbeService.Unreadable("x.mkv: Permission denied");
+        Assert.Equal("unreadable", unreadable.Status);
+        Assert.DoesNotContain("Permission denied", unreadable.Message);
+        Assert.Equal("x.mkv: Permission denied", unreadable.Detail);
+    }
+
     private sealed class RejectingProbeService(string message) : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)

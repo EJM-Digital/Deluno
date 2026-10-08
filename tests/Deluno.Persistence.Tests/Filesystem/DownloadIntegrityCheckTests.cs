@@ -47,6 +47,20 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
     }
 
     [Fact]
+    public async Task A_file_ffprobe_could_not_read_fails_in_plain_words_and_keeps_ffmpegs_text_as_the_detail()
+    {
+        const string raw = @"[matroska,webm @ 000001b280590a00] EBML header parsing failed C:\Weir\Ready\Movies\Reject.Film.mkv: Invalid data found when processing input";
+        var result = await Run(new Probe(FfprobeMediaProbeService.Failed(raw)), "Sintel.2010.1080p.WEB-DL", 120);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+        Assert.Contains("can't be read as video", result.Reason);
+        Assert.DoesNotContain("EBML", result.Reason);
+        Assert.DoesNotContain("matroska", result.Reason);
+        Assert.DoesNotContain("Invalid data", result.Reason);
+        Assert.Equal(raw, result.Detail);
+    }
+
+    [Fact]
     public async Task A_file_with_no_video_stream_fails()
     {
         var result = await Run(Probe.NoVideo(120), "Sintel.2010.1080p.WEB-DL", 120);
