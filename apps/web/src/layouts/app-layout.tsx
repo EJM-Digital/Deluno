@@ -845,7 +845,7 @@ function ContentTopbar({
         <div id="topbar-main" className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
         <div className="min-w-0 flex-1">
           {/* One line, always: with the page's buttons beside it a long one wrapped to three and the header grew. */}
-          <p title={typeof subtitle === "string" ? subtitle : undefined} className="truncate text-(length:--section-eyebrow-size) font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
+          <p title={typeof subtitle === "string" ? subtitle : undefined} className="truncate max-md:whitespace-normal max-md:break-words text-(length:--section-eyebrow-size) font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. A page that has tabs (the Dashboard) puts them on the title's own line,

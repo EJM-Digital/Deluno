@@ -880,7 +880,7 @@ export function MovieDetailPage() {
                 on their centres.
               */}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? movie.title}>{metaText("LocalizedTitle") ?? movie.title}</h1>
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:line-clamp-2 xl:break-words xl:text-3xl" title={metaText("LocalizedTitle") ?? movie.title}>{metaText("LocalizedTitle") ?? movie.title}</h1>
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
                   James: *"instead of having a big button for monitor/unmonitored

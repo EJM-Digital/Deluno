@@ -70,9 +70,9 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
               >
                 <StepStateIcon step={step} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-(length:--type-body-sm) font-semibold text-foreground">{step.number}. {step.title}</span>
+                  <span className="block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-body-sm) font-semibold text-foreground">{step.number}. {step.title}</span>
                   <span className={cn(
-                    "mt-0.5 block truncate text-(length:--type-caption) leading-snug",
+                    "mt-0.5 block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) leading-snug",
                     step.state === "failed" ? "text-destructive" : step.state === "complete" ? "text-success" : "text-muted-foreground"
                   )}>
                     {step.optional && step.state !== "complete" ? "Optional · " : ""}{stepStateLabel(step)}

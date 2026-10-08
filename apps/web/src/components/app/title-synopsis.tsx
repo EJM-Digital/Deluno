@@ -21,6 +21,8 @@ export function TitleSynopsis({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const [lines, setLines] = useState<number | null>(null);
+  // The room is under a line and a button high: the button then sits on the last line, at its end, rather than under it where the box would cut it off.
+  const [inline, setInline] = useState(false);
 
   const measure = useCallback(() => {
     const boxEl = box.current;
@@ -28,6 +30,7 @@ export function TitleSynopsis({ text }: { text: string }) {
     if (!boxEl || !p) return;
     if (!window.matchMedia(wide).matches) {
       setLines(null);
+      setInline(false);
       return;
     }
     const previous = p.style.webkitLineClamp;
@@ -41,10 +44,13 @@ export function TitleSynopsis({ text }: { text: string }) {
     const available = boxEl.clientHeight;
     if (natural <= available + 1) {
       setLines(null);
+      setInline(false);
       return;
     }
-    // Leave one line's height for the More button.
-    setLines(Math.max(1, Math.floor((available - 21) / lineHeight)));
+    // Leave one line's height for the More button, unless there is not that much room: then it shares the last line.
+    const roomy = Math.floor((available - 21) / lineHeight);
+    setInline(roomy < 1);
+    setLines(roomy < 1 ? Math.max(1, Math.floor(available / lineHeight)) : roomy);
   }, []);
 
   useLayoutEffect(() => {
@@ -106,7 +112,7 @@ export function TitleSynopsis({ text }: { text: string }) {
     <div
       ref={box}
       data-testid="title-synopsis"
-      className="mt-2 max-w-4xl min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-hidden"
+      className="relative mt-2 max-w-4xl min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-hidden"
     >
       <p
         ref={paragraph}
@@ -123,7 +129,7 @@ export function TitleSynopsis({ text }: { text: string }) {
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label="Read the full synopsis"
-          className="block text-xs font-semibold leading-5 text-primary hover:underline"
+          className={cn("block text-xs font-semibold leading-5 text-primary hover:underline", inline && "absolute bottom-0 right-0 bg-card pl-2")}
         >
           More
         </button>

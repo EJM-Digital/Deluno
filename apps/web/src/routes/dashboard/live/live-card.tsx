@@ -37,7 +37,7 @@ export function LiveCard({ title, count, controls, description, aside, to, toLab
         {controls ? (
           <div className="flex min-w-0 flex-1 self-center -m-2">{controls}</div>
         ) : (
-          <span title={plainTitle(count)} className="min-w-0 flex-1 truncate text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
+          <span title={plainTitle(count)} className="min-w-0 flex-1 truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
         )}
         {aside}
         {to ? (

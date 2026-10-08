@@ -103,6 +103,9 @@ function SortArrow({ direction }: { direction: "asc" | "desc" }) {
   );
 }
 
+/** A column heading wider than its column wraps to a second line before it is cut, and says all of itself as a tooltip (#1168). */
+const HEADING_LABEL = "line-clamp-2 min-w-0 [overflow-wrap:anywhere] leading-[1.15]";
+
 export interface ListColumn<T = never> extends Omit<ListColumnSpec<T>, "label" | "srOnly"> {
   label: React.ReactNode;
   /** CSS grid track. Defaults: first column `minmax(0,1.6fr)`, others `minmax(0,1fr)`. */
@@ -325,11 +328,11 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     aria-describedby={movable ? describedBy : undefined}
                     className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-widest text-inherit hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    <span className="truncate">{col.label}</span>
+                    <span title={typeof col.label === "string" ? col.label : undefined} className={HEADING_LABEL}>{col.label}</span>
                     {active ? <SortArrow direction={active.direction} /> : null}
                   </button>
                 ) : (
-                  <span className="block truncate">{col.label}</span>
+                  <span title={typeof col.label === "string" ? col.label : undefined} className={cn("block", HEADING_LABEL)}>{col.label}</span>
                 )}
               </div>
             );
@@ -431,15 +434,16 @@ interface ListCellProps {
 /**
  * Cells cut a long value short with an ellipsis, which is right for a phone or
  * a laptop where the full value is one tap away in the row's drawer. On a wide
- * screen there is room to say it all, so the value wraps instead (#1162).
+ * screen there is room to say it all, so the value wraps instead (#1162). A phone has no hover to read a tooltip with,
+ * so there it wraps too (#1168).
  */
-const WIDE_WRAP = "min-[1920px]:overflow-visible min-[1920px]:whitespace-normal min-[1920px]:break-words";
+const WIDE_WRAP = "max-md:overflow-visible max-md:whitespace-normal max-md:break-words min-[1920px]:overflow-visible min-[1920px]:whitespace-normal min-[1920px]:break-words";
 
 /**
  * A muted second line may take two lines before it is cut, and carries its full text as a tooltip. At 1920 it wraps
  * (WIDE_WRAP) and so must not be clamped: a two-line box whose text runs to three printed over the next row.
  */
-const SECONDARY_CLAMP = "line-clamp-2 [overflow-wrap:anywhere] min-[1920px]:line-clamp-none";
+const SECONDARY_CLAMP = "line-clamp-2 [overflow-wrap:anywhere] max-md:line-clamp-none min-[1920px]:line-clamp-none";
 
 export function ListCell({ primary, secondary, mobile = false, align = "start", mono, numeric, className, children }: ListCellProps) {
   const originalIndex = React.useContext(CellIndexContext);
