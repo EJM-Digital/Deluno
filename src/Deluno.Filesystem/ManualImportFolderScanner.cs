@@ -56,13 +56,8 @@ public static class ManualImportFolderScanner
     /// </summary>
     public static (string? Title, int? Year) GuessTitleAndYear(string fileName)
     {
-        var raw = Path.GetFileNameWithoutExtension(fileName);
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return (null, null);
-        }
-
-        raw = SitePrefixPattern.Replace(raw, string.Empty);
+        // The site advert goes first: its dots would otherwise be read as an extension.
+        var raw = Path.GetFileNameWithoutExtension(SitePrefixPattern.Replace(fileName ?? string.Empty, string.Empty));
         if (string.IsNullOrWhiteSpace(raw))
         {
             return (null, null);
