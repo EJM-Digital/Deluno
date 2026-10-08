@@ -35,4 +35,16 @@ describe("dispatchStanding (#1179)", () => {
     expect(dispatchStanding(sent({ importStatus: "failed" }))?.status).toBe("failed");
     expect(dispatchStanding(sent({ status: "planned" }))?.status).toBe("needs-decision");
   });
+
+  it("a failed import never reads Imported, even with a completion time on the row (#1179)", () => {
+    const done = "2026-10-08T05:00:00Z";
+    const refused = dispatchStanding(sent({ importStatus: "failed", importCompletedUtc: done, importFailureMessage: "release refused; replacement search queued" }));
+    expect(refused?.pill.label).toBe("Refused");
+    const exists = dispatchStanding(sent({ importStatus: "failed", importCompletedUtc: done, importFailureMessage: "The destination file already exists." }));
+    expect(exists?.pill.label).toBe("Failed");
+    expect(exists?.status).toBe("failed");
+    const removed = dispatchStanding(sent({ importStatus: "failed", importFailureMessage: "Download was removed from the client" }));
+    expect(removed?.pill.label).toBe("Removed");
+    expect(dispatchStanding(sent({ importStatus: "imported", importCompletedUtc: done }))?.pill.label).toBe("Imported");
+  });
 });

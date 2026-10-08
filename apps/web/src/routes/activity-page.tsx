@@ -651,7 +651,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         ) : null}
       </Drawer>
 
-      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} />
+      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} onRetry={() => { setOpenJobId(null); void handleRetryFailedJobs(); }} />
 
       <DownloadDispatchDrawer
         dispatch={openDispatch}
@@ -820,6 +820,11 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             <DrawerSection title="Decide">
               <div className="flex flex-wrap gap-2">
                 {recoveryDecisions({ ...openImportCase, mediaType: openImportCase.mediaLabel === "Movie" ? "movie" : "series" }).map((action) => (
+                  action.to ? (
+                    <Button key={action.id} asChild variant="outline" size="sm" title={action.hint}>
+                      <Link to={action.to} onClick={() => setOpenImportCaseId(null)}>{action.label}</Link>
+                    </Button>
+                  ) : (
                   <Button
                     key={action.id}
                     type="button"
@@ -832,6 +837,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                   >
                     {action.label}
                   </Button>
+                  )
                 ))}
               </div>
             </DrawerSection>

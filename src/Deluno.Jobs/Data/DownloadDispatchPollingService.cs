@@ -17,7 +17,8 @@ public sealed class DownloadDispatchPollingService(
     IRealtimeEventPublisher realtimeEventPublisher,
     IGrabAppearanceLookupService? appearanceLookup = null,
     IBlockedReleaseRepository? blockedReleaseRepository = null,
-    IJobScheduler? jobScheduler = null)
+    IJobScheduler? jobScheduler = null,
+    IDispatchTitleUnmonitorService? titleFiles = null)
     : IDownloadDispatchPollingService
 {
     private static readonly TimeSpan GrabTimeout = TimeSpan.FromHours(2);
@@ -165,7 +166,20 @@ public sealed class DownloadDispatchPollingService(
                 // showed the download (#554): a download can be on screen and
                 // progressing for many hours, and none of that is overdue.
                 var age = dispatch.ClientCompletedUtc is { } completedUtc ? now - completedUtc : TimeSpan.Zero;
-                if (age > DetectionTimeout && !await problemLog.IsRecordedAsync(dispatch.Id, "detection-timeout", cancellationToken))
+                // The title already holds its file (relinked, imported by hand, another grab got there): a
+                // "finished but not imported" notice about it is stale. Never raise one, and release one an earlier
+                // pass raised so it stops counting as needing the person (#1167).
+                if (titleFiles is not null
+                    && await titleFiles.HasFileAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) == true)
+                {
+                    if (await problemLog.IsRecordedAsync(dispatch.Id, "detection-timeout", cancellationToken))
+                    {
+                        await problemLog.SettleAsync(dispatch.Id, "detection-timeout", cancellationToken);
+                        await recoveryHandler.HandleDispatchSettledAsync(dispatch.Id, "The title already has its file.", cancellationToken);
+                        report = report with { ProblemsSettled = report.ProblemsSettled + 1 };
+                    }
+                }
+                else if (age > DetectionTimeout && !await problemLog.IsRecordedAsync(dispatch.Id, "detection-timeout", cancellationToken))
                 {
                     await RecordDetectionTimeoutRecoveryAsync(
                         dispatch,
