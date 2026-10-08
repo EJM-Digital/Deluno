@@ -85,7 +85,9 @@ export default defineConfig({
         // #934 — only this disposable smoke process ever sees this key, which
         // is what keeps large-library-chips.spec.ts's seeding route out of a
         // real install. See MoviesLargeLibrarySeedEndpoints's doc comment.
-        Testing__EnableLargeLibrarySeedEndpoint: "true"
+        Testing__EnableLargeLibrarySeedEndpoint: "true",
+        // #1178 — lets realtime-dashboard-live.spec.ts make the server raise events.
+        Testing__EnableRealtimePushEndpoint: "true"
       }
     },
     {

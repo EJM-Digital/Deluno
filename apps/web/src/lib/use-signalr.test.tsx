@@ -282,15 +282,19 @@ describe("pushed Live events (#1097)", () => {
   it("useLiveEvent joins its own subject and the live one, which is how the server knows someone is watching", async () => {
     await mount(() => useLiveEvent("DownloadSpeedSample", () => {}));
 
-    const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
-    expect(joined).toContain("live");
+    await waitFor(() => {
+      const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
+      expect(joined).toContain("live");
+    });
   });
 
   it("useLiveWatching joins the live subject without listening for anything", async () => {
     await mount(() => useLiveWatching());
 
-    const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
-    expect(joined).toContain("live");
+    await waitFor(() => {
+      const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
+      expect(joined).toContain("live");
+    });
   });
 
   it("says the connection is up once connected and down when it closes", async () => {
