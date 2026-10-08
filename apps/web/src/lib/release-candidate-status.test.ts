@@ -87,3 +87,17 @@ describe("plain reason wording for a decisive custom rule (#1138)", () => {
     expect(out).toBe("Your installed file is better than this release. Your preferred release groups decided it; this release ranks lower.");
   });
 });
+
+describe("saved searches no longer show the engine's own words (#1159)", () => {
+  it("rewrites the old phrases and leaves none of the internal terms", async () => {
+    const { plainCandidateReason } = await import("./release-candidate-status");
+    const saved = [
+      "Rejected by the typed release plan.",
+      "Eligible under the typed release plan.",
+      "Held for review by the typed release plan.",
+      "Candidate is acceptable but does not persistently improve the installed file.",
+    ].map(plainCandidateReason).join(" ");
+    expect(saved).toBe("Not taken. Usable, but not taken on its own. Held for your review. It isn't better than the file you have.");
+    expect(saved).not.toMatch(/typed|release plan|persistently|eligible under|hybrid/i);
+  });
+});

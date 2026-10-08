@@ -89,6 +89,13 @@ export function canWinSearch(candidate: ReleaseCandidateStatusInput): boolean {
  */
 export function plainCandidateReason(text: string): string {
   return text
+    // Searches saved before the wording was plain still carry the engine's own phrases (#1159).
+    .replace(/Rejected by the typed release plan\./g, "Not taken.")
+    .replace(/Preferred by the typed release plan\./g, "Would be taken.")
+    .replace(/Held for review by the typed release plan\./g, "Held for your review.")
+    .replace(/Equivalent to the installed file under the typed release plan\./g, "Same as the file you have.")
+    .replace(/Eligible under the typed release plan\./g, "Usable, but not taken on its own.")
+    .replace(/Candidate is acceptable but does not persistently improve the installed file\./g, "It isn't better than the file you have.")
     .replace(/Custom rule [·-] [^.]*? is below its target\./g, "It lacks something your quality profile prefers.")
     .replace(/(^|[.!?]\s+)?Custom rule [·-] [^.;']*Tier\s*\d+/gi, (_match, lead?: string) =>
       lead === undefined ? "your preferred release groups" : `${lead}Your preferred release groups`)
