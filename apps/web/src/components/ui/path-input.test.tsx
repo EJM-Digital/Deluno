@@ -9,7 +9,7 @@ vi.mock("../../lib/api", async (importOriginal) => ({
 }));
 
 import { ApiRequestError } from "../../lib/api";
-import { PathInput, browserIsOnServerMachine } from "./path-input";
+import { PathInput, browserEntries, browserIsOnServerMachine } from "./path-input";
 
 const roots = {
   currentPath: null,
@@ -60,6 +60,26 @@ describe("PathInput: Choose folder (#1170)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
 
     await waitFor(() => expect(screen.getByText(/Windows picker is unavailable/)).toBeInTheDocument());
+  });
+});
+
+describe("PathInput: drives show only in the list of drives", () => {
+  const drive = { name: "Media (Z:)", path: "Z:\\", kind: "root" as const, description: "Network drive" };
+  const folder = { name: "Movies", path: "/media/Movies", kind: "directory" as const, description: null };
+
+  it("keeps drives in the top list and out of a folder's listing", () => {
+    expect(browserEntries({ currentPath: null, parentPath: null, entries: [drive, folder] })).toEqual([drive, folder]);
+    expect(browserEntries({ currentPath: "/media", parentPath: "/", entries: [drive, folder] })).toEqual([folder]);
+  });
+
+  it("does not draw a drive at the top of a folder's listing", async () => {
+    vi.stubGlobal("location", { hostname: "192.168.1.10" });
+    fetchJsonMock.mockImplementation(async () => ({ currentPath: "/media", parentPath: "/", entries: [drive, folder] }));
+    render(<PathInput value="/media" onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
+    await waitFor(() => expect(screen.getByText("Movies")).toBeInTheDocument());
+    expect(screen.queryByText("Media (Z:)")).toBeNull();
+    expect(screen.queryByText("Network drive")).toBeNull();
   });
 });
 

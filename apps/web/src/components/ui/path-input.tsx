@@ -35,6 +35,14 @@ export function browserIsOnServerMachine(hostname: string | undefined = globalTh
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost");
 }
 
+/**
+ * The rows the folder browser shows. Only the list of drives shows drives (and the example paths): inside a folder the
+ * rows are that folder's own folders, so a drive never sits at the top of a sub-folder's listing.
+ */
+export function browserEntries(data: DirectoryBrowseResponse) {
+  return data.currentPath ? data.entries.filter((entry) => entry.kind === "directory") : data.entries;
+}
+
 interface PathInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -444,9 +452,9 @@ export function PathInput({
               <div className="rounded-2xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-5 text-sm text-destructive">
                 {error}
               </div>
-            ) : browserData && browserData.entries.length > 0 ? (
+            ) : browserData && browserEntries(browserData).length > 0 ? (
               <div className="space-y-2">
-                {browserData.entries.map((entry) => (
+                {browserEntries(browserData).map((entry) => (
                   <div
                     key={entry.path}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-hairline bg-surface-1 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)]"
