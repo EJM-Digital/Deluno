@@ -87,6 +87,23 @@ public sealed class CasesSettleWhenTheirTitleHoldsItsFileTests
         Assert.DoesNotContain(withDetails.Id, await OpenAsync(movies));
     }
 
+    // Golden path, rc.30.9: "Processor failed" for a film that imported afterwards stayed in Needs a decision.
+    [Theory]
+    [InlineData("processor-failed")]
+    [InlineData("processor-held")]
+    [InlineData("processor-timeout")]
+    public async Task A_processor_case_closes_once_the_film_holds_its_file_since(string kind)
+    {
+        using var storage = TestStorage.Create();
+        var (movies, clock) = await MoviesAsync(storage);
+        var processor = await FilmCaseAsync(movies, "Nosferatu.1922.1080p.BluRay.x264-HD4U", kind, null);
+        clock.Advance(TimeSpan.FromHours(1));
+        await ImportFilmAsync(movies, "Nosferatu", 1922);
+
+        Assert.Single(await movies.SettleCasesOfTitlesHoldingFilesAsync(CancellationToken.None));
+        Assert.DoesNotContain(processor.Id, await OpenAsync(movies));
+    }
+
     [Fact]
     public async Task A_film_of_another_year_or_a_case_about_the_file_itself_stays_open()
     {

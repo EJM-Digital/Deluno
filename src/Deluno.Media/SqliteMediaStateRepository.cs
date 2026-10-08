@@ -1207,7 +1207,9 @@ public sealed class SqliteMediaStateRepository(
     private static readonly HashSet<string> LandingFailureKinds = new(StringComparer.OrdinalIgnoreCase)
     {
         "downloadFailed", "importFailed", "import-failed", "grab-timeout", "detection-timeout",
-        "import-timeout", "vanished-downloading"
+        "import-timeout", "vanished-downloading",
+        // A processor that failed, held, stalled or lost a file whose title has its file now has nothing left to answer.
+        "processor-failed", "processor-held", "processor-timeout", "processor-stalled", "processor-lost"
     };
 
     private static readonly System.Text.RegularExpressions.Regex EpisodeMarker =

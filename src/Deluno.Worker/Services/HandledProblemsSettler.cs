@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Data;
+using Deluno.Platform.Contracts;
 using Deluno.Series.Data;
 
 namespace Deluno.Worker.Services;
@@ -26,7 +27,8 @@ public sealed class HandledProblemsSettler(
     ISeriesCatalogRepository series,
     IJobQueueRepository jobs,
     IDownloadDispatchesRepository? dispatches,
-    IActivityFeedRepository activityFeed)
+    IActivityFeedRepository activityFeed,
+    Deluno.Platform.Data.IProcessorRepository? processors = null)
 {
     private const int DispatchWindow = 500;
 
@@ -53,7 +55,7 @@ public sealed class HandledProblemsSettler(
             }
         }
 
-        return settled + await SettleDispatchFailuresAsync(cancellationToken);
+        return settled + await SettleDispatchFailuresAsync(cancellationToken) + await SettleHandoffsAsync(cancellationToken);
     }
 
     private async Task<int> SettleDispatchFailuresAsync(CancellationToken cancellationToken)
@@ -98,6 +100,74 @@ public sealed class HandledProblemsSettler(
                 null,
                 "download-dispatch",
                 dispatch.Id,
+                cancellationToken);
+        }
+
+        return settled;
+    }
+
+    /// <summary>
+    /// A hand-off that ended badly asks for a decision until somebody dismisses it. When its title holds a file
+    /// that arrived after the hand-off was made, the question has been answered some other way (the film was
+    /// imported by hand, from the original, or from a repeat hand-off), so it closes itself.
+    /// </summary>
+    private async Task<int> SettleHandoffsAsync(CancellationToken cancellationToken)
+    {
+        if (processors is null || dispatches is null)
+        {
+            return 0;
+        }
+
+        var open = (await processors.ListProcessorHandoffsWithStatusAsync(
+                [
+                    ProcessorHandoffStatuses.Failed, ProcessorHandoffStatuses.Rejected, ProcessorHandoffStatuses.TimedOut,
+                    ProcessorHandoffStatuses.Stalled, ProcessorHandoffStatuses.Lost, ProcessorHandoffStatuses.Cancelled,
+                    ProcessorHandoffStatuses.Completed
+                ],
+                cancellationToken) ?? [])
+            .Where(handoff => ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
+            .ToList();
+        if (open.Count == 0)
+        {
+            return 0;
+        }
+
+        var byHandoff = new List<(Deluno.Platform.Contracts.ProcessorHandoffItem Handoff, DownloadDispatchItem Dispatch)>();
+        foreach (var handoff in open)
+        {
+            var dispatch = await dispatches.FindAnyDispatchByHashAsync(handoff.ClientId, handoff.QueueItemId, cancellationToken);
+            if (dispatch is not null && !string.IsNullOrWhiteSpace(dispatch.EntityId))
+            {
+                byHandoff.Add((handoff, dispatch));
+            }
+        }
+
+        var holds = new Dictionary<string, TitleFileHolds>
+        {
+            ["movie"] = await movies.GetTitleFileHoldsAsync(IdsOf(byHandoff.Select(pair => pair.Dispatch), "movie"), cancellationToken) ?? TitleFileHolds.None,
+            ["episode"] = await series.GetTitleFileHoldsAsync(IdsOf(byHandoff.Select(pair => pair.Dispatch), "episode"), cancellationToken) ?? TitleFileHolds.None
+        };
+
+        var settled = 0;
+        foreach (var (handoff, dispatch) in byHandoff)
+        {
+            if (!holds.TryGetValue(dispatch.EntityType.ToLowerInvariant(), out var held)
+                || !held.ImportedByEntityId.TryGetValue(dispatch.EntityId, out var imported)
+                || (imported is { } arrived && arrived < handoff.CreatedUtc))
+            {
+                continue;
+            }
+
+            await processors.UpdateProcessorHandoffAsync(
+                handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+            settled++;
+            await activityFeed.RecordActivityAsync(
+                "processing.dismissed",
+                $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} did not finish, but its title is in the library now, so Deluno closed it.",
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
+                null,
+                "processor-handoff",
+                handoff.Id,
                 cancellationToken);
         }
 
