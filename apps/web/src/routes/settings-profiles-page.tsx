@@ -840,11 +840,11 @@ export function SettingsProfilesPage() {
                  {editing.releasePreferencePlan ? (
                    <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-(length:--type-caption)">
                      <div className="flex flex-wrap items-center justify-between gap-2">
-                       <span className="font-medium text-foreground">Pinned immutable plan</span>
+                       <span className="font-medium text-foreground">Release preferences in use</span>
                        <Chip tone="info">{editing.releasePreferencePlan.version}</Chip>
                      </div>
                      <p className="mt-1 text-muted-foreground">
-                       This profile uses the persisted typed plan it was migrated or compiled from. Editing the quality policy clears this reference until the profile is compiled again.
+                       This profile is judged by the release preferences it was set up from. Changing its quality rules unlinks them until the profile is set up again.
                      </p>
                      <p className="mt-1 truncate font-mono text-(length:--type-micro) text-muted-foreground" title={editing.releasePreferencePlan.planHash}>
                        {editing.releasePreferencePlan.planId} · {editing.releasePreferencePlan.planHash}

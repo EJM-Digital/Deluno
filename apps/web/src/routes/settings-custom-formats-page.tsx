@@ -1682,7 +1682,7 @@ export function SettingsCustomFormatsPage() {
               className="font-mono"
             />
           </Field>
-          <Field label="Typed plan" optional help="This uses the same persisted release-preference plan as search and import. Leave it blank to run only the legacy matcher check.">
+          <Field label="Release preferences to test against" optional help="The same release preferences search and import use. Leave it blank to check only against the older rules.">
             <Select
               value={testProfileId}
               onChange={(event) => setTestProfileId(event.target.value)}
@@ -1729,13 +1729,13 @@ export function SettingsCustomFormatsPage() {
         ) : null}
 
         {typedPreviewError ? (
-          <DrawerSection title="Typed plan preview">
+          <DrawerSection title="How this release is judged">
             <p role="alert" className="text-(length:--type-caption) text-destructive">{typedPreviewError}</p>
           </DrawerSection>
         ) : null}
 
         {typedPreview ? (
-          <DrawerSection title="Typed plan preview" aside={typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}>
+          <DrawerSection title="How this release is judged" aside={typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}>
             <div className="grid gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Chip tone={typedPreview.comparison?.status === "rejected" ? "bad" : typedPreview.comparison?.status === "needsReview" ? "warn" : typedPreview.comparison?.status === "currentBetter" || typedPreview.comparison?.status === "equivalent" ? "info" : typedPreview.candidateEvaluation.status === "meetsPlan" ? "ok" : "info"}>
