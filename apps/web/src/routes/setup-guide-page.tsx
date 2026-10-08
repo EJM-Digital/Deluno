@@ -1279,7 +1279,7 @@ function QualityStep({ form, guide, patch }: { form: GuideForm; guide: GuidePack
           {(form.formatGoal ? previewFormats(guide, form.formatGoal) : []).map((format) => (
             <div key={format.trashId} className="rounded-xl border border-hairline bg-background/35 px-3 py-2">
               <p className="text-sm font-semibold text-foreground">{format.name}</p>
-              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{format.description}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{format.description}</p>
             </div>
           ))}
         </div>
@@ -1965,7 +1965,7 @@ function FinishStep({
           // The connection's name, not its protocol id: this read "torznab"
           // and "qbittorrent" where the user had just named them (#259).
           { label: "Search source", value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Later" },
-          { label: "Download client", value: route.names.length > 0 ? route.names.join(", ") : "Later" }
+          { label: "Download client", value: route.names.length > 2 ? `${route.names.length} clients` : route.names.length > 0 ? route.names.join(", ") : "Later", help: route.names.length > 2 ? "Named below" : undefined }
         ]}
       />
       <div className="rounded-2xl border border-hairline bg-surface-1 p-4">

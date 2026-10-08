@@ -95,7 +95,7 @@ function SetupJourneyStep({
   action: SetupStatusStep["action"];
 }) {
   return (
-    <Link to={to} className="group flex gap-(--grid-gap) px-(--tile-pad) py-5 transition hover:bg-muted/35">
+    <Link to={to} className="group flex gap-(--grid-gap) px-(--tile-pad) py-5 transition hover:bg-muted/35 max-sm:grid max-sm:grid-cols-[2rem_minmax(0,1fr)]">
       <span
         aria-label={optional ? `${title} optional${complete ? " configured" : ""}` : complete ? `${title} complete` : current ? `${title} next` : `${title} incomplete`}
         className={complete ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/15 text-sm font-bold text-success" : current ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground" : "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground"}
@@ -111,7 +111,7 @@ function SetupJourneyStep({
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">{description}</p>
         <p className={complete && !optional ? "mt-2 text-sm font-medium text-success" : "mt-2 text-sm font-medium text-muted-foreground"}>{status}</p>
       </div>
-      <span className="self-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition group-hover:text-primary">{action} →</span>
+      <span className="self-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition group-hover:text-primary max-sm:col-start-2 max-sm:self-start max-sm:px-0 max-sm:py-0">{action} →</span>
     </Link>
   );
 }
