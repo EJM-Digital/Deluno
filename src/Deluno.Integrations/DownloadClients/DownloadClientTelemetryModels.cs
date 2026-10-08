@@ -440,7 +440,9 @@ public sealed record DownloadHealthFinding(
     string? RuleActionPreset = null,
     DateTimeOffset? NextStrikeUtc = null,
     /// <summary>The matched rule's own strike limit (#905); null for a finding outside the rule engine, which uses the platform-wide fallback threshold instead.</summary>
-    int? RuleStrikeLimit = null);
+    int? RuleStrikeLimit = null,
+    /// <summary>When this spell of the problem began (the first sighting with no break since), so a message can say how long it has really lasted.</summary>
+    DateTimeOffset? SpellStartedUtc = null);
 
 public sealed record DownloadClientHistoryItem(
     string Id,

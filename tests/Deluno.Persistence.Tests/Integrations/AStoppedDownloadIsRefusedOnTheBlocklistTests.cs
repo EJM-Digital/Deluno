@@ -104,6 +104,27 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
     public void The_reason_says_how_long_it_went_on(string kind, int strikes, string says)
         => Assert.StartsWith(says, DownloadClientTelemetryService.StalledReason(Finding(kind, strikes), "qBittorrent"), StringComparison.Ordinal);
 
+    /// <summary>
+    /// Golden path rc.30.8: a rule set to strike every minute had gone on for fifteen minutes and Activity said
+    /// "4 hours". The message now says how long the spell really lasted.
+    /// </summary>
+    [Theory]
+    [InlineData(0, "qBittorrent showed it stalled or in error, so Deluno")]
+    [InlineData(1, "qBittorrent showed it stalled or in error for a minute, so Deluno")]
+    [InlineData(15, "qBittorrent showed it stalled or in error for 15 minutes, so Deluno")]
+    [InlineData(60, "qBittorrent showed it stalled or in error for an hour, so Deluno")]
+    [InlineData(150, "qBittorrent showed it stalled or in error for 2.5 hours, so Deluno")]
+    public void The_reason_says_how_long_it_has_really_been_stalled(int minutes, string says)
+    {
+        var now = DateTimeOffset.Parse("2026-10-08T12:00:00Z");
+        var finding = Finding(DownloadHealthStrikes.ClientStalled, 9) with { SpellStartedUtc = now.AddMinutes(-minutes) };
+
+        var reason = DownloadClientTelemetryService.StalledReason(finding, "qBittorrent", now);
+
+        Assert.StartsWith(says, reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("4 hours", reason);
+    }
+
     /// <summary>#1167: Activity says what Deluno did in plain words, not the internal list of steps.</summary>
     [Fact]
     public void Activity_says_what_Deluno_did_about_a_stalled_download_in_plain_words()

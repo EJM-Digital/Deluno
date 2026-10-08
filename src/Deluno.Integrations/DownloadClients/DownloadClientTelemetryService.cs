@@ -1614,7 +1614,8 @@ public sealed class DownloadClientTelemetryService(
                     RuleId: record?.RuleId,
                     RuleActionPreset: record?.RuleActionPreset,
                     NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes),
-                    RuleStrikeLimit: record?.RuleStrikeLimit);
+                    RuleStrikeLimit: record?.RuleStrikeLimit,
+                    SpellStartedUtc: record?.FirstObservedUtc);
             }).ToArray()
         }).ToArray();
 
@@ -1878,7 +1879,7 @@ public sealed class DownloadClientTelemetryService(
                                 dispatch.EntityId,
                                 item.Title,
                                 ImportFailurePolicy.DownloadStalled,
-                                StalledReason(struck, client.Name),
+                                StalledReason(struck, client.Name, overview.CapturedUtc),
                                 dispatch.TorrentHashOrItemId ?? item.Id,
                                 client.Id,
                                 client.Name,
@@ -1980,7 +1981,7 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name)} {PlainRemediation(applied, client.Name)}";
+                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
@@ -2078,24 +2079,34 @@ public sealed class DownloadClientTelemetryService(
     /// Why the release was refused, for the blocklist row. The strikes say how
     /// long it went on, because "stalled" on its own reads like a moment.
     /// </summary>
-    internal static string StalledReason(DownloadHealthFinding finding, string clientName)
+    internal static string StalledReason(DownloadHealthFinding finding, string clientName, DateTimeOffset? nowUtc = null)
     {
         // "Nothing arriving" is only a finding once it has gone on for half an
         // hour, so that half hour came before the first strike.
         var nothingArriving = string.Equals(finding.Kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase);
-        var lasted = DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
-        var forHowLong = lasted.TotalMinutes switch
-        {
-            <= 0 => string.Empty,
-            < 60 => $" for {lasted.TotalMinutes:0} minutes",
-            60 => " for an hour",
-            _ => $" for {lasted.TotalHours:0.#} hours"
-        };
+        // The spell's real start says how long it has lasted. Counting strikes of the default half hour said "4 hours"
+        // for a rule set to strike every minute, which had been going for fifteen.
+        var lasted = finding.SpellStartedUtc is { } started && nowUtc is { } now
+            ? now - started
+            : DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
+        var forHowLong = PlainDuration(lasted) is { Length: > 0 } words ? $" for {words}" : string.Empty;
         var what = nothingArriving
             ? $"Nothing arrived in {clientName}{forHowLong}"
             : $"{clientName} showed it stalled or in error{forHowLong}";
         return $"{what}, so Deluno stopped waiting for it and will not pick it again.";
     }
+
+    /// <summary>How long, in everyday words: nothing under a minute, then minutes, an hour, hours, days.</summary>
+    internal static string PlainDuration(TimeSpan lasted)
+        => lasted.TotalMinutes switch
+        {
+            < 1 => string.Empty,
+            < 1.5 => "a minute",
+            < 59.5 => $"{Math.Round(lasted.TotalMinutes):0} minutes",
+            < 90 => "an hour",
+            < 48 * 60 => $"{lasted.TotalHours:0.#} hours",
+            _ => $"{Math.Round(lasted.TotalDays):0} days"
+        };
 
     /// <summary>
     /// Queues the retry search that follows a failed grab, scoped to exactly
