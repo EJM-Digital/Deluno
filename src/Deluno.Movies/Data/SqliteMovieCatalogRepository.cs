@@ -2715,7 +2715,7 @@ public sealed class SqliteMovieCatalogRepository(
             {
                 RecentCases = summary.RecentCases
                     .Take(Math.Max(limit, 0))
-                    .Select(item => includeDetails ? item : item with { DetailsJson = null })
+                    .Select(item => includeDetails ? item : item with { DetailsJson = ImportRecoveryKeyDetails.Trim(item.DetailsJson) })
                     .ToArray()
             };
     }
@@ -3002,6 +3002,12 @@ public sealed class SqliteMovieCatalogRepository(
         string reason,
         CancellationToken cancellationToken)
         => SharedMediaState.SettleImportRecoveryCasesAsync(MediaKind.Movie, scope, reason, cancellationToken);
+
+    public Task<IReadOnlyList<SettledRecoveryCase>> SettleImportRecoveryCasesListedAsync(
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken)
+        => SharedMediaState.SettleImportRecoveryCasesListedAsync(MediaKind.Movie, scope, reason, cancellationToken);
 
     public Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(CancellationToken cancellationToken)
         => SharedMediaState.SettleCasesOfTitlesHoldingFilesAsync(MediaKind.Movie, cancellationToken);

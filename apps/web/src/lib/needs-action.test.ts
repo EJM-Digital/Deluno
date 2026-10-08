@@ -196,6 +196,35 @@ describe("needsAction", () => {
     expect(result.total).toBe(1);
   });
 
+  it("lists Oppenheimer once when the list carries only the case's key fields (#1167)", () => {
+    // What the import-recovery list returns without the full details: the keys that say which hand-off and
+    // download the case is about, and nothing else.
+    const handoff = {
+      id: "01a11a4ad91f7d38b80db6de7a9c399c", libraryId: "library-1", mediaType: "movies", clientId: "client-1", queueItemId: "hash-1", releaseName: "Oppenheimer.2023.REPACK",
+      sourcePath: "/downloads/oppenheimer", processorName: "Weir", status: "failed", outputPath: null, importJobId: null,
+      failureMessage: "The processor refused the hand-off", createdUtc: "2026-10-07T03:00:00Z", updatedUtc: "2026-10-07T03:00:00Z"
+    } as ProcessorHandoffItem;
+    const keyOnlyCase = {
+      id: "case-1",
+      title: "Oppenheimer.2023.REPACK",
+      failureKind: "processor-failed",
+      summary: "Weir reports failed",
+      recommendedAction: "Review",
+      detailsJson: JSON.stringify({ dispatchId: null, handoffId: handoff.id, clientId: "client-1", queueItemId: "hash-1" }),
+      detectedUtc: "2026-10-07T03:00:00Z"
+    };
+
+    const result = needsAction({
+      movieRecovery: { openCount: 1, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [keyOnlyCase] },
+      seriesRecovery: noSeriesRecovery,
+      handoffs: [handoff]
+    });
+
+    expect(result.recoveryCases).toEqual([]);
+    expect(result.failedHandoffs).toHaveLength(1);
+    expect(result.total).toBe(1);
+  });
+
   it("counts each orphaned download folder once, beside everything else (#588)", () => {
     const orphan = {
       path: "C:\\Deluno\\Downloads-Complete\\TV\\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.1",
