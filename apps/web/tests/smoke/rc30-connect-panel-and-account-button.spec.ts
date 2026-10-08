@@ -55,7 +55,7 @@ test("the Connect the apps panel lines up and every app shows Connected after Co
 // their labels ("Connect NZBGet", "Connect qBittorrent"), on a desktop and on a phone.
 test("every Connect button in the panel starts at the same left edge (#1130)", async ({ page }) => {
   await authenticateAndNavigate(page, "/");
-  await page.route(//api/system/bundled-components$/, (route) =>
+  await page.route(/\/api\/system\/bundled-components$/, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(installedApps.map((app) => ({ ...app, connected: false }))) }));
   await page.goto("/indexers/download-clients");
   const panel = page.getByRole("region", { name: "Connect the apps you installed" }).first();
