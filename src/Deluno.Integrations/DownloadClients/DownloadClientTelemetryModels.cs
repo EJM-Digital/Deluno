@@ -93,8 +93,20 @@ public static class QueueRemovalReasons
     /// </summary>
     public const string Forget = "forget";
 
+    /// <summary>
+    /// "Remove this copy": a finished download whose files no longer share data with the library. Remove it from
+    /// the client with its files and judge nothing: no blocklist, no search, the title stays wanted as it was.
+    /// </summary>
+    public const string Reclaim = "reclaim";
+
+    /// <summary>
+    /// "Search for another release" on a hand-off: the release was given up on (and blocklisted by the caller), so
+    /// the download leaves the client with its files. The title stays wanted; the caller starts the search.
+    /// </summary>
+    public const string GaveUp = "gave-up";
+
     public static bool IsKnown(string reason)
-        => reason is Failed or Unwanted or Forget;
+        => reason is Failed or Unwanted or Forget or Reclaim or GaveUp;
 }
 
 public sealed record QueueRemovalRequest(string Reason);
@@ -428,7 +440,9 @@ public sealed record DownloadHealthFinding(
     string? RuleActionPreset = null,
     DateTimeOffset? NextStrikeUtc = null,
     /// <summary>The matched rule's own strike limit (#905); null for a finding outside the rule engine, which uses the platform-wide fallback threshold instead.</summary>
-    int? RuleStrikeLimit = null);
+    int? RuleStrikeLimit = null,
+    /// <summary>When this spell of the problem began (the first sighting with no break since), so a message can say how long it has really lasted.</summary>
+    DateTimeOffset? SpellStartedUtc = null);
 
 public sealed record DownloadClientHistoryItem(
     string Id,

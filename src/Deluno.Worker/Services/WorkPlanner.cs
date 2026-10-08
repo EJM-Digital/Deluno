@@ -630,7 +630,8 @@ public sealed class WorkPlanner(
         Deluno.Integrations.DownloadClients.IDownloadHealthConnectivityCheck connectivityCheck,
         CancellationToken cancellationToken,
         ISharingRulesRepository? sharingRulesRepository = null,
-        ISharingActivityTracker? sharingActivityTracker = null)
+        ISharingActivityTracker? sharingActivityTracker = null,
+        IProcessorRepository? processorRepository = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.SharingReclaim,
@@ -830,6 +831,19 @@ public sealed class WorkPlanner(
             var downloadPath = item.SourcePath ?? library?.DownloadsPath;
             var libraryPath = library?.RootPath;
             var heuristicShares = SharingFootprint.SharesOneCopy(downloadPath, libraryPath, settings.UseHardlinks);
+
+            // A download the processor cleaned was never linked to the library: the library's file is the
+            // processor's output copy, and this one is the untouched original beside it. That is the normal
+            // result of refine-before-import, not a link that was lost, so it is never "unlinked" (it costs its
+            // own space, which is what SharesLibraryCopy = false already says).
+            if (heuristicShares && processorRepository is not null)
+            {
+                var handoff = await processorRepository.FindProcessorHandoffForDownloadAsync(item.ClientId, item.Id, cancellationToken);
+                if (handoff is not null && string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase))
+                {
+                    heuristicShares = false;
+                }
+            }
 
             // The heuristic only ever asked "could this be one copy" from
             // configuration. Where it says yes, check the actual files: gone

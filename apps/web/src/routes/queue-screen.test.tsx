@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -1203,5 +1203,15 @@ describe("the connector's sub-line (#1168)", () => {
     const { connectorSubLine } = await import("./queue-screen");
     expect(connectorSubLine({ status: "completed", outputPath: "C:/Out/a.mkv" }, null)).toBeUndefined();
     expect(connectorSubLine({ status: "started", outputPath: null }, "Weir: working on it")).toBe("Weir: working on it");
+  });
+});
+
+describe("a refused import on the Transfers drawer", () => {
+  it("never reads Imported, and a real import does", () => {
+    const refused = { id: "d", status: "sent", importStatus: "failed", importCompletedUtc: "2026-10-08T05:00:00Z", importFailureCode: "health-remediation-applied", importFailureMessage: "Replaced." } as never;
+    expect(dispatchStageLabel(refused)).not.toBe("Imported");
+    const sample = { id: "d", status: "sent", importStatus: "failed", importCompletedUtc: "2026-10-08T05:00:00Z", importFailureCode: "likelySample", importFailureMessage: "Likely a sample." } as never;
+    expect(dispatchStageLabel(sample)).not.toBe("Imported");
+    expect(dispatchStageLabel({ id: "d", status: "sent", importStatus: "imported", importCompletedUtc: "2026-10-08T05:00:00Z" } as never)).toBe("Imported");
   });
 });

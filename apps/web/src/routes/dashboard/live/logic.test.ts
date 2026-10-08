@@ -135,6 +135,20 @@ describe("the journey of a title", () => {
     expect(returned.importing[0].state.label).toBe("Back from the processor");
   });
 
+  it("lets go of a hand-off once its import ended, imported or refused (golden path rc.30.8)", () => {
+    const handoff = (overrides: Record<string, unknown>) => ({ id: "h", libraryId: "l", mediaType: "movie", clientId: "c1", queueItemId: "q", releaseName: "Retry.Film.2017.1080p", sourcePath: "", processorName: "Cleaner", status: "completed", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-3_600_000), updatedUtc: iso(-60_000), ...overrides }) as never;
+    const dispatch = (overrides: Record<string, unknown>) => ({ id: "d", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m", releaseName: "Retry Film (2017) 1080p", indexerName: "I", downloadClientId: "c1", downloadClientName: "Deluge", status: "sent", notesJson: null, createdUtc: iso(-3_600_000), ...overrides }) as never;
+    // Still waiting: the lane shows it.
+    expect(byStage(buildJourney({ ...base, handoffs: [handoff({})] })).importing).toHaveLength(1);
+    // The processor's own name for the release differs from the send's, so only the outcome and the queue say it is over.
+    expect(byStage(buildJourney({ ...base, handoffs: [handoff({ outcome: { outcome: "imported" } })] })).importing).toHaveLength(0);
+    expect(byStage(buildJourney({ ...base, handoffs: [handoff({ outcome: { outcome: "not-imported" } })] })).importing).toHaveLength(0);
+    expect(byStage(buildJourney({ ...base, queue: [queue({ id: "q", status: "imported", releaseName: "Retry.Film.2017.1080p" })], handoffs: [handoff({})] })).importing).toHaveLength(0);
+    // The send says its import failed or finished.
+    expect(byStage(buildJourney({ ...base, dispatches: [dispatch({ releaseName: "Retry.Film.2017.1080p", importStatus: "failed" })], handoffs: [handoff({})] })).importing).toHaveLength(0);
+    expect(byStage(buildJourney({ ...base, dispatches: [dispatch({ releaseName: "Retry.Film.2017.1080p", importStatus: "imported" })], handoffs: [handoff({})] })).importing).toHaveLength(0);
+  });
+
   it("lists what was imported today, newest first, and the last search", () => {
     const dispatch = (id: string, hoursAgo: number) => ({ id, libraryId: "l", mediaType: "movies", entityType: "movie", entityId: `m-${id}`, releaseName: `Film.${2000 + Number(id)}.1080p`, indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge", status: "done", notesJson: null, createdUtc: iso(-hoursAgo * 3_600_000 - 600_000), importCompletedUtc: iso(-hoursAgo * 3_600_000), decisionQuality: "Bluray 1080p" }) as never;
     const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch("1", 3), dispatch("2", 1)], now: NOW }));

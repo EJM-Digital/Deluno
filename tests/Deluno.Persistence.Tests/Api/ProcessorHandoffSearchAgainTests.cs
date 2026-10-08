@@ -56,6 +56,63 @@ public sealed class ProcessorHandoffSearchAgainTests
     }
 
     /// <summary>
+    /// Golden path rc.30.8: the given-up torrent was still in the client, so the new search was skipped as
+    /// "already on its way". Giving up now takes that download out of the client first (only one Deluno sent), and
+    /// says so; the release is blocklisted and the search is queued.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_removes_the_given_up_download_from_the_client_blocklists_it_and_searches_now()
+    {
+        var removal = new RecordingRemoval(removed: true);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            services.AddScoped<IGivenUpDownloadRemoval>(_ => removal));
+        var handoff = await HandoffWithDispatchAsync(app, ProcessorHandoffStatuses.Failed, mediaType: "tv", entityType: "series", entityId: "series-1");
+
+        var response = await app.Client.PostAsJsonAsync($"/api/integrations/processors/handoffs/{handoff.Id}/search-again", new { });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var message = body.RootElement.GetProperty("message").GetString();
+        Assert.Contains("Removed it from the download client with its files", message);
+        Assert.Contains("blocklisted", message);
+        var removedDispatch = Assert.Single(removal.Removed);
+        Assert.Equal("nzo-1", removedDispatch.TorrentHashOrItemId);
+        Assert.Equal("sabnzbd", removedDispatch.DownloadClientId);
+
+        var jobs = await JobQueueRepository(app).ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job => job.JobType == LibrarySearchJobTypes.For("tv") && job.PayloadJson!.Contains("\"targetEntityId\":\"series-1\""));
+    }
+
+    /// <summary>A client that cannot be reached must not stop the release being blocklisted and searched for; the screen says why the removal waits.</summary>
+    [Fact]
+    public async Task A_removal_that_could_not_be_done_is_said_and_the_search_still_starts()
+    {
+        var removal = new RecordingRemoval(removed: false);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            services.AddScoped<IGivenUpDownloadRemoval>(_ => removal));
+        var handoff = await HandoffWithDispatchAsync(app, ProcessorHandoffStatuses.Failed, mediaType: "tv", entityType: "series", entityId: "series-1");
+
+        var response = await app.Client.PostAsJsonAsync($"/api/integrations/processors/handoffs/{handoff.Id}/search-again", new { });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains("could not be removed from the download client", body.RootElement.GetProperty("message").GetString());
+        var jobs = await JobQueueRepository(app).ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job => job.JobType == LibrarySearchJobTypes.For("tv"));
+    }
+
+    private sealed class RecordingRemoval(bool removed) : IGivenUpDownloadRemoval
+    {
+        public List<Deluno.Jobs.Contracts.DownloadDispatchItem> Removed { get; } = [];
+
+        public Task<GivenUpDownloadRemovalResult> RemoveAsync(Deluno.Jobs.Contracts.DownloadDispatchItem dispatch, CancellationToken cancellationToken)
+        {
+            Removed.Add(dispatch);
+            return Task.FromResult(new GivenUpDownloadRemovalResult(removed, removed ? null : "the client did not answer"));
+        }
+    }
+
+    /// <summary>
     /// #956: a processor that never received the file has a hand-off problem,
     /// not a bad release (the same rule as #880 and #919). "Search for
     /// another release" on a <see cref="ProcessorHandoffStatuses.Lost"/>

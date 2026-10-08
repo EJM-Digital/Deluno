@@ -71,7 +71,29 @@ public sealed class ADownloadWithALostHardlinkIsFlaggedOnTransfersTests
         Assert.True(hold.SharesLibraryCopy);
     }
 
-    private static async Task<IReadOnlyList<DownloadSharingHold>> RunSharingPassAsync(bool stillLinked)
+    /// <summary>
+    /// Golden path, rc.30.8: a download Weir cleaned and Deluno imported from Weir's output was never linked to
+    /// the library. It is the original, beside the cleaned copy: not an "Unlinked from your library" problem.
+    /// </summary>
+    [Fact]
+    public async Task A_download_the_processor_cleaned_is_never_flagged_as_unlinked()
+    {
+        var holds = await RunSharingPassAsync(stillLinked: false, handoffStatus: ProcessorHandoffStatuses.Completed);
+
+        var hold = Assert.Single(holds);
+        Assert.False(hold.LostHardlink);
+        Assert.False(hold.SharesLibraryCopy);
+    }
+
+    [Fact]
+    public async Task A_download_whose_hand_off_was_released_to_the_ordinary_import_is_still_checked()
+    {
+        var holds = await RunSharingPassAsync(stillLinked: false, handoffStatus: ProcessorHandoffStatuses.Released);
+
+        Assert.True(Assert.Single(holds).LostHardlink);
+    }
+
+    private static async Task<IReadOnlyList<DownloadSharingHold>> RunSharingPassAsync(bool stillLinked, string? handoffStatus = null)
     {
         var jobs = new Mock<IJobQueueRepository>();
         jobs.Setup(repository => repository.TryClaimScheduledPassAsync(
@@ -168,6 +190,13 @@ public sealed class ADownloadWithALostHardlinkIsFlaggedOnTransfersTests
         hardlinkInspector.Setup(inspector => inspector.StillLinked(DownloadPath, LibraryPath))
             .Returns(stillLinked);
 
+        var processor = new Mock<IProcessorRepository>();
+        processor.Setup(repository => repository.FindProcessorHandoffForDownloadAsync("client-1", "item-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handoffStatus is null ? null : new ProcessorHandoffItem(
+                Id: "handoff-1", LibraryId: "lib-1", MediaType: "movies", ClientId: "client-1", QueueItemId: "item-1",
+                ReleaseName: "Arrival.2016.WEB.1080p-GROUP", SourcePath: DownloadPath, ProcessorName: "Weir", Status: handoffStatus,
+                OutputPath: null, ImportJobId: null, FailureMessage: null, CreatedUtc: DateTimeOffset.UnixEpoch, UpdatedUtc: DateTimeOffset.UnixEpoch));
+
         var planner = new WorkPlanner(
             NullLogger<WorkPlanner>.Instance,
             jobs.Object,
@@ -187,7 +216,8 @@ public sealed class ADownloadWithALostHardlinkIsFlaggedOnTransfersTests
             hardlinkInspector.Object,
             health.Object,
             connectivity.Object,
-            CancellationToken.None);
+            CancellationToken.None,
+            processorRepository: processor.Object);
 
         Assert.NotNull(capturedHolds);
         return capturedHolds!;

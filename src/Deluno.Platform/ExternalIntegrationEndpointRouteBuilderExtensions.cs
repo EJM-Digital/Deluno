@@ -619,7 +619,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IBlockedReleaseRepository blockedReleases,
             IJobScheduler jobScheduler,
             ILibrariesRepository librariesRepository,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            IGivenUpDownloadRemoval? givenUpDownloads = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
@@ -672,13 +673,23 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     cancellationToken);
             }
 
+            // The given-up download is still in the client, which keeps the title "on its way" and made the new
+            // search skip itself for hours. It goes first: out of the client with its files (only a download Deluno
+            // sent), its record closed. The search is a person's own and then runs at once.
+            var removal = givenUpDownloads is null
+                ? new GivenUpDownloadRemovalResult(false, null)
+                : await givenUpDownloads.RemoveAsync(dispatch, cancellationToken);
+            var removedNote = removal.Removed
+                ? " Removed it from the download client with its files."
+                : removal.Message is { Length: > 0 } why ? $" It could not be removed from the download client ({why}), so the search may wait until it is." : string.Empty;
+
             var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
             await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
 
             var message = isLost
-                ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search."
-                : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.";
+                ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search.{removedNote}"
+                : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.{removedNote}";
             var ended = await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 ProcessorHandoffStatuses.Dismissed,
@@ -1113,6 +1124,39 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 }
             }
 
+            // A hand-off is judged by its main video. The processor skips or refuses small extras (a 12 MB
+            // featurette under its own size floor) and reports the hand-off as partly failed; when every main
+            // video was delivered the hand-off succeeded, and the extras are recorded in its details.
+            string? extrasNote = null;
+            string[] extrasLeftOut = [];
+            if (partialImport && ProcessorMainVideoJudgement.Judge(handoff.SourcePath, request.OutputFiles, processorName) is { MainVideoDelivered: true } judged)
+            {
+                status = "completed";
+                partialImport = false;
+                extrasNote = judged.Note;
+                extrasLeftOut = judged.Extras.ToArray();
+            }
+
+            // The same, when the processor reports the skipped extra on its own after the hand-off was completed:
+            // the film is delivered and imported, so a later "failed" for one small file does not undo it.
+            if (status == "failed" && !importsOutput &&
+                string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
+                ProcessorMainVideoJudgement.Judge(handoff.SourcePath, ProcessorMainVideoJudgement.OutputsAt(handoff.OutputPath), processorName).MainVideoDelivered)
+            {
+                var skipped = $"{processorName} left a small extra file of {handoff.ReleaseName} out{(message is null ? "." : $": {message}")} The main video was delivered and imported, so the hand-off stays complete.";
+                await activityFeed.RecordActivityAsync(
+                    "processing.extras-left-out",
+                    skipped,
+                    JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, Message = message, ProcessorName = processorName }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return Results.Json(
+                    new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, extrasLeftOut = true },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             // A report already acted on is answered the same way and does
             // nothing new, so a processor that repeats itself - or a worker that
             // restarts mid-send - does not import the same file twice. The job
@@ -1293,7 +1337,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         // being guessed at again (#619).
                         : partialImport
                             ? $"{message} Deluno imported the {request.OutputFiles!.Count} file(s) that {processorName} said succeeded."
-                            : null;
+                            : extrasNote;
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
@@ -1307,6 +1351,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     importJob.NotImportedBecause is not null ? "filesystem.import.not-imported"
                         : missing.Length > 0 ? "processing.outputs-missing"
                         : partialImport ? "processing.partial-import"
+                        : extrasNote is not null ? "processing.extras-left-out"
                         : "processing.completed.import-queued",
                     notImported ?? $"{processorName} produced a cleaned file; Deluno queued it for import.",
                     JsonSerializer.Serialize(new
@@ -1319,7 +1364,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         request.SourcePath,
                         OutputPath = outputPath,
                         JobId = importJob.JobId,
-                        importJob.DispatchId
+                        importJob.DispatchId,
+                        ExtrasLeftOut = extrasLeftOut,
+                        ProcessorMessage = extrasNote is null ? null : message
                     }),
                     importJob.JobId,
                     "processor-handoff",
