@@ -14,7 +14,8 @@ public static class CompanionModule
     public static IServiceCollection AddDelunoCompanionsModule(this IServiceCollection services)
     {
         // Downloads of 50-200 MB over whatever connection the owner has.
-        services.AddHttpClient(CompanionDownloader.ClientName, client => client.Timeout = TimeSpan.FromMinutes(20));
+        services.AddHttpClient(CompanionDownloader.ClientName, client => client.Timeout = TimeSpan.FromMinutes(20))
+            .AddHttpMessageHandler(() => new Deluno.Infrastructure.Http.GitHubApiConditionalHandler());
         services.AddSingleton<ICompanionDownloader, CompanionDownloader>();
         // #1117: where a processor connection that reports a version finds its newest release.
         services.AddSingleton<Deluno.Connections.Versions.ReleaseFeed>(

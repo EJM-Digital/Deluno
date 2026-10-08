@@ -36,7 +36,7 @@ public static class IntegrationsServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno tracker-definitions-update/1.0");
-        });
+        }).AddHttpMessageHandler(() => new Deluno.Infrastructure.Http.GitHubApiConditionalHandler());
         services.AddSingleton<Search.Trackers.IRemoteTrackerDefinitionSource, Search.Trackers.GitHubTrackerDefinitionSource>();
         services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateStore, Search.Trackers.SqliteTrackerDefinitionUpdateStore>();
         services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateService, Search.Trackers.TrackerDefinitionUpdateService>();
