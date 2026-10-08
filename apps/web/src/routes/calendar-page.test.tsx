@@ -149,3 +149,36 @@ describe("Calendar options drawer (#786)", () => {
     expect(screen.queryByText("Digital Movie")).not.toBeInTheDocument();
   });
 });
+
+describe("Calendar episode marks (#1179)", () => {
+  it("reads an unaired episode as Airs <date> in the list, not Missing", () => {
+    const later = { ...loaderData.episodes[0], episodeId: "e2", seriesTitle: "Later Show", wantedStatus: "missing", airDateUtc: new Date(Date.now() + 3 * 86_400_000).toISOString() };
+    loaderData.episodes.push(later);
+    try {
+      renderPage();
+      fireEvent.click(screen.getByRole("radio", { name: "Agenda" }));
+      const row = screen.getByText("Later Show").closest("[role='row'], tr, li, div")!.parentElement!;
+      expect(row.textContent).toMatch(/Airs /);
+      expect(row.textContent).not.toMatch(/Missing/);
+    } finally {
+      loaderData.episodes.pop();
+    }
+  });
+
+  it("draws an unmonitored episode's chip differently from a monitored one", () => {
+    const off = { ...loaderData.episodes[0], episodeId: "e3", seriesTitle: "Unwatched Show", monitored: false };
+    loaderData.episodes.push(off);
+    const movies = loaderData.movies.splice(0);
+    try {
+      renderPage();
+      fireEvent.click(screen.getByRole("radio", { name: "Month" }));
+      const chip = screen.getByRole("button", { name: /Unwatched Show/ });
+      const watched = screen.getByRole("button", { name: /Fringe Show/ });
+      expect(chip.className).toContain("border-dashed");
+      expect(watched.className).not.toContain("border-dashed");
+    } finally {
+      loaderData.episodes.pop();
+      loaderData.movies.push(...movies);
+    }
+  });
+});
