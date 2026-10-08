@@ -22,7 +22,7 @@ public static class AttentionChangedPush
         (Route(@"^/api/attention/no-release/"), "noRelease"),
         (Route(@"^/api/attention/"), "heldReleases"),
         (Route(@"^/api/(movies|series)/import-recovery/"), "recovery"),
-        (Route(@"^/api/jobs/(retry-failed|[^/]+/dismiss)$"), "jobs"),
+        (Route(@"^/api/jobs/(retry-failed|[^/]+/(dismiss|retry))$"), "jobs"),
         (Route(@"^/api/integrations/processors/handoffs/"), "handoff"),
         (Route(@"^/api/download-clients/orphans/"), "orphans"),
         (Route(@"^/api/download-clients/[^/]+/queue/[^/]+/(remove|health/)"), "client"),

@@ -16,6 +16,10 @@ export const downloadQueueStatuses = {
   waitingForProcessor: "waitingForProcessor",
   // Finished, and not yet handed to the processor: a display state the screen derives, never sent by the server.
   handingOver: "handingOver",
+  // Another copy of the same release holds the hand-off (#1155): nothing is owed to this one.
+  handedOverElsewhere: "handedOverElsewhere",
+  // Finished a few minutes ago with no hand-off of its own and nothing explaining it (#1155).
+  notHandedOver: "notHandedOver",
   importReady: "importReady",
   importQueued: "importQueued",
   imported: "imported",
@@ -33,6 +37,7 @@ export function isProcessingStatus(status: string) {
     downloadQueueStatuses.processingFailed,
     downloadQueueStatuses.waitingForProcessor,
     downloadQueueStatuses.handingOver,
+    downloadQueueStatuses.notHandedOver,
     downloadQueueStatuses.importQueued
   ];
   return processingStatuses.includes(status);
@@ -47,6 +52,8 @@ export function queueStatusLabel(status: string) {
       importReady: "Import ready",
       waitingForProcessor: "Waiting for processor",
       handingOver: "Handing over",
+      handedOverElsewhere: "Another copy handed over",
+      notHandedOver: "Not handed over",
       processing: "Processing",
       processed: "Processed",
       processingFailed: "Processing failed",

@@ -413,6 +413,10 @@ public sealed class AcquisitionOverrideServiceTests
             => throw new NotSupportedException();
         public Task<ProcessorHandoffItem?> GetProcessorHandoffAsync(string id, CancellationToken cancellationToken)
             => Task.FromResult(Handoff);
+        public Task<ProcessorHandoffItem?> FindProcessorHandoffForDownloadAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsForReleaseAsync(string releaseName, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
         public Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsAsync(string? libraryId, int take, CancellationToken cancellationToken)
             => throw new NotSupportedException();
         public Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsWithStatusAsync(IReadOnlyList<string> statuses, CancellationToken cancellationToken)
