@@ -2720,18 +2720,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["qualityProfileId"] = ["Choose a quality profile before applying changes."]
-                });
-            }
+            // No profile means the title goes back to following its library's (#1157).
+            var profileId = string.IsNullOrWhiteSpace(request.QualityProfileId) ? null : request.QualityProfileId.Trim();
 
             var updated = 0;
             foreach (var id in request.SeriesIds)
             {
-                if (await repository.UpdateQualityProfileAsync(id, request.QualityProfileId.Trim(), cancellationToken))
+                if (await repository.UpdateQualityProfileAsync(id, profileId, cancellationToken))
                 {
                     updated++;
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
@@ -2740,7 +2735,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 }
             }
 
-            return Results.Ok(new { updated, qualityProfileId = request.QualityProfileId.Trim() });
+            return Results.Ok(new { updated, qualityProfileId = profileId });
         });
 
         series.MapPost("/bulk/search", async (
@@ -3627,7 +3622,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             tagStore,
             releasePreferencePlanRepository,
             libraryId,
-            platformSettings);
+            platformSettings,
+            async token => (await repository.GetInventoryDetailAsync(id, token))?.EpisodeTitlesBySeason());
 
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

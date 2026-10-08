@@ -33,7 +33,10 @@ public sealed class ProcessorLibraryFoldersTests
         var folders = ProcessorConnectionService.ParseLibraryFolders(document.RootElement);
 
         Assert.Equal(@"D:\Downloads\Completed\Movies", ProcessorLibraryFolder.ForLibrary(folders, "movies-lib")?.WatchedFolder);
-        Assert.Null(ProcessorLibraryFolder.ForLibrary(folders, "tv-lib"));
+        var tv = ProcessorLibraryFolder.ForLibrary(folders, "tv-lib");
+        Assert.Null(tv?.WatchedFolder);
+        Assert.Equal(@"D:\Processed\TV", tv?.OutputFolder);
+        Assert.Equal(@"D:\Processed\Movies", ProcessorLibraryFolder.ForLibrary(folders, "movies-lib")?.OutputFolder);
         Assert.Contains(folders, folder => folder.ManagerLibraryKey is null && folder.WatchedFolder == @"E:\Mine");
     }
 

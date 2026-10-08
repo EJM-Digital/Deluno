@@ -240,6 +240,36 @@ public sealed class LibraryDownloadFolderPerGrabTests
     }
 
     [Fact]
+    public async Task The_processor_is_checked_in_two_lines_what_it_watches_against_downloads_and_what_it_writes_to_against_ready()
+    {
+        var library = Library("lib-1", LibraryFolder) with { ImportWorkflow = "refine-before-import", ProcessorName = "Weir", ProcessorOutputPath = @"E:\Weir\Ready\Movies" };
+        var connection = new ProcessorConnectionItem("proc-1", "Weir", "generic", "http://weir.test/intake/webhook/deluno", "Authorization", null, true, "healthy", null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        var processors = Processors(connection, [ProcMapping("m1", @"C:\Downloads\Completed", "/downloads", true, 1), ProcMapping("m2", @"E:\Weir\Ready", "/ready", true, 2)]);
+        var processorService = new Mock<IProcessorConnectionService>();
+        processorService.Setup(instance => instance.GetStatusSupportAsync(connection, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true });
+        processorService.Setup(instance => instance.GetLibraryFoldersAsync(connection, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ProcessorLibraryFolder("lib-1", "/downloads/Movies", true, "/ready/Movies")]);
+        var service = new FolderChainService(Libraries([library]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors, processorService: processorService.Object);
+
+        var report = (await service.CheckAsync("lib-1", CancellationToken.None))!;
+
+        var watches = Assert.Single(report.LibraryLinks, link => link.Step == "processor");
+        Assert.Equal(FolderChainStatuses.Ok, watches.Status);
+        Assert.Contains("downloads folder", watches.Message);
+        var writes = Assert.Single(report.LibraryLinks, link => link.Step == "processor-output");
+        Assert.Equal(FolderChainStatuses.Ok, writes.Status);
+        Assert.Contains("ready folder", writes.Message);
+
+        processorService.Setup(instance => instance.GetLibraryFoldersAsync(connection, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ProcessorLibraryFolder("lib-1", "/downloads/Movies", true, "/elsewhere")]);
+        var wrong = (await new FolderChainService(Libraries([library]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors, processorService: processorService.Object)
+            .CheckAsync("lib-1", CancellationToken.None))!;
+        Assert.Equal(FolderChainStatuses.Ok, Assert.Single(wrong.LibraryLinks, link => link.Step == "processor").Status);
+        Assert.Equal(FolderChainStatuses.Problem, Assert.Single(wrong.LibraryLinks, link => link.Step == "processor-output").Status);
+    }
+
+    [Fact]
     public async Task A_library_with_no_processor_has_no_processor_connection_in_the_list()
     {
         var processors = Processors(

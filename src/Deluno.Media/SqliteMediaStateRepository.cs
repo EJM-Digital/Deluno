@@ -601,9 +601,14 @@ public sealed class SqliteMediaStateRepository(
     public async Task<WantedReevaluationResult> ReevaluateTitleUnderProfileAsync(
         MediaKind kind,
         string titleId,
-        string profileId,
+        string? profileId,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return await ReevaluateTitleUnderLibraryProfilesAsync(kind, titleId, cancellationToken);
+        }
+
         string? cutoff;
         bool upgradeUntilCutoff;
         bool upgradeUnknownItems;
@@ -649,6 +654,77 @@ public sealed class SqliteMediaStateRepository(
             upgradeUntilCutoff,
             upgradeUnknownItems,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// A title went back to following its library (#1157): judge it, in each
+    /// library that holds it, by that library's own profile.
+    /// </summary>
+    private async Task<WantedReevaluationResult> ReevaluateTitleUnderLibraryProfilesAsync(
+        MediaKind kind,
+        string titleId,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var libraryIds = new List<string>();
+        await using (var media = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken))
+        {
+            using var command = media.CreateCommand();
+            command.CommandText = $"SELECT DISTINCT library_id FROM {map.WantedTable} WHERE {map.WantedMediaIdColumn} = @titleId;";
+            AddParameter(command, "@titleId", titleId);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                libraryIds.Add(reader.GetString(0));
+            }
+        }
+
+        var titles = 0;
+        var episodes = 0;
+        var becameUpgrade = 0;
+        var becameCovered = 0;
+        await using var platform = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        foreach (var libraryId in libraryIds)
+        {
+            string? cutoff;
+            bool upgradeUntilCutoff;
+            bool upgradeUnknownItems;
+            using (var lookup = platform.CreateCommand())
+            {
+                lookup.CommandText =
+                    """
+                    SELECT q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items
+                    FROM libraries l
+                    JOIN quality_profiles q ON q.id = l.quality_profile_id
+                    WHERE l.id = @id
+                    LIMIT 1;
+                    """;
+                AddParameter(lookup, "@id", libraryId);
+                using var reader = await lookup.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    continue;
+                }
+
+                cutoff = reader.IsDBNull(0) ? null : reader.GetString(0);
+                upgradeUntilCutoff = reader.GetInt64(1) == 1;
+                upgradeUnknownItems = reader.GetInt64(2) == 1;
+            }
+
+            var result = await ReevaluateWantedStateAsync(
+                kind,
+                new WantedReevaluationScope(LibraryId: libraryId, TitleId: titleId),
+                cutoff,
+                upgradeUntilCutoff,
+                upgradeUnknownItems,
+                cancellationToken);
+            titles += result.Titles;
+            episodes += result.Episodes;
+            becameUpgrade += result.BecameUpgrade;
+            becameCovered += result.BecameCovered;
+        }
+
+        return new WantedReevaluationResult(titles, episodes, becameUpgrade, becameCovered);
     }
 
     public async Task<string?> GetTitleQualityProfileIdAsync(

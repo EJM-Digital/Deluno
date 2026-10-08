@@ -26,4 +26,12 @@ public sealed record SeriesInventoryDetail(
             .Where(episode => episode.SeasonNumber == seasonNumber && !string.IsNullOrWhiteSpace(episode.Title))
             .GroupBy(episode => episode.EpisodeNumber)
             .ToDictionary(group => group.Key, group => group.First().Title!.Trim());
+
+    /// <summary>The provider's episode titles for every season, so a whole-show search can check a release against its own SxxEyy (#1173).</summary>
+    public IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>> EpisodeTitlesBySeason()
+        => Episodes
+            .Where(episode => episode.SeasonNumber > 0)
+            .Select(episode => episode.SeasonNumber)
+            .Distinct()
+            .ToDictionary(season => season, season => EpisodeTitlesForSeason(season));
 }

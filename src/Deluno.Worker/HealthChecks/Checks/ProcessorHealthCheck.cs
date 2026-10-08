@@ -106,6 +106,10 @@ public sealed class ProcessorHealthCheck(
             {
                 var entry = ProcessorLibraryFolder.ForLibrary(folders, library.Id);
                 outcomes.Add(BuildWatchedFolderOutcome(connection, library, support with { WatchedPath = ToDeluno(entry?.WatchedFolder ?? support.WatchedPath) }));
+                if (ToDeluno(entry?.OutputFolder) is { Length: > 0 } outputFolder)
+                {
+                    outcomes.Add(BuildOutputFolderOutcome(connection, library, outputFolder));
+                }
             }
         }
 
@@ -118,7 +122,7 @@ public sealed class ProcessorHealthCheck(
         ProcessorStatusSupport support)
     {
         var id = $"processor:{connection.Id}:watching:{library.Id}";
-        var name = $"{connection.Name} watches the {library.Name} library's handed-off folder";
+        var name = $"{connection.Name} watches the {library.Name} library's downloads folder";
 
         if (support.Answer != ProcessorAnswer.Answered)
         {
@@ -138,25 +142,55 @@ public sealed class ProcessorHealthCheck(
                 $"Not reported by the processor: {connection.Name} does not say which folder it is watching.");
         }
 
+        if (string.IsNullOrWhiteSpace(library.DownloadsPath))
+        {
+            return HealthCheckOutcome.Unknown(
+                id,
+                HealthCheckCategories.Processor,
+                name,
+                $"{connection.Name} reports watching {support.WatchedPath}, but the {library.Name} library has no downloads folder configured yet to compare it against.");
+        }
+
+        return PathsAgree(support.WatchedPath, library.DownloadsPath)
+            ? HealthCheckOutcome.Ok(id, HealthCheckCategories.Processor, name, $"{connection.Name} is watching {support.WatchedPath}, the {library.Name} library's downloads folder.")
+            : HealthCheckOutcome.Problem(
+                id,
+                HealthCheckCategories.Processor,
+                name,
+                $"{connection.Name} says it is watching {support.WatchedPath}, but the {library.Name} library's downloads folder is {library.DownloadsPath}.",
+                cause: "The folder the processor watches and the library's downloads folder no longer agree.",
+                fix: $"Point {connection.Name} at {library.DownloadsPath}, or update the {library.Name} library's downloads folder to match {connection.Name}.",
+                detailsJson: $$"""{"processorId":"{{connection.Id}}","libraryId":"{{library.Id}}","watchedPath":"{{support.WatchedPath}}","expectedPath":"{{library.DownloadsPath}}"}""");
+    }
+
+    /// <summary>The folder the processor writes to (its output) against the library's ready folder (#1144).</summary>
+    private static HealthCheckOutcome BuildOutputFolderOutcome(
+        ProcessorConnectionItem connection,
+        Deluno.Libraries.Contracts.LibraryItem library,
+        string outputFolder)
+    {
+        var id = $"processor:{connection.Id}:writing:{library.Id}";
+        var name = $"{connection.Name} writes the {library.Name} library's cleaned files to the ready folder";
+
         if (string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
         {
             return HealthCheckOutcome.Unknown(
                 id,
                 HealthCheckCategories.Processor,
                 name,
-                $"{connection.Name} reports watching {support.WatchedPath}, but the {library.Name} library has no processed-output folder configured yet to compare it against.");
+                $"{connection.Name} reports writing to {outputFolder}, but the {library.Name} library has no ready folder configured yet to compare it against.");
         }
 
-        return PathsAgree(support.WatchedPath, library.ProcessorOutputPath)
-            ? HealthCheckOutcome.Ok(id, HealthCheckCategories.Processor, name, $"{connection.Name} is watching {support.WatchedPath}, the folder {library.Name} hands files to.")
+        return PathsAgree(outputFolder, library.ProcessorOutputPath)
+            ? HealthCheckOutcome.Ok(id, HealthCheckCategories.Processor, name, $"{connection.Name} writes to {outputFolder}, the ready folder {library.Name} imports from.")
             : HealthCheckOutcome.Problem(
                 id,
                 HealthCheckCategories.Processor,
                 name,
-                $"{connection.Name} says it is watching {support.WatchedPath}, but {library.Name} hands processed files to {library.ProcessorOutputPath}.",
-                cause: "The processor's watched folder and the library's processed-output folder no longer agree.",
-                fix: $"Point {connection.Name} at {library.ProcessorOutputPath}, or update the {library.Name} library's processed-output folder to match {connection.Name}.",
-                detailsJson: $$"""{"processorId":"{{connection.Id}}","libraryId":"{{library.Id}}","watchedPath":"{{support.WatchedPath}}","expectedPath":"{{library.ProcessorOutputPath}}"}""");
+                $"{connection.Name} says it writes to {outputFolder}, but {library.Name} imports from {library.ProcessorOutputPath}.",
+                cause: "The folder the processor writes to and the library's ready folder no longer agree.",
+                fix: $"Point {connection.Name}'s output at {library.ProcessorOutputPath}, or update the {library.Name} library's ready folder to match.",
+                detailsJson: $$"""{"processorId":"{{connection.Id}}","libraryId":"{{library.Id}}","outputPath":"{{outputFolder}}","expectedPath":"{{library.ProcessorOutputPath}}"}""");
     }
 
     private static bool PathsAgree(string a, string b)

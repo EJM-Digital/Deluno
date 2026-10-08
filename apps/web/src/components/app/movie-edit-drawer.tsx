@@ -133,11 +133,11 @@ export function MovieEditDrawer({
         if (!response.ok) throw new Error("monitoring-failed");
       }
 
-      if (formQualityProfileId.trim() && formQualityProfileId !== (qualityProfileId ?? "")) {
+      if (formQualityProfileId !== (qualityProfileId ?? "")) {
         const response = await authedFetch("/api/movies/bulk/quality-profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ movieIds: [movieId], qualityProfileId: formQualityProfileId.trim() })
+          body: JSON.stringify({ movieIds: [movieId], qualityProfileId: formQualityProfileId.trim() || null })
         });
         if (!response.ok) throw new Error("quality-profile-failed");
       }
@@ -213,7 +213,7 @@ export function MovieEditDrawer({
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="h-4 w-4 animate-spin" /> Loading…</div>
           ) : (
             <Select value={formQualityProfileId} onChange={(event) => { setFormQualityProfileId(event.target.value); edit(); }}>
-              <option value="">Use the library's own profile</option>
+              <option value="">Library default</option>
               {qualityProfiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
           )}

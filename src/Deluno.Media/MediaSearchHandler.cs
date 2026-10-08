@@ -53,7 +53,9 @@ public static class MediaSearchHandler
         IMediaTagStore? mediaTagStore = null,
         IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
         string? libraryId = null,
-        IPlatformSettingsRepository? platformSettingsRepository = null)
+        IPlatformSettingsRepository? platformSettingsRepository = null,
+        // A whole-show search has no target episode; the provider's titles let each release be checked against its own SxxEyy (#1173).
+        Func<CancellationToken, Task<IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>?>>? episodeTitlesBySeasonAsync = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -147,7 +149,8 @@ public static class MediaSearchHandler
                 RuntimeMinutes: item.RuntimeMinutes,
                 EntityId: item.Id,
                 ImdbId: wantedItem.ImdbId,
-                OtherTitles: CatalogueMetadata.ReadAlternateTitles(item.MetadataJson)).WithProfile(profileRules),
+                OtherTitles: CatalogueMetadata.ReadAlternateTitles(item.MetadataJson),
+                EpisodeTitlesBySeason: episodeTitlesBySeasonAsync is null ? null : await episodeTitlesBySeasonAsync(cancellationToken)).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;

@@ -247,6 +247,147 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         Assert.Single(activity, item => item.Category == "processing.waiting-too-long");
     }
 
+    // ---- #1155: a hand-off past its limit settles itself ------------------------------------------
+
+    private static readonly ProcessorStatusSupport CanReport = new(ProcessorAnswer.Answered, true, true, null);
+
+    /// <summary>One look at the hand-offs by the watcher, on the real repositories, with the processor answering as told.</summary>
+    private static async Task WatchAsync(
+        ApplicationTestHost app,
+        TimeSpan later,
+        ProcessorHandoffStatusResult status,
+        List<ProcessorHandoffItem> submitted)
+    {
+        var services = app.Services;
+        var processors = Stub.Create<IProcessorConnectionService>((name, args) => name switch
+        {
+            "GetStatusSupportAsync" => CanReport,
+            "GetHandoffStatusAsync" => status,
+            "SubmitAsync" => Submit(submitted, (ProcessorHandoffItem)args[1]!),
+            _ => throw new NotSupportedException(name)
+        });
+        var libraries = await services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None);
+        await new ProcessorHandoffWatcher(
+                services.GetRequiredService<IProcessorRepository>(),
+                processors,
+                services.GetRequiredService<IActivityFeedRepository>(),
+                services.GetRequiredService<IMovieCatalogRepository>(),
+                services.GetRequiredService<ISeriesCatalogRepository>(),
+                services.GetRequiredService<IProcessorOutputImportQueue>())
+            .WatchAsync(libraries, DateTimeOffset.UtcNow + later, CancellationToken.None, libraries);
+    }
+
+    private static ProcessorSubmissionResult Submit(List<ProcessorHandoffItem> submitted, ProcessorHandoffItem handoff)
+    {
+        submitted.Add(handoff);
+        return new ProcessorSubmissionResult(true, ProcessorHandoffStatuses.Submitted, "Accepted.", 202);
+    }
+
+    private static async Task<ProcessorHandoffItem> SentHandoffAsync(ApplicationTestHost app, Scene scene)
+    {
+        var handoff = await HandoffAsync(app, scene);
+        // Sent and acknowledged long ago: a hand-off with the processor.
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
+        return (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
+    }
+
+    [Fact]
+    public async Task A_sent_hand_off_the_processor_finished_has_its_output_imported_once_it_has_waited_too_long()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var handoff = await SentHandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        var output = await WriteOutputAsync(scene);
+
+        await WatchAsync(app, TimeSpan.FromHours(4), submitted: [], status: new ProcessorHandoffStatusResult(
+                ProcessorAnswer.Answered, ProcessorHandoffStates.Completed, LastChangedUtc: DateTimeOffset.UtcNow.AddHours(-3), OutputPath: output));
+
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+        Assert.Equal(output, stored?.OutputPath);
+        Assert.NotNull(stored?.ImportJobId);
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        Assert.Contains(jobs, job => job.JobType == "filesystem.import.execute");
+    }
+
+    [Fact]
+    public async Task A_sent_hand_off_the_processor_never_heard_of_is_sent_again_once_and_then_a_person_is_asked()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await SentHandoffAsync(app, scene);
+        var submitted = new List<ProcessorHandoffItem>();
+        var notFound = new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound);
+
+        await WatchAsync(app, TimeSpan.FromHours(1), notFound, submitted);
+
+        var resent = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Single(submitted);
+        Assert.Equal(handoff.Id, submitted[0].Id);
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, resent?.Status);
+        Assert.StartsWith(ProcessorHandoffWatcher.SentAgainNotice, resent?.FailureMessage);
+        Assert.False(ProcessorHandoffStatuses.NeedsPerson(resent?.Status, resent?.FailureMessage));
+
+        // Still nothing later on: one clear item, with the retry.
+        await WatchAsync(app, TimeSpan.FromHours(3), notFound, submitted);
+
+        var ended = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Single(submitted);
+        Assert.Equal(ProcessorHandoffStatuses.Lost, ended?.Status);
+        Assert.Contains("never picked up", ended?.FailureMessage);
+        Assert.True(ProcessorHandoffStatuses.NeedsPerson(ended?.Status, ended?.FailureMessage));
+    }
+
+    [Fact]
+    public async Task A_title_removed_and_added_again_gets_its_old_download_handed_over_afresh()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var oldFilm = await AddMovieAsync(app);
+        var handoff = await SentHandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: oldFilm);
+        // Removed, then added again: a new film with the same name and year. Removing it closed the hand-off.
+        (await app.Client.DeleteAsync($"/api/movies/{oldFilm}")).EnsureSuccessStatusCode();
+        var newFilm = await AddMovieAsync(app);
+        Assert.NotEqual(oldFilm, newFilm);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))?.Status);
+
+        // The download is the same one the client has had all along: older than the hand-off.
+        var submitted = new List<ProcessorHandoffItem>();
+        await PlanAsync(app, scene, Item(scene, scene.DownloadFolder, DateTimeOffset.UtcNow.AddDays(-2)), submitted);
+
+        var sent = Assert.Single(submitted);
+        var stored = await Repository(app).GetProcessorHandoffAsync(sent.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, stored?.Status);
+        Assert.Equal(scene.DownloadFolder, stored?.SourcePath);
+    }
+
+    [Fact]
+    public async Task A_download_waiting_for_its_processor_is_not_blamed_on_the_file()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movieId = await AddMovieAsync(app);
+        await SentHandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
+        var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
+        await using (var connection = await db.OpenConnectionAsync("jobs", CancellationToken.None))
+        {
+            using var age = connection.CreateCommand();
+            age.CommandText = "UPDATE download_dispatches SET grab_status = 'succeeded', detected_utc = '2020-01-01T00:00:00.0000000+00:00', client_completed_utc = '2020-01-01T00:00:00.0000000+00:00', import_status = NULL;";
+            await age.ExecuteNonQueryAsync();
+        }
+
+        await app.Services.GetRequiredService<IDownloadDispatchPollingService>().PollAsync(CancellationToken.None);
+
+        var cases = (await app.Services.GetRequiredService<IMovieCatalogRepository>().GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases;
+        Assert.DoesNotContain(cases, item => (item.RecommendedAction ?? string.Empty).Contains("corrupted, moved, or deleted"));
+        var activity = await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.Contains(activity, item => item.Category == "download.detection.waiting-for-processor");
+    }
+
     // ---- #1153: who removed a rejected download -------------------------------------------------
 
     [Theory]
