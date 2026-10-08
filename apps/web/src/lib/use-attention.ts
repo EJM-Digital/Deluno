@@ -127,6 +127,46 @@ function snapshotFromCache(): AttentionSnapshot | null {
   };
 }
 
+/**
+ * The sources a push can have moved, by the words the server names (#1179), or null when everything should be read
+ * again (a word this list does not know, or one that can move several lists: a client or a download's journey).
+ * Held releases are listed on Transfers, not in the bell, so they read nothing here.
+ */
+export function attentionSourcesForReasons(reasons: readonly string[]): RouteSource<unknown>[] | null {
+  const wanted = new Map<string, RouteSource<unknown>>();
+  const add = (...sources: RouteSource<unknown>[]) => sources.forEach((source) => wanted.set(source.key.join("/"), source));
+  for (const reason of reasons) {
+    switch (reason) {
+      case "noRelease":
+        add(attentionSources.noRelease as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "recovery":
+        add(sharedSources.movieRecovery as RouteSource<unknown>, sharedSources.seriesRecovery as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "handoff":
+        add(sharedSources.handoffs as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "jobs":
+        add(sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "orphans":
+        add(sharedSources.orphans as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "update":
+        add(attentionSources.connectionUpdates as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "health":
+        add(sharedSources.healthSummary as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        break;
+      case "heldReleases":
+        break;
+      default:
+        return null;
+    }
+  }
+  return [...wanted.values()];
+}
+
 export function useAttention() {
   const [snapshot, setSnapshot] = useState<AttentionSnapshot>(() => snapshotFromCache() ?? empty);
   // Guards against a second call landing while the batch below is still in
@@ -235,8 +275,21 @@ export function useAttention() {
   // #1179: nothing here is read on a timer. Everything the count reads is pushed: a recovery case, a hand-off to a
   // processor, a download's journey, a client going away or coming back, a leftover folder or a title with no release
   // (all AttentionChanged, which the server sends on the dashboard subject so the bell needs no screen open).
-  const reloadAfterAttention = useCoalescedRevalidate(() => void load(true), 1_500);
-  useSignalREvent("AttentionChanged", RealtimeGroups.Dashboard, () => reloadAfterAttention());
+  // The push names what moved (a burst comes as one push, its words joined by commas), so only those lists are read
+  // again; a word that is not known reads everything.
+  const pendingReasonsRef = useRef(new Set<string>());
+  const reloadAfterAttention = useCoalescedRevalidate(() => {
+    const reasons = [...pendingReasonsRef.current];
+    pendingReasonsRef.current.clear();
+    const sources = attentionSourcesForReasons(reasons);
+    if (sources === null) void load(true);
+    else if (sources.length > 0) void loadSome(...sources);
+  }, 400);
+  useSignalREvent("AttentionChanged", RealtimeGroups.Dashboard, (event) => {
+    const reasons = (event?.reason ?? "").split(",").map((word) => word.trim()).filter(Boolean);
+    for (const reason of reasons.length > 0 ? reasons : ["all"]) pendingReasonsRef.current.add(reason);
+    reloadAfterAttention();
+  });
   // A title or an indexer changing moves only the wanted counts, or the indexers and the Dashboard summary.
   const reloadWanted = useCoalescedRevalidate(() => void loadSome(sharedSources.movieWanted, sharedSources.seriesWanted, summarySource), 2_500);
   useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => reloadWanted());

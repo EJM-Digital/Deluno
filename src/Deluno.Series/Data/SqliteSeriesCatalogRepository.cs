@@ -4296,6 +4296,8 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        // A search that ends with no release adds a row to the bell; a later one that finds something removes it.
+        realtimeEventPublisher.RequestAttentionChanged("noRelease");
     }
 
     public async Task<bool> DeferWantedSearchAsync(
