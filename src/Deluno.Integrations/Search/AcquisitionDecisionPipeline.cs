@@ -415,16 +415,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
         var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, request.ScoringMode);
         var boostedScore = preferencePlan is null ? scoreComputation.FinalScore : 0;
-        var boostedSummary = preferencePlan is null
-            ? scoreComputation.UsesModelSignal && boost.Applied
-                ? $"{decision.Summary} {boost.Explanation} {scoreComputation.Explanation}"
-                : $"{decision.Summary} {scoreComputation.Explanation}"
-            : decision.Summary;
-        var boostedReasons = preferencePlan is null
-            ? scoreComputation.UsesModelSignal
-                ? decision.Reasons.Concat([boost.Explanation, scoreComputation.Explanation]).ToArray()
-                : decision.Reasons.Concat([scoreComputation.Explanation]).ToArray()
-            : decision.Reasons;
+        // How the score was combined (rules, ranking model) is for the logs; a person is told why, in plain words (#1159).
+        var boostedSummary = decision.Summary;
+        var boostedReasons = decision.Reasons;
 
         var candidate = new MediaSearchCandidate(
             ReleaseName: request.ReleaseName,
@@ -550,7 +543,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             // would blame the indexers for a decision Deluno made.
             Summary = best is null
                 ? $"{note} Nothing else was offered."
-                : $"{plan.Summary} {note}",
+                : $"{SummaryNaming(plan, best)} {note}",
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
     }
@@ -588,7 +581,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             Candidates = kept,
             Summary = best is null
                 ? "Only a season pack was offered, and it would download episodes that were unmonitored or removed. New episodes are fetched one at a time."
-                : plan.Summary,
+                : SummaryNaming(plan, best),
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
     }
@@ -633,7 +626,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             Candidates = kept,
             Summary = best is null
                 ? "Only single episodes were offered. Each missing episode is searched for on its own."
-                : plan.Summary,
+                : SummaryNaming(plan, best),
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
     }
@@ -692,6 +685,17 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     /// nothing was waiting for anybody. The first usable candidate wins; with none, the plan says so plainly and
     /// leads with the real reasons. Every candidate stays listed, so a person choosing by hand still sees them.
     /// </summary>
+    /// <summary>
+    /// The plan's summary names its best candidate. When a later step drops that release (blocked, a pack, another
+    /// episode) the summary must follow the new best, or it names a release that is not in the list (#1159).
+    /// </summary>
+    internal static string SummaryNaming(MediaSearchPlan plan, MediaSearchCandidate best)
+        => plan.BestCandidate is { } was
+            && string.Equals(was.ReleaseName, best.ReleaseName, StringComparison.Ordinal)
+            && string.Equals(was.IndexerName, best.IndexerName, StringComparison.Ordinal)
+            ? plan.Summary
+            : $"Best feed candidate is {best.ReleaseName} from {best.IndexerName}.";
+
     public static MediaSearchPlan NeverNameARejectedCandidateBest(MediaSearchPlan plan)
     {
         static bool Refused(MediaSearchCandidate candidate)

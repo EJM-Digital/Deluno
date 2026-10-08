@@ -1052,7 +1052,7 @@ describe("a release held for approval (#1159)", () => {
   const row: HeldReleaseRow = {
     historyId: "h1", mediaType: "series", id: "s1", episodeId: "e1", title: "The Wire", year: 2002, episodeLabel: "S01E04", libraryId: "lib",
     releaseName: "The.Wire.S01E04.1080p.WEB-GRP", indexerName: "Nyaa", indexerId: "ix", downloadUrl: "https://x/get", quality: "WEB 1080p",
-    sizeBytes: 1_000_000_000, seeders: 5, reason: "Held for review by the typed release plan.", heldUtc: "2026-10-08T00:00:00Z"
+    sizeBytes: 1_000_000_000, seeders: 5, reason: "Held for your review.", heldUtc: "2026-10-08T00:00:00Z"
   };
 
   afterEach(() => {

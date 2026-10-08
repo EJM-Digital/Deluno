@@ -2380,8 +2380,8 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Quality", value: openCandidate.quality },
                   ...(isTypedCandidate(openCandidate)
-                    ? [{ label: "Policy", value: "Typed release plan" }]
-                    : [{ label: "Evaluation", value: "Legacy compatibility rules" }]),
+                    ? [{ label: "Judged by", value: "Your quality profile" }]
+                    : [{ label: "Judged by", value: "Your older rules" }]),
                   { label: "Meets cutoff", value: openCandidate.meetsCutoff ? "Yes" : "No" },
                   { label: "Size", value: openCandidate.sizeBytes ? formatBytes(openCandidate.sizeBytes) : "Unknown" },
                   { label: "Seeders", value: openCandidate.seeders ?? "—" },

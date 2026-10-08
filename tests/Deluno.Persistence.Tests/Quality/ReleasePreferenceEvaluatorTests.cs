@@ -144,7 +144,7 @@ public sealed class ReleasePreferenceEvaluatorTests
         Assert.Equal(PreferenceCandidateStatus.Upgrade, comparison.Status);
         Assert.False(comparison.Current.HardGatesPassed);
         Assert.Contains("Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p.", comparison.Current.Reasons);
-        Assert.Contains("Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p. This release repairs it.", comparison.Reasons);
+        Assert.Contains("Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p. This release fixes that.", comparison.Reasons);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class ReleasePreferenceEvaluatorTests
         Assert.Equal(PreferenceEvaluationStatus.MeetsPlan, comparison.Candidate.Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, comparison.Status);
         Assert.False(comparison.PersistentImprovement);
-        Assert.Contains(comparison.Reasons, reason => reason.Contains("hard gates", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(comparison.Reasons, reason => reason.Contains("must-have rule", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

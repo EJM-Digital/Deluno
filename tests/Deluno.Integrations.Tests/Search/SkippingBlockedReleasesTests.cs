@@ -206,6 +206,46 @@ public sealed class SkippingBlockedReleasesTests
         Assert.Single(result.Candidates);
     }
 
+    /// <summary>
+    /// #1159: the summary named a 1080p release that was not in the list, because the release it named had been
+    /// blocked after the summary was written. The summary follows the new best candidate.
+    /// </summary>
+    [Fact]
+    public void The_summary_never_names_a_release_that_is_not_in_the_list()
+    {
+        var plan = Plan(Candidate("Show.S01E01.1080p", "Orbit"), Candidate("Show.S01E01.720p", "Orbit"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(plan, Keys("Show.S01E01.1080p", "Orbit"));
+
+        Assert.Equal("Show.S01E01.720p", result.BestCandidate!.ReleaseName);
+        Assert.DoesNotContain("1080p", result.Summary, StringComparison.Ordinal);
+        Assert.Contains("Show.S01E01.720p", result.Summary, StringComparison.Ordinal);
+        foreach (var named in result.Candidates.Select(candidate => candidate.ReleaseName))
+        {
+            Assert.DoesNotContain("Show.S01E01.1080p", result.Summary, StringComparison.Ordinal);
+            Assert.Contains(named, new[] { "Show.S01E01.720p" });
+        }
+    }
+
+    [Fact]
+    public void When_the_blocked_best_is_followed_by_a_refused_one_the_plan_says_nothing_usable()
+    {
+        var refused = Candidate("Show.S01E01.1080p.REBOOT", "Orbit") with
+        {
+            DecisionStatus = ReleaseDecisionStatuses.Rejected,
+            RejectionGate = "This release is for another show: Show (2019), not Show (1959).",
+            DecisionReasons = ["This release is for another show: Show (2019), not Show (1959)."]
+        };
+        var plan = Plan(Candidate("Show.S01E01.1080p", "Orbit"), refused);
+
+        var result = AcquisitionDecisionPipeline.NeverNameARejectedCandidateBest(
+            AcquisitionDecisionPipeline.ApplyBlocklist(plan, Keys("Show.S01E01.1080p", "Orbit")));
+
+        Assert.Null(result.BestCandidate);
+        Assert.StartsWith("No usable release yet", result.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Show.S01E01.1080p", result.Summary, StringComparison.Ordinal);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static HashSet<string> Keys(string releaseName, string indexerName)

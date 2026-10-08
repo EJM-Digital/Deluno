@@ -134,7 +134,8 @@ public static class TurnedDownReasons
         if (Has("Downgrade blocked") || Has("Equivalent replacement blocked") || Has("Upgrade stop policy")
             || Has("Stopped upgrading") || Has("than the copy you have") || Has("installed file is better")
             || Has("ranks lower") || Has("No preference in this plan ranks") || Has("equivalent proven satisfaction")
-            || Has("below the current file") || Has("does not improve") || Has("does not persistently improve")
+            || Has("below the current file") || Has("does not improve") || Has("does not persistently improve") || Has("isn't better than the file you have") || Has("It is no better than the file you have")
+            || Has("already meets everything your profile asks for") || Has("Everything your profile asks for")
             || Has("already meets") || Has("lower than the current file"))
         {
             return TurnedDownGroups.NotBetter;
@@ -151,7 +152,7 @@ public static class TurnedDownReasons
         }
 
         if (Has("missing required term") || Has("contains excluded term") || Has("required word") || Has("ignored word")
-            || Has("required trait") || Has("forbidden trait") || Has("required-any group") || Has("hard safety gate")
+            || Has("required trait") || Has("forbidden trait") || Has("required-any group") || Has("hard safety gate") || Has("breaks one of your must-have rules")
             || Has("searches only") || Has("TRaSH rates this copy"))
         {
             return TurnedDownGroups.Rules;

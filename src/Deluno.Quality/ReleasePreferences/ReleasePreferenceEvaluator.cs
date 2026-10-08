@@ -46,9 +46,9 @@ public static class ReleasePreferenceEvaluator
         };
 
         if (targets.Length == 0)
-            reasons.Add("The plan has no upgrade-driving target families.");
+            reasons.Add("Your profile asks for nothing that would justify an upgrade.");
         else if (targetsMet)
-            reasons.Add("All upgrade-driving targets are met.");
+            reasons.Add("Everything your profile asks for is already met.");
 
         return new PreferenceEvaluation(
             plan.Id,
@@ -207,11 +207,11 @@ public static class ReleasePreferenceEvaluator
             // different fix - probe the file, or look at the release.
             if (candidate.Status == PreferenceEvaluationStatus.NeedsReview)
             {
-                reasons.Add("Candidate has unknown or conflicting evidence for a required trait, so it is never automatic.");
+                reasons.Add("Deluno cannot tell whether it has something your profile requires, so it is not taken on its own.");
                 return Result(PreferenceCandidateStatus.NeedsReview, false, false, false, null, reasons, current, candidate);
             }
 
-            reasons.Add("Candidate failed a hard safety gate.");
+            reasons.Add("It breaks one of your must-have rules.");
             return Result(PreferenceCandidateStatus.Rejected, false, false, false, null, reasons, current, candidate);
         }
 
@@ -224,7 +224,7 @@ public static class ReleasePreferenceEvaluator
         // equivalent for installed-file replacement.
         if (EquivalentSatisfaction(current, candidate))
         {
-            reasons.Add("The installed file and candidate have equivalent proven satisfaction under this plan.");
+            reasons.Add("It is no better than the file you have.");
             return Result(PreferenceCandidateStatus.Equivalent, false, false, true, null, reasons, current, candidate);
         }
 
@@ -301,7 +301,7 @@ public static class ReleasePreferenceEvaluator
                 {
                     persistentImprovement = true;
                     persistentImprovementFamilyId = family.Id;
-                    reasons.Add($"Candidate improves '{PlainDimension(family.Dimension)}' below its target.");
+                    reasons.Add($"It improves {PlainDimension(family.Dimension)}, which was below your target.");
                 }
                 continue;
             }
@@ -355,31 +355,31 @@ public static class ReleasePreferenceEvaluator
         // their targets.
         if (current.HardGatesPassed && current.TargetsMet)
         {
-            reasons.Add("Installed file already meets every persistent target; automatic upgrades stop here.");
+            reasons.Add("The file you have already meets everything your profile asks for, so upgrades stop here.");
             return Result(PreferenceCandidateStatus.Equivalent, false, false, true, decisive, reasons, current, candidate, persistentImprovementFamilyId);
         }
 
         if (!current.HardGatesPassed)
         {
             reasons.Add(installedFileViolation is null
-                ? "Installed file fails one or more hard gates; the candidate repairs the plan violation."
-                : $"{installedFileViolation} This release repairs it.");
+                ? "The file you have breaks one of your must-have rules; this one does not."
+                : $"{installedFileViolation} This release fixes that.");
             return Result(PreferenceCandidateStatus.Upgrade, false, false, false, decisive, reasons, current, candidate, persistentImprovementFamilyId);
         }
 
         if (persistentImprovement && !current.TargetsMet)
         {
-            reasons.Add($"Candidate persistently improves '{persistentImprovementFamilyId}'.");
+            reasons.Add("It is better than the file you have on something your profile asks for.");
             return Result(PreferenceCandidateStatus.Upgrade, true, false, false, decisive, reasons, current, candidate, persistentImprovementFamilyId);
         }
 
         if (candidate.TargetsMet)
         {
-            reasons.Add("Candidate reaches the remaining persistent targets.");
+            reasons.Add("It meets what your profile still asks for.");
             return Result(PreferenceCandidateStatus.Upgrade, true, false, false, decisive, reasons, current, candidate, persistentImprovementFamilyId);
         }
 
-        reasons.Add("Candidate is acceptable but does not persistently improve the installed file.");
+        reasons.Add("It isn't better than the file you have.");
         return Result(PreferenceCandidateStatus.Acceptable, false, false, false, decisive, reasons, current, candidate, persistentImprovementFamilyId);
     }
 
