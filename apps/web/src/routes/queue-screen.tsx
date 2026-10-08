@@ -2868,8 +2868,12 @@ export function buildImportRequest(
     sourcePath: resolveImportSourcePath(item, libraries) || "",
     fileName: inferImportFileName(item),
     mediaType: item.mediaType === "tv" ? "tv" : "movies",
-    title: item.title || null,
-    year: inferYear(item.releaseName),
+    // A TV row sends no title or year: the queue title is a release name, and
+    // sent as a hint it is taken for a title the person typed and a show folder
+    // is built from it. The server matches the library's show from the files'
+    // own names instead (#1171). A grab (dispatchId / seriesId) names it exactly.
+    title: item.mediaType === "tv" ? null : item.title || null,
+    year: item.mediaType === "tv" ? null : inferYear(item.releaseName),
     genres: null,
     tags: null,
     studio: null,
