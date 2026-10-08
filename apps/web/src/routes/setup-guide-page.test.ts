@@ -8,6 +8,9 @@ vi.mock("../lib/api", async (importOriginal) => ({
 
 const {
   AUTOMATION_QUESTIONS,
+  answeredAutomation,
+  describeMissingForFinish,
+  restoreDraftAutomation,
   SETUP_STAGE_LABELS,
   STEPS,
   buildAutomationSettingsPayload,
@@ -408,5 +411,35 @@ describe("setup guide uses the download clients that are already connected (#113
 
   it("says nothing is routed yet when no client is connected or tested", () => {
     expect(describeDownloadRoute([broken], blankForm, false).names).toEqual([]);
+  });
+});
+
+describe("setup guide keeps every Yes/No answer in the draft (#1132)", () => {
+  type FinishForm = Parameters<typeof describeMissingForFinish>[0];
+
+  it("saves only the questions that were answered and restores them after a reload", () => {
+    const partly: AutomationChoices = { ...UNANSWERED, rssGrabs: true, forceImport: false };
+    const saved = answeredAutomation(partly);
+    expect(saved).toEqual({ rssGrabs: true, forceImport: false });
+    expect(restoreDraftAutomation(saved)).toEqual(partly);
+  });
+
+  it("restores nothing when the draft has no answers, and ignores retired or non-boolean keys", () => {
+    expect(restoreDraftAutomation(undefined)).toEqual(UNANSWERED);
+    expect(restoreDraftAutomation({ retiredQuestion: true, rssGrabs: "yes" as unknown as boolean })).toEqual(UNANSWERED);
+  });
+
+  it("names exactly what is missing on the Start page", () => {
+    const form = {
+      mediaIntent: "both", movieRootPath: "D:\Movies", seriesRootPath: "D:\TV",
+      qualityPreset: "balanced1080p", formatGoal: "balanced",
+      skipSignInLocalNetwork: null, updateAutomatically: true, automation: ALL_NO
+    } as unknown as FinishForm;
+    const said = describeMissingForFinish(form);
+    expect(said).toContain("Skip sign-in");
+    expect(said).not.toContain("library root folder");
+    expect(said).not.toContain("picture quality");
+    expect(said).not.toContain("Update automatically");
+    expect(describeMissingForFinish({ ...form, skipSignInLocalNetwork: false })).toBe("Everything is chosen.");
   });
 });
