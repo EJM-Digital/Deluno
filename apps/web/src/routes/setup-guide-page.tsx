@@ -51,6 +51,7 @@ import {
   type BundledComponentStatus } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
+import { samePath } from "../lib/library-paths";
 import { authedFetch, useAuth } from "../lib/use-auth";
 import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -2795,8 +2796,7 @@ export async function detectLibraryDownloadsFolder(libraryId: string): Promise<s
     .flatMap((item) => item.destinations ?? [])
     .filter((destination) => destination.savedBy === "client-category" && destination.saveFolder?.trim())
     .map((destination) => destination.saveFolder!.trim());
-  const key = (folder: string) => folder.replace(/[\\/]+$/, "").toLowerCase();
-  return folders.length > 0 && folders.every((folder) => key(folder) === key(folders[0])) ? folders[0] : null;
+  return folders.length > 0 && folders.every((folder) => samePath(folder, folders[0])) ? folders[0] : null;
 }
 
 async function saveLibraryDownloadsFolder(library: LibraryItem, rootPath: string, downloadsPath: string) {

@@ -10,6 +10,7 @@
  * The patches are plain functions of a cache, so each can be proved by itself.
  */
 import type { QueryClient } from "@tanstack/react-query";
+import { comparablePath } from "../../../lib/library-paths";
 import type {
   ClientStateChangedEvent,
   DashboardLiveExtras,
@@ -175,7 +176,7 @@ export function applyClientState(client: Cache, event: ClientStateChangedEvent):
   });
 }
 
-const slashes = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+const slashes = comparablePath;
 
 /** A file landed on a drive: its gauge ticks down to the new free space. */
 export function applyDriveSpace(client: Cache, event: DriveSpaceChangedEvent): void {

@@ -1,3 +1,4 @@
+import { comparablePath } from "../lib/library-paths";
 import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -180,7 +181,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
-  const mediaRoots = new Set(libraries.map((library) => library.rootPath?.trim().toLowerCase()).filter(Boolean)).size;
+  const mediaRoots = new Set(libraries.map((library) => comparablePath(library.rootPath)).filter(Boolean)).size;
   const { preferences } = useDisplayPreferences();
 
   const activeJobs = jobs.filter((job) => isBackgroundJob(job) && isJobActive(job.status as JobStatus)).length;
