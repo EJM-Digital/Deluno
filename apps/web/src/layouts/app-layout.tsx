@@ -27,6 +27,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getGlobalShortcuts } from "../lib/command-registry";
 import { useAttention } from "../lib/use-attention";
+import { useCutValueTitles } from "../lib/use-cut-value-titles";
 import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
 import { hostTitle, useHostName } from "../lib/use-host-name";
 import { useSidebarCollapsed } from "../lib/use-sidebar-collapsed";
@@ -153,6 +154,7 @@ function isToolbarPage(pathname: string) {
 }
 
 export function AppLayout() {
+  useCutValueTitles();
   return <AppLayoutInner />;
 }
 

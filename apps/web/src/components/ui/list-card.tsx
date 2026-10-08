@@ -17,6 +17,7 @@ import { COLUMN_EASE, COLUMN_MOVE_MS, prefersReducedMotion, trackColumnDrag } fr
 import { isColumnMovable, isColumnSortable, useListColumns, type ListColumnSpec, type ListColumnsState } from "../../lib/use-list-columns";
 import { cn } from "../../lib/utils";
 import { ColumnsAnnouncements, ColumnsButton, useSharedColumnsHint, type ColumnsControls } from "./columns-menu";
+import { plainTitle } from "../../lib/plain-title";
 
 /** A ListTable inside a ListCard hands its Columns controls up to the card, which draws the button last in its header. */
 interface ListCardContextValue {
@@ -434,16 +435,11 @@ interface ListCellProps {
  */
 const WIDE_WRAP = "min-[1920px]:overflow-visible min-[1920px]:whitespace-normal min-[1920px]:break-words";
 
-/** The full text of a value that is plain text, for a hover tooltip on a value the row cuts short (#1168). Rich content has none. */
-function plainTitle(node: React.ReactNode): string | undefined {
-  if (typeof node === "string") return node || undefined;
-  if (typeof node === "number") return String(node);
-  if (Array.isArray(node) && node.every((part) => typeof part === "string" || typeof part === "number")) return node.join("") || undefined;
-  return undefined;
-}
-
-/** A muted second line may take two lines before it is cut, and carries its full text as a tooltip. */
-const SECONDARY_CLAMP = "line-clamp-2 [overflow-wrap:anywhere]";
+/**
+ * A muted second line may take two lines before it is cut, and carries its full text as a tooltip. At 1920 it wraps
+ * (WIDE_WRAP) and so must not be clamped: a two-line box whose text runs to three printed over the next row.
+ */
+const SECONDARY_CLAMP = "line-clamp-2 [overflow-wrap:anywhere] min-[1920px]:line-clamp-none";
 
 export function ListCell({ primary, secondary, mobile = false, align = "start", mono, numeric, className, children }: ListCellProps) {
   const originalIndex = React.useContext(CellIndexContext);
@@ -474,10 +470,10 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
 }
 
 /** First-column cell: bold name + muted subline, always visible. */
-export function ListNameCell({ name, sub, className }: { name: React.ReactNode; sub?: React.ReactNode; className?: string }) {
+export function ListNameCell({ name, sub, className, nameTitle }: { name: React.ReactNode; sub?: React.ReactNode; className?: string; /** The name's full text when it holds a component that cannot be read as text (a version beside it). */ nameTitle?: string }) {
   return (
     <div role="cell" className={cn("min-w-0 leading-tight", className)}>
-      <span title={plainTitle(name)} className={cn("block truncate text-(length:--list-row-text) font-semibold text-foreground", WIDE_WRAP)}>{name}</span>
+      <span title={nameTitle ?? plainTitle(name)} className={cn("block truncate text-(length:--list-row-text) font-semibold text-foreground", WIDE_WRAP)}>{name}</span>
       {sub !== undefined ? <span title={plainTitle(sub)} className={cn("mt-0.5 text-(length:--type-caption) text-muted-foreground", SECONDARY_CLAMP, WIDE_WRAP)}>{sub}</span> : null}
     </div>
   );

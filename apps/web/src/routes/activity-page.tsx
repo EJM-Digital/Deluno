@@ -688,7 +688,8 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               <p className="text-(length:--type-body-sm) leading-relaxed text-foreground">{openLive.detail}</p>
             </DrawerSection>
             <DrawerSection title="Details">
-              <DrawerFacts items={openLive.facts} />
+              {/* The title above is cut to two lines on a phone; its full words are one tap away here. */}
+              <DrawerFacts items={openLive.facts.some((fact) => fact.value === openLive.title) ? openLive.facts : [{ label: "Title", value: openLive.title }, ...openLive.facts]} />
               <Link to="/queue" onClick={() => setOpenLive(null)} className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline">
                 Open Transfers
               </Link>
