@@ -299,9 +299,6 @@ public sealed class ProcessorHandoffWatcher(
         }
     }
 
-    /// <summary>The Activity category of the one automatic second try at a failed import of a processor's output.</summary>
-    public const string ImportRetriedCategory = "processing.import-retried";
-
     /// <summary>
     /// A finished hand-off whose output is still on disk, while its title (the one that is there now) holds no file
     /// and its import gave up, is imported once more (#1155), whatever the order of the title's return and the
@@ -334,20 +331,15 @@ public sealed class ProcessorHandoffWatcher(
                 continue;
             }
 
-            var tried = await activityFeed.ListActivityAsync(50, "processor-handoff", handoff.Id, cancellationToken);
-            if (tried.Any(entry => string.Equals(entry.Category, ImportRetriedCategory, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
+            // The second try is made once (the import job it revives remembers that it is the retry), and it is
+            // told once: the line the import writes when it ends, not one for each step on the way (#1155).
             await TryImportOutputAsync(
                 handoff,
                 library,
                 null,
                 handoff.OutputPath,
                 cancellationToken,
-                $"{handoff.ReleaseName} had been processed but its import gave up and the title still has no file, so Deluno tried the import again. A file already at the destination that is identical is taken as the title's file.",
-                ImportRetriedCategory);
+                retriedBecause: $"{handoff.ReleaseName} had been processed but its import gave up and the title still had no file, so Deluno tried the import again.");
         }
     }
 
@@ -467,7 +459,7 @@ public sealed class ProcessorHandoffWatcher(
         string? reportedOutput,
         CancellationToken cancellationToken,
         string? queuedMessage = null,
-        string? queuedCategory = null)
+        string? retriedBecause = null)
     {
         if (outputImports is null || string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
         {
@@ -507,13 +499,18 @@ public sealed class ProcessorHandoffWatcher(
             return true;
         }
 
-        var import = await outputImports.QueueAsync(library, handoff, output, "processor-watch", cancellationToken);
+        var import = await outputImports.QueueAsync(library, handoff, output, "processor-watch", cancellationToken, retriedBecause);
         var notImported = import.NotImportedBecause is { } removed
             ? $"{name} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {output}."
             : null;
         await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
+        if (retriedBecause is not null && import.NotImportedBecause is null)
+        {
+            return true;
+        }
+
         await activityFeed.RecordActivityAsync(
-            import.NotImportedBecause is not null ? "filesystem.import.not-imported" : queuedCategory ?? "processing.completed.import-queued",
+            import.NotImportedBecause is not null ? "filesystem.import.not-imported" : "processing.completed.import-queued",
             notImported ?? queuedMessage ?? $"{name} had finished {handoff.ReleaseName} without Deluno hearing of it; Deluno found the cleaned file and queued it for import.",
             JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = output, import.JobId, import.DispatchId }),
             import.JobId,
@@ -935,6 +932,10 @@ public sealed class ProcessorHandoffWatcher(
         {
             libraryId = library.Id,
             handoffId = handoff.Id,
+            // The download behind it, so this case and the hand-off, the dispatch and the client's own entry
+            // for the same download share a key and show once (#1167).
+            clientId = handoff.ClientId,
+            queueItemId = handoff.QueueItemId,
             releaseName = handoff.ReleaseName,
             sourcePath = handoff.SourcePath,
             processorState

@@ -1050,7 +1050,14 @@ public sealed record ImportExecuteRequest(
     /// The hand-off this file came back from, so the processor can be told what
     /// became of it and let go of its own copy (#578).
     /// </summary>
-    string? HandoffId = null);
+    string? HandoffId = null,
+    /// <summary>
+    /// Set when Deluno is trying a processed file's import again after the first one gave up (#1155): why it is
+    /// trying. The retry is one story, so it is told in the one line the import writes at the end, with the steps in
+    /// that line's details, and the job's own lines for it stay quiet. It also says the retry has been made, so it
+    /// is made only once.
+    /// </summary>
+    string? RetriedBecause = null);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,

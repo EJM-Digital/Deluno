@@ -187,6 +187,7 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
     [InlineData(ProcessorAnswer.NotFound, ProcessorOutcomeDeliveries.Refused)]
     [InlineData(ProcessorAnswer.Refused, ProcessorOutcomeDeliveries.Refused)]
     [InlineData(ProcessorAnswer.Unsupported, ProcessorOutcomeDeliveries.Refused)]
+    [InlineData(ProcessorAnswer.Settled, ProcessorOutcomeDeliveries.Settled)]
     [InlineData(ProcessorAnswer.Busy, ProcessorOutcomeDeliveries.Pending)]
     [InlineData(ProcessorAnswer.Unreachable, ProcessorOutcomeDeliveries.Pending)]
     [InlineData(ProcessorAnswer.Forbidden, ProcessorOutcomeDeliveries.Pending)]
@@ -202,6 +203,31 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
     [InlineData(40, 60)]
     public void The_wait_doubles_from_a_minute_to_an_hour(int attempts, int minutes)
         => Assert.Equal(TimeSpan.FromMinutes(minutes), ProcessorOutcomeDeliveries.WaitAfter(attempts));
+
+    /// <summary>
+    /// The rig's Nosferatu: Weir recorded "will not import" when the import dead-lettered, and keeps that answer
+    /// when the later import is reported. Deluno stops telling it, says so in one plain line, and never shows the
+    /// red "could not tell" for it (#1155).
+    /// </summary>
+    [Fact]
+    public async Task A_processor_that_keeps_its_earlier_answer_is_not_told_again_and_it_is_not_a_failure()
+    {
+        Answers(new ProcessorOutcomeResult(ProcessorAnswer.Settled, false, "Deluno already said it will not import this file, so Weir kept that answer."));
+
+        await Reporter().ReportAsync("handoff-1", ProcessorHandoffOutcome.Imported, "/films/Nosferatu (1922).mkv", null, CancellationToken.None);
+
+        Assert.Equal(ProcessorOutcomeDeliveries.Settled, Owed().Delivery);
+        Assert.Null(Owed().NextAttemptUtc);
+        var (kind, message) = Assert.Single(_said);
+        Assert.Equal("processing.outcome-kept", kind);
+        Assert.Contains("kept its earlier answer", message);
+        Assert.DoesNotContain("could not tell", message, StringComparison.OrdinalIgnoreCase);
+
+        _clock.Advance(TimeSpan.FromHours(2));
+        await Reporter().SendDueAsync(CancellationToken.None);
+        Assert.Equal(1, Owed().Attempts);
+        Assert.Single(_said);
+    }
 
     /// <summary>
     /// A processor down for a day would otherwise write a line an hour into

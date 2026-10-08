@@ -1043,6 +1043,14 @@ public sealed class WorkPlanner(
             knownImportSources,
             recentWaiting,
             cancellationToken);
+        // Problems whose title has its file now close themselves, with a line each (#1167).
+        await new HandledProblemsSettler(
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                jobQueueRepository,
+                downloadIntegrityDispatches,
+                activityFeedRepository)
+            .SettleAsync(cancellationToken);
         await new ProcessorHandoffWatcher(
                 processorRepository,
                 processorConnectionService,

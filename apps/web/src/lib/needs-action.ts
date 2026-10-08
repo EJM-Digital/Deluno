@@ -150,6 +150,10 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     const dispatchId = dispatchIdIn(item.detailsJson);
     if (dispatchId !== null && imported.byDispatchId.has(dispatchId)) return false;
     if (dispatchId !== null && handoffDispatchIds.has(dispatchId)) return false;
+    // A case that names the client's entry for its download is the same problem as the failed hand-off for that
+    // download, whichever hand-off id it carries (#1167).
+    const clientItem = clientItemIn(item.detailsJson);
+    if (clientItem !== null && handoffClientItems.has(clientItem)) return false;
     const handoffId = handoffIdIn(item.detailsJson);
     return handoffId === null || !handoffIdsWithTheirOwnRow.has(handoffId);
   });
@@ -160,17 +164,21 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   // The client's copy of a download a case is about is the same problem too
   // (#603): a refused sample was listed as its case, its failed job and its
   // queue item. The case is the row that can act on it.
+  const caseClientItems = new Set(recoveryCases.map((item) => clientItemIn(item.detailsJson)).filter((key): key is string => key !== null));
   const coveredClientItems = new Set(
     (sources.dispatches ?? [])
       .filter((dispatch) => coveredByCase.has(dispatch.id) && dispatch.torrentHashOrItemId)
       .map((dispatch) => `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase())
   );
+  for (const key of caseClientItems) coveredClientItems.add(key);
   // The download of a failed hand-off is that hand-off's row, which carries the fixes: it is not also listed as the client's item.
   for (const handoff of failedHandoffs) coveredClientItems.add(`${handoff.clientId}:${handoff.queueItemId}`.toLowerCase());
   const queueAttention = unfilteredQueueAttention.filter((item) => !coveredClientItems.has(`${item.clientId}:${item.id}`.toLowerCase()));
   const byTitleAndRelease = new Map<string, FailedDownloadRow>();
   for (const dispatch of (sources.dispatches ?? []).filter(isDispatchFailure)) {
     if (coveredByCase.has(dispatch.id) || handoffDispatchIds.has(dispatch.id)) continue;
+    // The same download a case names by its client entry is that case's problem (#1167).
+    if (dispatch.torrentHashOrItemId && caseClientItems.has(`${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase())) continue;
     // A release chosen on Search has no title: it is one problem per release name.
     const target = isChosenOnSearch(dispatch.entityType) ? "chosen-on-search" : `${dispatch.entityType}:${dispatch.entityId}`;
     const key = `${target}:${dispatch.releaseName.toLowerCase()}`;
@@ -254,6 +262,21 @@ function handoffIdIn(detailsJson: string | null | undefined): string | null {
     const details = JSON.parse(detailsJson) as Record<string, unknown>;
     const id = details.HandoffId ?? details.handoffId;
     return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The client's entry for the download a case is about (`clientId:queueItemId`, lower case), from the details the processor watcher wrote (#1167). */
+function clientItemIn(detailsJson: string | null | undefined): string | null {
+  if (!detailsJson) return null;
+  try {
+    const details = JSON.parse(detailsJson) as Record<string, unknown>;
+    const clientId = details.ClientId ?? details.clientId;
+    const itemId = details.QueueItemId ?? details.queueItemId;
+    return typeof clientId === "string" && clientId.length > 0 && typeof itemId === "string" && itemId.length > 0
+      ? `${clientId}:${itemId}`.toLowerCase()
+      : null;
   } catch {
     return null;
   }

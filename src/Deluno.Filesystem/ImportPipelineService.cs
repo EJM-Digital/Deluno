@@ -606,7 +606,10 @@ public sealed partial class ImportPipelineService(
 
         try
         {
-            await RecordImportStartedAsync(request, preview, mediaType, cancellationToken);
+            if (request.RetriedBecause is null)
+            {
+                await RecordImportStartedAsync(request, preview, mediaType, cancellationToken);
+            }
 
             if (backupPath is not null)
             {
@@ -789,11 +792,14 @@ public sealed partial class ImportPipelineService(
                     cancellationToken);
             }
 
+            // A retried import is told once, here, with what it did on the way in the line's details (#1155).
+            var retried = request.RetriedBecause;
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
-                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary
+                (retried is null ? string.Empty : retried + " ")
+                    + ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary
                     + (adoptExisting ? " The identical file was already in the library, so Deluno linked it to the title instead of copying it again." : string.Empty),
-                JsonSerializer.Serialize(provenance),
+                JsonSerializer.Serialize(retried is null ? provenance : provenance with { Steps = RetriedImportSteps(request, preview, provenance, mode, usedFallback) }),
                 null,
                 mediaType == "tv" ? "series" : "movie",
                 catalogImportResult.EntityId,
@@ -834,8 +840,10 @@ public sealed partial class ImportPipelineService(
                 provenance,
                 mediaType,
                 catalogImportResult.EntityId,
-                cancellationToken);
+                cancellationToken,
+                quiet: request.RetriedBecause is not null);
 
+            if (request.RetriedBecause is null)
             await activityFeedRepository.RecordDecisionAsync(
                 new DecisionExplanationPayload(
                     Scope: "filesystem.import",
@@ -3170,6 +3178,8 @@ public sealed partial class ImportPipelineService(
             // At the top as well (#602): dismissing a case settles the download it
             // names by this, and nested it named none, so a dismissed failure came back.
             request.DispatchId,
+            // The hand-off a processed file came back from, so the case and the hand-off's own row show once (#1167).
+            request.HandoffId,
             request.Preview.SourcePath,
             request.Preview.FileName,
             request.Preview.MediaType,
@@ -3213,7 +3223,9 @@ public sealed partial class ImportPipelineService(
         // Whether the file landed at the quality the library asked for (the poster bar on Live: gold when met, green when it can still be upgraded).
         bool? QualityMet = null,
         // The library the file landed in, so Live's shelf can tag each arrival with it (#1103).
-        string? LibraryId = null);
+        string? LibraryId = null,
+        // What a retried import did on the way, folded into the one line it writes (#1155).
+        IReadOnlyList<string>? Steps = null);
 
     /// <summary>
     /// Names the release the copy actually came from. Without it the feed says
@@ -3385,11 +3397,33 @@ public sealed partial class ImportPipelineService(
     /// library filename, and it is the step people most often need to check.
     /// A file that kept its name has nothing to report.
     /// </summary>
+    private static IReadOnlyList<string> RetriedImportSteps(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        ImportProvenanceDetails provenance,
+        string mode,
+        bool usedFallback)
+    {
+        var steps = new List<string> { $"{TitleForActivity(request.Preview)} import started." };
+        var sourceName = Path.GetFileName(provenance.SourcePath);
+        var destinationName = Path.GetFileName(provenance.DestinationPath);
+        if (!string.IsNullOrWhiteSpace(destinationName) && !string.Equals(sourceName, destinationName, StringComparison.Ordinal))
+        {
+            steps.Add($"{sourceName} was named {destinationName}.");
+        }
+
+        steps.Add(usedFallback
+            ? "Deluno imported with copy fallback because the preferred hardlink path was unavailable."
+            : $"Deluno imported using {mode} because that transfer mode was selected by preview and user settings.");
+        return steps;
+    }
+
     private async Task RecordRenameAsync(
         ImportProvenanceDetails provenance,
         string mediaType,
         string? entityId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool quiet = false)
     {
         var sourceName = Path.GetFileName(provenance.SourcePath);
         var destinationName = Path.GetFileName(provenance.DestinationPath);
@@ -3399,6 +3433,7 @@ public sealed partial class ImportPipelineService(
             return;
         }
 
+        if (!quiet)
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.named",
             string.IsNullOrWhiteSpace(provenance.MatchedRuleNames)
