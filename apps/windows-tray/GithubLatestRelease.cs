@@ -7,6 +7,12 @@ namespace Deluno.Tray;
 public sealed record ResolvedGithubAsset(string AssetUrl, string? Sha256);
 
 /// <summary>
+/// What a lookup found. <see cref="RateLimited"/> is GitHub's own limit on anonymous calls (60 an hour for
+/// everything behind one public address): not a missing release, so it is told apart and says when it resets.
+/// </summary>
+public sealed record GithubLookup(ResolvedGithubAsset? Asset, bool RateLimited = false, DateTimeOffset? LimitResetsUtc = null);
+
+/// <summary>
 /// Resolves Weir's latest Windows installer straight from its own GitHub
 /// releases, rather than a version pinned in the manifest (#640). Weir is
 /// Deluno's sibling product and auto-updates itself once installed, so
@@ -22,11 +28,72 @@ public sealed record ResolvedGithubAsset(string AssetUrl, string? Sha256);
 public static class GithubLatestRelease
 {
     public static async Task<ResolvedGithubAsset?> ResolveAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null)
+        => (await LookupAsync(spec, cancellationToken, handler)).Asset;
+
+    /// <summary>
+    /// GitHub says its anonymous limit is used up: a 403 or 429 with no calls remaining (or a Retry-After).
+    /// The reset time comes from <c>X-RateLimit-Reset</c> (seconds since 1970) or, failing that, <c>Retry-After</c>.
+    /// </summary>
+    public static bool IsRateLimited(HttpResponseMessage response, DateTimeOffset now, out DateTimeOffset? resetsUtc)
+    {
+        resetsUtc = null;
+        if (response.StatusCode is not (System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests))
+        {
+            return false;
+        }
+
+        var remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var left) ? left.FirstOrDefault() : null;
+        var retryAfter = response.Headers.RetryAfter;
+        if (!(remaining == "0" || (remaining is null && retryAfter is not null) || response.StatusCode == System.Net.HttpStatusCode.TooManyRequests))
+        {
+            return false;
+        }
+
+        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var reset) && long.TryParse(reset.FirstOrDefault(), out var seconds))
+        {
+            resetsUtc = DateTimeOffset.FromUnixTimeSeconds(seconds);
+        }
+        else if (retryAfter?.Delta is { } delta)
+        {
+            resetsUtc = now + delta;
+        }
+        else if (retryAfter?.Date is { } date)
+        {
+            resetsUtc = date;
+        }
+
+        return true;
+    }
+
+    /// <summary>Plain words for a lookup that GitHub's limit stopped, with when it lifts in this computer's own time.</summary>
+    public static string RateLimitMessage(string displayName, DateTimeOffset? resetsUtc)
+        => resetsUtc is { } at
+            ? $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. It allows more at {at.ToLocalTime():h:mm tt}. Choose Try again from the Deluno icon after that."
+            : $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. Choose Try again from the Deluno icon in about an hour.";
+
+    private sealed class RateLimitedException(DateTimeOffset? resetsUtc) : Exception
+    {
+        public DateTimeOffset? ResetsUtc { get; } = resetsUtc;
+    }
+
+    private static async Task<string> GetJsonAsync(HttpClient http, string url, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRateLimited(response, DateTimeOffset.UtcNow, out var resetsUtc))
+        {
+            throw new RateLimitedException(resetsUtc);
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+    public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null)
     {
         var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
         if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
         {
-            return null;
+            return new GithubLookup(null);
         }
 
         try
@@ -42,19 +109,19 @@ public static class GithubLatestRelease
             GithubRelease? release;
             if (spec.IncludePreReleases)
             {
-                var releasesJson = await http.GetStringAsync(
+                var releasesJson = await GetJsonAsync(http,
                     $"https://api.github.com/repos/{spec.GithubRepo}/releases?per_page=100", cancellationToken);
                 release = PickRelease(releasesJson);
             }
             else
             {
-                var latestJson = await http.GetStringAsync(
+                var latestJson = await GetJsonAsync(http,
                     $"https://api.github.com/repos/{spec.GithubRepo}/releases/latest", cancellationToken);
                 release = System.Text.Json.JsonSerializer.Deserialize<GithubRelease>(latestJson);
             }
             if (release?.Assets is null)
             {
-                return null;
+                return new GithubLookup(null);
             }
 
             // A pattern (for a vendor whose asset name embeds the version, e.g.
@@ -65,7 +132,7 @@ public static class GithubLatestRelease
                 : release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubAsset, StringComparison.OrdinalIgnoreCase));
             if (asset?.BrowserDownloadUrl is null || asset.Name is null)
             {
-                return null;
+                return new GithubLookup(null);
             }
 
             string? sha256 = null;
@@ -81,16 +148,20 @@ public static class GithubLatestRelease
                     : release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubChecksumAsset, StringComparison.OrdinalIgnoreCase));
                 if (checksumAsset?.BrowserDownloadUrl is not null)
                 {
-                    var sums = await http.GetStringAsync(checksumAsset.BrowserDownloadUrl, cancellationToken);
+                    var sums = await GetJsonAsync(http, checksumAsset.BrowserDownloadUrl, cancellationToken);
                     sha256 = ParseChecksum(sums, asset.Name);
                 }
             }
 
-            return new ResolvedGithubAsset(asset.BrowserDownloadUrl, sha256);
+            return new GithubLookup(new ResolvedGithubAsset(asset.BrowserDownloadUrl, sha256));
+        }
+        catch (RateLimitedException limited)
+        {
+            return new GithubLookup(null, RateLimited: true, LimitResetsUtc: limited.ResetsUtc);
         }
         catch
         {
-            return null;
+            return new GithubLookup(null);
         }
     }
 

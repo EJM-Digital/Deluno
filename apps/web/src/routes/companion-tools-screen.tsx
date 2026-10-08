@@ -53,6 +53,7 @@ export function CompanionToolsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => setData(loaded), [loaded]);
@@ -66,21 +67,32 @@ export function CompanionToolsPage() {
   useSignalREvent("CompanionJobChanged", RealtimeGroups.Dashboard, reload);
 
   const open = data.tools.find((tool) => tool.id === openId) ?? null;
+  // An app Deluno's installer already put on this computer cannot be set up again here; one it has not is asked of the tray.
   const selectable = (tool: CompanionTool) => data.availability.available && tool.state !== "connected" && !working && !tool.installedByInstaller;
 
   async function install() {
     setBusy(true);
     setMessage(null);
+    setNotice(null);
     try {
-      const response = await authedFetch("/api/companion-tools/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolIds: selected })
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { message?: string } | null;
-        setMessage(body?.message ?? `Setting up could not start (HTTP ${response.status}).`);
-        return;
+      const trayIds = selected.filter((id) => data.tools.find((tool) => tool.id === id)?.installedByTray);
+      const ownIds = selected.filter((id) => !trayIds.includes(id));
+      for (const [url, toolIds] of [["/api/companion-tools/install", ownIds], ["/api/companion-tools/tray-install", trayIds]] as const) {
+        if (toolIds.length === 0) continue;
+        const response = await authedFetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolIds })
+        });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { message?: string } | null;
+          setMessage(body?.message ?? `Setting up could not start (HTTP ${response.status}).`);
+          return;
+        }
+      }
+      if (trayIds.length > 0) {
+        const names = trayIds.map((id) => data.tools.find((tool) => tool.id === id)?.name ?? id).join(", ");
+        setNotice(`Asked the Deluno icon in your taskbar to install ${names}. Its installer window opens in a few seconds; if it does not, choose "Try again" from the Deluno icon.`);
       }
       setSelected([]);
       setData(await loadCompanionTools());
@@ -105,6 +117,8 @@ export function CompanionToolsPage() {
           <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-warning">{data.availability.reason}</p>
         ) : message ? (
           <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-destructive" role="alert">{message}</p>
+        ) : notice ? (
+          <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-muted-foreground" role="status">{notice}</p>
         ) : null}
         {data.tools.length === 0 ? (
           <ListEmpty title="No companion tools" description="This build offers none." />

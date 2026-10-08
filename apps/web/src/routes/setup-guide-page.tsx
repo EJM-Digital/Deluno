@@ -51,6 +51,7 @@ import {
   type BundledComponentStatus } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
+import { samePath } from "../lib/library-paths";
 import { authedFetch, useAuth } from "../lib/use-auth";
 import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -2686,9 +2687,20 @@ async function ensureIndexer(existing: IndexerItem[], form: GuideForm, tested: b
   return item;
 }
 
-/** Clients that are on, healthy and so ready to take downloads: what the guide routes to without asking again (#1132). */
+/** A Usenet client that answers and signs in but has no news server yet: connected, and waiting only for the person's provider. */
+export function waitingForUsenetProvider(client: Pick<DownloadClientItem, "protocol" | "healthStatus" | "lastHealthMessage">): boolean {
+  return (client.protocol === "sabnzbd" || client.protocol === "nzbget")
+    && client.healthStatus === "degraded"
+    && (client.lastHealthMessage ?? "").startsWith("No Usenet provider set up");
+}
+
+/**
+ * Clients that are on and connected: what the guide routes to without asking again (#1132). A healthy one is
+ * ready; a Usenet client still waiting for its provider is routed too, like the torrent clients, so the
+ * libraries already send to it the moment the provider is set (it reads "No Usenet provider set up" until then).
+ */
 export function connectedDownloadClients(clients: DownloadClientItem[]): DownloadClientItem[] {
-  return clients.filter((item) => item.isEnabled && item.healthStatus === "healthy");
+  return clients.filter((item) => item.isEnabled && (item.healthStatus === "healthy" || waitingForUsenetProvider(item)));
 }
 
 /**
@@ -2795,8 +2807,7 @@ export async function detectLibraryDownloadsFolder(libraryId: string): Promise<s
     .flatMap((item) => item.destinations ?? [])
     .filter((destination) => destination.savedBy === "client-category" && destination.saveFolder?.trim())
     .map((destination) => destination.saveFolder!.trim());
-  const key = (folder: string) => folder.replace(/[\\/]+$/, "").toLowerCase();
-  return folders.length > 0 && folders.every((folder) => key(folder) === key(folders[0])) ? folders[0] : null;
+  return folders.length > 0 && folders.every((folder) => samePath(folder, folders[0])) ? folders[0] : null;
 }
 
 async function saveLibraryDownloadsFolder(library: LibraryItem, rootPath: string, downloadsPath: string) {

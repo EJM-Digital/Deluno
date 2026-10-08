@@ -38,7 +38,8 @@ public enum ComponentInstallOutcome
     InstalledNeedsSetup
 }
 
-public sealed record ComponentInstallResult(string Kind, ComponentInstallOutcome Outcome, string Message);
+/// <param name="RetryAfterUtc">Set when it failed only because GitHub's limit on anonymous lookups was used up: when to try again.</param>
+public sealed record ComponentInstallResult(string Kind, ComponentInstallOutcome Outcome, string Message, DateTimeOffset? RetryAfterUtc = null);
 
 /// <summary>Where one component is in its install, for the progress window (#1140).</summary>
 public enum ComponentStage
@@ -292,9 +293,19 @@ public sealed class ComponentInstallService(
         }
         else if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.GithubRepo))
         {
-            var resolved = await GithubLatestRelease.ResolveAsync(spec, cancellationToken);
+            var lookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken);
+            var resolved = lookup.Asset;
             if (resolved is null)
             {
+                if (lookup.RateLimited)
+                {
+                    // GitHub's limit, not a missing release: say so, and when it lifts (golden path, rc.30.8).
+                    var retryAt = lookup.LimitResetsUtc ?? DateTimeOffset.UtcNow.AddHours(1);
+                    _log.Write($"{spec.DisplayName}: GitHub's anonymous limit is used up until {retryAt:O}");
+                    return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                        GithubLatestRelease.RateLimitMessage(spec.DisplayName, lookup.LimitResetsUtc), retryAt);
+                }
+
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
                     $"Could not find {spec.DisplayName}'s latest release on GitHub.");
             }

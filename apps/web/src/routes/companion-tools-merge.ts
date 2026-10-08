@@ -12,6 +12,8 @@ export interface CompanionTool {
   job: { status: "queued" | "running" | "done" | "skipped" | "failed" | string; step: string; message: string; updatedUtc: string } | null;
   /** An app Deluno's installer put on this computer that this page cannot set up again; it is listed so the count covers it. */
   installedByInstaller?: boolean;
+  /** An app only the tray's installer can set up: Install asks the tray icon to open its installer window for it. */
+  installedByTray?: boolean;
 }
 
 export interface CompanionToolsResponse {
@@ -21,23 +23,25 @@ export interface CompanionToolsResponse {
 }
 
 /**
- * The page's own tools (SABnzbd, qBittorrent, Weir) plus every other app the installer put on this computer
- * (Transmission, Deluge, NZBGet), so "x of y connected" counts every installed companion, not just three.
- * An app that is not installed and not connected is not added.
+ * The page's own tools (SABnzbd, qBittorrent, Weir) plus every other app the installer can put on this computer
+ * (Transmission, Deluge, NZBGet), installed or not: the page lists every app the picker can install, so an app the
+ * picker could not install (GitHub's limit stopped it) is still here with Install, and "x of y connected" counts
+ * them all.
  */
 export function withInstalledApps(response: CompanionToolsResponse, installed: readonly BundledComponentStatus[]): CompanionToolsResponse {
   const known = new Set(response.tools.map((tool) => tool.id.toLowerCase()));
   const extra: CompanionTool[] = installed
-    .filter((app) => !known.has(app.kind.toLowerCase()) && (app.installed || app.connected))
+    .filter((app) => !known.has(app.kind.toLowerCase()))
     .map((app) => ({
       id: app.kind,
       name: app.displayName,
-      description: "Installed with Deluno.",
-      state: app.connected ? "connected" : "installed",
+      description: app.installed || app.connected ? "Installed with Deluno." : "Deluno's installer can put this on this computer.",
+      state: app.connected ? "connected" : app.installed ? "installed" : "not-installed",
       connectionName: app.connected ? app.displayName : null,
       url: null,
       job: null,
-      installedByInstaller: true
+      installedByInstaller: app.installed || app.connected,
+      installedByTray: !(app.installed || app.connected)
     }));
   return extra.length === 0 ? response : { ...response, tools: [...response.tools, ...extra] };
 }

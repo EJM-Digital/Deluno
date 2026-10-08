@@ -51,6 +51,28 @@ public sealed class ClientIncompleteFoldersAreReadTests
         Assert.Equal(result.SavePath, result.IncompletePath);
     }
 
+    [Fact]
+    public async Task QBittorrent_reports_the_folder_Deluno_sends_torrents_to_not_the_categorys_when_the_client_has_one()
+    {
+        var handler = new QbitHandler("""{"temp_path_enabled":false}""");
+        var client = Client("qbittorrent") with { Location = @"E:\Elsewhere\Movies" };
+
+        var result = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(client, "Movies", CancellationToken.None);
+
+        Assert.Equal(@"E:\Elsewhere\Movies", result.SavePath);
+        Assert.Contains("whatever its Movies category says", result.Message);
+    }
+
+    [Fact]
+    public async Task QBittorrent_with_no_folder_of_its_own_reports_the_categorys_folder_because_grabs_use_automatic_management()
+    {
+        var handler = new QbitHandler("""{"temp_path_enabled":false}""");
+
+        var result = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(Client("qbittorrent"), "Movies", CancellationToken.None);
+
+        Assert.Equal(@"C:\Downloads\Completed\Movies", result.SavePath);
+    }
+
     [Theory]
     [InlineData(true, @"D:\Incomplete\qBittorrent")]
     [InlineData(false, @"C:\Downloads\Completed\Movies")]

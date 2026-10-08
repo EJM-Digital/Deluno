@@ -48,7 +48,8 @@ public sealed class ComponentPickerDialog : Form
 
     public IReadOnlyList<ComponentInstallResult> Results { get; private set; } = Array.Empty<ComponentInstallResult>();
 
-    public ComponentPickerDialog(ComponentInstallService? installer = null)
+    /// <param name="preTick">Apps to tick when it opens: a retry after GitHub's limit, or an app asked for on the Companion Tools page. Empty on first run, where nothing is ticked.</param>
+    public ComponentPickerDialog(ComponentInstallService? installer = null, IReadOnlyCollection<string>? preTick = null)
     {
         _installer = installer ?? new ComponentInstallService();
 
@@ -62,7 +63,9 @@ public sealed class ComponentPickerDialog : Form
 
         var lblTitle = new Label
         {
-            Text = "Deluno can install these for you. Nothing is ticked by default.",
+            Text = preTick is { Count: > 0 }
+                ? "These are ticked because you asked for them, or because an earlier try had to wait. Press Install selected to try again."
+                : "Deluno can install these for you. Nothing is ticked by default.",
             AutoSize = true,
             Location = new Point(16, 16),
             Size = new Size(430, 20)
@@ -91,6 +94,10 @@ public sealed class ComponentPickerDialog : Form
                 // ItemCheck below refuses a tick on a disabled row; visually
                 // it reads as unavailable rather than merely unticked.
                 _list.SetItemCheckState(i, CheckState.Unchecked);
+            }
+            else if (preTick is not null && preTick.Contains(_entries[i].Spec.Kind, StringComparer.OrdinalIgnoreCase))
+            {
+                _list.SetItemCheckState(i, CheckState.Checked);
             }
         }
         _list.ItemCheck += (_, e) =>
@@ -170,6 +177,7 @@ public sealed class ComponentPickerDialog : Form
             _status, _usenetPanel, _btnInstall, _btnSkip, _progressList, _summary, _btnOpen, _btnClose]);
         CancelButton = _btnSkip;
         _title = lblTitle;
+        UpdateUsenetPanel();
     }
 
     private Label? _title;
@@ -396,6 +404,25 @@ public sealed class ComponentPickerDialog : Form
         lines.Add(string.Empty);
         lines.Add("Open Deluno to connect what was installed. If the page does not load yet, give Deluno a moment and refresh.");
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// The picker again, with these apps ticked (a retry after GitHub's limit, or an ask from the Companion Tools page).
+    /// What was installed, and what has to wait again, is written back to the pending list.
+    /// </summary>
+    public static IReadOnlyList<ComponentInstallResult> ShowFor(IReadOnlyCollection<string> kinds)
+    {
+        try
+        {
+            using var dialog = new ComponentPickerDialog(preTick: kinds);
+            dialog.ShowDialog();
+            PendingInstallRecorder.Record(dialog.Results);
+            return dialog.Results;
+        }
+        catch
+        {
+            return Array.Empty<ComponentInstallResult>();
+        }
     }
 
     /// <summary>Shown once, from first run. Never blocks first run itself on a failure here.</summary>

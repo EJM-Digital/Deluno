@@ -90,6 +90,10 @@ public sealed partial class ComponentSetupTests
         Assert.Contains(created, body => body.Contains("category=deluno-tv") && body.Contains("savePath=" + layout.CompletedFolder("TV")));
         var preferences = Uri.UnescapeDataString(client.Requests.Single(r => r.Path.EndsWith("/setPreferences", StringComparison.Ordinal)).Body.Replace('+', ' '));
         Assert.Contains("\"temp_path_enabled\":true", preferences);
+        // The categories' folders only apply to torrents qBittorrent manages automatically.
+        Assert.Contains("\"auto_tmm_enabled\":true", preferences);
+        Assert.Contains("\"torrent_changed_tmm_enabled\":true", preferences);
+        Assert.Contains("\"category_changed_tmm_enabled\":true", preferences);
         Assert.Contains(layout.IncompleteFolder("qBittorrent").Replace("\\", "\\\\"), preferences);
         Assert.True(client.Requests.All(r => r.Request.Headers.Referrer is not null), "qBittorrent refuses a request with no Referer.");
         Assert.True(Directory.Exists(layout.CompletedFolder("Movies")));
@@ -342,12 +346,19 @@ public sealed partial class ComponentSetupTests
     public async Task Nzbget_keeps_its_movies_category_renames_its_series_category_to_tv_and_saves_to_the_layout()
     {
         var layout = TestLayout();
+        string? loaded = null;
         var client = new ScriptedClient(seen =>
         {
             var method = JsonDocument.Parse(seen.Body).RootElement.GetProperty("method").GetString();
+            if (method == "saveconfig")
+            {
+                // What NZBGet has loaded in memory is what was just saved, once it has reloaded.
+                loaded = "{\"result\":" + JsonDocument.Parse(seen.Body).RootElement.GetProperty("params")[0].GetRawText() + "}";
+            }
+
             return (HttpStatusCode.OK, method switch
             {
-                "config" => NzbgetConfig,
+                "config" => loaded ?? NzbgetConfig,
                 "saveconfig" => """{"result":true}""",
                 "version" => """{"result":"26.3"}""",
                 "status" => """{"result":{"DownloadPaused":false,"PostPaused":false,"ScanPaused":false}}""",
@@ -358,7 +369,7 @@ public sealed partial class ComponentSetupTests
         var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), layout, null, CancellationToken.None);
 
         Assert.Null(problem);
-        Assert.Equal(new[] { "config", "saveconfig", "reload", "version", "resumedownload", "resumepost", "resumescan", "status" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
+        Assert.Equal(new[] { "config", "saveconfig", "reload", "config", "resumedownload", "resumepost", "resumescan", "status", "resumedownload", "resumepost", "resumescan", "status" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
         var saved = JsonDocument.Parse(client.Requests[1].Body).RootElement.GetProperty("params")[0].EnumerateArray()
             .ToDictionary(item => item.GetProperty("Name").GetString()!, item => item.GetProperty("Value").GetString()!);
         Assert.Equal(layout.CompletedRoot, saved["DestDir"]);
@@ -397,6 +408,54 @@ public sealed partial class ComponentSetupTests
 
         Assert.Null(problem);
         Assert.False(paused);
+    }
+
+    // Golden path, rc.30.8: NZBGet answers "reload" and keeps serving from the old instance for a moment, then restarts,
+    // and a restarted NZBGet starts paused again. Resuming against the old instance was undone by that restart.
+    [Fact]
+    public async Task An_nzbget_that_restarts_after_the_reload_answer_is_resumed_after_the_restart_and_stays_resumed()
+    {
+        var paused = true;
+        string? saved = null;
+        var reloadAnswered = false;
+        var configCallsSinceReload = 0;
+        var client = new ScriptedClient(seen =>
+        {
+            var method = JsonDocument.Parse(seen.Body).RootElement.GetProperty("method").GetString();
+            switch (method)
+            {
+                case "saveconfig":
+                    saved = "{\"result\":" + JsonDocument.Parse(seen.Body).RootElement.GetProperty("params")[0].GetRawText() + "}";
+                    break;
+                case "reload":
+                    reloadAnswered = true;
+                    break;
+                case "resumedownload" or "resumepost" or "resumescan":
+                    paused = false;
+                    break;
+                case "config" when reloadAnswered && ++configCallsSinceReload == 3:
+                    // The restart lands: the new instance holds the new settings and starts paused.
+                    paused = true;
+                    break;
+            }
+
+            var flag = paused ? "true" : "false";
+            return (HttpStatusCode.OK, method switch
+            {
+                // Until the restart lands the old instance still reports the old settings.
+                "config" => reloadAnswered && configCallsSinceReload >= 3 ? saved! : NzbgetConfig,
+                "version" => """{"result":"26.3"}""",
+                "status" => "{\"result\":{\"DownloadPaused\":" + flag + ",\"PostPaused\":" + flag + ",\"ScanPaused\":false,\"ServerPaused\":" + flag + "}}",
+                _ => """{"result":true}"""
+            });
+        });
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), TestLayout(), null, CancellationToken.None);
+
+        Assert.Null(problem);
+        Assert.False(paused);
+        var methods = client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToList();
+        Assert.True(methods.LastIndexOf("resumedownload") > methods.LastIndexOf("reload") + 2, "it must resume after the new instance is up, not against the old one");
     }
 
     [Fact]

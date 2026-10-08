@@ -8,6 +8,9 @@ public static class CompanionToolIds
     public const string Weir = "weir";
 
     public static readonly IReadOnlyList<string> All = [Sabnzbd, Qbittorrent, Weir];
+
+    /// <summary>The apps only the tray's installer sets up: the page asks the tray for them instead of installing them itself.</summary>
+    public static readonly IReadOnlyList<string> TrayInstalled = ["transmission", "deluge", "nzbget"];
 }
 
 /// <summary>Whether this Deluno can install anything at all, and if not, why.</summary>

@@ -146,6 +146,32 @@ public sealed class QbittorrentAdapterGapsTests
     }
 
     [Fact]
+    public async Task Grab_without_a_save_path_asks_for_automatic_management_so_the_category_folder_is_used()
+    {
+        var handler = new AddThenNewHashHandler(newHash: "abc123");
+
+        var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("autoTMM=true", handler.AddBody, StringComparison.Ordinal);
+        Assert.NotNull(handler.AutoManagementBody);
+        Assert.Contains("hashes=abc123", handler.AutoManagementBody, StringComparison.Ordinal);
+        Assert.Contains("enable=true", handler.AutoManagementBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Grab_with_a_save_path_keeps_its_own_folder_and_does_not_turn_automatic_management_on()
+    {
+        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var client = QbitClient() with { Location = @"D:\Downloads\Movies" };
+
+        await new QbittorrentDownloadClient(() => handler).GrabAsync(client, GrabRequest(), CancellationToken.None);
+
+        Assert.DoesNotContain("autoTMM", handler.AddBody, StringComparison.Ordinal);
+        Assert.Null(handler.AutoManagementBody);
+    }
+
+    [Fact]
     public async Task Grab_never_calls_setLocation_when_no_save_path_is_configured()
     {
         var handler = new AddThenNewHashHandler(newHash: "abc123");
@@ -251,6 +277,8 @@ public sealed class QbittorrentAdapterGapsTests
 
         public string? CategoryBody { get; private set; }
 
+        public string? AutoManagementBody { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
@@ -276,6 +304,12 @@ public sealed class QbittorrentAdapterGapsTests
             if (path.Contains("setCategory", StringComparison.Ordinal))
             {
                 CategoryBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+                return JsonResponse("{}");
+            }
+
+            if (path.Contains("setAutoManagement", StringComparison.Ordinal))
+            {
+                AutoManagementBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
                 return JsonResponse("{}");
             }
 
