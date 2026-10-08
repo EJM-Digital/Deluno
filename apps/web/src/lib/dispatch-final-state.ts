@@ -21,14 +21,27 @@ export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStandi
   const grab = lower(dispatch.grabStatus);
   const importStatus = lower(dispatch.importStatus);
 
-  if (importStatus === "imported" || importStatus === "completed" || dispatch.importCompletedUtc) {
+  const reason = lower(`${dispatch.importFailureCode ?? ""} ${dispatch.importFailureMessage ?? ""}`);
+  const refusedByImport = reason.includes("refus") || reason.includes("rejected");
+  const removedByImport = reason.includes("removed") || reason.includes("vanished");
+  // A failed import wins over a completion time left on the row: only a real, completed import reads Imported (#1179).
+  if (importStatus === "failed" || importStatus === "importfailed") {
+    if (refusedByImport) {
+      return { status: "done", pill: { tone: "warn", label: "Refused" }, detail: dispatch.importFailureMessage ?? "The release was refused" };
+    }
+    if (removedByImport) {
+      return { status: "done", pill: { tone: "idle", label: "Removed" }, detail: "Taken out of the download client" };
+    }
+    return { status: "failed", pill: { tone: "bad", label: "Failed" }, detail: dispatch.importFailureMessage ?? undefined };
+  }
+  if (importStatus === "imported" || importStatus === "completed" || (dispatch.importCompletedUtc && status !== "failed" && status !== "importfailed" && grab !== "failed")) {
     return {
       status: "done",
       pill: { tone: "ok", label: "Imported" },
       detail: dispatch.importedFilePath ? `Imported as ${dispatch.importedFilePath.split(/[\\/]/).pop()}` : "Imported into the library"
     };
   }
-  if (status === "failed" || status === "importfailed" || importStatus === "failed" || grab === "failed") {
+  if (status === "failed" || status === "importfailed" || grab === "failed") {
     return { status: "failed", pill: { tone: "bad", label: "Failed" } };
   }
   if (grab === "refused" || grab === "blocked" || grab === "rejected" || status === "refused" || status === "blocked") {
