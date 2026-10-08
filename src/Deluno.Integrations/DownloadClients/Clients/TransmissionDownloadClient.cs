@@ -131,7 +131,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             DownloadClientHelpers.InferMediaType(client, item.Labels?.FirstOrDefault()), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Transmission item"),
             item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, Status(item),
             Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
-            item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
+            item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", IsFinishedWithTrackerError(item) || string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
             DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
             // Both come back on the same torrent-get call, so a sharing rule
             // costs no extra request. secondsSeeding is 0 while still downloading.
@@ -240,9 +240,19 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// Only promotes a torrent still reading as Downloading — an error, a
     /// completion or a pause already outranks "stalled".
     /// </summary>
+    /// <summary>
+    /// #1183: a torrent at 100% whose only complaint is its tracker (error 1 =
+    /// warning, 2 = tracker error) is finished. The tracker matters only while
+    /// it still downloads, so this never makes it stalled or failed. A local
+    /// error (3) still counts.
+    /// </summary>
+    private static bool IsFinishedWithTrackerError(TransmissionTorrent item)
+        => item.Error is 1 or 2 && (item.PercentDone ?? 0) >= 1;
+
     private string Status(TransmissionTorrent item)
     {
-        var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, item.Error, item.ErrorString);
+        var finished = IsFinishedWithTrackerError(item);
+        var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, finished ? null : item.Error, finished ? null : item.ErrorString);
         return item.IsStalled == true && status == DownloadQueueStatuses.Downloading
             ? DownloadQueueStatuses.Stalled
             : status;
