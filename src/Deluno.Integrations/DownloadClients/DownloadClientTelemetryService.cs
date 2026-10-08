@@ -1152,7 +1152,7 @@ public sealed class DownloadClientTelemetryService(
                     result.RetryAfterUtc));
         }
 
-        return result.Value ??
+        var reading = result.Value ??
             (result.FailureMessage is null
                 ? null
                 : CreateSnapshot(
@@ -1162,6 +1162,42 @@ public sealed class DownloadClientTelemetryService(
                     "degraded",
                     result.FailureMessage,
                     failure: result.Failure));
+        return HoldLastGoodReading(client.Id, reading);
+    }
+
+    /// <summary>How many polls in a row must fail before the client is shown as not answering.</summary>
+    internal const int PollFailuresBeforeClientError = 2;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DownloadClientTelemetrySnapshot Snapshot, int Failures)> LastGoodReadings
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A single timed-out or refused poll is not a client error (rig, 8 Oct:
+    /// "Talking to Deluge ... timed out" while a download ran at 8 MB/s). The
+    /// last good reading is kept and shown until the failure repeats on
+    /// consecutive polls; only then does the client read as not answering. A
+    /// client that has never answered has no reading to hold, so it fails at
+    /// once as before.
+    /// </summary>
+    internal static DownloadClientTelemetrySnapshot? HoldLastGoodReading(string clientId, DownloadClientTelemetrySnapshot? reading)
+    {
+        var failed = reading is null
+            ? false
+            : reading.LastFailure is not null && string.Equals(reading.HealthStatus, "degraded", StringComparison.OrdinalIgnoreCase);
+        if (reading is not null && !failed)
+        {
+            LastGoodReadings[clientId] = (reading, 0);
+            return reading;
+        }
+
+        if (reading is null || !LastGoodReadings.TryGetValue(clientId, out var held))
+        {
+            return reading;
+        }
+
+        var failures = held.Failures + 1;
+        LastGoodReadings[clientId] = (held.Snapshot, failures);
+        return failures < PollFailuresBeforeClientError ? held.Snapshot : reading;
     }
 
     private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(
@@ -1785,19 +1821,26 @@ public sealed class DownloadClientTelemetryService(
                     ? ActionsFor(preset)
                     : (settings.CleanupBlockReleaseAfterThreshold, settings.CleanupQueueReplacementAfterThreshold, settings.CleanupRemoveClientEntryAfterThreshold, settings.CleanupPurgePayloadAfterThreshold);
 
-                // #879: a dangerous-or-junk file only removes the client
-                // entry and purges its payload once the user's own cleanup
-                // switches (#936) are on - unlike every other rule-engine
-                // kind, whose preset alone decides. Today the migrated
-                // "legacy-dangerous-file" rule's own preset already tracks
-                // those same switches (LegacyActionPreset), so this rarely
-                // changes anything in practice; it stays a hard requirement
-                // so a future hand-authored rule of this kind can never
-                // remove or delete on its own strike limit alone.
-                if (string.Equals(struck.Kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase))
+                // Cleanup rules (26 Sep): a refused or remediated download is
+                // removed AND its files deleted. Taking the client entry away
+                // and leaving the payload behind left a 908 MB fake release on
+                // disk (#1167), so removal always takes the files with it: the
+                // client deletes its own data, and the residual purge below
+                // sweeps what is left inside Deluno's own download root.
+                if (wantRemove)
                 {
-                    wantRemove = wantRemove && settings.CleanupRemoveClientEntryAfterThreshold;
-                    wantPurge = wantPurge && settings.CleanupPurgePayloadAfterThreshold;
+                    wantPurge = true;
+                }
+
+                // A release carrying an executable or script is never left on
+                // disk, whatever the switches say: once a rule that acts on it
+                // fires, it is refused, removed and deleted.
+                if (string.Equals(struck.Kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase) &&
+                    (wantBlock || wantReplacement || wantRemove || wantPurge))
+                {
+                    wantBlock = true;
+                    wantRemove = true;
+                    wantPurge = true;
                 }
 
                 var canRefuse = wantBlock && blockedReleases is not null;
@@ -1854,7 +1897,7 @@ public sealed class DownloadClientTelemetryService(
                         if (dryRun)
                         {
                             removed++;
-                            applied.Add(wantPurge ? "would remove the client entry" : "would remove the client entry and leave its files on disk");
+                            applied.Add("would remove the client entry and delete its files");
                         }
                         else
                         {
@@ -1866,7 +1909,7 @@ public sealed class DownloadClientTelemetryService(
                             if (result.Succeeded)
                             {
                                 removed++;
-                                applied.Add(wantPurge ? "client entry removed" : "client entry removed, files left on disk");
+                                applied.Add("client entry removed with its files");
                             }
                             else
                             {
@@ -2167,7 +2210,7 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientItem client,
         string queueItemId,
         CancellationToken cancellationToken)
-        => ExecuteActionCoreAsync(client, "delete", queueItemId, cancellationToken);
+        => ExecuteActionCoreAsync(client, DownloadClientActions.DeleteWithData, queueItemId, cancellationToken);
 
     private static bool IsDelunoCategory(DownloadClientItem client, string category, string mediaType, string? routeCategory = null)
     {
