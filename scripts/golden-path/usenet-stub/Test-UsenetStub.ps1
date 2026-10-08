@@ -91,11 +91,23 @@ try {
     [IO.File]::WriteAllBytes($source, $rnd)
     $sourceHash = (Get-FileHash $source -Algorithm SHA256).Hash
     $rel = Join-Path $work 'release'
-    $made = & (Join-Path $here 'New-UsenetRelease.ps1') -OutDirectory $rel -SourceFile $source -MinimumMegabytes 1 -PartSizeKilobytes 300 -Name 'Big.Buck.Bunny.2008.1080p.BluRay.x264-GOLDEN'
+    $made = & (Join-Path $here 'New-UsenetRelease.ps1') -OutDirectory $rel -SourceFile $source -MinimumMegabytes 1 -PartSizeKilobytes 300 -Name 'Big.Buck.Bunny.2008.720p.WEB-DL.x264-GOLDEN'
     $meta = Get-Content -Raw (Join-Path $rel 'release.json') | ConvertFrom-Json
-    Check 'release.json names the release' ($meta.name -eq 'Big.Buck.Bunny.2008.1080p.BluRay.x264-GOLDEN')
+    Check 'release.json names the release' ($meta.name -eq 'Big.Buck.Bunny.2008.720p.WEB-DL.x264-GOLDEN')
     Check 'release has several parts' ($meta.parts -ge 8) "parts=$($meta.parts)"
     Check 'one article file per part' ((Get-ChildItem (Join-Path $rel 'articles') -Filter *.art).Count -eq $meta.parts)
+
+    # --- the default film is above Deluno's own size minimum for the quality its name says (golden path, 9 Oct: 74 MB
+    # against 2.2 GB for Bluray 1080p needed "Send anyway"). WEB 720p's minimum is 0.8 GB in QualityTypicalSizes.cs.
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $here 'New-UsenetRelease.ps1'), [ref]$tokens, [ref]$parseErrors)
+    $defaults = @{}
+    foreach ($p in $ast.ParamBlock.Parameters) { if ($p.DefaultValue) { $defaults[$p.Name.VariablePath.UserPath] = $p.DefaultValue.SafeGetValue() } }
+    $filmMinimumMb = 0.8 * 1024
+    Check 'the default release name says WEB 720p, the quality its size matches' (($defaults['Name'] -match '720p') -and ($defaults['Name'] -match 'WEB'))
+    Check "the default film is at least 20% above Deluno's 0.8 GB WEB 720p minimum" ([int]$defaults['MinimumMegabytes'] -ge ($filmMinimumMb * 1.2)) "MinimumMegabytes=$($defaults['MinimumMegabytes'])"
+    Check 'the default film stays under about 1.5 GB' ([int]$defaults['MinimumMegabytes'] -le 1536) "MinimumMegabytes=$($defaults['MinimumMegabytes'])"
+    Check 'the default film is longer than a sample (two minutes)' ([int]$defaults['DurationSeconds'] -gt 120)
 
     # --- start both stubs as real processes
     $nntpPort = Get-FreePort

@@ -112,6 +112,12 @@ const LOW_FLOOR_PX = 110;
 /** The bottom row is given room up to this before the spare goes to taller journey cards. */
 const LOW_ROOMY_PX = 260;
 const GRID_GAPS_PX = 24;
+/**
+ * The least height the shared grid can be drawn in: the band and the journey each at their smallest and the bottom row at its own minimum, and the
+ * gaps between them. A tab shorter than this (a busy window with the setup banners above the board) scrolls inside itself
+ * rather than letting the cards run over one another or past the window (golden path, 9 Oct).
+ */
+export const GRID_MIN_PX = BAND_MIN_PX + JOURNEY_MIN_PX + LOW_MIN_PX + GRID_GAPS_PX;
 
 export interface GridNeeds {
   /**

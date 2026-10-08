@@ -21,7 +21,7 @@
  */
 import type { JSX } from "react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { GRID_AREAS, GRID_COLUMNS, gridRows, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./live/layout";
+import { GRID_AREAS, GRID_COLUMNS, GRID_MIN_PX, gridRows, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./live/layout";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
@@ -163,7 +163,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }
 
   return (
-    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-(--grid-gap)", side && "h-full min-h-0")}>
+    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-(--grid-gap)", side && "h-full min-h-0 overflow-y-auto")}>
       {showSetup ? (
         <div className="flex shrink-0 flex-col gap-(--grid-gap)">
           <OnboardingBanner isSetupSuppressed={setup.progress.isSkipped || setup.progress.isCompleted} onDismiss={dismissOnboarding} />
@@ -184,7 +184,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         ref={gridRef}
         data-live-grid={side ? "shared" : "stacked"}
         className={cn("gap-(--grid-gap)", side ? "grid min-h-0 flex-1" : "flex flex-col")}
-        style={side ? ({ gridTemplateColumns: GRID_COLUMNS, gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS } satisfies CSSProperties) : undefined}
+        style={side ? ({ gridTemplateColumns: GRID_COLUMNS, gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS, minHeight: GRID_MIN_PX } satisfies CSSProperties) : undefined}
       >
         <div className={cn("min-h-0 min-w-0", side && "[&>.lb-now]:h-full [&>.lb-now]:grid-rows-[minmax(0,1fr)] [&>.lb-now>*]:h-full [&>.lb-now>*]:min-h-0 [&>.lb-now>*]:overflow-hidden")} style={side ? { gridArea: "now" } : undefined}>
           <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} across={layout.band === "across"} />

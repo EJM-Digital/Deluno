@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { trackDataRequests } from "../helpers/data-settled";
+import { serveLiveBusy } from "../helpers/live-busy";
 import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
 
 // #1168. Every sidebar screen, every Settings page, a film page and a show page, at a wide desktop, a laptop and a
@@ -417,6 +418,57 @@ test.describe("every screen fits three widths", () => {
       }
 
       expect(offenders, offenders.join("\n")).toEqual([]);
+    });
+  }
+
+  // Golden path, 9 Oct: at 1920x1080 on a set-up-in-progress install with a busy pipeline, the Pipeline card was drawn over the
+  // Speed and Working-on-now cards and cut the Speed chart's axis. The walk above reads an empty board, where the cards have
+  // room. This one fills the pipeline and keeps the setup banners above the board (the short window that broke it) and checks
+  // the cards themselves, not only the grid cells they sit in: no two cards overlap, and a card never runs outside its cell.
+  for (const size of SIZES) {
+    test(`the Live board keeps its cards apart with a busy pipeline and the setup banners at ${size.width}x${size.height}`, async ({ page }) => {
+      test.setTimeout(60_000);
+      await page.setViewportSize(size);
+      await authenticateAndNavigate(page, "/");
+      await serveLiveBusy(page);
+      await page.goto("/");
+      await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Guided setup" })).toBeVisible();
+      // Let the lists arrive and the grid lay itself out again.
+      let previous = "";
+      await expect.poll(async () => {
+        const now = JSON.stringify(await page.evaluate(() => {
+          const found: string[] = [];
+          const cells = Array.from(document.querySelectorAll<HTMLElement>("[data-live-grid] > *"));
+          const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-live-grid] section")).filter((card) => card.getBoundingClientRect().height > 1);
+          const name = (el: Element) => (el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 24);
+          for (let first = 0; first < cards.length; first += 1) {
+            for (let second = first + 1; second < cards.length; second += 1) {
+              if (cards[first].contains(cards[second]) || cards[second].contains(cards[first])) continue;
+              const a = cards[first].getBoundingClientRect();
+              const b = cards[second].getBoundingClientRect();
+              const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+              const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+              if (x > 2 && y > 2) found.push(`${name(cards[first])} overlaps ${name(cards[second])} by ${Math.round(x)}x${Math.round(y)}px`);
+            }
+          }
+          for (const card of cards) {
+            const cell = cells.find((item) => item.contains(card));
+            if (!cell) continue;
+            const inside = card.getBoundingClientRect();
+            const around = cell.getBoundingClientRect();
+            if (inside.bottom > around.bottom + 1 || inside.right > around.right + 1) found.push(`${name(card)} runs ${Math.round(Math.max(inside.bottom - around.bottom, inside.right - around.right))}px outside its cell`);
+          }
+          return found;
+        }));
+        const same = now === previous;
+        previous = now;
+        return same;
+      }, { timeout: 8_000 }).toBe(true);
+      expect(JSON.parse(previous) as string[]).toEqual([]);
+      // The page itself never scrolls sideways; a short window scrolls inside the tab.
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
     });
   }
 

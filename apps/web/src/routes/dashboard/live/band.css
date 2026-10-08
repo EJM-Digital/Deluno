@@ -31,6 +31,11 @@
   border-radius: 14px;
 }
 .lb-stacked .lb-tile { height: auto; min-height: 190px; }
+/* Beside the right column the band is one row of the shared grid: its cards take that row's height and never more. They were
+   190px whatever the row (the utility classes that said so are in a layer, which this unlayered rule beat), so on a short
+   window the Pipeline card was drawn over them and cut the Speed chart's axis (golden path, 9 Oct). */
+[data-live-grid="shared"] .lb-now { height: 100%; grid-template-rows: minmax(0, 1fr); }
+[data-live-grid="shared"] .lb-now > .lb-tile { height: 100%; }
 .lb-tile .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
 .lb-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--lb-muted); font-weight: 600; }
 a.lb-label:hover { color: hsl(var(--foreground)); }
