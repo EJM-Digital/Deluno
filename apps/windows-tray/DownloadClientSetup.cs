@@ -67,7 +67,7 @@ public interface IDownloadClientConfigurator
 /// </summary>
 public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handlerFactory = null, TimeSpan? retryDelay = null) : IDownloadClientConfigurator
 {
-    private readonly Func<HttpMessageHandler> _handler = handlerFactory ?? (() => new HttpClientHandler { UseCookies = true, CookieContainer = new CookieContainer() });
+    private readonly Func<HttpMessageHandler> _handler = handlerFactory ?? (() => new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, UseCookies = true, CookieContainer = new CookieContainer() });
     private readonly TimeSpan _retryDelay = retryDelay ?? TimeSpan.FromMilliseconds(500);
 
     public async Task<string?> ConfigureAsync(BundledComponentSpec spec, DownloadLayout layout, BundledComponentCredentials? credentials, CancellationToken cancellationToken)

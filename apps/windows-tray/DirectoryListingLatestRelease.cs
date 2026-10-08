@@ -29,7 +29,7 @@ public static class DirectoryListingLatestRelease
 
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var http = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(30) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
 
             var html = await http.GetStringAsync(spec.DirectoryListingUrl, cancellationToken);

@@ -1161,7 +1161,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
         var client = proxy is not null && proxyHttpClientFactory is not null
             ? proxyHttpClientFactory.CreateClient(proxy)
-            : new HttpClient();
+            : new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler());
         client.Timeout = TimeSpan.FromSeconds(8);
         return client;
     }
@@ -1442,6 +1442,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var webProxy = IndexerProxyWebProxy.Build(proxy);
             using var handler = new SocketsHttpHandler
             {
+                ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync,
                 AllowAutoRedirect = false,
                 Proxy = webProxy,
                 UseProxy = webProxy is not null,
@@ -1761,7 +1762,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestQbittorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+        using var handler = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer() };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         if (!string.IsNullOrWhiteSpace(item.Username) || !string.IsNullOrWhiteSpace(item.Secret))
         {
@@ -1786,7 +1787,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return ("degraded", "SABnzbd API key is missing.", "auth");
         }
 
-        using var client = new HttpClient { Timeout = timeout };
+        using var client = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = timeout };
 
         // mode=queue, not mode=version. SABnzbd answers mode=version to anybody
         // — no key, wrong key, any key — so testing it asked a question that
@@ -1803,7 +1804,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = timeout };
+        using var client = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = timeout };
         AddBasicAuth(client, item);
         var endpoint = new Uri(uri, "transmission/rpc");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -1831,7 +1832,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = timeout };
+        using var client = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = timeout };
         var login = new DelugeRequest("auth.login", [item.Secret ?? string.Empty]);
         using var response = await client.PostSizedJsonAsync(new Uri(uri, "json"), login, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1847,7 +1848,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = timeout };
+        using var client = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = timeout };
         AddBasicAuth(client, item);
         using var response = await client.PostSizedJsonAsync(
             new Uri(uri, "jsonrpc"),
@@ -1860,7 +1861,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var handler = new HttpClientHandler { CookieContainer = new CookieContainer(), Credentials = BuildCredential(item) };
+        using var handler = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer(), Credentials = BuildCredential(item) };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         var html = await client.GetStringAsync("gui/token.html", cancellationToken);
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
@@ -1876,7 +1877,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     /// </summary>
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestRtorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var handler = new HttpClientHandler();
+        using var handler = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         AddBasicAuth(client, item);
         const string requestXml = "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>";

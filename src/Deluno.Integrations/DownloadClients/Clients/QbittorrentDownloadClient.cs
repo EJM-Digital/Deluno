@@ -22,7 +22,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerFactory = null) : DownloadClientBase, IQbittorrentBlocklistSyncClient
 {
     private readonly Func<HttpMessageHandler> handlerFactory =
-        handlerFactory ?? (() => new HttpClientHandler { CookieContainer = new CookieContainer() });
+        handlerFactory ?? (() => new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer() });
 
     public override string Protocol => "qbittorrent";
 

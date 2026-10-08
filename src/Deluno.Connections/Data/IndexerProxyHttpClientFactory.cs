@@ -53,6 +53,7 @@ public sealed class IndexerProxyHttpClientFactory : IIndexerProxyHttpClientFacto
 
     private static SocketsHttpHandler Build(IWebProxy? proxy) => new()
     {
+        ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync,
         AutomaticDecompression = DecompressionMethods.All,
         AllowAutoRedirect = true,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),

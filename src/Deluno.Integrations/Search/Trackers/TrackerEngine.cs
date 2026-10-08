@@ -121,6 +121,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
     /// </summary>
     private static HttpMessageHandler DefaultHandler(CookieContainer cookies, IWebProxy? proxy) => new SocketsHttpHandler
     {
+        ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync,
         CookieContainer = cookies,
         UseCookies = true,
         // Redirects are followed by SendOnceAsync itself so it can refuse to carry

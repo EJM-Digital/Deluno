@@ -954,7 +954,7 @@ public sealed class HttpComponentDownloader : IComponentDownloader
     {
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            using var http = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromMinutes(10) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -1232,7 +1232,7 @@ public sealed class HttpReadinessChecker : IReadinessChecker
     {
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var http = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(5) };
             using var response = await http.GetAsync(url, cancellationToken);
 
             if (string.IsNullOrWhiteSpace(field))

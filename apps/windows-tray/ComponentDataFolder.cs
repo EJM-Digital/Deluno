@@ -85,7 +85,7 @@ public sealed record TransmissionReaddNotice(DateTimeOffset CreatedUtc, bool Dae
 /// <summary>Transmission's RPC on this computer: the few calls recovery needs.</summary>
 public sealed class TransmissionRpc(int port, BundledComponentCredentials? login, Func<HttpMessageHandler>? handlerFactory = null)
 {
-    private readonly Func<HttpMessageHandler> _handler = handlerFactory ?? (() => new HttpClientHandler());
+    private readonly Func<HttpMessageHandler> _handler = handlerFactory ?? (() => new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync });
 
     public async Task<JsonElement?> CallAsync(string method, object arguments, CancellationToken cancellationToken)
     {

@@ -20,8 +20,9 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
     private static Func<DownloadClientItem, HttpMessageHandler> BuildHandler(Func<HttpMessageHandler>? factory)
         => factory is null
-            ? client => new HttpClientHandler
+            ? client => new SocketsHttpHandler
             {
+                ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync,
                 CookieContainer = new CookieContainer(),
                 Credentials = DownloadClientHelpers.BuildCredential(client)
             }

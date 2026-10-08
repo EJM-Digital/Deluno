@@ -461,7 +461,7 @@ public sealed class WeirCompanion(
         }
 
         var installFolder = Path.Combine(system.LocalAppData, "Weir");
-        using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        using var probe = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(3) };
         foreach (var port in system.ListeningPortsOf(installFolder))
         {
             try
@@ -510,7 +510,7 @@ public sealed class WeirCompanion(
             return new WeirConnectOutcome(false, $"{Name} is installed but did not start answering. Start it from the Start menu and try again.", false);
         }
 
-        using var cookies = new HttpClientHandler { CookieContainer = new CookieContainer(), UseCookies = true };
+        using var cookies = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer(), UseCookies = true };
         using var http = new HttpClient(cookies) { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(30) };
         try
         {
@@ -632,7 +632,7 @@ public sealed class WeirCompanion(
     /// <param name="firstStart">Arguments for the first start of a copy Deluno just installed, which is started at once; null for one already installed, which is started only if it is not answering.</param>
     private async Task<string?> FindRunningAsync(string? firstStart, CancellationToken cancellationToken)
     {
-        using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        using var probe = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(3) };
         var installFolder = Path.Combine(system.LocalAppData, "Weir");
         var started = false;
         for (var attempt = 0; attempt < 40; attempt++)
