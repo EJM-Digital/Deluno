@@ -60,21 +60,36 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
       // The two-column layout (poster beside details) has no panel column below xl (1280px).
       if (size.width >= 1280) expect(panelBox!.height).toBeLessThanOrEqual(posterBox!.height);
 
-      // Every button stays visible and never overlaps.
-      const boxes = [];
+      // Every button stays visible and never overlaps. The page is live (#1179): a title just added gets its
+      // metadata a moment later and the header lays itself out again, so the buttons are measured together, in
+      // one snapshot, until two snapshots agree, rather than one by one across that change.
       for (const name of spec.buttons) {
-        const button = panel.getByRole("button", { name: new RegExp(`^${name}`) });
-        await expect(button).toBeVisible();
-        boxes.push({ name, box: (await button.boundingBox())! });
+        await expect(panel.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
       }
-      for (let i = 0; i < boxes.length; i++) {
-        for (let j = i + 1; j < boxes.length; j++) {
-          const x = boxes[i].box;
-          const y = boxes[j].box;
-          const overlaps = x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height;
-          expect(overlaps, `${boxes[i].name} and ${boxes[j].name} overlap`).toBe(false);
+      const overlapping = () => panel.evaluate((element, names) => {
+        const buttons = [...element.querySelectorAll("button")];
+        const boxes = names.map((name) => {
+          const button = buttons.find((candidate) => (candidate.getAttribute("aria-label") ?? candidate.textContent ?? "").trim().startsWith(name));
+          return { name, box: button?.getBoundingClientRect() ?? null };
+        });
+        const pairs: string[] = boxes.filter((entry) => !entry.box).map((entry) => `${entry.name} not found`);
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            const x = boxes[i].box;
+            const y = boxes[j].box;
+            if (!x || !y) continue;
+            if (x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height) pairs.push(`${boxes[i].name} and ${boxes[j].name}`);
+          }
         }
-      }
+        return pairs;
+      }, [...spec.buttons]);
+      let previous: string[] | null = null;
+      await expect.poll(async () => {
+        const now = await overlapping();
+        const settled = previous !== null && JSON.stringify(previous) === JSON.stringify(now);
+        previous = now;
+        return settled ? now : ["still laying out"];
+      }, { message: "buttons that overlap" }).toEqual([]);
       await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
       await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058c-${spec.kind}-plain-${size.width}.png` });
     });
