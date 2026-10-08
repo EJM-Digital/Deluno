@@ -656,6 +656,21 @@ public sealed class DownloadDispatchPollingService(
             dispatch.EntityId
         });
 
+        // A download waiting for its processor is not a lost or damaged file (#1155): the
+        // hand-off watcher settles it (imports the finished copy, sends it again, or asks
+        // the person), so this does not say the file may be corrupted, moved or deleted.
+        if (await HasOpenProcessorHandoffAsync(dispatch, cancellationToken))
+        {
+            recoveryActivities.Add(CreateRecoveryActivity(
+                "download.detection.waiting-for-processor",
+                $"{title} finished downloading and is waiting for its processor to hand back the cleaned file.",
+                detailsJson,
+                "download",
+                dispatch.Id));
+            await problemLog.RecordAsync(dispatch.Id, "detection-timeout", cancellationToken);
+            return;
+        }
+
         await recoveryHandler.HandleDetectionTimeoutAsync(
             title,
             dispatch.MediaType,
@@ -676,7 +691,39 @@ public sealed class DownloadDispatchPollingService(
         await problemLog.RecordAsync(dispatch.Id, "detection-timeout", cancellationToken);
     }
 
-    private async Task RecordImportTimeoutRecoveryAsync(
+    /// <summary>Whether a processor still holds a hand-off for this download (waiting to be sent, or sent and open).</summary>
+    private async Task<bool> HasOpenProcessorHandoffAsync(UnresolvedDispatch dispatch, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var platform = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+            using var command = platform.CreateCommand();
+            command.CommandText =
+                """
+                SELECT 1 FROM processor_handoffs
+                WHERE client_id = @clientId
+                  AND release_name = @releaseName
+                  AND status IN ('waiting', 'submitted', 'accepted', 'started')
+                LIMIT 1;
+                """;
+            var clientId = command.CreateParameter();
+            clientId.ParameterName = "@clientId";
+            clientId.Value = dispatch.DownloadClientId;
+            command.Parameters.Add(clientId);
+            var releaseName = command.CreateParameter();
+            releaseName.ParameterName = "@releaseName";
+            releaseName.Value = dispatch.ReleaseName;
+            command.Parameters.Add(releaseName);
+            return await command.ExecuteScalarAsync(cancellationToken) is not null;
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or InvalidOperationException)
+        {
+            // No platform database (a bare test store) means no hand-offs.
+            return false;
+        }
+    }
+
+        private async Task RecordImportTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
         ICollection<ActivityEventItem> recoveryActivities,

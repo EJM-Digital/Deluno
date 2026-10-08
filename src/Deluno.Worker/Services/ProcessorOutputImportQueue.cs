@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -51,7 +52,15 @@ public sealed class ProcessorOutputImportQueue(
 
         if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
         {
-            return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, removed);
+            // The title was removed and added again since the grab (#1155): the download
+            // is the re-added title's, not an orphan, so the output goes to it.
+            var readded = await CatalogueImportNaming.FindReAddedTitleAsync(dispatch, handoff.ReleaseName, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+            if (readded is null)
+            {
+                return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, removed);
+            }
+
+            dispatch = readded;
         }
 
         var catalogue = await CatalogueImportNaming.ResolveAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
@@ -187,6 +196,46 @@ internal static class CatalogueImportNaming
                 null,
                 SplitCsv(movie.Genres),
                 OriginalTitle: movie.OriginalTitle);
+    }
+
+    /// <summary>
+    /// The title now in the catalogue that a grab's removed title came back as (#1155): the same name and year,
+    /// found after it was removed and added again. Null when there is none, or the grab was for episodes.
+    /// </summary>
+    public static async Task<DispatchCatalogueLink?> FindReAddedTitleAsync(
+        DispatchCatalogueLink? dispatch,
+        string releaseName,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null)
+        {
+            return null;
+        }
+
+        var (title, year) = ReleaseTitleMatch.ParseTitleAndYear(releaseName);
+        var wanted = ReleaseTitleMatch.Clean(title);
+        if (wanted.Length == 0)
+        {
+            return null;
+        }
+
+        if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+        {
+            var film = (await movieCatalogRepository.ListAsync(cancellationToken))
+                .FirstOrDefault(item => ReleaseTitleMatch.Clean(item.Title) == wanted && (year is null || item.ReleaseYear == year));
+            return film is null ? null : dispatch with { EntityId = film.Id };
+        }
+
+        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        {
+            var show = (await seriesCatalogRepository.ListAsync(cancellationToken))
+                .FirstOrDefault(item => ReleaseTitleMatch.Clean(item.Title) == wanted);
+            return show is null ? null : dispatch with { EntityId = show.Id };
+        }
+
+        return null;
     }
 
     /// <summary>
