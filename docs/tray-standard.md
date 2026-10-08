@@ -2,7 +2,7 @@
 
 Both apps keep an icon in the Windows notification area. This page is the one standard for what that icon shows, what its menu holds and how it behaves. Deluno and Weir each keep a word-for-word copy, and each app builds and tests its own tray. Nothing is shared in code, so neither app depends on the other.
 
-Decided by James on 9 Oct 2026, from the side-by-side audit of both trays.
+Decided by the owner on 9 Oct 2026, from the side-by-side audit of both trays.
 
 ## What the icon shows
 
