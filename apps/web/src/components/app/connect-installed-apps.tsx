@@ -234,6 +234,7 @@ export function ConnectInstalledApps({
                       size="sm"
                       variant="outline"
                       disabled={busy !== null}
+                      className="w-full"
                       aria-expanded={app.kind === WEIR_KIND ? weirOpen : undefined}
                       onClick={() => void connect(app)}
                     >
