@@ -1,5 +1,6 @@
 import { comparablePath } from "../lib/library-paths";
 import { toneSortValue } from "../lib/status-tones";
+import { updateHeadline } from "../lib/update-headline";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defineSources, queryClient, refetchSources, sourceLoader, useRouteSources, type RouteSource, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -1556,7 +1557,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RotateCcw className="h-4 w-4 text-primary" />
-          {current.restartRequired ? "Restart to finish updating" : current.updateAvailable ? "Update available" : "Up to date"}
+          {updateHeadline(current)}
         </CardTitle>
         <CardDescription>Version status, channel, behaviour mode, and restart flow.</CardDescription>
       </CardHeader>
@@ -2292,7 +2293,7 @@ function updateStateLabel(state: string) {
     case "not-supported":
       return "Not supported";
     case "error":
-      return "Error";
+      return "Needs attention";
     default:
       return state;
   }
