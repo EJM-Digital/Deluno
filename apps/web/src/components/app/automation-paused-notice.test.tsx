@@ -1,0 +1,51 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const fetchJson = vi.hoisted(() => vi.fn());
+const authedFetch = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/api", () => ({ fetchJson }));
+vi.mock("../../lib/use-auth", () => ({ authedFetch }));
+vi.mock("../shell/toaster", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("../../lib/use-signalr", () => ({
+  RealtimeGroups: { Dashboard: "dashboard" },
+  useSignalREvent: () => undefined,
+  useSignalRResync: () => undefined
+}));
+
+const { AutomationPausedNotice } = await import("./automation-paused-notice");
+
+describe("automation paused notice (#936)", () => {
+  afterEach(() => {
+    fetchJson.mockReset();
+    authedFetch.mockReset();
+  });
+
+  it("says plainly that the film will not be searched, with a Resume button, while automation is paused", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: false });
+    render(<AutomationPausedNotice context="add" noun="film" />);
+    expect(await screen.findByText("Automation is paused, so this film won't be searched until you resume it.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resume automation" })).toBeTruthy();
+  });
+
+  it("says what is held on the Dashboard", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: false });
+    render(<AutomationPausedNotice context="dashboard" />);
+    expect(await screen.findByText(/Automation is paused, so nothing is searched/)).toBeTruthy();
+  });
+
+  it("shows nothing while automation is running", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: true });
+    const { container } = render(<AutomationPausedNotice context="dashboard" />);
+    await waitFor(() => expect(fetchJson).toHaveBeenCalled());
+    expect(container.textContent).toBe("");
+  });
+
+  it("resumes automation and goes away", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: false });
+    authedFetch.mockResolvedValue({ ok: true });
+    render(<AutomationPausedNotice context="dashboard" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Resume automation" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Resume automation" })).toBeNull());
+    expect(authedFetch).toHaveBeenCalledWith("/api/settings/automation", expect.objectContaining({ method: "PUT", body: JSON.stringify({ isEnabled: true }) }));
+  });
+});

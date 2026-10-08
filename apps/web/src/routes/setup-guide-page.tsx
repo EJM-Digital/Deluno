@@ -91,6 +91,7 @@ type StepId =
 
 /** One Yes/No question on the Automation step. Nothing is pre-selected (#936). */
 type AutomationChoiceKey =
+  | "startAutomation"
   | "searchMissingTitles"
   | "rssGrabs"
   | "qualityUpgrades"
@@ -107,6 +108,7 @@ type AutomationChoiceKey =
 export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
 
 const AUTOMATION_UNANSWERED: AutomationChoices = {
+  startAutomation: null,
   searchMissingTitles: null,
   rssGrabs: null,
   qualityUpgrades: null,
@@ -122,6 +124,11 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
 };
 
 export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string; help: string }[] = [
+  {
+    key: "startAutomation",
+    question: "Should Deluno start searching and downloading on its own now?",
+    help: "If off, automation stays paused: nothing is searched or tracked in the background until you press Resume automation. The Dashboard says so while it is paused."
+  },
   {
     key: "searchMissingTitles",
     question: "Search for missing titles on its own?",
@@ -281,9 +288,9 @@ export function hasAnsweredAllAutomationQuestions(automation: AutomationChoices)
  */
 export function buildAutomationSettingsPayload(automation: AutomationChoices) {
   return {
-    autoStartJobs: automation.searchMissingTitles === true
-      || automation.rssGrabs === true
-      || automation.qualityUpgrades === true,
+    // The plain "start now?" answer is the scheduler switch itself. A Yes to
+    // the individual searches below only says what runs once it is started.
+    autoStartJobs: automation.startAutomation === true,
     renameOnImport: automation.renameOnImport === true,
     cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
     cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,

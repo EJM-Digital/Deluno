@@ -9,6 +9,7 @@ import { Badge } from "../ui/badge";
 import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { AutomationPausedNotice } from "./automation-paused-notice";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { TagPicker } from "./tag-picker";
@@ -199,6 +200,7 @@ export function LibraryCreateDialog({
                   />
                 </div>
               ) : null}
+              {createForm.searchNow ? <AutomationPausedNotice context="add" noun={variant === "movies" ? "film" : "show"} /> : null}
               <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchNow} onCheckedChange={(searchNow) => setCreateForm((current) => ({ ...current, searchNow }))} />Search for it as soon as it is added</label>
               </div>

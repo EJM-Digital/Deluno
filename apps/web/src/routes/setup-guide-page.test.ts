@@ -32,6 +32,7 @@ type SecurityForm = Parameters<typeof saveAllowedHosts>[0];
 type UpdatesForm = Parameters<typeof saveUpdatePreferences>[0];
 
 const UNANSWERED: AutomationChoices = {
+  startAutomation: null,
   searchMissingTitles: null,
   rssGrabs: null,
   qualityUpgrades: null,
@@ -47,6 +48,7 @@ const UNANSWERED: AutomationChoices = {
 };
 
 const ALL_NO: AutomationChoices = {
+  startAutomation: false,
   searchMissingTitles: false,
   rssGrabs: false,
   qualityUpgrades: false,
@@ -62,6 +64,7 @@ const ALL_NO: AutomationChoices = {
 };
 
 const ALL_YES: AutomationChoices = {
+  startAutomation: true,
   searchMissingTitles: true,
   rssGrabs: true,
   qualityUpgrades: true,
@@ -147,6 +150,7 @@ describe("setup guide Automation step (#936)", () => {
       "renameOnImport",
       "rssGrabs",
       "searchMissingTitles",
+      "startAutomation",
       "subtitleFetching"
     ]);
   });
@@ -238,11 +242,16 @@ describe("setup guide Automation step (#936)", () => {
     expect(buildAutomationSettingsPayload(ALL_YES)).not.toHaveProperty("cleanupEmptyFolders");
   });
 
-  it("turns the background scheduler on if any one of missing search, RSS or upgrades is on", () => {
-    expect(buildAutomationSettingsPayload({ ...ALL_NO, searchMissingTitles: true }).autoStartJobs).toBe(true);
-    expect(buildAutomationSettingsPayload({ ...ALL_NO, rssGrabs: true }).autoStartJobs).toBe(true);
-    expect(buildAutomationSettingsPayload({ ...ALL_NO, qualityUpgrades: true }).autoStartJobs).toBe(true);
+  it("starts the background scheduler exactly when the plain start-now question is answered Yes", () => {
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, startAutomation: true }).autoStartJobs).toBe(true);
+    expect(buildAutomationSettingsPayload({ ...ALL_YES, startAutomation: false }).autoStartJobs).toBe(false);
     expect(buildAutomationSettingsPayload(ALL_NO).autoStartJobs).toBe(false);
+  });
+
+  it("asks the start-now question first, in plain words", () => {
+    const first = AUTOMATION_QUESTIONS[0];
+    expect(first.key).toBe("startAutomation");
+    expect(first.question).toBe("Should Deluno start searching and downloading on its own now?");
   });
 });
 

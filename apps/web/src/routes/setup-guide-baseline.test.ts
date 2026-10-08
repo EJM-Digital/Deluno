@@ -15,7 +15,7 @@ const { createBaseline, detectLibraryDownloadsFolder } = await import("./setup-g
 type Input = Parameters<typeof createBaseline>[0];
 
 const NO = {
-  searchMissingTitles: false, rssGrabs: false, qualityUpgrades: false, renameOnImport: false, subtitleFetching: false,
+  startAutomation: false, searchMissingTitles: false, rssGrabs: false, qualityUpgrades: false, renameOnImport: false, subtitleFetching: false,
   removeBadDownloads: false, deleteBadDownloadFiles: false, leftoverCleanup: false, leftoverDownloadCleanup: false,
   forceImport: false, pauseSearchWhenQueueLong: false, dangerousFileCheck: false
 };
