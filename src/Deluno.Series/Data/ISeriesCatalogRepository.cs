@@ -375,6 +375,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         => Task.FromResult(false);
 
     /// <summary>
+    /// A library check (#1174): an episode that shows no file while its own, correctly named
+    /// file sits in its show's folder (and no episode of the show is linked to it) is linked to
+    /// that file. Returns what was linked so the caller can say so in Activity. Safe to run again.
+    /// </summary>
+    Task<IReadOnlyList<RelinkedEpisodeFile>> RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<RelinkedEpisodeFile>>([]);
+
+    /// <summary>
     /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
     /// (#1070). One answer per item, in order.
     /// </summary>

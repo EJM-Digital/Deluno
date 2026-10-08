@@ -4180,6 +4180,69 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #1174: an episode whose link the earlier repair cleared, with its own correctly named file still in the show's
+    /// folder, is linked again by a library check, and by reviewing the existing files; a file named for another
+    /// episode is never taken for it.
+    /// </summary>
+    [Theory]
+    [InlineData("check")]
+    [InlineData("review")]
+    public async Task An_episode_that_shows_no_file_gets_its_own_file_from_the_shows_folder(string how)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        var seriesRoot = Path.Combine(storage.DataRoot, "series");
+        var folder = Directory.CreateDirectory(Path.Combine(seriesRoot, "The Twilight Zone (1959)")).FullName;
+        var library = await CreateTvLibraryAsync(libraries, seriesRoot, Path.Combine(storage.DataRoot, "downloads"));
+        var first = Path.Combine(folder, "The Twilight Zone - S01E01 - Where Is Everybody [WEB 1080p].mkv");
+        var second = Path.Combine(folder, "The Twilight Zone - S01E02 - One for the Angels [WEB 1080p].mkv");
+        var stray = Path.Combine(folder, "The Twilight Zone - S01E09 - Mr. Denton on Doomsday [WEB 1080p].mkv");
+        await File.WriteAllBytesAsync(first, new byte[16]);
+        await File.WriteAllBytesAsync(second, new byte[24]);
+        await File.WriteAllBytesAsync(stray, new byte[8]);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        await seriesRepository.ImportExistingAsync(
+            library.Id, "The Twilight Zone", 1959, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: first, FileSizeBytes: 16),
+                new ImportedEpisodeItem(1, 2, HasFile: false, FilePath: null, FileSizeBytes: null),
+                new ImportedEpisodeItem(1, 3, HasFile: false, FilePath: null, FileSizeBytes: null)
+            ],
+            CancellationToken.None);
+        var seriesId = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None)).Id;
+        Assert.Null(await LinkedFileAsync(storage, seriesId, 2));
+
+        if (how == "check")
+        {
+            var relinked = Assert.Single(await seriesRepository.RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken.None));
+            Assert.Equal(2, relinked.EpisodeNumber);
+            Assert.Empty(await seriesRepository.RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken.None));
+        }
+        else
+        {
+            await seriesRepository.ImportExistingAsync(
+                library.Id, "The Twilight Zone", 1959, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+                null, null,
+                [
+                    new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: first, FileSizeBytes: 16),
+                    new ImportedEpisodeItem(1, 2, HasFile: true, FilePath: second, FileSizeBytes: 24)
+                ],
+                CancellationToken.None);
+        }
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        var two = detail!.Episodes.Single(e => e.EpisodeNumber == 2);
+        Assert.True(two.HasFile);
+        Assert.NotEqual("missing", two.WantedStatus);
+        Assert.Equal(second, await LinkedFileAsync(storage, seriesId, 2));
+        Assert.False(detail.Episodes.Single(e => e.EpisodeNumber == 3).HasFile);
+    }
+
     /// <summary>#761: a dated show is named with DailyEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>
     [Fact]
     public async Task Preview_names_a_dated_series_episode_with_the_daily_format()

@@ -41,7 +41,8 @@ public interface ILibraryFileCheckService
 public sealed class LibraryFileCheckService(
     IFilesystemReconciliationService reconciliation,
     IActivityFeedRepository activityFeedRepository,
-    ILogger<LibraryFileCheckService> logger) : ILibraryFileCheckService
+    ILogger<LibraryFileCheckService> logger,
+    Deluno.Series.Data.ISeriesCatalogRepository? seriesCatalogRepository = null) : ILibraryFileCheckService
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -79,6 +80,19 @@ public sealed class LibraryFileCheckService(
             {
                 corrected++;
             }
+        }
+
+        // An episode that shows no file while its own, correctly named file sits in its
+        // show's folder is linked to it (#1174), the same as Review existing files does.
+        var linked = seriesCatalogRepository is null
+            ? []
+            : await seriesCatalogRepository.RelinkEpisodesWithTheirOwnFilesAsync(cancellationToken);
+        foreach (var episode in linked)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "series.episode-file.linked",
+                $"{episode.SeriesTitle} S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00} showed no file although its own was in the show's folder. It now shows {Path.GetFileName(episode.FilePath)}.",
+                null, null, "episode", episode.EpisodeId, cancellationToken);
         }
 
         // Nothing changed, nothing said. A pass that announces itself every six
