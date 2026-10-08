@@ -85,6 +85,29 @@ public sealed class DownloadClientPersistenceTests
         Assert.Equal("sabnzbd", updated.UrlBase);
     }
 
+    // Golden path rc.30.9: saving Transmission's priority rewrote its host to http://localhost:9091.
+    [Fact]
+    public async Task UpdateDownloadClientAsync_changing_only_the_priority_keeps_host_port_and_address_exactly()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(
+            BaseCreateRequest() with { Host = "192.168.1.10", Port = 9091, EndpointUrl = "http://192.168.1.10:9091/transmission/rpc" },
+            CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, Priority: 5, null),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Equal(5, updated.Priority);
+        var reloaded = Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None));
+        Assert.Equal("192.168.1.10", reloaded.Host);
+        Assert.Equal(9091, reloaded.Port);
+        Assert.Equal("http://192.168.1.10:9091/transmission/rpc", reloaded.EndpointUrl);
+    }
+
     [Fact]
     public async Task UpdateDownloadClientAsync_null_use_ssl_and_url_base_preserve_existing_values()
     {
