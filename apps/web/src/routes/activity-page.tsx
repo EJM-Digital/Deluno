@@ -43,7 +43,7 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
-import { dismissFailedJob } from "../lib/failed-jobs";
+import { dismissFailedJob, retryFailedJob } from "../lib/failed-jobs";
 import { detailFields, fixLinkForActivity } from "../lib/detail-fields";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -516,6 +516,20 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     }
   }
 
+  async function handleRetryJob(job: JobQueueItem) {
+    setBusy(true);
+    try {
+      await retryFailedJob(job.id);
+      toast.success(`${job.label} is being tried again`);
+      setOpenJobId(null);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That job could not be tried again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDismissJob(job: JobQueueItem) {
     setBusy(true);
     try {
@@ -651,7 +665,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         ) : null}
       </Drawer>
 
-      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} onRetry={() => { setOpenJobId(null); void handleRetryFailedJobs(); }} />
+      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} onRetry={(job) => void handleRetryJob(job)} />
 
       <DownloadDispatchDrawer
         dispatch={openDispatch}

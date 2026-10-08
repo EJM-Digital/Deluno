@@ -1,6 +1,7 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Notifications;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
 
@@ -93,14 +94,21 @@ public sealed class RefusedDownloadCleanupService(
     INotificationService? notificationPreferences = null,
     // #990: the cleared release's own title tags, so a tagged notification
     // connection fires for a cleanup scoped to it.
-    IMediaTagStore? mediaTagStore = null) : IRefusedDownloadCleanupService
+    IMediaTagStore? mediaTagStore = null,
+    // The leftover payload sweep (#1167). Without them there are no folders to look in and it does nothing.
+    Deluno.Libraries.Data.ILibrariesRepository? librariesRepository = null,
+    IJobQueueRepository? jobQueueRepository = null,
+    IProcessorRepository? processorRepository = null,
+    TimeProvider? timeProvider = null) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
     {
         var pending = await blockedReleases.ListAwaitingCleanupAsync(await ShouldDeletePayloadAsync(cancellationToken), cancellationToken);
+        // Whatever the clients forgot without their files is swept too (#1167), pending refusals or none.
+        var swept = await SweepLeftoverPayloadsAsync(cancellationToken);
         if (pending.Count == 0)
         {
-            return new RefusedDownloadCleanupResult(0, 0, 0);
+            return new RefusedDownloadCleanupResult(swept, 0, 0);
         }
 
         var holds = await SharingHoldsAsync(cancellationToken);
@@ -133,9 +141,139 @@ public sealed class RefusedDownloadCleanupService(
                 waiting);
         }
 
-        return new RefusedDownloadCleanupResult(cleared, waiting, failed);
+        return new RefusedDownloadCleanupResult(cleared + swept, waiting, failed);
     }
 
+    /// <summary>
+    /// A refused release whose client entry was removed without its files (an older build, or a client that kept
+    /// them) left its payload on disk with nothing listing it (#1167). Deletes that payload, with an Activity line,
+    /// when it sits under one of Deluno's own category or incomplete folders, belongs to a release Deluno sent and
+    /// refused, and no client, import, hand-off or library has it. A payload that carries an executable goes whatever
+    /// the refusal's reason. Returns how many it deleted.
+    /// </summary>
+    private async Task<int> SweepLeftoverPayloadsAsync(CancellationToken cancellationToken)
+    {
+        if (librariesRepository is null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var refused = (await blockedReleases.ListAsync(cancellationToken))
+                .Where(release => release.State == BlockedReleaseStates.Refused)
+                .ToArray();
+            if (refused.Length == 0)
+            {
+                return 0;
+            }
+
+            var settings = await platformRepository.GetAsync(cancellationToken);
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var snapshots = await downloadClients.GetSnapshotsForLeftoverScanAsync(cancellationToken);
+
+            var listedPaths = new List<string>();
+            var listedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var client in snapshots)
+            {
+                foreach (var item in client.Queue)
+                {
+                    listedPaths.Add(item.SourcePath ?? string.Empty);
+                    listedNames.Add(item.ReleaseName);
+                }
+
+                foreach (var item in client.History)
+                {
+                    listedPaths.Add(item.SourcePath ?? string.Empty);
+                    listedNames.Add(item.ReleaseName);
+                }
+
+                listedPaths.AddRange(client.OutsideSourcePaths);
+            }
+
+            var claimed = new List<string>();
+            if (jobQueueRepository is not null)
+            {
+                claimed.AddRange((await jobQueueRepository.ListAsync(600, cancellationToken))
+                    .Where(job => string.Equals(job.JobType, "filesystem.import.execute", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase))
+                    .Select(job => DownloadClientTelemetryService.TryReadImportSourcePath(job.PayloadJson) ?? string.Empty));
+            }
+
+            if (processorRepository is not null)
+            {
+                claimed.AddRange((await processorRepository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken))
+                    .SelectMany(handoff => new[] { handoff.SourcePath, handoff.OutputPath ?? string.Empty }));
+            }
+
+            var roots = new List<string>();
+            if (!string.IsNullOrWhiteSpace(settings.IncompleteDownloadsPath))
+            {
+                roots.Add(settings.IncompleteDownloadsPath);
+            }
+
+            roots.AddRange(libraries.Select(library => library.DownloadsPath ?? string.Empty));
+            roots.AddRange(OrphanedDownloadService.DownloadFolders(libraries, snapshots).Select(folder => folder.Path));
+
+            var cleanupOn = await ClientReportedFailureCleanupIsOnAsync(cancellationToken);
+            var deletable = await ShouldDeletePayloadAsync(cancellationToken);
+            var payloads = RefusedPayloadSweep.Find(
+                roots.Where(root => !string.IsNullOrWhiteSpace(root)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                refused.Where(release => !listedNames.Contains(release.ReleaseName)).ToArray(),
+                listedPaths,
+                libraries.Select(library => library.RootPath).ToArray(),
+                claimed,
+                release => deletable(release.ReasonCode)
+                    || (release.ReasonCode == ImportFailurePolicy.ClientReportedFailure && cleanupOn),
+                (timeProvider ?? TimeProvider.System).GetUtcNow(),
+                OrphanedDownloads.Grace);
+
+            var deleted = 0;
+            foreach (var payload in payloads)
+            {
+                try
+                {
+                    if (payload.IsDirectory)
+                    {
+                        Directory.Delete(payload.Path, recursive: true);
+                    }
+                    else
+                    {
+                        File.Delete(payload.Path);
+                    }
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    logger.LogWarning(exception, "Could not delete the leftover files of the refused release {ReleaseName}.", payload.Release.ReleaseName);
+                    continue;
+                }
+
+                deleted++;
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.cleanup.cleared",
+                    payload.CarriesExecutable
+                        ? $"Deluno deleted the leftover files of {payload.Release.ReleaseName} ({FormatSize(payload.SizeBytes)}). The release was refused, no download client lists it any more, and it carries an executable."
+                        : $"Deluno deleted the leftover files of {payload.Release.ReleaseName} ({FormatSize(payload.SizeBytes)}). The release was refused ({payload.Release.Reason}) and no download client lists it any more.",
+                    System.Text.Json.JsonSerializer.Serialize(new { payload.Path, payload.Release.ReleaseName, payload.SizeBytes, payload.CarriesExecutable }),
+                    null,
+                    string.Equals(payload.Release.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie",
+                    payload.Release.EntityId,
+                    cancellationToken);
+            }
+
+            return deleted;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A sweep that cannot read a folder or a client is tried again next pass; it never stops the cleanup.
+            logger.LogWarning(exception, "The leftover-payload sweep for refused releases failed.");
+            return 0;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+        => bytes >= 1_073_741_824 ? $"{bytes / 1_073_741_824d:0.0} GB" : $"{bytes / 1_048_576d:0} MB";
     /// <summary>
     /// One row, by hand. Reads the whole list rather than fetching by id
     /// because the same filter decides what is <em>eligible</em> — a refusal

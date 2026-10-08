@@ -78,6 +78,16 @@ public static class JobsEndpointRouteBuilderExtensions
             return dismissed is null ? Results.NotFound() : Results.Ok(dismissed);
         });
 
+        // Try again on one failure: just that job, not every failed job (#1155).
+        endpoints.MapPost("/api/jobs/{id}/retry", async (
+            string id,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var retried = await repository.RetryFailedJobAsync(id, cancellationToken);
+            return retried == 0 ? Results.NotFound() : Results.Ok(new { retried });
+        });
+
         endpoints.MapPost("/api/jobs/retry-failed", async (
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>

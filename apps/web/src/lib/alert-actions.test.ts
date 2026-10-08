@@ -33,6 +33,14 @@ describe("failed jobs open the screen that clears them (#1114)", () => {
   });
 });
 
+describe("a dead-lettered import can be tried again from its own entry (#1155)", () => {
+  it("Try again retries that one job, not every failed job", () => {
+    const [retry] = failedImportActions({ id: "j 1" });
+    expect(retry!.label).toBe("Try again");
+    expect(retry!.request).toMatchObject({ method: "POST", path: "/api/jobs/j%201/retry" });
+  });
+});
+
 describe("alert buttons (#1098)", () => {
   it("every problem has one or two buttons, short labels, hover notes, and either a request or a link", () => {
     const all: AlertActions[] = [

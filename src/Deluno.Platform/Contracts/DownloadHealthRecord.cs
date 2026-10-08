@@ -196,7 +196,7 @@ public static class DownloadHealthStrikes
     public static bool IsFinishedOrHandedOff(string? status, double progressPercent)
         => progressPercent >= 100d ||
            status is "completed" or "importReady" or "processing" or "processed" or "processingFailed"
-               or "waitingForProcessor" or "importQueued" or "imported" or "importFailed";
+               or "waitingForProcessor" or "notHandedOver" or "handedOverElsewhere" or "importQueued" or "imported" or "importFailed";
 
     /// <summary>
     /// The one kind of finding that may still act on a finished download: a

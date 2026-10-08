@@ -218,6 +218,18 @@ public static class DownloadQueueStatuses
     public const string Processed = "processed";
     public const string ProcessingFailed = "processingFailed";
     public const string WaitingForProcessor = "waitingForProcessor";
+
+    /// <summary>
+    /// A finished download another copy of the same release has the hand-off for (#1155): nothing is
+    /// owed to this one, so it is never "handing over" for ever.
+    /// </summary>
+    public const string HandedOverElsewhere = "handedOverElsewhere";
+
+    /// <summary>
+    /// A finished download that still has no hand-off of its own after a few minutes (#1155): something
+    /// is stopping Deluno handing it over, and the row says what.
+    /// </summary>
+    public const string NotHandedOver = "notHandedOver";
     public const string ImportQueued = "importQueued";
     public const string Imported = "imported";
     public const string ImportFailed = "importFailed";

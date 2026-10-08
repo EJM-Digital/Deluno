@@ -21,6 +21,7 @@ public static class DownloadQueueSummary
             or DownloadQueueStatuses.Processed
             or DownloadQueueStatuses.ProcessingFailed
             or DownloadQueueStatuses.WaitingForProcessor
+            or DownloadQueueStatuses.NotHandedOver
             or DownloadQueueStatuses.ImportQueued;
 
     /// <summary>Waiting on a processor: a strict subset of <see cref="IsProcessing"/>.</summary>

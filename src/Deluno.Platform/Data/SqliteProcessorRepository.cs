@@ -578,6 +578,49 @@ public sealed class SqliteProcessorRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
     }
 
+    public async Task<ProcessorHandoffItem?> FindProcessorHandoffForDownloadAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(queueItemId))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = HandoffSelect
+            + " WHERE client_id = @clientId AND queue_item_id = @queueItemId ORDER BY updated_utc DESC LIMIT 1;";
+        AddParameter(command, "@clientId", clientId.Trim());
+        AddParameter(command, "@queueItemId", queueItemId.Trim());
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsForReleaseAsync(
+        string releaseName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(releaseName))
+        {
+            return [];
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = HandoffSelect + " WHERE release_name = @releaseName COLLATE NOCASE ORDER BY updated_utc DESC;";
+        AddParameter(command, "@releaseName", releaseName.Trim());
+        var items = new List<ProcessorHandoffItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) items.Add(ReadProcessorHandoff(reader));
+        return items;
+    }
+
     public async Task<bool> RepointWaitingProcessorHandoffAsync(
         string id,
         string sourcePath,

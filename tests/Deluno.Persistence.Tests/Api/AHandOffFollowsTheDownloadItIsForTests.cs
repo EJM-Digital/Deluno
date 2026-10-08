@@ -13,6 +13,7 @@ using Deluno.Worker.Services;
 using Deluno.Worker.HealthChecks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Reflection;
 using System.Net;
@@ -805,6 +806,282 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         Assert.Contains("Some.Other.Film", listed.Message);
         Assert.Contains("film folder", listed.Message);
         Assert.DoesNotContain("season folder", listed.Message);
+    }
+
+    // ---- #1155 (rc.30.6): a dismissed or settled hand-off is never sent again ----------------------
+
+    [Fact]
+    public async Task A_dismissed_hand_offs_download_is_not_handed_over_again_even_when_its_path_has_changed()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, null, CancellationToken.None);
+        await RecordDispatchAsync(app, scene, imported: false);
+        // The client moved the finished download, so the path no longer matches the hand-off's.
+        var moved = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Moved", Release)).FullName;
+        await File.WriteAllBytesAsync(Path.Combine(moved, Release + ".mkv"), new byte[64]);
+        var submitted = new List<ProcessorHandoffItem>();
+
+        await PlanAsync(app, scene, Item(scene, moved, DateTimeOffset.UtcNow.AddDays(-2)), submitted);
+        await PlanAsync(app, scene, Item(scene, moved, DateTimeOffset.UtcNow.AddDays(-2)), submitted);
+
+        Assert.Empty(submitted);
+        var all = await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 50, CancellationToken.None);
+        var only = Assert.Single(all);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, only.Status);
+    }
+
+    [Fact]
+    public async Task A_download_is_not_handed_over_while_another_copy_of_the_same_release_holds_the_hand_off()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var other = await Repository(app).EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", "another-client", "other-hash", Release, Path.Combine(app.DataRoot, "Elsewhere", Release), "Weir", DateTimeOffset.UnixEpoch),
+            CancellationToken.None);
+        await Repository(app).UpdateProcessorHandoffAsync(other.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
+        var submitted = new List<ProcessorHandoffItem>();
+
+        await PlanAsync(app, scene, Item(scene, scene.DownloadFolder, DateTimeOffset.UtcNow.AddDays(-2)), submitted);
+
+        Assert.Empty(submitted);
+        Assert.Single(await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 50, CancellationToken.None));
+    }
+
+    // ---- #1155 (rc.30.6): what the row says of a finished download without a hand-off of its own -----
+
+    private static DownloadClientTelemetrySnapshot SnapshotOf(DownloadQueueItem item)
+        => new(
+            Client, "Deluge", "deluge", "http://127.0.0.1:8112", "healthy", null,
+            new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "password"),
+            new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0), [item], [], DateTimeOffset.UtcNow);
+
+    private static async Task<DownloadQueueItem> EnrichedAsync(
+        ApplicationTestHost app,
+        Scene scene,
+        IReadOnlyList<ProcessorHandoffItem> handoffs,
+        IReadOnlySet<string>? entitiesWithFile = null,
+        TimeSpan? finishedAgo = null)
+    {
+        var dispatches = await app.Services.GetRequiredService<IJobQueueRepository>().ListDownloadDispatchesAsync(50, null, CancellationToken.None, includeArchived: true);
+        if (finishedAgo is { } ago)
+        {
+            dispatches = dispatches.Select(dispatch => dispatch with { ClientCompletedUtc = DateTimeOffset.UtcNow - ago }).ToArray();
+        }
+
+        var libraries = await app.Services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None);
+        var enriched = DownloadClientTelemetryService.EnrichQueueImportState(
+            SnapshotOf(Item(scene, scene.DownloadFolder, DateTimeOffset.UtcNow.AddDays(-2))),
+            libraries, dispatches, dispatches, [], handoffs,
+            new Dictionary<string, IReadOnlyDictionary<string, string>>(),
+            entitiesWithFile);
+        return Assert.Single(enriched.Queue);
+    }
+
+    private static async Task<ProcessorHandoffItem> OtherCopyHandoffAsync(ApplicationTestHost app, Scene scene, string status)
+    {
+        var other = await Repository(app).EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", "qbittorrent-1", "other-hash", Release, Path.Combine(app.DataRoot, "Elsewhere", Release), "Weir", DateTimeOffset.UnixEpoch),
+            CancellationToken.None);
+        return (await Repository(app).UpdateProcessorHandoffAsync(other.Id, status, null, null, null, CancellationToken.None))!;
+    }
+
+    [Fact]
+    public async Task A_finished_download_whose_release_another_copy_handed_over_says_so_and_never_reads_handing_over()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordDispatchAsync(app, scene, imported: false);
+        var other = await OtherCopyHandoffAsync(app, scene, ProcessorHandoffStatuses.Completed);
+
+        var item = await EnrichedAsync(app, scene, [other], finishedAgo: TimeSpan.FromDays(1));
+
+        Assert.Equal(DownloadQueueStatuses.HandedOverElsewhere, item.Status);
+    }
+
+    [Fact]
+    public async Task A_finished_download_whose_title_already_holds_its_file_reads_imported()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: "movie-nosferatu");
+        var other = await OtherCopyHandoffAsync(app, scene, ProcessorHandoffStatuses.Completed);
+
+        var item = await EnrichedAsync(app, scene, [other], new HashSet<string> { "movie-nosferatu" }, TimeSpan.FromDays(1));
+
+        Assert.Equal(DownloadQueueStatuses.Imported, item.Status);
+    }
+
+    [Fact]
+    public async Task A_download_with_no_hand_off_reads_briefly_handing_over_then_says_what_is_wrong()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordDispatchAsync(app, scene, imported: false);
+
+        var justFinished = await EnrichedAsync(app, scene, [], finishedAgo: TimeSpan.FromMinutes(1));
+        var aWhileAgo = await EnrichedAsync(app, scene, [], finishedAgo: TimeSpan.FromMinutes(30));
+
+        Assert.Equal(DownloadQueueStatuses.WaitingForProcessor, justFinished.Status);
+        Assert.Equal(DownloadQueueStatuses.NotHandedOver, aWhileAgo.Status);
+    }
+
+    [Fact]
+    public async Task A_download_whose_episode_was_relinked_to_its_own_file_reads_done_not_waiting()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: "episode-1");
+        // The processor finished it, its output is gone, and no import was ever recorded.
+        var handoff = await HandoffAsync(app, scene);
+        var completed = (await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None))!;
+
+        var stillWaiting = await EnrichedAsync(app, scene, [completed]);
+        var relinked = await EnrichedAsync(app, scene, [completed], new HashSet<string> { "episode-1" });
+
+        Assert.NotEqual(DownloadQueueStatuses.Imported, stillWaiting.Status);
+        Assert.Equal(DownloadQueueStatuses.Imported, relinked.Status);
+
+        // A dismissed hand-off for a download whose title holds its file is done too.
+        var dismissed = (await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, null, CancellationToken.None))!;
+        Assert.Equal(DownloadQueueStatuses.Imported, (await EnrichedAsync(app, scene, [dismissed], new HashSet<string> { "episode-1" })).Status);
+    }
+
+    // ---- #1155 (rc.30.6): a completed hand-off whose import gave up heals itself, once ---------------
+
+    private static async Task DeadLetterAsync(ApplicationTestHost app, string jobId)
+    {
+        var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
+        await using var connection = await db.OpenConnectionAsync("jobs", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE job_queue SET status = 'dead-letter', last_error = 'The destination file already exists.' WHERE id = @id;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@id";
+        parameter.Value = jobId;
+        command.Parameters.Add(parameter);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
+    public async Task A_completed_hand_off_made_after_the_title_came_back_whose_import_gave_up_is_imported_once_more_and_the_film_ends_with_its_file()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
+        var scene = await SceneAsync(app);
+        // The film is older than the hand-off (Nosferatu on the rig), has no file, and its import dead-lettered.
+        var film = await AddMovieAsync(app);
+        await Task.Delay(30);
+        var handoff = await SentHandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: film);
+        var output = await WriteOutputAsync(scene);
+        var library = (await app.Services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None)).Single();
+        var queued = await app.Services.GetRequiredService<IProcessorOutputImportQueue>()
+            .QueueAsync(library, handoff, output, "processor-watch", CancellationToken.None);
+        await DeadLetterAsync(app, queued.JobId!);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, queued.JobId, null, CancellationToken.None);
+
+        // The film's own file is already at the destination: the very bytes of the ready-folder copy.
+        var pipeline = app.Services.GetRequiredService<IImportPipelineService>();
+        var job = await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(queued.JobId!, CancellationToken.None);
+        var request = System.Text.Json.JsonSerializer.Deserialize<ImportExecuteRequest>(
+            job!.PayloadJson!, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        var destination = (await pipeline.PreviewAsync(request.Preview, CancellationToken.None)).DestinationPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.Copy(output, destination);
+
+        await WatchAsync(app, TimeSpan.Zero, new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
+        await WatchAsync(app, TimeSpan.FromMinutes(1), new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
+
+        // Once: one record, one job, however many passes.
+        Assert.Single(await HandoffActivityAsync(app, handoff.Id), line => line.Category == ProcessorHandoffWatcher.ImportRetriedCategory);
+        Assert.Equal(1, await ImportJobCountAsync(app));
+        var requeued = await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(queued.JobId!, CancellationToken.None);
+        Assert.Equal("queued", requeued?.Status);
+
+        // The import, run as the worker would: the identical file at the destination is taken as the film's file.
+        var result = await pipeline.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, $"{result.StatusCode} {result.Message}");
+        var stored = await app.Services.GetRequiredService<IMovieCatalogRepository>().GetByIdAsync(film, CancellationToken.None);
+        Assert.True(stored?.HasFile);
+        Assert.False(File.Exists(output), "the ready-folder copy is removed");
+        Assert.True(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task A_completed_hand_off_whose_import_is_still_queued_or_finished_is_never_imported_again()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var film = await AddMovieAsync(app);
+        var handoff = await SentHandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: false, entityId: film);
+        var output = await WriteOutputAsync(scene);
+        var library = (await app.Services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None)).Single();
+        var queued = await app.Services.GetRequiredService<IProcessorOutputImportQueue>()
+            .QueueAsync(library, handoff, output, "processor-watch", CancellationToken.None);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, queued.JobId, null, CancellationToken.None);
+
+        await WatchAsync(app, TimeSpan.Zero, new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
+
+        Assert.DoesNotContain(await HandoffActivityAsync(app, handoff.Id), line => line.Category == ProcessorHandoffWatcher.ImportRetriedCategory);
+        Assert.Equal(1, await ImportJobCountAsync(app));
+    }
+
+    // ---- #1167: one failure, one record ---------------------------------------------------------------
+
+    [Fact]
+    public async Task A_failed_import_is_listed_against_the_copy_that_owns_the_hand_off_and_not_the_other_clients_copy()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordDispatchAsync(app, scene, imported: false);
+        var other = await OtherCopyHandoffAsync(app, scene, ProcessorHandoffStatuses.Completed);
+        var dispatches = await app.Services.GetRequiredService<IJobQueueRepository>().ListDownloadDispatchesAsync(50, null, CancellationToken.None, includeArchived: true);
+        var libraries = await app.Services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None);
+        // The import of this download's folder failed.
+        var payload = System.Text.Json.JsonSerializer.Serialize(new ImportExecuteRequest(
+            new ImportPreviewRequest(scene.DownloadFolder, null, "movies", "Nosferatu", 1922, null, null, null, null, null),
+            "copy", false, true, DispatchId: dispatches[0].Id));
+        var failedJob = new JobQueueItem("job-1", "filesystem.import.execute", "processor-watch", "failed", payload, 3,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null, null, "The destination file already exists.", null, null, null, null, 3, null, null);
+
+        var enriched = DownloadClientTelemetryService.EnrichQueueImportState(
+            SnapshotOf(Item(scene, scene.DownloadFolder, DateTimeOffset.UtcNow.AddDays(-2))),
+            libraries, dispatches, dispatches, [failedJob], [other],
+            new Dictionary<string, IReadOnlyDictionary<string, string>>());
+
+        Assert.Equal(DownloadQueueStatuses.HandedOverElsewhere, Assert.Single(enriched.Queue).Status);
+    }
+
+    // ---- #1155: Try again on one failed job ------------------------------------------------------------
+
+    [Fact]
+    public async Task Try_again_on_one_dead_lettered_job_retries_only_that_job()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var scheduler = app.Services.GetRequiredService<IJobScheduler>();
+        var first = await scheduler.EnqueueAsync(new EnqueueJobRequest("filesystem.import.execute", "test", "{}", "movie", "m1", IdempotencyKey: "retry-one"), CancellationToken.None);
+        var second = await scheduler.EnqueueAsync(new EnqueueJobRequest("filesystem.import.execute", "test", "{}", "movie", "m2", IdempotencyKey: "retry-two"), CancellationToken.None);
+        await DeadLetterAsync(app, first.Id);
+        await DeadLetterAsync(app, second.Id);
+
+        var response = await app.Client.PostAsync($"/api/jobs/{first.Id}/retry", null);
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        Assert.Equal("queued", (await jobs.GetAsync(first.Id, CancellationToken.None))?.Status);
+        Assert.Equal("dead-letter", (await jobs.GetAsync(second.Id, CancellationToken.None))?.Status);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsync($"/api/jobs/{second.Id}x/retry", null)).StatusCode);
+    }
+
+    /// <summary>Every file reads as a two-hour 1080p H.264 film, so the test is about the hand-off, not the installed ffprobe.</summary>
+    private sealed class ReadableVideoProbe : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(new MediaProbeInfo(
+                Status: "succeeded", Tool: "test", Message: null, DurationSeconds: 7200, Container: "matroska", Bitrate: 12_000_000,
+                VideoStreams: [new MediaVideoStreamInfo(0, "h264", "High", 1920, 1080, "yuv420p", 23.976, 10_000_000, "eng")],
+                AudioStreams: [], SubtitleStreams: []));
     }
 
     // ---- plumbing -------------------------------------------------------------------------------
