@@ -262,7 +262,7 @@ describe("dispatch identity in the import preview", () => {
       mediaType: "tv",
       title: "www.UIndex.org - The Twilight Zone S01E04 16 Millimeter Shrine 1080p AMZN WEB-DL DD 2 0 H 264-playWEB",
       releaseName: "www.UIndex.org - The Twilight Zone S01E04 16 Millimeter Shrine 1080p AMZN WEB-DL DD 2 0 H 264-playWEB",
-      sourcePath: "C:\Downloads\www.UIndex.org - The Twilight Zone S01E04"
+      sourcePath: "C:\\Downloads\\www.UIndex.org - The Twilight Zone S01E04"
     } as DownloadQueueItem;
 
     const request = buildImportRequest(queueItem, [] as LibraryItem[], null);

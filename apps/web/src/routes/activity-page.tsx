@@ -90,6 +90,7 @@ import {
   type LiveStepEntry
 } from "../lib/activity-live-steps";
 import { isBackgroundJob } from "../lib/background-jobs";
+import { dispatchStanding } from "../lib/dispatch-final-state";
 import { describeEpisodeSearchGroup, groupEpisodeSearches, type EpisodeSearchGroup } from "../lib/episode-search-groups";
 import { failureKindWords } from "../lib/failure-reasons";
 import {
@@ -319,15 +320,16 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     for (const dispatch of dispatches) {
-      const dispatchStatus = dispatchOpenStatus(dispatch);
-      if (!dispatchStatus) continue;
+      const standing = dispatchStanding(dispatch);
+      if (!standing) continue;
+      const dispatchStatus = standing.status;
       rows.push({
         key: `dispatch-${dispatch.id}`, kind: "dispatch", status: dispatchStatus, whenUtc: dispatch.createdUtc, title: dispatch.releaseName,
         step: `Sent to ${dispatch.downloadClientName}`,
-        detail: dispatchStatus === "in-progress"
+        detail: standing.detail ?? (dispatchStatus === "in-progress"
           ? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`
-          : dispatch.grabMessage ?? dispatch.importFailureMessage ?? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`,
-        pill: OPEN_PILL[dispatchStatus], entityId: dispatch.entityId, entityType: dispatch.entityType,
+          : dispatch.grabMessage ?? dispatch.importFailureMessage ?? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`),
+        pill: standing.pill, entityId: dispatch.entityId, entityType: dispatch.entityType,
         open: () => setOpenDispatchId(dispatch.id), selected: openDispatchId === dispatch.id
       });
     }
@@ -876,14 +878,6 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 }
 
 /* -------------------------------------------------------------- helpers */
-
-/** Where a send to a download client belongs: still with the client, stopped, or waiting for you. Imported ones are in the history. */
-function dispatchOpenStatus(dispatch: DownloadDispatchItem): OpenStatus | null {
-  if (dispatch.status === "failed" || dispatch.status === "importFailed" || dispatch.grabStatus === "failed" || dispatch.grabStatus === "refused") return "failed";
-  if (dispatch.status === "sent") return "in-progress";
-  if (dispatch.status === "planned") return "needs-decision";
-  return null;
-}
 
 /** A filter day (a quick word or YYYY-MM-DD) as the moment it starts, or where the "until" day ends. Null when not set. */
 function filterDay(token: string, edge: "since" | "until"): number | null {
