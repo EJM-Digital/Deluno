@@ -19,7 +19,8 @@ public sealed class FilesystemReconciliationService(
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider,
-    IHealthCheckRepository? healthChecks = null)
+    IHealthCheckRepository? healthChecks = null,
+    Deluno.Platform.IRecycleBinService? recycleBinService = null)
     : IFilesystemReconciliationService
 {
     private static readonly string[] ArtifactMarkers =
@@ -33,6 +34,7 @@ public sealed class FilesystemReconciliationService(
     {
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var issues = new List<FilesystemReconciliationIssue>();
+        var recycled = await RecycledOriginalPathsAsync(cancellationToken);
 
         foreach (var library in libraries.Where(item => !string.IsNullOrWhiteSpace(item.RootPath)))
         {
@@ -91,6 +93,18 @@ public sealed class FilesystemReconciliationService(
                 if (IsBeingReplacedByAnImport(tracked.Path))
                 {
                     knownTrackedPaths.Add(fullPath);
+                    continue;
+                }
+
+                // A file Deluno itself moved to its recycle bin was not removed outside Deluno.
+                if (recycled.Contains(fullPath))
+                {
+                    if (tracked.MediaType == "tv")
+                    {
+                        await seriesCatalogRepository.DetachSeriesFileRecordsAsync(
+                            tracked.EntityId, tracked.Path, cancellationToken);
+                    }
+
                     continue;
                 }
 
@@ -178,6 +192,20 @@ public sealed class FilesystemReconciliationService(
                     false,
                     action,
                     "The file is back on disk, so nothing was changed.");
+            }
+
+            if ((await RecycledOriginalPathsAsync(cancellationToken)).Contains(fullPath))
+            {
+                if (token.MediaType == "tv")
+                {
+                    await seriesCatalogRepository.DetachSeriesFileRecordsAsync(
+                        token.EntityId, token.Path, cancellationToken);
+                }
+
+                return new FilesystemReconciliationRepairResult(
+                    false,
+                    action,
+                    "Deluno moved this file to its recycle bin itself, so nothing was changed.");
             }
 
             var rootFull = string.IsNullOrWhiteSpace(library.RootPath) ? null : Path.GetFullPath(library.RootPath);
@@ -1198,6 +1226,29 @@ public sealed class FilesystemReconciliationService(
 
     private static bool IsDelunoArtifact(string path)
         => ArtifactMarkers.Any(marker => Path.GetFileName(path).Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Where the files Deluno itself moved to its recycle bin used to be. Those are never "removed outside Deluno".
+    /// </summary>
+    private async Task<HashSet<string>> RecycledOriginalPathsAsync(CancellationToken cancellationToken)
+    {
+        var paths = new HashSet<string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        if (recycleBinService is null)
+        {
+            return paths;
+        }
+
+        foreach (var item in await recycleBinService.ListAsync(cancellationToken))
+        {
+            if (!string.IsNullOrWhiteSpace(item.OriginalPath))
+            {
+                paths.Add(Path.GetFullPath(item.OriginalPath));
+            }
+        }
+
+        return paths;
+    }
 
     /// <summary>
     /// True while an import is replacing this very file: the import moves the old

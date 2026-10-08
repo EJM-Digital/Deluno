@@ -375,6 +375,18 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         => Task.FromResult(false);
 
     /// <summary>
+    /// Corrects the show-level file notes that name this file (the show's latest file, kept beside each episode's
+    /// own): they move to another file an episode still holds, or are cleared. Never changes whether the show is
+    /// monitored. Used after Deluno itself moves a file to the recycle bin, so nothing reads it as removed outside Deluno.
+    /// </summary>
+    Task<int> DetachSeriesFileRecordsAsync(string? seriesId, string filePath, CancellationToken cancellationToken)
+        => Task.FromResult(0);
+
+    /// <summary>Start-up heal: show-level file notes that point into a recycle bin folder are corrected.</summary>
+    Task<int> ClearSeriesFileRecordsInRecycleBinAsync(CancellationToken cancellationToken)
+        => Task.FromResult(0);
+
+    /// <summary>
     /// A library check (#1174): an episode that shows no file while its own, correctly named
     /// file sits in its show's folder (and no episode of the show is linked to it) is linked to
     /// that file. Returns what was linked so the caller can say so in Activity. Safe to run again.
