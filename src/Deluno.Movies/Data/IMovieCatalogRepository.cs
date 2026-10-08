@@ -335,6 +335,10 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// </summary>
     Task<int> SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken);
 
+    /// <summary>The same, naming each case it closed so the caller can say so in Activity (#1167).</summary>
+    Task<IReadOnlyList<SettledRecoveryCase>> SettleImportRecoveryCasesListedAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<SettledRecoveryCase>>([]);
+
     /// <summary>Closes the open download or import cases whose title now holds its file (#1167), with or without details.</summary>
     Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(CancellationToken cancellationToken);
 
