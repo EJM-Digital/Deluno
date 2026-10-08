@@ -419,6 +419,50 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Null(world.Client.LastAction);
     }
 
+    // Golden path, rc.30.9: a download Deluno removed itself kept its record open, so the title read "on its way".
+    [Theory]
+    [InlineData(QueueRemovalReasons.Failed)]
+    [InlineData(QueueRemovalReasons.Unwanted)]
+    [InlineData(QueueRemovalReasons.GaveUp)]
+    public async Task A_download_Deluno_removes_closes_its_record_so_the_title_is_free(string reason)
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+
+        var result = await world.RemoveAsync(reason);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
+        var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
+        Assert.Equal("archived", dispatch!.Status);
+    }
+
+    [Fact]
+    public async Task A_removal_the_client_cannot_do_because_it_no_longer_holds_the_download_still_frees_the_title()
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+        world.Client.FailActions = true;
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.GaveUp);
+
+        Assert.True(result.Succeeded, result.Message);
+        var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
+        Assert.Equal("archived", dispatch!.Status);
+    }
+
+    [Fact]
+    public async Task A_removal_the_client_cannot_do_while_it_still_holds_the_download_keeps_the_record_open()
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+        world.Client.FailActions = true;
+        world.Client.Queue.Add(ClientItem(QueueItemId, Release));
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.GaveUp);
+
+        Assert.False(result.Succeeded);
+        var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
+        Assert.NotEqual("archived", dispatch!.Status);
+    }
+
     private sealed class FakeClient(string protocol) : IDownloadClient
     {
         public string Protocol => protocol;
@@ -426,6 +470,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         public string? LastAction { get; set; }
 
         public string? LastQueueItemId { get; private set; }
+
+        /// <summary>The client refuses every action (a hung or half-gone download).</summary>
+        public bool FailActions { get; set; }
 
         public DownloadClientTelemetryCapabilities Capabilities { get; } =
             new(true, true, true, true, true, true, protocol);
@@ -446,7 +493,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         {
             LastAction = action;
             LastQueueItemId = queueItemId;
-            return Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, true, $"{action} sent to {client.Name}"));
+            return Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, !FailActions, FailActions ? "The client would not do that." : $"{action} sent to {client.Name}"));
         }
 
         public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
