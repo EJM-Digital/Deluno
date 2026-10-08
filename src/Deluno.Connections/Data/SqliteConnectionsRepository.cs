@@ -38,6 +38,16 @@ public sealed class SqliteConnectionsRepository(
         return value is null or DBNull ? null : Convert.ToString(value);
     }
 
+    private static async Task StoreTypedIndexerNameAsync(System.Data.Common.DbConnection connection, string id, string name, string? baseUrl, CancellationToken cancellationToken)
+    {
+        using var store = connection.CreateCommand();
+        store.CommandText = "UPDATE indexer_sources SET discovered_name = @name, discovered_for_url = @url WHERE id = @id;";
+        AddParameter(store, "@id", id);
+        AddParameter(store, "@name", name);
+        AddParameter(store, "@url", baseUrl ?? string.Empty);
+        await store.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IndexerItem?> SetDiscoveredIndexerNameAsync(string id, string discoveredName, CancellationToken cancellationToken)
     {
         var existing = (await ListIndexersAsync(cancellationToken))
@@ -396,10 +406,13 @@ public sealed class SqliteConnectionsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        // A name typed in the add drawer is kept (a built-in tracker names itself after its site). It is stored where a
+        // name Prowlarr or Jackett gave an indexer is, so every later rename pass keeps it while the address stays.
+        var typedName = request.KeepName && string.IsNullOrWhiteSpace(item.DefinitionId) ? NormalizeBlankToNull(request.Name)?.Trim() : null;
         item = item with
         {
             Name = ConnectionNames.Unique(
-                IndexerBaseName(item.DefinitionId, item.BaseUrl),
+                IndexerBaseName(item.DefinitionId, item.BaseUrl, typedName),
                 ConnectionNames.PortOf(item.BaseUrl),
                 item.Id,
                 await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", item.Id, cancellationToken))
@@ -485,6 +498,11 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@proxyId", item.ProxyId);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
+        if (typedName is not null)
+        {
+            await StoreTypedIndexerNameAsync(connection, item.Id, typedName, item.BaseUrl, cancellationToken);
+        }
+
         if (request.RouteToLibraries)
         {
             await RouteNewIndexerAsync(connection, item, cancellationToken);
@@ -512,8 +530,15 @@ public sealed class SqliteConnectionsRepository(
         var newProtocol = request.Protocol is not null ? IndexerProtocols.Normalize(request.Protocol) : existing.Protocol;
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? existing.BaseUrl;
+        // A name that differs from the one it has is a rename; the form sends the current name back on every save, which is not.
+        var typedName = request.KeepName
+            && string.IsNullOrWhiteSpace(existing.DefinitionId)
+            && !string.IsNullOrWhiteSpace(request.Name)
+            && !string.Equals(request.Name.Trim(), existing.Name, StringComparison.OrdinalIgnoreCase)
+            ? request.Name.Trim()
+            : null;
         var newName     = ConnectionNames.Unique(
-            IndexerBaseName(existing.DefinitionId, newBaseUrl, await DiscoveredNameAsync(connection, id, newBaseUrl, cancellationToken)),
+            IndexerBaseName(existing.DefinitionId, newBaseUrl, typedName ?? await DiscoveredNameAsync(connection, id, newBaseUrl, cancellationToken)),
             ConnectionNames.PortOf(newBaseUrl),
             id,
             await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", id, cancellationToken));
@@ -708,6 +733,11 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+
+        if (typedName is not null)
+        {
+            await StoreTypedIndexerNameAsync(connection, id, typedName, newBaseUrl, cancellationToken);
+        }
 
         return existing with
         {

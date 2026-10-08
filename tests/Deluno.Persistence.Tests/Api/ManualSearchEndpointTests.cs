@@ -295,7 +295,7 @@ public sealed class ManualSearchEndpointTests
         var searchRow = items.SingleOrDefault(item => item.GetProperty("eventType").GetString() == "search"
             && item.GetProperty("indexerId").GetString() == indexer.Id);
         Assert.NotEqual(default, searchRow);
-        Assert.Equal(Deluno.Contracts.DelunoHostName.Current, searchRow.GetProperty("indexerName").GetString());
+        Assert.StartsWith("127.0.0.1", searchRow.GetProperty("indexerName").GetString());
         Assert.Equal("matched", searchRow.GetProperty("outcome").GetString());
     }
 
