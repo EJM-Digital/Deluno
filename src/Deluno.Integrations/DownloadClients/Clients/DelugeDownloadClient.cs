@@ -119,7 +119,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Deluge item"), item.Name ?? "Unknown Deluge item", item.Label ?? string.Empty,
                 StillMoving(item, finalFolders) ? DownloadQueueStatuses.Downloading : NormalizeStatus(item.State, item.Progress), Math.Clamp(Math.Round(item.Progress ?? 0, 1), 0, 100), Math.Round((item.DownloadPayloadRate ?? 0) / 1_000_000d, 1),
                 Math.Max(0, Convert.ToInt32(item.Eta ?? 0)), Convert.ToInt64(item.TotalSize ?? 0), Convert.ToInt64(item.TotalDone ?? 0), item.NumPeers ?? 0, "Deluge",
-                TrackerError(item.TrackerStatus) ?? DelugeMessage(item.Message), DownloadClientHelpers.FromUnix(Convert.ToInt64(item.TimeAdded ?? 0)), DownloadClientHelpers.ResolveDownloadPath(item.SavePath, item.Name),
+                (IsComplete(item) ? null : TrackerError(item.TrackerStatus)) ?? DelugeMessage(item.Message), DownloadClientHelpers.FromUnix(Convert.ToInt64(item.TimeAdded ?? 0)), DownloadClientHelpers.ResolveDownloadPath(item.SavePath, item.Name),
                 // Both come back on the same web.update_ui call, so a sharing
                 // rule costs no extra request. seeding_time is seconds since
                 // the torrent completed; it is 0 while still downloading.
@@ -131,7 +131,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // finding. Deluge's own message field is the daemon speaking
                 // for itself (a move that failed, a path it could not write
                 // to), which is this machine's problem.
-                IsSetupProblem: TrackerError(item.TrackerStatus) is null && DelugeMessage(item.Message) is not null,
+                IsSetupProblem: (IsComplete(item) || TrackerError(item.TrackerStatus) is null) && DelugeMessage(item.Message) is not null,
                 IsPrivate: item.Private,
                 // #878: tracker_status is Deluge's own free-text field, not a
                 // fixed enum, so a keyword match on the raw text (not only the
@@ -313,6 +313,15 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         => !string.IsNullOrWhiteSpace(trackerStatus) && trackerStatus.StartsWith("Error", StringComparison.OrdinalIgnoreCase)
             ? DownloadClientHelpers.PlainConnectionFailure(trackerStatus, "The tracker") ?? trackerStatus.Trim()
             : null;
+
+    /// <summary>
+    /// #1183: a torrent at 100% in any state but Error is finished. Its tracker
+    /// matters only while it still downloads, so a tracker that does not
+    /// answer is never an error on it: it would otherwise make a good, seeding
+    /// download read as failed and never be handed to the processor.
+    /// </summary>
+    private static bool IsComplete(DelugeTorrent item)
+        => (item.Progress ?? 0) >= 99.9 && !string.Equals(item.State, "Error", StringComparison.OrdinalIgnoreCase);
 
     private static bool StillMoving(DelugeTorrent item, IReadOnlyDictionary<string, string> finalFolders)
         => StillMoving(item)
