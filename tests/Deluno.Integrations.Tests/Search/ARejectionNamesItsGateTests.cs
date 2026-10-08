@@ -31,7 +31,7 @@ public sealed class ARejectionNamesItsGateTests
         var decision = Decide("The Kid 1921 REMASTERED 1080p BluRay x264 SADPANDA[rarbg]", "Bluray 1080p", sizeGb: 5.59, seeders: 0);
 
         Assert.Equal(ReleaseDecisionStatuses.Rejected, decision.Status);
-        Assert.Equal("Rejected by the typed release plan. No one is seeding this torrent, so it cannot download.", decision.Summary);
+        Assert.Equal("Not taken: No one is seeding this torrent, so it cannot download.", decision.Summary);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed class ARejectionNamesItsGateTests
             TitleMismatch: mismatch));
 
         Assert.Equal(ReleaseDecisionStatuses.Rejected, decision.Status);
-        Assert.Equal($"Rejected by the typed release plan. {mismatch}", decision.Summary);
+        Assert.Equal($"Not taken: {mismatch}", decision.Summary);
     }
 
     [Fact]
