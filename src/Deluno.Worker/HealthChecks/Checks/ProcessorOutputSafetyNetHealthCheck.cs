@@ -262,7 +262,7 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
 
         var isMedia = files.Any(WorkPlanner.IsImportableVideoFile);
         return BuildOutcome(library, name, path, "folder", isMedia,
-            string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase)
+            string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase) && files.Count(WorkPlanner.IsImportableVideoFile) <= 1
                 ? $"The {library.Name} library's processor output folder has a film folder Deluno cannot match to a hand-off: {name}."
                 : $"The {library.Name} library's processor output folder has a season folder Deluno cannot match to a hand-off: {name}.");
     }

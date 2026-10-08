@@ -167,6 +167,7 @@ public static class ActivityEventLabels
             ["processing.handoff.closed-imported"] = "Closed a hand-off for a file already imported",
             ["processing.waiting-too-long"] = "The processor never picked a file up",
             ["processing.resubmitted"] = "Sent to the processor again",
+            ["processing.superseded"] = "Hand-off closed, title imported another way",
             ["processing.output.matched.import-queued"] = "Found the processed file, import queued",
             ["processing.output.scan-failed"] = "Could not look through the processor's output",
             ["processing.output.unmatched"] = "Processor output did not match anything",
