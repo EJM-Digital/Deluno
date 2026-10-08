@@ -565,7 +565,7 @@ export function SearchCyclesPage() {
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawerId === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                   <ListCell primary={kinds} secondary={`Up to ${library.maxMissingItemsPerRun ?? library.maxItemsPerRun} missing · ${library.maxUpgradeItemsPerRun ?? library.maxItemsPerRun} upgrades per run`} />
-                  <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day · each schedule runs independently"} />
+                  <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day"} />
                   <ListCell numeric primary={nextSearch ?? <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
