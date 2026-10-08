@@ -4143,6 +4143,162 @@ public sealed class SqliteSeriesCatalogRepository(
         return repairs;
     }
 
+    public async Task<IReadOnlyList<RelinkedEpisodeFile>> RelinkEpisodesWithTheirOwnFilesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
+
+        // Shows with an episode that shows no file, and a folder they already keep files in.
+        var wanted = new List<(string SeriesId, string Title, string EpisodeId, int Season, int Episode)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText =
+                """
+                SELECT e.series_id, s.title, e.id, e.season_number, e.episode_number
+                FROM episode_entries e
+                INNER JOIN series_entries s ON s.id = e.series_id
+                WHERE e.has_file = 0
+                  AND EXISTS (SELECT 1 FROM episode_entries other
+                              WHERE other.series_id = e.series_id AND other.has_file = 1 AND other.file_path IS NOT NULL);
+                """;
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                wanted.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4)));
+            }
+        }
+
+        var linked = new List<RelinkedEpisodeFile>();
+        var now = timeProvider.GetUtcNow();
+        foreach (var show in wanted.GroupBy(item => item.SeriesId))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? anyTracked = null;
+            var tracked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var files = connection.CreateCommand())
+            {
+                files.CommandText = "SELECT file_path FROM episode_entries WHERE series_id = @seriesId AND has_file = 1 AND file_path IS NOT NULL;";
+                AddParameter(files, "@seriesId", show.Key);
+                using var reader = await files.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    tracked.Add(reader.GetString(0));
+                    anyTracked ??= reader.GetString(0);
+                }
+            }
+
+            var folder = ShowFolderOf(anyTracked);
+            if (folder is null)
+            {
+                continue;
+            }
+
+            Dictionary<(int Season, int Episode), List<string>> byNumber = [];
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                             .Where(path => RepairVideoExtensions.Contains(Path.GetExtension(path)))
+                             .Where(path => !tracked.Contains(path))
+                             .Order(StringComparer.OrdinalIgnoreCase))
+                {
+                    var numbers = SeriesNumberingResolver
+                        .ParseFileName(Path.GetFileName(path), SeriesNumberingSchemes.Standard).Matches
+                        .Where(match => match.SeasonNumber is not null && match.EpisodeNumber is not null)
+                        .ToList();
+                    // Only a file whose name gives exactly one episode: a pack or a double
+                    // episode file is the import's business, not a guess made here.
+                    if (numbers.Count != 1)
+                    {
+                        continue;
+                    }
+
+                    var key = (numbers[0].SeasonNumber!.Value, numbers[0].EpisodeNumber!.Value);
+                    if (!byNumber.TryGetValue(key, out var list))
+                    {
+                        byNumber[key] = list = [];
+                    }
+
+                    list.Add(path);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue; // A folder that cannot be read is not searched; nothing is changed.
+            }
+
+            foreach (var episode in show.OrderBy(item => item.Season).ThenBy(item => item.Episode))
+            {
+                var own = byNumber.GetValueOrDefault((episode.Season, episode.Episode))?.FirstOrDefault();
+                if (own is null)
+                {
+                    continue;
+                }
+
+                var detected = LibraryQualityDecider.DetectQuality(Path.GetFileName(own));
+                await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+                using var relink = connection.CreateCommand();
+                relink.Transaction = transaction;
+                relink.CommandText =
+                    """
+                    UPDATE episode_entries
+                    SET has_file = 1, file_path = @ownFile, file_size_bytes = @size,
+                        imported_utc = @now, missing_detected_utc = NULL, updated_utc = @now
+                    WHERE id = @episodeId AND has_file = 0;
+                    UPDATE episode_wanted_state
+                    SET wanted_status = 'covered',
+                        wanted_reason = 'Its own file was found in the show''s folder and linked.',
+                        current_quality = @quality,
+                        updated_utc = @now
+                    WHERE episode_id = @episodeId;
+                    """;
+                AddParameter(relink, "@episodeId", episode.EpisodeId);
+                AddParameter(relink, "@ownFile", own);
+                AddParameter(relink, "@size", new FileInfo(own).Length);
+                AddParameter(relink, "@quality", detected);
+                AddParameter(relink, "@now", now.ToString("O"));
+                if (await relink.ExecuteNonQueryAsync(cancellationToken) == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    continue;
+                }
+
+                await RefreshSeriesRungsAsync(connection, transaction, [show.Key], now, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                linked.Add(new RelinkedEpisodeFile(show.Key, episode.Title, episode.EpisodeId, episode.Season, episode.Episode, own));
+            }
+        }
+
+        foreach (var seriesId in linked.Select(item => item.SeriesId).Distinct())
+        {
+            await SharedMediaState.ReevaluateTitleUnderProfileAsync(
+                MediaKind.Series,
+                seriesId,
+                await SharedMediaState.GetTitleQualityProfileIdAsync(MediaKind.Series, seriesId, cancellationToken),
+                cancellationToken);
+        }
+
+        return linked;
+    }
+
+    /// <summary>The folder a show keeps its files in: the folder of one of them, or its parent when that is a season folder.</summary>
+    private static string? ShowFolderOf(string? trackedFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(trackedFilePath))
+        {
+            return null;
+        }
+
+        var folder = Path.GetDirectoryName(trackedFilePath);
+        if (folder is not null
+            && System.Text.RegularExpressions.Regex.IsMatch(
+                Path.GetFileName(folder), @"^(season|series|s)[\s._-]*\d+$|^specials?$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+        {
+            folder = Path.GetDirectoryName(folder);
+        }
+
+        return !string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder) ? folder : null;
+    }
+
     private static readonly HashSet<string> RepairVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
