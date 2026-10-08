@@ -22,3 +22,27 @@
   .sy-col { grid-template-rows: auto auto auto minmax(0, 1fr); }
   .sy-reach span { height: auto; min-height: 17px; white-space: normal; }
 }
+
+/*
+ * C3 (#1168): the System tab's Health and Connections rows keep their desktop columns (a dot, the text, then two
+ * 115px buttons or a time and a Test button), which leaves the text a 34px strip on a phone. Below the width where the
+ * cards stack, the text takes the whole row and what sat beside it goes underneath.
+ */
+@media (max-width: 767px) {
+  .sy .sy-chk { grid-template-columns: 10px minmax(0, 1fr) minmax(0, 1fr); align-items: start; row-gap: 6px; }
+  .sy .sy-chk .sy-d { margin-top: 5px; }
+  .sy .sy-chk .sy-t { grid-column: 2 / span 2; }
+  .sy .sy-chk > :nth-child(3) { grid-column: 2; }
+  .sy .sy-chk > :nth-child(4) { grid-column: 3; }
+  .sy .sy-chk .sy-when { grid-column: 2 / span 2; text-align: left; }
+  .sy .sy-chk .sy-btn { height: auto; min-height: 28px; line-height: 1.3; padding: 5px 8px; }
+
+  .sy .sy-ct-head { display: none; }
+  .sy .sy-ct-row { grid-template-columns: 10px minmax(0, 1fr) auto; height: auto; min-height: 36px; padding-top: 5px; padding-bottom: 5px; row-gap: 2px; align-items: start; }
+  .sy .sy-ct-row .sy-d { margin-top: 5px; }
+  .sy .sy-ct-row .sy-nm { grid-column: 2; }
+  .sy .sy-ct-row .sy-r { grid-column: 2; grid-row: 2; text-align: left; }
+  .sy .sy-ct-row .sy-test, .sy .sy-ct-row > span:last-child:not(.sy-r):not(.sy-nm):not(.sy-d) { grid-column: 3; grid-row: 1 / span 2; align-self: center; padding: 0 10px; opacity: 1; }
+  .sy .sy-ct-grp { grid-template-columns: 10px minmax(0, 1fr) auto; }
+  .sy .sy-ct-grp > span:nth-child(3) { display: none; }
+}

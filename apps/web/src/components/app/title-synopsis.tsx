@@ -12,6 +12,10 @@ const wide = "(min-width: 1280px)";
  * full text in a floating panel over the page, so the header never changes
  * height. Narrower than xl the column stacks under the poster, has no height
  * rule and shows the whole text.
+ *
+ * The box never has less than two lines and the More button (#1168): the column beside the poster is at least the
+ * poster height, not exactly it, so a show with a logo, alternate titles and many facts makes the header a little
+ * taller instead of leaving the synopsis no room (0px at 1366, where it could not be read).
  */
 export function TitleSynopsis({ text }: { text: string }) {
   const box = useRef<HTMLDivElement>(null);
@@ -112,7 +116,7 @@ export function TitleSynopsis({ text }: { text: string }) {
     <div
       ref={box}
       data-testid="title-synopsis"
-      className="relative mt-2 max-w-4xl min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-hidden"
+      className="relative mt-2 max-w-4xl min-w-0 xl:min-h-[4.1rem] xl:flex-[1_1_0px] xl:overflow-hidden"
     >
       <p
         ref={paragraph}
