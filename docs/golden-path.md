@@ -24,7 +24,7 @@ Copy this list into the run's record and tick each line with what was seen.
    - [ ] The picker shows progress and a finish screen, and offers to open Deluno.
    - [ ] Weir answers on this PC only, and its tray starts silently.
 2. **Clients come up ready.**
-   - [ ] Each client has the Movies and TV categories and the documented folders (`C:\Downloads\Completed\<cat>`, `D:\Incomplete\<client>`).
+   - [ ] Each client has the Movies and TV categories and the documented folders (`C:\Downloads\Completed\<cat>`, `C:\Downloads\Incomplete\<client>`).
    - [ ] Deluge's Label plugin is on.
    - [ ] Library Routing's folder check shows every folder as Matches.
 3. **Account and guided setup, end to end.**
