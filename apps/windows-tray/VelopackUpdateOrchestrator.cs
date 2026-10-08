@@ -97,6 +97,9 @@ public static class UpdateFeedErrors
     }
 }
 
+/// <summary>The update facts the tray menu words its update item from.</summary>
+public sealed record TrayUpdateSnapshot(bool IsInstalled, string State, string? LatestVersion, bool UpdateAvailable, bool RestartRequired);
+
 public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger) : IUpdateOrchestrator
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -105,6 +108,84 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
     private UpdateManager? _manager;
     private string _managerKey = string.Empty;
     private UpdateInfo? _availableUpdate;
+    private readonly object _snapshotLock = new();
+
+    /// <summary>Raised when the update state changes (checking, found, downloading, ready), so the tray icon follows without polling.</summary>
+    public event Action? Changed
+    {
+        add => _runtime.Changed += value;
+        remove => _runtime.Changed -= value;
+    }
+
+    /// <summary>
+    /// Set by the tray: stops the host cleanly before an update restarts the app, so a restart asked for from the
+    /// web page ends the same way Restart to update on the tray menu does. Null in a host that is not the tray.
+    /// </summary>
+    public static Func<Task>? CleanStopBeforeApply { get; set; }
+
+    /// <summary>What the tray menu needs to word its update item.</summary>
+    public TrayUpdateSnapshot Snapshot()
+    {
+        lock (_snapshotLock)
+        {
+            var manager = GetOrCreateManager(AppSettings.Load());
+            return new TrayUpdateSnapshot(manager.IsInstalled, _runtime.State, _runtime.LatestVersion, _runtime.UpdateAvailable, _runtime.RestartRequired);
+        }
+    }
+
+    /// <summary>
+    /// A downloaded update is installed when this app exits (Quit), without restarting it. Returns true when one was queued.
+    /// </summary>
+    public bool ApplyPendingOnExit()
+    {
+        lock (_snapshotLock)
+        {
+            var manager = GetOrCreateManager(AppSettings.Load());
+            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } pending)
+            {
+                return false;
+            }
+
+            manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// At start, before the host runs: an update downloaded earlier is applied now and the app restarts into it.
+    /// Tried once per version, so an update that cannot apply never loops. Returns true when the app is restarting.
+    /// </summary>
+    public bool ApplyPendingAtStart(string attemptFolder)
+    {
+        lock (_snapshotLock)
+        {
+            var manager = GetOrCreateManager(AppSettings.Load());
+            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } pending)
+            {
+                return false;
+            }
+
+            var version = pending.Version.ToString();
+            var marker = Path.Combine(attemptFolder, "update-start-attempt.txt");
+            try
+            {
+                if (File.Exists(marker) && string.Equals(File.ReadAllText(marker).Trim(), version, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                Directory.CreateDirectory(attemptFolder);
+                File.WriteAllText(marker, version);
+            }
+            catch
+            {
+                return false;
+            }
+
+            manager.ApplyUpdatesAndRestart(pending);
+            return true;
+        }
+    }
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -335,6 +416,11 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 try
                 {
                     await Task.Delay(350);
+                    if (CleanStopBeforeApply is { } stopHost)
+                    {
+                        try { await stopHost(); } catch { /* the update still applies */ }
+                    }
+
                     manager.ApplyUpdatesAndRestart(toApply);
                 }
                 catch (Exception ex)

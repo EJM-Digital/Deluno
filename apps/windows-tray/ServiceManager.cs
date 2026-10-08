@@ -223,19 +223,9 @@ public static class ServiceManager
         RunSc($"delete {ServiceName}");
     }
 
-    private static void SetTrayStartup()
-    {
-        var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-            @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true)!;
-        key.SetValue("Deluno", $"\"{ExePath}\"");
-    }
+    private static void SetTrayStartup() => new RunKeySignInEntry(ExePath).Enable();
 
-    private static void RemoveTrayStartup()
-    {
-        var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-            @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
-        key?.DeleteValue("Deluno", throwOnMissingValue: false);
-    }
+    private static void RemoveTrayStartup() => new RunKeySignInEntry(ExePath).Disable();
 
     private static void RunSc(string args)
     {

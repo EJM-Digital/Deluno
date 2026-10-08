@@ -37,6 +37,27 @@ public sealed class DelunoServer : IDisposable
     public IReadOnlyList<string> ReachableUrls { get; private set; } = Array.Empty<string>();
     public LanAccessStatus? LanAccess { get; private set; }
 
+    /// <summary>The running host's services, for the tray to follow its pushes and read its counts. Null while no host is running.</summary>
+    public IServiceProvider? Services => _app?.Services;
+
+    /// <summary>Reads the firewall again, such as after the rule was added or removed from the tray.</summary>
+    public async Task RefreshLanAccessAsync(CancellationToken cancellationToken)
+    {
+        if (Firewall is null)
+        {
+            return;
+        }
+
+        try
+        {
+            LanAccess = await Firewall.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Leave the last reading; the next restart reads it again.
+        }
+    }
+
     /// <summary>Deluno's firewall rule for the port it is listening on (#623).</summary>
     public WindowsFirewallLanAccess? Firewall { get; private set; }
 
