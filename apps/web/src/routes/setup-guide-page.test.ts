@@ -431,7 +431,7 @@ describe("setup guide keeps every Yes/No answer in the draft (#1132)", () => {
 
   it("names exactly what is missing on the Start page", () => {
     const form = {
-      mediaIntent: "both", movieRootPath: "D:\Movies", seriesRootPath: "D:\TV",
+      mediaIntent: "both", movieRootPath: "D:/Movies", seriesRootPath: "D:/TV",
       qualityPreset: "balanced1080p", formatGoal: "balanced",
       skipSignInLocalNetwork: null, updateAutomatically: true, automation: ALL_NO
     } as unknown as FinishForm;
