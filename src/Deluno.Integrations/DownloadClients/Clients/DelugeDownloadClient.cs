@@ -467,7 +467,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     private HttpClient CreateHttp()
     {
         var http = httpClientFactory.CreateClient("download-clients");
-        http.Timeout = TimeSpan.FromSeconds(8);
+        http.Timeout = TimeSpan.FromSeconds(20);
         return http;
     }
 

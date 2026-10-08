@@ -41,7 +41,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRemove: false));
         }
         else if (!DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent)
-            && (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage)))
+            && (item.Status == "stalled" || (!string.IsNullOrWhiteSpace(item.ErrorMessage) && !IsTransferring(item))))
         {
             findings.Add(new(
                 Severity: "critical",
@@ -348,6 +348,14 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
 
         return findings;
     }
+
+    /// <summary>
+    /// Bytes are arriving right now. A tracker that timed out, or any other
+    /// error text beside a download that is moving, is not a stalled download
+    /// (rig, 8 Oct: "Error: timed out" on a Deluge torrent running at 8 MB/s).
+    /// </summary>
+    private static bool IsTransferring(RecoveryQueueSnapshot item)
+        => item.SpeedMbps > 0 && string.Equals(item.Status, "downloading", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>#951: the plain-English reason behind a 0% download, from whichever signal Deluno actually has for it.</summary>
     private static string ZeroPercentEvidence(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc)
