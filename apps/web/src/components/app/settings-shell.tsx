@@ -371,7 +371,8 @@ export function SettingsWorkspaceLayout() {
   }
 
   return (
-    <SettingsShell description={meta.description}>
+    // The top bar already shows the page's description; saying it again under it was the same sentence twice (#1168).
+    <SettingsShell>
       <SettingsWorkspaceContext.Provider value>
         <Outlet />
       </SettingsWorkspaceContext.Provider>
@@ -399,7 +400,7 @@ export function SettingsShell({
   description,
   children
 }: {
-  description: string;
+  description?: string;
   children: ReactNode;
 }) {
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -412,9 +413,11 @@ export function SettingsShell({
     <div className="space-y-(--page-gap)">
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
       <div className="flex max-w-4xl items-start justify-between gap-(--grid-gap)">
-        <p className="max-w-3xl text-(length:--section-subtitle-size) leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+        {description ? (
+          <p className="max-w-3xl text-(length:--section-subtitle-size) leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        ) : <span />}
         <button
           type="button"
           onClick={() => setGlossaryOpen(true)}

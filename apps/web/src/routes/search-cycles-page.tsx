@@ -565,7 +565,7 @@ export function SearchCyclesPage() {
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawerId === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                   <ListCell primary={kinds} secondary={`Up to ${library.maxMissingItemsPerRun ?? library.maxItemsPerRun} missing · ${library.maxUpgradeItemsPerRun ?? library.maxItemsPerRun} upgrades per run`} />
-                  <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day · each schedule runs independently"} />
+                  <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day"} />
                   <ListCell numeric primary={nextSearch ?? <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
@@ -768,7 +768,7 @@ export function SearchCyclesPage() {
           <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
             <SwitchRow
               label="Pause automatic searching while downloads pile up"
-              description="Skip the routine film and TV searches while more than this many of your downloads are still waiting, and start again by yourself when the queue shrinks. Deluno says so in Activity and on Health. Searches you start yourself always run. Off until you turn it on."
+              description="Skip the routine film and TV searches while more than this many of your downloads are still waiting, and start again by yourself when the queue shrinks. Deluno says so in Activity and on Health. Searches you start yourself always run."
               checked={cleanup.pauseSearchWhenQueueLongEnabled}
               onCheckedChange={(checked) => setCleanup((current) => ({ ...current, pauseSearchWhenQueueLongEnabled: checked }))}
             />
@@ -792,7 +792,7 @@ export function SearchCyclesPage() {
           <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
             <SwitchRow
               label="Download integrity check"
-              description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again. Off until you turn it on."
+              description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again."
               checked={cleanup.downloadIntegrityCheckEnabled}
               onCheckedChange={(checked) => setCleanup((current) => ({ ...current, downloadIntegrityCheckEnabled: checked }))}
             />

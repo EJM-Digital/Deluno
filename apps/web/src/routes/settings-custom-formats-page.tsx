@@ -1603,7 +1603,9 @@ export function SettingsCustomFormatsPage() {
               aside={`${presetProgress(presetDetail).applied} of ${presetProgress(presetDetail).total} already here`}
             >
               <div className="grid gap-1.5">
-                {presetProgress(presetDetail).targets.map(({ format: cf, mediaType, score }) => {
+                {presetProgress(presetDetail).targets.map(({ format: cf, mediaType, score }, index, all) => {
+                  // A rule a preset adds to both Movies and TV reads the same twice: its description is said on the first line only (#1168).
+                  const describedAbove = all.slice(0, index).some((other) => other.format.description === cf.description);
                   const already = appliedTrashIds.has(`${mediaType}:${cf.trashId}`);
                   return (
                     <div key={`${mediaType}:${cf.trashId}`} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
@@ -1612,7 +1614,7 @@ export function SettingsCustomFormatsPage() {
                           {friendlyRuleName(cf.name)}
                           {presetDetail.mediaType === "all" ? <span className="text-muted-foreground"> · {mediaTypeLabel(mediaType)}</span> : null}
                         </span>
-                        <span className="block truncate text-(length:--type-caption) text-muted-foreground">{cf.description}</span>
+                        {describedAbove ? null : <span className="block truncate text-(length:--type-caption) text-muted-foreground" title={cf.description}>{cf.description}</span>}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className="text-(length:--type-caption) text-muted-foreground">{ruleIntent(score)}</span>

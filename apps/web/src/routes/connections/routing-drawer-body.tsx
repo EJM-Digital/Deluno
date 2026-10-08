@@ -127,9 +127,6 @@ export function RoutingDrawerBody({
                         <Chip tone={routeCategory ? "info" : "idle"}>
                           {routeCategory ? `Library category: ${routeCategory}` : "Using client default"}
                         </Chip>
-                        <span className="text-(length:--type-caption) text-muted-foreground">
-                          {routeCategory ? "This label must also exist in the download app." : `Deluno will use the client’s normal ${isTv ? "TV" : "movie"} category.`}
-                        </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         <Button
