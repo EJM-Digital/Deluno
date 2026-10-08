@@ -79,25 +79,24 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public void A_login_is_generated_only_for_qBittorrent_and_Deluge()
+    public void A_login_is_generated_only_for_qBittorrent_which_cannot_start_without_one()
     {
         foreach (var spec in BundledComponents.Load())
         {
             var seedsAPassword = spec.ConfigFileContent is not null
-                && (spec.ConfigFileContent.Contains("{{password}}", StringComparison.Ordinal) || spec.ConfigFileContent.Contains("{{qbittorrentPbkdf2}}", StringComparison.Ordinal) || spec.ConfigFileContent.Contains("{{delugeSha1}}", StringComparison.Ordinal));
+                && (spec.ConfigFileContent.Contains("{{password}}", StringComparison.Ordinal) || spec.ConfigFileContent.Contains("{{qbittorrentPbkdf2}}", StringComparison.Ordinal));
             if (seedsAPassword) { Assert.False(string.IsNullOrWhiteSpace(spec.CredentialsUsername), spec.Kind); }
         }
 
-        // qBittorrent 5.x will not start its Web UI without one; Deluge's web login must never stay the shipped
-        // "deluge". Every other app keeps the login it ships with (#1061), and Deluno connects with each app's own default.
+        // qBittorrent 5.x will not start its Web UI without one. Every other app keeps the login it ships with (#1061),
+        // and Deluno connects with each app's own default.
         Assert.False(string.IsNullOrWhiteSpace(Load("qbittorrent").CredentialsUsername));
-        Assert.False(string.IsNullOrWhiteSpace(Load("deluge").CredentialsUsername));
-        foreach (var kind in new[] { "transmission", "sabnzbd", "nzbget" })
+        foreach (var kind in new[] { "transmission", "sabnzbd", "deluge", "nzbget" })
         {
             Assert.True(string.IsNullOrWhiteSpace(Load(kind).CredentialsUsername), kind);
         }
 
-        foreach (var spec in BundledComponents.Load().Where(s => s.Kind is not ("qbittorrent" or "deluge")))
+        foreach (var spec in BundledComponents.Load().Where(s => s.Kind != "qbittorrent"))
         {
             var seed = (spec.ConfigFileContent ?? string.Empty) + string.Join(' ', spec.ConfigReplacements?.Values ?? Enumerable.Empty<string>());
             Assert.DoesNotContain("{{username}}", seed, StringComparison.Ordinal);
