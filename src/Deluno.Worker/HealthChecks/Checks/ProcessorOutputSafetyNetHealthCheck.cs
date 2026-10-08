@@ -95,6 +95,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
         IReadOnlyDictionary<string, string>? heldFilms = null;
 
         var allHandoffs = await processors.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.AcceptingLateOutput, cancellationToken);
+        // A finished hand-off still owns the folder its output sits in (#1155), whatever the folder is called.
+        var finishedHandoffs = await processors.ListProcessorHandoffsWithStatusAsync([ProcessorHandoffStatuses.Completed], cancellationToken);
 
         var outcomes = new List<HealthCheckOutcome>();
         foreach (var library in refineLibraries)
@@ -109,6 +111,14 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
                 .Where(handoff => string.Equals(handoff.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase))
                 .SelectMany(handoff => WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var finished in finishedHandoffs.Where(handoff =>
+                         string.Equals(handoff.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (OwnedTopLevelName(root, finished.OutputPath) is { } owned)
+                {
+                    activeNames.Add(owned);
+                }
+            }
 
             IReadOnlyList<string> entries;
             try
@@ -162,6 +172,24 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
         }
 
         return outcomes;
+    }
+
+    /// <summary>The folder or file directly under the output root that this output path sits in, or null when it is elsewhere.</summary>
+    internal static string? OwnedTopLevelName(string root, string? outputPath)
+    {
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            return null;
+        }
+
+        var relative = Path.GetRelativePath(root, outputPath);
+        if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        {
+            return null;
+        }
+
+        var first = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return string.IsNullOrEmpty(first) || first == "." ? null : first;
     }
 
     private async Task<IReadOnlyDictionary<string, string>> HeldFilmsAsync(CancellationToken cancellationToken)
@@ -234,7 +262,9 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
 
         var isMedia = files.Any(WorkPlanner.IsImportableVideoFile);
         return BuildOutcome(library, name, path, "folder", isMedia,
-            $"The {library.Name} library's processor output folder has a season folder Deluno cannot match to a hand-off: {name}.");
+            string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase)
+                ? $"The {library.Name} library's processor output folder has a film folder Deluno cannot match to a hand-off: {name}."
+                : $"The {library.Name} library's processor output folder has a season folder Deluno cannot match to a hand-off: {name}.");
     }
 
     private static HealthCheckOutcome? DescribeFile(LibraryItem library, string path, string name, ISet<string> reservedSourceKeys)
