@@ -366,6 +366,7 @@ POST /api/integrations/processors/output/delete
 POST /api/intelligent-routing/recommend-release
 POST /api/jobs/retry-failed
 POST /api/jobs/{id}/dismiss
+POST /api/jobs/{id}/retry
 POST /api/libraries/
 POST /api/libraries/{id}/import-existing
 POST /api/libraries/{id}/import-existing/pause

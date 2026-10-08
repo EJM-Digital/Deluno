@@ -250,6 +250,12 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
         processorRepository
             .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
+processorRepository
+            .Setup(repository => repository.FindProcessorHandoffForDownloadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProcessorHandoffItem?)null);
+        processorRepository
+            .Setup(repository => repository.ListProcessorHandoffsForReleaseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
         processorRepository
             .Setup(repository => repository.FindProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ProcessorHandoffItem?)null);
@@ -478,6 +484,12 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
         var processorRepository = new Mock<IProcessorRepository>();
         processorRepository
             .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
+processorRepository
+            .Setup(repository => repository.FindProcessorHandoffForDownloadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProcessorHandoffItem?)null);
+        processorRepository
+            .Setup(repository => repository.ListProcessorHandoffsForReleaseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
         return processorRepository;
     }
