@@ -55,6 +55,22 @@ function measure() {
   const found: string[] = [];
   if (doc.scrollWidth > width + 1) found.push(`page scrolls sideways (${doc.scrollWidth}px in ${width}px)`);
 
+  // A sentence of 25 or more characters said twice outside list rows (a row is real data): one description pasted
+  // into several places. Same rule as src/test/repeated-text.ts, which the unit tests use.
+  const said = new Map<string, number>();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+  for (let node = walker.currentNode as Element | null; node; node = walker.nextNode() as Element | null) {
+    if (node.closest("[role=row], [aria-hidden=true], [inert], [hidden], script, style, option")) continue;
+    const box = node.getBoundingClientRect();
+    if (box.width <= 1 || box.height <= 1) continue;
+    const own = Array.from(node.childNodes).filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent ?? "").join(" ");
+    for (const sentence of own.split(/(?<=[.!?])\s+/)) {
+      const text = sentence.replace(/\s+/g, " ").trim();
+      if (text.length >= 25) said.set(text, (said.get(text) ?? 0) + 1);
+    }
+  }
+  for (const [text, count] of said) if (count > 1) found.push(`"${text.slice(0, 60)}" is said ${count} times`);
+
   const sidewaysScroller = (el: HTMLElement) => {
     const overflowX = getComputedStyle(el).overflowX;
     return (overflowX === "auto" || overflowX === "scroll") && el.scrollWidth > el.clientWidth;
