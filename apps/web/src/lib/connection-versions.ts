@@ -41,3 +41,10 @@ export function useConnectionVersions(): { versions: ConnectionVersions; reload:
   const reload = useCallback(() => setTick((value) => value + 1), []);
   return { versions, reload };
 }
+
+/** A connection's version as one plain line ("4.6.7 · 5.0.2 available"), for a tooltip and the connection's own drawer (#1168). Empty when none is known. */
+export function connectionVersionLine(info: ConnectionVersion | null | undefined, fallback?: string | null): string {
+  const version = info?.version ?? fallback ?? "";
+  if (!version) return "";
+  return info?.updateAvailable && info.latestVersion ? `${version} · ${info.latestVersion} available` : version;
+}

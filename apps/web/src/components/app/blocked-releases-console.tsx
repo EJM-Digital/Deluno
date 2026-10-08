@@ -27,6 +27,7 @@ import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { Drawer, DrawerSection } from "../ui/drawer";
 import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { FailureRulesConsole } from "./failure-rules-console";
@@ -78,6 +79,7 @@ export function BlockedReleasesConsole({
   onChanged
 }: BlockedReleasesConsoleProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [schedulesOpen, setSchedulesOpen] = useState(false);
   const [cleanUpAllOpen, setCleanUpAllOpen] = useState(false);
@@ -85,6 +87,7 @@ export function BlockedReleasesConsole({
 
   const proposed = releases.filter((release) => release.state === "proposed");
   const refused = releases.filter((release) => release.state !== "proposed");
+  const openRelease = releases.find((release) => release.id === openId) ?? null;
   const changedRules = rules.filter((rule) => rule.isOverridden).length;
 
   /**
@@ -190,7 +193,7 @@ export function BlockedReleasesConsole({
             ]}
           >
             {(rows) => rows.map((release) => (
-              <ListRow key={release.id}>
+              <ListRow key={release.id} onClick={() => setOpenId(release.id)} selected={openId === release.id}>
                 <ListNameCell
                   name={release.releaseName}
                   sub={
@@ -203,7 +206,7 @@ export function BlockedReleasesConsole({
                 <div role="cell" className="hidden md:block">
                   <Chip tone="warn">{reasonWords(release.reasonCode)}</Chip>
                 </div>
-                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row">
+                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                   <Button
                     type="button"
                     size="sm"
@@ -267,7 +270,7 @@ export function BlockedReleasesConsole({
             />
           ) : (
             rows.map((release) => (
-              <ListRow key={release.id}>
+              <ListRow key={release.id} onClick={() => setOpenId(release.id)} selected={openId === release.id}>
                 <ListNameCell
                   name={release.releaseName}
                   sub={
@@ -288,7 +291,7 @@ export function BlockedReleasesConsole({
                     year: "numeric"
                   })}
                 </div>
-                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row">
+                <div role="cell" className="flex flex-col items-end justify-end gap-2 md:flex-row" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                   <Button
                     type="button"
                     size="sm"
@@ -349,6 +352,24 @@ export function BlockedReleasesConsole({
         <FailureSchedulesConsole settings={settings} recycleBin={recycleBin} onChanged={onChanged} />
       </Disclosure>
 
+      <Drawer
+        open={openRelease !== null}
+        onOpenChange={(open) => { if (!open) setOpenId(null); }}
+        title={openRelease?.releaseName ?? "Release"}
+        description={openRelease ? (openRelease.state === "proposed" ? "Waiting for you to decide" : "Refused") : undefined}
+      >
+        {openRelease ? (
+          <DrawerSection title="This release">
+            <BlockFact label="Release" value={openRelease.releaseName} mono />
+            <BlockFact label="Title" value={openRelease.title ?? "Unknown title"} />
+            <BlockFact label="Found on" value={openRelease.indexerName} />
+            <BlockFact label="Why" value={reasonWords(openRelease.reasonCode)} />
+            <BlockFact label="Who" value={originLabel(openRelease)} />
+            <BlockFact label="Refused" value={new Date(openRelease.blockedUtc).toLocaleString()} />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+
       <ConfirmDialog
         open={cleanUpAllOpen}
         onOpenChange={setCleanUpAllOpen}
@@ -360,6 +381,15 @@ export function BlockedReleasesConsole({
         busy={cleaningUpAll}
         onConfirm={() => void cleanUpAll()}
       />
+    </div>
+  );
+}
+
+function BlockFact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="grid min-w-0 gap-0.5">
+      <span className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span className={mono ? "break-all font-mono text-(length:--type-caption) text-foreground" : "break-words text-(length:--type-body-sm) text-foreground"}>{value}</span>
     </div>
   );
 }

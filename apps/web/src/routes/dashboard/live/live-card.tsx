@@ -5,6 +5,7 @@
  * approved mockup's card (14px corners, its header below), and its header never wraps.
  */
 import { useId, type ReactNode } from "react";
+import { plainTitle } from "../../../lib/plain-title";
 import { Link } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 
@@ -36,7 +37,7 @@ export function LiveCard({ title, count, controls, description, aside, to, toLab
         {controls ? (
           <div className="flex min-w-0 flex-1 self-center -m-2">{controls}</div>
         ) : (
-          <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
+          <span title={plainTitle(count)} className="min-w-0 flex-1 truncate text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
         )}
         {aside}
         {to ? (

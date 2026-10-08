@@ -48,7 +48,8 @@ export function ClientDrawerBody({
   onRemove,
   blocklistSync,
   routeOnAdd = true,
-  onRouteOnAddChange = () => {}
+  onRouteOnAddChange = () => {},
+  versionLine
 }: {
   form: ClientForm;
   setForm: (updater: (current: ClientForm) => ClientForm) => void;
@@ -68,6 +69,8 @@ export function ClientDrawerBody({
   /** For a new client: whether Add also routes it to libraries that have no client yet (#1135). */
   routeOnAdd?: boolean;
   onRouteOnAddChange?: (value: boolean) => void;
+  /** The client's own version, in full (the list row cuts it short on a phone). */
+  versionLine?: string;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -116,6 +119,11 @@ export function ClientDrawerBody({
   return (
     <>
       <SecretUnreadableNotice item={editing} />
+      {editing && versionLine ? (
+        <DrawerSection title="Version">
+          <p className="break-words text-(length:--type-body-sm) text-foreground">{versionLine}</p>
+        </DrawerSection>
+      ) : null}
       {editing ? <ConnectionUpdatePanel kind="downloadClient" id={editing.id} /> : null}
       <DrawerSection title="Basics">
         <FieldRow>
