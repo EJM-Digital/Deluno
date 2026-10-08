@@ -2578,6 +2578,73 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// A title removed without its files and added again finds its own identical file still at the
+    /// destination. The import takes that file as the title's, deletes the second copy and never
+    /// overwrites; a different file at the destination is still refused.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_title_that_came_back_while_its_old_file_sits_at_the_destination_adopts_it_only_when_identical(bool identical)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Nosferatu.1922.WEB.1080p.mkv");
+        var bytes = Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray();
+        await File.WriteAllBytesAsync(sourcePath, bytes);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var destinationPath = Path.Combine(movieRootPath, "Nosferatu (1922)", "Nosferatu (1922) [WEB 1080p].mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        var existing = (byte[])bytes.Clone();
+        if (!identical)
+        {
+            existing[100] ^= 0xFF;
+            existing[existing.Length - 5] ^= 0xFF;
+        }
+        await File.WriteAllBytesAsync(destinationPath, existing);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Nosferatu", Year: 1922, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null, ImdbId: "tt0013442"),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.Equal(existing, await File.ReadAllBytesAsync(destinationPath));
+        if (identical)
+        {
+            Assert.True(result.Succeeded);
+            Assert.True(result.Response?.CatalogUpdated);
+            Assert.False(File.Exists(sourcePath), "the second copy is deleted");
+            var movie = Assert.Single(await movies.ListAsync(CancellationToken.None));
+            Assert.Equal("Nosferatu", movie.Title);
+        }
+        else
+        {
+            Assert.False(result.Succeeded);
+            Assert.Equal(409, result.StatusCode);
+            Assert.True(File.Exists(sourcePath));
+        }
+    }
+
+    /// <summary>
     /// The opt-in "remove source after import" setting still governs a
     /// hardlink import unchanged (#936: never flip an existing install's
     /// automatic behaviour on) - a hardlinked source is the same bytes as the
