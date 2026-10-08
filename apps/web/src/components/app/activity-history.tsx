@@ -13,6 +13,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { fetchJson, fetchPage, type ActivityEventItem, type ActivityFilterChoices } from "../../lib/api";
+import { queryClient } from "../../lib/route-cache";
+import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
+import { useCoalescedRevalidate } from "../../hooks/use-live-interval";
+import { activityEventMatches, activityItemFromPush, addToHistory, isNewestFirst } from "../../lib/activity-live-patch";
 import {
   ACTIVITY_DEFAULT_SORT,
   ACTIVITY_SINCE_CHOICES,
@@ -83,10 +87,29 @@ export function useActivityHistory({ enabled, onOpenEvent, sort = ACTIVITY_DEFAU
     queryFn: ({ pageParam }) => fetchPage<ActivityEventItem>(`/api/activity?${activityQueryString(filters, PAGE_SIZE, pageParam, undefined, sort)}`),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => (page.hasMore ? page.nextPageToken ?? undefined : undefined),
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
     // The three steps built from live sources never ask the history.
     enabled: enabled && !isLiveStep(filters.type)
+  });
+
+  // A new event is put into every cached view it belongs in, straight from the push (#1179). A view the push cannot
+  // settle (a filter on something the event does not carry) or one sorted by a heading is read again, once, after a burst.
+  const readAgain = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-history"] }), 1_000);
+  useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (pushed) => {
+    if (!enabled) return;
+    const item = activityItemFromPush(pushed);
+    let again = false;
+    for (const query of queryClient.getQueryCache().findAll({ queryKey: ["activity-history"] })) {
+      const [, viewFilters, sortId, direction] = query.queryKey as [string, ActivityFilters, string, string];
+      if (!query.state.data) continue;
+      const match = activityEventMatches(viewFilters, item);
+      if (match === "no") continue;
+      if (match === "unknown" || !isNewestFirst(sortId, direction)) {
+        again = true;
+        continue;
+      }
+      queryClient.setQueryData(query.queryKey, (data: unknown) => (data ? addToHistory(data as Parameters<typeof addToHistory>[0], item) : data));
+    }
+    if (again) readAgain();
   });
 
   const events = useMemo(() => history.data?.pages.flatMap((page) => page.items) ?? [], [history.data]);
