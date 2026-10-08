@@ -8,6 +8,69 @@ namespace Deluno.Tray;
 /// <summary>Tells a feed that is simply not there from a check that really failed.</summary>
 public static class UpdateFeedErrors
 {
+    /// <summary>
+    /// GitHub's limit on anonymous calls (403, or 429): not a missing feed and not a bad build. The updater's own
+    /// exception keeps the status code, or at least its text, but not GitHub's headers.
+    /// </summary>
+    public static bool IsRateLimited(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests })
+            {
+                return true;
+            }
+
+            if (current is System.Net.WebException { Response: System.Net.HttpWebResponse { StatusCode: System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests } })
+            {
+                return true;
+            }
+
+            if (current is HttpRequestException or System.Net.WebException or InvalidOperationException
+                && (current.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+                    || current.Message.Contains("403", StringComparison.Ordinal)
+                    || current.Message.Contains("429", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>What the Updates page says when a check could not be made, with the cause and when to retry when GitHub's limit is it.</summary>
+    public static string CheckFailedMessage(Exception exception, DateTimeOffset? limitResetsUtc)
+    {
+        if (!IsRateLimited(exception))
+        {
+            return "Couldn't check for updates right now. Try Check now again in a moment.";
+        }
+
+        return limitResetsUtc is { } at
+            ? $"Couldn't check for updates (GitHub limit, retry after {at.ToLocalTime():h:mm tt})."
+            : "Couldn't check for updates (GitHub limit, retry in about an hour).";
+    }
+
+    /// <summary>When GitHub's anonymous limit lifts, read from its free <c>rate_limit</c> call (which does not count against it). Null when it cannot be read.</summary>
+    public static async Task<DateTimeOffset?> ReadLimitResetAsync(HttpMessageHandler? handler, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+            http.Timeout = TimeSpan.FromSeconds(5);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Updater");
+            using var response = await http.GetAsync("https://api.github.com/rate_limit", cancellationToken);
+            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            return document.RootElement.GetProperty("resources").GetProperty("core").GetProperty("reset").TryGetInt64(out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     public static bool IsNotFound(Exception? exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
@@ -104,7 +167,8 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         {
             logger.LogWarning(ex, "Update check failed.");
             _runtime.MarkError(ex.Message);
-            return await GetStatusUnlockedAsync(cancellationToken, "Update check failed.");
+            var resets = UpdateFeedErrors.IsRateLimited(ex) ? await UpdateFeedErrors.ReadLimitResetAsync(null, cancellationToken) : null;
+            return await GetStatusUnlockedAsync(cancellationToken, UpdateFeedErrors.CheckFailedMessage(ex, resets));
         }
         finally
         {
