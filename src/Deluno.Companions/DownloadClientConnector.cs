@@ -1,6 +1,7 @@
 using Deluno.Connections;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Connections.Usenet;
 
 namespace Deluno.Companions;
 
@@ -31,7 +32,8 @@ public sealed record DownloadClientWiring(
     string TvCategory);
 
 /// <param name="Created">False when a client of that kind on this computer was already connected and was reused.</param>
-public sealed record DownloadClientConnectResult(string Name, bool Created, bool Healthy, string Message, DownloadClientItem? Client = null);
+/// <param name="NoProvider">The client answered and its sign-in works, but it is a Usenet client with no news server yet (#1142). It is connected, not healthy.</param>
+public sealed record DownloadClientConnectResult(string Name, bool Created, bool Healthy, string Message, DownloadClientItem? Client = null, bool NoProvider = false);
 
 /// <summary>
 /// The one place a download client that is installed on this computer becomes a
@@ -90,9 +92,12 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
         }
 
         var healthy = test.HealthStatus == "healthy";
+        // A Usenet client with no news server yet answers, signs in and is not healthy. That is not a failed
+        // sign-in: it is saved so it shows "No Usenet provider set up" until the person adds theirs (#1142).
+        var noProvider = !healthy && test.FailureCategory == "configuration" && string.Equals(test.Message, UsenetProviderText.NoProvider, StringComparison.Ordinal);
         if (existing is null && saveOnlyWhenHealthy)
         {
-            if (!healthy)
+            if (!healthy && !noProvider)
             {
                 // Nothing is saved: the person is told why and can type the sign-in themselves.
                 return new DownloadClientConnectResult(wiring.Name, false, false, test.Message, null);
@@ -102,7 +107,7 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
         }
 
         await connections.UpdateDownloadClientHealthAsync(client.Id, test.HealthStatus, test.Message, test.FailureCategory, null, cancellationToken);
-        return new DownloadClientConnectResult(client.Name, existing is null, healthy, test.Message, client);
+        return new DownloadClientConnectResult(client.Name, existing is null, healthy, test.Message, client, noProvider);
     }
 
     private Task<DownloadClientItem> CreateAsync(DownloadClientWiring wiring, CancellationToken cancellationToken)

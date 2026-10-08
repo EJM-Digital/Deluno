@@ -57,6 +57,38 @@ public sealed class UsenetHealthAgreementTests
         }
     }
 
+    [Theory]
+    [InlineData("sabnzbd", SabNoServerAtAll)]
+    [InlineData("nzbget", NzbGetPlaceholder)]
+    public async Task A_paused_client_with_no_provider_says_so_and_is_not_shown_as_paused(string protocol, string configAnswer)
+    {
+        using var server = new FakeUsenetClient(protocol, configAnswer, paused: true);
+        var item = server.Item();
+
+        var snapshot = protocol == "sabnzbd"
+            ? await new SabnzbdDownloadClient(new PlainFactory()).GetSnapshotAsync(item, DateTimeOffset.UtcNow, CancellationToken.None)
+            : await new NzbGetDownloadClient(new PlainFactory()).GetSnapshotAsync(item, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("degraded", snapshot!.HealthStatus);
+        Assert.Equal(UsenetProviderText.NoProvider, snapshot.LastHealthMessage);
+        Assert.NotEqual(true, snapshot.ClientPaused);
+    }
+
+    [Theory]
+    [InlineData("sabnzbd", SabWorking)]
+    [InlineData("nzbget", NzbGetWorking)]
+    public async Task A_paused_client_with_a_provider_is_still_shown_as_paused(string protocol, string configAnswer)
+    {
+        using var server = new FakeUsenetClient(protocol, configAnswer, paused: true);
+        var item = server.Item();
+
+        var snapshot = protocol == "sabnzbd"
+            ? await new SabnzbdDownloadClient(new PlainFactory()).GetSnapshotAsync(item, DateTimeOffset.UtcNow, CancellationToken.None)
+            : await new NzbGetDownloadClient(new PlainFactory()).GetSnapshotAsync(item, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(true, snapshot!.ClientPaused);
+    }
+
     private sealed class PlainFactory : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new();
@@ -69,7 +101,7 @@ public sealed class UsenetHealthAgreementTests
         private readonly string _protocol;
         private readonly int _port;
 
-        public FakeUsenetClient(string protocol, string configAnswer)
+        public FakeUsenetClient(string protocol, string configAnswer, bool paused = false)
         {
             _protocol = protocol;
             var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
@@ -91,7 +123,7 @@ public sealed class UsenetHealthAgreementTests
                     if (protocol == "sabnzbd")
                     {
                         body = query.Contains("mode=get_config", StringComparison.Ordinal) ? configAnswer
-                            : query.Contains("mode=queue", StringComparison.Ordinal) ? """{"queue":{"slots":[],"speed":"0","paused":false,"diskspace1":"100.0","diskspacetotal1":"500.0","have_warnings":"0"}}"""
+                            : query.Contains("mode=queue", StringComparison.Ordinal) ? $$$"""{"queue":{"slots":[],"speed":"0","paused":{{{(paused ? "true" : "false")}}},"diskspace1":"100.0","diskspacetotal1":"500.0","have_warnings":"0"}}"""
                             : query.Contains("mode=history", StringComparison.Ordinal) ? """{"history":{"slots":[]}}"""
                             : """{"version":"5.0.4"}""";
                     }
@@ -101,7 +133,7 @@ public sealed class UsenetHealthAgreementTests
                         var request = await reader.ReadToEndAsync();
                         body = request.Contains("\"config\"", StringComparison.Ordinal) ? configAnswer
                             : request.Contains("\"listgroups\"", StringComparison.Ordinal) || request.Contains("\"history\"", StringComparison.Ordinal) ? """{"result":[]}"""
-                            : request.Contains("\"status\"", StringComparison.Ordinal) ? """{"result":{"FreeDiskSpaceMB":100000,"DownloadRate":0}}"""
+                            : request.Contains("\"status\"", StringComparison.Ordinal) ? $$$"""{"result":{"FreeDiskSpaceMB":100000,"DownloadRate":0,"DownloadPaused":{{{(paused ? "true" : "false")}}}}}"""
                             : """{"result":"23.0"}""";
                     }
 

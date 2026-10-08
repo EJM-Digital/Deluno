@@ -117,10 +117,11 @@ public sealed class InstalledComponentWirer(
         // The installer's copy stays while the app is installed: nothing serves it to a caller
         // (#1061), and it is what lets "Use <app>" connect again after the connection is deleted.
 
-        if (result.Healthy)
+        if (result.Healthy || result.NoProvider)
         {
             await PrepareSaveFoldersAsync(recipe, result.Client, cancellationToken);
-            return (recipe.Name, true, null);
+            // A Usenet client that is connected but has no news server yet is connected, and says what is missing (#1142).
+            return (recipe.Name, true, result.NoProvider ? result.Message : null);
         }
 
         var problem = result.Message;
@@ -172,8 +173,8 @@ public sealed class InstalledComponentWirer(
             record.MarkWired(kind);
             await realtime.PublishBundledComponentChangedAsync(kind, cancellationToken);
             await RefreshHealthAsync(cancellationToken);
-            await activity.RecordActivityAsync(ActivityCategory, $"You connected {name} to Deluno from the apps you installed. Its connection test passed.", null, null, null, null, cancellationToken);
-            return new InstalledComponentConnectResult(kind, name, true, $"{name} is connected.");
+            await activity.RecordActivityAsync(ActivityCategory, problem is null ? $"You connected {name} to Deluno from the apps you installed. Its connection test passed." : $"You connected {name} to Deluno from the apps you installed. It signed in, but it has no Usenet provider yet.", null, null, null, null, cancellationToken);
+            return new InstalledComponentConnectResult(kind, name, true, problem is null ? $"{name} is connected." : $"{name} is connected, but it has nothing to download with yet. {problem}");
         }
 
         return new InstalledComponentConnectResult(

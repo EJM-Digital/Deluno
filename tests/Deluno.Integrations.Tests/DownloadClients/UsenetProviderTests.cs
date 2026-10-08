@@ -134,6 +134,87 @@ public sealed class UsenetProviderTests
         Assert.Null(result);
     }
 
+    // ------------------------------------------------------------ NZBGet: saving the provider
+
+    /// <summary>NZBGet as it really behaves: saveconfig writes the file, and `config` keeps answering the old settings until a moment after reload.</summary>
+    private sealed class NzbGetHandler(int staleReadsAfterReload) : HttpMessageHandler
+    {
+        private Dictionary<string, string> _live = StockNzbGet.ToDictionary(o => o.Key, o => o.Value);
+        private Dictionary<string, string>? _saved;
+        private int _stale = -1;
+
+        public int ConfigReads { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = System.Text.Json.JsonDocument.Parse(body);
+            var method = document.RootElement.GetProperty("method").GetString();
+            string answer;
+            switch (method)
+            {
+                case "config":
+                    ConfigReads++;
+                    if (_stale > 0) { _stale--; }
+                    else if (_stale == 0 && _saved is not null) { _live = _saved; _saved = null; _stale = -1; }
+                    answer = System.Text.Json.JsonSerializer.Serialize(new { result = _live.Select(pair => new { Name = pair.Key, Value = pair.Value }).ToArray() });
+                    break;
+                case "saveconfig":
+                    _saved = document.RootElement.GetProperty("params")[0].EnumerateArray()
+                        .ToDictionary(item => item.GetProperty("Name").GetString()!, item => item.GetProperty("Value").GetString()!);
+                    answer = """{"result":true}""";
+                    break;
+                case "reload":
+                    _stale = staleReadsAfterReload;
+                    answer = """{"result":true}""";
+                    break;
+                default:
+                    answer = """{"result":true}""";
+                    break;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    private static DownloadClientItem NzbGetClient()
+        => new("nzb-1", "NZBGet", "nzbget", "localhost", 6789, "nzbget", "tegbzn6789", "http://localhost:6789/", false, null,
+            "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public async Task The_provider_saved_to_NZBGet_is_kept_even_when_NZBGet_applies_the_reload_a_moment_late(int staleReads)
+    {
+        var handler = new NzbGetHandler(staleReads);
+
+        var result = await new NzbGetDownloadClient(new Factory(handler), TimeSpan.Zero).SetUsenetProviderAsync(NzbGetClient(), Provider, CancellationToken.None);
+
+        Assert.True(result!.Saved, result.Message);
+        Assert.Contains("news.example.com", result.Message);
+    }
+
+    [Fact]
+    public async Task A_provider_NZBGet_never_applies_is_still_reported_as_not_kept()
+    {
+        var handler = new NzbGetHandler(staleReadsAfterReload: int.MaxValue);
+
+        var result = await new NzbGetDownloadClient(new Factory(handler), TimeSpan.Zero).SetUsenetProviderAsync(NzbGetClient(), Provider, CancellationToken.None);
+
+        Assert.False(result!.Saved);
+        Assert.Contains("did not keep", result.Message);
+    }
+
+    [Fact]
+    public void Only_the_provider_just_written_counts_not_an_older_working_one()
+    {
+        var older = new[] { O("Server1.Active", "yes"), O("Server1.Host", "old.example.com") };
+
+        Assert.True(NzbGetServerPlan.HasWorkingServer(older));
+        Assert.False(NzbGetServerPlan.HasWorkingServer(older, "news.example.com"));
+        Assert.True(NzbGetServerPlan.HasWorkingServer(older, "OLD.example.com"));
+    }
+
     private static DownloadClientItem SabClient()
         => new("sab-1", "SABnzbd", "sabnzbd", "localhost", 8085, null, "apikey", "http://localhost:8085/", false, null,
             "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
