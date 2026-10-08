@@ -41,7 +41,7 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { ConnectionVersionBeside } from "../components/app/connection-version";
-import { useConnectionVersions, versionKey } from "../lib/connection-versions";
+import { connectionVersionLine, useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -1162,7 +1162,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                   const mappings = mappingsByClient.get(item.id) ?? [];
                   return (
                     <ListRow key={item.id} onClick={() => openClient(item)} selected={drawer.kind === "client" && drawer.id === item.id}>
-                      <ListNameCell name={<>{item.name}<ConnectionVersionBeside info={versions.get(versionKey("downloadClient", item.id))} fallback={live?.clientVersion} /></>} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
+                      <ListNameCell nameTitle={[item.name, connectionVersionLine(versions.get(versionKey("downloadClient", item.id)), live?.clientVersion)].filter(Boolean).join(" ")} name={<>{item.name}<ConnectionVersionBeside info={versions.get(versionKey("downloadClient", item.id))} fallback={live?.clientVersion} /></>} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
                       {clientSelection.active ? (
                         <ListCell mobile>
                           <Checkbox
@@ -1485,6 +1485,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             blocklistSync={editingClient ? qbittorrentBlocklistSync[editingClient.id] ?? null : null}
             routeOnAdd={routeNewClient}
             onRouteOnAddChange={setRouteNewClient}
+            versionLine={editingClient ? connectionVersionLine(versions.get(versionKey("downloadClient", editingClient.id)), telemetryByClient.get(editingClient.id)?.clientVersion) : undefined}
           />
         ) : null}
         {drawer.kind === "proxy" ? (
