@@ -70,7 +70,7 @@ public sealed class TrayApplication : ApplicationContext
             Visible = true
         };
         _notify.DoubleClick += OnOpen;
-        menu.Opening += (_, _) => _readdTorrentsItem.Visible = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is not null;
+        menu.Opening += (_, _) => _readdTorrentsItem.Visible = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is { } pending && (pending.Summary is null || pending.Torrents.Count > 0);
 
         _supervisor = new HostRestartSupervisor(
             _ => _server.StartAsync(),
@@ -148,6 +148,16 @@ public sealed class TrayApplication : ApplicationContext
             var dataRoot = ComponentPaths.DataRoot();
             var installed = new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(dataRoot)).Read().Select(entry => entry.Kind).ToList();
             var spec = BundledComponents.Load().FirstOrDefault(s => s.Kind == ComponentStateMigration.Transmission);
+            var daemonSummary = await RunningDaemonMigration.RunAsync(
+                ComponentPaths.InstallRoot(), dataRoot,
+                new WindowsTransmissionDaemonControl(spec),
+                new TransmissionRpc(spec?.DefaultPort ?? 9091, BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission)),
+                new FileInstallLog(), CancellationToken.None).ConfigureAwait(false);
+            if (daemonSummary is not null)
+            {
+                InvokeOnUiThread(() => _notify.ShowBalloonTip(30000, "Transmission was moved", daemonSummary, ToolTipIcon.Info));
+            }
+
             var result = await ComponentStateMigration.RunAsync(
                 ComponentPaths.InstallRoot(), dataRoot, installed,
                 BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission),

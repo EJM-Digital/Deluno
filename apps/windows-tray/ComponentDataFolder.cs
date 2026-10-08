@@ -80,7 +80,7 @@ public static class DownloadLayoutRecord
 public sealed record TorrentToReadd(string Name, string MagnetLink, string? DownloadDir);
 
 /// <summary>What is waiting for the person after a lost Transmission folder was written again.</summary>
-public sealed record TransmissionReaddNotice(DateTimeOffset CreatedUtc, bool DaemonNeedsRestart, IReadOnlyList<TorrentToReadd> Torrents);
+public sealed record TransmissionReaddNotice(DateTimeOffset CreatedUtc, bool DaemonNeedsRestart, IReadOnlyList<TorrentToReadd> Torrents, string? Summary = null);
 
 /// <summary>Transmission's RPC on this computer: the few calls recovery needs.</summary>
 public sealed class TransmissionRpc(int port, BundledComponentCredentials? login, Func<HttpMessageHandler>? handlerFactory = null)
@@ -330,7 +330,7 @@ public static class ComponentStateMigration
         File.Delete(from);
     }
 
-    private static void MoveOrMerge(string from, string to)
+    internal static void MoveOrMerge(string from, string to, bool overwrite = false)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
         if (!Directory.Exists(to))
@@ -346,25 +346,25 @@ public static class ComponentStateMigration
             }
         }
 
-        CopyMissing(from, to);
+        CopyMissing(from, to, overwrite);
         Directory.Delete(from, recursive: true);
     }
 
-    private static void CopyMissing(string from, string to)
+    private static void CopyMissing(string from, string to, bool overwrite)
     {
         Directory.CreateDirectory(to);
         foreach (var file in Directory.GetFiles(from))
         {
             var target = Path.Combine(to, Path.GetFileName(file));
-            if (!File.Exists(target))
+            if (overwrite || !File.Exists(target))
             {
-                File.Copy(file, target);
+                File.Copy(file, target, overwrite);
             }
         }
 
         foreach (var directory in Directory.GetDirectories(from))
         {
-            CopyMissing(directory, Path.Combine(to, Path.GetFileName(directory)));
+            CopyMissing(directory, Path.Combine(to, Path.GetFileName(directory)), overwrite);
         }
     }
 }
@@ -462,6 +462,11 @@ public static class TransmissionDaemon
             }
         }
 
+        return await StartAsync(spec, cancellationToken).ConfigureAwait(false);
+    }
+
+    public static async Task<bool> StartAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
         new RealProcessStarter().Start(ComponentPaths.Expand(spec.PostInstallCommand!), ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
         var probe = new LoopbackPortProbe();
         for (var i = 0; i < 60; i++)
@@ -495,10 +500,10 @@ public sealed class TrayComponentRecoveryNotices(
         if (TransmissionReadd.Pending(Root) is { } notice)
         {
             var count = notice.Torrents.Count;
-            var message = count > 0
+            var message = notice.Summary is not null ? notice.Summary : count > 0
                 ? $"Transmission's settings were rebuilt after Deluno was reinstalled; {count} torrent{(count == 1 ? "" : "s")} may need adding back."
                 : "Transmission's settings were rebuilt after Deluno was reinstalled; torrents it had before may need adding back.";
-            list = [new ComponentRecoveryNotice(ComponentStateMigration.Transmission, "Transmission", message, count, CanReadd: true)];
+            list = [new ComponentRecoveryNotice(ComponentStateMigration.Transmission, "Transmission", message, count, CanReadd: notice.Summary is null || count > 0)];
         }
 
         return Task.FromResult(list);
