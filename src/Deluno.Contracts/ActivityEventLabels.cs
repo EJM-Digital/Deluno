@@ -176,6 +176,7 @@ public static class ActivityEventLabels
             ["processing.output.misplaced"] = "Processor output is in the wrong place",
             ["processing.outputs-missing"] = "Some processed files were missing",
             ["processing.partial-import"] = "Only some processed files were imported",
+            ["processing.extras-left-out"] = "A small extra file was left out",
             ["processing.outcome-reported"] = "Told the processor what happened",
             ["recovery.case-settled"] = "Closed a problem the library had already fixed",
             ["download.import-failure-settled"] = "Closed an import failure the library had already fixed",
