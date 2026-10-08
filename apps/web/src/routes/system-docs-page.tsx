@@ -115,7 +115,7 @@ export function SystemDocsPage() {
 
       <ListCard title={<span className="flex items-center gap-2">Media Lifecycle</span>} count={<>Every major screen and automation should support this sequence without making the user guess.</>}>
         <div className="p-(--card-pad-x)">
-          <div className="grid gap-3 lg:grid-cols-7">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 min-[1700px]:grid-cols-7">
             {lifecycle.map((item, index) => (
               <div key={item} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
                 <span className="text-(length:--type-caption) font-bold tabular-nums text-primary">{String(index + 1).padStart(2, "0")}</span>

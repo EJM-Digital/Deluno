@@ -8,6 +8,17 @@ export function secretUnreadableText(item: { secretUnreadable?: boolean | null; 
   return item.secretProblem?.trim() || "The saved key was stored on another computer and can't be read here. Enter it again.";
 }
 
+/**
+ * True when a health message only repeats what the notice above already says (the host words it the same way when a test
+ * cannot read the saved password), so a drawer says the sentence once.
+ */
+export function repeatsSecretNotice(item: { secretUnreadable?: boolean | null; secretProblem?: string | null } | null | undefined, message: string | null | undefined): boolean {
+  const notice = secretUnreadableText(item);
+  const said = message?.trim();
+  if (!notice || !said) return false;
+  return said === notice || said.includes(notice) || /was stored on another computer/i.test(said);
+}
+
 export function SecretUnreadableNotice({ item }: { item: { secretUnreadable?: boolean | null; secretProblem?: string | null } | null | undefined }) {
   const text = secretUnreadableText(item);
   if (!text) return null;

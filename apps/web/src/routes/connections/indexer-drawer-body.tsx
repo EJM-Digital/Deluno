@@ -1,4 +1,4 @@
-import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
+import { SecretUnreadableNotice, repeatsSecretNotice } from "../../components/app/secret-unreadable-notice";
 import { useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -380,7 +380,7 @@ export function IndexerDrawerBody({
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>
             <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
-            {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
+            {editing.lastHealthMessage && !repeatsSecretNotice(editing, editing.lastHealthMessage) ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
             {editing.lastHealthFailure ? (
               <>
                 <dt className="text-muted-foreground">Cause</dt>
