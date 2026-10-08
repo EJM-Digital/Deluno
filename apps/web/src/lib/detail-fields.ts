@@ -106,15 +106,37 @@ export function detailFields(detailsJson: string | null | undefined): DetailFiel
 }
 
 /**
- * Where a failed entry can be put right: the screen that holds its fix. Entries that did not fail have none.
+ * The words that make an Activity kind a red one. The same list as the server's `ActivityHistory.ProblemWords`
+ * (src/Deluno.Contracts/ActivityHistory.cs); a test reads that file and fails if the two drift apart.
  */
-export function fixLinkForActivity(category: string): { to: string; label: string } | null {
+export const ACTIVITY_PROBLEM_WORDS = [
+  "failed", "failure", "timeout", "timed-out", "unreachable", "unreadable", "stalled", "lost", "vanished", "missing", "files-gone",
+  "abandoned", "dead-letter", "lease-expired", "setup-problem", "not-imported", "exhausted", "unmatched", "misplaced", "forbidden",
+  "no-progress", "outage.started", "health.problem", "needs-attention", "script-failed", "rejected", "held-by", "given-up",
+  "dead-link", "not-reported", "records-failed", "rate-limited", "provider.paused"
+] as const;
+
+/** Whether an Activity kind is a red one, decided the way the server decides it. */
+export function isProblemActivity(category: string): boolean {
+  const lower = category.trim().toLowerCase();
+  if (lower.includes("resolved") || lower.includes("recovered") || lower === "library.reachable") return false;
+  return ACTIVITY_PROBLEM_WORDS.some((word) => lower.includes(word));
+}
+
+/**
+ * Where a red entry can be put right: the screen that holds its fix. Every red kind has one, so a new kind
+ * cannot be shown as a problem with nowhere to go. Entries that did not fail have none. `outcome` is the
+ * server's own verdict when the caller has it.
+ */
+export function fixLinkForActivity(category: string, outcome?: string | null): { to: string; label: string } | null {
   const lower = category.toLowerCase();
-  const failed = /(failed|failure|timeout|timed-out|refused|rejected|stalled|lost|vanished)/.test(lower);
-  if (!failed) return null;
-  if (lower.startsWith("processing.") || lower.startsWith("download.") || lower.startsWith("import.") || lower.startsWith("handoff")) {
+  if (outcome !== "problem" && !isProblemActivity(lower)) return null;
+  if (
+    lower.startsWith("processing.") || lower.startsWith("download.") || lower.startsWith("import.") || lower.startsWith("handoff")
+    || lower.startsWith("filesystem.") || lower.startsWith("job.") || lower.startsWith("processor.")
+  ) {
     return { to: "/queue", label: "Fix it in Transfers" };
   }
-  if (lower.startsWith("indexer")) return { to: "/indexers", label: "Fix it in Find & Download" };
+  if (lower.startsWith("indexer") || lower.startsWith("trackers.")) return { to: "/indexers", label: "Fix it in Find & Download" };
   return { to: "/system", label: "Fix it in System" };
 }

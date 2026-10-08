@@ -700,13 +700,13 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               {openEvent.detail ? (
                 <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{openEvent.detail}</p>
               ) : null}
-              {fixLinkForActivity(openEvent.category) ? (
+              {fixLinkForActivity(openEvent.category, openEvent.outcome) ? (
                 <Link
-                  to={fixLinkForActivity(openEvent.category)!.to}
+                  to={fixLinkForActivity(openEvent.category, openEvent.outcome)!.to}
                   onClick={() => setOpenEvent(null)}
                   className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline"
                 >
-                  {fixLinkForActivity(openEvent.category)!.label}
+                  {fixLinkForActivity(openEvent.category, openEvent.outcome)!.label}
                 </Link>
               ) : null}
             </DrawerSection>
