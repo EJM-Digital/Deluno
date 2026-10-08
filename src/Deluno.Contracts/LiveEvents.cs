@@ -295,6 +295,70 @@ public static class LiveEventPublisherExtensions
     public static Task PublishAttentionChangedAsync(this IRealtimeEventPublisher publisher, string reason, CancellationToken cancellationToken)
         => publisher.PublishDashboardEventAsync(LiveEventNames.AttentionChanged, new AttentionChangedEvent(reason), cancellationToken);
 
+    private sealed class AttentionBurst
+    {
+        public readonly object Lock = new();
+        public readonly SortedSet<string> Reasons = new(StringComparer.Ordinal);
+        public bool Scheduled;
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IRealtimeEventPublisher, AttentionBurst> attentionBursts = new();
+
+    /// <summary>How long a burst of changes is gathered into one <c>AttentionChanged</c>.</summary>
+    public static readonly TimeSpan AttentionCoalesceWindow = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>
+    /// Asks for one <c>AttentionChanged</c> shortly after a write, so a burst of writes (a search cycle, a bulk dismiss)
+    /// sends one push, sent after the last write of the window has been saved. Its reason lists everything that moved,
+    /// comma separated. Never waits and never throws.
+    /// </summary>
+    public static void RequestAttentionChanged(this IRealtimeEventPublisher? publisher, string reason)
+    {
+        if (publisher is null)
+        {
+            return;
+        }
+
+        var burst = attentionBursts.GetValue(publisher, _ => new AttentionBurst());
+        lock (burst.Lock)
+        {
+            burst.Reasons.Add(reason);
+            if (burst.Scheduled)
+            {
+                return;
+            }
+
+            burst.Scheduled = true;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            string joined;
+            try
+            {
+                await Task.Delay(AttentionCoalesceWindow);
+            }
+            finally
+            {
+                lock (burst.Lock)
+                {
+                    joined = string.Join(',', burst.Reasons);
+                    burst.Reasons.Clear();
+                    burst.Scheduled = false;
+                }
+            }
+
+            try
+            {
+                await publisher.PublishAttentionChangedAsync(joined, CancellationToken.None);
+            }
+            catch
+            {
+                // The data is already saved; the next push or a reconnect catches the bell up.
+            }
+        });
+    }
+
     /// <summary>The internet went down or came back.</summary>
     public static Task PublishConnectivityChangedAsync(this IRealtimeEventPublisher publisher, ConnectivityChangedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishDashboardEventAsync(LiveEventNames.ConnectivityChanged, payload, cancellationToken);

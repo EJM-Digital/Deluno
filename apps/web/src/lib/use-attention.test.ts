@@ -19,7 +19,8 @@ const mocks = vi.hoisted(() => ({
   fetchJsonCalls: [] as string[],
   activityHandlers: [] as Array<(event: { category: string }) => void>,
   healthHandlers: [] as Array<() => void>,
-  pushHandlers: {} as Record<string, Array<() => void>>
+  pushHandlers: {} as Record<string, Array<() => void>>,
+  answer: false
 }));
 
 vi.mock("./use-signalr", () => ({
@@ -40,6 +41,7 @@ vi.mock("./api", async (importOriginal) => ({
   ApiRequestError: class ApiRequestError extends Error {},
   fetchJson: (url: string) => {
     mocks.fetchJsonCalls.push(url);
+    if (mocks.answer) return Promise.resolve([]);
     // Never resolves on its own -- the test resolves each batch explicitly,
     // by holding a reference to the promise's own resolver.
     return new Promise(() => {});
@@ -50,7 +52,7 @@ vi.mock("./api", async (importOriginal) => ({
   }
 }));
 
-const { useAttention } = await import("./use-attention");
+const { useAttention, attentionSourcesForReasons } = await import("./use-attention");
 const { queryClient } = await import("./route-cache");
 
 describe("useAttention", () => {
@@ -60,6 +62,7 @@ describe("useAttention", () => {
     mocks.activityHandlers = [];
     mocks.healthHandlers = [];
     mocks.pushHandlers = {};
+    mocks.answer = false;
   });
 
   afterEach(() => {
@@ -103,6 +106,40 @@ describe("useAttention", () => {
       const before = mocks.fetchJsonCalls.length;
       await vi.advanceTimersByTimeAsync(180_000);
       expect(mocks.fetchJsonCalls.length).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads only the lists a push names, and everything for a word it does not know (#1179)", () => {
+    const keys = (reasons: string[]) => attentionSourcesForReasons(reasons)?.map((source) => source.key.join("/"));
+    expect(keys(["noRelease"])).toEqual(["src/attention-no-release", expect.stringContaining("dashboard")]);
+    expect(keys(["noRelease"])?.length).toBe(2);
+    expect(keys(["heldReleases"])).toEqual([]);
+    // A burst names several words: their lists are read once each.
+    expect(keys(["jobs", "recovery"])?.filter((key) => key.includes("failed")).length).toBe(1);
+    expect(attentionSourcesForReasons(["noRelease", "journey"])).toBeNull();
+    expect(attentionSourcesForReasons(["client"])).toBeNull();
+    expect(attentionSourcesForReasons(["all"])).toBeNull();
+  });
+
+  it("an open bell reads again only the no-release list and the summary after a push naming it, with no timer (#1179)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.answer = true;
+      renderHook(() => useAttention());
+      await vi.waitFor(() => expect(mocks.fetchJsonCalls.length).toBeGreaterThan(0));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      mocks.fetchJsonCalls = [];
+      act(() => {
+        (mocks.pushHandlers["AttentionChanged"] ?? []).forEach((handler) => (handler as unknown as (event: { reason: string }) => void)({ reason: "noRelease" }));
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mocks.fetchJsonCalls).toContain("/api/attention/no-release");
+      expect(mocks.fetchJsonCalls.some((url) => url.includes("/api/jobs") || url.includes("indexers"))).toBe(false);
+      expect(mocks.fetchJsonCalls.length).toBeLessThanOrEqual(2);
     } finally {
       vi.useRealTimers();
     }
