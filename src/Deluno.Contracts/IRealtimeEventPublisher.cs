@@ -123,6 +123,18 @@ public interface IRealtimeEventPublisher
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// A film or show changed, from whatever wrote it (#1179). Sent to the Dashboard, to the
+    /// title's own subject (so its page hears about it cheaply) and to every library
+    /// it is in. The default is the plain entity-change event, so a test double needs no change.
+    /// </summary>
+    Task PublishTitleChangedAsync(
+        string entityType,
+        string entityId,
+        IReadOnlyCollection<string> libraryIds,
+        CancellationToken cancellationToken)
+        => PublishEntityChangedAsync(entityType, entityId, cancellationToken);
+
+    /// <summary>
     /// A pushed event that carries its own data, on the "dashboard" subject (the System screen, #1098).
     /// The default does nothing, so a test double that does not care needs no change.
     /// </summary>

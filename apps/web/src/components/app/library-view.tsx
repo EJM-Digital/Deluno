@@ -34,6 +34,8 @@ import {
 import { useLibraryAddress } from "../../hooks/use-library-address";
 import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useLatestRequest } from "../../hooks/use-latest-request";
+import { useCoalescedRevalidate } from "../../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { parseTagList } from "./tag-picker";
 import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, readRememberedAddTags, rememberAddTags,useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
@@ -342,6 +344,8 @@ export function LibraryView({
 
     let cancelled = false;
     const requestId = nextRequest();
+    // A live reload that was still reading is for the old view; this load replaces it.
+    silentReloadToken.current += 1;
     setNextPageToken(null);
     isFillingRef.current = false;
     // The delay is a debounce for typing in the search box; a structural
@@ -428,6 +432,107 @@ export function LibraryView({
     }, delay);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [buildCatalogueParams, conditions, fetchCataloguePage, isRequestStale, libraryId, monitoring, nextRequest, quickFilter, refreshVersion, setSelectedIds, variant]);
+
+  /*
+    Live changes (#1179). A film or show changing from any path (an import, a metadata
+    job, a search, an edit in another tab) is announced, and the shelf follows without a
+    reload and without losing the filters, the selection or the scroll position:
+    - a title already on the shelf is read again on its own and swapped in place;
+    - anything else (a new title, a removal, a change that may move a title in or out of
+      this filter, or a large burst) reads the whole shelf again behind the one on screen
+      and swaps it in at once, so nothing blanks or jumps.
+    Changes are gathered for a moment, so a burst is one read.
+  */
+  const libraryItemsRef = useRef(libraryItems);
+  libraryItemsRef.current = libraryItems;
+  const silentReloadToken = useRef(0);
+  const changedIds = useRef(new Set<string>());
+  const needsWholeShelf = useRef(false);
+
+  const reloadShelfQuietly = useCallback(async () => {
+    const token = ++silentReloadToken.current;
+    try {
+      const first = await fetchCataloguePage(buildCatalogueParams());
+      const collected = [...first.items];
+      let next = first.page.nextPageToken;
+      while (next) {
+        if (token !== silentReloadToken.current) return;
+        const slice = await fetchCataloguePage(buildCatalogueParams(next, FILL_PAGE_SIZE));
+        collected.push(...slice.items);
+        next = slice.page.nextPageToken;
+      }
+      if (token !== silentReloadToken.current) return;
+      setLibraryItems(collected);
+      setTotalCount(first.page.totalCount ?? collected.length);
+      setFacets(first.page.facets);
+      setNextPageToken(null);
+      const stillShown = new Set(collected.map((item) => item.id));
+      setSelectedIds((current) => current.filter((id) => stillShown.has(id)));
+      rememberCatalogue(cacheKeyRef.current, {
+        items: collected.slice(0, CATALOGUE_CACHE_ITEMS),
+        totalCount: first.page.totalCount ?? collected.length,
+        facets: first.page.facets
+      });
+    } catch {
+      // The shelf on screen is still right as of the last read; the next change reads again.
+    }
+  }, [buildCatalogueParams, fetchCataloguePage, setSelectedIds]);
+
+  const followLiveChanges = useCoalescedRevalidate(() => {
+    // The first load is still filling the shelf and will already hold what changed.
+    if (isFillingRef.current) {
+      changedIds.current.clear();
+      needsWholeShelf.current = false;
+      return;
+    }
+
+    const ids = [...changedIds.current];
+    changedIds.current.clear();
+    const wholeShelf = needsWholeShelf.current;
+    needsWholeShelf.current = false;
+    const shown = new Set(libraryItemsRef.current.map((item) => item.id));
+    if (wholeShelf || ids.length > 12 || ids.some((id) => !shown.has(id))) {
+      void reloadShelfQuietly();
+      return;
+    }
+
+    void (async () => {
+      try {
+        const route = variant === "movies" ? "movies" : "series";
+        const fresh = await Promise.all(ids.map(async (id) => {
+          const row = await fetchJson<MovieListItem | SeriesListItem>(`/api/${route}/${id}`);
+          return (variant === "movies" ? adaptMovieItems([row as MovieListItem]) : adaptSeriesItems([row as SeriesListItem]))[0];
+        }));
+        // A title that no longer fits this view's filters needs the shelf read again to say where it goes.
+        if (fresh.some((item) => item && !knownStructuralMatch(item, quickFilter, monitoring, libraryId))) {
+          void reloadShelfQuietly();
+          return;
+        }
+        const byId = new Map(fresh.filter(Boolean).map((item) => [item.id, item]));
+        setLibraryItems((current) => current.map((item) => byId.get(item.id) ?? item));
+      } catch {
+        void reloadShelfQuietly();
+      }
+    })();
+  }, 500);
+
+  const noteTitleChanged = useCallback((expected: "movies" | "shows", id: string) => {
+    if (variant !== expected) return;
+    if (!id || id === "*") {
+      needsWholeShelf.current = true;
+    } else {
+      changedIds.current.add(id);
+    }
+    followLiveChanges();
+  }, [followLiveChanges, variant]);
+
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, (event) => noteTitleChanged("movies", event.id));
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, (event) => noteTitleChanged("shows", event.id));
+  // Titles added, moved or removed by a library change.
+  useSignalREvent("LibraryChanged", libraryId ? [RealtimeGroups.Dashboard, RealtimeGroups.Library(libraryId)] : RealtimeGroups.Dashboard, () => {
+    needsWholeShelf.current = true;
+    followLiveChanges();
+  });
 
   /**
    * The shelf reaching its end while titles are still outstanding.

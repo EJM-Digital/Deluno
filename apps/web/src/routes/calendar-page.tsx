@@ -11,8 +11,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources } from "../lib/route-cache";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
-import { CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
 import { CalendarSubscribeDrawer } from "../components/app/calendar-subscribe-drawer";
@@ -225,14 +227,20 @@ interface CalendarEntry {
 
 export function CalendarPage() {
   const state = useRouteSources(calendarSources());
+  // A film, show or episode changing from any path moves what the calendar holds (a new air date, a
+  // title added or removed, a file arriving), so the window is read again as it is announced (#1179).
+  const readAgain = useCoalescedRevalidate(() => { void state.refetch(); }, 500);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, readAgain);
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, readAgain);
+  useSignalREvent("EpisodeChanged", RealtimeGroups.Dashboard, readAgain);
   return (
     <RouteSourceGate state={state}>
-      {() => <CalendarPageBody data={state.data} revalidator={state.revalidator} />}
+      {() => <CalendarPageBody data={state.data} />}
     </RouteSourceGate>
   );
 }
 
-function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoaderData; revalidator: { revalidate: () => void; state: "idle" | "loading" } }) {
+function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
   const navigate = useNavigate();
   const [initial] = useState(readScheduleChoices);
   const [scope, setScope] = useState<Scope>(initial.scope);
@@ -298,8 +306,9 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
   const movieCount = visible.length - episodeCount;
 
   // What is shown and when: these steer the card, so they sit in its header, and both views carry them in the same
-  // place, so switching between Calendar and List never moves a control out from under the cursor. Subscribe and
-  // Refresh do something, so they go on the title line with every page's buttons (James, 2 Oct 2026).
+  // place, so switching between Calendar and List never moves a control out from under the cursor. Subscribe does
+  // something, so it goes on the title line with every page's buttons (James, 2 Oct 2026). The calendar follows
+  // the library by itself, so there is no Refresh (#1179).
   const cardActions = (
     <>
       {isListOnlyScope(scope) ? null : (
@@ -356,10 +365,6 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
             <Button type="button" variant="outline" onClick={() => setSubscribeOpen(true)}>
               <CalendarPlus className="h-4 w-4" />
               Subscribe
-            </Button>
-            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-              <RefreshCw className={revalidator.state !== "idle" ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-              Refresh
             </Button>
           </>
         }

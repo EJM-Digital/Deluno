@@ -13,7 +13,9 @@
  * Contracts: GET /api/discover?mediaType=, POST /api/discover/add,
  * GET /api/libraries, GET /api/quality-profiles.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { useLoaderData } from "react-router-dom";
 import { CircleSlash, Compass, Plus, ShieldCheck } from "lucide-react";
@@ -150,6 +152,19 @@ export function DiscoverPage() {
       cancelled = true;
     };
   }, [mediaType]);
+
+  // A film or show joining or leaving the library changes which popular titles are "Already in library".
+  // Read again quietly (no spinner, nothing cleared) as the change is announced (#1179).
+  const shownType = useRef(mediaType);
+  shownType.current = mediaType;
+  const readAgain = useCoalescedRevalidate(() => {
+    const asked = mediaType;
+    fetchJson<DiscoverResponse>(`/api/discover?mediaType=${asked}`)
+      .then((response) => { if (shownType.current === asked) setData(response); })
+      .catch(() => undefined);
+  }, 500);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => { if (mediaType === "movies") readAgain(); });
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, () => { if (mediaType === "series") readAgain(); });
 
   // Memoized so the Add drawer's own reset-on-open effect (keyed on this
   // array's identity) does not fire on every unrelated re-render of this
