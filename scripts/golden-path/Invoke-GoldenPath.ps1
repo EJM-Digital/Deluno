@@ -66,7 +66,17 @@ param(
     [int] $PickerWaitSeconds = 60,
     # Install the way a person does: Setup.exe in the signed-in desktop session, so first run shows the component
     # picker, which Invoke-ComponentPicker.ps1 then ticks. Screens are saved under <OutDirectory>\golden-screens.
-    [switch] $Interactive
+    [switch] $Interactive,
+    # Serve one Usenet film from inside the VM (docs/golden-path.md, step 6): a stub news server and a stub Newznab
+    # indexer from scripts/golden-path/usenet-stub, started in the signed-in desktop session after the install.
+    # The VM has no news server and no Usenet account, and none is ever used.
+    [switch] $UsenetStub,
+    [int] $UsenetStubNntpPort = 1119,
+    [int] $UsenetStubNewznabPort = 1180,
+    # The run's throwaway Deluno login. With it the script points Deluno at the stub through Deluno's own API;
+    # without it the script prints the one command that does, to run once the account exists and a Usenet client is connected.
+    [string] $DelunoUsername,
+    [string] $DelunoPassword
 )
 
 $ErrorActionPreference = 'Stop'
@@ -158,6 +168,66 @@ function Invoke-InteractiveInstall([string] $SetupName) {
         Add-Result 'Component picker ticked and installed' 'passed' "Every row ticked and installed; what it said is in $logFile."
     } else {
         Add-Result 'Component picker ticked and installed' 'failed' "See $logFile and golden-screens\picker-*.png."
+    }
+}
+
+# Starts the Usenet stub in the VM and, when the run's Deluno login is known, points Deluno at it (scripts/golden-path/usenet-stub).
+# Needs the install done: the release's test video is made with the ffmpeg Deluno ships.
+function Start-UsenetStubInVm {
+    $stubDir = Join-Path $PSScriptRoot 'usenet-stub'
+    $files = @('UsenetStub.Lib.ps1', 'New-UsenetRelease.ps1', 'Start-NntpStub.ps1', 'Start-NewznabStub.ps1', 'Set-UsenetStubInDeluno.ps1') |
+        ForEach-Object { , @($_, (Get-Content -Raw (Join-Path $stubDir $_))) }
+    $made = Invoke-InVm {
+        param($pairs, $nntpPort, $newznabPort)
+        $dir = 'C:\golden\usenet-stub'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        foreach ($p in $pairs) { Set-Content -Path (Join-Path $dir $p[0]) -Value $p[1] -Encoding utf8 }
+        $release = Join-Path $dir 'release'
+        $info = & (Join-Path $dir 'New-UsenetRelease.ps1') -OutDirectory $release
+        $user = "$env:USERDOMAIN\$env:USERNAME"
+        $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $tasks = @(
+            @('GoldenPathUsenetNntp', 'Start-NntpStub.ps1', $nntpPort),
+            @('GoldenPathUsenetNewznab', 'Start-NewznabStub.ps1', $newznabPort)
+        )
+        foreach ($task in $tasks) {
+            $argLine = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $dir $task[1]) + '" -Root "' + $release + '" -Port ' + $task[2]
+            $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argLine
+            Register-ScheduledTask -TaskName $task[0] -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+            Start-ScheduledTask -TaskName $task[0]
+        }
+        # Wait for both to answer: the news server with its greeting, the indexer with its capabilities.
+        $nntp = 'no answer'; $newznab = 'no answer'
+        for ($i = 0; $i -lt 40 -and ($nntp -notlike '200*' -or $newznab -notlike '*<caps>*'); $i++) {
+            Start-Sleep -Seconds 2
+            try {
+                $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $nntpPort)
+                $reader = New-Object System.IO.StreamReader($c.GetStream())
+                $nntp = $reader.ReadLine(); $c.Close()
+            } catch { }
+            try { $newznab = (Invoke-WebRequest "http://127.0.0.1:$newznabPort/api?t=caps" -UseBasicParsing -TimeoutSec 5).Content } catch { }
+        }
+        [pscustomobject]@{ Name = $info.name; SizeMb = [math]::Round($info.sizeBytes / 1MB, 1); Parts = $info.parts; Nntp = $nntp; NewznabOk = ($newznab -like '*<caps>*') }
+    } @($files, $UsenetStubNntpPort, $UsenetStubNewznabPort)
+    $ok = ($made.Nntp -like '200*') -and $made.NewznabOk
+    Add-Result 'Usenet stub running in the VM (news server and Newznab indexer)' $(if ($ok) { 'passed' } else { 'failed' }) ("Release $($made.Name), $($made.SizeMb) MB in $($made.Parts) parts. News server on 127.0.0.1:$UsenetStubNntpPort answered '$($made.Nntp)'; indexer on http://127.0.0.1:$UsenetStubNewznabPort/ answered caps: $($made.NewznabOk).")
+    if (-not $ok) { return }
+
+    $settingsText = "In Deluno set: a Usenet provider at 127.0.0.1 port $UsenetStubNntpPort (no SSL, any dummy login, 2 connections), and a Newznab indexer at http://127.0.0.1:$UsenetStubNewznabPort with any API key. Then add Big Buck Bunny (2008) and search."
+    if ($DelunoUsername -and $DelunoPassword) {
+        try {
+            $wired = Invoke-InVm {
+                param($user, $pass, $nntpPort, $newznabPort)
+                (& 'C:\golden\usenet-stub\Set-UsenetStubInDeluno.ps1' -Username $user -Password $pass -NntpPort $nntpPort -NewznabPort $newznabPort *>&1 | Out-String).Trim()
+            } @($DelunoUsername, $DelunoPassword, $UsenetStubNntpPort, $UsenetStubNewznabPort)
+            Add-Result 'Deluno pointed at the Usenet stub through its API' 'passed' $wired
+        } catch {
+            Add-Result 'Deluno pointed at the Usenet stub through its API' 'failed' "$($_.Exception.Message) Once the account exists and a Usenet client is connected, run C:\golden\usenet-stub\Set-UsenetStubInDeluno.ps1 -Username <login> -Password <password> in the VM. $settingsText"
+        }
+    }
+    else {
+        Add-Result 'Deluno pointed at the Usenet stub through its API' 'manual' "No -DelunoUsername/-DelunoPassword given. After the first account exists and SABnzbd or NZBGet is connected, run in the VM: C:\golden\usenet-stub\Set-UsenetStubInDeluno.ps1 -Username <login> -Password <password> (a PowerShell prompt, it uses only Deluno's own API). $settingsText"
     }
 }
 
@@ -343,14 +413,19 @@ try {
     Add-Result 'Component data folders' 'passed' ("data root $($state.DataRoot): [" + ($state.DataTop -join ', ') + "]; component folders: [" + ($state.Components -join ', ') + "]; client config found: [" + ($state.ConfigsFound -join ', ') + "]; download folders: " + ($state.ClientFolders -join '; '))
     Add-Result 'Install hook log' 'passed' ($state.Hook -join ' | ')
 
+    if ($UsenetStub) {
+        try { Start-UsenetStubInVm }
+        catch { Add-Result 'Usenet stub running in the VM (news server and Newznab indexer)' 'failed' $_.Exception.Message }
+    }
+
     # Everything else in docs/golden-path.md needs eyes or a person's clicks.
     $manual = @(
         '1. Picker: tick the five clients plus Weir (exact-SHA Weir build); progress and finish screens show; "open Deluno" is offered; Weir answers on this PC only and its tray starts silently.',
         '2. Clients: Movies and TV categories, the documented folders, Deluge Label plugin on, Library Routing folder check all Matches.',
         '3. Guided setup: every automatic choice asked Yes/No; Connect Weir creates the account and links Movies and TV with the Folder chain all green.',
         '4. Public trackers: three Healthy and kept after Add; routing automatic; 1337x through the Cloudflare helper.',
-        '5. Usenet: provider entered once; SABnzbd and NZBGet Healthy only after; one Newznab indexer Healthy.',
-        '6. Real path: torrent film, Usenet film, TV episode, 4:3 film; lanes in Weir; originals still in the client folder; posters; Activity in both apps.',
+        '5. Usenet: provider entered once; SABnzbd and NZBGet Healthy only after; one Newznab indexer Healthy (with -UsenetStub: the in-VM stub news server and indexer).',
+        '6. Real path: torrent film, Usenet film (with -UsenetStub: Big Buck Bunny from the in-VM stub), TV episode, 4:3 film; lanes in Weir; originals still in the client folder; posters; Activity in both apps.',
         '7. A title''s own profile is honoured: 4K and 720p each targeted correctly.',
         '8. Failure and recovery: stalled torrent replaced; failed hand-off under Needs action and Try again; remove with files and restore.',
         '9. Weir pause and repeats: paused hand-off waits and is processed once on resume; a repeat settles as Skipped: already done.',
