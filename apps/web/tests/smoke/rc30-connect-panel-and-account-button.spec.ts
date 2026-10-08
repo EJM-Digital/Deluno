@@ -51,12 +51,9 @@ test("the Connect the apps panel lines up and every app shows Connected after Co
   expect(navigations).toBe(loaded);
 });
 
-// The issue also asks that the buttons share a left edge. They are right-aligned and as wide as their labels
-// ("Connect NZBGet", "Connect qBittorrent"), so their left edges differ. This is marked as the known defect: the
-// run turns red the day the buttons line up, and the mark then comes off.
-test("every Connect button in the panel starts at the same left edge (#1130)", async ({ page, isMobile }) => {
-  test.fail(true, "#1130 line 1: the Connect buttons are right-aligned at their own widths, so their left edges differ");
-  test.skip(isMobile, "The column alignment is about the desktop list.");
+// The issue also asks that the buttons share a left edge: each fills the list's action column, so they line up whatever
+// their labels ("Connect NZBGet", "Connect qBittorrent"), on a desktop and on a phone.
+test("every Connect button in the panel starts at the same left edge (#1130)", async ({ page }) => {
   await authenticateAndNavigate(page, "/");
   await page.route(//api/system/bundled-components$/, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(installedApps.map((app) => ({ ...app, connected: false }))) }));
