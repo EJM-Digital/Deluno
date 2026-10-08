@@ -86,16 +86,6 @@ public static class ComponentConfig
             return content;
         }
 
-        if (content.Contains("{{delugeSha1}}", StringComparison.Ordinal) || content.Contains("{{delugeSalt}}", StringComparison.Ordinal))
-        {
-            // Deluge's Web UI keeps sha1(salt + password) as hex beside the salt (deluge/ui/web/auth.py).
-            var salt = Convert.ToHexString(RandomNumberGenerator.GetBytes(20)).ToLowerInvariant();
-            var sha1 = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(salt + credentials.Password))).ToLowerInvariant();
-            content = content
-                .Replace("{{delugeSalt}}", salt, StringComparison.Ordinal)
-                .Replace("{{delugeSha1}}", sha1, StringComparison.Ordinal);
-        }
-
         return content
             .Replace("{{username}}", credentials.Username, StringComparison.Ordinal)
             .Replace("{{password}}", credentials.Password, StringComparison.Ordinal)

@@ -126,31 +126,21 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public async Task Deluge_gets_a_generated_web_password_kept_for_the_connection_and_never_the_shipped_default()
+    public async Task Deluge_gets_no_generated_login_only_its_local_address_and_port()
     {
         var writer = new FakeConfigWriter(true);
         var store = new RecordingCredentialStore();
 
         await InstallWith(Load("deluge"), writer, store);
 
-        Assert.True(store.Has("deluge"));
-        var saved = store.Saved.Single().Value;
-        Assert.NotEqual("deluge", saved.Password);
-        Assert.True(saved.Password.Length >= 20);
+        Assert.False(store.Has("deluge"));
+        Assert.Empty(store.Saved);
         var content = writer.Content!;
         Assert.Contains("\"interface\": \"127.0.0.1\"", content, StringComparison.Ordinal);
         Assert.Contains("\"port\": 8112", content, StringComparison.Ordinal);
-        Assert.Contains("\"first_login\": false", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("pwd_", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("first_login", content, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", content, StringComparison.Ordinal);
-        Assert.DoesNotContain(saved.Password, content, StringComparison.Ordinal);
-
-        // Deluge checks sha1(salt + password) as hex against the two values written to its web.conf.
-        var json = content[(content.IndexOf("}{", StringComparison.Ordinal) + 1)..];
-        using var document = System.Text.Json.JsonDocument.Parse(json);
-        var salt = document.RootElement.GetProperty("pwd_salt").GetString()!;
-        var sha1 = document.RootElement.GetProperty("pwd_sha1").GetString()!;
-        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(salt + saved.Password))).ToLowerInvariant(), sha1);
-        Assert.NotEqual(Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(salt + "deluge"))).ToLowerInvariant(), sha1);
     }
 
     private static async Task<ComponentInstallResult> InstallWithRecord(BundledComponentSpec real, RecordingInstalledRecord record, IBundledComponentCredentialStore store, string? template = null)
