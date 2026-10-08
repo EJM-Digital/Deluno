@@ -42,9 +42,16 @@ for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
 if (-not $window) { Log "FAILED: the picker never appeared"; exit 1 }
 Log "picker open; texts: $((Texts $window) -join ' | ')"
 
-# Tick every row. A CheckedListBox row toggles; fall back to selecting it and pressing Space.
-$rows = AllOfType $window $CT::ListItem
+# Tick every row. WinForms' CheckedListBox shows each row to UI Automation as a CheckBox with a Toggle pattern
+# (not as a ListItem), so look for those; fall back to list items (select, then press Space).
+function Rows($root) {
+    $boxes = @(AllOfType $root $CT::CheckBox | Where-Object { $_.Current.Name -notmatch "Use the same login" })
+    if ($boxes.Count -gt 0) { return $boxes }
+    return @(AllOfType $root $CT::ListItem)
+}
+$rows = Rows $window
 Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
+if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
 foreach ($row in $rows) {
     $done = $false
     try {
@@ -60,10 +67,13 @@ foreach ($row in $rows) {
     Start-Sleep -Milliseconds 300
 }
 Start-Sleep -Seconds 1
-foreach ($row in (AllOfType $window $CT::ListItem)) {
+$unticked = 0
+foreach ($row in (Rows $window)) {
     $state = try { $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState } catch { 'unknown' }
     Log "row '$($row.Current.Name)': $state"
+    if ("$state" -ne 'On' -and $row.Current.Name -notmatch 'already installed') { $unticked++ }
 }
+if ($unticked -gt 0) { Log "FAILED: $unticked row(s) are not ticked"; exit 1 }
 
 # The Usenet logins appear once SABnzbd or NZBGet is ticked.
 foreach ($field in 'SABnzbd username', 'NZBGet username') { $box = ByName $window $field; if ($box) { SetText $box $UsenetUser } }

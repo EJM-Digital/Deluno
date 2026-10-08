@@ -105,7 +105,7 @@ function Save-VmScreen([string] $Name) {
             $file = Join-Path $env:TEMP "golden-screen-$name.png"
             $kb = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_Keyboard |
                 Where-Object { $_.SystemName -eq (Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem -Filter "ElementName='$vm'").Name }
-            if ($kb) { $null = Invoke-CimMethod -InputObject $kb -MethodName TypeKey -Arguments @{ keyCode = [uint32]0x10 } }  # wake the display
+            if ($kb) { $null = Invoke-CimMethod -InputObject $kb -MethodName TypeKey -Arguments @{ keyCode = [uint32]0x7E } }  # wake the display with F15, a key nothing reacts to (Shift five times opens the Sticky Keys prompt)
             Start-Sleep -Milliseconds 800
             & ([scriptblock]::Create($scriptText)) -VmName $vm -OutPath $file -Width 1024 -Height 768 | Out-Null
             $file
@@ -153,7 +153,8 @@ function Invoke-InteractiveInstall([string] $SetupName) {
     Invoke-InVm { Unregister-ScheduledTask -TaskName 'GoldenPathSetup' -Confirm:$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'GoldenPathPicker' -Confirm:$false -ErrorAction SilentlyContinue }
     $logFile = Join-Path $OutDirectory "golden-picker-$Version.log"
     Set-Content -Path $logFile -Value $log -Encoding utf8
-    if ($log -match '(?m) done\s*$' -and $log -notmatch 'FAILED') {
+    # "done" alone proves nothing (a window that closed by itself also ends the picker script): the finish screen must have been seen.
+    if ($log -match '(?m) done\s*$' -and $log -notmatch 'FAILED' -and $log -match 'final: .*Finished\.') {
         Add-Result 'Component picker ticked and installed' 'passed' "Every row ticked and installed; what it said is in $logFile."
     } else {
         Add-Result 'Component picker ticked and installed' 'failed' "See $logFile and golden-screens\picker-*.png."
