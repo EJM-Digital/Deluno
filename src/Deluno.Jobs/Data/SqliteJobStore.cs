@@ -301,7 +301,88 @@ public sealed class SqliteJobStore(
         var nextPageToken = hasMore
             ? DelunoPageToken.Encode(jobs[^1].CreatedUtc.ToString("O"), jobs[^1].Id)
             : null;
-        return Page<JobQueueItem>.Of(jobs, nextPageToken);
+        return Page<JobQueueItem>.Of(await NameEpisodeTargetsAsync(connection, jobs, cancellationToken), nextPageToken);
+    }
+
+    /// <summary>
+    /// Gives each episode job the show and episode it is for, from its own payload and the series catalogue, so every
+    /// screen can say "Severance S02E10" instead of "Search for an episode" twenty times (#1180). The payload is read
+    /// here by id because a list leaves it out; a show that is gone leaves the job unnamed rather than failing the list.
+    /// </summary>
+    private async Task<List<JobQueueItem>> NameEpisodeTargetsAsync(
+        System.Data.Common.DbConnection jobsConnection,
+        List<JobQueueItem> jobs,
+        CancellationToken cancellationToken)
+    {
+        var episodeJobs = jobs.Where(job => job.JobType == "episode.search").ToList();
+        if (episodeJobs.Count == 0)
+        {
+            return jobs;
+        }
+
+        var facts = new Dictionary<string, (string? SeriesId, long? Season, long? Episode)>(StringComparer.Ordinal);
+        using (var command = jobsConnection.CreateCommand())
+        {
+            var names = new List<string>();
+            for (var index = 0; index < episodeJobs.Count; index++)
+            {
+                names.Add($"@j{index}");
+                AddParameter(command, $"@j{index}", episodeJobs[index].Id);
+            }
+
+            command.CommandText =
+                $"""
+                SELECT id,
+                    CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.seriesId') END,
+                    CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.seasonNumber') END,
+                    CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.episodeNumber') END
+                FROM job_queue
+                WHERE id IN ({string.Join(", ", names)});
+                """;
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                facts[reader.GetString(0)] = (
+                    reader.IsDBNull(1) ? null : Convert.ToString(reader.GetValue(1)),
+                    reader.IsDBNull(2) ? null : Convert.ToInt64(reader.GetValue(2)),
+                    reader.IsDBNull(3) ? null : Convert.ToInt64(reader.GetValue(3)));
+            }
+        }
+
+        var seriesIds = facts.Values.Select(fact => fact.SeriesId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (seriesIds.Count > 0)
+        {
+            await using var seriesConnection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
+            using var command = seriesConnection.CreateCommand();
+            var names = new List<string>();
+            for (var index = 0; index < seriesIds.Count; index++)
+            {
+                names.Add($"@s{index}");
+                AddParameter(command, $"@s{index}", seriesIds[index]);
+            }
+
+            command.CommandText = $"SELECT id, title FROM series_entries WHERE id IN ({string.Join(", ", names)});";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                titles[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+
+        for (var index = 0; index < jobs.Count; index++)
+        {
+            var job = jobs[index];
+            if (!facts.TryGetValue(job.Id, out var fact) || fact.SeriesId is null || !titles.TryGetValue(fact.SeriesId, out var title))
+            {
+                continue;
+            }
+
+            var number = fact.Season is { } season && fact.Episode is { } episode ? $" S{season:D2}E{episode:D2}" : string.Empty;
+            jobs[index] = job with { Target = title + number, ShowId = fact.SeriesId, ShowTitle = title };
+        }
+
+        return jobs;
     }
 
     /// <summary>Says what the retry did, including what it deliberately left alone.</summary>
