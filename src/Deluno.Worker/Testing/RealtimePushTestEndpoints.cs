@@ -65,6 +65,24 @@ public static class RealtimePushTestEndpoints
             return Results.NoContent();
         });
 
+        // A Live event that carries its own data (JourneyStageChanged, ProcessorHandoffChanged,
+        // RecoveryCaseChanged, JobChanged, ClientStateChanged), pushed as the server pushes it.
+        endpoints.MapPost("/api/testing/realtime/live-event", async (
+            HttpContext httpContext,
+            [FromBody] PushLiveEventRequest request,
+            IRealtimeEventPublisher publisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await publisher.PublishLiveEventAsync(request.EventName, request.Payload, cancellationToken);
+            return Results.NoContent();
+        });
+
         endpoints.MapGet("/api/testing/realtime/watchers", async (
             HttpContext httpContext,
             IRealtimeWatchers watchers,
@@ -93,3 +111,5 @@ public static class RealtimePushTestEndpoints
 public sealed record PushDownloadProgressRequest(string Id, string? Title, double Progress, double SpeedMbps, string? Eta, string? Status);
 
 public sealed record PushActivityRequest(string Message, string? Id, string? Category, string? Severity);
+
+public sealed record PushLiveEventRequest(string EventName, System.Text.Json.JsonElement Payload);
