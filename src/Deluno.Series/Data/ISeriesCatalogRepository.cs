@@ -361,6 +361,19 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     Task<IReadOnlyList<WrongEpisodeFileLinkRepair>> RepairWrongEpisodeFileLinksAsync(CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<WrongEpisodeFileLinkRepair>>([]);
 
+    /// <summary>Every episode that holds a file, with its show and library (#1173).</summary>
+    Task<IReadOnlyList<EpisodeFileLink>> ListEpisodeFileLinksAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<EpisodeFileLink>>([]);
+
+    /// <summary>
+    /// Takes a wrong file off an episode (#1173): the file the episode holds came from a release that names another
+    /// episode, so the link is cleared and the episode is Missing again and searchable at once. The file itself is
+    /// not touched here; the caller has already moved it to the recycle bin. False when the episode no longer holds
+    /// that file, which makes a repeat run a no-op.
+    /// </summary>
+    Task<bool> ClearMislabelledEpisodeFileAsync(string episodeId, string filePath, CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
     /// <summary>
     /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
     /// (#1070). One answer per item, in order.

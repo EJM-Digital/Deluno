@@ -3939,6 +3939,126 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(0, await Deluno.Worker.Services.EpisodeFileLinkRepairService.RunAsync(seriesRepository, activity, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #1173: sets up The Simpsons with S38E01 "The Children's Book Job" and S38E02 "Diary of a Chimpy Kid", S38E02
+    /// holding a file that came from <paramref name="releaseName"/>, and runs the repair.
+    /// </summary>
+    private async Task<(int Repaired, TestStorage Storage, SqliteSeriesCatalogRepository Series, SqliteJobStore Store, FakeJobScheduler Scheduler, string FilePath, string SeriesId, Deluno.Platform.RecycleBinService Bin, Func<Task<int>> Again)> RunMislabelledRepairAsync(
+        string releaseName,
+        string libraryFileName)
+    {
+        var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        var seriesRoot = Path.Combine(storage.DataRoot, "series");
+        var folder = Directory.CreateDirectory(Path.Combine(seriesRoot, "The Simpsons (1989)", "Season 38")).FullName;
+        var library = await CreateTvLibraryAsync(libraries, seriesRoot, Path.Combine(storage.DataRoot, "downloads"));
+        var filePath = Path.Combine(folder, libraryFileName);
+        var firstPath = Path.Combine(folder, "The Simpsons - S38E01 - The Children's Book Job.mkv");
+        await File.WriteAllBytesAsync(filePath, new byte[64]);
+        await File.WriteAllBytesAsync(firstPath, new byte[32]);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        await seriesRepository.ImportExistingAsync(
+            library.Id, "The Simpsons", 1989, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            null, null,
+            [
+                new ImportedEpisodeItem(38, 1, HasFile: true, FilePath: firstPath, FileSizeBytes: 32),
+                new ImportedEpisodeItem(38, 2, HasFile: true, FilePath: filePath, FileSizeBytes: 64)
+            ],
+            CancellationToken.None);
+        var seriesId = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None)).Id;
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(38, 1, "The Children's Book Job", null, timeProvider.GetUtcNow()),
+                new CatalogueEpisodeItem(38, 2, "Diary of a Chimpy Kid", null, timeProvider.GetUtcNow())
+            ],
+            "provider",
+            CancellationToken.None);
+        var episodeId = (await seriesRepository.GetInventoryDetailAsync(seriesId, CancellationToken.None))!
+            .Episodes.Single(e => e.EpisodeNumber == 2).EpisodeId;
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            library.Id, "tv", "episode", episodeId, releaseName, "TestIndexer", "client-1", "qBittorrent", "sent", null,
+            cancellationToken: CancellationToken.None);
+        await dispatches.RecordImportOutcomeAsync(dispatchId, "imported", filePath, null, null, CancellationToken.None);
+
+        var bin = new Deluno.Platform.RecycleBinService(
+            Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }),
+            timeProvider,
+            NullLogger<Deluno.Platform.RecycleBinService>.Instance);
+        var scheduler = new FakeJobScheduler();
+        Task<int> Run() => Deluno.Worker.Services.MislabelledEpisodeFileRepairService.RunAsync(
+            seriesRepository, libraries, bin, store, scheduler, store, CancellationToken.None);
+        return (await Run(), storage, seriesRepository, store, scheduler, filePath, seriesId, bin, Run);
+    }
+
+    /// <summary>#1173: S38E02 holds a copy of S38E01; it is binned (Restore works), Missing, searched, and said in Activity.</summary>
+    [Fact]
+    public async Task A_file_whose_release_named_another_episodes_title_goes_to_the_recycle_bin_and_the_episode_is_searched()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        Assert.Equal(1, run.Repaired);
+        Assert.False(File.Exists(run.FilePath));
+        var binned = Assert.Single(await run.Bin.ListAsync(CancellationToken.None));
+        Assert.Equal(run.FilePath, binned.OriginalPath);
+        Assert.True(File.Exists(binned.RecyclePath));
+
+        var detail = await run.Series.GetInventoryDetailAsync(run.SeriesId, CancellationToken.None);
+        var second = detail!.Episodes.Single(e => e.EpisodeNumber == 2);
+        Assert.False(second.HasFile);
+        Assert.Equal("missing", second.WantedStatus);
+        Assert.True(detail.Episodes.Single(e => e.EpisodeNumber == 1).HasFile);
+        Assert.Null(await LinkedFileAsync(storage, run.SeriesId, 2));
+
+        var events = await run.Store.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(events, e => e.Category == Deluno.Worker.Services.MislabelledEpisodeFileRepairService.ActivityCategory
+            && e.Message.Contains("The Simpsons S38E02 held a copy of S38E01")
+            && e.Message.Contains("The Children's Book Job")
+            && e.Message.Contains("recycle bin"));
+        var search = Assert.Single(run.Scheduler.Requests);
+        Assert.Contains(second.EpisodeId, search.PayloadJson);
+
+        Assert.Equal(0, await run.Again());
+        Assert.Single(run.Scheduler.Requests);
+        Assert.Single(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1173: a file whose release carries the episode's own title is left alone.</summary>
+    [Fact]
+    public async Task A_file_whose_release_carries_its_own_episode_title_is_left_alone()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 Diary of a Chimpy Kid 1080p FOX WEB H264-ETHEL",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv");
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        Assert.Empty(run.Scheduler.Requests);
+        Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1173: a file whose release names no episode title at all is left alone.</summary>
+    [Fact]
+    public async Task A_file_whose_release_has_no_episode_title_is_left_alone()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 1080p WEB H264-GRP",
+            "The Simpsons - S38E02.mkv");
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        Assert.Empty(run.Scheduler.Requests);
+        Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
     private static async Task<string?> LinkedFileAsync(TestStorage storage, string seriesId, int episodeNumber)
     {
         await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
