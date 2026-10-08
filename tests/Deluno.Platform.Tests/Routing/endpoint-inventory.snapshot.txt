@@ -298,6 +298,7 @@ POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
 POST /api/command/
 POST /api/companion-tools/install
+POST /api/companion-tools/tray-install
 POST /api/connections/test-all
 POST /api/connections/{kind}/{id}/test
 POST /api/connections/{kind}/{id}/update

@@ -72,6 +72,35 @@ public static class CompanionModule
                 : Results.Conflict(new { message = "Tools are already being set up. Wait for that to finish." });
         });
 
+        // The apps only the tray's installer can set up (Transmission, Deluge, NZBGet): the tray is a separate
+        // process, so the ask goes to it as a file in the data root, and it opens its picker for them.
+        group.MapPost("tray-install", (
+            HttpContext httpContext,
+            [FromBody] CompanionInstallRequest request,
+            [FromServices] Microsoft.Extensions.Options.IOptions<Deluno.Infrastructure.Storage.StoragePathOptions> storage) =>
+        {
+            var availability = CompanionToolsService.Availability();
+            if (!availability.Available)
+            {
+                return Results.Conflict(new { message = availability.Reason });
+            }
+
+            var remote = httpContext.Connection.RemoteIpAddress;
+            if (remote is not null && !IPAddress.IsLoopback(remote))
+            {
+                return Results.Conflict(new { message = "Open Deluno on the computer it runs on to install apps: Windows asks for permission on that screen." });
+            }
+
+            var ids = (request.ToolIds ?? []).Where(id => CompanionToolIds.TrayInstalled.Contains(id, StringComparer.OrdinalIgnoreCase)).ToArray();
+            if (ids.Length == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["toolIds"] = ["Tick at least one app."] });
+            }
+
+            Deluno.Contracts.PendingComponentInstalls.Add(storage.Value.DataRoot, ids, retryAfterUtc: null, askedByPerson: true, reason: "You asked for it on the Companion Tools page.");
+            return Results.Accepted("/api/companion-tools");
+        });
+
         // #1118: a newer version of a connected app is a notice you can act on.
         var updates = endpoints.MapGroup("/api/connections").RequireAuthorization(DelunoAuthorizationPolicies.System);
 
