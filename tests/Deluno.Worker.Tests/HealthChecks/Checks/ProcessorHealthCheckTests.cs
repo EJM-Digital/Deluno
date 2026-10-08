@@ -25,7 +25,7 @@ public sealed class ProcessorHealthCheckTests
     public async Task A_watched_path_that_maps_to_the_librarys_folder_is_ok()
     {
         var connection = Connection();
-        var library = Library(processorOutputPath: "D:\\Refined");
+        var library = Library(downloadsPath: "D:\\Refined");
 
         var outcomes = await RunAsync(
             connection,
@@ -42,7 +42,7 @@ public sealed class ProcessorHealthCheckTests
     public async Task An_unmapped_watched_path_that_does_not_match_is_still_a_problem()
     {
         var connection = Connection();
-        var library = Library(processorOutputPath: "D:\\Refined");
+        var library = Library(downloadsPath: "D:\\Refined");
 
         var outcomes = await RunAsync(
             connection,
@@ -58,7 +58,7 @@ public sealed class ProcessorHealthCheckTests
     public async Task With_no_mappings_configured_behaviour_is_unchanged()
     {
         var connection = Connection();
-        var library = Library(processorOutputPath: "D:\\Refined");
+        var library = Library(downloadsPath: "D:\\Refined");
 
         var outcomes = await RunAsync(
             connection,
@@ -74,7 +74,7 @@ public sealed class ProcessorHealthCheckTests
     public async Task A_processor_with_a_folder_per_library_is_read_by_the_library_id()
     {
         var connection = Connection();
-        var library = Library(processorOutputPath: "D:\\Refined");
+        var library = Library(downloadsPath: "D:\\Refined");
 
         var outcomes = await RunAsync(
             connection,
@@ -97,7 +97,7 @@ public sealed class ProcessorHealthCheckTests
     {
         var outcomes = await RunAsync(
             Connection(),
-            [Library(processorOutputPath: "D:\\Refined")],
+            [Library(downloadsPath: "D:\\Refined")],
             support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
             mappings: [],
             folders: [new ProcessorLibraryFolder("someone-else", "/data/other", false)]);
@@ -108,16 +108,54 @@ public sealed class ProcessorHealthCheckTests
     }
 
     [Fact]
-    public async Task A_folder_per_library_entry_that_disagrees_with_the_ready_folder_is_a_problem()
+    public async Task A_folder_per_library_entry_that_disagrees_with_the_downloads_folder_is_a_problem()
     {
         var outcomes = await RunAsync(
             Connection(),
-            [Library(processorOutputPath: "D:\\Refined")],
+            [Library(downloadsPath: "D:\\Refined")],
             support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
             mappings: [],
             folders: [new ProcessorLibraryFolder("library-1", "E:\\Elsewhere", false)]);
 
         Assert.Equal(HealthCheckStatuses.Problem, Assert.Single(outcomes, item => item.Id.Contains(":watching:")).Status);
+    }
+
+    [Fact]
+    public async Task The_folder_the_processor_writes_to_is_compared_with_the_ready_folder_not_the_downloads_folder()
+    {
+        var support = new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true };
+        var agreeing = await RunAsync(
+            Connection(),
+            [Library(downloadsPath: "C:\\Downloads\\Completed\\TV", processorOutputPath: "E:\\Weir\\Ready\\TV")],
+            support,
+            mappings: [],
+            folders: [new ProcessorLibraryFolder("library-1", "C:\\Downloads\\Completed\\TV", true, "E:\\Weir\\Ready\\TV")]);
+
+        Assert.Equal(HealthCheckStatuses.Ok, Assert.Single(agreeing, item => item.Id.Contains(":watching:")).Status);
+        Assert.Equal(HealthCheckStatuses.Ok, Assert.Single(agreeing, item => item.Id.Contains(":writing:")).Status);
+
+        var wrongOutput = await RunAsync(
+            Connection(),
+            [Library(downloadsPath: "C:\\Downloads\\Completed\\TV", processorOutputPath: "E:\\Weir\\Ready\\TV")],
+            support,
+            mappings: [],
+            folders: [new ProcessorLibraryFolder("library-1", "C:\\Downloads\\Completed\\TV", true, "E:\\Elsewhere")]);
+
+        Assert.Equal(HealthCheckStatuses.Ok, Assert.Single(wrongOutput, item => item.Id.Contains(":watching:")).Status);
+        Assert.Equal(HealthCheckStatuses.Problem, Assert.Single(wrongOutput, item => item.Id.Contains(":writing:")).Status);
+    }
+
+    [Fact]
+    public async Task An_output_folder_the_processor_does_not_report_adds_no_line()
+    {
+        var outcomes = await RunAsync(
+            Connection(),
+            [Library(downloadsPath: "C:\\Downloads\\Completed\\TV", processorOutputPath: "E:\\Weir\\Ready\\TV")],
+            new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { HasLibraryFolders = true },
+            mappings: [],
+            folders: [new ProcessorLibraryFolder("library-1", "C:\\Downloads\\Completed\\TV", true, "")]);
+
+        Assert.DoesNotContain(outcomes, item => item.Id.Contains(":writing:"));
     }
 
     private static async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(
@@ -151,7 +189,7 @@ public sealed class ProcessorHealthCheckTests
         "connection-1", "Weir", "generic-webhook", "https://weir.example.test/webhook",
         "Authorization", null, true, "healthy", null, Now, Now, Now);
 
-    private static LibraryItem Library(string processorOutputPath)
+    private static LibraryItem Library(string downloadsPath, string? processorOutputPath = null)
     {
         var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
         return library with
@@ -161,6 +199,7 @@ public sealed class ProcessorHealthCheckTests
             MediaType = "movies",
             ImportWorkflow = "refine-before-import",
             ProcessorName = "Weir",
+            DownloadsPath = downloadsPath,
             ProcessorOutputPath = processorOutputPath
         };
     }

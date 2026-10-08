@@ -225,7 +225,7 @@ public sealed class ProcessorConnectionService(
         }
     }
 
-    /// <summary>The list as a bare array, or inside the first array property of an object; entries without a watched folder are left out.</summary>
+    /// <summary>The list as a bare array, or inside the first array property of an object; entries with neither a watched nor an output folder are left out; an empty string is not reported.</summary>
     internal static IReadOnlyList<ProcessorLibraryFolder> ParseLibraryFolders(JsonElement root)
     {
         var list = root;
@@ -259,7 +259,8 @@ public sealed class ProcessorConnectionService(
                 ? value.GetString()!.Trim()
                 : null;
             var watched = Text("watched_folder");
-            if (watched is null)
+            var output = Text("output_folder");
+            if (watched is null && output is null)
             {
                 continue;
             }
@@ -267,7 +268,8 @@ public sealed class ProcessorConnectionService(
             found.Add(new ProcessorLibraryFolder(
                 Text("manager_library_key"),
                 watched,
-                entry.TryGetProperty("folders_from_manager", out var fromManager) && fromManager.ValueKind == JsonValueKind.True));
+                entry.TryGetProperty("folders_from_manager", out var fromManager) && fromManager.ValueKind == JsonValueKind.True,
+                output));
         }
 
         return found;

@@ -109,6 +109,7 @@ const STEP_TITLE: Record<string, string> = {
   downloads: "Downloads folder",
   ready: "Ready folder",
   processor: "Folder the processor watches",
+  "processor-output": "Folder the processor writes to",
   library: "Library folder"
 };
 

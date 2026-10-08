@@ -62,7 +62,7 @@ public sealed record ProcessorStatusSupport(
 /// some other way; <see cref="FoldersFromManager"/> says the processor took the folders from Deluno. Generic: any
 /// processor may publish this list.
 /// </summary>
-public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager)
+public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager, string? OutputFolder = null)
 {
     /// <summary>
     /// The entry for one library. Two entries carry the same key only when someone copied a workflow by hand, so
