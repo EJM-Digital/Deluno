@@ -11,7 +11,8 @@ vi.mock("../lib/use-auth", () => ({
   useAuth: () => ({ user: null })
 }));
 
-const { createBaseline, detectLibraryDownloadsFolder } = await import("./setup-guide-page");
+const guide = await import("./setup-guide-page");
+const { createBaseline, detectLibraryDownloadsFolder } = guide;
 type Input = Parameters<typeof createBaseline>[0];
 
 const NO = {
@@ -209,5 +210,92 @@ describe("detectLibraryDownloadsFolder", () => {
   it("stays empty when the clients really disagree", async () => {
     fetchJsonMock.mockResolvedValue(report(["C:/Downloads/Completed/Movies", "D:\\Downloads\\Movies"]));
     expect(await detectLibraryDownloadsFolder("lib")).toBeNull();
+  });
+});
+
+describe("cleaning files with Weir in the guided setup", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+    authedFetchMock.mockReset();
+  });
+
+  function wireWeir() {
+    let libraryCount = 0;
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/api/quality-profiles") return { id: "qp1", name: "p", mediaType: "movies" };
+      if (url === "/api/libraries") return { id: `lib${++libraryCount}`, name: "Library", processorTimeoutMinutes: 2880, processorFailureMode: "block" };
+      if (url === "/api/settings") return {};
+      if (url === "/api/integrations/processors/connections") return [{ id: "weir-1", name: "Weir", isEnabled: true }];
+      return {};
+    });
+    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
+  }
+
+  const workflowPuts = () => authedFetchMock.mock.calls
+    .filter(([url, init]) => /\/workflow$/.test(String(url)) && init?.method === "PUT")
+    .map(([url, init]) => ({ url: String(url), body: JSON.parse(init.body) }));
+
+  const withAnswers = (answers: Record<string, unknown>) => {
+    const base = input();
+    return { ...base, form: { ...base.form, ...answers } as Input["form"] };
+  };
+
+  it("a Yes sets that library to refine before import and links it to the connected Weir; a No leaves the other alone", async () => {
+    wireWeir();
+    await createBaseline(withAnswers({ refineMovies: true, movieProcessedPath: "D:\\Weir\\Ready\\Movies", refineTv: false, seriesProcessedPath: "D:\\Weir\\Ready\\TV" }), []);
+
+    const puts = workflowPuts();
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.url).toBe("/api/libraries/lib1/workflow");
+    expect(puts[0]!.body).toMatchObject({
+      importWorkflow: "refine-before-import",
+      processorConnectionId: "weir-1",
+      processorName: "Weir",
+      processorOutputPath: "D:\\Weir\\Ready\\Movies"
+    });
+  });
+
+  it("changes nothing when neither question was answered Yes", async () => {
+    wireWeir();
+    await createBaseline(withAnswers({ refineMovies: false, refineTv: null }), []);
+    expect(workflowPuts()).toEqual([]);
+  });
+
+  it("says so, and still creates the baseline, when Weir has no connection to link to", async () => {
+    wireWeir();
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/api/integrations/processors/connections") return [];
+      if (url === "/api/libraries") return { id: "lib1", name: "Library" };
+      return { id: "qp1", name: "p", mediaType: "movies" };
+    });
+    const result = await createBaseline(withAnswers({ refineMovies: true, movieProcessedPath: "D:\\Weir\\Ready\\Movies" }), []);
+    expect(result.message).toContain("cleaning Movies files with Weir (Weir is not connected to Deluno yet)");
+    expect(workflowPuts()).toEqual([]);
+  });
+});
+
+describe("the Weir questions gate Start", () => {
+  const { missingWeirAnswers, suggestedProcessedFolder, describeMissingForFinish } = guide;
+  const form = (over: Record<string, unknown>) => ({
+    mediaIntent: "both", movieRootPath: "D:\\Media\\Movies", seriesRootPath: "D:\\Media\\TV",
+    automation: NO, qualityPreset: "balanced1080p", formatGoal: "simpleClean", skipSignInLocalNetwork: false, updateAutomatically: false,
+    refineMovies: null, refineTv: null, movieProcessedPath: "D:\\Weir\\Ready\\Movies", seriesProcessedPath: "D:\\Weir\\Ready\\TV", ...over
+  }) as unknown as Parameters<typeof missingWeirAnswers>[0];
+
+  it("asks nothing without Weir, and each library type in use once Weir is connected", () => {
+    expect(missingWeirAnswers(form({}), false)).toEqual([]);
+    expect(missingWeirAnswers(form({}), true)).toHaveLength(2);
+    expect(missingWeirAnswers(form({ mediaIntent: "movies" }), true)).toHaveLength(1);
+    expect(missingWeirAnswers(form({ refineMovies: false, refineTv: false }), true)).toEqual([]);
+  });
+
+  it("a Yes needs the folder Weir leaves cleaned files in", () => {
+    expect(missingWeirAnswers(form({ refineMovies: true, movieProcessedPath: " ", refineTv: false }), true)).toEqual(["the folder Weir leaves cleaned Movies files in"]);
+    expect(describeMissingForFinish(form({}), true)).toContain("Clean Movies files with Weir before they go into your library?");
+  });
+
+  it("suggests Weir's own folder on the library's drive", () => {
+    expect(suggestedProcessedFolder("D:\\Media\\Movies", "Movies")).toBe("D:\\Weir\\Ready\\Movies");
+    expect(suggestedProcessedFolder("/media/tv", "TV")).toBe("");
   });
 });
