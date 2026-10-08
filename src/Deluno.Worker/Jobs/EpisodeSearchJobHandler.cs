@@ -313,11 +313,11 @@ public sealed class EpisodeSearchJobHandler(
             cancellationToken);
 
         // "held" alone told nobody anything (#1159): say what happened, in words.
-        if (outcome is "held" or "checked" && !string.IsNullOrWhiteSpace(searchResult))
+        if (ResultLine(payload.SeasonNumber, payload.EpisodeNumber, outcome, searchResult) is { } resultLine)
         {
             await activityFeedRepository.RecordActivityAsync(
                 "episode.search.result",
-                $"S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}: {searchResult}",
+                resultLine,
                 null,
                 job.Id,
                 "episode",
@@ -327,4 +327,14 @@ public sealed class EpisodeSearchJobHandler(
 
         return $"Finished searching for episode S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}.";
     }
+
+    /// <summary>
+    /// The plain-words Activity line for an episode search that sent nothing: "S01E09: No usable release yet: ..."
+    /// or "S01E09: ... Held for manual review because ..." (#1159). A search that sent a release says so in its
+    /// own "was automatically sent to ..." line, so it has none here.
+    /// </summary>
+    public static string? ResultLine(int seasonNumber, int episodeNumber, string outcome, string? searchResult)
+        => outcome is "held" or "checked" && !string.IsNullOrWhiteSpace(searchResult)
+            ? $"S{seasonNumber:D2}E{episodeNumber:D2}: {searchResult}"
+            : null;
 }
