@@ -889,6 +889,7 @@ public sealed class PlatformSettingsPersistenceTests
             MediaIntent: "movies",
             MovieRootPath: "D:\\Media\\Movies",
             DownloadsPath: "D:\\Downloads",
+            MovieDownloadsPath: "D:\\Downloads\\Completed\\Movies",
             QualityPreset: "balanced1080p",
             FormatGoal: "balanced",
             IndexerUrl: "https://indexer.example/api",
@@ -900,6 +901,7 @@ public sealed class PlatformSettingsPersistenceTests
 
         var loaded = await repository.GetSetupDraftAsync(CancellationToken.None);
         Assert.Equal(saved.UpdatedUtc, loaded.UpdatedUtc);
+        Assert.Equal("D:\\Downloads\\Completed\\Movies", loaded.MovieDownloadsPath);
         Assert.Equal(false, loaded.SkipSignInLocalNetwork);
         Assert.Equal(true, loaded.UpdateAutomatically);
         Assert.True(loaded.Automation!["rssGrabs"]);

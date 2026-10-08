@@ -290,6 +290,8 @@ export interface SetupDraftItem {
   movieRootPath: string;
   seriesRootPath: string;
   downloadsPath: string;
+  movieDownloadsPath?: string;
+  seriesDownloadsPath?: string;
   qualityPreset: "" | "balanced1080p" | "premium4k" | string;
   formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | string;
   indexerName: string;

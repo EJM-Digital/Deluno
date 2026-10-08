@@ -205,6 +205,9 @@ interface GuideForm {
   mediaIntent: "movies" | "tv" | "both";
   movieRootPath: string;
   seriesRootPath: string;
+  /** Optional: where the download clients finish Movies / TV. Blank means Deluno reads it from the connected clients. */
+  movieDownloadsPath: string;
+  seriesDownloadsPath: string;
   qualityPreset: "" | "balanced1080p" | "premium4k";
   formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | "archive";
   indexerName: string;
@@ -323,6 +326,7 @@ export function buildIndexerAutomationFields(automation: AutomationChoices) {
 function toSetupDraft(form: GuideForm) {
   return {
     mode: form.mode, mediaIntent: form.mediaIntent, movieRootPath: form.movieRootPath, seriesRootPath: form.seriesRootPath,
+    movieDownloadsPath: form.movieDownloadsPath, seriesDownloadsPath: form.seriesDownloadsPath,
     qualityPreset: form.qualityPreset, formatGoal: form.formatGoal,
     indexerName: form.indexerName, indexerProtocol: form.indexerProtocol, indexerUrl: form.indexerUrl,
     clientName: form.clientName, clientProtocol: form.clientProtocol, clientHost: form.clientHost, clientPort: form.clientPort,
@@ -575,6 +579,8 @@ export function SetupGuidePage() {
     mediaIntent: data.draft.mediaIntent as GuideForm["mediaIntent"],
     movieRootPath: data.draft.movieRootPath || data.settings.movieRootPath || "",
     seriesRootPath: data.draft.seriesRootPath || data.settings.seriesRootPath || "",
+    movieDownloadsPath: data.draft.movieDownloadsPath ?? "",
+    seriesDownloadsPath: data.draft.seriesDownloadsPath ?? "",
     qualityPreset: data.draft.qualityPreset as GuideForm["qualityPreset"],
     formatGoal: resolveDraftFormatGoal(data.draft.formatGoal),
     indexerName: data.draft.indexerName || data.indexers[0]?.name,
@@ -1184,9 +1190,19 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
             <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\\Media\\Movies or /media/movies" browseTitle="Choose movies root" />
           </FieldShell>
         ) : null}
+        {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
+          <FieldShell icon={FolderTree} label="Movies downloads folder (optional)" copy="Where your download client finishes Movies. Leave it blank and Deluno reads it from the download clients you connected.">
+            <PathInput value={form.movieDownloadsPath} onChange={(value) => patch({ movieDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\Movies" browseTitle="Choose Movies downloads folder" />
+          </FieldShell>
+        ) : null}
         {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="TV root" copy="Where series folders should live.">
             <PathInput value={form.seriesRootPath} onChange={(value) => patch({ seriesRootPath: value })} placeholder="D:\\Media\\TV or /media/tv" browseTitle="Choose TV root" />
+          </FieldShell>
+        ) : null}
+        {(form.mediaIntent === "tv" || form.mediaIntent === "both") ? (
+          <FieldShell icon={FolderTree} label="TV downloads folder (optional)" copy="Where your download client finishes TV. Leave it blank and Deluno reads it from the download clients you connected.">
+            <PathInput value={form.seriesDownloadsPath} onChange={(value) => patch({ seriesDownloadsPath: value })} placeholder="D:\\Downloads\\Completed\\TV" browseTitle="Choose TV downloads folder" />
           </FieldShell>
         ) : null}
       </div>
@@ -2499,10 +2515,10 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   const indexer = await ensureIndexer(data.indexers, form, input.indexerTested, createdEntities);
   const clients = await ensureClients(input.liveClients, form, input.clientTested, createdEntities);
   const movieLibrary = canCreateMovies
-    ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, movieProfile?.id ?? null, form, createdEntities)
+    ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, form.movieDownloadsPath, movieProfile?.id ?? null, form, createdEntities)
     : null;
   const tvLibrary = canCreateTv
-    ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, tvProfile?.id ?? null, form, createdEntities)
+    ? await ensureLibrary(data.libraries, "tv", form.seriesRootPath, form.seriesDownloadsPath, tvProfile?.id ?? null, form, createdEntities)
     : null;
 
   // A library made a moment ago has no sources to lose; one that was already there keeps its own unless an indexer is named.
@@ -2512,6 +2528,21 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
     routable(movieLibrary) ? saveRouting(movieLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve(),
     routable(tvLibrary) ? saveRouting(tvLibrary!.id, indexer?.id ?? null, clients.map((item) => item.id)) : Promise.resolve()
   ]);
+
+  // The folder each new library's downloads finish in: the one typed, else the one the connected
+  // clients already save into (the picker's completed folder with Movies and TV). Without it the
+  // folder check says "Can't tell" and a processor has no folder to watch.
+  const noDownloadsFolder: string[] = [];
+  for (const [library, typed, rootPath, label] of [
+    [movieLibrary, form.movieDownloadsPath, form.movieRootPath, "Movies"],
+    [tvLibrary, form.seriesDownloadsPath, form.seriesRootPath, "TV"]
+  ] as const) {
+    const isNew = library && createdEntities.some((entity) => entity.kind === "library" && entity.id === library.id);
+    if (!library || !isNew || typed.trim()) continue;
+    const folder = clients.length > 0 ? await detectLibraryDownloadsFolder(library.id).catch(() => null) : null;
+    const saved = folder ? await saveLibraryDownloadsFolder(library, rootPath, folder).then(() => true, () => false) : false;
+    if (!saved) noDownloadsFolder.push(label);
+  }
 
   // The answers go in last, and the one that can refuse goes first: if it refuses, the
   // libraries above are removed again and none of the answers has been applied.
@@ -2548,7 +2579,9 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   const completionResult = {
     message: `${created || "Library"} baseline created${firstTitle ? ` and "${firstTitle.title}" was added` : ""}.${
       firstTitleProblem ? ` The first title was not added: ${firstTitleProblem}` : ""
-    }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}`,
+    }${notApplied.length > 0 ? ` These answers could not be saved, so set them in Settings: ${notApplied.join(", ")}.` : ""}${
+      noDownloadsFolder.length > 0 ? ` Deluno could not tell where your download clients finish ${noDownloadsFolder.join(" and ")}, so no downloads folder is set yet. Set it on the library so the folder check and your processor can work.` : ""
+    }`,
     libraries: [movieLibrary?.name, tvLibrary?.name].filter((item): item is string => Boolean(item)),
     qualityProfiles: [movieProfile?.name, tvProfile?.name].filter((item, index, arr): item is string => Boolean(item) && arr.indexOf(item) === index),
     customFormatCount: createdEntities.filter((item) => item.kind === "customFormat").length,
@@ -2750,10 +2783,38 @@ function buildClientPayload(form: GuideForm) {
   };
 }
 
+/**
+ * The one folder every connected client that has a folder of its own for this library's category saves into
+ * (#1132). Null when none says, or when they disagree (the folder check then names the clash).
+ */
+export async function detectLibraryDownloadsFolder(libraryId: string): Promise<string | null> {
+  const report = await fetchJson<{ libraries?: { destinations?: { saveFolder?: string | null; savedBy?: string }[] }[] }>(
+    `/api/integrations/processors/download-destinations?libraryId=${encodeURIComponent(libraryId)}`
+  );
+  const folders = (report?.libraries ?? [])
+    .flatMap((item) => item.destinations ?? [])
+    .filter((destination) => destination.savedBy === "client-category" && destination.saveFolder?.trim())
+    .map((destination) => destination.saveFolder!.trim());
+  const key = (folder: string) => folder.replace(/[\\/]+$/, "").toLowerCase();
+  return folders.length > 0 && folders.every((folder) => key(folder) === key(folders[0])) ? folders[0] : null;
+}
+
+async function saveLibraryDownloadsFolder(library: LibraryItem, rootPath: string, downloadsPath: string) {
+  const response = await authedFetch(`/api/libraries/${library.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: library.name, rootPath: library.rootPath || rootPath, downloadsPath })
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorText(response, "The downloads folder could not be saved."));
+  }
+}
+
 async function ensureLibrary(
   existing: LibraryItem[],
   mediaType: "movies" | "tv",
   rootPath: string,
+  downloadsPath: string,
   qualityProfileId: string | null,
   form: GuideForm,
   createdEntities: CreatedEntity[]
@@ -2769,7 +2830,7 @@ async function ensureLibrary(
       mediaType,
       purpose: "Main library",
       rootPath,
-      downloadsPath: null,
+      downloadsPath: downloadsPath.trim() || null,
       qualityProfileId,
       // #936: nothing automatic is on until the Automation step says so.
       ...buildLibraryAutomationFields(form.automation),
