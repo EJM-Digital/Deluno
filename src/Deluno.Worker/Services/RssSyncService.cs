@@ -160,8 +160,8 @@ public sealed class RssSyncService(
                 foreach (var library in librariesByIndexer[indexer.Id])
                 {
                     var queued = IsMovies(library)
-                        ? await QueueFilmAsync(parsed, release, library, moviesWanted[library.Id], movieMonitored, queuedThisPass, cancellationToken)
-                        : await QueueEpisodeAsync(parsed, release, library, showsWanted[library.Id], showMonitored, inventories, queuedThisPass, cancellationToken);
+                        ? await QueueFilmAsync(parsed, release, indexer.Id, library, moviesWanted[library.Id], movieMonitored, queuedThisPass, cancellationToken)
+                        : await QueueEpisodeAsync(parsed, release, indexer.Id, library, showsWanted[library.Id], showMonitored, inventories, queuedThisPass, cancellationToken);
                     if (queued is not null)
                     {
                         searches.Add(queued);
@@ -193,6 +193,7 @@ public sealed class RssSyncService(
     private async Task<string?> QueueFilmAsync(
         ParsedFeedRelease parsed,
         IndexerFeedRelease release,
+        string indexerId,
         LibraryItem library,
         IReadOnlyList<Deluno.Movies.Contracts.MovieWantedItem> wanted,
         IReadOnlyDictionary<string, Deluno.Movies.Contracts.MovieListItem> catalogue,
@@ -232,7 +233,9 @@ public sealed class RssSyncService(
                     maxItems = 1,
                     retryDelayHours = library.RetryDelayHours,
                     triggeredBy = "rss",
-                    targetEntityId = movie.Id
+                    targetEntityId = movie.Id,
+                    // The indexer whose new release started this search: it is waited for, not skipped for pacing (#1184).
+                    priorityIndexerIds = new[] { indexerId }
                 }),
                 "movie",
                 movie.Id,
@@ -245,6 +248,7 @@ public sealed class RssSyncService(
     private async Task<string?> QueueEpisodeAsync(
         ParsedFeedRelease parsed,
         IndexerFeedRelease release,
+        string indexerId,
         LibraryItem library,
         IReadOnlyList<SeriesWantedItem> wanted,
         IReadOnlyDictionary<string, SeriesListItem> catalogue,
@@ -289,7 +293,8 @@ public sealed class RssSyncService(
                     libraryId = library.Id,
                     seasonNumber = episode.SeasonNumber,
                     episodeNumber = episode.EpisodeNumber,
-                    title = episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"
+                    title = episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}",
+                    priorityIndexerIds = new[] { indexerId }
                 }),
                 "episode",
                 episode.EpisodeId,

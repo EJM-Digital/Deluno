@@ -29,7 +29,11 @@ internal static class JobPayloads
         /// <summary>How many missing-item candidates this cycle works through, independent of <see cref="MaxUpgradeItems"/> (#830). Falls back to half of <see cref="MaxItems"/> for a job queued before this existed.</summary>
         int? MaxMissingItems = null,
         /// <summary>How many upgrade candidates this cycle works through, independent of <see cref="MaxMissingItems"/> (#830). Falls back to half of <see cref="MaxItems"/> for a job queued before this existed.</summary>
-        int? MaxUpgradeItems = null)
+        int? MaxUpgradeItems = null,
+        /// <summary>The indexers whose new release started this search (the feed watch, #1184). They are waited for, and asked again shortly if they were missed.</summary>
+        IReadOnlyList<string>? PriorityIndexerIds = null,
+        /// <summary>How many times a feed-started search has already been asked again for a missed indexer (#1184).</summary>
+        int FollowUp = 0)
     {
         /// <summary>Effective missing-item cap: the split value when present, otherwise <see cref="MaxItems"/> itself (an older, unsplit job).</summary>
         public int EffectiveMaxMissingItems => MaxMissingItems ?? MaxItems;
@@ -52,7 +56,9 @@ internal static class JobPayloads
         string LibraryId,
         int SeasonNumber,
         int EpisodeNumber,
-        string Title);
+        string Title,
+        IReadOnlyList<string>? PriorityIndexerIds = null,
+        int FollowUp = 0);
 
     internal sealed record SeasonSearchPayloadEpisode(
         string EpisodeId,

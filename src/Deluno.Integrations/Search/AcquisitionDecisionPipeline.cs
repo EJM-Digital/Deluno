@@ -163,7 +163,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.Genres,
                 request.OtherTitles,
                 episodeTitles: request.EpisodeTitles,
-                episodeTitlesBySeason: request.EpisodeTitlesBySeason);
+                episodeTitlesBySeason: request.EpisodeTitlesBySeason,
+                patientIndexerIds: request.PatientIndexerIds);
 
         var beforeBlocklist = searchPlan;
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
@@ -1247,7 +1248,9 @@ public sealed record AcquisitionDecisionRequest(
     /// <summary>The provider's titles for the searched season's episodes, by episode number, so a release carrying another episode's title is refused (#1173).</summary>
     IReadOnlyDictionary<int, string>? EpisodeTitles = null,
     /// <summary>The provider's episode titles for every season, for a search of the whole show with no target episode (#1173).</summary>
-    IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? EpisodeTitlesBySeason = null);
+    IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>? EpisodeTitlesBySeason = null,
+    /// <summary>The indexers whose new release started this search; each is waited for, not skipped for pacing (#1184).</summary>
+    IReadOnlyCollection<string>? PatientIndexerIds = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

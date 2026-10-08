@@ -30,6 +30,32 @@ internal static class SearchExecutionSupport
     /// long used to record "searched, nothing found" and wait a whole retry
     /// window. The job runs again shortly instead, with nothing recorded.
     /// </summary>
+    /// <summary>How many times a feed-started search is asked again for an indexer it missed, before the normal schedule takes over (#1184).</summary>
+    internal const int MaxFeedFollowUps = 3;
+
+    /// <summary>
+    /// The indexers that started this search and that it did not hear from (#1184), when the search found nothing
+    /// it would take. Empty for a search the feed watch did not start, so those keep their normal retry window.
+    /// </summary>
+    internal static IReadOnlyList<IndexerNotHeardFrom> MissedFeedIndexers(
+        MediaSearchPlan plan,
+        string outcome,
+        IReadOnlyList<string>? priorityIndexerIds,
+        int followUp)
+    {
+        if (priorityIndexerIds is not { Count: > 0 }
+            || followUp >= MaxFeedFollowUps
+            || (outcome != "held" && outcome != "checked")
+            || plan.IndexersNotHeardFrom is not { Count: > 0 } missed)
+        {
+            return [];
+        }
+
+        return missed
+            .Where(item => priorityIndexerIds.Contains(item.IndexerId, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
     internal static void DeferIfIndexersWereBusy(MediaSearchPlan plan)
     {
         if (IndexersWereBusy(plan))
