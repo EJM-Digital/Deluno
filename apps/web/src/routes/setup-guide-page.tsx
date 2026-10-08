@@ -826,10 +826,6 @@ export function SetupGuidePage() {
         */}
         <div>
           <div>
-            <p className="flex items-center gap-2 text-(length:--type-caption) font-bold uppercase tracking-[0.18em] text-primary">
-              <Sparkles className="h-4 w-4" />
-              Guided setup
-            </p>
             {/* The topbar already names this page; a second h1 made two. */}
             <p className="mt-2 max-w-5xl font-display text-[clamp(2rem,2.4vw,3.15rem)] font-semibold leading-[0.98] tracking-tight text-foreground">
               Get Deluno working first. Tune it later.
@@ -852,8 +848,8 @@ export function SetupGuidePage() {
         </div>
       </section>
 
-      <div className="grid gap-(--grid-gap) xl:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="space-y-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-(--grid-gap) xl:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="min-w-0 space-y-2">
           {/*
             #1034: the rail shows both stages, not a flat list -- Stage 1
             ("This computer and you") finishes before anything about media,
@@ -884,7 +880,7 @@ export function SetupGuidePage() {
                       <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-hairline bg-background text-xs font-bold tabular-nums text-foreground">
                         {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : index + 1}
                       </span>
-                      <span>
+                      <span className="min-w-0">
                         <span className="block font-semibold text-foreground">{step.label}</span>
                         <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{step.copy}</span>
                       </span>
@@ -918,12 +914,11 @@ export function SetupGuidePage() {
           </div>
         </aside>
 
-        <form onSubmit={(event) => void handleFinish(event)} className="rounded-3xl border border-hairline bg-card shadow-xs">
+        <form onSubmit={(event) => void handleFinish(event)} className="min-w-0 rounded-3xl border border-hairline bg-card shadow-xs">
           <div className="border-b border-hairline p-(--tile-pad)">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">{current.label}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{current.copy}</p>
               </div>
               <Badge variant={form.mode === "simple" ? "success" : "default"}>{form.mode === "simple" ? "Simple path" : "Advanced skip"}</Badge>
             </div>

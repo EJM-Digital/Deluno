@@ -17,7 +17,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeCustomSharingRule, describeGlobalSharingRule, describeSeasonPackSeedTime, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { STRICT_SHARING } from "./forms";
-import { describeCallLimitStatus, formatSeconds, healthChip, relative, vipWarningActive } from "./format";
+import { describeCallLimitStatus, formatSeconds, healthChip, indexerHost, relative, vipWarningActive } from "./format";
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
@@ -102,6 +102,15 @@ export function IndexerDrawerBody({
           <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} cloudflareExplained={mentionsCloudflare(testMessage) || mentionsCloudflare(editing?.lastHealthMessage)} />
         ) : (
         <>
+        <Field label="Name" help="Leave it blank to use the address's own name. It is never the name of the computer Deluno runs on.">
+          <Input
+            value={form.name}
+            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            placeholder={indexerHost(form.baseUrl)?.replace(/^(www|api)./, "") ?? "The indexer's name"}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
           <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-(length:--type-caption)" autoComplete="off" spellCheck={false} />
         </Field>

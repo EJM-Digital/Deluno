@@ -37,7 +37,7 @@ export function SheetContent({
         className={cn(
           isBottom
             ? cn(
-                "fixed left-1/2 z-50 flex w-[calc(100%-1.25rem)] max-w-md -translate-x-1/2 flex-col",
+                "fixed inset-x-0 mx-auto z-50 flex w-[calc(100%-1.25rem)] max-w-md flex-col",
                 "bottom-[max(0.5rem,env(safe-area-inset-bottom))] max-h-[min(88dvh,640px)]",
                 "overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl",
                 "dark:border-white/8 dark:bg-[hsl(226_22%_9%/0.98)]",

@@ -31,5 +31,7 @@ export function sidebarRoutes(): string[] {
     const block = layout.slice(start, layout.indexOf("] as const;", start));
     for (const match of block.matchAll(/to: "(\/[a-z0-9/-]*)"/g)) routes.add(match[1]);
   }
+  // The guided setup is reached from the Dashboard, not the sidebar, and it failed at 390 on its own.
+  routes.add("/setup-guide");
   return [...routes];
 }
