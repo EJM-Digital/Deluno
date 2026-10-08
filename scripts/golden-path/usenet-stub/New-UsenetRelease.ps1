@@ -9,8 +9,16 @@
       - writes <Name>.nzb with one segment per part, and release.json (name, id, size, nzb file) for
         Start-NewznabStub.ps1.
 
-    The generated video has real moving frames and a tone, long enough (150 s) that Deluno does not take it
-    for a sample (under two minutes) and big enough (60 MB by default) to clear Weir's 50 MB floor. ffmpeg is
+    The generated video has real moving frames and a tone, long enough (600 s) that Deluno does not take it
+    for a sample (under two minutes) and big enough (about 1.1 GB by default) to clear both floors it meets:
+    Weir's 50 MB floor, and Deluno's own film size minimum. Deluno judges a film's size against the quality
+    in its name, for a 2-hour runtime when it knows none (Big Buck Bunny has no runtime in Deluno). The
+    minimum for WEB 720p is 0.8 GB (Settings > Quality, Size Rules; the table is src/Deluno.Quality/
+    QualityTypicalSizes.cs), so 1.1 GB sits comfortably above it and still under about 1.5 GB. The default
+    name says WEB 720p for that reason: the guided setup's Balanced 1080p profile accepts it, and a name that
+    said Bluray 1080p (2.2 GB minimum) would need a file twice the size. A film named for a quality whose
+    minimum is above its size is refused ("Send anyway" is then needed), so keep name and size in step.
+    ffmpeg is
     looked for, in order: -FfmpegPath, Deluno's installed copy (%LOCALAPPDATA%\Deluno\current\tools\ffmpeg),
     tools\ffmpeg\win-x64 in a repository checkout, then PATH. It uses only encoders every ffmpeg build has
     (mpeg4 and aac), so Deluno's LGPL build is enough. Nothing is downloaded and no real file is used.
@@ -21,13 +29,13 @@
     Where the release goes. Created when missing; an earlier release in it is replaced.
 
 .PARAMETER Name
-    The release name. Defaults to a Big Buck Bunny (2008, Creative Commons) release name Deluno can match on TMDb.
+    The release name. Defaults to a Big Buck Bunny (2008, Creative Commons) WEB 720p release name Deluno can match on TMDb.
 
 .PARAMETER SourceFile
     A video to use as it is. Must be at least -MinimumMegabytes, or Weir would skip it.
 
 .PARAMETER MinimumMegabytes
-    The smallest the video may be. Defaults to 60, above Weir's 50 MB floor.
+    The smallest the video may be. Defaults to 1100, above Deluno's 0.8 GB film minimum for WEB 720p (and Weir's 50 MB floor), under about 1.5 GB.
 
 .EXAMPLE
     ./New-UsenetRelease.ps1 -OutDirectory C:\golden\usenet\release
@@ -35,11 +43,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $OutDirectory,
-    [string] $Name = 'Big.Buck.Bunny.2008.1080p.BluRay.x264-GOLDEN',
+    [string] $Name = 'Big.Buck.Bunny.2008.720p.WEB-DL.x264-GOLDEN',
     [string] $SourceFile,
     [string] $FfmpegPath,
-    [int] $MinimumMegabytes = 60,
-    [int] $DurationSeconds = 150,
+    [int] $MinimumMegabytes = 1100,
+    [int] $DurationSeconds = 600,
     [int] $PartSizeKilobytes = 700,
     [string] $Group = 'alt.binaries.golden'
 )
@@ -71,13 +79,13 @@ $fileName = "$Name.mkv"
 $video = Join-Path $OutDirectory $fileName
 if ($SourceFile) {
     if (-not (Test-Path $SourceFile)) { throw "Source file not found: $SourceFile" }
-    if ((Get-Item $SourceFile).Length -lt $minBytes) { throw "$SourceFile is under $MinimumMegabytes MB, below Weir's 50 MB floor." }
+    if ((Get-Item $SourceFile).Length -lt $minBytes) { throw "$SourceFile is under $MinimumMegabytes MB, below the size this stub promises (Deluno's film minimum for its quality, and Weir's 50 MB floor)." }
     Copy-Item -LiteralPath $SourceFile -Destination $video -Force
 }
 else {
     $ffmpeg = Find-Ffmpeg
-    # Noise keeps the frames from compressing to nothing; the video bitrate sets the size (about 4 Mbit/s is 75 MB for 150 s).
-    foreach ($rate in 4, 6, 9) {
+    # Noise keeps the frames from compressing to nothing; the video bitrate sets the size (16 Mbit/s is about 1.15 GB for 600 s).
+    foreach ($rate in 16, 20, 26) {
         Write-Host "Making a $DurationSeconds s test video with $ffmpeg ($rate Mbit/s)"
         $ffArgs = @('-y', '-v', 'error',
             '-f', 'lavfi', '-i', "testsrc2=size=1280x720:rate=24:duration=$DurationSeconds",

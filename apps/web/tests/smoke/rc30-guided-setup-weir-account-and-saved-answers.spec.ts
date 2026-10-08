@@ -94,3 +94,30 @@ test("the guided setup's Yes/No answers survive a reload, and the Start page nam
   expect(said).not.toContain("library root folder");
   expect(said).not.toContain("picture quality");
 });
+
+test("with Weir connected the guide asks, per library type, whether to clean files with Weir, and Start waits for the answers (#1158)", async ({ page, isMobile }) => {
+  test.skip(isMobile, "The step list is the same on a phone; the desktop run proves the words.");
+  await serveAnInMemoryDraft(page);
+  await page.route(/\/api\/system\/bundled-components$/, (route) => route.fulfill(json([{ ...weirNeedsAnAccount, needsAccount: false, accountExists: true, connected: true }])));
+  await authenticateAndNavigate(page, "/setup-guide");
+
+  await page.getByRole("button", { name: /Connect installed apps/ }).click();
+  const main = page.locator("#main-content");
+  const movies = "Movies: Clean files with Weir before they go into your library?";
+  const tv = "TV: Clean files with Weir before they go into your library?";
+  // Nothing is chosen for the person (#936).
+  await expect(main.getByRole("radio", { name: `${movies} Yes` })).toHaveAttribute("aria-checked", "false");
+  await expect(main.getByRole("radio", { name: `${movies} No` })).toHaveAttribute("aria-checked", "false");
+  await expect(main.getByRole("radio", { name: `${tv} Yes` })).toBeVisible();
+
+  // A Yes asks where Weir leaves the cleaned files, with Weir's own folder suggested; a No asks nothing more.
+  await main.getByRole("radio", { name: `${movies} Yes` }).click();
+  await expect(main.getByLabel("Where Weir leaves cleaned Movies files")).toHaveValue("D:\\Weir\\Ready\\Movies");
+  await main.getByRole("radio", { name: `${tv} No` }).click();
+  await expect(main.getByLabel("Where Weir leaves cleaned TV files")).toHaveCount(0);
+
+  // Start names what is still open: the automation questions, not the Weir ones that are answered.
+  await page.getByRole("button", { name: /^(?:\d+ )?Start\b/ }).click();
+  const said = (await main.getByText(/Still needed before Deluno can create the baseline/).innerText()).replace(/\s+/g, " ");
+  expect(said).not.toContain("with Weir");
+});
