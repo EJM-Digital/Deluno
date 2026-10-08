@@ -83,6 +83,42 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.NotNull(_record.Read().Single().WiredUtc);
     }
 
+    // Golden path, rc.30.8: a new NZBGet starts paused, and a restart after the installer's own resume put that back.
+    [Theory]
+    [InlineData("nzbget", true, 1)]
+    [InlineData("qbittorrent", true, 0)]
+    [InlineData("nzbget", false, 0)]
+    public async Task A_new_nzbget_is_resumed_when_it_is_first_connected_and_nothing_else_is_touched(string kind, bool isNew, int resumes)
+    {
+        _record.MarkInstalled(kind, "localhost", kind == "nzbget" ? 6789 : 8081);
+        if (kind == "qbittorrent")
+        {
+            _saved[kind] = new BundledComponentCredentials("deluno", "qb-secret");
+        }
+
+        if (!isNew)
+        {
+            _existing.Add(new DownloadClientItem("old", "NZBGet", "nzbget", "localhost", 6789, "nzbget", "x", null, false, null, "Movies", "TV", null, 10, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        }
+
+        var resumed = 0;
+        var implementation = new Mock<Deluno.Integrations.DownloadClients.IDownloadClient>();
+        implementation.Setup(client => client.ResumeClientAsync(It.IsAny<DownloadClientItem>(), It.IsAny<CancellationToken>()))
+            .Callback(() => resumed++)
+            .ReturnsAsync(new Deluno.Integrations.DownloadClients.ClientResumeResult(true, true, "NZBGet is downloading again."));
+        implementation.Setup(client => client.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DownloadClientItem item, string category, CancellationToken _) => new Deluno.Integrations.DownloadClients.DownloadClientCategoryCheckResult(item.Id, item.Name, category, "ready", "ok", Supported: true, Found: true));
+        var registry = new Mock<Deluno.Integrations.DownloadClients.IDownloadClientRegistry>();
+        var handle = implementation.Object;
+        registry.Setup(item => item.TryGet(It.IsAny<string>(), out handle)).Returns(true);
+
+        var result = await NewWirer(registry: registry.Object).ConnectAsync(kind, null, null, Url, CancellationToken.None);
+
+        Assert.True(result!.Healthy);
+        Assert.Equal(resumes, resumed);
+        Assert.Equal(resumes, _activity.Count(line => line.Contains("is not paused", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public async Task No_connection_is_made_on_start_after_install()
     {
@@ -515,7 +551,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null)
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null, Deluno.Integrations.DownloadClients.IDownloadClientRegistry? registry = null)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -535,6 +571,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
             weir,
             system ?? Mock.Of<ICompanionSystem>(),
             activity.Object,
+            registry: registry,
             detection: detection,
             libraries: libraries);
     }

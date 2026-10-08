@@ -1,3 +1,4 @@
+using Moq;
 using Deluno.Connections.Usenet;
 using System.Net;
 using System.Text;
@@ -213,6 +214,39 @@ public sealed class UsenetProviderTests
         Assert.True(NzbGetServerPlan.HasWorkingServer(older));
         Assert.False(NzbGetServerPlan.HasWorkingServer(older, "news.example.com"));
         Assert.True(NzbGetServerPlan.HasWorkingServer(older, "OLD.example.com"));
+    }
+
+    // Golden path, rc.30.8: after the provider was saved both rows kept "No Usenet provider set up" until Test was pressed.
+    [Fact]
+    public async Task Saving_the_provider_tests_each_client_it_reached_again_so_the_row_moves_without_pressing_Test()
+    {
+        var connections = new Moq.Mock<Deluno.Connections.Data.IConnectionsRepository>();
+        connections.Setup(c => c.ListDownloadClientsAsync(Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DownloadClientItem>)new[] { NzbGetClient(), SabClient() });
+        var registry = new DownloadClientRegistry([new NzbGetDownloadClient(new Factory(new NzbGetHandler(0)), TimeSpan.Zero), new SabnzbdDownloadClient(new Factory(new SabHandler("[]") { KeepSetServer = true }))]);
+        var retested = new List<string>();
+        var retester = new Moq.Mock<IUsenetClientRetester>();
+        retester.Setup(r => r.RetestAsync(Moq.It.IsAny<DownloadClientItem>(), Moq.It.IsAny<CancellationToken>()))
+            .Callback<DownloadClientItem, CancellationToken>((client, _) => retested.Add(client.Name))
+            .Returns(Task.CompletedTask);
+
+        var results = await new UsenetProviderService(connections.Object, registry, retester.Object).SaveAsync(Provider, CancellationToken.None);
+
+        Assert.All(results, result => Assert.True(result.Saved, result.Message));
+        Assert.Equal(["NZBGet", "SABnzbd"], retested.Order().ToArray());
+    }
+
+    [Fact]
+    public async Task A_client_that_did_not_keep_the_provider_is_not_retested_as_if_it_had()
+    {
+        var connections = new Moq.Mock<Deluno.Connections.Data.IConnectionsRepository>();
+        connections.Setup(c => c.ListDownloadClientsAsync(Moq.It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<DownloadClientItem>)new[] { NzbGetClient() });
+        var registry = new DownloadClientRegistry([new NzbGetDownloadClient(new Factory(new NzbGetHandler(int.MaxValue)), TimeSpan.Zero)]);
+        var retester = new Moq.Mock<IUsenetClientRetester>();
+
+        await new UsenetProviderService(connections.Object, registry, retester.Object).SaveAsync(Provider, CancellationToken.None);
+
+        retester.Verify(r => r.RetestAsync(Moq.It.IsAny<DownloadClientItem>(), Moq.It.IsAny<CancellationToken>()), Moq.Times.Never);
     }
 
     private static DownloadClientItem SabClient()
