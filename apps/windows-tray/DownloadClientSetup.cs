@@ -173,7 +173,14 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
         {
             ["save_path"] = layout.CompletedRoot,
             ["temp_path_enabled"] = true,
-            ["temp_path"] = incomplete
+            ["temp_path"] = incomplete,
+            // A category's save folder only applies to a torrent qBittorrent manages automatically; with this
+            // left on Manual every grab landed in the completed root, not in Movies or TV. Deluno also asks
+            // for automatic management on every torrent it adds, so this holds on any qBittorrent.
+            ["auto_tmm_enabled"] = true,
+            ["torrent_changed_tmm_enabled"] = true,
+            ["category_changed_tmm_enabled"] = true,
+            ["save_path_changed_tmm_enabled"] = true
         });
         using var prefs = await http.PostAsync("api/v2/app/setPreferences", Form(("json", preferences)), cancellationToken);
         return prefs.IsSuccessStatusCode ? null : $"qBittorrent would not take its download folders ({(int)prefs.StatusCode}).";

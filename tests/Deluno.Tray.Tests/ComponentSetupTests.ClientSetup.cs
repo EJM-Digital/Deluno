@@ -90,6 +90,10 @@ public sealed partial class ComponentSetupTests
         Assert.Contains(created, body => body.Contains("category=deluno-tv") && body.Contains("savePath=" + layout.CompletedFolder("TV")));
         var preferences = Uri.UnescapeDataString(client.Requests.Single(r => r.Path.EndsWith("/setPreferences", StringComparison.Ordinal)).Body.Replace('+', ' '));
         Assert.Contains("\"temp_path_enabled\":true", preferences);
+        // The categories' folders only apply to torrents qBittorrent manages automatically.
+        Assert.Contains("\"auto_tmm_enabled\":true", preferences);
+        Assert.Contains("\"torrent_changed_tmm_enabled\":true", preferences);
+        Assert.Contains("\"category_changed_tmm_enabled\":true", preferences);
         Assert.Contains(layout.IncompleteFolder("qBittorrent").Replace("\\", "\\\\"), preferences);
         Assert.True(client.Requests.All(r => r.Request.Headers.Referrer is not null), "qBittorrent refuses a request with no Referer.");
         Assert.True(Directory.Exists(layout.CompletedFolder("Movies")));
