@@ -18,8 +18,8 @@ export function JobDrawer({ job, busy, onClose, onDismiss }: { job: JobQueueItem
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={job ? job.label : "Job"}
-      description={job ? `${job.sourceLabel} · ${getJobStatusLabel(job.status as JobStatus)}` : undefined}
+      title={job ? (job.target ?? job.label) : "Job"}
+      description={job ? `${job.target ? `${job.label} · ` : ""}${job.sourceLabel} · ${getJobStatusLabel(job.status as JobStatus)}` : undefined}
       footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={onClose} />}
     >
       {job ? (

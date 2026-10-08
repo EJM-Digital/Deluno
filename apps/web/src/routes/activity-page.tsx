@@ -42,7 +42,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
+import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { detailFields, fixLinkForActivity } from "../lib/detail-fields";
 import { authedFetch } from "../lib/use-auth";
@@ -90,6 +90,7 @@ import {
   type LiveStepEntry
 } from "../lib/activity-live-steps";
 import { isBackgroundJob } from "../lib/background-jobs";
+import { describeEpisodeSearchGroup, groupEpisodeSearches, type EpisodeSearchGroup } from "../lib/episode-search-groups";
 import { failureKindWords } from "../lib/failure-reasons";
 import {
   fileNameFromPath,
@@ -129,7 +130,7 @@ type OpenStatus = Exclude<ActivityStatus, "all" | "done">;
 interface ActivityRow {
   key: string;
   /** Where the row opens: a job, a send to a client, an import issue, or an event in the history. */
-  kind: "job" | "dispatch" | "import" | "event" | "live";
+  kind: "job" | "group" | "dispatch" | "import" | "event" | "live";
   /** Set for the open items; history events are Done. */
   status: OpenStatus | "done";
   whenUtc: string;
@@ -185,6 +186,8 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const status = activityStatusFromParams(searchParams);
   const setStatus = (next: ActivityStatus) => setSearchParams((current) => paramsWithStatus(next, current), { replace: true });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  // A show-wide search opened: the show it is for, so its episodes list inside it (#1180).
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [openEvent, setOpenEvent] = useState<ActivityEventItem | null>(null);
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
@@ -283,13 +286,24 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const openRows = useMemo<ActivityRow[]>(() => {
     const rows: ActivityRow[] = [];
     const jobWhen = (job: JobQueueItem) => job.completedUtc ?? job.startedUtc ?? job.scheduledUtc;
+    const activeJobs: JobQueueItem[] = [];
     for (const job of jobs) {
       if (isBackgroundJob(job)) continue;
+      if (isJobInProgress(job.status as JobStatus) || isJobPending(job.status as JobStatus) || isJobRetrying(job)) activeJobs.push(job);
+    }
+    const { groups, rest } = groupEpisodeSearches(activeJobs, jobs.filter((job) => isJobSuccessful(job.status as JobStatus)));
+    for (const group of groups) {
+      rows.push({
+        key: `group-${group.showId}`, kind: "group", status: "in-progress", whenUtc: group.whenUtc, title: group.showTitle,
+        step: "Search for episodes · The TV library", detail: describeEpisodeSearchGroup(group), pill: OPEN_PILL["in-progress"],
+        open: () => setOpenGroupId(group.showId), selected: openGroupId === group.showId
+      });
+    }
+    for (const job of rest) {
       const retrying = isJobRetrying(job);
-      if (!(isJobInProgress(job.status as JobStatus) || isJobPending(job.status as JobStatus) || retrying)) continue;
       const state = retrying ? `Retrying, attempt ${job.attempts} of ${job.maxAttempts}` : getJobStatusLabel(job.status as JobStatus);
       rows.push({
-        key: `job-${job.id}`, kind: "job", status: "in-progress", whenUtc: jobWhen(job), title: job.label, step: job.sourceLabel,
+        key: `job-${job.id}`, kind: "job", status: "in-progress", whenUtc: jobWhen(job), title: job.target ?? job.label, step: job.target ? `${job.label} · ${job.sourceLabel}` : job.sourceLabel,
         detail: job.lastError ? `${state} · ${job.lastError}` : state, pill: OPEN_PILL["in-progress"],
         entityId: job.relatedEntityId, entityType: job.relatedEntityType,
         open: () => setOpenJobId(job.id), selected: openJobId === job.id
@@ -298,7 +312,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     for (const job of stopped) {
       if (isBackgroundJob(job)) continue;
       rows.push({
-        key: `job-${job.id}`, kind: "job", status: "failed", whenUtc: jobWhen(job), title: job.label, step: job.sourceLabel,
+        key: `job-${job.id}`, kind: "job", status: "failed", whenUtc: jobWhen(job), title: job.target ?? job.label, step: job.target ? `${job.label} · ${job.sourceLabel}` : job.sourceLabel,
         detail: job.lastError ?? `${getJobStatusLabel(job.status as JobStatus)} after ${job.attempts} ${job.attempts === 1 ? "attempt" : "attempts"}`,
         pill: OPEN_PILL.failed, entityId: job.relatedEntityId, entityType: job.relatedEntityType,
         open: () => setOpenJobId(job.id), selected: openJobId === job.id
@@ -326,7 +340,14 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     return rows;
-  }, [jobs, stopped, dispatches, importCases, openJobId, openDispatchId, openImportCaseId]);
+  }, [jobs, stopped, dispatches, importCases, openJobId, openGroupId, openDispatchId, openImportCaseId]);
+
+  // The show-wide search opened, rebuilt from the same job reads so it follows each JobChanged push (#1180).
+  const openGroup = useMemo<EpisodeSearchGroup | null>(() => {
+    if (!openGroupId) return null;
+    const active = jobs.filter((job) => !isBackgroundJob(job) && (isJobInProgress(job.status as JobStatus) || isJobPending(job.status as JobStatus) || isJobRetrying(job)));
+    return groupEpisodeSearches(active, jobs.filter((job) => isJobSuccessful(job.status as JobStatus))).groups.find((group) => group.showId === openGroupId) ?? null;
+  }, [jobs, openGroupId]);
 
   // Processing, Download health and Download client are steps of their own, built from what Transfers reads (#1115).
   // Each is read only while its step is chosen, so the page does not ask for them otherwise.
@@ -595,6 +616,38 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           </>
         )}
       </ListCard>
+
+      <Drawer
+        open={openGroup !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenGroupId(null);
+        }}
+        title={openGroup ? openGroup.showTitle : "Search"}
+        description={openGroup ? describeEpisodeSearchGroup(openGroup) : undefined}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenGroupId(null)} />}
+      >
+        {openGroup ? (
+          <DrawerSection title="Episodes" aside={String(openGroup.total)}>
+            <ul className="flex flex-col divide-y divide-hairline">
+              {openGroup.jobs.map((job) => (
+                <li key={job.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 py-2 text-left text-(length:--type-body-sm) hover:text-foreground"
+                    onClick={() => {
+                      setOpenGroupId(null);
+                      setOpenJobId(job.id);
+                    }}
+                  >
+                    <span className="truncate">{job.target}</span>
+                    <span className="shrink-0 text-muted-foreground">{getJobStatusLabel(job.status as JobStatus)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </DrawerSection>
+        ) : null}
+      </Drawer>
 
       <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} />
 
