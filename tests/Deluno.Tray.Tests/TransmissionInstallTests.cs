@@ -37,7 +37,7 @@ public sealed partial class ComponentSetupTests
         Assert.Contains("-r 127.0.0.1", transmission.PostInstallArgs);
         Assert.Contains("\"rpc-bind-address\": \"127.0.0.1\"", transmission.ConfigFileContent);
         Assert.Contains("\"rpc-port\": 9091", transmission.ConfigFileContent);
-        Assert.StartsWith("%LocalAppData%\\Deluno\\components\\transmission", transmission.ConfigFilePath);
+        Assert.StartsWith("%DelunoData%\\components\\transmission", transmission.ConfigFilePath);
     }
 
     [Fact]

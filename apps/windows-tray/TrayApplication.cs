@@ -24,6 +24,7 @@ public sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _serviceModeItem;
     private readonly ToolStripMenuItem _allowLanItem;
     private readonly ToolStripMenuItem _letAnyAddressInItem;
+    private readonly ToolStripMenuItem _readdTorrentsItem;
     private readonly DelunoServer _server;
     private readonly HostRestartSupervisor _supervisor;
     private TrayState _state = TrayState.Starting;
@@ -40,6 +41,8 @@ public sealed class TrayApplication : ApplicationContext
         _allowLanItem = new ToolStripMenuItem("Allow other devices on your network...", null, OnAllowLan) { Visible = false };
         _letAnyAddressInItem = new ToolStripMenuItem("Let any address in...", null, OnLetAnyAddressIn);
 
+        _readdTorrentsItem = new ToolStripMenuItem("Add Transmission's torrents back...", null, OnReaddTorrents) { Visible = false };
+
         var aboutItem = new ToolStripMenuItem($"Deluno v{Deluno.Api.DelunoVersion.Running}") { Enabled = false };
 
         var menu = new ContextMenuStrip();
@@ -47,6 +50,7 @@ public sealed class TrayApplication : ApplicationContext
             _openItem,
             _openUpdatesItem,
             _allowLanItem,
+            _readdTorrentsItem,
             new ToolStripSeparator(),
             _restartItem,
             _startStopItem,
@@ -66,6 +70,7 @@ public sealed class TrayApplication : ApplicationContext
             Visible = true
         };
         _notify.DoubleClick += OnOpen;
+        menu.Opening += (_, _) => _readdTorrentsItem.Visible = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is not null;
 
         _supervisor = new HostRestartSupervisor(
             _ => _server.StartAsync(),
@@ -102,10 +107,11 @@ public sealed class TrayApplication : ApplicationContext
     /// install if they are not answering (#1051, #1052). Never blocks or fails
     /// the tray; what it did is written to component-startup.log.
     /// </summary>
-    private static async Task StartInstalledComponentsAsync()
+    private async Task StartInstalledComponentsAsync()
     {
         try
         {
+            await MoveComponentFoldersAsync().ConfigureAwait(false);
             var starter = new ComponentAutoStarter(
                 new FileStartedComponentsRegistry(),
                 new LoopbackPortProbe(),
@@ -129,6 +135,50 @@ public sealed class TrayApplication : ApplicationContext
         {
             // A client that could not be started again is still startable by hand.
         }
+    }
+
+    /// <summary>
+    /// Before any client is started: component folders left in the install root move to the data root, and a Transmission
+    /// folder a reinstall already removed is written again with a plain notice (#1177). Never stops the tray.
+    /// </summary>
+    private async Task MoveComponentFoldersAsync()
+    {
+        try
+        {
+            var dataRoot = ComponentPaths.DataRoot();
+            var installed = new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(dataRoot)).Read().Select(entry => entry.Kind).ToList();
+            var spec = BundledComponents.Load().FirstOrDefault(s => s.Kind == ComponentStateMigration.Transmission);
+            var result = await ComponentStateMigration.RunAsync(
+                ComponentPaths.InstallRoot(), dataRoot, installed,
+                BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission),
+                new FileStartedComponentsRegistry(), spec?.DefaultPort ?? 9091, null, new FileInstallLog(), CancellationToken.None).ConfigureAwait(false);
+            if (result.TransmissionFolderRecreated)
+            {
+                InvokeOnUiThread(() => _notify.ShowBalloonTip(30000, "Transmission was reset", TransmissionReadd.NoticeText + " Choose \"Add Transmission's torrents back\" from the Deluno icon menu.", ToolTipIcon.Warning));
+            }
+        }
+        catch
+        {
+            // A folder that could not be moved is still where it was; the client starts from it.
+        }
+    }
+
+    private async void OnReaddTorrents(object? sender, EventArgs e)
+    {
+        var message = "Deluno could not add the torrents back.";
+        try
+        {
+            var dataRoot = ComponentPaths.DataRoot();
+            var spec = BundledComponents.Load().First(s => s.Kind == ComponentStateMigration.Transmission);
+            var login = BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission);
+            message = await TransmissionReadd.RunAsync(dataRoot, new TransmissionRpc(spec.DefaultPort, login), ct => TransmissionDaemon.RestartAsync(spec, ct), CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            message = $"Deluno could not add the torrents back: {ex.Message}";
+        }
+
+        MessageBox.Show(message, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private static string Truncate(string text) => text.Length > 63 ? text.Substring(0, 60) + "..." : text;

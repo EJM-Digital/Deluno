@@ -102,6 +102,7 @@ public sealed class DelunoServer : IDisposable
         // Deluno.Host's separate entry point registered the Windows
         // implementation; the tray's own server never did.
         builder.Services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
+        builder.Services.AddSingleton<IComponentRecoveryNotices>(_ => new TrayComponentRecoveryNotices());
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
