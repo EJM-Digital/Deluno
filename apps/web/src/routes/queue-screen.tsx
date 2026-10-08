@@ -2983,7 +2983,9 @@ function inferImportFileName(item: DownloadQueueItem) {
   if (!item.sourcePath) return null;
   const parts = item.sourcePath.split(/[\\/]/).filter(Boolean);
   const last = parts[parts.length - 1];
-  return last && last.includes(".") ? last : null;
+  // Only a real media file name: a folder such as "www.UIndex.org - Show S01E04"
+  // has dots too, and sent as the file it hides the season and episode (#1171).
+  return last && /\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|mpg|mpeg|webm|flv|iso)$/i.test(last) ? last : null;
 }
 
 function inferYear(value: string) {

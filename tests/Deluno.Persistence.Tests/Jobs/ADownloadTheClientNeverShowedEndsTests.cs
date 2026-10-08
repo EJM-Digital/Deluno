@@ -169,6 +169,45 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
     }
 
     /// <summary>
+    /// #1167: an episode relinked by hand holds its file, so the "finished 4 hours ago and not imported"
+    /// notice about its download goes away, and is never raised when the file is already there.
+    /// </summary>
+    [Fact]
+    public async Task A_finished_download_whose_title_holds_its_file_is_not_reported_as_not_imported()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        var titleFiles = new FakeTitleFiles();
+        var (poller, dispatches, problems) = await CreateAsync(storage, clock, titleFiles);
+        await InsertAsync(storage.Factory, "stale", TimeSpan.FromMinutes(5), clock);
+        await InsertAsync(storage.Factory, "healed", TimeSpan.FromMinutes(5), clock);
+        await dispatches.RecordDetectionAsync("stale", "h1", 1024, completed: true, CancellationToken.None);
+        await dispatches.RecordDetectionAsync("healed", "h2", 1024, completed: true, CancellationToken.None);
+        clock.Advance(TimeSpan.FromHours(5));
+
+        // "healed" already has its file when the timeout comes round: nothing is raised for it.
+        titleFiles.WithFile.Add("healed");
+        var first = await poller.PollAsync(CancellationToken.None);
+        Assert.Equal(1, first.DetectionTimeoutsDetected);
+        Assert.True(await problems.IsRecordedAsync("stale", "detection-timeout", CancellationToken.None));
+        Assert.False(await problems.IsRecordedAsync("healed", "detection-timeout", CancellationToken.None));
+
+        // "stale" is relinked afterwards: the next pass releases the notice.
+        titleFiles.WithFile.Add("stale");
+        await poller.PollAsync(CancellationToken.None);
+        Assert.False(await problems.IsRecordedAsync("stale", "detection-timeout", CancellationToken.None));
+    }
+
+    private sealed class FakeTitleFiles : IDispatchTitleUnmonitorService
+    {
+        public HashSet<string> WithFile { get; } = [];
+        public bool CanHandle(string entityType) => true;
+        public Task<bool> UnmonitorAsync(string entityType, string entityId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<bool?> HasFileAsync(string entityType, string entityId, CancellationToken cancellationToken)
+            => Task.FromResult<bool?>(WithFile.Contains(entityId));
+    }
+
+    /// <summary>
     /// Polling reports a download on every pass. Each fact is written once, so a
     /// later pass moves no time and adds nothing to the download's timeline.
     /// </summary>
@@ -276,7 +315,8 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
 
     private static async Task<(DownloadDispatchPollingService Poller, SqliteDownloadDispatchesRepository Dispatches, SqliteDispatchProblemLog Problems)> CreateAsync(
         TestStorage storage,
-        FixedTimeProvider clock)
+        FixedTimeProvider clock,
+        IDispatchTitleUnmonitorService? titleFiles = null)
     {
         await new JobsSchemaInitializer(
             storage.Factory,
@@ -291,7 +331,8 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
             new SqliteJobStore(storage.Factory, clock, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             dispatches,
             problems,
-            new NullRealtimeEventPublisher());
+            new NullRealtimeEventPublisher(),
+            titleFiles: titleFiles);
         return (poller, dispatches, problems);
     }
 

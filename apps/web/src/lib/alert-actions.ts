@@ -183,6 +183,8 @@ export function recoveryDecisions(item: RecoveryCaseRow): AlertAction[] {
   if (canTryAgain(item)) decisions.push(retry);
   if (isVanished(item)) decisions.push(stopWanting);
   if (isProcessorFault(item)) decisions.push(importOriginal, searchAgain);
+  // Whatever else it offers, a case always says where it can be put right by hand (#1151).
+  decisions.push(open(`recovery-fix:${item.id}`, "Fix it in Transfers", "/queue", "Opens Transfers, where this download can be looked at, sent again or replaced. Nothing is changed."));
   decisions.push({ ...dismissAction, confirm: { title: `Dismiss ${item.title}?`, description: "Deluno stops showing this. Nothing is deleted.", confirmLabel: "Dismiss" } });
   return decisions;
 }

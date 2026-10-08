@@ -132,6 +132,16 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   // once as its case, offering only Try again (which processor cases cannot
   // do) and Dismiss, and again as the hand-off, with everything that can
   // actually be done about it.
+  // One failure is one row (#1167): a failed hand-off names its download by client and item id, and the
+  // dispatch, the dead-lettered import job and the recovery case behind that same download are the same
+  // problem. The hand-off carries the most specific cause and the fixes, so it is the row that stays.
+  const handoffClientItems = new Set(failedHandoffs.map((handoff) => `${handoff.clientId}:${handoff.queueItemId}`.toLowerCase()));
+  const handoffDispatchIds = new Set(
+    (sources.dispatches ?? [])
+      .filter((dispatch) => dispatch.torrentHashOrItemId && handoffClientItems.has(`${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase()))
+      .map((dispatch) => dispatch.id)
+  );
+  const handoffJobIds = new Set(failedHandoffs.map((handoff) => handoff.importJobId).filter((id): id is string => Boolean(id)));
   const handoffIdsWithTheirOwnRow = new Set((sources.handoffs ?? []).map((handoff) => handoff.id));
   const recoveryCases: RecoveryCaseRow[] = [
     ...(sources.movieRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "movie" as const })),
@@ -139,6 +149,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   ].filter((item) => {
     const dispatchId = dispatchIdIn(item.detailsJson);
     if (dispatchId !== null && imported.byDispatchId.has(dispatchId)) return false;
+    if (dispatchId !== null && handoffDispatchIds.has(dispatchId)) return false;
     const handoffId = handoffIdIn(item.detailsJson);
     return handoffId === null || !handoffIdsWithTheirOwnRow.has(handoffId);
   });
@@ -159,7 +170,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   const queueAttention = unfilteredQueueAttention.filter((item) => !coveredClientItems.has(`${item.clientId}:${item.id}`.toLowerCase()));
   const byTitleAndRelease = new Map<string, FailedDownloadRow>();
   for (const dispatch of (sources.dispatches ?? []).filter(isDispatchFailure)) {
-    if (coveredByCase.has(dispatch.id)) continue;
+    if (coveredByCase.has(dispatch.id) || handoffDispatchIds.has(dispatch.id)) continue;
     // A release chosen on Search has no title: it is one problem per release name.
     const target = isChosenOnSearch(dispatch.entityType) ? "chosen-on-search" : `${dispatch.entityType}:${dispatch.entityId}`;
     const key = `${target}:${dispatch.releaseName.toLowerCase()}`;
@@ -176,8 +187,9 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   // carries the actions, so the dead-lettered job behind it is not listed a second time.
   const failedDispatchIds = new Set((sources.dispatches ?? []).filter(isDispatchFailure).map((dispatch) => dispatch.id));
   const failedImportJobs = unfilteredFailedImportJobs.filter((job) => {
+    if (handoffJobIds.has(job.id)) return false;
     const dispatchId = dispatchIdIn(job.payloadJson);
-    return dispatchId === null || !(coveredByCase.has(dispatchId) || failedDispatchIds.has(dispatchId));
+    return dispatchId === null || !(coveredByCase.has(dispatchId) || failedDispatchIds.has(dispatchId) || handoffDispatchIds.has(dispatchId));
   });
   const orphanedDownloads = sources.orphans ?? [];
 

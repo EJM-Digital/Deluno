@@ -148,10 +148,19 @@ describe("recoveryDecisions (#1114)", () => {
   const labels = (kind: string, details?: string | null) => recoveryDecisions(caseOf(kind, details)).map((action) => action.label);
 
   it("offers each failure kind its own decisions, and Dismiss always", () => {
-    expect(labels("importFailed")).toEqual(["Retry", "Dismiss"]);
-    expect(labels("vanished-downloading")).toEqual(["Search now", "Stop wanting", "Dismiss"]);
-    expect(labels("processedFileIsLess")).toEqual(["Retry", "Import original", "Search again", "Dismiss"]);
-    expect(labels("noVideoStream", null)).toEqual(["Dismiss"]);
+    expect(labels("importFailed")).toEqual(["Retry", "Fix it in Transfers", "Dismiss"]);
+    expect(labels("vanished-downloading")).toEqual(["Search now", "Stop wanting", "Fix it in Transfers", "Dismiss"]);
+    expect(labels("processedFileIsLess")).toEqual(["Retry", "Import original", "Search again", "Fix it in Transfers", "Dismiss"]);
+    expect(labels("noVideoStream", null)).toEqual(["Fix it in Transfers", "Dismiss"]);
+  });
+
+  // #1151: the grouped "Needs a decision" drawers showed only Dismiss for some kinds.
+  it("always offers a way to fix it, whatever the failure kind, never leaving Dismiss alone", () => {
+    for (const kind of ["processor-failed", "processor-lost", "processor-timeout", "processor-stalled", "processor-held", "importFailed", "downloadFailed", "quality", "unmatched", "corrupt", "vanished-downloading", "processedFileIsLess"]) {
+      const decisions = recoveryDecisions(caseOf(kind, null));
+      expect(decisions.length, kind).toBeGreaterThan(1);
+      expect(decisions.find((action) => action.to === "/queue")?.label, kind).toBe("Fix it in Transfers");
+    }
   });
 
   it("uses the bell's requests and asks first before the stronger ones", () => {
@@ -159,7 +168,7 @@ describe("recoveryDecisions (#1114)", () => {
     expect(decisions[0]!.request).toEqual(recoveryActions(caseOf("vanished-downloading"))[0]!.request);
     expect(decisions[1]!.request?.path).toBe("/api/series/import-recovery/c1/stop-wanting");
     expect(decisions[1]!.confirm).toBeDefined();
-    expect(decisions[2]!.confirm).toBeDefined();
+    expect(decisions[3]!.confirm).toBeDefined();
     expect(decisions[0]!.confirm).toBeUndefined();
   });
 });
