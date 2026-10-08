@@ -1,31 +1,12 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { trackDataRequests } from "../helpers/data-settled";
+import { settingsRoutes } from "../helpers/route-lists";
 
 // #1059. At 390px the 1120px settings tab strip stretched the page, and the
 // controls below it landed past the edge inside an overflow-x-hidden wrapper, so
 // they could not be reached. document.scrollWidth does not see that (the wrapper
 // hides it), so this measures the controls themselves.
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const src = path.resolve(here, "../../src");
-
-/** Every settings destination the router and the tab strips know about. */
-function settingsRoutes(): string[] {
-  const router = readFileSync(path.join(src, "router.tsx"), "utf8");
-  const shell = readFileSync(path.join(src, "components/app/settings-shell.tsx"), "utf8");
-  const routes = new Set<string>(["/settings"]);
-  // Nested children of the "settings" route, and flat "settings/..." routes.
-  const block = router.slice(router.indexOf('path: "settings",'), router.indexOf('path: "system",'));
-  for (const match of block.matchAll(/path: "([a-z][a-z0-9-]*)",\s*\n\s*lazy/g)) routes.add(`/settings/${match[1]}`);
-  for (const match of router.matchAll(/path: "(settings\/[a-z0-9-]+)"/g)) routes.add(`/${match[1]}`);
-  // Every tab of every area strip (settings, indexers, search-cycles, system).
-  for (const match of shell.matchAll(/to: "(\/(?:settings|indexers|search-cycles|system)[a-z0-9/-]*)"/g)) routes.add(match[1]);
-  return [...routes].sort();
-}
 
 test.describe("settings routes fit a phone", () => {
   test.skip(({ isMobile }) => !isMobile, "Phone-width behaviour only.");

@@ -454,7 +454,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               as a button: it was 34px beside the others' 40.
             */}
             <div className={cn(
-              "ml-auto flex shrink-0 flex-wrap items-center gap-2",
+              "ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-2",
               "[&_:is(button,a)]:h-(--library-toolbar-height)",
               "[&_button[data-slot=icon-action]]:w-(--library-toolbar-height)"
             )}>{actions}</div>
