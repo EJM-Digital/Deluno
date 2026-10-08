@@ -18,6 +18,7 @@ public static class JobSourceLabels
         ["system"] = "Deluno",
         ["automation"] = "Deluno's automatic search",
         ["automatic-season"] = "The automatic library check",
+        ["mislabelled-file"] = "Deluno, replacing a file that was another episode",
         ["rss"] = "The feed check",
 
         // Outside apps
