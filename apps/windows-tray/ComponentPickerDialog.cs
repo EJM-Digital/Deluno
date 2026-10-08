@@ -116,11 +116,11 @@ public sealed class ComponentPickerDialog : Form
         };
         _lblCompleted = new Label { Text = "Finished downloads (a Movies and a TV folder go inside)", AutoSize = true, Location = new Point(16, 326) };
         _completedRoot = new TextBox { Text = layout.CompletedRoot, Location = new Point(16, 346), Size = new Size(338, 23) };
-        _btnBrowseCompleted = new Button { Text = "Browseâ€¦", Location = new Point(362, 345), Size = new Size(82, 25) };
+        _btnBrowseCompleted = new Button { Text = "Browse…", Location = new Point(362, 345), Size = new Size(82, 25) };
         _btnBrowseCompleted.Click += (_, _) => Browse(_completedRoot);
         _lblIncomplete = new Label { Text = "Downloads in progress (one folder per client goes inside)", AutoSize = true, Location = new Point(16, 376) };
         _incompleteRoot = new TextBox { Text = layout.IncompleteRoot, Location = new Point(16, 396), Size = new Size(338, 23) };
-        _btnBrowseIncomplete = new Button { Text = "Browseâ€¦", Location = new Point(362, 395), Size = new Size(82, 25) };
+        _btnBrowseIncomplete = new Button { Text = "Browse…", Location = new Point(362, 395), Size = new Size(82, 25) };
         _btnBrowseIncomplete.Click += (_, _) => Browse(_incompleteRoot);
 
         _status = new Label
