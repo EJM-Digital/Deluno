@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Deluno.Integrations.DownloadClients;
+namespace Deluno.Connections.Usenet;
 
 /// <summary>
 /// The Usenet provider (news server) a person pays for, entered once in Deluno and written to every
@@ -145,5 +145,62 @@ public static class NzbGetServerPlan
         }
 
         return servers;
+    }
+}
+
+/// <summary>
+/// The one reading of "does this Usenet client have a news server?" that the connection test, the
+/// Download clients list and telemetry all share (#1142), so they cannot disagree.
+/// </summary>
+public static class UsenetProviderCheck
+{
+    /// <summary>
+    /// SABnzbd's <c>get_config&amp;section=servers</c> answer: true when a server is switched on with a real address,
+    /// false when there is none (SABnzbd with no server answers <c>{"config":{}}</c>, so a missing or empty list means no provider),
+    /// null when the answer is not SABnzbd's config at all and so tells us nothing.
+    /// </summary>
+    public static bool? SabnzbdHasProvider(System.Text.Json.JsonElement root)
+    {
+        if (root.ValueKind != System.Text.Json.JsonValueKind.Object
+            || !root.TryGetProperty("config", out var config)
+            || config.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!config.TryGetProperty("servers", out var servers) || servers.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return servers.EnumerateArray().Any(SabnzbdServerIsWorking);
+    }
+
+    public static bool SabnzbdServerIsWorking(System.Text.Json.JsonElement server)
+    {
+        static string Text(System.Text.Json.JsonElement element, string name)
+            => element.TryGetProperty(name, out var value) ? value.ToString() : string.Empty;
+
+        var enabled = Text(server, "enable");
+        return (enabled is "1" or "true" or "True") && !UsenetProviderText.IsPlaceholder(Text(server, "host"));
+    }
+
+    /// <summary>NZBGet's <c>config</c> answer ({"result":[{"Name":..,"Value":..}]}): same meaning as <see cref="SabnzbdHasProvider"/>.</summary>
+    public static bool? NzbGetHasProvider(System.Text.Json.JsonElement root)
+    {
+        if (root.ValueKind != System.Text.Json.JsonValueKind.Object
+            || !root.TryGetProperty("result", out var result)
+            || result.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var options = result.EnumerateArray()
+            .Where(option => option.ValueKind == System.Text.Json.JsonValueKind.Object && option.TryGetProperty("Name", out var name) && name.ValueKind == System.Text.Json.JsonValueKind.String)
+            .Select(option => new KeyValuePair<string, string>(
+                option.GetProperty("Name").GetString()!,
+                option.TryGetProperty("Value", out var value) ? value.ToString() : string.Empty))
+            .ToArray();
+        return NzbGetServerPlan.HasWorkingServer(options);
     }
 }

@@ -1,3 +1,4 @@
+using Deluno.Connections.Usenet;
 using Microsoft.AspNetCore.Mvc;
 using Deluno.Contracts;
 using Deluno.Jobs.Data;

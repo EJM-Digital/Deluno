@@ -113,6 +113,19 @@ export function clientWebAddress(form: Pick<ClientForm, "host" | "port" | "useSs
   const base = form.urlBase.trim().replace(/^\/+|\/+$/g, "");
   return `${form.useSsl ? "https" : "http"}://${host}${port ? `:${port}` : ""}/${base ? `${base}/` : ""}`;
 }
+/** True for localhost, 127.x.x.x and ::1: a name that always means "the computer I am on" (#1142). */
+export function isLoopbackHost(host: string): boolean {
+  const name = host.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^\[|\]$/g, "").split("/")[0]!.replace(/:\d+$/, "");
+  return name === "localhost" || name === "::1" || name === "0.0.0.0" || /^127(\.\d{1,3}){3}$/.test(name);
+}
+
+/**
+ * Whether the browser can open a client's page: a client that listens on the server only (a loopback host)
+ * has a page the browser reaches only when the browser is on that same computer (#1142).
+ */
+export function clientPageOpensFromBrowser(form: Pick<ClientForm, "host">, browserHostname: string): boolean {
+  return !isLoopbackHost(form.host) || isLoopbackHost(browserHostname);
+}
 export function sameClient(a: ClientForm, b: ClientForm) { return (Object.keys(a) as (keyof ClientForm)[]).every((key) => a[key] === b[key]); }
 
 /**
