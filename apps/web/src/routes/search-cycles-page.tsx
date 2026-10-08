@@ -741,7 +741,7 @@ export function SearchCyclesPage() {
             </Button>
           </div>
 
-          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
             <SwitchRow
               label="Hourly search cap"
               description="Stop after this many total searches per hour, across every indexer combined — not a per-indexer limit. Off until a ceiling makes sense for your own indexers."
@@ -765,7 +765,7 @@ export function SearchCyclesPage() {
             </Field>
           </div>
 
-          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
             <SwitchRow
               label="Pause automatic searching while downloads pile up"
               description="Skip the routine film and TV searches while more than this many of your downloads are still waiting, and start again by yourself when the queue shrinks. Deluno says so in Activity and on Health. Searches you start yourself always run. Off until you turn it on."
@@ -789,7 +789,7 @@ export function SearchCyclesPage() {
             </Field>
           </div>
 
-          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="grid gap-(--grid-gap) border-t border-hairline pt-(--grid-gap) sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
             <SwitchRow
               label="Download integrity check"
               description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again. Off until you turn it on."

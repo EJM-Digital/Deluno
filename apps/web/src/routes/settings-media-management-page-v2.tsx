@@ -11,6 +11,7 @@
 import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { PageLink } from "../components/app/page-link";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
@@ -556,7 +557,7 @@ function ImportPolicyFields({
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Leftover downloads</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list in Transfers always offers Keep/Remove by hand either way.</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list in <PageLink page="transfers" /> always offers Keep/Remove by hand either way.</p>
         </div>
         <Field label="Never count these as leftovers" help="Names to skip, one per line or separated by commas. * matches any run of characters and ? one character, so *.nfo skips every .nfo and Thumbs.db skips that file. Checked against each file or folder name at the top of the download folder. Empty by default.">
           <Textarea
@@ -610,7 +611,7 @@ function ImportPolicyFields({
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Unmatched imports</p>
           <p className="text-(length:--type-caption) leading-snug text-muted-foreground">What Deluno does with a file it downloaded but could not match to a title or episode — the same choice applies when a processor hands back a file that no longer matches.</p>
         </div>
-        <Field label="When a download cannot be matched" help="Hold keeps it on Transfers for you to match by hand, for as long as it takes. The other two act on their own.">
+        <Field label="When a download cannot be matched" help={<>Hold keeps it on <PageLink page="transfers" /> for you to match by hand, for as long as it takes. The other two act on their own.</>}>
           <SegmentedControl<"hold" | "give-up-after-days" | "retry-once-then-bad">
             value={form.unmatchedImportPolicy as "hold" | "give-up-after-days" | "retry-once-then-bad"}
             onValueChange={(unmatchedImportPolicy) => onFormChange((current) => ({ ...current, unmatchedImportPolicy }))}
@@ -645,7 +646,7 @@ function ImportPolicyFields({
       <div className="border-t border-hairline p-(--card-pad-x)">
         <div className="grid content-start gap-1.5 pb-(--grid-gap)">
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Still-packed archives</p>
-          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason under Automation & Recovery, Failed Downloads). Removing and deleting it from the download client is your call.</p>
+          <p className="text-(length:--type-caption) leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason under <PageLink page="failedDownloads" />). Removing and deleting it from the download client is your call.</p>
         </div>
         <SwitchRow label="Remove and delete still-packed archives from the download client" description="Off keeps the packed files in the client, using disk space, the same as today." checked={form.removeAndDeletePackedArchivesFromClient} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, removeAndDeletePackedArchivesFromClient: checked }))} />
       </div>
@@ -1128,7 +1129,7 @@ function ProcessingWorkflowPage() {
                   <Field label="No progress for" help="Deluno asks the processor what it is doing. Queued, scheduled or working is waited for however long it takes; this is how long nothing may change before the rule on the right applies.">
                     <Select value={workflow.processorTimeoutMinutes} onChange={(event) => setWorkflow((current) => ({ ...current, processorTimeoutMinutes: event.target.value }))} options={TIMEOUT_OPTIONS} />
                   </Field>
-                  <Field label="If processing stalls or fails" help="Import the original file brings the untouched download in. The other two keep it out of the library and ask you in Transfers.">
+                  <Field label="If processing stalls or fails" help={<>Import the original file brings the untouched download in. The other two keep it out of the library and ask you in <PageLink page="transfers" />.</>}>
                     <Select value={workflow.processorFailureMode} onChange={(event) => setWorkflow((current) => ({ ...current, processorFailureMode: event.target.value }))} options={FAILURE_OPTIONS} />
                   </Field>
                 </FieldRow>

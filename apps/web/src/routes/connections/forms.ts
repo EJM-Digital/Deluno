@@ -101,6 +101,18 @@ function sameRecord(a: Record<string, string>, b: Record<string, string>) { retu
 export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; useSsl: boolean; urlBase: string; addPaused: boolean; tags: string; removeCompleted: boolean; removeFailed: boolean; skipHashCheck: boolean; sequentialDownload: boolean; firstLastPiecePrio: boolean; shareRatioLimit: string; shareSeedingTimeLimitMinutes: string; shareInactiveSeedingTimeLimitMinutes: string; location: string; contentLayout: string; }
 export function emptyClientForm(): ClientForm { const preset = CLIENT_PRESETS[0]!; return { name: preset.label, protocol: preset.protocol, host: "localhost", port: String(preset.defaultPort), username: "", password: "", moviesCategory: preset.defaultMoviesCategory, tvCategory: preset.defaultTvCategory, priority: "1", isEnabled: true, useSsl: false, urlBase: "", addPaused: false, tags: "", removeCompleted: false, removeFailed: false, skipHashCheck: false, sequentialDownload: false, firstLastPiecePrio: false, shareRatioLimit: "", shareSeedingTimeLimitMinutes: "", shareInactiveSeedingTimeLimitMinutes: "", location: "", contentLayout: "default" }; }
 export function clientFormFrom(item: DownloadClientItem): ClientForm { return { name: item.name, protocol: item.protocol, host: item.host ?? "", port: item.port ? String(item.port) : "", username: item.username ?? "", password: "", moviesCategory: item.moviesCategory ?? item.categoryTemplate ?? "", tvCategory: item.tvCategory ?? "", priority: String(item.priority), isEnabled: item.isEnabled, useSsl: item.useSsl, urlBase: item.urlBase ?? "", addPaused: item.addPaused, tags: item.tags ?? "", removeCompleted: item.removeCompleted ?? false, removeFailed: item.removeFailed ?? false, skipHashCheck: item.skipHashCheck ?? false, sequentialDownload: item.sequentialDownload ?? false, firstLastPiecePrio: item.firstLastPiecePrio ?? false, shareRatioLimit: item.shareRatioLimit == null ? "" : String(item.shareRatioLimit), shareSeedingTimeLimitMinutes: item.shareSeedingTimeLimitMinutes == null ? "" : String(item.shareSeedingTimeLimitMinutes), shareInactiveSeedingTimeLimitMinutes: item.shareInactiveSeedingTimeLimitMinutes == null ? "" : String(item.shareInactiveSeedingTimeLimitMinutes), location: item.location ?? "", contentLayout: item.contentLayout ?? "default" }; }
+/**
+ * The address of a download client's own web page, built from the connection
+ * (scheme from Use SSL, host, port, and the URL base where it has one) and
+ * nothing else: never the stored password (#1142). Null until a host is set.
+ */
+export function clientWebAddress(form: Pick<ClientForm, "host" | "port" | "useSsl" | "urlBase">): string | null {
+  const host = form.host.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  if (!host) return null;
+  const port = form.port.trim();
+  const base = form.urlBase.trim().replace(/^\/+|\/+$/g, "");
+  return `${form.useSsl ? "https" : "http"}://${host}${port ? `:${port}` : ""}/${base ? `${base}/` : ""}`;
+}
 export function sameClient(a: ClientForm, b: ClientForm) { return (Object.keys(a) as (keyof ClientForm)[]).every((key) => a[key] === b[key]); }
 
 /**
