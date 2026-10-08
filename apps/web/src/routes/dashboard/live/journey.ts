@@ -15,6 +15,7 @@
  */
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
+import { dispatchImportEnded } from "../../../lib/dispatch-final-state";
 import { isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
@@ -237,6 +238,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   }
   const handoffByQueue = new Map(handoffs.filter((item) => item.status.toLowerCase() !== "dismissed").map((item) => [item.queueItemId, item]));
   const seenReleases = new Set<string>();
+  const endedReleases = new Set<string>();
+  const endedQueueItems = new Set<string>();
   // Imports that have said they started and not yet ended: a card for the same release says so, so the card and the band agree.
   const importingNow = new Set(work.filter((item) => item.kind === "import" && item.release).map((item) => releaseKey(item.release!)));
   const storedAt = Date.parse(queueCapturedUtc ?? "");
@@ -255,7 +258,15 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     // while the client keeps seeding it. For a moment after the import finishes the card stays, full and green.
     const importedAt = Date.parse(dispatch?.importCompletedUtc ?? "");
     const landed = Number.isFinite(importedAt) && now - importedAt >= 0 && now - importedAt < LANDED_MS;
-    if (dispatch?.importCompletedUtc && !landed) continue;
+    if (dispatchImportEnded(dispatch) && !landed) {
+      // Its import has ended (in the library, or refused): the hand-off that brought it back must not draw it again.
+      endedReleases.add(releaseKey(item.releaseName));
+      continue;
+    }
+    if (item.status === "imported") {
+      endedReleases.add(releaseKey(item.releaseName));
+      endedQueueItems.add(item.id);
+    }
     const handoff = handoffByQueue.get(item.id);
     let stage: Stage | null = null;
     let state: JourneyCard["state"] = { tone: "info", label: "Working" };
@@ -338,7 +349,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   for (const handoff of handoffs) {
     if (handoff.status.toLowerCase() === "dismissed" || seenReleases.has(releaseKey(handoff.releaseName))) continue;
     const dispatch = dispatchByRelease.get(releaseKey(handoff.releaseName));
-    if (dispatch?.importCompletedUtc) continue;
+    if (dispatchImportEnded(dispatch) || endedReleases.has(releaseKey(handoff.releaseName)) || endedQueueItems.has(handoff.queueItemId) || ["imported", "not-imported"].includes(handoff.outcome?.outcome ?? "")) continue;
     const updated = Date.parse(handoff.updatedUtc);
     const recent = Number.isFinite(updated) && now - updated < 6 * 3_600_000;
     let stage: Stage | null = null;
