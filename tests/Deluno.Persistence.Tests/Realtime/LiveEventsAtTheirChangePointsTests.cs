@@ -88,7 +88,7 @@ public sealed class LiveEventsAtTheirChangePointsTests : IDisposable
         await _jobs.CompleteAsync(leased!.Id, "worker-1", "Checked Films.", CancellationToken.None);
 
         var changes = _realtime.LiveEventsOf<JobChangedEvent>(LiveEventNames.JobChanged);
-        Assert.Equal(["started", "finished"], changes.Select(change => change.State).ToArray());
+        Assert.Equal(["queued", "started", "finished"], changes.Select(change => change.State).ToArray());
         Assert.All(changes, change =>
         {
             Assert.Equal(leased.Id, change.JobId);
@@ -96,7 +96,21 @@ public sealed class LiveEventsAtTheirChangePointsTests : IDisposable
             Assert.Equal("lib-films", change.LibraryId);
             Assert.False(string.IsNullOrWhiteSpace(change.Title));
         });
-        Assert.Equal("Checked Films.", changes[1].Message);
+        Assert.Equal("Checked Films.", changes[2].Message);
+    }
+
+    // #1180: a search handed back to wait its turn went from running to waiting without a word, so a screen kept "running".
+    [Fact]
+    public async Task A_job_handed_back_to_wait_pushes_that_it_is_waiting()
+    {
+        await _jobs.EnqueueAsync(
+            new EnqueueJobRequest("movies.library.search", "test", """{"libraryId":"lib-films","libraryName":"Films"}""", "library", "lib-films"),
+            CancellationToken.None);
+        var leased = await _jobs.LeaseNextAsync("worker-1", TimeSpan.FromMinutes(5), null, CancellationToken.None);
+
+        await _jobs.DeferAsync(leased!.Id, "worker-1", _time.GetUtcNow().AddMinutes(1), CancellationToken.None);
+
+        Assert.Equal("waiting", _realtime.LiveEventsOf<JobChangedEvent>(LiveEventNames.JobChanged).Last().State);
     }
 
     [Fact]
