@@ -1,6 +1,7 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Media;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
@@ -113,6 +114,56 @@ public sealed class ARemovedTitleComesBackTests
 
         var afterRestore = await app.Client.GetStringAsync("/api/activity?take=50");
         Assert.Contains("back in Deluno with its files, monitoring and history", afterRestore);
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Restoring_brings_back_the_titles_library_its_own_profile_its_tags_and_its_file(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+        var file = WriteFileInLibrary(app, kind);
+        var id = await AddAsync(app, kind, libraryId);
+        var mediaState = app.Services.GetRequiredService<IMediaStateRepository>();
+        var tagStore = app.Services.GetRequiredService<IMediaTagStore>();
+
+        // The title chooses its own profile, not the library's, and carries a tag.
+        var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
+        var profile = await app.Client.PostAsJsonAsync("/api/quality-profiles", new
+        {
+            name = "4K Streaming",
+            mediaType,
+            cutoffQuality = "WEB 2160p",
+            allowedQualities = "WEB 1080p,WEB 2160p",
+            customFormatIds = string.Empty,
+            upgradeUntilCutoff = true,
+            upgradeUnknownItems = false
+        });
+        Assert.True(profile.IsSuccessStatusCode, await profile.Content.ReadAsStringAsync());
+        var profileId = JsonDocument.Parse(await profile.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetString()!;
+        var assign = kind == MediaKind.Movie
+            ? await app.Client.PostAsJsonAsync("/api/movies/bulk/quality-profile", new { movieIds = new[] { id }, qualityProfileId = profileId })
+            : await app.Client.PostAsJsonAsync("/api/series/bulk/quality-profile", new { seriesIds = new[] { id }, qualityProfileId = profileId });
+        Assert.True(assign.IsSuccessStatusCode, await assign.Content.ReadAsStringAsync());
+        await tagStore.ReplaceAsync(kind, id, [new MediaTagAssignment("tag-family", "Family")], CancellationToken.None);
+        Assert.Equal(profileId, await mediaState.GetTitleQualityProfileIdAsync(kind, id, CancellationToken.None));
+
+        await app.Client.DeleteAsync($"{Route(kind)}{id}?deleteFiles=true");
+        Assert.Empty(await tagStore.ListAsync(kind, id, CancellationToken.None));
+        var item = Assert.Single(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
+        var restore = await app.Client.PostAsync($"/api/recycle-bin/{item.Id}/restore", null);
+        Assert.True(restore.IsSuccessStatusCode, await restore.Content.ReadAsStringAsync());
+
+        // The same title: its library, its own profile (not the library's), its tag and its file.
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.GetAsync($"{Route(kind)}{id}")).StatusCode);
+        var wanted = (await mediaState.ListWantedByIdsAsync(kind, [id], CancellationToken.None)).First();
+        Assert.Equal(libraryId, wanted.LibraryId);
+        Assert.Equal(profileId, await mediaState.GetTitleQualityProfileIdAsync(kind, id, CancellationToken.None));
+        var tag = Assert.Single(await tagStore.ListAsync(kind, id, CancellationToken.None));
+        Assert.Equal("Family", tag.Name);
+        Assert.True(await HasFileAsync(app, kind, id));
+        Assert.True(File.Exists(file));
     }
 
     [Fact]
