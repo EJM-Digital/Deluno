@@ -507,15 +507,24 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
             // NZBGet drops the connection while it restarts its own services.
         }
 
+        // NZBGet answers "reload" and keeps serving from the OLD instance for a moment, then restarts: and a
+        // restarted NZBGet starts paused again. Resuming against the old instance (as this once did, straight
+        // after the first answer) is undone by that restart. So wait until the settings it has loaded in memory
+        // are the ones just saved, which only the new instance reports, and only then resume.
+        var answered = false;
         for (var attempt = 0; attempt < 30; attempt++)
         {
             await Task.Delay(_retryDelay, cancellationToken);
             try
             {
-                var version = await Call("version");
-                if (version.TryGetProperty("result", out _))
+                var loaded = await Call("config");
+                if (loaded.TryGetProperty("result", out var loadedOptions) && loadedOptions.ValueKind == JsonValueKind.Array)
                 {
-                    return await ResumeAsync();
+                    answered = true;
+                    if (NzbgetSettings.Applied(loadedOptions, changes))
+                    {
+                        return await ResumeAsync();
+                    }
                 }
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
@@ -524,14 +533,21 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
             }
         }
 
+        // It answered, but never showed the new settings (a path it writes differently): resume anyway, and let the checks below decide.
+        if (answered)
+        {
+            return await ResumeAsync();
+        }
+
         return "NZBGet did not come back after saving its settings.";
 
         // A fresh NZBGet starts with its download, post-processing and scan queues all paused, which looks like
         // "Paused" in Deluno and downloads nothing. A new install must not be paused: resume them and read the
-        // status back until none is.
+        // status back until none is, twice in a row, so a restart that undoes it a moment later is caught.
         async Task<string?> ResumeAsync()
         {
-            for (var attempt = 0; attempt < 10; attempt++)
+            var clean = 0;
+            for (var attempt = 0; attempt < 20; attempt++)
             {
                 foreach (var method in new[] { "resumedownload", "resumepost", "resumescan" })
                 {
@@ -540,9 +556,16 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
 
                 var status = await Call("status");
                 if (status.TryGetProperty("result", out var state) && state.ValueKind == JsonValueKind.Object
-                    && !IsTrue(state, "DownloadPaused") && !IsTrue(state, "PostPaused") && !IsTrue(state, "ScanPaused"))
+                    && !IsTrue(state, "DownloadPaused") && !IsTrue(state, "PostPaused") && !IsTrue(state, "ScanPaused") && !IsTrue(state, "ServerPaused"))
                 {
-                    return null;
+                    if (++clean >= 2)
+                    {
+                        return null;
+                    }
+                }
+                else
+                {
+                    clean = 0;
                 }
 
                 await Task.Delay(_retryDelay, cancellationToken);
@@ -561,6 +584,36 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
 /// <summary>What NZBGet's settings become: its completed and in-progress folders, and a Movies and a TV category with a folder each.</summary>
 public static class NzbgetSettings
 {
+    /// <summary>True when the settings NZBGet has loaded in memory carry the folders just saved: the reload has taken effect.</summary>
+    public static bool Applied(JsonElement loaded, IReadOnlyList<KeyValuePair<string, string>> saved)
+    {
+        static string Same(string value) => value.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in loaded.EnumerateArray())
+        {
+            if (item.TryGetProperty("Name", out var name) && name.GetString() is { Length: > 0 } key)
+            {
+                values[key] = item.TryGetProperty("Value", out var value) ? value.GetString() ?? string.Empty : string.Empty;
+            }
+        }
+
+        foreach (var key in new[] { "DestDir", "InterDir" })
+        {
+            var want = saved.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (want.Key is null)
+            {
+                continue;
+            }
+
+            if (!values.TryGetValue(key, out var have) || Same(have) != Same(want.Value))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// The full settings list with the changes applied (NZBGet's save takes every setting, not just the
     /// changed ones). A category already named Movies or TV is reused. NZBGet's own TV category is called

@@ -17,6 +17,7 @@ const {
   buildIndexerAutomationFields,
   buildLibraryAutomationFields,
   connectedDownloadClients,
+  waitingForUsenetProvider,
   describeDownloadRoute,
   getEffectiveFormatGoal,
   hasAnsweredAllAutomationQuestions,
@@ -390,6 +391,15 @@ describe("setup guide uses the download clients that are already connected (#113
 
   it("counts only clients that are on and healthy as connected", () => {
     expect(connectedDownloadClients([qbit, broken, { ...(deluge as object), isEnabled: false } as never])).toEqual([qbit]);
+  });
+
+  it("routes a Usenet client that is connected but has no provider yet, like the torrent clients", () => {
+    const nzbget = { id: "c4", name: "NZBGet", protocol: "nzbget", host: "localhost", port: 6789, isEnabled: true, healthStatus: "degraded", lastHealthMessage: "No Usenet provider set up. Add yours in Deluno, under Find & Download, Download clients, and it is written to every Usenet client." } as never;
+    const sabBroken = { id: "c5", name: "SABnzbd", protocol: "sabnzbd", host: "localhost", port: 8080, isEnabled: true, healthStatus: "degraded", lastHealthMessage: "SABnzbd answered 500." } as never;
+
+    expect(connectedDownloadClients([qbit, nzbget, sabBroken])).toEqual([qbit, nzbget]);
+    expect(waitingForUsenetProvider(nzbget)).toBe(true);
+    expect(waitingForUsenetProvider(sabBroken)).toBe(false);
   });
 
   it("asks for no test of the form when a client is connected, so the baseline can be created", () => {

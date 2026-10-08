@@ -8,7 +8,7 @@ namespace Deluno.Integrations.DownloadClients;
 /// Enters the person's Usenet provider once and writes it to every Usenet client Deluno manages (#1142),
 /// and says which of them still have none.
 /// </summary>
-public sealed class UsenetProviderService(IConnectionsRepository connections, IDownloadClientRegistry registry)
+public sealed class UsenetProviderService(IConnectionsRepository connections, IDownloadClientRegistry registry, IUsenetClientRetester? retester = null)
 {
     public async Task<IReadOnlyList<UsenetProviderClientStatus>> StatusAsync(CancellationToken cancellationToken)
     {
@@ -49,6 +49,10 @@ public sealed class UsenetProviderService(IConnectionsRepository connections, ID
                 if (await implementation.SetUsenetProviderAsync(client, request, cancellationToken) is { } result)
                 {
                     results.Add(result);
+                    if (result.Saved)
+                    {
+                        await RetestAsync(client, cancellationToken);
+                    }
                 }
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
@@ -58,6 +62,28 @@ public sealed class UsenetProviderService(IConnectionsRepository connections, ID
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The row said "No Usenet provider set up" from the test made when the client was connected, and kept saying
+    /// it until somebody pressed Test. Now that it has one, the client is tested again and the row moves by itself.
+    /// A test that cannot be run leaves the saved provider as it is.
+    /// </summary>
+    private async Task RetestAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        if (retester is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await retester.RetestAsync(client, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException && !cancellationToken.IsCancellationRequested)
+        {
+            // The next background check settles it.
+        }
     }
 
     private async Task<IReadOnlyList<DownloadClientItem>> UsenetClientsAsync(CancellationToken cancellationToken)

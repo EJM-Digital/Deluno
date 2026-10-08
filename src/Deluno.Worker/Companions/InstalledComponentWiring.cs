@@ -121,6 +121,11 @@ public sealed class InstalledComponentWirer(
         if (result.Healthy || result.NoProvider)
         {
             await PrepareSaveFoldersAsync(recipe, result.Client, cancellationToken);
+            if (result.Created)
+            {
+                await ResumeNewClientAsync(recipe, result.Client, cancellationToken);
+            }
+
             // A Usenet client that is connected but has no news server yet is connected, and says what is missing (#1142).
             return (recipe.Name, true, result.NoProvider ? result.Message : null);
         }
@@ -132,6 +137,34 @@ public sealed class InstalledComponentWirer(
         }
 
         return (recipe.Name, false, problem);
+    }
+
+    /// <summary>
+    /// A new NZBGet starts with its queues paused, and a restart after the installer's own resume (NZBGet restarts
+    /// when its settings are reloaded) puts that back. Connecting it for the first time makes sure it is not left
+    /// paused; only a client Deluno has just created is touched, never one somebody may have paused on purpose.
+    /// </summary>
+    private async Task ResumeNewClientAsync(ClientRecipe recipe, Deluno.Connections.Contracts.DownloadClientItem? client, CancellationToken cancellationToken)
+    {
+        if (registry is null || client is null || !string.Equals(recipe.Protocol, "nzbget", StringComparison.OrdinalIgnoreCase)
+            || !registry.TryGet(recipe.Protocol, out var implementation))
+        {
+            return;
+        }
+
+        try
+        {
+            var resumed = await implementation.ResumeClientAsync(client, cancellationToken);
+            if (resumed.Succeeded)
+            {
+                await activity.RecordActivityAsync(ActivityCategory, $"Made sure {recipe.Name} is not paused. A new {recipe.Name} starts with its queues paused, and nothing would have downloaded.", null, null, null, null, cancellationToken);
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+            && exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        {
+            // Not being able to resume it is not a failed connection; its row says it is paused.
+        }
     }
 
     private void ForgetSavedSignIn(string kind)
