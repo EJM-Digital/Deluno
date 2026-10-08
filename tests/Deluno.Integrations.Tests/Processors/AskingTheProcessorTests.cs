@@ -208,6 +208,28 @@ public sealed class AskingTheProcessorTests
     }
 
     /// <summary>
+    /// A 409 whose code says the processor keeps an answer it already has is final (#1155); any other 409 stays
+    /// owed. Read from the code, not the words.
+    /// </summary>
+    [Theory]
+    [InlineData("{ \"detail\": \"Deluno already said it will not import this file, so Weir kept that answer.\", \"code\": \"outcome_already_recorded\" }", ProcessorAnswer.Settled)]
+    [InlineData("{ \"detail\": \"Weir has not finished this hand-off yet.\", \"code\": \"handoff_not_finished\" }", ProcessorAnswer.Busy)]
+    [InlineData("{ \"detail\": \"This hand-off ended failed, so Weir handed back no file to import.\", \"code\": \"handoff_ended\" }", ProcessorAnswer.Busy)]
+    [InlineData("{ \"detail\": \"Deluno already said it will not import this file, so Weir kept that answer.\" }", ProcessorAnswer.Busy)]
+    [InlineData("not json", ProcessorAnswer.Busy)]
+    public async Task A_409_is_final_only_when_its_code_says_so(string body, ProcessorAnswer expected)
+    {
+        var told = await Service(_ => Json(HttpStatusCode.Conflict, body))
+            .ReportOutcomeAsync(Weir, "h-1", ProcessorHandoffOutcome.Imported, "x", null, DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.Equal(expected, told.Answer);
+        if (expected == ProcessorAnswer.Settled)
+        {
+            Assert.Equal("Deluno already said it will not import this file, so Weir kept that answer.", told.Message);
+        }
+    }
+
+    /// <summary>
     /// The same report sent again must be the same report: it carries when the
     /// import happened, not when it is being said (#580).
     /// </summary>

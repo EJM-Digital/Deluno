@@ -23,7 +23,14 @@ public enum ProcessorAnswer
     /// not change: the request itself was wrong. Only an outcome report can be
     /// refused this way (#580).
     /// </summary>
-    Refused
+    Refused,
+
+    /// <summary>
+    /// It answered that it keeps an answer it already has, and says so in a code rather than in words: the
+    /// outcome Deluno reports now differs from the one it was told before, and no repeat will change that.
+    /// Not a failure on either side (#1155).
+    /// </summary>
+    Settled
 }
 
 /// <summary>What the processor can be asked, read from its capabilities endpoint.</summary>
@@ -160,6 +167,12 @@ public static class ProcessorOutcomeDeliveries
     public const string Refused = "refused";
 
     /// <summary>
+    /// The processor keeps the answer it was first given, and said so by code. Deluno stops telling it; there
+    /// is nothing left to fix on either side (#1155).
+    /// </summary>
+    public const string Settled = "settled";
+
+    /// <summary>
     /// Nobody acknowledged it within <see cref="GiveUpAfter"/>, or the
     /// processor it was for is no longer connected or no longer listening.
     /// </summary>
@@ -191,6 +204,7 @@ public static class ProcessorOutcomeDeliveries
         {
             ProcessorAnswer.Answered => Delivered,
             ProcessorAnswer.NotFound or ProcessorAnswer.Refused or ProcessorAnswer.Unsupported => Refused,
+            ProcessorAnswer.Settled => Settled,
             _ => Pending
         };
 

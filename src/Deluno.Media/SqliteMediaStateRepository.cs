@@ -1194,6 +1194,238 @@ public sealed class SqliteMediaStateRepository(
     }
 
     /// <summary>
+    /// The kinds of case that only say a download or its import did not land. A case about the file itself
+    /// (quality, corrupt, unmatched, a processor's fault) is not settled by the title having some file.
+    /// </summary>
+    private static readonly HashSet<string> LandingFailureKinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "downloadFailed", "importFailed", "import-failed", "grab-timeout", "detection-timeout",
+        "import-timeout", "vanished-downloading"
+    };
+
+    private static readonly System.Text.RegularExpressions.Regex EpisodeMarker =
+        new(@"(?<![a-z0-9])s(\d{1,2})[ ._-]?e(\d{1,3})(?![0-9])", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(
+        MediaKind kind,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+
+        var open = new List<(string Id, string Title, string Kind, DateTimeOffset Detected)>();
+        using (var select = connection.CreateCommand())
+        {
+            select.CommandText = $"SELECT id, title, failure_kind, detected_utc FROM {map.RecoveryTable} WHERE status = 'open';";
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var failureKind = reader.GetString(2);
+                if (LandingFailureKinds.Contains(failureKind))
+                {
+                    open.Add((reader.GetString(0), reader.GetString(1), failureKind, ParseTimestamp(reader.GetString(3))));
+                }
+            }
+        }
+
+        if (open.Count == 0)
+        {
+            return [];
+        }
+
+        var matched = new List<(string Id, string Title, string Kind)>();
+        if (kind == MediaKind.Movie)
+        {
+            var films = new List<(string Normalized, int? Year, DateTimeOffset? Imported)>();
+            using (var select = connection.CreateCommand())
+            {
+                select.CommandText = """
+                    SELECT e.title, e.release_year, MAX(w.imported_utc)
+                    FROM movie_entries e
+                    JOIN movie_wanted_state w ON w.movie_id = e.id
+                    WHERE w.has_file = 1
+                    GROUP BY e.id;
+                    """;
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var imported = reader.IsDBNull(2) ? (DateTimeOffset?)null : ParseTimestamp(reader.GetString(2));
+                    films.Add((
+                        TitleWords(reader.GetString(0)),
+                        reader.IsDBNull(1) ? null : Convert.ToInt32(reader.GetInt64(1), CultureInfo.InvariantCulture),
+                        imported));
+                }
+            }
+
+            foreach (var item in open)
+            {
+                var words = " " + TitleWords(item.Title) + " ";
+                var year = LastYearIn(words);
+                if (films.Any(film => film.Normalized.Length > 0
+                    && (film.Imported is null || film.Imported >= item.Detected)
+                    && (words.Equals($" {film.Normalized} ", StringComparison.Ordinal)
+                        || (year is not null && film.Year == year && words.Contains($" {film.Normalized} {year} ", StringComparison.Ordinal)))))
+                {
+                    matched.Add((item.Id, item.Title, item.Kind));
+                }
+            }
+        }
+        else
+        {
+            foreach (var item in open)
+            {
+                var marker = EpisodeMarker.Match(item.Title);
+                if (!marker.Success)
+                {
+                    continue;
+                }
+
+                var season = int.Parse(marker.Groups[1].Value, CultureInfo.InvariantCulture);
+                var episode = int.Parse(marker.Groups[2].Value, CultureInfo.InvariantCulture);
+                var prefix = " " + TitleWords(item.Title[..marker.Index]) + " ";
+                using var select = connection.CreateCommand();
+                select.CommandText = """
+                    SELECT s.title, s.start_year, ep.imported_utc
+                    FROM episode_entries ep
+                    JOIN series_entries s ON s.id = ep.series_id
+                    WHERE ep.has_file = 1 AND ep.season_number = @season AND ep.episode_number = @episode;
+                    """;
+                AddParameter(select, "@season", season);
+                AddParameter(select, "@episode", episode);
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var show = TitleWords(reader.GetString(0));
+                    var startYear = reader.IsDBNull(1) ? (int?)null : Convert.ToInt32(reader.GetInt64(1), CultureInfo.InvariantCulture);
+                    var imported = reader.IsDBNull(2) ? (DateTimeOffset?)null : ParseTimestamp(reader.GetString(2));
+                    if (show.Length > 0
+                        && (imported is null || imported >= item.Detected)
+                        && (prefix.EndsWith($" {show} ", StringComparison.Ordinal)
+                            || (startYear is not null && prefix.EndsWith($" {show} {startYear} ", StringComparison.Ordinal))))
+                    {
+                        matched.Add((item.Id, item.Title, item.Kind));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (matched.Count == 0)
+        {
+            return [];
+        }
+
+        var stamp = now.ToString("O");
+        var settled = new List<SettledRecoveryCase>();
+        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
+        {
+            foreach (var item in matched)
+            {
+                using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = $"UPDATE {map.RecoveryTable} SET status = 'resolved', resolved_utc = @now WHERE id = @id AND status = 'open';";
+                AddParameter(update, "@now", stamp);
+                AddParameter(update, "@id", item.Id);
+                if (await update.ExecuteNonQueryAsync(cancellationToken) == 0)
+                {
+                    continue;
+                }
+
+                using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText = $"""
+                    INSERT INTO {map.RecoveryEventTable} (id, case_id, event_kind, message, metadata_json, created_utc)
+                    VALUES (@id, @caseId, 'case_settled', @message, NULL, @createdUtc);
+                    """;
+                AddParameter(insert, "@id", Guid.CreateVersion7().ToString("N"));
+                AddParameter(insert, "@caseId", item.Id);
+                AddParameter(insert, "@message", $"{item.Title} is in the library now, so Deluno closed this.");
+                AddParameter(insert, "@createdUtc", stamp);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+                settled.Add(new SettledRecoveryCase(item.Id, item.Title, item.Kind));
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        foreach (var item in settled)
+        {
+            await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+                new RecoveryCaseChangedEvent(item.CaseId, "closed", null, null, kind == MediaKind.Movie ? "movie" : "series", null, stamp),
+                cancellationToken));
+        }
+
+        return settled;
+    }
+
+    /// <inheritdoc />
+    public async Task<TitleFileHolds> GetTitleFileHoldsAsync(
+        MediaKind kind,
+        IReadOnlyCollection<string> entityIds,
+        CancellationToken cancellationToken)
+    {
+        if (entityIds.Count == 0)
+        {
+            return TitleFileHolds.None;
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        using var command = connection.CreateCommand();
+        var names = Placeholders(command, "id", entityIds);
+        command.CommandText = kind == MediaKind.Movie
+            ? $"SELECT movie_id, MAX(imported_utc) FROM movie_wanted_state WHERE has_file = 1 AND movie_id IN ({names}) GROUP BY movie_id;"
+            : $"SELECT id, imported_utc FROM episode_entries WHERE has_file = 1 AND id IN ({names});";
+        var holds = new Dictionary<string, DateTimeOffset?>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            holds[reader.GetString(0)] = reader.IsDBNull(1) ? null : ParseTimestamp(reader.GetString(1));
+        }
+
+        return new TitleFileHolds(holds);
+    }
+
+    /// <summary>Lower-case words of a title or release name, separators collapsed to single spaces.</summary>
+    private static string TitleWords(string value)
+    {
+        var builder = new System.Text.StringBuilder(value.Length);
+        var gap = true;
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(char.ToLowerInvariant(character));
+                gap = false;
+            }
+            else if (!gap)
+            {
+                builder.Append(' ');
+                gap = true;
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    /// <summary>The last year-like word (1900 to 2100): a title can hold a number that reads as a year, and the real one follows it.</summary>
+    private static int? LastYearIn(string words)
+    {
+        int? found = null;
+        foreach (var word in words.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (word.Length == 4 && int.TryParse(word, NumberStyles.None, CultureInfo.InvariantCulture, out var year) && year is >= 1900 and <= 2100)
+            {
+                found = year;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// Binds each value to its own parameter and returns the list to put in an
     /// <c>IN</c>, so no caller value is ever spelled into the SQL.
     /// </summary>

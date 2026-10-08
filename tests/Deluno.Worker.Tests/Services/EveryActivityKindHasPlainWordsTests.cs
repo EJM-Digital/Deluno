@@ -44,7 +44,7 @@ public sealed class EveryActivityKindHasPlainWordsTests
         // ProcessorOutcomeDelivery.Describe
         ["kind"] =
         [
-            "processing.outcome-reported", "processing.outcome-delayed", "processing.outcome-not-reported"
+            "processing.outcome-reported", "processing.outcome-delayed", "processing.outcome-not-reported", "processing.outcome-kept"
         ]
     };
 

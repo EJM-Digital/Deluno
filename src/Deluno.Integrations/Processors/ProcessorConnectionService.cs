@@ -687,8 +687,7 @@ public sealed class ProcessorConnectionService(
                 System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized =>
                     new ProcessorOutcomeResult(ProcessorAnswer.Forbidden, false, await ForbiddenMessageAsync(response, connection, cancellationToken)),
                 // Not finished yet, or ended in a state it may still correct.
-                System.Net.HttpStatusCode.Conflict =>
-                    new ProcessorOutcomeResult(ProcessorAnswer.Busy, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP 409."),
+                System.Net.HttpStatusCode.Conflict => await ReadConflictAsync(response, connection, cancellationToken),
                 var code when IsWorthAskingAgain(code) =>
                     new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}."),
                 // 400, 422 and the rest: the report itself was wrong, and
@@ -700,6 +699,37 @@ public sealed class ProcessorConnectionService(
         {
             return new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, $"Deluno could not reach {connection.Name}.");
         }
+    }
+
+    /// <summary>
+    /// A 409 to an outcome report is "not finished yet" (worth asking again) or "I already have a different
+    /// answer" (final). A processor that says which, in a <c>code</c> field of its JSON answer, is believed:
+    /// <c>outcome_already_recorded</c> is final (#1155). Without that code it stays owed, as before, and a
+    /// 409 that says the hand-off ended is still not final, since a processor may correct it. Deluno reads the
+    /// code, never a processor's wording.
+    /// </summary>
+    private static async Task<ProcessorOutcomeResult> ReadConflictAsync(
+        HttpResponseMessage response,
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+    {
+        var said = await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP 409.";
+        var final = false;
+        try
+        {
+            // The body is read a second time from the buffered content.
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            final = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("code", out var code)
+                && code.ValueKind == JsonValueKind.String
+                && code.GetString() == "outcome_already_recorded";
+        }
+        catch (JsonException)
+        {
+            // No code to read: it stays owed.
+        }
+
+        return new ProcessorOutcomeResult(final ? ProcessorAnswer.Settled : ProcessorAnswer.Busy, false, said);
     }
 
     /// <summary>

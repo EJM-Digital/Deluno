@@ -56,3 +56,15 @@ public sealed record ImportRecoveryCaseScope(
     /// <summary>Nothing to settle, so nothing is asked of the database.</summary>
     public bool IsEmpty => DispatchIds.Count == 0 && ReleaseNames.Count == 0 && HandoffIds.Count == 0;
 }
+
+/// <summary>An open recovery case Deluno closed because its film or episode now holds its file (#1167).</summary>
+public sealed record SettledRecoveryCase(string CaseId, string Title, string FailureKind);
+
+/// <summary>
+/// Which film or episode ids hold a file, and since when (#1167). A null time is a file whose arrival was never
+/// dated, such as a relinked one.
+/// </summary>
+public sealed record TitleFileHolds(IReadOnlyDictionary<string, DateTimeOffset?> ImportedByEntityId)
+{
+    public static TitleFileHolds None { get; } = new(new Dictionary<string, DateTimeOffset?>());
+}

@@ -5,6 +5,7 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -102,6 +103,57 @@ public sealed class ARefusedReleasesLeftoverPayloadIsSweptTests
 
         Assert.True(File.Exists(outside));
         Assert.True(File.Exists(manual));
+    }
+
+    /// <summary>
+    /// The rig's Severance .exe sat in the qBittorrent incomplete folder on another drive: no library points there
+    /// and no listed download is under it, so it was never a root. Each client's own incomplete folder, as the
+    /// folder check reads it, is one now - with the same ownership rules.
+    /// </summary>
+    [Fact]
+    public async Task A_payload_in_a_clients_own_incomplete_folder_on_another_drive_is_swept()
+    {
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-other-drive-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            {
+                services.Replace(ServiceDescriptor.Scoped<IFolderChainService>(_ => new FakeFolderChain(elsewhere)));
+            });
+            await LibraryDownloadsAsync(app);
+            var payload = Payload(elsewhere);
+            var notOurs = Payload(elsewhere, "Hand.Added.Thing.exe");
+            var young = Payload(elsewhere, "Severance S02E11 1080p WEBRip H264-WREN.exe", old: false);
+            var blocked = app.Services.GetRequiredService<IBlockedReleaseRepository>();
+            await blocked.BlockAsync(Refusal("noVideoStream"), CancellationToken.None);
+            await blocked.BlockAsync(Refusal("noVideoStream", name: "Severance S02E11 1080p WEBRip H264-WREN"), CancellationToken.None);
+
+            await CleanAsync(app);
+
+            Assert.False(File.Exists(payload), "the refused release's leftover in the client's incomplete folder goes");
+            Assert.True(File.Exists(notOurs), "a name Deluno never sent stays");
+            Assert.True(File.Exists(young), "a file younger than the grace stays");
+            Assert.Equal(1, await ClearedLinesAsync(app));
+        }
+        finally
+        {
+            if (Directory.Exists(elsewhere))
+            {
+                Directory.Delete(elsewhere, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FakeFolderChain(string incompleteFolder) : IFolderChainService
+    {
+        public Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken)
+            => Task.FromResult<FolderChainReport?>(new FolderChainReport(
+                libraryId, "Shows", "tv", false, null, null, null, "/shows",
+                [new FolderChainClient("qb-1", "qBittorrent", "qbittorrent", "deluno-tv", [], IncompleteFolder: incompleteFolder)],
+                []));
+
+        public Task<IReadOnlyList<LibraryDownloadDestinations>?> ListDestinationsAsync(string? libraryId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<LibraryDownloadDestinations>?>(null);
     }
 
     [Fact]

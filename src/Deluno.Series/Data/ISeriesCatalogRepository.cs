@@ -455,6 +455,12 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// </summary>
     Task<int> SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken);
 
+    /// <summary>Closes the open download or import cases whose title now holds its file (#1167), with or without details.</summary>
+    Task<IReadOnlyList<SettledRecoveryCase>> SettleCasesOfTitlesHoldingFilesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Of these ids, the ones that hold a file, and when it arrived (#1167).</summary>
+    Task<TitleFileHolds> GetTitleFileHoldsAsync(IReadOnlyCollection<string> entityIds, CancellationToken cancellationToken);
+
     Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
 
     Task<SeriesWantedItem?> GetSeriesWantedStateAsync(
