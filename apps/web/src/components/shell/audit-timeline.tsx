@@ -25,8 +25,7 @@ import {
   XCircle
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { FILTER_MENU_TRIGGER, FilterChips } from "../ui/filter-chips";
-import { MenuSelect } from "../ui/menu-select";
+import { FilterChips, MoreFilters } from "../ui/filter-chips";
 import type { ActivityEventItem } from "../../lib/api";
 import { eventLabel } from "../../lib/activity-format";
 
@@ -225,12 +224,8 @@ export function AuditTimelineFilters({ timeline }: { timeline: AuditTimelineStat
           ...ALL_CATEGORIES.map((cat) => ({ value: cat, label: CAT_CONFIG[cat]?.label ?? cat, count: timeline.counts[cat] ?? 0 }))
         ]}
       />
-      <MenuSelect
-        label="Filter by severity"
-        value={timeline.sevFilter}
-        onChange={(next) => timeline.setSevFilter(next as Severity | "all")}
-        options={SEVERITY_OPTIONS}
-        triggerClassName={FILTER_MENU_TRIGGER}
+      <MoreFilters
+        groups={[{ label: "Severity", ariaLabel: "Filter by severity", value: timeline.sevFilter, onValueChange: (next) => timeline.setSevFilter(next as Severity | "all"), options: SEVERITY_OPTIONS }]}
       />
     </div>
   );
