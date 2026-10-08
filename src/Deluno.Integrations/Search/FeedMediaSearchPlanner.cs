@@ -1191,11 +1191,8 @@ public sealed class FeedMediaSearchPlanner(
 
             var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, scoringMode);
             var finalScore = preferencePlan is null ? scoreComputation.FinalScore : 0;
-            // The scoring-mode note is an internal detail; a typed plan has no score to explain.
-            IEnumerable<string> scoringNotes = preferencePlan is not null
-                ? []
-                : scoreComputation.UsesModelSignal ? [boost.Explanation, scoreComputation.Explanation] : [scoreComputation.Explanation];
-            var reasons = decision.Reasons.Concat(scoringNotes).ToArray();
+            // The scoring-mode note is an internal detail, never shown to a person (#1159).
+            var reasons = decision.Reasons.ToArray();
             var summary = preferencePlan is null
                 ? BuildSummary(decision, matchedFormats, boost, scoreComputation)
                 : decision.Summary;
@@ -1454,12 +1451,6 @@ public sealed class FeedMediaSearchPlanner(
             parts.Add($"Matched {names} ({decision.CustomFormatScore.ToString("+#;-#;0", CultureInfo.InvariantCulture)}).");
         }
 
-        if (scoreComputation.UsesModelSignal && boost.Applied)
-        {
-            parts.Add(boost.Explanation);
-        }
-
-        parts.Add(scoreComputation.Explanation);
         return string.Join(" ", parts);
     }
 

@@ -408,7 +408,9 @@ public static partial class ReleaseDecisionEngine
         // search with this reason, where a person can still force it.
         if (input.Seeders == 0 && DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent)
         {
+            // It leads the reasons like any refusal, so a person never reads the quality line as why it was refused (#1159).
             hardReject = true;
+            refusals.Add("No one is seeding this torrent, so it cannot download.");
             rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
         }
 
@@ -427,6 +429,7 @@ public static partial class ReleaseDecisionEngine
         if (sizeOutOfRange)
         {
             hardReject = true;
+            refusals.Add(risks[^1]);
             rejectionGate ??= risks[^1];
         }
         var releaseGroup = InferReleaseGroup(input.ReleaseName);
@@ -571,8 +574,8 @@ public static partial class ReleaseDecisionEngine
                 // an explicit re-evaluation. Manual force can still override
                 // this held result at the caller's discretion.
                 requiresInstalledBaselineReview = true;
-                risks.Add("Installed-file preference evidence is missing, so Deluno cannot prove that this candidate is a persistent improvement.");
-                reasons.Add("Installed-file preference evidence is missing; re-evaluate the held file before automatic replacement.");
+                risks.Add("Deluno has not checked the file you have yet, so it cannot tell whether this one is better.");
+                reasons.Add("Your file has not been checked yet; check it before this can replace it.");
                 // Keep a typed comparison in the response so callers can
                 // render a normal NeedsReview result and its candidate
                 // evaluation, while the empty current fact set remains
@@ -644,7 +647,7 @@ public static partial class ReleaseDecisionEngine
             meetsCutoff,
             summary,
             // What refused it leads: "Quality X is below cutoff Y" read as the reason when it was not (#1159).
-            refusals.Count == 0 ? reasons : refusals.Concat(reasons).ToList(),
+            LeadWithWhyItWasRefused(status, refusals, reasons, preferenceComparison, preferenceEvaluation),
             risks,
             qualityDelta,
             effectiveCustomFormatScore,
@@ -655,6 +658,33 @@ public static partial class ReleaseDecisionEngine
             preferenceEvaluation,
             preferenceComparison,
             rejectionGate);
+    }
+
+    /// <summary>
+    /// A refused release's first reason is the one that refused it. A refusal by a gate leads; a refusal by
+    /// the preference plan leads with that plan's own reasons, never "Quality X meets cutoff" (#1159).
+    /// </summary>
+    private static List<string> LeadWithWhyItWasRefused(
+        string status,
+        List<string> refusals,
+        List<string> reasons,
+        PreferenceComparison? comparison,
+        PreferenceEvaluation? evaluation)
+    {
+        if (refusals.Count > 0)
+        {
+            return refusals.Concat(reasons).ToList();
+        }
+
+        if (!string.Equals(status, ReleaseDecisionStatuses.Rejected, StringComparison.Ordinal))
+        {
+            return reasons;
+        }
+
+        var why = (comparison?.Reasons ?? evaluation?.Reasons ?? [])
+            .Where(reason => !string.IsNullOrWhiteSpace(reason))
+            .ToList();
+        return why.Count == 0 ? reasons : why.Concat(reasons.Where(reason => !why.Contains(reason))).ToList();
     }
 
     private static string BuildTypedSummary(
@@ -674,21 +704,23 @@ public static partial class ReleaseDecisionEngine
         if (string.Equals(status, ReleaseDecisionStatuses.Rejected, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(rejectionGate))
         {
-            return $"Rejected by the typed release plan. {rejectionGate}";
+            return $"Not taken: {rejectionGate}";
         }
 
         var reasons = comparison?.Reasons ?? evaluation?.Reasons ?? [];
-        var explanation = reasons.FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason))
-            ?? "Typed preference evaluation completed.";
-        return $"{status switch
+        var explanation = reasons.FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
+        // Plain words only: the internal names for these outcomes ("typed release plan", "preference
+        // evaluation") stay in the stored status codes and logs (#1159).
+        var headline = status switch
         {
-            "preferred" => "Preferred by the typed release plan.",
-            "held" => "Held for review by the typed release plan.",
-            "equivalent" => "Equivalent to the installed file under the typed release plan.",
+            "preferred" => "Would be taken.",
+            "held" => "Held for your review.",
+            "equivalent" => "Same as the file you have.",
             ReleaseDecisionStatuses.CurrentBetter => "Your installed file is better than this release.",
-            ReleaseDecisionStatuses.Rejected => "Rejected by the typed release plan.",
-            _ => "Eligible under the typed release plan."
-        }} {explanation}";
+            ReleaseDecisionStatuses.Rejected => "Not taken.",
+            _ => "Usable, but not taken on its own."
+        };
+        return explanation is null ? headline : $"{headline} {explanation}";
     }
 
     public static int QualityRank(string? quality)

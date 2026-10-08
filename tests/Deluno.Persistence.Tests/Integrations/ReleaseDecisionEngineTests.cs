@@ -1044,7 +1044,7 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.True(decision.Status == "held", $"{decision.Status}: {decision.Summary} | {string.Join("; ", decision.Reasons)} | {string.Join("; ", decision.RiskFlags)}");
         Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
-        Assert.Contains(decision.Reasons, reason => reason.Contains("re-evaluate", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(decision.Reasons, reason => reason.Contains("has not been checked yet", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1066,10 +1066,10 @@ public sealed class ReleaseDecisionEngineTests
         Assert.Equal("held", decision.Status);
         Assert.Contains(
             decision.Reasons,
-            reason => reason.Contains("installed-file preference evidence is missing", StringComparison.OrdinalIgnoreCase));
+            reason => reason.Contains("has not been checked yet", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             decision.RiskFlags,
-            risk => risk.Contains("cannot prove", StringComparison.OrdinalIgnoreCase));
+            risk => risk.Contains("cannot tell", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1094,7 +1094,7 @@ public sealed class ReleaseDecisionEngineTests
         Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
         Assert.Contains(
             decision.Reasons,
-            reason => reason.Contains("re-evaluate", StringComparison.OrdinalIgnoreCase));
+            reason => reason.Contains("has not been checked yet", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1226,7 +1226,7 @@ public sealed class ReleaseDecisionEngineTests
         var decision = DecideLadder("Show.S01E01.2160p.WEB-DL.DDP5.1.H.265-GRP", "WEB 2160p", "WEB 1080p");
 
         Assert.True(decision.Status == "preferred", $"{decision.Status}: {decision.Summary} | {string.Join("; ", decision.RiskFlags)}");
-        Assert.DoesNotContain(decision.RiskFlags, risk => risk.Contains("cannot prove", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(decision.RiskFlags, risk => risk.Contains("cannot tell", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
