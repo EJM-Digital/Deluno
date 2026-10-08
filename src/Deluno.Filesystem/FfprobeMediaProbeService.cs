@@ -199,11 +199,12 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
     private static MediaProbeInfo Unavailable(string message)
         => new("unavailable", "ffprobe", message, null, null, null, [], [], []);
 
-    private static MediaProbeInfo Failed(string message)
-        => new("failed", "ffprobe", message, null, null, null, [], [], []);
+    // The message is plain words; ffprobe's own text is kept as the detail only.
+    public static MediaProbeInfo Failed(string message)
+        => new("failed", "ffprobe", ProbeFailureWords.FailedMessage, null, null, null, [], [], [], null, message);
 
-    private static MediaProbeInfo Unreadable(string message)
-        => new("unreadable", "ffprobe", message, null, null, null, [], [], []);
+    public static MediaProbeInfo Unreadable(string message)
+        => new("unreadable", "ffprobe", ProbeFailureWords.UnreadableMessage, null, null, null, [], [], [], null, message);
 
 
     private static bool IsDisposed(FfprobeStream stream, string flag)

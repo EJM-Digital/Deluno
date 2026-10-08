@@ -454,7 +454,8 @@ public sealed partial class ImportPipelineService(
                     ImportFailurePolicy.MediaProbeUnreadable,
                     message,
                     "Check the file is reachable — a share that dropped, a lock, or a disk error. The release itself is not suspected.",
-                    cancellationToken);
+                    cancellationToken,
+                    preview.MediaProbe.Detail);
                 return Failed(StatusCodes.Status400BadRequest, message);
             }
         }
@@ -468,7 +469,8 @@ public sealed partial class ImportPipelineService(
                 ImportFailurePolicy.MediaProbeRejected,
                 message,
                 "Check whether the file is complete, playable, and readable by ffprobe before importing.",
-                cancellationToken);
+                cancellationToken,
+                preview.MediaProbe.Detail);
             return Failed(StatusCodes.Status400BadRequest, message);
         }
 
@@ -2204,9 +2206,11 @@ public sealed partial class ImportPipelineService(
         // release's (#919).
         if (after?.Status == "failed")
         {
-            return after.Message is { Length: > 0 } message
-                ? $"The processed file will not open or play: {message}"
-                : "The processed file will not open or play.";
+            return after.Detail is { Length: > 0 }
+                ? $"The processed file will not open or play. {after.Message}"
+                : after.Message is { Length: > 0 } message
+                    ? $"The processed file will not open or play: {message}"
+                    : "The processed file will not open or play.";
         }
 
         if (after?.Status != "succeeded") return null;
@@ -2893,19 +2897,21 @@ public sealed partial class ImportPipelineService(
         string failureKind,
         string summary,
         string recommendedAction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? technicalDetail = null)
     {
         var title = TitleForActivity(request);
         var mediaType = NormalizeMediaType(request.MediaType);
         DelunoObservability.ImportFailed.Add(1, new("media.type", mediaType), new("failure.kind", failureKind));
         await BlockTheReleaseIfTheTableSaysSoAsync(executeRequest, failureKind, summary, cancellationToken);
         logger.LogWarning(
-            "Import failed for {MediaType} title {Title}. FailureKind={FailureKind} Source={SourcePath} Message={Summary}",
+            "Import failed for {MediaType} title {Title}. FailureKind={FailureKind} Source={SourcePath} Message={Summary} Detail={Detail}",
             mediaType,
             title,
             failureKind,
             request.SourcePath,
-            summary);
+            summary,
+            technicalDetail);
 
         if (importResolutionsRepository is not null && !string.IsNullOrEmpty(executeRequest.DispatchId))
         {
@@ -2976,6 +2982,7 @@ public sealed partial class ImportPipelineService(
                 FailureKind = failureKind,
                 Summary = summary,
                 RecommendedAction = recommendedAction,
+                TechnicalDetail = technicalDetail,
                 executeRequest.Preview.SourcePath,
                 executeRequest.Preview.FileName,
                 executeRequest.Preview.MediaType,
