@@ -35,6 +35,8 @@ public static class PlainFailure
         var root = Unwrap(exception);
         switch (root)
         {
+            case PlainFailureException plain:
+                return plain.Message;
             case CryptographicException:
                 return UnreadableKey;
             case HttpRequestException http:

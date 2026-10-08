@@ -254,6 +254,24 @@ describe("dispatch identity in the import preview", () => {
     expect(request.seriesId).toBe("series-42");
   });
 
+  // #1171: a TV row with no grab sent its release name as the "title" the person typed.
+  it("sends no title hint for a TV download with no dispatch, so the server matches the library's show", () => {
+    const queueItem = {
+      id: "hash-1",
+      clientId: "client-1",
+      mediaType: "tv",
+      title: "www.UIndex.org - The Twilight Zone S01E04 16 Millimeter Shrine 1080p AMZN WEB-DL DD 2 0 H 264-playWEB",
+      releaseName: "www.UIndex.org - The Twilight Zone S01E04 16 Millimeter Shrine 1080p AMZN WEB-DL DD 2 0 H 264-playWEB",
+      sourcePath: "C:\\Downloads\\www.UIndex.org - The Twilight Zone S01E04"
+    } as DownloadQueueItem;
+
+    const request = buildImportRequest(queueItem, [] as LibraryItem[], null);
+
+    expect(request.title).toBeNull();
+    expect(request.year).toBeNull();
+    expect(request.dispatchId).toBeNull();
+  });
+
   // #617: Deluge's name for the torrent, and the indexer's for the release, as seen on the rig.
   it("finds the grab behind a download whose name differs only in case and punctuation", () => {
     const queueItem = { id: "deluge-hash", clientId: "deluge", releaseName: "house.on.-haunted.-hill.-1959.1080p.-blu-ray.-x-264-amiable" } as DownloadQueueItem;

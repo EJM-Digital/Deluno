@@ -120,7 +120,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     .filter(queueItemNeedsAttention)
     .filter((item) => !imported.byClientItem.has(`${item.clientId}:${item.id}`.toLowerCase()));
   // A job with another attempt coming is retrying, not waiting on a person (#562).
-  const failedImportJobs = (sources.failedJobs ?? [])
+  const unfilteredFailedImportJobs = (sources.failedJobs ?? [])
     .filter((job) => job.jobType === "filesystem.import.execute" && !isJobRetrying(job));
   const failedHandoffs = (sources.handoffs ?? [])
     .filter(handoffNeedsPerson)
@@ -170,6 +170,13 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     }
   }
   const failedDownloads = [...byTitleAndRelease.values()];
+  // The same import failing is one problem (#1167): the case or the failed download names the real cause and
+  // carries the actions, so the dead-lettered job behind it is not listed a second time.
+  const failedDispatchIds = new Set((sources.dispatches ?? []).filter(isDispatchFailure).map((dispatch) => dispatch.id));
+  const failedImportJobs = unfilteredFailedImportJobs.filter((job) => {
+    const dispatchId = dispatchIdIn(job.payloadJson);
+    return dispatchId === null || !(coveredByCase.has(dispatchId) || failedDispatchIds.has(dispatchId));
+  });
   const orphanedDownloads = sources.orphans ?? [];
 
   return {
