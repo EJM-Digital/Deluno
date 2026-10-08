@@ -53,6 +53,8 @@ public static class RealtimeServiceCollectionExtensions
         services.AddSingleton<IRealtimeEventPublisher>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
         services.AddSingleton<IRealtimeResumeSource>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
         services.AddHostedService(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
+        services.AddSingleton<TitleChangeNotifier>();
+        services.AddHostedService(provider => provider.GetRequiredService<TitleChangeNotifier>());
         return services;
     }
 
