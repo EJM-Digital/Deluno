@@ -946,7 +946,9 @@ public sealed class WorkPlanner(
         IQualityRepository? downloadIntegrityQualityRepository = null,
         // #1148: lets a failed file check be recorded on the download itself,
         // so Transfers agrees with Activity. Optional like the rest.
-        IDownloadDispatchesRepository? downloadIntegrityDispatches = null)
+        IDownloadDispatchesRepository? downloadIntegrityDispatches = null,
+        // #1155: lets a hand-off that has waited past its limit import the finished copy sitting in the ready folder.
+        IProcessorOutputImportQueue? processorOutputImports = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.ImportAutomation,
@@ -1046,7 +1048,8 @@ public sealed class WorkPlanner(
                 processorConnectionService,
                 activityFeedRepository,
                 movieCatalogRepository,
-                seriesCatalogRepository)
+                seriesCatalogRepository,
+                processorOutputImports)
             .WatchAsync(libraries, now, cancellationToken, allLibraries);
 
         var recentWaitingKeys = recentWaiting
@@ -1106,10 +1109,20 @@ public sealed class WorkPlanner(
             // A download whose title or library was removed after the grab is left
             // for a person: importing it would bring back, under the release name,
             // a title someone removed on purpose.
+            // Unless the title has come back (#1155): removed, restored and added again, it is
+            // the same download for the same name and year, and belongs to the title that is there.
+            var titleCameBack = false;
             if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, allLibraries, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
             {
-                await TellNotImportedOnceAsync(activityFeedRepository, dispatch!.DispatchId, $"{item.Title} finished in {item.ClientName}, but {removed}, so Deluno did not import it. Remove it from {item.ClientName}, or import it by hand if you still want it.", item, cancellationToken);
-                continue;
+                var readded = await CatalogueImportNaming.FindReAddedTitleAsync(dispatch, item.ReleaseName, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+                if (readded is null)
+                {
+                    await TellNotImportedOnceAsync(activityFeedRepository, dispatch!.DispatchId, $"{item.Title} finished in {item.ClientName}, but {removed}, so Deluno did not import it. Remove it from {item.ClientName}, or import it by hand if you still want it.", item, cancellationToken);
+                    continue;
+                }
+
+                dispatch = readded;
+                titleCameBack = true;
             }
 
             var library = ResolveLibraryForQueueItem(item, libraries, routeCategoriesByLibrary);
@@ -1214,7 +1227,11 @@ public sealed class WorkPlanner(
                         item.ReleaseName,
                         item.SourcePath,
                         library.ProcessorName,
-                        item.AddedUtc,
+                        // A hand-off closed because its title was removed belongs to that acquisition; the
+                        // title being back is a new one, though the client's download is the old one (#1155).
+                        titleCameBack && existing is { Status: ProcessorHandoffStatuses.Cancelled or ProcessorHandoffStatuses.Dismissed }
+                            ? now
+                            : item.AddedUtc,
                         library.ProcessorConnectionId),
                     cancellationToken);
                 var currentHandoff = handoff;
