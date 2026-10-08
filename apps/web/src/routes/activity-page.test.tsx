@@ -216,8 +216,8 @@ describe("Activity history filters and columns (#798, #1100)", () => {
     expect(screen.getByText("Deluno will not use Arrival.2016.2160p again.")).toBeInTheDocument();
     expect(screen.getByText("Imported Arrival (2016).")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Filter by step" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Blocklisted" }));
+    await userEvent.click(screen.getByRole("button", { name: "More filters" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Blocklisted" }));
 
     await waitFor(() => expect(screen.queryByText("Imported Arrival (2016).")).not.toBeInTheDocument());
     expect(screen.getByText("Deluno will not use Arrival.2016.2160p again.")).toBeInTheDocument();
@@ -852,9 +852,9 @@ describe("Activity steps built from Transfers' sources (#1115)", () => {
     renderActivity();
     await openHistory();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Filter by step" }));
+    await userEvent.click(screen.getByRole("button", { name: "More filters" }));
     for (const name of ["Processing", "Download health", "Download client"]) {
-      expect(await screen.findByRole("option", { name })).toBeInTheDocument();
+      expect(await screen.findByRole("radio", { name })).toBeInTheDocument();
     }
   });
 });
