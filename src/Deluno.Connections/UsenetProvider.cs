@@ -74,6 +74,12 @@ public static class NzbGetServerPlan
             string.Equals(server.Value.GetValueOrDefault("Active"), "yes", StringComparison.OrdinalIgnoreCase)
             && !UsenetProviderText.IsPlaceholder(server.Value.GetValueOrDefault("Host")));
 
+    /// <summary>True when a server for <paramref name="host"/> is switched on (the provider that was just written has taken effect).</summary>
+    public static bool HasWorkingServer(IReadOnlyList<KeyValuePair<string, string>> options, string host)
+        => Servers(options).Any(server =>
+            string.Equals(server.Value.GetValueOrDefault("Active")?.Trim(), "yes", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(server.Value.GetValueOrDefault("Host")?.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase));
+
     /// <summary>The full option list with the provider written into one server slot and every placeholder server switched off.</summary>
     public static IReadOnlyList<KeyValuePair<string, string>> Apply(IReadOnlyList<KeyValuePair<string, string>> options, UsenetProviderRequest request)
     {
