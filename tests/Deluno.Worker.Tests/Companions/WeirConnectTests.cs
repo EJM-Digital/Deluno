@@ -172,7 +172,8 @@ public sealed class WeirConnectTests : IDisposable
     /// <summary>A small Weir: the routes Deluno calls, on a loopback port.</summary>
     private sealed class StubWeir : IDisposable
     {
-        private readonly HttpListener _listener = new();
+        // A failed Start closes the listener for good, so each attempt gets a new one.
+        private HttpListener _listener = new();
         private readonly CancellationTokenSource _stop = new();
 
         public StubWeir()
@@ -182,7 +183,7 @@ public sealed class WeirConnectTests : IDisposable
                 var candidate = Random.Shared.Next(20000, 60000);
                 try
                 {
-                    _listener.Prefixes.Clear();
+                    _listener = new HttpListener();
                     _listener.Prefixes.Add($"http://127.0.0.1:{candidate}/");
                     _listener.Start();
                     Port = candidate;
