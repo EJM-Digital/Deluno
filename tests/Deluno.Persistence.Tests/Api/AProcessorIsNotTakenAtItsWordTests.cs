@@ -378,6 +378,40 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Contains("main video was delivered", stored?.FailureMessage);
     }
 
+    /// <summary>Weir's real report for a film with one skipped extra: outputFiles, no outputPath (golden path rc.30.9).</summary>
+    [Fact]
+    public async Task A_failed_report_that_names_its_output_files_but_no_output_path_is_judged_by_its_main_video()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        const string release = "Nosferatu.1922.1080p.BluRay.x265-GRP";
+        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, release, "Featurettes")).Parent!.FullName;
+        await File.WriteAllBytesAsync(Path.Combine(source, release + ".mkv"), new byte[200_000]);
+        await File.WriteAllBytesAsync(Path.Combine(source, "Featurettes", "Trailer.mkv"), new byte[90_000]);
+        await File.WriteAllBytesAsync(Path.Combine(source, "Featurettes", "Gallery.mkv"), new byte[2_000]);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, release, "Featurettes")).Parent!.FullName;
+        var film = Path.Combine(folder, release + ".mkv");
+        var trailer = Path.Combine(folder, "Featurettes", "Trailer.mkv");
+        await File.WriteAllBytesAsync(film, new byte[190_000]);
+        await File.WriteAllBytesAsync(trailer, new byte[80_000]);
+        var handoff = await HandoffAsync(app, scene, release);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "failed",
+            message = "It could not process 1 file: Gallery.mkv. Skipped because this file is 12.1 MB, under the 50 MB minimum.",
+            outputFiles = new[] { film, trailer }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+        Assert.NotNull(stored?.ImportJobId);
+        Assert.Equal(folder, stored?.OutputPath);
+    }
+
     [Fact]
     public async Task A_later_failed_report_for_one_small_extra_does_not_undo_a_completed_hand_off()
     {
