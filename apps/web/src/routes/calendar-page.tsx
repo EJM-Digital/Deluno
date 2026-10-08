@@ -220,6 +220,8 @@ interface CalendarEntry {
    * nowhere else in Deluno. Two vocabularies for one state (#302).
    */
   mark: TitleMarkInput;
+  /** An episode that has not aired yet: it reads "Airs <date>", never "Missing" (#1179). */
+  unaired?: boolean;
   href: string;
   /** Which release this row is, for the movie release-type toggles. Absent for an episode. */
   movieKind?: MovieCalendarEntry["kind"];
@@ -435,7 +437,9 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                       className={cn(
                         "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-(length:--type-micro) leading-tight transition-colors",
                         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                        "border-hairline bg-surface-2 text-foreground hover:bg-surface-3",
+                        entry.mark.monitored
+                          ? "border-hairline bg-surface-2 text-foreground hover:bg-surface-3"
+                          : "border-dashed border-hairline bg-transparent text-muted-foreground opacity-70 hover:bg-surface-2",
                         options.highlightCutoffUnmet && entry.mark.wantedStatus === "upgrade" && "ring-1 ring-inset ring-warning/70"
                       )}
                     >
@@ -445,6 +449,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                           month grid where every colour meant something different
                           from the shelf it links to. */}
                       <TitleMarkDot item={entry.mark} size={7} className="mr-1 align-middle" />
+                      {!entry.mark.monitored ? <span className="sr-only">Not monitored. </span> : null}
                       <span className="font-semibold">{entry.sub}</span> {entry.name}
                     </button>
                   ))}
@@ -508,7 +513,13 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                     <ListCell primary={formatCalendarTime(entry.date, preferences)} />
                     <ListCell primary={entry.detail} />
                     <ListCell>
-                      <TitleMarkLabel item={entry.mark} type={entry.mediaType} />
+                      {entry.unaired ? (
+                        <span className="text-(length:--type-label) text-muted-foreground">
+                          {`Airs ${formatRangeDate(entry.date, preferences)}`}
+                        </span>
+                      ) : (
+                        <TitleMarkLabel item={entry.mark} type={entry.mediaType} />
+                      )}
                     </ListCell>
                   </ListRow>
                 ))}
@@ -621,6 +632,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
       mediaType: "show",
       detail: episode.title ?? "Episode title pending",
       mark: { monitored: episode.monitored, wantedStatus: episode.wantedStatus },
+      unaired: new Date(episode.airDateUtc).getTime() > Date.now() && (episode.wantedStatus ?? "").toLowerCase() !== "upgrade",
       href: `/tv/${episode.seriesId}`
     };
   });
