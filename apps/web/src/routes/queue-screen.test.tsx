@@ -272,6 +272,14 @@ describe("dispatch identity in the import preview", () => {
     expect(request.dispatchId).toBeNull();
   });
 
+  // #1171: a site-prefixed folder is not a file; the server picks the file.
+  it("does not send a folder name as the file name", () => {
+    const folder = { id: "h", clientId: "c", mediaType: "tv", title: "t", releaseName: "r", sourcePath: "C:\\Downloads\\www.UIndex.org - The Twilight Zone S01E04" } as DownloadQueueItem;
+    expect(buildImportRequest(folder, [] as LibraryItem[], null).fileName).toBeNull();
+    const file = { ...folder, sourcePath: "C:\\Downloads\\Show\\Show.S01E04.mkv" } as DownloadQueueItem;
+    expect(buildImportRequest(file, [] as LibraryItem[], null).fileName).toBe("Show.S01E04.mkv");
+  });
+
   // #617: Deluge's name for the torrent, and the indexer's for the release, as seen on the rig.
   it("finds the grab behind a download whose name differs only in case and punctuation", () => {
     const queueItem = { id: "deluge-hash", clientId: "deluge", releaseName: "house.on.-haunted.-hill.-1959.1080p.-blu-ray.-x-264-amiable" } as DownloadQueueItem;
