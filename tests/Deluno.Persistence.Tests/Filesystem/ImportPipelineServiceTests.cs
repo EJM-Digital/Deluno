@@ -7343,6 +7343,132 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1166: "The.Twilight.Zone.2019.S01E09..." grabbed for the 1959 show is the 2019 reboot. Whatever got it here,
+    /// the import refuses it (409), imports nothing, blocklists the release and searches for the show again.
+    /// </summary>
+    [Fact]
+    public async Task A_file_for_the_wrong_year_of_a_show_is_refused_blocklisted_and_searched_again()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        const string releaseName = "The.Twilight.Zone.2019.S01E09.1080p.WEB.x264-worldmkv";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("The Twilight Zone", 1959, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", series.Id, releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: seriesRepository, downloadDispatchesRepository: dispatches,
+            blockedReleases: blockedReleases, jobScheduler: jobStore);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "tv", series.Title, series.StartYear, [], [], null, null, SeriesId: series.Id),
+                "copy", false, true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("(2019), not (1959)", result.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.mkv", SearchOption.AllDirectories));
+
+        Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), await blockedReleases.ListKeysAsync(CancellationToken.None));
+        var jobs = await jobStore.ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job =>
+            job.JobType == LibrarySearchJobTypes.For("tv") &&
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains($"\"targetEntityId\":\"{series.Id}\"", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// #1173: "The Simpsons S38E02 The Childrens Book Job" is S38E01's title. Imported as S38E02 it is refused with a
+    /// reason naming the other episode, blocklisted, and S38E02 is searched for again.
+    /// </summary>
+    [Fact]
+    public async Task A_file_carrying_another_episodes_title_is_refused_and_the_reason_names_that_episode()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        const string releaseName = "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("The Simpsons", 1989, "tt0096697"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(38, 1, "The Children's Book Job", null, timeProvider.GetUtcNow().AddDays(-30), AbsoluteNumber: 808),
+                new CatalogueEpisodeItem(38, 2, "Diary of a Chimpy Kid", null, timeProvider.GetUtcNow().AddDays(-23), AbsoluteNumber: 809)
+            ],
+            "provider",
+            CancellationToken.None);
+        var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var episode = detail!.Episodes.Single(item => item.SeasonNumber == 38 && item.EpisodeNumber == 2);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "episode", episode.EpisodeId, releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: seriesRepository, downloadDispatchesRepository: dispatches,
+            blockedReleases: blockedReleases, jobScheduler: jobStore);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "tv", series.Title, series.StartYear, [], [], null, null, SeriesId: series.Id),
+                "copy", false, true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("S38E01's \"The Children's Book Job\"", result.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.mkv", SearchOption.AllDirectories));
+        Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), await blockedReleases.ListKeysAsync(CancellationToken.None));
+        var jobs = await jobStore.ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job =>
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains($"\"targetEntityId\":\"{episode.EpisodeId}\"", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// #954: a broken file blocklisted at import (ImportFailurePolicy.
     /// MediaProbeRejected => Immediately) is a bad release Deluno already
     /// knows will fail the same way again, so the movie it was for is
