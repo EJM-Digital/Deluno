@@ -29,6 +29,14 @@ public interface IRealtimeEventPublisher
         string createdUtc,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The same push with everything a screen needs to draw the row without asking again: what the event
+    /// concerns (entity type and id, title, file, source, reason), the job it came from and its details.
+    /// The default falls back to the short form so a test double that only records categories keeps working.
+    /// </summary>
+    Task PublishActivityEventAddedAsync(ActivityEventPush push, CancellationToken cancellationToken)
+        => PublishActivityEventAddedAsync(push.Id, push.Message, push.Category, push.Severity, push.CreatedUtc, cancellationToken);
+
     Task PublishQueueItemAddedAsync(
         string id,
         string title,
@@ -128,3 +136,19 @@ public interface IRealtimeEventPublisher
     Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
         => Task.CompletedTask;
 }
+
+/// <summary>What an <c>ActivityEventAdded</c> push carries (the same facts <c>GET /api/activity</c> gives a row).</summary>
+public sealed record ActivityEventPush(
+    string Id,
+    string Message,
+    string Category,
+    string Severity,
+    string CreatedUtc,
+    string? RelatedEntityType = null,
+    string? RelatedEntityId = null,
+    string? RelatedJobId = null,
+    string? Title = null,
+    string? FilePath = null,
+    string? SourceName = null,
+    string? ReasonGroup = null,
+    string? DetailsJson = null);

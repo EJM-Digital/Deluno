@@ -3701,12 +3701,22 @@ public sealed class SqliteJobStore(
 
         foreach (var activity in activities)
         {
+            var pushedFacts = ActivityHistory.FactsFromDetails(activity.DetailsJson);
             await realtimeEventPublisher.PublishActivityEventAddedAsync(
-                activity.Id,
-                activity.Message,
-                activity.Category,
-                SeverityForCategory(activity.Category),
-                activity.CreatedUtc.ToString("O"),
+                new ActivityEventPush(
+                    activity.Id,
+                    activity.Message,
+                    activity.Category,
+                    SeverityForCategory(activity.Category),
+                    activity.CreatedUtc.ToString("O"),
+                    activity.RelatedEntityType,
+                    activity.RelatedEntityId,
+                    activity.RelatedJobId,
+                    activity.Title ?? pushedFacts.Title,
+                    activity.FilePath ?? pushedFacts.FilePaths,
+                    activity.SourceName ?? pushedFacts.SourceName,
+                    activity.ReasonGroup,
+                    activity.DetailsJson),
                 cancellationToken);
         }
 
