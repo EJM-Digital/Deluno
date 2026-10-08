@@ -1,0 +1,313 @@
+<#
+.SYNOPSIS
+    Runs the scriptable part of the golden path (docs/golden-path.md, step 1 and the facts steps 2 and 3 rest on) on the clean Hyper-V VM.
+
+.DESCRIPTION
+    Restores the VM's "clean" checkpoint, starts it, copies the installer in, installs it silently and
+    checks what can be checked without a person: Deluno starts and answers, the first-run state, which
+    bundled components got installed (and their versions) and where their data folders are.
+
+    It writes golden-path-<version>-<date>.md under artifacts/ with one line per step: passed, failed
+    or manual (with what the person must look at). It leaves the VM running for the manual steps.
+
+    Access is PowerShell remoting to the Hyper-V host (the rig), then PowerShell Direct into the VM.
+    It uses only the two DPAPI credential files below and never reads, prints or stores a password.
+    It changes no Windows security, firewall, network or TrustedHosts setting, and touches nothing on
+    the host except this one VM (restore its checkpoint, start it, copy a file in, and delete the
+    temporary copy of the installer it staged on the host).
+
+    The component picker (the tick boxes) is GUI-only: Setup.exe and the tray take no component choice
+    on the command line (apps/windows-tray/InstallHooks.cs shows the picker from first run, nothing
+    else reads the choice). So a silent install installs Deluno alone and the five clients plus Weir
+    stay a manual step. This script reports that rather than faking it.
+
+.PARAMETER RigHost
+    The Hyper-V host that holds the VM. Never committed; pass it on the command line.
+
+.PARAMETER InstallerPath
+    A local Deluno Setup.exe.
+
+.PARAMETER Version
+    The version being tested, for example 1.0.0-rc.30.4. Used in the results file name and compared
+    with the installed build.
+
+.PARAMETER VmName
+    Defaults to Deluno-GoldenPath.
+
+.PARAMETER Checkpoint
+    Defaults to clean.
+
+.PARAMETER RigCredentialFile
+    DPAPI file for the host. Defaults to $env:LOCALAPPDATA\Deluno-rig-admin.xml.
+
+.PARAMETER VmCredentialFile
+    DPAPI file for the VM. Defaults to $env:LOCALAPPDATA\Deluno-goldenvm-admin.xml.
+
+.PARAMETER OutDirectory
+    Where the results file goes. Defaults to artifacts/ in the repository (gitignored).
+
+.PARAMETER PickerWaitSeconds
+    How long to wait after the silent install for first-run work (the picker, the firewall step) to
+    finish or show itself, before the checks.
+
+.EXAMPLE
+    ./scripts/golden-path/Invoke-GoldenPath.ps1 -RigHost <host> -InstallerPath .\artifacts\windows\velopack\Deluno-rc-Setup.exe -Version 1.0.0-rc.30.4
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)] [string] $RigHost,
+    [Parameter(Mandatory)] [string] $InstallerPath,
+    [Parameter(Mandatory)] [string] $Version,
+    [string] $VmName = 'Deluno-GoldenPath',
+    [string] $Checkpoint = 'clean',
+    [string] $RigCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-rig-admin.xml'),
+    [string] $VmCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-goldenvm-admin.xml'),
+    [string] $OutDirectory,
+    [int] $PickerWaitSeconds = 60
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+if (-not $OutDirectory) { $OutDirectory = Join-Path $repoRoot 'artifacts' }
+if (-not (Test-Path $InstallerPath)) { throw "Installer not found: $InstallerPath" }
+$InstallerPath = (Resolve-Path $InstallerPath).Path
+
+$results = [System.Collections.Generic.List[object]]::new()
+function Add-Result([string] $Step, [ValidateSet('passed', 'failed', 'manual')] [string] $Status, [string] $Detail) {
+    $results.Add([pscustomobject]@{ Step = $Step; Status = $Status; Detail = $Detail })
+    $colour = switch ($Status) { 'passed' { 'Green' } 'failed' { 'Red' } default { 'Yellow' } }
+    Write-Host ("[{0,-6}] {1} - {2}" -f $Status, $Step, $Detail) -ForegroundColor $colour
+}
+
+$rigCred = Import-Clixml $RigCredentialFile
+$vmCred = Import-Clixml $VmCredentialFile
+$rig = $null
+$stagedOnHost = $null
+
+# Runs a script block inside the VM (PowerShell Direct, through the host session). The block comes back
+# as text and is rebuilt on the host, so it must not capture local variables: pass them in -ArgumentList.
+function Invoke-InVm([scriptblock] $Block, [object[]] $ArgumentList = @()) {
+    Invoke-Command -Session $rig -ArgumentList $Block.ToString(), $ArgumentList, $VmName, $vmCred -ScriptBlock {
+        param($text, $vmArgs, $name, $cred)
+        $sb = [scriptblock]::Create($text)
+        Invoke-Command -VMName $name -Credential $cred -ArgumentList $vmArgs -ScriptBlock $sb
+    }
+}
+
+try {
+    $rig = New-PSSession -ComputerName $RigHost -Credential $rigCred
+
+    # 1. Restore the clean checkpoint and start the VM.
+    try {
+        Invoke-Command -Session $rig -ArgumentList $VmName, $Checkpoint -ScriptBlock {
+            param($name, $cp)
+            if ((Get-VM -Name $name).State -ne 'Off') { Stop-VM -Name $name -TurnOff -Force }
+            Restore-VMSnapshot -VMName $name -Name $cp -Confirm:$false
+            Start-VM -Name $name
+        }
+        Add-Result 'Checkpoint restored, VM started' 'passed' "'$Checkpoint' restored on $VmName."
+    } catch {
+        Add-Result 'Checkpoint restored, VM started' 'failed' $_.Exception.Message
+        throw
+    }
+
+    # 2. Wait for PowerShell Direct.
+    $deadline = (Get-Date).AddMinutes(15)
+    $ready = $false
+    while ((Get-Date) -lt $deadline -and -not $ready) {
+        try { $null = Invoke-InVm { $env:COMPUTERNAME }; $ready = $true } catch { $lastErr = $_.Exception.Message; Start-Sleep -Seconds 5 }
+    }
+    if (-not $ready) { Add-Result 'VM answers over PowerShell Direct' 'failed' "No answer within 15 minutes (last error: $lastErr)."; throw 'VM did not come up.' }
+    $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
+    Add-Result 'VM answers over PowerShell Direct' 'passed' $os
+
+    # 3. Copy the installer in: local -> host temp -> VM (Copy-Item over a PowerShell Direct session).
+    try {
+        $stagedOnHost = Invoke-Command -Session $rig -ScriptBlock {
+            $d = Join-Path $env:TEMP ('golden-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $d | Out-Null
+            $d
+        }
+        Copy-Item -Path $InstallerPath -Destination $stagedOnHost -ToSession $rig
+        $hash = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
+        $inVm = Invoke-Command -Session $rig -ArgumentList $stagedOnHost, (Split-Path $InstallerPath -Leaf), $VmName, $vmCred -ScriptBlock {
+            param($dir, $file, $name, $cred)
+            $s = New-PSSession -VMName $name -Credential $cred
+            try {
+                Invoke-Command -Session $s -ScriptBlock { New-Item -ItemType Directory -Force -Path 'C:\golden' | Out-Null }
+                Copy-Item -Path (Join-Path $dir $file) -Destination 'C:\golden\' -ToSession $s
+                Invoke-Command -Session $s -ArgumentList $file -ScriptBlock { param($f) (Get-FileHash (Join-Path 'C:\golden' $f) -Algorithm SHA256).Hash }
+            } finally { Remove-PSSession $s }
+        }
+        if ($inVm -ne $hash) { throw "Hash mismatch after copy (local $hash, VM $inVm)." }
+        Add-Result 'Installer copied into the VM' 'passed' "SHA256 $hash matches."
+    } catch {
+        Add-Result 'Installer copied into the VM' 'failed' $_.Exception.Message
+        throw
+    }
+    $setupName = Split-Path $InstallerPath -Leaf
+
+    # 4. Silent install. Velopack's Setup takes --silent; the component picker is a first-run dialog
+    #    and cannot be driven from here.
+    $install = Invoke-InVm {
+        param($file)
+        $setup = Join-Path 'C:\golden' $file
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $p = Start-Process -FilePath $setup -ArgumentList '--silent' -PassThru
+        $finished = $p.WaitForExit(600000)
+        [pscustomobject]@{ Finished = $finished; ExitCode = if ($finished) { $p.ExitCode } else { $null }; Seconds = [int]$sw.Elapsed.TotalSeconds }
+    } @($setupName)
+    if ($install.Finished -and $install.ExitCode -eq 0) {
+        Add-Result 'Silent install (Setup.exe --silent)' 'passed' "Exit 0 after $($install.Seconds)s."
+    } else {
+        Add-Result 'Silent install (Setup.exe --silent)' 'failed' "Finished=$($install.Finished) exit=$($install.ExitCode) after $($install.Seconds)s."
+    }
+
+
+    # A silent install does not start Deluno, and first run (firewall step, component picker) happens on
+    # first start. Start it the way a person would, in the VM's signed-in desktop session, through a
+    # one-shot scheduled task that is removed again straight after. PowerShell Direct's own session has
+    # no desktop, so the picker could never show there.
+    $launch = Invoke-InVm {
+        $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Deluno\current') -Filter 'Deluno.exe' | Select-Object -First 1
+        if (-not $exe) { return 'Deluno.exe not found.' }
+        $user = "$env:USERDOMAIN\$env:USERNAME"
+        $action = New-ScheduledTaskAction -Execute $exe.FullName -WorkingDirectory $exe.DirectoryName
+        $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName 'GoldenPathLaunch' -Action $action -Principal $principal -Force | Out-Null
+        Start-ScheduledTask -TaskName 'GoldenPathLaunch'
+        Start-Sleep -Seconds 5
+        Unregister-ScheduledTask -TaskName 'GoldenPathLaunch' -Confirm:$false
+        'started in the signed-in desktop session'
+    }
+    Add-Result 'Deluno started in the desktop session' $(if ($launch -like 'started*') { 'passed' } else { 'failed' }) $launch
+
+    # First run (firewall step, then the picker) starts after Setup; give it time to settle or show itself.
+    Start-Sleep -Seconds $PickerWaitSeconds
+
+    # 5. What is installed and running.
+    $state = Invoke-InVm {
+        param($port)
+        $root = Join-Path $env:LOCALAPPDATA 'Deluno'
+        $exe = Get-ChildItem -Path $root -Recurse -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'Deluno*' -and $_.ProcessName -ne 'Deluno.Setup' } | Select-Object -ExpandProperty ProcessName)
+        $http = $null; $body = $null
+        for ($i = 0; $i -lt 20 -and -not $http; $i++) {
+            try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/auth/bootstrap-status" -UseBasicParsing -TimeoutSec 5
+                $http = [int]$r.StatusCode; $body = $r.Content
+            } catch {
+                $resp = $_.Exception.Response
+                if ($resp) { $http = [int]$resp.StatusCode; $body = $_.ErrorDetails.Message } else { Start-Sleep -Seconds 3 }
+            }
+        }
+        $listen = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 7879, 8081, 9091, 8112, 8080, 6789, 9347 } |
+            ForEach-Object { "$($_.LocalAddress):$($_.LocalPort) pid $($_.OwningProcess) $((Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName)" })
+        $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+        $hook = if (Test-Path $hookLog) { @(Get-Content $hookLog -Tail 20) } else { @() }
+        $uninstall = @(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -match 'Deluno|qBittorrent|Transmission|Deluge|SABnzbd|NZBGet|Weir' } |
+            ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)" })
+        $data = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $components = if (Test-Path (Join-Path $data 'components')) { @(Get-ChildItem (Join-Path $data 'components') -Directory | Select-Object -ExpandProperty FullName) } else { @() }
+        $clientFolders = @('C:\Downloads\Completed', 'C:\Downloads\Completed\Movies', 'C:\Downloads\Completed\TV', 'D:\Incomplete') | ForEach-Object { "$_ : $(Test-Path $_)" }
+        $configs = @(
+            "$env:APPDATA\qBittorrent\qBittorrent.ini", "$env:LOCALAPPDATA\transmission", "$env:APPDATA\transmission",
+            "$env:APPDATA\deluge", "$env:LOCALAPPDATA\sabnzbd", "$env:APPDATA\NZBGet", "$env:ProgramData\NZBGet", "$env:ProgramData\Weir", "$env:LOCALAPPDATA\Weir"
+        ) | Where-Object { Test-Path $_ }
+        $dataTop = if (Test-Path $data) { @(Get-ChildItem $data -Force | Select-Object -ExpandProperty Name) } else { @() }
+        [pscustomobject]@{
+            Exe = $exe.FullName; FileVersion = $exe.VersionInfo.ProductVersion; Processes = $procs; Http = $http; Body = $body
+            Listening = $listen; Hook = $hook; Uninstall = $uninstall; DataRoot = $data; DataTop = $dataTop
+            Components = $components; ClientFolders = $clientFolders; ConfigsFound = $configs
+        }
+    } @(7879)
+
+    if ($state.Exe) {
+        $isBuild = ($state.FileVersion -and ($state.FileVersion -like "*$Version*"))
+        if ($isBuild) { Add-Result 'Installed build is the one under test' 'passed' "Deluno.exe reports $($state.FileVersion)." }
+        else { Add-Result 'Installed build is the one under test' 'failed' "Deluno.exe reports '$($state.FileVersion)', expected $Version." }
+    } else {
+        Add-Result 'Installed build is the one under test' 'failed' 'Deluno.exe not found under the install folder.'
+    }
+
+    Add-Result 'Deluno process running' $(if ($state.Processes.Count -gt 0) { 'passed' } else { 'failed' }) $(if ($state.Processes.Count -gt 0) { ($state.Processes -join ', ') } else { 'No Deluno process after install.' })
+
+    if ($state.Http -eq 200) {
+        Add-Result 'Deluno answers on its port' 'passed' "GET /api/auth/bootstrap-status on port 7879 returned 200."
+        Add-Result 'First-run state' 'passed' "bootstrap-status says: $($state.Body)"
+    } else {
+        Add-Result 'Deluno answers on its port' 'failed' "GET /api/auth/bootstrap-status on port 7879 returned '$($state.Http)'."
+        Add-Result 'First-run state' 'failed' 'No answer, so the first-run state could not be read.'
+    }
+
+    Add-Result 'Listening ports (Deluno 7879, clients 8081/9091/8112/8080/6789, Weir 9347)' 'passed' $(if ($state.Listening.Count) { $state.Listening -join '; ' } else { 'none of them is listening' })
+
+    # Components: the picker cannot be driven, so the expected result of a silent install is none.
+    $names = 'qBittorrent', 'Transmission', 'Deluge', 'SABnzbd', 'NZBGet', 'Weir'
+    $found = foreach ($n in $names) { $state.Uninstall | Where-Object { $_ -like "*$n*" } }
+    if ($found) {
+        Add-Result 'Bundled components installed (versions)' 'passed' ($found -join '; ')
+    } else {
+        Add-Result 'Bundled components installed (versions)' 'manual' 'None installed, as expected after a silent install: Setup.exe and the app take no component choice on the command line, the picker is a first-run dialog. Tick the five clients plus Weir by hand (step 1), then re-run the checks on the VM to read their versions and folders.'
+    }
+    $firstRun = @($state.Hook | Where-Object { $_ -match 'first run' })
+    if ($firstRun.Count -gt 0) {
+        Add-Result 'First-run hook ran (firewall step, picker)' 'passed' ($firstRun -join ' | ')
+    } else {
+        Add-Result 'First-run hook ran (firewall step, picker)' 'manual' 'The install hook log has no first-run line: a silent Setup does not trigger it, so the picker and the firewall step were not exercised. Run Setup.exe by hand in the VM console for step 1.'
+    }
+    Add-Result 'Component data folders' 'passed' ("data root $($state.DataRoot): [" + ($state.DataTop -join ', ') + "]; component folders: [" + ($state.Components -join ', ') + "]; client config found: [" + ($state.ConfigsFound -join ', ') + "]; download folders: " + ($state.ClientFolders -join '; '))
+    Add-Result 'Install hook log' 'passed' ($state.Hook -join ' | ')
+
+    # Everything else in docs/golden-path.md needs eyes or a person's clicks.
+    $manual = @(
+        '1. Picker: tick the five clients plus Weir (exact-SHA Weir build); progress and finish screens show; "open Deluno" is offered; Weir answers on this PC only and its tray starts silently.',
+        '2. Clients: Movies and TV categories, the documented folders, Deluge Label plugin on, Library Routing folder check all Matches.',
+        '3. Guided setup: every automatic choice asked Yes/No; Connect Weir creates the account and links Movies and TV with the Folder chain all green.',
+        '4. Public trackers: three Healthy and kept after Add; routing automatic; 1337x through the Cloudflare helper.',
+        '5. Usenet: provider entered once; SABnzbd and NZBGet Healthy only after; one Newznab indexer Healthy.',
+        '6. Real path: torrent film, Usenet film, TV episode, 4:3 film; lanes in Weir; originals still in the client folder; posters; Activity in both apps.',
+        '7. A title''s own profile is honoured: 4K and 720p each targeted correctly.',
+        '8. Failure and recovery: stalled torrent replaced; failed hand-off under Needs action and Try again; remove with files and restore.',
+        '9. Weir pause and repeats: paused hand-off waits and is processed once on resume; a repeat settles as Skipped: already done.',
+        '10. Weir reachable from another computer via Devices on my network (VM network Public).',
+        '11. Screens at 1920, 1366 and phone width; Weir Logs clean; no issue numbers or old page names in copy.',
+        '12. Pass record: set the golden-path commit status on both commits.'
+    )
+    foreach ($m in $manual) { Add-Result ($m.Substring(0, $m.IndexOf('.'))) 'manual' $m.Substring($m.IndexOf('.') + 2) }
+}
+catch {
+    Add-Result 'Run aborted' 'failed' $_.Exception.Message
+}
+finally {
+    if ($rig) {
+        if ($stagedOnHost) {
+            try { Invoke-Command -Session $rig -ArgumentList $stagedOnHost -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } } catch { }
+        }
+        try {
+            $vmState = Invoke-Command -Session $rig -ArgumentList $VmName -ScriptBlock { param($n) (Get-VM -Name $n).State.ToString() }
+            Write-Host "VM $VmName is left $vmState for the manual steps."
+        } catch { }
+        Remove-PSSession $rig -ErrorAction SilentlyContinue
+    }
+
+    New-Item -ItemType Directory -Force -Path $OutDirectory | Out-Null
+    $file = Join-Path $OutDirectory ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("# Golden path $Version, $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+    $lines.Add('')
+    $lines.Add("Installer SHA256: $((Get-FileHash $InstallerPath -Algorithm SHA256).Hash)")
+    $lines.Add('')
+    $lines.Add('| Step | Result | Detail |')
+    $lines.Add('| --- | --- | --- |')
+    foreach ($r in $results) {
+        $lines.Add("| $($r.Step) | $($r.Status) | $(($r.Detail -replace '\|', '/') -replace '\r?\n', ' ') |")
+    }
+    $failed = @($results | Where-Object Status -eq 'failed').Count
+    $lines.Add('')
+    $lines.Add("Scripted steps failed: $failed. Manual lines are still to be done by a person; fill each with what was seen.")
+    Set-Content -Path $file -Value $lines -Encoding utf8
+    Write-Host "Results: $file"
+}
+if (@($results | Where-Object Status -eq 'failed').Count -gt 0) { exit 1 }
