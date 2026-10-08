@@ -115,6 +115,46 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
     }
 
     [Fact]
+    public async Task Only_a_second_copy_at_the_same_quality_is_already_imported_a_better_release_is_an_upgrade()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        const string Better = "Nosferatu.1922.2160p.BluRay.x265-HD4U";
+        var betterFolder = Directory.CreateDirectory(Path.Combine(scene.Downloads, Better)).FullName;
+        await File.WriteAllBytesAsync(Path.Combine(betterFolder, Better + ".mkv"), new byte[64]);
+
+        // The 1080p release was imported. A 2160p release of the same film is grabbed later and handed over on its own.
+        await RecordDispatchAsync(app, scene, imported: true);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        await Task.Delay(30);
+        await jobs.RecordDownloadDispatchAsync(
+            scene.LibraryId, "movies", "movie", "movie-nosferatu", Better, "Fixture Indexer",
+            Client, "Deluge", "sent", null, clientExternalId: $"hash-{Better}", cancellationToken: CancellationToken.None);
+        var handoff = await Repository(app).EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", Client, $"hash-{Better}", Better, betterFolder, "Weir", DateTimeOffset.UnixEpoch),
+            CancellationToken.None);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, Better)).FullName;
+        var output = Path.Combine(folder, Better + ".mkv");
+        await File.WriteAllBytesAsync(output, new byte[2048]);
+        File.SetLastWriteTimeUtc(output, DateTime.UtcNow.AddMinutes(-30));
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = output
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("alreadyHandled", await response.Content.ReadAsStringAsync());
+        Assert.True(File.Exists(output), "the better release's output is not thrown away as a second copy");
+        var activity = await app.Services.GetRequiredService<IActivityFeedRepository>()
+            .ListActivityAsync(20, "processor-handoff", handoff.Id, CancellationToken.None);
+        Assert.DoesNotContain(activity, item => item.Category == "processing.output.already-imported");
+    }
+
+    [Fact]
     public async Task Try_again_is_refused_once_the_hand_off_has_a_result()
     {
         await using var app = await ApplicationTestHost.StartAsync();
