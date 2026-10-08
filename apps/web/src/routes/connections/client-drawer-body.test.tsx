@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ClientDrawerBody } from "./client-drawer-body";
 import { emptyClientForm } from "./forms";
 import type { ClientForm } from "./forms";
@@ -101,5 +101,44 @@ describe("ClientDrawerBody open the client's page (#1142)", () => {
   it("is not offered while adding a new client", () => {
     renderDrawer(emptyClientForm());
     expect(screen.queryByRole("link", { name: /page$/ })).toBeNull();
+  });
+});
+
+describe("ClientDrawerBody page link for a client on the server only (#1142)", () => {
+  const original = window.location;
+  function setBrowserHost(hostname: string) {
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, hostname } });
+  }
+  afterEach(() => Object.defineProperty(window, "location", { configurable: true, value: original }));
+
+  function renderEditing(form: ClientForm) {
+    render(
+      <QueryClientProvider client={new QueryClient()}><ClientDrawerBody
+        form={form} setForm={() => {}} editing={{ id: "c1", name: "NZBGet" } as never} errors={{}} clearError={() => {}}
+        mappings={[]} newMapping={{ remotePath: "", localPath: "" }} setNewMapping={() => {}} busy={null}
+        onAddMapping={() => {}} onRemoveMapping={() => {}} onTestMapping={() => {}} onRemove={() => {}}
+      /></QueryClientProvider>
+    );
+  }
+  const nzbget = { ...emptyClientForm(), protocol: "nzbget", host: "localhost", port: "6789", password: "secret-login" };
+
+  it("shows the address with a plain note, not a dead link, when the browser is on another computer", () => {
+    setBrowserHost("192.168.1.20");
+    renderEditing(nzbget);
+    expect(screen.queryByRole("link", { name: /page$/ })).toBeNull();
+    expect(screen.getByText(/own page is on the computer Deluno runs on: http:\/\/localhost:6789\//)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("secret-login");
+  });
+
+  it("keeps the link when the browser is on that computer", () => {
+    setBrowserHost("localhost");
+    renderEditing(nzbget);
+    expect(screen.getByRole("link", { name: /page$/ }).getAttribute("href")).toBe("http://localhost:6789/");
+  });
+
+  it("links a real address as before whatever the browser's computer", () => {
+    setBrowserHost("192.168.1.20");
+    renderEditing({ ...nzbget, host: "192.168.1.10" });
+    expect(screen.getByRole("link", { name: /page$/ }).getAttribute("href")).toBe("http://192.168.1.10:6789/");
   });
 });
