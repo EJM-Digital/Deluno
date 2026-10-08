@@ -341,6 +341,101 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Equal(succeeded, payload.Preview.SourcePath);
     }
 
+    /// <summary>
+    /// Golden path rc.30.8: a release holds a small extra (a 12 MB featurette) that the processor leaves out for
+    /// being under its own size floor. The film was delivered, so the hand-off succeeded; the extra is named in
+    /// one plain line instead of failing the whole hand-off.
+    /// </summary>
+    [Fact]
+    public async Task A_small_extra_the_processor_left_out_does_not_fail_a_delivered_hand_off()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        const string release = "Nosferatu.1922.1080p.BluRay.x265-GRP";
+        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, release, "Featurettes")).Parent!.FullName;
+        await File.WriteAllBytesAsync(Path.Combine(source, "Nosferatu.1922.1080p.BluRay.x265-GRP.mkv"), new byte[200_000]);
+        await File.WriteAllBytesAsync(Path.Combine(source, "Featurettes", "Gallery.mkv"), new byte[2_000]);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, release)).FullName;
+        var film = Path.Combine(folder, "Nosferatu.1922.1080p.BluRay.x265-GRP.mkv");
+        await File.WriteAllBytesAsync(film, new byte[190_000]);
+        var handoff = await HandoffAsync(app, scene, release);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "failed",
+            outputPath = folder,
+            message = "Skipped because this file is 12.1 MB, under the 50 MB minimum.",
+            outputFiles = new[] { film }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+        Assert.NotNull(stored?.ImportJobId);
+        Assert.Contains("Gallery.mkv", stored?.FailureMessage);
+        Assert.Contains("main video was delivered", stored?.FailureMessage);
+    }
+
+    [Fact]
+    public async Task A_later_failed_report_for_one_small_extra_does_not_undo_a_completed_hand_off()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        const string release = "Nosferatu.1922.1080p.BluRay.x265-GRP";
+        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, release, "Featurettes")).Parent!.FullName;
+        await File.WriteAllBytesAsync(Path.Combine(source, "Nosferatu.1922.1080p.BluRay.x265-GRP.mkv"), new byte[200_000]);
+        await File.WriteAllBytesAsync(Path.Combine(source, "Featurettes", "Gallery.mkv"), new byte[2_000]);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, release)).FullName;
+        var film = Path.Combine(folder, "Nosferatu.1922.1080p.BluRay.x265-GRP.mkv");
+        await File.WriteAllBytesAsync(film, new byte[190_000]);
+        var handoff = await HandoffAsync(app, scene, release);
+        var done = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new { libraryId = scene.LibraryId, handoffId = handoff.Id, status = "completed", outputPath = folder });
+        Assert.True(done.IsSuccessStatusCode, await done.Content.ReadAsStringAsync());
+
+        var late = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "failed",
+            message = "Skipped because this file is 12.1 MB, under the 50 MB minimum."
+        });
+
+        Assert.True(late.IsSuccessStatusCode, await late.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+    }
+
+    [Fact]
+    public async Task A_main_video_the_processor_failed_still_fails_the_hand_off()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await TvSceneAsync(app);
+        const string release = "Pioneer.One.S01";
+        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, release)).FullName;
+        await File.WriteAllBytesAsync(Path.Combine(source, "Pioneer.One.S01E01.mkv"), new byte[100_000]);
+        await File.WriteAllBytesAsync(Path.Combine(source, "Pioneer.One.S01E02.mkv"), new byte[100_000]);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, release)).FullName;
+        var done = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
+        await File.WriteAllBytesAsync(done, new byte[90_000]);
+        var handoff = await HandoffAsync(app, scene, release);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "failed",
+            outputPath = folder,
+            message = "1 of 2 episodes processed; 1 failed: S01E02.",
+            outputFiles = new[] { done }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, stored?.Status);
+    }
+
     [Fact]
     public async Task A_status_Deluno_does_not_understand_is_refused_rather_than_read_as_accepted()
     {

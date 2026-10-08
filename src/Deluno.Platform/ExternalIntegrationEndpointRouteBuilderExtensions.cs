@@ -1113,6 +1113,39 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 }
             }
 
+            // A hand-off is judged by its main video. The processor skips or refuses small extras (a 12 MB
+            // featurette under its own size floor) and reports the hand-off as partly failed; when every main
+            // video was delivered the hand-off succeeded, and the extras are recorded in its details.
+            string? extrasNote = null;
+            string[] extrasLeftOut = [];
+            if (partialImport && ProcessorMainVideoJudgement.Judge(handoff.SourcePath, request.OutputFiles, processorName) is { MainVideoDelivered: true } judged)
+            {
+                status = "completed";
+                partialImport = false;
+                extrasNote = judged.Note;
+                extrasLeftOut = judged.Extras.ToArray();
+            }
+
+            // The same, when the processor reports the skipped extra on its own after the hand-off was completed:
+            // the film is delivered and imported, so a later "failed" for one small file does not undo it.
+            if (status == "failed" && !importsOutput &&
+                string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
+                ProcessorMainVideoJudgement.Judge(handoff.SourcePath, ProcessorMainVideoJudgement.OutputsAt(handoff.OutputPath), processorName).MainVideoDelivered)
+            {
+                var skipped = $"{processorName} left a small extra file of {handoff.ReleaseName} out{(message is null ? "." : $": {message}")} The main video was delivered and imported, so the hand-off stays complete.";
+                await activityFeed.RecordActivityAsync(
+                    "processing.extras-left-out",
+                    skipped,
+                    JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, Message = message, ProcessorName = processorName }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return Results.Json(
+                    new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, extrasLeftOut = true },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             // A report already acted on is answered the same way and does
             // nothing new, so a processor that repeats itself - or a worker that
             // restarts mid-send - does not import the same file twice. The job
@@ -1293,7 +1326,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         // being guessed at again (#619).
                         : partialImport
                             ? $"{message} Deluno imported the {request.OutputFiles!.Count} file(s) that {processorName} said succeeded."
-                            : null;
+                            : extrasNote;
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
@@ -1307,6 +1340,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     importJob.NotImportedBecause is not null ? "filesystem.import.not-imported"
                         : missing.Length > 0 ? "processing.outputs-missing"
                         : partialImport ? "processing.partial-import"
+                        : extrasNote is not null ? "processing.extras-left-out"
                         : "processing.completed.import-queued",
                     notImported ?? $"{processorName} produced a cleaned file; Deluno queued it for import.",
                     JsonSerializer.Serialize(new
@@ -1319,7 +1353,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         request.SourcePath,
                         OutputPath = outputPath,
                         JobId = importJob.JobId,
-                        importJob.DispatchId
+                        importJob.DispatchId,
+                        ExtrasLeftOut = extrasLeftOut,
+                        ProcessorMessage = extrasNote is null ? null : message
                     }),
                     importJob.JobId,
                     "processor-handoff",
