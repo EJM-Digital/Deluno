@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCoalescedRevalidate, useLiveInterval } from "../hooks/use-live-interval";
-import { usePollInterval } from "./realtime-state";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
@@ -128,7 +127,7 @@ function snapshotFromCache(): AttentionSnapshot | null {
   };
 }
 
-export function useAttention(pollMs = 45000) {
+export function useAttention() {
   const [snapshot, setSnapshot] = useState<AttentionSnapshot>(() => snapshotFromCache() ?? empty);
   // Guards against a second call landing while the batch below is still in
   // flight (#937). Nothing here waited its turn: the 45s ticker, every
@@ -142,6 +141,8 @@ export function useAttention(pollMs = 45000) {
   // in-flight batch at a time; a trigger that arrives mid-batch is dropped,
   // not queued -- the next poll or event finds the loop again.
   const loadingRef = useRef(false);
+  // A push that lands while a batch is in flight is not lost (#1179): one more batch runs when this one ends.
+  const againRef = useRef(false);
 
   /**
    * `force` asks the server again whatever the cache holds (an event said
@@ -151,7 +152,10 @@ export function useAttention(pollMs = 45000) {
    * read it.
    */
   const load = useCallback(async (force = false) => {
-    if (loadingRef.current) return;
+    if (loadingRef.current) {
+      if (force) againRef.current = true;
+      return;
+    }
     loadingRef.current = true;
     try {
       const orphansKnown = readCached(sharedSources.orphans) !== undefined;
@@ -186,7 +190,18 @@ export function useAttention(pollMs = 45000) {
       setSnapshot((s) => ({ ...s, loading: false }));
     } finally {
       loadingRef.current = false;
+      if (againRef.current) {
+        againRef.current = false;
+        void load(true);
+      }
     }
+  }, []);
+
+  /** Reads only these sources again, for a change that can move nothing else (a title or an indexer changing). */
+  const loadSome = useCallback(async (...sources: RouteSource<unknown>[]) => {
+    await Promise.all(sources.map((source) => readFresh(source, true).catch(() => undefined)));
+    const next = snapshotFromCache();
+    if (next) setSnapshot(next);
   }, []);
 
   // The first read waits a beat so it never competes with the screen being
@@ -195,9 +210,6 @@ export function useAttention(pollMs = 45000) {
     const timer = window.setTimeout(() => void load(), 400);
     return () => window.clearTimeout(timer);
   }, [load]);
-
-  // The safety-net read runs only while the realtime connection is down (#1097): connected, every change is pushed and no timer runs.
-  useLiveInterval(() => void load(), usePollInterval(pollMs));
 
   // Whatever a screen reads and finds changed (Transfers finishing a leftover
   // folder scan, Activity dismissing a failure) moves the count now, without a
@@ -220,6 +232,17 @@ export function useAttention(pollMs = 45000) {
   // #909: a health check starting or clearing lights (or clears) the bell's
   // dot immediately, rather than waiting for the next poll.
   useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => void load(true));
+  // #1179: nothing here is read on a timer. Everything the count reads is pushed: a recovery case, a hand-off to a
+  // processor, a download's journey, a client going away or coming back, a leftover folder or a title with no release
+  // (all AttentionChanged, which the server sends on the dashboard subject so the bell needs no screen open).
+  const reloadAfterAttention = useCoalescedRevalidate(() => void load(true), 1_500);
+  useSignalREvent("AttentionChanged", RealtimeGroups.Dashboard, () => reloadAfterAttention());
+  // A title or an indexer changing moves only the wanted counts, or the indexers and the Dashboard summary.
+  const reloadWanted = useCoalescedRevalidate(() => void loadSome(sharedSources.movieWanted, sharedSources.seriesWanted, summarySource), 2_500);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => reloadWanted());
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, () => reloadWanted());
+  const reloadIndexers = useCoalescedRevalidate(() => void loadSome(sharedSources.indexers, summarySource), 1_500);
+  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => reloadIndexers());
   // #1098: a real test of a connection finished. A connection that stopped (or started) answering changes what needs a person; a burst of quiet results is folded into one read.
   const reloadAfterCheck = useCoalescedRevalidate(() => void load(true), 1_500);
   useSignalREvent("ConnectionChecked", RealtimeGroups.Dashboard, () => reloadAfterCheck());

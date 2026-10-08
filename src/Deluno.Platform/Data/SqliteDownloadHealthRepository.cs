@@ -12,7 +12,8 @@ namespace Deluno.Platform.Data;
 public sealed class SqliteDownloadHealthRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    IConnectivityMonitor? connectivityMonitor = null)
+    IConnectivityMonitor? connectivityMonitor = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IDownloadHealthRepository
 {
     // Tests, and any caller that predates #901, construct this without a
@@ -111,6 +112,7 @@ public sealed class SqliteDownloadHealthRepository(
 
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceChangedAsync(clientId, cancellationToken);
         return touched;
     }
 
@@ -186,6 +188,7 @@ public sealed class SqliteDownloadHealthRepository(
             await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(progressRecords), now, cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+        if (forgotten > 0) await AnnounceChangedAsync(clientId, cancellationToken);
         return forgotten + forgottenProgress;
     }
 
@@ -264,6 +267,7 @@ public sealed class SqliteDownloadHealthRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        if (moved > 0) await AnnounceChangedAsync(clientId, cancellationToken);
         return moved + progressMoved;
     }
 
@@ -289,6 +293,7 @@ public sealed class SqliteDownloadHealthRepository(
         records[index] = updated;
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceChangedAsync(clientId, cancellationToken);
         return updated;
     }
 
@@ -303,6 +308,7 @@ public sealed class SqliteDownloadHealthRepository(
 
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(Array.Empty<DownloadHealthRecord>()), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceChangedAsync(null, cancellationToken);
         return records.Count;
     }
 
@@ -330,6 +336,7 @@ public sealed class SqliteDownloadHealthRepository(
             await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(progressRecords), now, cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+        if (removedRecords > 0) await AnnounceChangedAsync(null, cancellationToken);
         return removedRecords + removedProgress;
     }
 
@@ -677,6 +684,10 @@ public sealed class SqliteDownloadHealthRepository(
         try { return JsonSerializer.Deserialize<List<DownloadProgressRecord>>(json) ?? []; }
         catch (JsonException) { return []; }
     }
+
+    /// <summary>Tells the Activity screen's download-health step a record was written or cleared. Sent after the commit; a missed push is caught up on reconnect.</summary>
+    private Task AnnounceChangedAsync(string? clientId, CancellationToken cancellationToken)
+        => realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishDownloadHealthChangedAsync(clientId ?? string.Empty, cancellationToken));
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadSettingsAsync(
         System.Data.Common.DbConnection connection,

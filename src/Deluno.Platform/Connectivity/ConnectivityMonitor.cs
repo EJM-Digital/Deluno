@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using Deluno.Contracts;
 using Deluno.Contracts.Connectivity;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
@@ -30,7 +31,8 @@ public sealed class ConnectivityMonitor(
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider,
     IConfiguration configuration,
-    ILogger<ConnectivityMonitor> logger) : IConnectivityMonitor
+    ILogger<ConnectivityMonitor> logger,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : IConnectivityMonitor
 {
     /// <summary>
     /// Used when nothing configures <c>Deluno:Connectivity:CheckHosts</c>.
@@ -124,7 +126,15 @@ public sealed class ConnectivityMonitor(
                 Message: isOutage
                     ? $"Internet down since {FormatClock(sinceUtc ?? now)} — cleanup and searching paused."
                     : "Connected.");
+            var flipped = isOutage != wasOutage;
             _cached = status;
+            if (flipped)
+            {
+                // The outage banner follows this push instead of asking every few seconds.
+                await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishConnectivityChangedAsync(
+                    new ConnectivityChangedEvent(isOutage, sinceUtc?.ToString("O"), now.ToString("O"), status.Message), cancellationToken));
+            }
+
             return status;
         }
         finally

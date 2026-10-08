@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Notifications;
@@ -62,7 +63,8 @@ public sealed class OrphanedDownloadService(
     IOutboundNotificationService? outboundNotificationService = null,
     INotificationService? notificationPreferences = null,
     OrphanedDownloadCache? cache = null,
-    LeftoverScanMemory? scanMemory = null)
+    LeftoverScanMemory? scanMemory = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IOrphanedDownloadService
 {
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
@@ -86,7 +88,15 @@ public sealed class OrphanedDownloadService(
     {
         var found = await ScanCoreAsync(clientSnapshots, cancellationToken);
         // Remembered for the Dashboard, which never walks a folder itself.
-        scanMemory?.Record(found.Count, found.Sum(item => item.SizeBytes), timeProvider.GetUtcNow());
+        var previous = scanMemory?.Last;
+        var bytes = found.Sum(item => item.SizeBytes);
+        scanMemory?.Record(found.Count, bytes, timeProvider.GetUtcNow());
+        // A leftover folder appearing or going changes what the bell counts; the first reading only sets the baseline.
+        if (previous is not null && (previous.Count != found.Count || previous.Bytes != bytes))
+        {
+            await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishAttentionChangedAsync("orphans", cancellationToken));
+        }
+
         return found;
     }
 

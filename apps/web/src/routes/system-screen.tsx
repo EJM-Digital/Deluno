@@ -237,9 +237,8 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
     ]);
   });
 
-  const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
-  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => n + 1));
-  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
+  // Background jobs only (#1179): a download joining or leaving the Queue is not a background job, so those pushes no longer move this count; it follows the jobs list.
+  const liveActiveJobs = activeJobs;
   // #909: a health check starting or clearing revalidates the whole loader,
   // the same coarse refresh SettingsChanged and friends already use here --
   // health rows are read once per page load, not worth a live socket of

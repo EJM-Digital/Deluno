@@ -21,6 +21,12 @@ public static class LiveEventNames
     public const string ReleasesTurnedDown = "ReleasesTurnedDown";
     public const string ConnectionUsed = "ConnectionUsed";
     public const string ConnectionChecked = "ConnectionChecked";
+    /// <summary>Something that counts in the bell changed (a recovery case, a hand-off, a client, a leftover folder, a wanted title with no release). Sent on the dashboard subject, so the bell needs no screen open.</summary>
+    public const string AttentionChanged = "AttentionChanged";
+    /// <summary>The internet went down or came back: sent on the dashboard subject, so the outage banner needs no poll.</summary>
+    public const string ConnectivityChanged = "ConnectivityChanged";
+    /// <summary>A download-health record was written or cleared (a strike, a finding ending, an ignore).</summary>
+    public const string DownloadHealthChanged = "DownloadHealthChanged";
 }
 
 public static class LiveRealtimeSubject
@@ -206,6 +212,15 @@ public sealed record ConnectionUsedEvent(
     int Busy,
     string AtUtc);
 
+/// <summary>Payload of <c>AttentionChanged</c>: what moved the bell's count, in a word.</summary>
+public sealed record AttentionChangedEvent(string Reason);
+
+/// <summary>Payload of <c>ConnectivityChanged</c>: the internet is down (or back) since a moment, as <c>GET /api/system/connectivity</c> says it.</summary>
+public sealed record ConnectivityChangedEvent(bool IsOutage, string? SinceUtc, string CheckedUtc, string Message);
+
+/// <summary>Payload of <c>DownloadHealthChanged</c>: a download-health record changed on this client (empty for every client).</summary>
+public sealed record DownloadHealthChangedEvent(string? ClientId);
+
 public static class LiveEventPublisherExtensions
 {
     /// <summary>
@@ -233,13 +248,13 @@ public static class LiveEventPublisherExtensions
     }
 
     public static Task PublishJourneyStageChangedAsync(this IRealtimeEventPublisher publisher, JourneyStageChangedEvent payload, CancellationToken cancellationToken)
-        => publisher.PublishLiveEventAsync(LiveEventNames.JourneyStageChanged, payload, cancellationToken);
+        => PublishWithAttentionAsync(publisher, LiveEventNames.JourneyStageChanged, payload, "journey", cancellationToken);
 
     public static Task PublishProcessorHandoffChangedAsync(this IRealtimeEventPublisher publisher, ProcessorHandoffChangedEvent payload, CancellationToken cancellationToken)
-        => publisher.PublishLiveEventAsync(LiveEventNames.ProcessorHandoffChanged, payload, cancellationToken);
+        => PublishWithAttentionAsync(publisher, LiveEventNames.ProcessorHandoffChanged, payload, "handoff", cancellationToken);
 
     public static Task PublishRecoveryCaseChangedAsync(this IRealtimeEventPublisher publisher, RecoveryCaseChangedEvent payload, CancellationToken cancellationToken)
-        => publisher.PublishLiveEventAsync(LiveEventNames.RecoveryCaseChanged, payload, cancellationToken);
+        => PublishWithAttentionAsync(publisher, LiveEventNames.RecoveryCaseChanged, payload, "recovery", cancellationToken);
 
     public static Task PublishJobChangedAsync(this IRealtimeEventPublisher publisher, JobChangedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.JobChanged, payload, cancellationToken);
@@ -251,19 +266,42 @@ public static class LiveEventPublisherExtensions
         => publisher.PublishLiveEventAsync(LiveEventNames.IndexerQueryRecorded, payload, cancellationToken);
 
     public static Task PublishClientStateChangedAsync(this IRealtimeEventPublisher publisher, ClientStateChangedEvent payload, CancellationToken cancellationToken)
-        => publisher.PublishLiveEventAsync(LiveEventNames.ClientStateChanged, payload, cancellationToken);
+        => PublishWithAttentionAsync(publisher, LiveEventNames.ClientStateChanged, payload, "client", cancellationToken);
 
     public static Task PublishDriveSpaceChangedAsync(this IRealtimeEventPublisher publisher, DriveSpaceChangedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.DriveSpaceChanged, payload, cancellationToken);
 
     public static Task PublishReleasesTurnedDownAsync(this IRealtimeEventPublisher publisher, ReleasesTurnedDownEvent payload, CancellationToken cancellationToken)
-        => publisher.PublishLiveEventAsync(LiveEventNames.ReleasesTurnedDown, payload, cancellationToken);
+        => PublishWithAttentionAsync(publisher, LiveEventNames.ReleasesTurnedDown, payload, "noRelease", cancellationToken);
 
     public static Task PublishConnectionUsedAsync(this IRealtimeEventPublisher publisher, ConnectionUsedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.ConnectionUsed, payload, cancellationToken);
 
     public static Task PublishDownloadSpeedSampleAsync(this IRealtimeEventPublisher publisher, DownloadSpeedSampleEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.DownloadSpeedSample, payload, cancellationToken);
+
+    /// <summary>
+    /// Sends a Live push and, beside it, the small <c>AttentionChanged</c> on the dashboard subject: the bell
+    /// listens to that one, so its count moves with no screen open and without joining Live (which makes the
+    /// server read the download clients every second).
+    /// </summary>
+    private static async Task PublishWithAttentionAsync(IRealtimeEventPublisher publisher, string eventName, object payload, string reason, CancellationToken cancellationToken)
+    {
+        await publisher.PublishLiveEventAsync(eventName, payload, cancellationToken);
+        await publisher.PublishAttentionChangedAsync(reason, cancellationToken);
+    }
+
+    /// <summary>Something the bell counts changed; <paramref name="reason"/> says what (recovery, handoff, client, journey, orphans, noRelease, update).</summary>
+    public static Task PublishAttentionChangedAsync(this IRealtimeEventPublisher publisher, string reason, CancellationToken cancellationToken)
+        => publisher.PublishDashboardEventAsync(LiveEventNames.AttentionChanged, new AttentionChangedEvent(reason), cancellationToken);
+
+    /// <summary>The internet went down or came back.</summary>
+    public static Task PublishConnectivityChangedAsync(this IRealtimeEventPublisher publisher, ConnectivityChangedEvent payload, CancellationToken cancellationToken)
+        => publisher.PublishDashboardEventAsync(LiveEventNames.ConnectivityChanged, payload, cancellationToken);
+
+    /// <summary>A download-health record was written or cleared.</summary>
+    public static Task PublishDownloadHealthChangedAsync(this IRealtimeEventPublisher publisher, string clientId, CancellationToken cancellationToken)
+        => publisher.PublishDashboardEventAsync(LiveEventNames.DownloadHealthChanged, new DownloadHealthChangedEvent(clientId), cancellationToken);
 
     public static async Task PublishConnectionCheckedAsync(this IRealtimeEventPublisher publisher, ConnectionCheckedEvent payload, CancellationToken cancellationToken)
     {
