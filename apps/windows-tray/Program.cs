@@ -127,14 +127,34 @@ internal static class Program
             using var mutex = new Mutex(true, @"Global\DelunoTrayApplication", out bool isFirstInstance);
             if (!isFirstInstance)
             {
-                NativeMethods.PostMessage(
-                    NativeMethods.FindWindow(null, "Deluno"),
-                    NativeMethods.WM_DELUNO_SHOW, IntPtr.Zero, IntPtr.Zero);
+                // The copy that is running shows a balloon, "Deluno is already running", with the address.
+                SecondLaunchSignal.Notify();
+                return;
+            }
+
+            // An update downloaded earlier is applied now, before the host runs, so Deluno starts clean on the new version.
+            if (TryApplyPendingUpdateAtStart())
+            {
                 return;
             }
 
             EnsureWinFormsBootstrap();
             Application.Run(new TrayApplication());
+        }
+    }
+
+    /// <summary>True when a downloaded update was handed to Velopack and this copy is about to be replaced.</summary>
+    private static bool TryApplyPendingUpdateAtStart()
+    {
+        try
+        {
+            var logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno", "logs");
+            return new VelopackUpdateOrchestrator(Microsoft.Extensions.Logging.Abstractions.NullLogger<VelopackUpdateOrchestrator>.Instance).ApplyPendingAtStart(logs);
+        }
+        catch (Exception ex)
+        {
+            HookLog.Write($"applying a downloaded update at start failed: {ex.Message}");
+            return false;
         }
     }
 

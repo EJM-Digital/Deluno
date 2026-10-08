@@ -2,6 +2,12 @@ namespace Deluno.Api.Updates;
 
 public sealed class UpdateStateMachine
 {
+    /// <summary>
+    /// Raised after the state changes (not on every progress tick), so a listener such as the Windows tray icon
+    /// follows the update without polling.
+    /// </summary>
+    public event Action? Changed;
+
     public string State { get; private set; } = UpdateStates.Idle;
     public string? LatestVersion { get; private set; }
     public string? LastError { get; private set; }
@@ -14,6 +20,7 @@ public sealed class UpdateStateMachine
     public void MarkNotSupported()
     {
         State = UpdateStates.NotSupported;
+        Changed?.Invoke();
     }
 
     public void MarkChecking()
@@ -21,6 +28,7 @@ public sealed class UpdateStateMachine
         State = UpdateStates.Checking;
         ProgressPercent = null;
         LastError = null;
+        Changed?.Invoke();
     }
 
     public void MarkUpToDate(DateTimeOffset checkedUtc, bool restartRequired)
@@ -31,6 +39,7 @@ public sealed class UpdateStateMachine
         LatestVersion = restartRequired ? LatestVersion : null;
         State = restartRequired ? UpdateStates.ReadyToRestart : UpdateStates.UpToDate;
         ProgressPercent = restartRequired ? 100 : null;
+        Changed?.Invoke();
     }
 
     public void MarkUpdateAvailable(DateTimeOffset checkedUtc, string latestVersion)
@@ -42,6 +51,7 @@ public sealed class UpdateStateMachine
         State = UpdateStates.UpdateAvailable;
         ProgressPercent = null;
         LastError = null;
+        Changed?.Invoke();
     }
 
     public void MarkDownloading()
@@ -49,6 +59,7 @@ public sealed class UpdateStateMachine
         State = UpdateStates.Downloading;
         ProgressPercent = 0;
         LastError = null;
+        Changed?.Invoke();
     }
 
     public void ReportProgress(int progressPercent)
@@ -63,6 +74,7 @@ public sealed class UpdateStateMachine
         UpdateAvailable = restartRequired;
         ProgressPercent = 100;
         State = restartRequired ? UpdateStates.ReadyToRestart : UpdateStates.UpToDate;
+        Changed?.Invoke();
     }
 
     public void MarkReadyToRestart()
@@ -70,11 +82,13 @@ public sealed class UpdateStateMachine
         RestartRequired = true;
         UpdateAvailable = true;
         State = UpdateStates.ReadyToRestart;
+        Changed?.Invoke();
     }
 
     public void MarkError(string? message)
     {
         LastError = message;
         State = UpdateStates.Error;
+        Changed?.Invoke();
     }
 }
