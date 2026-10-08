@@ -64,6 +64,7 @@ public static class ServiceHost
             new ServiceFailureActionsRetry(provider.GetRequiredService<Deluno.Contracts.IBackgroundProblemReporter>()));
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
+        builder.Services.AddDelunoWebPipeline(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
 
         builder.Services
@@ -96,95 +97,10 @@ public static class ServiceHost
             message => app.Logger.LogWarning("{Message}", message),
             app.Services.GetService<Deluno.Contracts.IBackgroundProblemReporter>()));
 
-        app.UseExceptionHandler(errorApp =>
-        {
-            errorApp.Run(async context =>
-            {
-                context.Response.StatusCode = 500;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync("{\"error\":\"An unexpected error occurred.\"}");
-            });
-        });
-
-        app.Use(async (context, next) =>
-        {
-            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            context.Response.Headers["X-Frame-Options"] = "DENY";
-            context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
-            context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-            await next();
-        });
-
-        app.UseDefaultFiles();
-        app.UseStaticFiles();
-        app.UseDelunoCorrelation();
-
-        app.Use(async (context, next) =>
-        {
-            var path = context.Request.Path;
-            if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
-                context.Response.Headers.CacheControl = "no-store";
-            await next();
-        });
-
-        app.Use(async (context, next) =>
-        {
-            var path = context.Request.Path;
-            var requiresAuth =
-                (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
-                 !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
-                 !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)) ||
-                path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
-
-            if (!requiresAuth) { await next(); return; }
-
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
-            if (denied is not null) { await denied.ExecuteAsync(context); return; }
-
-            var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveScopes(path, context.Request.Method));
-            if (scopeDenied is not null) { await scopeDenied.ExecuteAsync(context); return; }
-
-            await next();
-        });
-
-        // The same map every other host uses. See DelunoApplicationEndpointMapping.
-        app.MapDelunoApplicationEndpoints();
-
-        app.MapFallback(async context =>
-        {
-            // An unknown API path is a 404, not the app shell.
-            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
-            {
-                context.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
-            }
-
-            var indexPath = Path.Combine(
-                app.Environment.WebRootPath ?? app.Environment.ContentRootPath,
-                "index.html");
-            context.Response.ContentType = "text/html; charset=utf-8";
-            await context.Response.SendFileAsync(indexPath);
-        });
+        // The request pipeline every Deluno host shares (#1176). The service ran
+        // its own copy with no routing, no allowed hosts and no forwarded headers.
+        app.UseDelunoRequestPipeline();
 
         await app.RunAsync();
-    }
-
-    private static string[] ResolveScopes(PathString path, string method)
-    {
-        var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
-        if (isRead) return ["read"];
-        if (path.StartsWithSegments("/api/download-clients", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWithSegments("/api/download-dispatches", StringComparison.OrdinalIgnoreCase))
-            return ["queue"];
-        if (path.StartsWithSegments("/api/filesystem/import", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWithSegments("/api/integrations", StringComparison.OrdinalIgnoreCase))
-            return ["imports", "queue"];
-        if (path.StartsWithSegments("/api/backups", StringComparison.OrdinalIgnoreCase))
-            return ["system"];
-        return ["write"];
     }
 }

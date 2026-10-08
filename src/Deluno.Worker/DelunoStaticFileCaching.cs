@@ -1,9 +1,11 @@
 using System.IO.Compression;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Deluno.Host;
+namespace Deluno.Worker;
 
 /// <summary>
 /// Cache headers for the bundled web UI (#1081). Vite content-hashes everything
