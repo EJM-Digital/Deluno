@@ -221,6 +221,8 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
 export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm, editing: boolean) {
   return {
     name: form.name.trim(),
+    // A name a person typed is kept; one the screen only read back, or left blank, is worked out from the address.
+    keepName: form.name.trim() !== "" && form.name.trim() !== initial.name.trim(),
     protocol: form.protocol,
     // Privacy is not sent at all. Deluno branches on none of it, nobody
     // can set it here, and guessing "private" for every hand-added source
