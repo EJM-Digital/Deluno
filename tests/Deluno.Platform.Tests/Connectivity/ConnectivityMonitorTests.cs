@@ -138,11 +138,56 @@ public sealed class ConnectivityMonitorTests
         Assert.Equal(TimeSpan.FromMinutes(20), overlap);
     }
 
+    [Fact]
+    public async Task The_banner_is_told_once_when_the_internet_goes_down_and_once_when_it_is_back()
+    {
+        var repository = new FakeOutageRepository();
+        var time = new ManualTimeProvider(DateTimeOffset.Parse("2026-10-08T09:00:00Z"));
+        var pushed = new List<(string Name, object Payload)>();
+        var publisher = System.Reflection.DispatchProxy.Create<Deluno.Contracts.IRealtimeEventPublisher, DashboardRecordingProxy>();
+        ((DashboardRecordingProxy)(object)publisher).Pushed = pushed;
+
+        // Down: every host refuses. The first reading with no outage never pushes anything.
+        var down = CreateMonitor(repository, new FakeActivityFeedRepository(), time, RefusedPorts(2), publisher);
+        await down.GetStatusAsync(CancellationToken.None);
+        time.Advance(TimeSpan.FromMinutes(1));
+        await down.GetStatusAsync(CancellationToken.None);
+        var outage = Assert.Single(pushed);
+        Assert.Equal("ConnectivityChanged", outage.Name);
+        Assert.True(((Deluno.Contracts.ConnectivityChangedEvent)outage.Payload).IsOutage);
+
+        // Back: one host answers.
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var back = CreateMonitor(repository, new FakeActivityFeedRepository(), time, [$"127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}"], publisher);
+        await back.GetStatusAsync(CancellationToken.None);
+        // A new monitor starts from the stored open window, so coming back is a flip.
+        Assert.Equal(2, pushed.Count);
+        Assert.False(((Deluno.Contracts.ConnectivityChangedEvent)pushed[1].Payload).IsOutage);
+    }
+
+    /// <summary>Records the dashboard events a monitor sends and ignores every other call on the publisher.</summary>
+    public class DashboardRecordingProxy : System.Reflection.DispatchProxy
+    {
+        public List<(string Name, object Payload)> Pushed { get; set; } = [];
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name == "PublishDashboardEventAsync" && args is { Length: >= 2 })
+            {
+                Pushed.Add(((string)args[0]!, args[1]!));
+            }
+
+            return targetMethod?.ReturnType == typeof(Task) ? Task.CompletedTask : null;
+        }
+    }
+
     private static ConnectivityMonitor CreateMonitor(
         IConnectivityOutageRepository repository,
         IActivityFeedRepository activity,
         TimeProvider timeProvider,
-        IReadOnlyList<string> hosts)
+        IReadOnlyList<string> hosts,
+        Deluno.Contracts.IRealtimeEventPublisher? publisher = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -151,7 +196,7 @@ public sealed class ConnectivityMonitorTests
             })
             .Build();
 
-        return new ConnectivityMonitor(repository, activity, timeProvider, configuration, NullLogger<ConnectivityMonitor>.Instance);
+        return new ConnectivityMonitor(repository, activity, timeProvider, configuration, NullLogger<ConnectivityMonitor>.Instance, publisher);
     }
 
     /// <summary>
