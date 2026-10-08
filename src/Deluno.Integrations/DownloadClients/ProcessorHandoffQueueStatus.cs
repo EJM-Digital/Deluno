@@ -32,6 +32,11 @@ public static class ProcessorHandoffQueueStatus
                 // The processor still has it.
                 return DownloadQueueStatuses.WaitingForProcessor;
 
+            case ProcessorHandoffStatuses.Dismissed:
+                // Closed on purpose, by a person or because the title was imported another way.
+                // It is history, never a problem: the client's own reading says where it is.
+                return fallback;
+
             case ProcessorHandoffStatuses.Released:
                 // The original is going through the ordinary import, so the
                 // client's own reading of the download says where it is.
