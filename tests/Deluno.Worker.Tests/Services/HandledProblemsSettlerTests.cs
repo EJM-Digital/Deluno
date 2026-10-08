@@ -50,6 +50,44 @@ public sealed class HandledProblemsSettlerTests
     private static TitleFileHolds Holds(string id, DateTimeOffset? imported)
         => new(new Dictionary<string, DateTimeOffset?> { [id] = imported });
 
+    private static Deluno.Platform.Contracts.ProcessorHandoffItem Handoff(string status, string? failure)
+        => new("h-1", "lib", "movies", "client-1", "hash", "Nosferatu.1922.1080p.BluRay.x264-HD4U", "/downloads/x", "Weir", status, null, null, failure, Created, Created);
+
+    [Fact]
+    public async Task A_failed_hand_off_whose_film_holds_its_file_since_is_dismissed_with_a_line()
+    {
+        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1"));
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(2)));
+        Listed();
+
+        var settler = new HandledProblemsSettler(_movies.Object, _series.Object, _jobs.Object, _dispatches.Object, _activity.Object, processors.Object);
+        Assert.Equal(1, await settler.SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains(_said, line => line.Category == "processing.dismissed" && line.Message.Contains("in the library now"));
+    }
+
+    [Fact]
+    public async Task A_failed_hand_off_stays_when_its_film_has_no_newer_file()
+    {
+        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1"));
+        Listed();
+
+        var settler = new HandledProblemsSettler(_movies.Object, _series.Object, _jobs.Object, _dispatches.Object, _activity.Object, processors.Object);
+        Assert.Equal(0, await settler.SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task Each_case_it_closes_gets_one_line_in_plain_words()
     {

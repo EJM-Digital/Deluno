@@ -311,7 +311,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// </summary>
     private static string? TrackerError(string? trackerStatus)
         => !string.IsNullOrWhiteSpace(trackerStatus) && trackerStatus.StartsWith("Error", StringComparison.OrdinalIgnoreCase)
-            ? trackerStatus.Trim()
+            ? DownloadClientHelpers.PlainConnectionFailure(trackerStatus, "The tracker") ?? trackerStatus.Trim()
             : null;
 
     private static bool StillMoving(DelugeTorrent item, IReadOnlyDictionary<string, string> finalFolders)

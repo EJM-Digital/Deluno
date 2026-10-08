@@ -1063,7 +1063,8 @@ public sealed class WorkPlanner(
                 seriesCatalogRepository,
                 jobQueueRepository,
                 downloadIntegrityDispatches,
-                activityFeedRepository)
+                activityFeedRepository,
+                processorRepository)
             .SettleAsync(cancellationToken);
         await new ProcessorHandoffWatcher(
                 processorRepository,

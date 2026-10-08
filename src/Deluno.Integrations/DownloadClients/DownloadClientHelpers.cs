@@ -212,6 +212,28 @@ internal static class DownloadClientHelpers
         => new(client.Id, queueItemId, action, true, message);
 
     /// <summary>
+    /// A connection failure in the operating system's own words ("No connection could be made because the target
+    /// machine actively refused it") means whatever was called is not answering. Said that way, naming who, instead
+    /// of passing the raw text to a screen (golden path rc.30.9). Null when the text is about something else.
+    /// </summary>
+    internal static string? PlainConnectionFailure(string? raw, string whoIsNotAnswering)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        string[] markers =
+        [
+            "actively refused", "no connection could be made", "connection refused", "connection was refused",
+            "network is unreachable", "no such host is known", "name or service not known", "host is unreachable"
+        ];
+        return markers.Any(marker => raw.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            ? $"{whoIsNotAnswering} isn't answering."
+            : null;
+    }
+
+    /// <summary>
     /// Adapters historically returned a failed queue row with only a native
     /// status or error string. Normalize that boundary once so every caller
     /// receives an attributable failure instead of having to infer it again.
@@ -225,9 +247,10 @@ internal static class DownloadClientHelpers
 
         var message = string.IsNullOrWhiteSpace(item.ErrorMessage)
             ? $"The download client reported queue status '{item.Status}'."
-            : item.ErrorMessage.Trim();
+            : PlainConnectionFailure(item.ErrorMessage, item.ClientName) ?? item.ErrorMessage.Trim();
         return item with
         {
+            ErrorMessage = string.IsNullOrWhiteSpace(item.ErrorMessage) ? item.ErrorMessage : message,
             Failure = IntegrationFailureFactory.FromLegacy(
                 "download-client",
                 item.ClientId,

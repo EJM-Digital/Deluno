@@ -366,7 +366,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         await transaction.CommitAsync(cancellationToken);
         await AnnounceStageAsync(dispatchId, eventType, importFailureMessage, cancellationToken);
 
-        var result = await GetDispatchAsync(dispatchId, cancellationToken);
+        var result = await GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after import outcome");
     }
 
