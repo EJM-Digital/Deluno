@@ -701,7 +701,7 @@ export function SettingsPolicySetsPage() {
                 <Chip tone="info">
                   {form.automationIntent.scenarioId
                     ? `${form.automationIntent.scenarioId} · v${form.automationIntent.scenarioVersion ?? "?"}`
-                    : "Typed plan detail"}
+                    : "How releases are judged"}
                 </Chip>
               </div>
               <p className="text-muted-foreground">These scenario details are stored with the Media Plan so each recommendation remains visible and auditable. They only become executable where the owning Deluno setting is configured.</p>

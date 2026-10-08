@@ -14,7 +14,8 @@ describe("release preference owner surfaces", () => {
     for (const source of detailSources) {
       expect(source).not.toContain("Legacy score");
       expect(source).not.toContain("legacy input");
-      expect(source).toContain("Legacy compatibility rules");
+      expect(source).toContain("Your older rules");
+      expect(source).not.toContain("Typed release plan");
     }
   });
 
@@ -22,7 +23,8 @@ describe("release preference owner surfaces", () => {
     expect(profileSource).toContain("Effective release preferences");
     expect(profileSource).toContain("Advanced review");
     expect(customFormatSource).toContain("previewReleasePreference");
-    expect(customFormatSource).toContain("Typed plan preview");
+    expect(customFormatSource).toContain("How this release is judged");
+    expect(customFormatSource).not.toContain("Typed plan");
     expect(customFormatSource).not.toContain("typed plan score");
   });
 
