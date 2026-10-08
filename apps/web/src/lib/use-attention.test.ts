@@ -18,7 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   fetchJsonCalls: [] as string[],
   activityHandlers: [] as Array<(event: { category: string }) => void>,
-  healthHandlers: [] as Array<() => void>
+  healthHandlers: [] as Array<() => void>,
+  pushHandlers: {} as Record<string, Array<() => void>>
 }));
 
 vi.mock("./use-signalr", () => ({
@@ -26,6 +27,7 @@ vi.mock("./use-signalr", () => ({
   useSignalREvent: (event: string, _subject: unknown, handler: (payload: never) => void) => {
     if (event === "ActivityEventAdded") mocks.activityHandlers.push(handler as (event: { category: string }) => void);
     if (event === "HealthChanged") mocks.healthHandlers.push(handler as () => void);
+    (mocks.pushHandlers[event] ??= []).push(handler as () => void);
   }
 }));
 
@@ -57,6 +59,7 @@ describe("useAttention", () => {
     mocks.fetchJsonCalls = [];
     mocks.activityHandlers = [];
     mocks.healthHandlers = [];
+    mocks.pushHandlers = {};
   });
 
   afterEach(() => {
@@ -64,7 +67,7 @@ describe("useAttention", () => {
   });
 
   it("does not start a second batch of fetches while the first is still in flight", async () => {
-    renderHook(() => useAttention(45_000));
+    renderHook(() => useAttention());
 
     // The mount effect fires the first `load()`, which starts its batch of
     // fetches and then hangs (the mock never resolves) -- standing in for a
@@ -85,5 +88,23 @@ describe("useAttention", () => {
     // No new fetch went out: the guard dropped every one of those triggers
     // rather than layering five more eleven-fetch batches on top of the first.
     expect(mocks.fetchJsonCalls.length).toBe(afterFirstBatch);
+  });
+
+  it("follows the pushes that move the count and runs no timer (#1179)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderHook(() => useAttention());
+      await vi.waitFor(() => expect(mocks.fetchJsonCalls.length).toBeGreaterThan(0));
+      for (const name of ["ActivityEventAdded", "HealthChanged", "ConnectionChecked", "AttentionChanged", "MovieChanged", "SeriesChanged", "IndexerChanged"]) {
+        expect(mocks.pushHandlers[name]?.length, name).toBeGreaterThan(0);
+      }
+
+      // With the connection down there used to be a 45 s safety-net read; there is none now.
+      const before = mocks.fetchJsonCalls.length;
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(mocks.fetchJsonCalls.length).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

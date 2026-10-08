@@ -43,7 +43,7 @@ const { useDashboardAttention } = await import("../routes/dashboard/use-dashboar
 const { useDashboardSummary, useSetupState } = await import("../routes/dashboard/sources");
 
 function bothCounts() {
-  const bell = renderHook(() => useAttention(45_000));
+  const bell = renderHook(() => useAttention());
   const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client: queryClient }, children);
   const dashboard = renderHook(() => {
     const summary = useDashboardSummary();

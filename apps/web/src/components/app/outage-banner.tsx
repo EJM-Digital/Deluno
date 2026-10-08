@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WifiOff } from "lucide-react";
 import { fetchJson } from "../../lib/api";
-import { useLiveInterval } from "../../hooks/use-live-interval";
+import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../../lib/use-signalr";
 
 export type ConnectivityStatus = {
   isOutage: boolean;
@@ -10,8 +10,6 @@ export type ConnectivityStatus = {
   checkedHosts: string[];
   message: string;
 };
-
-const POLL_INTERVAL_MS = 15_000;
 
 function formatSince(sinceUtc: string | null): string {
   if (!sinceUtc) return "";
@@ -23,9 +21,10 @@ function formatSince(sinceUtc: string | null): string {
 /**
  * One app-wide strip while the internet is down (#901): cleanup and searching
  * pause everywhere Deluno would otherwise judge a download, and this is the
- * one place that says so. It clears itself the moment the next poll finds the
- * connection back — nothing to dismiss, because there is nothing left to say
- * once it is gone.
+ * one place that says so. It is read once when the app opens, then follows the
+ * server's `ConnectivityChanged` push the moment the state flips (#1179), with
+ * no timer; it clears itself the moment the connection is back — nothing to
+ * dismiss, because there is nothing left to say once it is gone.
  */
 export function OutageBanner() {
   const [status, setStatus] = useState<ConnectivityStatus | null>(null);
@@ -36,7 +35,7 @@ export function OutageBanner() {
     return () => { active.current = false; };
   }, []);
 
-  const poll = useRef(async () => {
+  const read = useRef(async () => {
     try {
       const next = await fetchJson<ConnectivityStatus>("/api/system/connectivity");
       if (active.current) setStatus(next);
@@ -46,13 +45,20 @@ export function OutageBanner() {
     }
   }).current;
 
-  useEffect(() => { void poll(); }, [poll]);
+  useEffect(() => { void read(); }, [read]);
 
-  // Worker-driven (#937): an outage that starts or clears while Deluno sits
-  // hidden or minimised still shows up at this poll's real 15 s rate,
-  // instead of only being noticed -- possibly minutes late -- once the tab
-  // is looked at again.
-  useLiveInterval(poll, POLL_INTERVAL_MS);
+  // The server says when the state flips, even while Deluno sits hidden or minimised.
+  useSignalREvent("ConnectivityChanged", RealtimeGroups.Dashboard, (event) => {
+    setStatus((current) => ({
+      isOutage: event.isOutage,
+      sinceUtc: event.sinceUtc,
+      checkedUtc: event.checkedUtc,
+      checkedHosts: current?.checkedHosts ?? [],
+      message: event.message
+    }));
+  });
+  // Events that could not be replayed after a dropped connection: ask once.
+  useSignalRResync(() => void read());
 
   if (!status || !status.isOutage) {
     return null;

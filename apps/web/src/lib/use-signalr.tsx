@@ -135,6 +135,35 @@ export interface ActivityEventAddedEvent {
   label?: string;
   severity: "info" | "warning" | "error" | "success";
   createdUtc: string;
+  /** What the event concerns, so a row can be drawn and filtered with no second request (#1179). */
+  relatedEntityType?: string | null;
+  relatedEntityId?: string | null;
+  relatedJobId?: string | null;
+  title?: string | null;
+  filePath?: string | null;
+  sourceName?: string | null;
+  reasonGroup?: string | null;
+  type?: string;
+  source?: string | null;
+  outcome?: "good" | "problem";
+  /** The event's details, when small enough to ride along. */
+  detailsJson?: string | null;
+}
+
+export interface AttentionChangedEvent {
+  /** What moved the bell's count: recovery, handoff, journey, client, orphans, noRelease. */
+  reason: string;
+}
+
+export interface ConnectivityChangedEvent {
+  isOutage: boolean;
+  sinceUtc: string | null;
+  checkedUtc: string;
+  message: string;
+}
+
+export interface DownloadHealthChangedEvent {
+  clientId: string | null;
 }
 
 export interface QueueItemStatusChangedEvent {
@@ -256,6 +285,9 @@ type EventMap = {
   SystemOverviewChanged: SystemOverviewChangedEvent;
   SystemLogEntry: SystemLogEntry;
   ConnectionChecked: ConnectionCheckedEvent;
+  AttentionChanged: AttentionChangedEvent;
+  ConnectivityChanged: ConnectivityChangedEvent;
+  DownloadHealthChanged: DownloadHealthChangedEvent;
 };
 
 export type SignalREventName = keyof EventMap;
@@ -712,7 +744,10 @@ const LIVE_EVENT_SUBJECTS = {
   DownloadSpeedSample: RealtimeGroups.Live,
   SystemOverviewChanged: RealtimeGroups.Dashboard,
   SystemLogEntry: RealtimeGroups.Dashboard,
-  ConnectionChecked: RealtimeGroups.Dashboard
+  ConnectionChecked: RealtimeGroups.Dashboard,
+  AttentionChanged: RealtimeGroups.Dashboard,
+  ConnectivityChanged: RealtimeGroups.Dashboard,
+  DownloadHealthChanged: RealtimeGroups.Dashboard
 } as const satisfies Partial<Record<SignalREventName, string>>;
 
 export type LiveEventName = keyof typeof LIVE_EVENT_SUBJECTS;

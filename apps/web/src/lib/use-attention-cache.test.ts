@@ -38,7 +38,7 @@ describe("useAttention reads through the shared cache (#1081)", () => {
   });
 
   it("does not ask for the leftover folders again on a refresh once something has read them", async () => {
-    const { result } = renderHook(() => useAttention(45_000));
+    const { result } = renderHook(() => useAttention());
     await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3_000 });
     expect(mocks.calls.filter((path) => path.endsWith("/orphans"))).toHaveLength(1);
 
@@ -50,12 +50,12 @@ describe("useAttention reads through the shared cache (#1081)", () => {
   });
 
   it("counts from what is already known, at once, when the layout mounts again", async () => {
-    const first = renderHook(() => useAttention(45_000));
+    const first = renderHook(() => useAttention());
     await waitFor(() => expect(first.result.current.healthProblems).toBe(2), { timeout: 3_000 });
     first.unmount();
     mocks.calls = [];
 
-    const second = renderHook(() => useAttention(45_000));
+    const second = renderHook(() => useAttention());
 
     // Before any request of its own has been answered.
     expect(second.result.current.loading).toBe(false);
@@ -64,7 +64,7 @@ describe("useAttention reads through the shared cache (#1081)", () => {
   });
 
   it("does not start its requests in the same breath as the screen that is opening", () => {
-    renderHook(() => useAttention(45_000));
+    renderHook(() => useAttention());
     expect(mocks.calls).toEqual([]);
   });
 });
