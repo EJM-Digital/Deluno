@@ -937,6 +937,7 @@ public sealed class DownloadClientTelemetryService(
         {
             QueueRemovalReasons.Failed => new QueueRemovalOptions(true, true, true, false),
             QueueRemovalReasons.Unwanted => new QueueRemovalOptions(true, false, false, true),
+            QueueRemovalReasons.Reclaim => new QueueRemovalOptions(true, false, false, false),
             _ => new QueueRemovalOptions(false, false, false, false)
         };
 
@@ -1121,6 +1122,7 @@ public sealed class DownloadClientTelemetryService(
             QueueRemovalReasons.Unwanted => unmonitored
                 ? $"You said you don't want \"{title}\" any more: removed from {clientName}, deleted its files, and stopped wanting it."
                 : $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
+            QueueRemovalReasons.Reclaim => $"You removed the leftover copy of \"{title}\" from {clientName} and deleted its files. The library file was not touched.",
             _ => $"You told Deluno to stop tracking \"{title}\"; {clientName} still has it, untouched."
         };
 
@@ -1672,7 +1674,7 @@ public sealed class DownloadClientTelemetryService(
                                 Kind: "hardlink-lost",
                                 Summary: "Unlinked from your library",
                                 Evidence: hold.Detail,
-                                RecommendedAction: "It's safe to reclaim: stop seeding and delete it from the sharing list on the Dashboard.",
+                                RecommendedAction: "It's safe to reclaim: use Remove this copy below to take it out of the client and free its space. The library file is not touched.",
                                 CanSafelyRetry: false,
                                 CanSafelyRemove: true)
                         ]
