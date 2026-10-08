@@ -1510,7 +1510,7 @@ function RefineWithWeirQuestions({ form, patch }: { form: GuideForm; patch: (pat
     <FieldShell
       icon={ShieldCheck}
       label="Clean files with Weir before they go into your library?"
-      copy="Weir is connected. Answer Yes or No for each kind of library. Yes sends its downloads to Weir first and imports the cleaned file; No imports the finished download as it is."
+      copy="Weir is ready to clean your downloads. Answer Yes or No for each kind of library. Yes sends its downloads to Weir first and imports the cleaned file; No imports the finished download as it is."
     >
       <div className="divide-y divide-hairline">
         {types.map((type) => (
