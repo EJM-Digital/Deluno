@@ -131,7 +131,7 @@ describe("notifications bell (#907)", () => {
 
     const dialog = await screen.findByRole("dialog");
     const needs = within(dialog).getByRole("region", { name: "Needs you" });
-    expect(within(needs).getByRole("button", { name: "Retry: failed import 1" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Try again: failed import 1" })).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Retry: Metropolis (1927)" })).toBeInTheDocument();
     // "Give up" is Dismiss now, and says on hover that nothing is deleted.
     const dismiss = within(needs).getByRole("button", { name: "Dismiss: Metropolis (1927)" });
