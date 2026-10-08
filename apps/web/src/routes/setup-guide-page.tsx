@@ -32,6 +32,7 @@ import {
   type DownloadClientItem,
   type IndexerItem,
   type LibraryItem,
+  type ProcessorConnectionItem,
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type PlatformSettingsSnapshot,
@@ -235,6 +236,12 @@ interface GuideForm {
   firstTitleMonitored: boolean;
   firstTitleMetadata: MetadataSearchResult | null;
   automation: AutomationChoices;
+  /** Asked per library type once Weir is connected: "Clean files with Weir before they go into your library?" Unanswered by default (#936). */
+  refineMovies: boolean | null;
+  refineTv: boolean | null;
+  /** Where Weir leaves the cleaned files for each library; only asked, and only used, when the answer above is Yes. */
+  movieProcessedPath: string;
+  seriesProcessedPath: string;
   /** #939: "Only answer on the addresses you use?" Off leaves today's behaviour (#936). */
   restrictAllowedHosts: boolean;
   allowedHostsSelection: string[];
@@ -344,12 +351,33 @@ function toSetupDraft(form: GuideForm) {
     // The Yes/No answers are saved too, so a reload restores them (#1132). Unanswered stays out.
     skipSignInLocalNetwork: form.skipSignInLocalNetwork,
     updateAutomatically: form.updateAutomatically,
-    automation: answeredAutomation(form.automation)
+    automation: { ...answeredAutomation(form.automation), ...answeredRefine(form) }
+  };
+}
+
+/** Where Weir would leave cleaned files by default: its own folder on the same drive as the library. Blank when the library has no drive letter. */
+export function suggestedProcessedFolder(rootPath: string, label: "Movies" | "TV"): string {
+  const drive = /^([A-Za-z]:)[\\/]/.exec(rootPath.trim());
+  return drive ? `${drive[1]}\\Weir\\Ready\\${label}` : "";
+}
+
+/** The refine-with-Weir answers that have an explicit Yes or No, saved beside the Automation answers so a reload restores them. */
+export function answeredRefine(form: Pick<GuideForm, "refineMovies" | "refineTv">): Record<string, boolean> {
+  const answered: Record<string, boolean> = {};
+  if (typeof form.refineMovies === "boolean") answered.refineMovies = form.refineMovies;
+  if (typeof form.refineTv === "boolean") answered.refineTv = form.refineTv;
+  return answered;
+}
+
+export function restoreDraftRefine(saved: Record<string, boolean> | null | undefined): Pick<GuideForm, "refineMovies" | "refineTv"> {
+  return {
+    refineMovies: typeof saved?.refineMovies === "boolean" ? saved.refineMovies : null,
+    refineTv: typeof saved?.refineTv === "boolean" ? saved.refineTv : null
   };
 }
 
 /** What is still missing before Start works, named exactly (never a guess at the wrong thing). */
-export function describeMissingForFinish(form: GuideForm): string {
+export function describeMissingForFinish(form: GuideForm, weirConnected = false): string {
   const missing: string[] = [];
   const hasMovies = form.mediaIntent === "movies" || form.mediaIntent === "both";
   const hasTv = form.mediaIntent === "tv" || form.mediaIntent === "both";
@@ -359,8 +387,28 @@ export function describeMissingForFinish(form: GuideForm): string {
   if (form.skipSignInLocalNetwork === null) missing.push("an answer to \"Skip sign-in for devices on your home network?\"");
   if (form.updateAutomatically === null) missing.push("an answer to \"Update automatically, or ask you first?\"");
   if (!hasAnsweredAllAutomationQuestions(form.automation)) missing.push("an answer to every automation question");
+  missing.push(...missingWeirAnswers(form, weirConnected));
   if (missing.length === 0) return "Everything is chosen.";
   return `Still needed before Deluno can create the baseline: ${missing.join(", ")}.`;
+}
+
+/**
+ * Once Weir is connected, each library type in use needs its Yes or No, and a Yes needs the folder Weir leaves the
+ * cleaned files in. Without Weir connected nothing is asked.
+ */
+export function missingWeirAnswers(form: GuideForm, weirConnected: boolean): string[] {
+  if (!weirConnected) return [];
+  const missing: string[] = [];
+  const types = [
+    { label: "Movies", used: form.mediaIntent !== "tv" && form.movieRootPath.trim().length > 0, answer: form.refineMovies, path: form.movieProcessedPath },
+    { label: "TV", used: form.mediaIntent !== "movies" && form.seriesRootPath.trim().length > 0, answer: form.refineTv, path: form.seriesProcessedPath }
+  ];
+  for (const type of types) {
+    if (!type.used) continue;
+    if (type.answer === null || type.answer === undefined) missing.push(`an answer to "Clean ${type.label} files with Weir before they go into your library?"`);
+    else if (type.answer && !type.path.trim()) missing.push(`the folder Weir leaves cleaned ${type.label} files in`);
+  }
+  return missing;
 }
 
 /** Only the questions that have an explicit Yes or No. */
@@ -608,6 +656,9 @@ export function SetupGuidePage() {
     firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null,
     automation: restoreDraftAutomation(data.draft.automation),
+    ...restoreDraftRefine(data.draft.automation),
+    movieProcessedPath: suggestedProcessedFolder(data.draft.movieRootPath || data.settings.movieRootPath || "", "Movies"),
+    seriesProcessedPath: suggestedProcessedFolder(data.draft.seriesRootPath || data.settings.seriesRootPath || "", "TV"),
     restrictAllowedHosts: data.allowedHosts.enabled,
     allowedHostsSelection: data.allowedHosts.allowedHosts.length
       ? data.allowedHosts.allowedHosts
@@ -659,7 +710,9 @@ export function SetupGuidePage() {
   // #1034: same rule -- Start stays disabled until "Update automatically, or
   // ask you first?" has an explicit Yes or No.
   const hasUpdateAnswer = form.updateAutomatically !== null;
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer && hasUpdateAnswer;
+  const weirConnected = installedApps.some((app) => app.kind === "weir" && app.installed && app.connected);
+  const hasWeirAnswers = missingWeirAnswers(form, weirConnected).length === 0;
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer && hasUpdateAnswer && hasWeirAnswers;
   // A connection typed in but never proven is different from one never
   // attempted: warn about it rather than silently baking in something broken.
   const connectionsUnproven =
@@ -1009,11 +1062,12 @@ export function SetupGuidePage() {
               />
             ) : null}
             {current.id === "connectApps" ? (
-              <ConnectAppsStep skipped={appsSkipped} onSkip={() => setAppsSkipped(true)} onChange={setInstalledApps} hasInstalled={installedApps.length > 0} />
+              <ConnectAppsStep skipped={appsSkipped} onSkip={() => setAppsSkipped(true)} onChange={setInstalledApps} hasInstalled={installedApps.length > 0} form={form} patch={patch} weirConnected={weirConnected} />
             ) : null}
             {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
             {current.id === "finish" ? (
           <FinishStep
+            weirConnected={weirConnected}
             form={form}
             patch={patch}
             canFinish={canFinish}
@@ -1442,6 +1496,45 @@ function ServicesStep({
 }
 
 /**
+ * Asked once Weir is connected, per library type: should its downloads be cleaned by Weir before they go into the
+ * library? Nothing is pre-selected (#936). A Yes sets the library to refine before import and links it to the
+ * connected Weir when the baseline is created; a No leaves the library importing as it is.
+ */
+function RefineWithWeirQuestions({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
+  const types = [
+    { label: "Movies" as const, used: form.mediaIntent !== "tv", answer: form.refineMovies, path: form.movieProcessedPath, answerKey: "refineMovies" as const, pathKey: "movieProcessedPath" as const },
+    { label: "TV" as const, used: form.mediaIntent !== "movies", answer: form.refineTv, path: form.seriesProcessedPath, answerKey: "refineTv" as const, pathKey: "seriesProcessedPath" as const }
+  ].filter((type) => type.used);
+  const question = (label: string) => `${label}: Clean files with Weir before they go into your library?`;
+  return (
+    <FieldShell
+      icon={ShieldCheck}
+      label="Clean files with Weir before they go into your library?"
+      copy="Weir is connected. Answer Yes or No for each kind of library. Yes sends its downloads to Weir first and imports the cleaned file; No imports the finished download as it is."
+    >
+      <div className="divide-y divide-hairline">
+        {types.map((type) => (
+          <div key={type.label} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-medium text-foreground">{type.label}</p>
+              <div className="flex shrink-0 gap-2" role="radiogroup" aria-label={question(type.label)}>
+                <Button type="button" size="sm" variant={type.answer === true ? "default" : "outline"} role="radio" aria-checked={type.answer === true} aria-label={`${question(type.label)} Yes`} onClick={() => patch({ [type.answerKey]: true })}>Yes</Button>
+                <Button type="button" size="sm" variant={type.answer === false ? "default" : "outline"} role="radio" aria-checked={type.answer === false} aria-label={`${question(type.label)} No`} onClick={() => patch({ [type.answerKey]: false })}>No</Button>
+              </div>
+            </div>
+            {type.answer === true ? (
+              <Field label={`Where Weir leaves cleaned ${type.label} files`} help="The folder must already exist. Weir sets up its Movies and TV workflows from this by itself.">
+                <PathInput value={type.path} onChange={(value) => patch({ [type.pathKey]: value })} placeholder="D:\Weir\Ready" browseTitle={`Choose the folder Weir leaves cleaned ${type.label} files in`} />
+              </Field>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </FieldShell>
+  );
+}
+
+/**
  * #1061: Deluno connects nothing by itself after install. This step lists the
  * apps the installer put on this computer, one Connect button each plus
  * "Connect all". It is done when every installed app is connected or the person
@@ -1452,16 +1545,24 @@ export function ConnectAppsStep({
   skipped,
   onSkip,
   onChange,
-  hasInstalled
+  hasInstalled,
+  form,
+  patch,
+  weirConnected = false
 }: {
   skipped: boolean;
   onSkip: () => void;
   onChange: (apps: BundledComponentStatus[]) => void;
   hasInstalled: boolean;
+  form?: GuideForm;
+  patch?: (patchValue: Partial<GuideForm>) => void;
+  /** Weir is installed and connected: the per-library question below is asked. */
+  weirConnected?: boolean;
 }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <ConnectInstalledApps onChange={onChange} />
+      {weirConnected && form && patch ? <RefineWithWeirQuestions form={form} patch={patch} /> : null}
       {hasInstalled ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onSkip} disabled={skipped}>
@@ -1930,6 +2031,7 @@ function isValidAddressOrSubnet(value: string): boolean {
 function FinishStep({
   form,
   patch,
+  weirConnected,
   canFinish,
   connectionTestsRequired,
   result,
@@ -1944,6 +2046,7 @@ function FinishStep({
   route
 }: {
   route: { names: string[]; copy: string };
+  weirConnected: boolean;
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   canFinish: boolean;
@@ -1999,7 +2102,7 @@ function FinishStep({
       </div>
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
-          {describeMissingForFinish(form)}
+          {describeMissingForFinish(form, weirConnected)}
         </p>
       ) : connectionTestsRequired ? (
         // Not a blocker: the baseline can be created now and connected later.
@@ -2571,6 +2674,16 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   // install's migration may have already frozen this on, and a plain
   // "No" answer here should still be honored.
   await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => notApplied.push("the dangerous-file check"));
+  // "Clean files with Weir before they go into your library?" A Yes sets that library to refine before import and
+  // links it to the connected Weir; a No (or no answer) leaves the library as it is.
+  for (const [library, answer, outputPath, label] of [
+    [movieLibrary, form.refineMovies, form.movieProcessedPath, "Movies"],
+    [tvLibrary, form.refineTv, form.seriesProcessedPath, "TV"]
+  ] as const) {
+    if (!library || answer !== true) continue;
+    await refineLibraryWithWeir(library, outputPath, form).catch((problem) =>
+      notApplied.push(`cleaning ${label} files with Weir (${problem instanceof Error ? problem.message : "it could not be set up"})`));
+  }
 
   // The first title is a bonus. If it cannot be added the baseline stands, and the screen says so.
   let firstTitle: { id: string; title: string } | null = null;
@@ -2602,6 +2715,31 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   await recordSetupCompleted(completionResult).catch(() => undefined);
   await authedFetch("/api/setup/draft", { method: "DELETE" }).catch(() => undefined);
   return completionResult;
+}
+
+/**
+ * Sets a library to refine before import and links it to the connected Weir, with the folder Weir leaves the cleaned
+ * files in. Weir then sets up its own workflow for the library from this, so nothing is typed in Weir.
+ */
+export async function refineLibraryWithWeir(library: LibraryItem, outputPath: string, form: GuideForm): Promise<void> {
+  const connections = await fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections");
+  const weir = (connections ?? []).find((connection) => connection.isEnabled && /weir/i.test(connection.name));
+  if (!weir) throw new Error("Weir is not connected to Deluno yet");
+  const response = await authedFetch(`/api/libraries/${library.id}/workflow`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      importWorkflow: "refine-before-import",
+      processorConnectionId: weir.id,
+      processorName: weir.name,
+      processorOutputPath: outputPath.trim(),
+      processorTimeoutMinutes: library.processorTimeoutMinutes || 2880,
+      processorFailureMode: library.processorFailureMode || "block",
+      cleanupMode: library.cleanupMode || "keep-source",
+      removeEmptySourceFolders: library.removeEmptySourceFolders ?? form.automation.leftoverCleanup === true
+    })
+  });
+  if (!response.ok) throw new Error(await readErrorText(response, "the folder was refused"));
 }
 
 async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "movies" | "tv", form: GuideForm, guide: GuidePackage, createdEntities: CreatedEntity[]): Promise<string[]> {
