@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,7 +40,8 @@ public sealed class CompanionToolsService(
     IServiceScopeFactory scopes,
     IOptions<StoragePathOptions> storage,
     TimeProvider timeProvider,
-    ILogger<CompanionToolsService> logger)
+    ILogger<CompanionToolsService> logger,
+    IRealtimeEventPublisher? realtime = null)
 {
     public const string UninstallNote = "Uninstalling Deluno leaves SABnzbd, qBittorrent and Weir installed, with their settings and downloads. Remove them separately in Windows Settings if you no longer want them.";
 
@@ -47,6 +49,13 @@ public sealed class CompanionToolsService(
 
     private readonly ConcurrentDictionary<string, CompanionJobState> _jobs = new(StringComparer.OrdinalIgnoreCase);
     private int _running;
+
+    /// <summary>Records where a tool's setup is and tells an open Companion tools screen, so it never has to ask (#1179).</summary>
+    private void SetJob(string id, CompanionJobState state)
+    {
+        _jobs[id] = state;
+        _ = realtime.PublishCompanionJobChangedAsync(id);
+    }
 
     /// <summary>
     /// Installing runs vendor installers on this computer's desktop, where
@@ -99,7 +108,7 @@ public sealed class CompanionToolsService(
         var ordered = CompanionToolIds.All.Where(id => toolIds.Contains(id, StringComparer.OrdinalIgnoreCase)).ToArray();
         foreach (var id in ordered)
         {
-            _jobs[id] = new CompanionJobState("queued", "queued", "Waiting its turn.", timeProvider.GetUtcNow());
+            SetJob(id, new CompanionJobState("queued", "queued", "Waiting its turn.", timeProvider.GetUtcNow()));
         }
 
         _ = Task.Run(async () =>
@@ -129,23 +138,23 @@ public sealed class CompanionToolsService(
         {
             progress.Report("starting", $"Starting {tool.Name}.");
             await tool.RunAsync(new CompanionRunContext(delunoBaseUrl, folder, progress), CancellationToken.None);
-            _jobs[id] = _jobs[id] with { Status = "done", UpdatedUtc = timeProvider.GetUtcNow() };
+            SetJob(id, _jobs[id] with { Status = "done", UpdatedUtc = timeProvider.GetUtcNow() });
         }
         catch (Exception exception) when (exception is CompanionStepException or CompanionDownloadException)
         {
-            _jobs[id] = new CompanionJobState("failed", _jobs[id].Step, exception.Message, timeProvider.GetUtcNow());
+            SetJob(id, new CompanionJobState("failed", _jobs[id].Step, exception.Message, timeProvider.GetUtcNow()));
         }
         catch (Exception exception)
         {
             // Never the exception's text: it can carry a path or a response body.
             logger.LogWarning(exception, "Setting up {Tool} failed.", tool.Name);
-            _jobs[id] = new CompanionJobState("failed", _jobs[id].Step, $"Setting up {tool.Name} stopped unexpectedly. Deluno's log has the details.", timeProvider.GetUtcNow());
+            SetJob(id, new CompanionJobState("failed", _jobs[id].Step, $"Setting up {tool.Name} stopped unexpectedly. Deluno's log has the details.", timeProvider.GetUtcNow()));
         }
     }
 
     private sealed class Progress(CompanionToolsService service, string id) : ICompanionProgress
     {
         public void Report(string step, string message)
-            => service._jobs[id] = new CompanionJobState("running", step, message, service.Now);
+            => service.SetJob(id, new CompanionJobState("running", step, message, service.Now));
     }
 }

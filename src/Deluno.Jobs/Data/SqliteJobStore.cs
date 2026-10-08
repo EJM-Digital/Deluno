@@ -1449,6 +1449,11 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@intervalSeconds", (long)interval.TotalSeconds);
 
         var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (rowsAffected > 0)
+        {
+            await realtimeEventPublisher.PublishSystemTaskChangedAsync(scheduleKey, cancellationToken);
+        }
+
         return rowsAffected > 0;
     }
 
@@ -1483,6 +1488,7 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@nextRunUtc", nextRunUtc?.ToString("O"));
         AddParameter(command, "@lastError", string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(failureReason) ? failureReason.Trim() : null);
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await realtimeEventPublisher.PublishSystemTaskChangedAsync(scheduleKey, cancellationToken);
     }
 
     public async Task<IReadOnlyList<SystemTaskState>> ListSystemTaskStatesAsync(CancellationToken cancellationToken)

@@ -43,6 +43,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IAutoTagRuleStore, SqliteAutoTagRuleStore>();
         services.AddSingleton<ITitleTagService, TitleTagService>();
         services.AddHostedService<PlatformSchemaInitializer>();
+        services.AddHostedService<OutboundThrottleWatcher>();
         return services;
     }
 

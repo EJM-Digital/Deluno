@@ -29,7 +29,8 @@ public sealed class DelunoBackupService(
     IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
     ILogger<DelunoBackupService> logger,
-    IJobQueueRepository? jobQueueRepository = null)
+    IJobQueueRepository? jobQueueRepository = null,
+    IRealtimeEventPublisher? realtime = null)
     : BackgroundService, IDelunoBackupService, IMigrationBackupService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -59,6 +60,7 @@ public sealed class DelunoBackupService(
         state.BackupFolder = NormalizeBackupFolder(request.BackupFolder);
         state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
         await WriteSettingsStateAsync(state, cancellationToken);
+        await realtime.PublishBackupChangedAsync(cancellationToken);
         return ToSnapshot(state);
     }
 
@@ -175,6 +177,7 @@ public sealed class DelunoBackupService(
             await EnforceRetentionAsync(state, cancellationToken);
 
             logger.LogInformation("Created Deluno backup {BackupPath}.", targetPath);
+            await realtime.PublishBackupChangedAsync(cancellationToken);
             return ReadBackupItem(targetPath) ?? throw new InvalidOperationException("Backup was created but could not be read.");
         }
         finally
@@ -206,7 +209,7 @@ public sealed class DelunoBackupService(
         }
 
         File.Delete(file);
-        await Task.CompletedTask;
+        await realtime.PublishBackupChangedAsync(cancellationToken);
         return true;
     }
 
