@@ -40,10 +40,10 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
 
         var report = await world.RemediateAsync(files: ["Example.Movie.2026.mkv", "Setup.exe"]);
 
-        // Removed from the client (its own "delete" action, distinct from
-        // the payload purge below, which Deluno does itself).
+        // Removed from the client together with its data (the client deletes its own copy; Deluno then sweeps
+        // whatever is left below).
         Assert.Equal(1, report.ClientEntriesRemoved);
-        Assert.Equal(DownloadClientActions.Delete, world.FakeDownloadClient.LastAction);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.FakeDownloadClient.LastAction);
         Assert.Equal("queue-movie", world.FakeDownloadClient.LastQueueItemId);
 
         // Its files deleted.
@@ -103,6 +103,43 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
         Assert.Equal(1, afterOutage.ClientEntriesRemoved);
         Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
     }
+    /// <summary>
+    /// A release carrying an executable is never left on disk (#1167): the
+    /// rule that acts on it removes the
+    /// client entry together with its data, deletes the leftovers and
+    /// blocklists the release.
+    /// </summary>
+    [Theory]
+    [InlineData("Setup.exe")]
+    [InlineData("Setup.scr")]
+    [InlineData("install.bat")]
+    [InlineData("Free Movie.lnk")]
+    public async Task A_dangerous_payload_is_removed_with_its_files_and_blocklisted(string dangerous)
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(files: ["Example.Movie.2026.mkv", dangerous], blocked: ["*.exe", "*.scr", "*.bat", "*.lnk"]);
+
+        Assert.Equal(1, report.ClientEntriesRemoved);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.FakeDownloadClient.LastAction);
+        Assert.Equal(1, report.PayloadsPurged);
+        Assert.False(File.Exists(world.PayloadPath));
+        Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>The rig's 908 MB fake release: removing a refused download takes its files with it.</summary>
+    [Fact]
+    public async Task Removing_a_refused_download_takes_its_files_with_the_client_entry()
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(files: ["Example.Movie.2026.mkv", "Setup.exe"]);
+
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.FakeDownloadClient.LastAction);
+        Assert.Equal(1, report.ClientEntriesRemoved);
+        Assert.False(File.Exists(world.PayloadPath));
+    }
+
 
     /// <summary>Records the last action asked of it, without touching any real client.</summary>
     private sealed class FakeClient(string protocol) : IDownloadClient
@@ -196,7 +233,7 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
 
         public static Task<World> CreateAsync() => CreateAsync(isOutage: false);
 
-        public static async Task<World> CreateAsync(bool isOutage)
+        public static async Task<World> CreateAsync(bool isOutage, bool cleanupSwitchesOn = true)
         {
             var storage = TestStorage.Create();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T10:00:00Z"));
@@ -232,10 +269,10 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
                 PlatformSettingsPatchMerger.Apply(
                     currentSettings,
                     new PatchPlatformSettingsRequest(
-                        CleanupBlockReleaseAfterThreshold: true,
-                        CleanupQueueReplacementAfterThreshold: true,
-                        CleanupRemoveClientEntryAfterThreshold: true,
-                        CleanupPurgePayloadAfterThreshold: true,
+                        CleanupBlockReleaseAfterThreshold: cleanupSwitchesOn,
+                        CleanupQueueReplacementAfterThreshold: cleanupSwitchesOn,
+                        CleanupRemoveClientEntryAfterThreshold: cleanupSwitchesOn,
+                        CleanupPurgePayloadAfterThreshold: cleanupSwitchesOn,
                         DownloadHealthDangerousFileEnabled: true)),
                 CancellationToken.None);
 
@@ -247,7 +284,7 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
             return new World(storage, time, service, client, library, jobs, blocklist, fakeClient, payloadPath, connectivity);
         }
 
-        public async Task<DownloadHealthRemediationReport> RemediateAsync(IReadOnlyList<string> files, bool isSetupProblem = false)
+        public async Task<DownloadHealthRemediationReport> RemediateAsync(IReadOnlyList<string> files, bool isSetupProblem = false, IReadOnlyList<string>? blocked = null)
         {
             var rules = DownloadHealthRules.Defaults.Append(new DownloadHealthRule(
                 Id: "test-dangerous-file",
@@ -272,7 +309,7 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
                 Enabled: true,
                 Mode: ContentBlocklistModes.Blacklist,
                 UseBuiltInPatterns: false,
-                CustomPatterns: ["*.exe"],
+                CustomPatterns: blocked ?? ["*.exe"],
                 RemoteUrl: null,
                 RemotePatterns: [],
                 LastRefreshedUtc: null,
