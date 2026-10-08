@@ -26,6 +26,9 @@ public interface IJobQueueRepository
 
     Task<int> RetryFailedAsync(CancellationToken cancellationToken);
 
+    /// <summary>Requeues one failed or dead-lettered job and nothing else: Try again on a single failure. Returns 1, or 0 when it is not failed.</summary>
+    Task<int> RetryFailedJobAsync(string jobId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Requeues the failed import of one download, and nothing else: Try again on
     /// the recovery case about it (#558). Returns how many jobs it requeued.

@@ -51,4 +51,11 @@ public interface IProcessorOutputImportQueue
     /// fetched after this hand-off was made (#1155). Nothing is owed to such a hand-off.
     /// </summary>
     Task<bool> TitleHasFileFromAnotherDownloadAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this finished hand-off still owes its title a file (#1155): its import job failed or gave up,
+    /// and the title (the one that is there now) holds no file. Whatever the order of the title's return
+    /// and the hand-off.
+    /// </summary>
+    Task<bool> OwesItsTitleItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }

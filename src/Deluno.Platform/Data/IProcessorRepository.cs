@@ -17,6 +17,25 @@ public interface IProcessorRepository
     Task<ProcessorHandoffItem?> GetProcessorHandoffAsync(string id, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The newest hand-off made for a download, found by the client and the
+    /// client's own id for the item (its hash or id), not by where its files
+    /// are. A download the client moves changes its path, and a path match then
+    /// misses the hand-off that was already dealt with (#1155).
+    /// </summary>
+    Task<ProcessorHandoffItem?> FindProcessorHandoffForDownloadAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Every hand-off made for a release name, in any state, newest first. Another
+    /// download of the same release may already hold the hand-off.
+    /// </summary>
+    Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsForReleaseAsync(
+        string releaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Points a hand-off that has not been sent yet at the folder its download
     /// is in now (#1150). A download moved by its client after the hand-off
     /// was made would otherwise be sent from where it used to be. False when

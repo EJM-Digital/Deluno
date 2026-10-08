@@ -154,12 +154,25 @@ public sealed class ProcessorOutputImportQueue(
                 && string.Equals(dispatch.ReleaseName, handoff.ReleaseName, StringComparison.OrdinalIgnoreCase)));
     }
 
+    public async Task<bool> OwesItsTitleItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        // Only an import that failed or gave up is owed a second go. One still queued, running or
+        // finished is not: the same output is never imported twice.
+        if (string.IsNullOrWhiteSpace(handoff.ImportJobId)
+            || await jobQueueRepository.GetAsync(handoff.ImportJobId, cancellationToken) is not { Status: "failed" or "dead-letter" })
+        {
+            return false;
+        }
+
+        return await FindReturnedTitleAsync(handoff, cancellationToken, onlyIfAddedAfterHandoff: false) is not null;
+    }
+
     /// <summary>
     /// The title this hand-off's download is for now, when it was added after the hand-off was made
     /// and holds no file; null otherwise. Found by the latest grab of the release, and
     /// failing that (the grab's title is gone) by the same name and year.
     /// </summary>
-    private async Task<ReturnedTitle?> FindReturnedTitleAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    private async Task<ReturnedTitle?> FindReturnedTitleAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken, bool onlyIfAddedAfterHandoff = true)
     {
         var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
         var isTv = string.Equals(handoff.MediaType, "tv", StringComparison.OrdinalIgnoreCase);
@@ -182,7 +195,7 @@ public sealed class ProcessorOutputImportQueue(
                 film = again is null ? null : await movieCatalogRepository.GetByIdAsync(again.EntityId, cancellationToken);
             }
 
-            return film is { HasFile: false } && film.CreatedUtc > handoff.CreatedUtc
+            return film is { HasFile: false } && (!onlyIfAddedAfterHandoff || film.CreatedUtc > handoff.CreatedUtc)
                 ? new ReturnedTitle(link with { EntityId = film.Id }, film.CreatedUtc)
                 : null;
         }
@@ -190,7 +203,7 @@ public sealed class ProcessorOutputImportQueue(
         if (string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase)
             && await seriesCatalogRepository.GetEpisodeSeriesIdAsync(link.EntityId, cancellationToken) is { } seriesId
             && await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken) is { } show
-            && show.CreatedUtc > handoff.CreatedUtc
+            && (!onlyIfAddedAfterHandoff || show.CreatedUtc > handoff.CreatedUtc)
             && string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken)))
         {
             return new ReturnedTitle(link, show.CreatedUtc);

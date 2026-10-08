@@ -2446,6 +2446,8 @@ function handoffDownloadKey(clientId: string, queueItemId: string) {
 
 function pipelineStage(item: DownloadQueueItem) {
   if (item.status === downloadQueueStatuses.handingOver) return "Handing over";
+  if (item.status === downloadQueueStatuses.handedOverElsewhere) return "Another copy was handed over";
+  if (item.status === downloadQueueStatuses.notHandedOver) return "Needs attention";
   if (item.status === downloadQueueStatuses.waitingForProcessor) return "Processing connector";
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Checking media";
   if (item.status === downloadQueueStatuses.importQueued) return "Importing & naming";
@@ -2461,6 +2463,8 @@ function pipelineDetail(item: DownloadQueueItem) {
   if (item.failure) return item.failure.summary || item.failure.message || item.failure.nextAction;
   if (item.errorMessage) return item.errorMessage;
   if (item.status === downloadQueueStatuses.handingOver) return "The download has finished and is being moved or handed over.";
+  if (item.status === downloadQueueStatuses.handedOverElsewhere) return "Another download of this same release has already been handed to the processor, so nothing is owed to this copy.";
+  if (item.status === downloadQueueStatuses.notHandedOver) return "This download finished a while ago but has not been handed to the processor. Check the processor connection in System, then try again.";
   if (item.status === downloadQueueStatuses.waitingForProcessor) return "Waiting for the cleaned output before import.";
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Media quality and processor output are being checked.";
   if (item.status === downloadQueueStatuses.importQueued) return "The destination and final name are being applied.";

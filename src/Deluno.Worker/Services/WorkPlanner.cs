@@ -1072,7 +1072,7 @@ public sealed class WorkPlanner(
             // It is the right set to accept: that status is only ever produced for a
             // completed download in a library that refines before importing, which is
             // exactly what needs handing to a processor.
-            if (item.Status is not ("importReady" or "completed" or "waitingForProcessor"))
+            if (item.Status is not ("importReady" or "completed" or "waitingForProcessor" or "notHandedOver"))
             {
                 continue;
             }
@@ -1147,6 +1147,18 @@ public sealed class WorkPlanner(
                 !string.Equals(NormalizeSourceKey(unsent.SourcePath), sourceKey, StringComparison.OrdinalIgnoreCase))
             {
                 await processorRepository.RepointWaitingProcessorHandoffAsync(unsent.Id, item.SourcePath, cancellationToken);
+            }
+
+            // A download that has been dealt with is never handed over again, whatever path it is
+            // at now (#1155). The hand-off is found by the client's own id for the download, not
+            // by where its files are: a client moves a finished download, and a path match then
+            // missed a hand-off a person had dismissed and sent the download to the processor a
+            // second time. Nor is it handed over while another copy of the same release holds a
+            // hand-off, or when its title already holds the file from another download.
+            if (ImportWorkflows.HandsToProcessor(library.ImportWorkflow) && !titleCameBack &&
+                await HasBeenDealtWithAsync(item, processorRepository, processorOutputImports, cancellationToken))
+            {
+                continue;
             }
 
             // Checkpoint A (#917): before this download reaches a processor or
@@ -2542,6 +2554,69 @@ public sealed class WorkPlanner(
         }
 
         value = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Whether this download has already been handed over, dealt with or covered by another copy (#1155).
+    /// Found by the client and the client's id for the download, so a moved path cannot hide it.
+    /// </summary>
+    internal static async Task<bool> HasBeenDealtWithAsync(
+        DownloadQueueItem item,
+        IProcessorRepository processorRepository,
+        IProcessorOutputImportQueue? outputImports,
+        CancellationToken cancellationToken)
+    {
+        // A download the client took after the hand-off ended is a new acquisition.
+        static bool IsNewer(DownloadQueueItem download, ProcessorHandoffItem handoff)
+            => download.AddedUtc > DateTimeOffset.UnixEpoch && download.AddedUtc > handoff.UpdatedUtc;
+
+        var prior = await processorRepository.FindProcessorHandoffForDownloadAsync(item.ClientId, item.Id, cancellationToken);
+        if (prior is not null && !IsNewer(item, prior))
+        {
+            if (prior.Status is ProcessorHandoffStatuses.Dismissed or ProcessorHandoffStatuses.Completed)
+            {
+                return true;
+            }
+
+            // Still with the processor, or waiting to be sent, at another path: it is that hand-off's
+            // download, and the path was repointed above when it could be.
+            if (ProcessorHandoffStatuses.IsWithProcessor(prior.Status)
+                && !string.Equals(NormalizeSourceKey(prior.SourcePath), NormalizeSourceKey(item.SourcePath ?? string.Empty), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (outputImports is not null && await outputImports.TitleHasFileFromAnotherDownloadAsync(prior, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        // Another copy of the same release, in another client, that has the hand-off already.
+        if (!string.IsNullOrWhiteSpace(item.ReleaseName))
+        {
+            foreach (var other in await processorRepository.ListProcessorHandoffsForReleaseAsync(item.ReleaseName, cancellationToken))
+            {
+                if (string.Equals(other.ClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(other.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (IsNewer(item, other))
+                {
+                    continue;
+                }
+
+                if (ProcessorHandoffStatuses.IsWithProcessor(other.Status)
+                    || other.Status is ProcessorHandoffStatuses.Completed or ProcessorHandoffStatuses.Dismissed)
+                {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 

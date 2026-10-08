@@ -398,20 +398,28 @@ public sealed class SqliteJobStore(
     }
 
     public Task<int> RetryFailedAsync(CancellationToken cancellationToken)
-        => RetryFailedCoreAsync(importForDispatchId: null, cancellationToken);
+        => RetryFailedCoreAsync(importForDispatchId: null, onlyJobId: null, cancellationToken);
+
+    public Task<int> RetryFailedJobAsync(string jobId, CancellationToken cancellationToken)
+        => RetryFailedCoreAsync(importForDispatchId: null, onlyJobId: jobId, cancellationToken);
 
     public Task<int> RetryFailedImportAsync(string dispatchId, CancellationToken cancellationToken)
-        => RetryFailedCoreAsync(dispatchId, cancellationToken);
+        => RetryFailedCoreAsync(dispatchId, onlyJobId: null, cancellationToken);
 
     /// <param name="importForDispatchId">
     /// Only the failed import of that download: what Try again on its recovery
     /// case means (#558), rather than every failed job.
     /// </param>
-    private async Task<int> RetryFailedCoreAsync(string? importForDispatchId, CancellationToken cancellationToken)
+    private async Task<int> RetryFailedCoreAsync(string? importForDispatchId, string? onlyJobId, CancellationToken cancellationToken)
     {
         var scope = importForDispatchId is null
             ? string.Empty
             : " AND job_type = 'filesystem.import.execute' AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.DispatchId') END = @dispatchId";
+        if (onlyJobId is not null)
+        {
+            scope += " AND id = @onlyJobId";
+        }
+
         var now = timeProvider.GetUtcNow();
         var failedJobs = new List<JobQueueItem>();
         var requeued = 0;
@@ -438,6 +446,10 @@ public sealed class SqliteJobStore(
             if (importForDispatchId is not null)
             {
                 AddParameter(select, "@dispatchId", importForDispatchId);
+            }
+            if (onlyJobId is not null)
+            {
+                AddParameter(select, "@onlyJobId", onlyJobId);
             }
 
             using var reader = await select.ExecuteReaderAsync(cancellationToken);
@@ -498,6 +510,10 @@ public sealed class SqliteJobStore(
             if (importForDispatchId is not null)
             {
                 AddParameter(update, "@dispatchId", importForDispatchId);
+            }
+            if (onlyJobId is not null)
+            {
+                AddParameter(update, "@onlyJobId", onlyJobId);
             }
 
             // What the statement actually requeued, which is not the same as

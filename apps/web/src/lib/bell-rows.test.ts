@@ -57,7 +57,7 @@ describe("the bell's rows are two sections: your media and Deluno (#1098)", () =
     const noRelease = rows.media.find((row) => row.kind === "no-release")!;
     expect(noRelease.title).toBe("Obscure Film (1971)");
     expect(noRelease.actions.map((action) => action.label)).toEqual(["Search now", "Dismiss"]);
-    expect(rows.media.find((row) => row.kind === "import")!.actions.map((action) => action.label)).toEqual(["Retry", "Dismiss"]);
+    expect(rows.media.find((row) => row.kind === "import")!.actions.map((action) => action.label)).toEqual(["Try again", "Dismiss"]);
     expect(rows.media.find((row) => row.kind === "handoff")!.actions.map((action) => action.label)).toEqual(["Retry", "Dismiss"]);
   });
 
