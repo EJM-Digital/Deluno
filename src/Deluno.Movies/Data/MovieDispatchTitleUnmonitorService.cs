@@ -13,6 +13,9 @@ public sealed class MovieDispatchTitleUnmonitorService(IMovieCatalogRepository c
 {
     public bool CanHandle(string entityType) => entityType == "movie";
 
+    public async Task<bool?> HasFileAsync(string entityType, string entityId, CancellationToken cancellationToken)
+        => (await catalogRepository.GetByIdAsync(entityId, cancellationToken))?.HasFile;
+
     public async Task<bool> UnmonitorAsync(string entityType, string entityId, CancellationToken cancellationToken)
     {
         var updated = await catalogRepository.UpdateMonitoredAsync([entityId], false, cancellationToken);
