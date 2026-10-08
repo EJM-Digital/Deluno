@@ -43,6 +43,8 @@ function input(overrides: Partial<Input> = {}): Input {
       mediaIntent: "both",
       movieRootPath: "D:\\Media\\Movies",
       seriesRootPath: "D:\\Media\\TV",
+      movieDownloadsPath: "",
+      seriesDownloadsPath: "",
       qualityPreset: "balanced1080p",
       formatGoal: "simpleClean",
       indexerUrl: "",
@@ -84,9 +86,26 @@ describe("guided setup after installing with the picker (#1132)", () => {
       if (url === "/api/quality-profiles") return { id: "qp1", name: "Balanced 1080p - Just make it work", mediaType: "movies" };
       if (url === "/api/libraries") return { id: `lib${++libraryCount}`, name: "Library" };
       if (url === "/api/settings") return {};
+      if (url.startsWith("/api/integrations/processors/download-destinations")) return { libraries: [{ destinations: destinations(url) }] };
       return {};
     });
     authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
+  }
+
+  // What the connected clients report for the library asked about: the picker's completed folder with Movies and TV.
+  function destinations(url: string) {
+    const folder = url.includes("lib1") ? "C:\\Downloads\\Completed\\Movies" : "C:\\Downloads\\Completed\\TV";
+    return [
+      { saveFolder: folder, savedBy: "client-category" },
+      { saveFolder: `${folder}\\`, savedBy: "client-category" },
+      { saveFolder: "C:\\Downloads\\Completed", savedBy: "deluno-per-grab" }
+    ];
+  }
+
+  function downloadsSaves() {
+    return authedFetchMock.mock.calls
+      .filter(([url, init]) => /^\/api\/libraries\/lib\d$/.test(String(url)) && init?.method === "PUT")
+      .map(([url, init]) => ({ url: String(url), body: JSON.parse(init.body) }));
   }
 
   it("creates the baseline and routes Movies and TV to the connected clients without testing the blank form", async () => {
@@ -131,5 +150,48 @@ describe("guided setup after installing with the picker (#1132)", () => {
     const urls = fetchJsonMock.mock.calls.map(([url]) => String(url));
     expect(urls.indexOf("/api/settings")).toBeGreaterThan(urls.indexOf("/api/libraries"));
     expect(urls.some((url) => url.startsWith("/api/updates/preferences"))).toBe(false);
+  });
+
+  it("sets each new library's downloads folder to the folder its clients finish in, so the folder check can tell", async () => {
+    wire();
+
+    const result = await createBaseline(input(), []);
+
+    const saves = downloadsSaves();
+    expect(saves.map((save) => save.body.downloadsPath)).toEqual(["C:\\Downloads\\Completed\\Movies", "C:\\Downloads\\Completed\\TV"]);
+    expect(saves[0].url).toBe("/api/libraries/lib1");
+    expect(result.message).not.toContain("could not tell where your download clients finish");
+    // The destinations are read after the clients are routed to the library, not before.
+    const order = [...fetchJsonMock.mock.calls.map(([url]) => String(url)), ...authedFetchMock.mock.calls.map(([url]) => String(url))];
+    expect(order.some((url) => url.startsWith("/api/integrations/processors/download-destinations?libraryId=lib1"))).toBe(true);
+  });
+
+  it("uses the folder the person typed and does not look it up", async () => {
+    wire();
+    const base = input();
+
+    await createBaseline(input({ form: { ...base.form, movieDownloadsPath: "E:\\Incoming\\Films" } }), []);
+
+    const create = fetchJsonMock.mock.calls.find(([url, init]) => url === "/api/libraries" && JSON.parse(init.body).mediaType === "movies");
+    expect(JSON.parse(create![1].body).downloadsPath).toBe("E:\\Incoming\\Films");
+    expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("libraryId=lib1"))).toBe(false);
+    expect(downloadsSaves().map((save) => save.url)).toEqual(["/api/libraries/lib2"]);
+  });
+
+  it("says so, and sets nothing, when the clients disagree about the folder", async () => {
+    wire();
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/api/quality-profiles") return { id: "qp1", name: "p", mediaType: "movies" };
+      if (url === "/api/libraries") return { id: "lib1", name: "Library" };
+      if (url.startsWith("/api/integrations/processors/download-destinations")) {
+        return { libraries: [{ destinations: [{ saveFolder: "C:\\A", savedBy: "client-category" }, { saveFolder: "C:\\B", savedBy: "client-category" }] }] };
+      }
+      return {};
+    });
+
+    const result = await createBaseline(input(), []);
+
+    expect(downloadsSaves()).toEqual([]);
+    expect(result.message).toContain("could not tell where your download clients finish Movies and TV");
   });
 });

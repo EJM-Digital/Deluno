@@ -101,6 +101,8 @@ public sealed class SqlitePlatformSettingsRepository(
             MovieRootPath: NormalizeSetupText(request.MovieRootPath),
             SeriesRootPath: NormalizeSetupText(request.SeriesRootPath),
             DownloadsPath: NormalizeSetupText(request.DownloadsPath),
+            MovieDownloadsPath: NormalizeSetupText(request.MovieDownloadsPath),
+            SeriesDownloadsPath: NormalizeSetupText(request.SeriesDownloadsPath),
             QualityPreset: NormalizeSetupChoice(request.QualityPreset, "", "", "balanced1080p", "premium4k"),
             FormatGoal: NormalizeSetupChoice(request.FormatGoal, "", "", "simpleClean", "balanced", "homeTheater", "storageSaver", "anime"),
             IndexerName: NormalizeSetupText(request.IndexerName),
