@@ -33,6 +33,7 @@ import { authedFetch } from "../lib/use-auth";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { AutomationPausedNotice } from "../components/app/automation-paused-notice";
 import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { EmptyState } from "../components/shell/empty-state";
 import { Field } from "../components/ui/field";
@@ -479,6 +480,7 @@ function DiscoverAddDrawer({
           checked={searchNow}
           onCheckedChange={setSearchNow}
         />
+        {searchNow ? <AutomationPausedNotice context="add" noun={mediaType === "series" ? "show" : "film"} /> : null}
       </DrawerSection>
     </Drawer>
   );
