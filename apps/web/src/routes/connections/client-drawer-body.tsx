@@ -16,7 +16,7 @@ import { PresetField } from "../../components/ui/preset-field";
 import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import { CATEGORY_OPTIONS, CLIENT_PRESETS, HOST_OPTIONS, PORT_OPTIONS, TV_CATEGORY_OPTIONS } from "./presets";
-import { clientWebAddress, type ClientForm } from "./forms";
+import { clientPageOpensFromBrowser, clientWebAddress, type ClientForm } from "./forms";
 import { healthChip, relative } from "./format";
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "default", label: "Use qBittorrent's own setting" },
@@ -89,6 +89,7 @@ export function ClientDrawerBody({
   ];
   const chip = editing ? healthChip(editing) : null;
   const webAddress = clientWebAddress(form);
+  const pageOpens = clientPageOpensFromBrowser(form, typeof window === "undefined" ? "" : window.location.hostname);
   const sameCategory = form.moviesCategory && form.moviesCategory === form.tvCategory;
 
   useEffect(() => {
@@ -132,10 +133,18 @@ export function ClientDrawerBody({
         </FieldRow>
         {editing && webAddress ? (
           <div className="grid gap-0.5">
-            <a href={webAddress} target="_blank" rel="noopener noreferrer" className="w-fit text-(length:--type-body-sm) font-medium text-primary underline-offset-2 hover:underline">
-              Open {preset?.label ?? "the client"}&rsquo;s page
-            </a>
-            <p className="density-help font-sans text-muted-foreground break-all">{webAddress}</p>
+            {pageOpens ? (
+              <>
+                <a href={webAddress} target="_blank" rel="noopener noreferrer" className="w-fit text-(length:--type-body-sm) font-medium text-primary underline-offset-2 hover:underline">
+                  Open {preset?.label ?? "the client"}&rsquo;s page
+                </a>
+                <p className="density-help font-sans text-muted-foreground break-all">{webAddress}</p>
+              </>
+            ) : (
+              <p className="density-help font-sans text-muted-foreground break-all">
+                {preset?.label ?? "The client"}&rsquo;s own page is on the computer Deluno runs on: {webAddress}
+              </p>
+            )}
           </div>
         ) : null}
         <SwitchRow label="Use SSL" description="Connect to this client using https instead of http." checked={form.useSsl} onCheckedChange={(checked) => setForm((current) => ({ ...current, useSsl: checked }))} />
