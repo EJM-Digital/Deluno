@@ -46,6 +46,7 @@ Artifacts:
 | 4 Behaviour | n | | |
 | 5 Every screen | n | | |
 
+- Every screen is clicked through before each tag and after each batch of fixes (`docs/ga-release-checklist.md`). Record the date, the build and what was found on the "5 Every screen" row above. For a fix batch with no tag, put the same line in the batch's closing note.
 - Defects: list each linked issue, severity, resolution, and evidence.
 - Live test recommendation: GO / NO-GO
 
