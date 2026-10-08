@@ -25,6 +25,7 @@ import { isBackgroundJob, splitStoppedJobs } from "../lib/background-jobs";
 import { JobDrawer } from "../components/app/job-drawer";
 import { SystemShell } from "../components/app/settings-shell";
 import { LanAccessNotice, type LanAccessStatus } from "../components/app/lan-access-notice";
+import { ComponentRecoveryNotices } from "../components/app/component-recovery-notices";
 import { HostNameTip } from "../components/app/host-name-tip";
 import { LogFilesCard } from "../components/app/log-files-card";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
@@ -443,6 +444,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
       />
 
       <LanAccessNotice />
+      <ComponentRecoveryNotices />
       {healthChecksCard}
       {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
       {providerCard}

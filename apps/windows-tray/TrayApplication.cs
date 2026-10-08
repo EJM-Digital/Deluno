@@ -171,23 +171,7 @@ public sealed class TrayApplication : ApplicationContext
             var dataRoot = ComponentPaths.DataRoot();
             var spec = BundledComponents.Load().First(s => s.Kind == ComponentStateMigration.Transmission);
             var login = BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission);
-            message = await TransmissionReadd.RunAsync(dataRoot, new TransmissionRpc(spec.DefaultPort, login), async ct =>
-            {
-                foreach (var process in Process.GetProcessesByName("transmission-daemon"))
-                {
-                    try { process.Kill(); await process.WaitForExitAsync(ct); } catch { /* already gone */ }
-                }
-
-                new RealProcessStarter().Start(ComponentPaths.Expand(spec.PostInstallCommand!), ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
-                var probe = new LoopbackPortProbe();
-                for (var i = 0; i < 60; i++)
-                {
-                    if (await probe.IsOpenAsync("127.0.0.1", spec.DefaultPort, ct)) { return true; }
-                    await Task.Delay(500, ct);
-                }
-
-                return false;
-            }, CancellationToken.None);
+            message = await TransmissionReadd.RunAsync(dataRoot, new TransmissionRpc(spec.DefaultPort, login), ct => TransmissionDaemon.RestartAsync(spec, ct), CancellationToken.None);
         }
         catch (Exception ex)
         {

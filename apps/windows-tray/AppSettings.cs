@@ -111,6 +111,15 @@ public sealed class AppSettings
             return configPath;
         }
 
+        // Where it was kept before #1177: inside the install folder Velopack's Setup replaces on a reinstall.
+        // Read it from there once and write it to the current path (the same copy-forward the ProgramData fallback gets).
+        var installFolderConfigPath = GetInstallFolderConfigPath();
+        if (File.Exists(installFolderConfigPath))
+        {
+            loadedFromLegacyPath = true;
+            return installFolderConfigPath;
+        }
+
         var legacyConfigPath = GetLegacyConfigPath();
         if (File.Exists(legacyConfigPath))
         {
@@ -203,7 +212,16 @@ public sealed class AppSettings
         }
     }
 
+    /// <summary>
+    /// Beside the default data root, never inside <c>%LocalAppData%\Deluno</c>: that is Velopack's install root and a
+    /// reinstall replaces it, which would lose the pointer to a custom data root (#1177).
+    /// </summary>
     private static string GetConfigPath()
+    {
+        return Path.Combine(GetLocalApplicationDataPath(), "DelunoConfig", "deluno.json");
+    }
+
+    private static string GetInstallFolderConfigPath()
     {
         return Path.Combine(GetLocalApplicationDataPath(), "Deluno", "config", "deluno.json");
     }
