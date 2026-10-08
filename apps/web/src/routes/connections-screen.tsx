@@ -1176,8 +1176,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                       <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? <RoutingFixLink>No library sends downloads here. Route it in Library Routing</RoutingFixLink> : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
-                      <ListCell mobile>
-                        <div className="flex items-center gap-1.5">
+                      <ListCell mobile className="max-md:max-w-[7.5rem]">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Chip tone={chip.tone}>{chip.label}</Chip>
                           {/* #813: a SABnzbd queue-level warning, cleared at SABnzbd (not just hidden here) so it does not reappear next poll. */}
                           {live?.clientWarnings?.length ? (

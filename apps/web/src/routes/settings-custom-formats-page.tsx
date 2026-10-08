@@ -25,6 +25,7 @@ import { Chip } from "../components/ui/chip";
 import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
+import { FilterChips } from "../components/ui/filter-chips";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -1109,15 +1110,19 @@ export function SettingsCustomFormatsPage() {
             help="Hybrid is the normal choice. Rules only makes your configured policy the sole decision-maker."
             className="max-w-md"
           >
-            <Select
-              value={safeguards.scoringMode}
-              onChange={(event) => setSafeguards((current) => ({ ...current, scoringMode: event.target.value }))}
-              options={[
-                { value: "hybrid", label: "Rules and ranking together" },
-                { value: "rules-only", label: "Rules only" },
-                { value: "ml-only", label: "Ranking only" }
-              ]}
-            />
+            {/* Its own box keeps the chips from asking the field to be as wide as all three: they scroll inside it on a phone. */}
+            <div className="min-w-0 overflow-hidden">
+              <FilterChips
+                label="How Deluno picks a release"
+                value={safeguards.scoringMode}
+                onValueChange={(scoringMode) => setSafeguards((current) => ({ ...current, scoringMode }))}
+                options={[
+                  { value: "hybrid", label: "Rules and ranking together" },
+                  { value: "rules-only", label: "Rules only" },
+                  { value: "ml-only", label: "Ranking only" }
+                ]}
+              />
+            </div>
           </Field>
 
           <Field label="Never grab" help="Reject any release containing these words or release groups. Plain text — no regex needed.">

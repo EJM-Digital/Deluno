@@ -18,8 +18,7 @@ import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFacts } from "../components/ui/drawer";
-import { FILTER_MENU_TRIGGER } from "../components/ui/filter-chips";
-import { MenuSelect } from "../components/ui/menu-select";
+import { MoreFilters } from "../components/ui/filter-chips";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK, type ListColumn } from "../components/ui/list-card";
 import { useListColumns } from "../lib/use-list-columns";
 import { PageToolbar } from "../components/ui/page-toolbar";
@@ -202,12 +201,14 @@ export function IndexerHistoryPage() {
         titleCase={false}
         filter={{ value: indexerName, onChange: changeIndexerName, placeholder: "Find an indexer" }}
         actions={
-          <MenuSelect
-            label="Filter by action type"
-            value={eventType}
-            onChange={(next) => { setEventType(next); void applyFilters(next, indexerName); }}
-            options={EVENT_TYPE_OPTIONS.map((option) => (option.value === "" ? { ...option, label: "Any action" } : option))}
-            triggerClassName={FILTER_MENU_TRIGGER}
+          <MoreFilters
+            groups={[{
+              label: "Action",
+              ariaLabel: "Filter by action type",
+              value: eventType,
+              onValueChange: (next) => { setEventType(next); void applyFilters(next, indexerName); },
+              options: EVENT_TYPE_OPTIONS.map((option) => (option.value === "" ? { ...option, label: "Any action" } : option))
+            }]}
           />
         }
       >

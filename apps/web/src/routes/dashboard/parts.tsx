@@ -76,8 +76,8 @@ export function Line({
   const body = (
     <>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-(length:--type-body-sm) text-foreground">{label}</span>
-        {hint ? <span className="block truncate text-(length:--type-caption) text-muted-foreground">{hint}</span> : null}
+        <span className="block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-body-sm) text-foreground">{label}</span>
+        {hint ? <span className="block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) text-muted-foreground">{hint}</span> : null}
       </span>
       {value !== undefined ? (
         <span

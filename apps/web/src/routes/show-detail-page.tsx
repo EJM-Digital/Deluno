@@ -1311,7 +1311,7 @@ export function ShowDetailPage() {
                 ].filter((fact) => fact.value).map((fact) => (
                   <div key={fact.label} className="min-w-0">
                     <dt className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{fact.label}</dt>
-                    <dd className="truncate text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
+                    <dd className="truncate max-md:whitespace-normal max-md:break-words text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
                   </div>
                 ))}
               </dl>

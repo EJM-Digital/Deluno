@@ -146,9 +146,13 @@ test.describe("authenticated app smoke", () => {
   // #1100: a filtered Activity view is a link (Live's Turned down card opens this one), read against the real host.
   test("opens the Activity history from a filtered link and keeps the filters in the address", async ({ page }) => {
     await page.goto("/activity?type=turned-down&since=today&reason=language");
-    await expect(page.getByRole("combobox", { name: "Filter by step" })).toContainText("Turned down", { timeout: 15_000 });
+    // The step and the time sit behind "More filters", which counts the two that are narrowing the list.
+    await expect(page.getByRole("button", { name: "More filters, 2 on" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "More filters, 2 on" }).click();
+    await expect(page.getByRole("radio", { name: "Turned down" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByText("Reason: Not in a language you want")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Filter by time" })).toContainText("Today");
+    await expect(page.getByRole("radio", { name: "Today" })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
     await expect(page.getByText("Nothing matches these filters")).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).first().click();
     await expect(page).not.toHaveURL(/type=turned-down/);
