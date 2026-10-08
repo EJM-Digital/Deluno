@@ -1310,9 +1310,9 @@ function ServicesStep({
   onTestClient: () => void;
 }) {
   return (
-    <div className="grid gap-(--grid-gap) xl:grid-cols-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-(--grid-gap) xl:grid-cols-2">
       <FieldShell icon={RadioTower} label="Search source" copy="Required for operational readiness. Connect and test the source Deluno will use to find releases.">
-        <div className="grid gap-3">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <PresetRadioGroup
             label="Search source presets"
             options={INDEXER_SETUP_PRESETS.map((preset) => ({
@@ -1350,12 +1350,12 @@ function ServicesStep({
       </FieldShell>
 
       <FieldShell icon={DownloadCloud} label="Download client" copy="The external client owns downloading; Deluno orchestrates, observes, and imports.">
-        <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           {connectedClients.length > 0 ? (
             // #1132: clients that are already connected are used as they are. Nothing is asked again.
-            <div className="grid gap-2 rounded-xl border border-hairline bg-surface-2 p-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl border border-hairline bg-surface-2 p-3">
               <p className="text-sm font-semibold text-foreground">Already connected. Deluno will use these.</p>
-              <ul className="grid gap-1.5">
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 {connectedClients.map((client) => (
                   <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground">
                     <span className="min-w-0 truncate">{client.name}{client.host ? ` (${client.host}${client.port ? `:${client.port}` : ""})` : ""}</span>
@@ -1378,7 +1378,7 @@ function ServicesStep({
             </p>
           )}
           {connectedClients.length === 0 || addingClient ? (
-            <div className="grid gap-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           <PresetRadioGroup
             label="Download client presets"
             options={CLIENT_SETUP_PRESETS.map((preset) => ({
@@ -1452,7 +1452,7 @@ export function ConnectAppsStep({
   hasInstalled: boolean;
 }) {
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <ConnectInstalledApps onChange={onChange} />
       {hasInstalled ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -2232,7 +2232,7 @@ function PresetRadioGroup({ label, options }: { label: string; options: PresetRa
   }
 
   return (
-    <div role="radiogroup" aria-label={label} className="grid gap-2 sm:grid-cols-2">
+    <div role="radiogroup" aria-label={label} className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
       {options.map((option, index) => (
         <button
           key={option.id}
@@ -2283,10 +2283,10 @@ function ChoiceCard({ active, icon: Icon, title, copy, onClick }: { active: bool
 
 function FieldShell({ icon: Icon, label, copy, children }: { icon: LucideIcon; label: string; copy: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
+    <div className="min-w-0 rounded-2xl border border-hairline bg-surface-1 p-4">
       <div className="mb-4 flex gap-3">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold text-foreground">{label}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{copy}</p>
         </div>

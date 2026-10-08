@@ -281,6 +281,57 @@ test.describe("every screen fits three widths", () => {
     });
   }
 
+  // D2 (rc.30.7 walk): the guided setup's Search source card was 422 px wide in a 380 px page. A fresh install sits on the
+  // first step, so the walk above never saw it: this one opens every step, at every width.
+  for (const size of SIZES) {
+    test(`every guided setup step fits at ${size.width}x${size.height}`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize(size);
+      // Connected clients with long names, as on a real install: they once made the whole step wider than the page.
+      await page.route(/\/api\/download-clients$/, (route) => route.request().method() !== "GET" ? route.continue() : route.fulfill(json(
+        ["qBittorrent", "Transmission", "Deluge", "SABnzbd", "NZBGet"].map((name, index) => ({
+          id: `c${index}`, name: `${name} on a rather long computer name`, protocol: name.toLowerCase(), host: "a-rather-long-computer-name.home.example.org",
+          port: 8000 + index, isEnabled: true, healthStatus: "healthy", categoryTemplate: "x"
+        })))));
+      await authenticateAndNavigate(page, "/setup-guide");
+      const steps = [
+        "Your account", "Time and region", "How you sign in", "Addresses", "Other devices", "Updates", "Your library", "Folders",
+        "Library Profiles", "Find & Download", "Connect installed apps", "Automation", "Start"
+      ];
+      const offenders: string[] = [];
+      for (const step of steps) {
+        const label = step.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        await page.getByRole("button", { name: new RegExp(`^(?:\\d+ )?${label}\\b`) }).first().click();
+        await expect(page.getByRole("heading", { name: step, exact: true })).toBeVisible();
+        if (step === "Find & Download") {
+          // The rig's draft held a long address; a test of it answers with that address in one unbroken word.
+          await page.getByPlaceholder("https://indexer.example/api").fill("https://a-very-long-indexer-host-name.example.org/torznab/api/v2.0/indexers/all/results/torznab/api?apikey=0123456789abcdef0123456789abcdef");
+          await page.getByRole("button", { name: "Test search source" }).click();
+          await page.waitForTimeout(1500);
+        }
+        await page.waitForTimeout(300);
+        const problems = await page.evaluate(measure, false);
+        // The page's container hides what runs past its edge, so look at everything inside it.
+        problems.push(...await page.evaluate(() => {
+          const width = document.documentElement.clientWidth;
+          const past: string[] = [];
+          for (const element of Array.from(document.querySelectorAll("#main-content *"))) {
+            const box = element.getBoundingClientRect();
+            if (box.width <= 1 || box.right <= width + 1) continue;
+            let inScroller = false;
+            for (let owner = element.parentElement; owner; owner = owner.parentElement) {
+              if (/(auto|scroll)/.test(getComputedStyle(owner).overflowX)) { inScroller = true; break; }
+            }
+            if (!inScroller) past.push(`${element.tagName.toLowerCase()} runs to x ${Math.round(box.right)} in a ${width}px page`);
+          }
+          return past.slice(0, 3);
+        }));
+        if (problems.length > 0) offenders.push(`${step}: ${problems.slice(0, 5).join("; ")}`);
+      }
+      expect(offenders, offenders.join("\n")).toEqual([]);
+    });
+  }
+
   // D1 (8 Oct walk): the phone's More menu opened half off the screen, because the sheet moved itself by minus half its
   // width twice (a Tailwind translate and the animation's own).
   test("the phone's More menu opens inside the screen", async ({ page }) => {
