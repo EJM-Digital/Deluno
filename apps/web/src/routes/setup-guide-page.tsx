@@ -52,7 +52,7 @@ import {
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch, useAuth } from "../lib/use-auth";
-import { cn, plainAddress } from "../lib/utils";
+import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
@@ -328,8 +328,47 @@ function toSetupDraft(form: GuideForm) {
     clientName: form.clientName, clientProtocol: form.clientProtocol, clientHost: form.clientHost, clientPort: form.clientPort,
     backupEnabled: form.backupEnabled,
     firstTitleType: form.firstTitleType, firstTitle: form.firstTitle, firstTitleYear: form.firstTitleYear,
-    firstTitleMonitored: form.firstTitleMonitored
+    firstTitleMonitored: form.firstTitleMonitored,
+    // The Yes/No answers are saved too, so a reload restores them (#1132). Unanswered stays out.
+    skipSignInLocalNetwork: form.skipSignInLocalNetwork,
+    updateAutomatically: form.updateAutomatically,
+    automation: answeredAutomation(form.automation)
   };
+}
+
+/** What is still missing before Start works, named exactly (never a guess at the wrong thing). */
+export function describeMissingForFinish(form: GuideForm): string {
+  const missing: string[] = [];
+  const hasMovies = form.mediaIntent === "movies" || form.mediaIntent === "both";
+  const hasTv = form.mediaIntent === "tv" || form.mediaIntent === "both";
+  if (!((hasMovies && form.movieRootPath.trim()) || (hasTv && form.seriesRootPath.trim()))) missing.push("a library root folder");
+  if (!form.qualityPreset) missing.push("a picture quality");
+  if (!form.formatGoal) missing.push("a release preference");
+  if (form.skipSignInLocalNetwork === null) missing.push("an answer to \"Skip sign-in for devices on your home network?\"");
+  if (form.updateAutomatically === null) missing.push("an answer to \"Update automatically, or ask you first?\"");
+  if (!hasAnsweredAllAutomationQuestions(form.automation)) missing.push("an answer to every automation question");
+  if (missing.length === 0) return "Everything is chosen.";
+  return `Still needed before Deluno can create the baseline: ${missing.join(", ")}.`;
+}
+
+/** Only the questions that have an explicit Yes or No. */
+export function answeredAutomation(automation: AutomationChoices): Record<string, boolean> {
+  const answered: Record<string, boolean> = {};
+  for (const key of Object.keys(automation) as AutomationChoiceKey[]) {
+    const value = automation[key];
+    if (typeof value === "boolean") answered[key] = value;
+  }
+  return answered;
+}
+
+/** A saved draft's automation answers, limited to the questions Deluno still asks. */
+export function restoreDraftAutomation(saved: Record<string, boolean> | null | undefined): AutomationChoices {
+  const restored: AutomationChoices = { ...AUTOMATION_UNANSWERED };
+  if (!saved) return restored;
+  for (const key of Object.keys(restored) as AutomationChoiceKey[]) {
+    if (typeof saved[key] === "boolean") restored[key] = saved[key];
+  }
+  return restored;
 }
 
 export type SetupStage = 1 | 2;
@@ -554,14 +593,14 @@ export function SetupGuidePage() {
     firstTitleYear: data.draft.firstTitleYear,
     firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null,
-    automation: { ...AUTOMATION_UNANSWERED },
+    automation: restoreDraftAutomation(data.draft.automation),
     restrictAllowedHosts: data.allowedHosts.enabled,
     allowedHostsSelection: data.allowedHosts.allowedHosts.length
       ? data.allowedHosts.allowedHosts
       : [data.allowedHosts.currentHost],
     // #993: unanswered by default (#936) -- Start stays disabled until this
     // has an explicit Yes or No, same as every Automation question.
-    skipSignInLocalNetwork: null,
+    skipSignInLocalNetwork: typeof data.draft.skipSignInLocalNetwork === "boolean" ? data.draft.skipSignInLocalNetwork : null,
     localNetworkAllowList: data.localNetworkAuth.allowList,
     // #1034 Stage 1 "Time and region": the browser/OS already knows a
     // sensible default (same fields Settings -> Interface edits) -- this is
@@ -575,7 +614,7 @@ export function SetupGuidePage() {
     timezone: data.settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     // #1034 Stage 1 "Updates": unanswered by default (#936) -- Start stays
     // disabled until this has an explicit Yes or No.
-    updateAutomatically: null
+    updateAutomatically: typeof data.draft.updateAutomatically === "boolean" ? data.draft.updateAutomatically : null
   }));
 
   const current = STEPS[stepIndex];
@@ -938,7 +977,7 @@ export function SetupGuidePage() {
                 currentHost={data.allowedHosts.currentHost}
               />
             ) : null}
-            {current.id === "network" ? <NetworkStep address={plainAddress(data.allowedHosts.currentHost)} /> : null}
+            {current.id === "network" ? <NetworkStep address={addressForOtherDevices(data.allowedHosts.currentHost, data.allowedHosts.detectedHosts) ?? undefined} /> : null}
             {current.id === "updates" ? <UpdatesStep form={form} patch={patch} channel={data.updatePreferences.channel} /> : null}
             {current.id === "mode" ? <ModeStep form={form} patch={patch} onSkip={skipWizard} /> : null}
             {current.id === "folders" ? <FoldersStep form={form} patch={patch} /> : null}
@@ -1676,7 +1715,7 @@ function AddressesStep({
  * firewall already lets other devices reach Deluno, or on a host with no
  * firewall for Deluno to look after -- there is nothing to ask in that case.
  */
-function NetworkStep({ address }: { address: string }) {
+function NetworkStep({ address }: { address?: string }) {
   return (
     <FieldShell
       icon={MonitorSmartphone}
@@ -1936,7 +1975,7 @@ function FinishStep({
       </div>
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
-          Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline.
+          {describeMissingForFinish(form)}
         </p>
       ) : connectionTestsRequired ? (
         // Not a blocker: the baseline can be created now and connected later.

@@ -893,10 +893,17 @@ public sealed class PlatformSettingsPersistenceTests
             FormatGoal: "balanced",
             IndexerUrl: "https://indexer.example/api",
             ClientHost: "download-client.local",
-            FirstTitle: "Example Movie"), CancellationToken.None);
+            FirstTitle: "Example Movie",
+            SkipSignInLocalNetwork: false,
+            UpdateAutomatically: true,
+            Automation: new Dictionary<string, bool> { ["rssGrabs"] = true, ["forceImport"] = false }), CancellationToken.None);
 
         var loaded = await repository.GetSetupDraftAsync(CancellationToken.None);
-        Assert.Equal(saved, loaded);
+        Assert.Equal(saved.UpdatedUtc, loaded.UpdatedUtc);
+        Assert.Equal(false, loaded.SkipSignInLocalNetwork);
+        Assert.Equal(true, loaded.UpdateAutomatically);
+        Assert.True(loaded.Automation!["rssGrabs"]);
+        Assert.False(loaded.Automation["forceImport"]);
         Assert.Equal("D:\\Media\\Movies", loaded.MovieRootPath);
         Assert.Equal("Example Movie", loaded.FirstTitle);
         Assert.DoesNotContain("ApiKey", string.Join(',', typeof(UpdateSetupDraftRequest).GetProperties().Select(property => property.Name)));

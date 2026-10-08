@@ -117,6 +117,14 @@ public sealed class SqlitePlatformSettingsRepository(
             FirstTitle: NormalizeSetupText(request.FirstTitle),
             FirstTitleYear: NormalizeSetupText(request.FirstTitleYear),
             FirstTitleMonitored: request.FirstTitleMonitored,
+            SkipSignInLocalNetwork: request.SkipSignInLocalNetwork,
+            UpdateAutomatically: request.UpdateAutomatically,
+            Automation: request.Automation is null
+                ? null
+                : request.Automation
+                    .Where(pair => pair.Key.Length is > 0 and <= 64)
+                    .Take(64)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value),
             UpdatedUtc: updatedUtc);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
