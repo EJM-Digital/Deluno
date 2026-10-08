@@ -1431,7 +1431,7 @@ export interface ProcessorOutcomeRecord {
   importedPath: string | null;
   reason: string | null;
   occurredUtc: string;
-  /** `pending`, `delivered`, `refused` or `given-up`. */
+  /** `pending`, `delivered`, `refused`, `settled` or `given-up`. */
   delivery: string;
   attempts: number;
   lastAttemptUtc: string | null;

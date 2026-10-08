@@ -992,19 +992,36 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         await WatchAsync(app, TimeSpan.Zero, new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
         await WatchAsync(app, TimeSpan.FromMinutes(1), new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
 
-        // Once: one record, one job, however many passes.
-        Assert.Single(await HandoffActivityAsync(app, handoff.Id), line => line.Category == ProcessorHandoffWatcher.ImportRetriedCategory);
+        // Once: one job, however many passes, and the retry is not written as a line of its own (#1155).
         Assert.Equal(1, await ImportJobCountAsync(app));
         var requeued = await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(queued.JobId!, CancellationToken.None);
         Assert.Equal("queued", requeued?.Status);
+        Assert.True(Deluno.Jobs.JobActivityQuiet.IsQuiet(requeued!.PayloadJson));
+        var feed = app.Services.GetRequiredService<IActivityFeedRepository>();
+        Assert.DoesNotContain(await feed.ListActivityAsync(200, null, null, CancellationToken.None), line => line.Category is "job.revived" or "processing.import-retried");
+
+        // If the retry gives up too, it is a person's to retry: no third go.
+        await DeadLetterAsync(app, queued.JobId!);
+        await WatchAsync(app, TimeSpan.FromMinutes(2), new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
+        Assert.Equal("dead-letter", (await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(queued.JobId!, CancellationToken.None))?.Status);
 
         // The import, run as the worker would: the identical file at the destination is taken as the film's file.
-        var result = await pipeline.ExecuteAsync(request, CancellationToken.None);
+        var retry = System.Text.Json.JsonSerializer.Deserialize<ImportExecuteRequest>(
+            requeued.PayloadJson!, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        var result = await pipeline.ExecuteAsync(retry, CancellationToken.None);
         Assert.True(result.Succeeded, $"{result.StatusCode} {result.Message}");
         var stored = await app.Services.GetRequiredService<IMovieCatalogRepository>().GetByIdAsync(film, CancellationToken.None);
         Assert.True(stored?.HasFile);
         Assert.False(File.Exists(output), "the ready-folder copy is removed");
         Assert.True(File.Exists(destination));
+
+        // One heal, one line: the import's own lines for it are folded into that line's details.
+        var lines = await feed.ListActivityAsync(200, null, null, CancellationToken.None);
+        var told = Assert.Single(lines, line => line.Category == "filesystem.import.completed");
+        Assert.Contains("so Deluno tried the import again", told.Message);
+        Assert.Contains("\"Steps\"", told.DetailsJson);
+        Assert.DoesNotContain(lines, line => line.Category is "filesystem.import.started" or "filesystem.import.named");
+        Assert.DoesNotContain(lines, line => line.Category == "decision.explained" && line.Message.Contains("imported using"));
     }
 
     [Fact]
@@ -1023,8 +1040,9 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
 
         await WatchAsync(app, TimeSpan.Zero, new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound), submitted: []);
 
-        Assert.DoesNotContain(await HandoffActivityAsync(app, handoff.Id), line => line.Category == ProcessorHandoffWatcher.ImportRetriedCategory);
         Assert.Equal(1, await ImportJobCountAsync(app));
+        Assert.False(Deluno.Jobs.JobActivityQuiet.IsQuiet(
+            (await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(queued.JobId!, CancellationToken.None))?.PayloadJson));
     }
 
     // ---- #1167: one failure, one record ---------------------------------------------------------------

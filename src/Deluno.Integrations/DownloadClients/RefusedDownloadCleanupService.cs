@@ -99,7 +99,10 @@ public sealed class RefusedDownloadCleanupService(
     Deluno.Libraries.Data.ILibrariesRepository? librariesRepository = null,
     IJobQueueRepository? jobQueueRepository = null,
     IProcessorRepository? processorRepository = null,
-    TimeProvider? timeProvider = null) : IRefusedDownloadCleanupService
+    TimeProvider? timeProvider = null,
+    // Each client's own incomplete folder, as the folder check reads it (#1167): a payload a refused release left
+    // there is on a drive no library or listed download is on.
+    IFolderChainService? folderChain = null) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
     {
@@ -215,6 +218,10 @@ public sealed class RefusedDownloadCleanupService(
 
             roots.AddRange(libraries.Select(library => library.DownloadsPath ?? string.Empty));
             roots.AddRange(OrphanedDownloadService.DownloadFolders(libraries, snapshots).Select(folder => folder.Path));
+            // The client's own incomplete or temporary folder, with its category folders below it: qBittorrent's
+            // temp path, Deluge's download location, Transmission's incomplete folder, SABnzbd's and NZBGet's
+            // temporary and intermediate folders. Only what a release Deluno sent and refused is named there.
+            roots.AddRange(await ClientIncompleteFoldersAsync(libraries, cancellationToken));
 
             var cleanupOn = await ClientReportedFailureCleanupIsOnAsync(cancellationToken);
             var deletable = await ShouldDeletePayloadAsync(cancellationToken);
@@ -270,6 +277,35 @@ public sealed class RefusedDownloadCleanupService(
             logger.LogWarning(exception, "The leftover-payload sweep for refused releases failed.");
             return 0;
         }
+    }
+
+    private async Task<IReadOnlyList<string>> ClientIncompleteFoldersAsync(
+        IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries,
+        CancellationToken cancellationToken)
+    {
+        if (folderChain is null)
+        {
+            return [];
+        }
+
+        var folders = new List<string>();
+        foreach (var library in libraries)
+        {
+            try
+            {
+                var report = await folderChain.CheckAsync(library.Id, cancellationToken);
+                folders.AddRange((report?.Clients ?? [])
+                    .Select(client => client.IncompleteFolder)
+                    .Where(folder => !string.IsNullOrWhiteSpace(folder))!);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A client that cannot be read now is read again next pass; the other roots are still swept.
+                logger.LogWarning(exception, "Could not read the incomplete folders of the download clients for {Library}.", library.Name);
+            }
+        }
+
+        return folders;
     }
 
     private static string FormatSize(long bytes)

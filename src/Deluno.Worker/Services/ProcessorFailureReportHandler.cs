@@ -156,6 +156,8 @@ public sealed class ProcessorFailureReportHandler(
         {
             libraryId = handoff.LibraryId,
             handoffId = handoff.Id,
+            clientId = handoff.ClientId,
+            queueItemId = handoff.QueueItemId,
             releaseName = handoff.ReleaseName,
             sourcePath = handoff.SourcePath,
             failureClass = report.FailureClass
