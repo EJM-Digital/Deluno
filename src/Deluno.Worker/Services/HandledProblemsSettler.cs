@@ -28,7 +28,9 @@ public sealed class HandledProblemsSettler(
     IJobQueueRepository jobs,
     IDownloadDispatchesRepository? dispatches,
     IActivityFeedRepository activityFeed,
-    Deluno.Platform.Data.IProcessorRepository? processors = null)
+    Deluno.Platform.Data.IProcessorRepository? processors = null,
+    IProcessorConnectionService? processorConnections = null,
+    TimeProvider? clock = null)
 {
     private const int DispatchWindow = 500;
 
@@ -55,7 +57,10 @@ public sealed class HandledProblemsSettler(
             }
         }
 
-        return settled + await SettleDispatchFailuresAsync(cancellationToken) + await SettleHandoffsAsync(cancellationToken);
+        return settled
+            + await SettleDispatchFailuresAsync(cancellationToken)
+            + await SettleHandoffsAsync(cancellationToken)
+            + await TellProcessorsOfImportedHandoffsAsync(cancellationToken);
     }
 
     private async Task<int> SettleDispatchFailuresAsync(CancellationToken cancellationToken)
@@ -158,6 +163,20 @@ public sealed class HandledProblemsSettler(
                 continue;
             }
 
+            // A hand-off the processor finished, whose import ran, is not a problem that was dismissed: it
+            // worked, and only carries a note (the small extras the processor left out, #1182). It stays
+            // Completed, the note is cleared so it stops asking for a person, and Transfers reads it as any
+            // other import. Activity already holds the note.
+            if (handoff.Status == ProcessorHandoffStatuses.Completed
+                && !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                && await jobs.GetAsync(handoff.ImportJobId, cancellationToken) is { Status: "completed" })
+            {
+                await processors.UpdateProcessorHandoffAsync(
+                    handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
+                settled++;
+                continue;
+            }
+
             await processors.UpdateProcessorHandoffAsync(
                 handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
             settled++;
@@ -172,6 +191,52 @@ public sealed class HandledProblemsSettler(
         }
 
         return settled;
+    }
+
+    /// <summary>How far back a finished hand-off is looked at for an outcome its processor was never told.</summary>
+    private static readonly TimeSpan OutcomeWindow = TimeSpan.FromDays(60);
+
+    /// <summary>
+    /// A hand-off whose import ran to its end has told its processor so (#578). One that was settled as dismissed
+    /// before that report went out (a partial result, #1182) never did, and the processor kept waiting for its media
+    /// manager. Written down and sent now, once: a hand-off with an outcome record is left alone.
+    /// </summary>
+    private async Task<int> TellProcessorsOfImportedHandoffsAsync(CancellationToken cancellationToken)
+    {
+        if (processors is null || processorConnections is null)
+        {
+            return 0;
+        }
+
+        var now = (clock ?? TimeProvider.System).GetUtcNow();
+        var told = 0;
+        var finished = await processors.ListProcessorHandoffsWithStatusAsync(
+            [ProcessorHandoffStatuses.Dismissed, ProcessorHandoffStatuses.Completed], cancellationToken) ?? [];
+        foreach (var handoff in finished.Where(item => !string.IsNullOrWhiteSpace(item.ImportJobId) && now - item.UpdatedUtc < OutcomeWindow))
+        {
+            if (await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is not { Status: "completed" }
+                || await processors.GetProcessorOutcomeAsync(handoff.Id, cancellationToken) is not null)
+            {
+                continue;
+            }
+
+            var sent = await Deluno.Platform.ProcessorOutcomeDelivery.RecordAndSendAsync(
+                processors,
+                processorConnections,
+                activityFeed,
+                handoff,
+                ProcessorHandoffOutcome.Imported,
+                handoff.OutputPath,
+                null,
+                now,
+                cancellationToken);
+            if (sent is not null)
+            {
+                told++;
+            }
+        }
+
+        return told;
     }
 
     private static string[] IdsOf(IEnumerable<DownloadDispatchItem> items, string entityType)
