@@ -178,4 +178,79 @@ public sealed class ARefusedReleasesLeftoverPayloadIsSweptTests
         File.SetLastWriteTimeUtc(listed, DateTime.UtcNow);
         Assert.False(Found([], [], [], downloads));
     }
+
+    /// <summary>
+    /// The rig's exact layout, 8 Oct: the client's incomplete folder is the sweep root, and the fake episode sits as a
+    /// single file straight in the category folder (root, deluno-tv, the .exe), from a refusal whose client entry went
+    /// on an earlier day. A client that lists its save folder or category folder (an item with no content path yet)
+    /// does not hide what lies under it.
+    /// </summary>
+    [Fact]
+    public async Task A_single_file_in_the_category_folder_survives_no_longer_when_a_client_lists_only_its_save_folder()
+    {
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-rig-layout-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var root = Path.Combine(elsewhere, "qBittorrent");
+            await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            {
+                services.Replace(ServiceDescriptor.Scoped<IFolderChainService>(_ => new FakeFolderChain(root)));
+            });
+            await LibraryDownloadsAsync(app);
+            var payload = Payload(elsewhere);
+            Assert.Equal(root, Path.GetDirectoryName(Path.GetDirectoryName(payload)));
+            var refusal = Refusal("downloadStalled") with { };
+            await app.Services.GetRequiredService<IBlockedReleaseRepository>().BlockAsync(refusal, CancellationToken.None);
+
+            await CleanAsync(app);
+
+            Assert.False(File.Exists(payload));
+            Assert.Equal(1, await ClearedLinesAsync(app));
+        }
+        finally
+        {
+            if (Directory.Exists(elsewhere))
+            {
+                Directory.Delete(elsewhere, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_clients_save_or_category_folder_does_not_hide_a_loose_file_but_its_own_file_or_folder_does()
+    {
+        using var storage = TestStorage.Create();
+        var downloads = Path.Combine(storage.DataRoot, "Incomplete");
+        var file = Payload(downloads);
+        var category = Path.GetDirectoryName(file)!;
+        var root = Path.GetDirectoryName(category)!;
+        var refused = new[] { Refusal("noVideoStream") };
+        var skipped = new List<string>();
+
+        int Count(IReadOnlyCollection<string> listed, IReadOnlyCollection<string> claimed)
+            => RefusedPayloadSweep.Find([root], refused, listed, [], claimed, _ => true, DateTimeOffset.UtcNow, TimeSpan.FromHours(2), (path, because) => skipped.Add(because)).Count;
+
+        Assert.Equal(1, Count([root, category], []));
+        Assert.Equal(1, Count([Path.GetDirectoryName(root)!], []));
+        Assert.Equal(0, Count([file], []));
+        Assert.Equal(0, Count([], [category]));
+        Assert.Contains(skipped, because => because.StartsWith("a download client lists", StringComparison.Ordinal));
+        Assert.Contains(skipped, because => because.StartsWith("an import or hand-off is using", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_skipped_candidate_says_why_and_a_name_ending_like_an_extension_is_still_matched()
+    {
+        using var storage = TestStorage.Create();
+        var downloads = Path.Combine(storage.DataRoot, "Incomplete");
+        const string dotted = "Severance.S02E10.1080p.WEBRip.x264-WREN";
+        var file = Payload(downloads, dotted);
+        var skipped = new List<string>();
+
+        var found = RefusedPayloadSweep.Find([downloads], [Refusal("unmatched", name: dotted)], [], [], [], _ => false, DateTimeOffset.UtcNow, TimeSpan.FromHours(2), (path, because) => skipped.Add(because));
+
+        Assert.Empty(found);
+        Assert.Contains(skipped, because => because.Contains("does not justify deleting", StringComparison.Ordinal));
+        Assert.True(File.Exists(file));
+    }
 }

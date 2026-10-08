@@ -3,7 +3,9 @@ using Deluno.Series.Contracts;
 
 namespace Deluno.Series.Data;
 
-public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catalogRepository)
+public sealed class SeriesDispatchRecoveryHandler(
+    ISeriesCatalogRepository catalogRepository,
+    Deluno.Jobs.Data.IActivityFeedRepository? activityFeed = null)
     : IDispatchRecoveryHandlerComponent
 {
     public async Task HandleGrabTimeoutAsync(
@@ -111,10 +113,19 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
     }
 
     /// <summary>The download recovered, so the cases written about it close with the reason (#559).</summary>
-    public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
-        => catalogRepository.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch(dispatchId), reason, cancellationToken);
+    public async Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
+        => await Deluno.Media.RecoveryCaseActivity.RecordSettledAsync(
+            activityFeed,
+            await catalogRepository.SettleImportRecoveryCasesListedAsync(ImportRecoveryCaseScope.ForDispatch(dispatchId), reason, cancellationToken),
+            reason,
+            "series",
+            cancellationToken);
 
     /// <summary>What a deletion named is gone, so the cases about it close with the reason (#567, #568, #569).</summary>
-    public Task<int> HandleScopeSettledAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken)
-        => catalogRepository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken);
+    public async Task<int> HandleScopeSettledAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken)
+    {
+        var settled = await catalogRepository.SettleImportRecoveryCasesListedAsync(scope, reason, cancellationToken);
+        await Deluno.Media.RecoveryCaseActivity.RecordSettledAsync(activityFeed, settled, reason, "series", cancellationToken);
+        return settled?.Count ?? 0;
+    }
 }

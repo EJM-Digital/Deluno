@@ -382,6 +382,37 @@ public sealed class ScreenQueriesStayLeanTests
         Assert.Equal(0, countsOnly.GetProperty("recentCases").GetArrayLength());
     }
 
+    /// <summary>
+    /// Oppenheimer was listed twice (#1167): the list left the details out, so the screen could not tell that a case and a
+    /// failed hand-off were one problem. The list now keeps the key fields only.
+    /// </summary>
+    [Fact]
+    public async Task Import_recovery_list_keeps_the_key_fields_of_each_case_but_not_the_rest_of_its_details()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        await using (var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Movies))
+        {
+            await ExecuteAsync(connection,
+                "INSERT INTO movie_import_recovery_cases (id, title, failure_kind, summary, recommended_action, details_json, detected_utc, status) " +
+                "VALUES ('case-key', 'Oppenheimer', 'processor-failed', 'Failed', 'Review', '{\"handoffId\":\"h-1\",\"clientId\":\"c-1\",\"queueItemId\":\"q-1\",\"files\":\"x\"}', '2026-08-01T00:00:00.0000000+00:00', 'open');");
+            await ExecuteAsync(connection,
+                "INSERT INTO movie_import_recovery_cases (id, title, failure_kind, summary, recommended_action, details_json, detected_utc, status) " +
+                "VALUES ('case-retry', 'Retry', 'importFailed', 'Failed', 'Review', '{\"RetryRequest\":{\"DispatchId\":\"d-9\"},\"files\":\"x\"}', '2026-08-01T00:01:00.0000000+00:00', 'open');");
+        }
+
+        var plain = await app.Client.GetFromJsonAsync<JsonElement>("/api/movies/import-recovery?limit=500");
+        var cases = plain.GetProperty("recentCases").EnumerateArray().ToDictionary(item => item.GetProperty("id").GetString()!);
+
+        using var keyed = JsonDocument.Parse(cases["case-key"].GetProperty("detailsJson").GetString()!);
+        Assert.Equal("h-1", keyed.RootElement.GetProperty("handoffId").GetString());
+        Assert.Equal("c-1", keyed.RootElement.GetProperty("clientId").GetString());
+        Assert.Equal("q-1", keyed.RootElement.GetProperty("queueItemId").GetString());
+        Assert.False(keyed.RootElement.TryGetProperty("files", out _));
+        using var retry = JsonDocument.Parse(cases["case-retry"].GetProperty("detailsJson").GetString()!);
+        Assert.Equal("d-9", retry.RootElement.GetProperty("dispatchId").GetString());
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static async Task InitializeJobsAsync(TestStorage storage)

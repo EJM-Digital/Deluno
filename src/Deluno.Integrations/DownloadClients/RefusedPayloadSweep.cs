@@ -29,7 +29,8 @@ public static class RefusedPayloadSweep
         IReadOnlyCollection<string> claimedPaths,
         Func<BlockedRelease, bool> payloadShouldBeDeleted,
         DateTimeOffset now,
-        TimeSpan minAge)
+        TimeSpan minAge,
+        Action<string, string>? onSkipped = null)
     {
         var byName = new Dictionary<string, BlockedRelease>(StringComparer.OrdinalIgnoreCase);
         foreach (var release in refused.Where(release => !string.IsNullOrWhiteSpace(release.ReleaseName)
@@ -47,6 +48,7 @@ public static class RefusedPayloadSweep
         var listed = listedByClients.Where(path => !string.IsNullOrWhiteSpace(path)).Select(OrphanedDownloads.Key).ToArray();
         var libraryKeys = libraryRoots.Where(path => !string.IsNullOrWhiteSpace(path)).Select(OrphanedDownloads.Key).ToArray();
         var claimed = claimedPaths.Where(path => !string.IsNullOrWhiteSpace(path)).Select(OrphanedDownloads.Key).ToArray();
+        var rootKeys = roots.Where(root => !string.IsNullOrWhiteSpace(root)).Select(OrphanedDownloads.Key).ToArray();
         var found = new List<RefusedPayload>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -56,6 +58,35 @@ public static class RefusedPayloadSweep
         }
 
         return found.OrderBy(payload => payload.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        // A path above a sweep root, or a root itself, is where a client saves things (its save or category
+        // folder): it says nothing about what lies under it, so it never shields an entry from the sweep.
+        bool IsRootOrAbove(string path)
+            => rootKeys.Any(root => string.Equals(root, path, StringComparison.OrdinalIgnoreCase)
+                || root.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase));
+
+        // A client lists a torrent by its own content path: the file for a single-file torrent, its folder otherwise.
+        // A folder above a loose file is a save folder, not the torrent, so it does not shield that file.
+        bool ProtectedByClientPath(string entryKey, string path, bool entryIsDirectory)
+        {
+            if (!Related(entryKey, path))
+            {
+                return false;
+            }
+
+            if (!entryKey.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (IsRootOrAbove(path))
+            {
+                return false;
+            }
+
+            var parent = entryKey[..entryKey.LastIndexOf('/')];
+            return entryIsDirectory || !string.Equals(parent, path, StringComparison.OrdinalIgnoreCase);
+        }
 
         void Walk(string folder, int depth)
         {
@@ -79,7 +110,9 @@ public static class RefusedPayloadSweep
                 var isDirectory = entry is DirectoryInfo;
                 var name = isDirectory ? entry.Name : Path.GetFileNameWithoutExtension(entry.Name);
                 var key = OrphanedDownloads.Key(entry.FullName);
-                if (!byName.TryGetValue(name.Trim(), out var release))
+                // A release name can end like an extension (".x264-GRP"), so a file is also tried by its whole name.
+                if (!byName.TryGetValue(name.Trim(), out var release)
+                    && (isDirectory || !byName.TryGetValue(entry.Name.Trim(), out release)))
                 {
                     if (isDirectory && depth < MaxDepth)
                     {
@@ -89,19 +122,39 @@ public static class RefusedPayloadSweep
                     continue;
                 }
 
-                if (!seen.Add(key)
-                    || now - new DateTimeOffset(entry.LastWriteTimeUtc, TimeSpan.Zero) < minAge
-                    || listed.Any(path => Related(key, path))
-                    || claimed.Any(path => Related(key, path))
-                    || libraryKeys.Any(root => key.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(key, root, StringComparison.OrdinalIgnoreCase)))
+                string? skippedBecause = null;
+                if (!seen.Add(key))
                 {
+                    skippedBecause = "it was already looked at through another root";
+                }
+                else if (now - new DateTimeOffset(entry.LastWriteTimeUtc, TimeSpan.Zero) < minAge)
+                {
+                    skippedBecause = "it is younger than the grace period, so it may still be written";
+                }
+                else if (listed.FirstOrDefault(path => ProtectedByClientPath(key, path, isDirectory)) is { } listedPath)
+                {
+                    skippedBecause = $"a download client lists {listedPath}";
+                }
+                else if (claimed.FirstOrDefault(path => Related(key, path) && !IsRootOrAbove(path)) is { } claimedPath)
+                {
+                    skippedBecause = $"an import or hand-off is using {claimedPath}";
+                }
+                else if (libraryKeys.Any(root => key.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, root, StringComparison.OrdinalIgnoreCase)))
+                {
+                    skippedBecause = "it is inside a library";
+                }
+
+                if (skippedBecause is not null)
+                {
+                    onSkipped?.Invoke(entry.FullName, skippedBecause);
                     continue;
                 }
 
                 var executable = CarriesExecutable(entry);
                 if (!executable && !payloadShouldBeDeleted(release))
                 {
+                    onSkipped?.Invoke(entry.FullName, $"the refusal ({release.ReasonCode}) does not justify deleting a file that holds no executable");
                     continue;
                 }
 

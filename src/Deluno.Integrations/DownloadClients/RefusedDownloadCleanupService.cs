@@ -227,14 +227,24 @@ public sealed class RefusedDownloadCleanupService(
             var deletable = await ShouldDeletePayloadAsync(cancellationToken);
             var payloads = RefusedPayloadSweep.Find(
                 roots.Where(root => !string.IsNullOrWhiteSpace(root)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                refused.Where(release => !listedNames.Contains(release.ReleaseName)).ToArray(),
+                refused.Where(release =>
+                {
+                    if (!listedNames.Contains(release.ReleaseName))
+                    {
+                        return true;
+                    }
+
+                    logger.LogDebug("Leftover sweep: {ReleaseName} is not swept because a download client still lists a download of that name.", release.ReleaseName);
+                    return false;
+                }).ToArray(),
                 listedPaths,
                 libraries.Select(library => library.RootPath).ToArray(),
                 claimed,
                 release => deletable(release.ReasonCode)
                     || (release.ReasonCode == ImportFailurePolicy.ClientReportedFailure && cleanupOn),
                 (timeProvider ?? TimeProvider.System).GetUtcNow(),
-                OrphanedDownloads.Grace);
+                OrphanedDownloads.Grace,
+                (path, because) => logger.LogDebug("Leftover sweep: {Path} is not deleted because {Because}.", path, because));
 
             var deleted = 0;
             foreach (var payload in payloads)
