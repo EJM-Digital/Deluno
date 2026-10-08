@@ -48,7 +48,26 @@ public sealed class AnImportThatFailedIsNeverShownAsImportedTests
         Assert.Equal(DownloadQueueStatuses.Imported, item.Status);
     }
 
-    private static DownloadClientTelemetrySnapshot Enrich(DownloadDispatchItem dispatch, ProcessorHandoffItem? handoff, string jobStatus, bool jobForSource = false)
+    [Fact]
+    public void A_refusal_that_has_since_been_archived_still_reads_Import_failed()
+    {
+        var item = Assert.Single(Enrich(Dispatch("failed", "likelySample", "The detected runtime is under two minutes, so Deluno is treating this as a likely sample."),
+            handoff: Handoff(), jobStatus: "completed", activeDispatches: false).Queue);
+
+        Assert.Equal(DownloadQueueStatuses.ImportFailed, item.Status);
+    }
+
+    [Fact]
+    public void A_refusal_never_reads_Imported_even_when_the_title_holds_a_file_and_the_hand_off_is_done()
+    {
+        var handoff = Handoff() with { ImportJobId = null };
+        var item = Assert.Single(Enrich(Dispatch("failed", "likelySample", "Likely a sample."), handoff: handoff, jobStatus: "completed",
+            entitiesWithFile: new HashSet<string> { "movie-1" }).Queue);
+
+        Assert.Equal(DownloadQueueStatuses.ImportFailed, item.Status);
+    }
+
+    private static DownloadClientTelemetrySnapshot Enrich(DownloadDispatchItem dispatch, ProcessorHandoffItem? handoff, string jobStatus, bool jobForSource = false, bool activeDispatches = true, IReadOnlySet<string>? entitiesWithFile = null)
         => DownloadClientTelemetryService.EnrichQueueImportState(
             new DownloadClientTelemetrySnapshot(
                 "client-1", "Deluge", "deluge", "http://localhost:8112/", "healthy", null,
@@ -58,11 +77,12 @@ public sealed class AnImportThatFailedIsNeverShownAsImportedTests
                 [],
                 Now),
             libraries: [],
-            dispatches: [dispatch],
-            settledDispatches: [],
+            dispatches: activeDispatches ? [dispatch] : [],
+            settledDispatches: [dispatch],
             importJobs: [Job(jobStatus, jobForSource ? SourcePath : null)],
             handoffs: handoff is null ? [] : [handoff],
-            routeCategoriesByLibrary: new Dictionary<string, IReadOnlyDictionary<string, string>>());
+            routeCategoriesByLibrary: new Dictionary<string, IReadOnlyDictionary<string, string>>(),
+            entitiesWithFile: entitiesWithFile);
 
     private const string SourcePath = "/downloads/Reject.Film.2020.1080p.BluRay.x264-GRP";
 

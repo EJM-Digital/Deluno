@@ -16,6 +16,32 @@ export interface DispatchStanding {
 
 const lower = (value: string | null | undefined) => value?.trim().toLowerCase() ?? "";
 
+const FAILED_IMPORT = ["failed", "importfailed"];
+
+/** The import for this send ended badly: refused, failed or taken away. A failed import is never "Imported". */
+export function dispatchImportFailed(dispatch: DownloadDispatchItem): boolean {
+  return FAILED_IMPORT.includes(lower(dispatch.importStatus));
+}
+
+/**
+ * The one rule for "imported", for every screen. The import time is set when an import ENDS, failed or not,
+ * so it alone never means Imported: a failed import wins over it.
+ */
+export function dispatchWasImported(dispatch: DownloadDispatchItem): boolean {
+  if (dispatchImportFailed(dispatch)) return false;
+  const importStatus = lower(dispatch.importStatus);
+  if (importStatus === "imported" || importStatus === "completed") return true;
+  if (importStatus) return false;
+  return Boolean(dispatch.importCompletedUtc)
+    && !dispatch.importFailureCode && !dispatch.importFailureMessage
+    && !FAILED_IMPORT.includes(lower(dispatch.status)) && lower(dispatch.grabStatus) !== "failed";
+}
+
+/** The import has ended one way or the other: nothing more is coming back for it. */
+export function dispatchImportEnded(dispatch: DownloadDispatchItem | null | undefined): boolean {
+  return Boolean(dispatch) && (dispatchImportFailed(dispatch!) || dispatchWasImported(dispatch!) || Boolean(dispatch!.importCompletedUtc));
+}
+
 export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStanding | null {
   const status = lower(dispatch.status);
   const grab = lower(dispatch.grabStatus);
@@ -25,7 +51,7 @@ export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStandi
   const refusedByImport = reason.includes("refus") || reason.includes("rejected");
   const removedByImport = reason.includes("removed") || reason.includes("vanished");
   // A failed import wins over a completion time left on the row: only a real, completed import reads Imported (#1179).
-  if (importStatus === "failed" || importStatus === "importfailed") {
+  if (dispatchImportFailed(dispatch)) {
     if (refusedByImport) {
       return { status: "done", pill: { tone: "warn", label: "Refused" }, detail: dispatch.importFailureMessage ?? "The release was refused" };
     }
@@ -34,7 +60,7 @@ export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStandi
     }
     return { status: "failed", pill: { tone: "bad", label: "Failed" }, detail: dispatch.importFailureMessage ?? undefined };
   }
-  if (importStatus === "imported" || importStatus === "completed" || (dispatch.importCompletedUtc && status !== "failed" && status !== "importfailed" && grab !== "failed")) {
+  if (dispatchWasImported(dispatch)) {
     return {
       status: "done",
       pill: { tone: "ok", label: "Imported" },

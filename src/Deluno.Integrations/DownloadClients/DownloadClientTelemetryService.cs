@@ -3207,7 +3207,7 @@ public sealed class DownloadClientTelemetryService(
                     : item.Status;
                 // The job ran to its end, but the import itself was refused (an unreadable file, say): the row says
                 // what Activity says, not "Imported".
-                if (status == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                if (status == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refusedImport)
                 {
                     return item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refusedImport };
                 }
@@ -3270,7 +3270,7 @@ public sealed class DownloadClientTelemetryService(
                 var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);
                 // The processor's output came back and the import job finished, but the import was refused
                 // (an unreadable file after an integrity failure, say): Transfers agrees with Activity.
-                if (queueStatus == DownloadQueueStatuses.Imported && ImportFailureOf(item, dispatches) is { } refusedImport)
+                if (queueStatus == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refusedImport)
                 {
                     return resolvedItem with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = resolvedItem.ErrorMessage ?? refusedImport };
                 }
@@ -3345,6 +3345,14 @@ public sealed class DownloadClientTelemetryService(
 
             return resolvedItem;
         }).ToArray();
+
+        // One rule for "imported", on every path above: a download whose latest send had its import refused is
+        // never in the library, whichever record (a finished hand-off, a title that holds a file) said so. The
+        // archived sends are read too, since a refusal that was dismissed is still a refusal.
+        queue = queue.Select(item =>
+            item.Status == DownloadQueueStatuses.Imported && ImportFailureOf(item, settledDispatches) is { } refused
+                ? item with { Status = DownloadQueueStatuses.ImportFailed, ErrorMessage = item.ErrorMessage ?? refused }
+                : item).ToArray();
 
         // One failure, one row (#1167): a failure belongs to the copy that owns the hand-off. Another client's
         // copy of the same release, with no hand-off of its own, is not a second problem.
