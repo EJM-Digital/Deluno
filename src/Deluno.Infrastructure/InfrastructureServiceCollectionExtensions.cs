@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Http;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Infrastructure.Observability;
@@ -47,6 +48,9 @@ public static class InfrastructureServiceCollectionExtensions
         // Singleton because pacing only works if every caller shares one view
         // of when a host was last spoken to.
         services.AddSingleton<IOutboundRequestThrottle, OutboundRequestThrottle>();
+        // Every named client connects a localhost name over IPv4 first (#1178). A client that needs other handler
+        // settings builds its own from LoopbackFirstConnection.CreateHandler, never a bare handler.
+        services.ConfigureHttpClientDefaults(http => http.ConfigurePrimaryHttpMessageHandler(LoopbackFirstConnection.CreateHandler));
         return services;
     }
 }

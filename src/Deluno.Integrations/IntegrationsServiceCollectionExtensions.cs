@@ -63,7 +63,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient("processor-connections", client => client.Timeout = TimeSpan.FromSeconds(10));
         // The connection check follows redirects itself so it can keep the processor's secret off them (#1064).
         services.AddHttpClient("processor-health", client => client.Timeout = TimeSpan.FromSeconds(10))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, AllowAutoRedirect = false });
         // Longer than an indexer's ten seconds on purpose: two of the subtitle
         // providers have no API and are read as HTML, and OpenSubtitles' download
         // is two round trips before a byte of subtitle arrives.

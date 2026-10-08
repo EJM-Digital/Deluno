@@ -31,7 +31,7 @@ public static class GithubLatestRelease
 
         try
         {
-            using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+            using var http = handler is null ? new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) : new HttpClient(handler, disposeHandler: false);
             http.Timeout = TimeSpan.FromSeconds(30);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
