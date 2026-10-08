@@ -3332,12 +3332,23 @@ public sealed class DownloadClientTelemetryService(
             return resolvedItem;
         }).ToArray();
 
+        // One failure, one row (#1167): a failure belongs to the copy that owns the hand-off. Another client's
+        // copy of the same release, with no hand-off of its own, is not a second problem.
+        queue = queue.Select(item =>
+            item.Status is DownloadQueueStatuses.ImportFailed or DownloadQueueStatuses.ProcessingFailed
+            && !handoffsByQueueItem.ContainsKey(item.Id)
+            && (string.IsNullOrWhiteSpace(item.SourcePath) || !handoffsBySource.ContainsKey(NormalizeSourceKey(item.SourcePath)))
+            && AnotherCopyHasTheHandoff(item, handoffs)
+                ? item with { Status = DownloadQueueStatuses.HandedOverElsewhere, ErrorMessage = null, Failure = null }
+                : item).ToArray();
+
         return snapshot with
         {
             Queue = queue,
             Summary = Summarize(queue)
         };
     }
+
     /// <summary>How long a finished download may have no hand-off before the row says something is wrong.</summary>
     internal static readonly TimeSpan NoHandoffNoticeAfter = TimeSpan.FromMinutes(10);
 
