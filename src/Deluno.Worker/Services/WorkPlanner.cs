@@ -1450,6 +1450,46 @@ public sealed class WorkPlanner(
             cancellationToken);
     }
 
+    /// <summary>Files that passed the integrity check: by download, path, and each file's size and last write.</summary>
+    internal static class PassedFiles
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Passed = new(StringComparer.Ordinal);
+
+        public static bool Contains(string key) => Passed.ContainsKey(key);
+
+        public static void Remember(string key)
+        {
+            if (Passed.Count > 5000)
+            {
+                Passed.Clear();
+            }
+
+            Passed[key] = 0;
+        }
+
+        public static string KeyOf(DownloadQueueItem item, string path)
+        {
+            var text = new System.Text.StringBuilder().Append(item.ClientId).Append('|').Append(item.Id).Append('|').Append(path);
+            try
+            {
+                IEnumerable<string> files = Directory.Exists(path)
+                    ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal)
+                    : [path];
+                foreach (var file in files)
+                {
+                    var info = new FileInfo(file);
+                    text.Append('|').Append(file).Append(':').Append(info.Length).Append(':').Append(info.LastWriteTimeUtc.Ticks);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                text.Append("|unreadable:").Append(Guid.NewGuid());
+            }
+
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.ToString())));
+        }
+    }
+
     internal const string DownloadIntegrityFailedCategory = "download.integrity.failed";
     internal const string DownloadIntegrityPassedCategory = "download.integrity.passed";
 
@@ -1502,6 +1542,14 @@ public sealed class WorkPlanner(
             return false;
         }
 
+        // A file that passed is not opened or written about again while it is unchanged (#1155):
+        // the same finished download is in front of every pass until it leaves the client.
+        var passedKey = PassedFiles.KeyOf(item, sourcePath);
+        if (PassedFiles.Contains(passedKey))
+        {
+            return false;
+        }
+
         var languagePreference = qualityRepository is null
             ? null
             : await LanguagePreferenceForAsync(library, qualityRepository, cancellationToken);
@@ -1535,6 +1583,8 @@ public sealed class WorkPlanner(
 
         if (result.Outcome == DownloadIntegrityOutcome.Pass)
         {
+            PassedFiles.Remember(passedKey);
+
             // A pass is recorded on the title's own history so the result can
             // be seen later, same as a failure is.
             if (entityId is not null)

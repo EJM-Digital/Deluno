@@ -3526,7 +3526,16 @@ public sealed class DownloadClientTelemetryService(
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
-        return latestDispatch is not null && handoff.CreatedUtc < latestDispatch.CreatedUtc;
+        if (latestDispatch is null || handoff.CreatedUtc >= latestDispatch.CreatedUtc)
+        {
+            return false;
+        }
+
+        // A hand-off is made after the client has the download, so one made after
+        // this item was added is for this very download, however many later
+        // grabs of the same release were recorded (#1155). A fetch again is a
+        // new download: the client took it after the hand-off was made.
+        return !(item.AddedUtc != default && item.AddedUtc <= handoff.CreatedUtc);
     }
 
     /// <summary>
