@@ -76,6 +76,8 @@ public sealed class MislabelledEpisodeFileRepairService(
         IActivityFeedRepository activity,
         CancellationToken cancellationToken)
     {
+        await HealShowFileNotesAsync(series, recycleBin, cancellationToken);
+
         var links = await series.ListEpisodeFileLinksAsync(cancellationToken);
         if (links.Count == 0)
         {
@@ -150,6 +152,27 @@ public sealed class MislabelledEpisodeFileRepairService(
         }
 
         return repaired;
+    }
+
+    /// <summary>
+    /// A show-level file note that still names a file Deluno itself moved to its recycle bin (an older repair left
+    /// those) is corrected, so the library check never reads it as a file removed outside Deluno. Safe to repeat.
+    /// </summary>
+    public static async Task<int> HealShowFileNotesAsync(
+        ISeriesCatalogRepository series,
+        IRecycleBinService recycleBin,
+        CancellationToken cancellationToken)
+    {
+        var healed = await series.ClearSeriesFileRecordsInRecycleBinAsync(cancellationToken);
+        foreach (var item in await recycleBin.ListAsync(cancellationToken))
+        {
+            if (!string.IsNullOrWhiteSpace(item.OriginalPath) && !File.Exists(item.OriginalPath))
+            {
+                healed += await series.DetachSeriesFileRecordsAsync(null, item.OriginalPath, cancellationToken);
+            }
+        }
+
+        return healed;
     }
 
     /// <summary>
