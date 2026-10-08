@@ -175,6 +175,23 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(movie!.Monitored);
     }
 
+    /// <summary>Giving up on a release removes it with its files and judges nothing: the caller blocklists and searches.</summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("sabnzbd")]
+    public async Task Giving_up_removes_the_download_with_its_files_and_leaves_blocklisting_to_the_caller(string protocol)
+    {
+        using var world = await World.CreateAsync(protocol, TitleKind.Movie);
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.GaveUp);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.Blocklisted);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+        Assert.True((await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None))!.Monitored);
+    }
+
     /// <summary>"Remove this copy" on an unlinked leftover: out of the client with its files, nothing judged.</summary>
     [Theory]
     [InlineData("qbittorrent")]
