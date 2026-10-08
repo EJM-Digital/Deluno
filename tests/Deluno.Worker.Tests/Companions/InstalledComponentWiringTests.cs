@@ -217,6 +217,65 @@ public sealed class InstalledComponentWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task Connecting_Weir_links_the_libraries_that_refine_before_import_and_leaves_the_others()
+    {
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeirConnectOutcome(true, "Weir is connected.", false, "proc-1", "Weir"));
+        var refining = Library("movies", ImportWorkflows.RefineBeforeImport, null, null);
+        var refiningNamed = Library("tv", ImportWorkflows.RefineBeforeImport, null, "Weir");
+        var standard = Library("docs", "standard", null, null);
+        var alreadyLinked = Library("kids", ImportWorkflows.RefineBeforeImport, "proc-0", "Other");
+        var otherName = Library("anime", ImportWorkflows.RefineBeforeImport, null, "FileFlows");
+        var repository = new Mock<Deluno.Libraries.Data.ILibrariesRepository>();
+        repository.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([refining, refiningNamed, standard, alreadyLinked, otherName]);
+        var linked = new List<(string Id, Deluno.Libraries.Contracts.UpdateLibraryWorkflowRequest Request)>();
+        repository.Setup(repo => repo.UpdateLibraryWorkflowAsync(It.IsAny<string>(), It.IsAny<Deluno.Libraries.Contracts.UpdateLibraryWorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Deluno.Libraries.Contracts.UpdateLibraryWorkflowRequest, CancellationToken>((id, request, _) => linked.Add((id, request)))
+            .ReturnsAsync((string id, Deluno.Libraries.Contracts.UpdateLibraryWorkflowRequest _, CancellationToken _) => refining with { Id = id });
+
+        var result = await NewWirer(weir: weir.Object, libraries: repository.Object).ConnectAsync("weir", "owner", "pw", Url, CancellationToken.None);
+
+        Assert.True(result!.Healthy);
+        Assert.Equal(["movies", "tv"], linked.Select(item => item.Id).ToArray());
+        Assert.All(linked, item =>
+        {
+            Assert.Equal("proc-1", item.Request.ProcessorConnectionId);
+            Assert.Equal("Weir", item.Request.ProcessorName);
+            Assert.Equal(ImportWorkflows.RefineBeforeImport, item.Request.ImportWorkflow);
+        });
+        Assert.Contains(_activity, line => line.Contains("Linked the movies library to Weir", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Weir_that_did_not_connect_links_no_library()
+    {
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeirConnectOutcome(false, "Weir did not accept that.", false));
+        var repository = new Mock<Deluno.Libraries.Data.ILibrariesRepository>(MockBehavior.Strict);
+
+        var result = await NewWirer(weir: weir.Object, libraries: repository.Object).ConnectAsync("weir", "owner", "bad", Url, CancellationToken.None);
+
+        Assert.False(result!.Healthy);
+        repository.VerifyNoOtherCalls();
+    }
+
+    private static Deluno.Libraries.Contracts.LibraryItem Library(string id, string importWorkflow, string? processorConnectionId, string? processorName)
+        => new(
+            Id: id, Name: id, MediaType: "movies", Purpose: "General", RootPath: "/media/" + id, DownloadsPath: null,
+            QualityProfileId: null, QualityProfileName: null, CutoffQuality: null, UpgradeUntilCutoff: true, UpgradeUnknownItems: true,
+            ImportWorkflow: importWorkflow, ProcessorName: processorName, ProcessorOutputPath: "/ready/" + id, ProcessorTimeoutMinutes: 60,
+            ProcessorFailureMode: "hold", AutoSearchEnabled: false, MissingSearchEnabled: false, UpgradeSearchEnabled: false,
+            SearchIntervalMinutes: 6, RetryDelayHours: 12, MaxItemsPerRun: 50, SearchWindowStartHour: null, SearchWindowEndHour: null,
+            AutomationStatus: "active", SearchRequested: false, LastSearchedUtc: null, NextSearchUtc: null,
+            CreatedUtc: DateTimeOffset.UnixEpoch, UpdatedUtc: DateTimeOffset.UnixEpoch)
+        { ProcessorConnectionId = processorConnectionId };
+
+    [Fact]
     public async Task A_Weir_that_did_not_accept_the_account_is_not_marked_connected()
     {
         _record.MarkInstalled("weir", "localhost", 9347);
@@ -456,7 +515,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null)
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -476,7 +535,8 @@ public sealed class InstalledComponentWiringTests : IDisposable
             weir,
             system ?? Mock.Of<ICompanionSystem>(),
             activity.Object,
-            detection: detection);
+            detection: detection,
+            libraries: libraries);
     }
 
     private IConnectionsRepository FakeConnections()

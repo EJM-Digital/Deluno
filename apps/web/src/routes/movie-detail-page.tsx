@@ -10,6 +10,7 @@
  * /api/movies/{id}/search, /grab, /automation/defer, /automation/skip-once,
  * /api/movies/bulk.
  */
+import { importWorkflowLabel } from "../lib/import-workflow";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
@@ -1280,7 +1281,7 @@ export function MovieDetailPage() {
                 { label: "Library", value: library?.name ?? "Not linked" },
                 { label: "Root folder", value: library?.rootPath || "No root configured", path: Boolean(library?.rootPath) },
                 { label: "Downloads folder", value: library?.downloadsPath || "Download client default", path: Boolean(library?.downloadsPath) },
-                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" },
+                { label: "Import workflow", value: importWorkflowLabel(library?.importWorkflow) },
                 // What this copy is, kept by Deluno rather than read back out
                 // of the file name - which says only what the owner's naming
                 // pattern asks for, and may say none of this.
