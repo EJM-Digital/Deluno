@@ -215,8 +215,8 @@ export function ConnectInstalledApps({
           chevron={false}
           columns={[
             { id: "app", label: "App" },
-            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true },
-            { id: "action", label: "Action", width: LIST_TRACK.action, srOnly: true, mobile: true }
+            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, mobileWidth: "7.5rem" },
+            { id: "action", label: "Action", width: LIST_TRACK.action, srOnly: true, mobile: true, mobileWidth: "6rem" }
           ]}
         >
           {installed.map((app) => {
@@ -235,11 +235,14 @@ export function ConnectInstalledApps({
                       variant="outline"
                       disabled={busy !== null}
                       className="w-full"
+                      aria-label={`Connect ${app.displayName}`}
                       aria-expanded={app.kind === WEIR_KIND ? weirOpen : undefined}
                       onClick={() => void connect(app)}
                     >
                       {busy === app.kind ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-                      Connect {app.displayName}
+                      {/* The row already names the app; a phone has room only for the verb. */}
+                      <span className="md:hidden">Connect</span>
+                      <span className="hidden md:inline">Connect {app.displayName}</span>
                     </Button>
                   ) : null}
                 </ListCell>
