@@ -196,6 +196,8 @@ public sealed class SqliteJobStore(
             SeverityForCategory("job.queued"),
             now.ToString("O"),
             cancellationToken);
+        // A screen listing jobs (Activity) reads again when one is added, not only once it starts (#1180).
+        await PublishJobChangedAsync(job, "queued", null, now, cancellationToken);
         DelunoObservability.JobsQueued.Add(1, new("job.type", job.JobType), new("source", job.Source));
 
         // Only jobs runnable right now should wake a lane. LeaseBatchAsync
@@ -1284,7 +1286,14 @@ public sealed class SqliteJobStore(
         AddParameter(update, "@id", jobId);
         AddParameter(update, "@workerId", workerId);
         AddParameter(update, "@runAtUtc", runAtUtc.ToString("O"));
-        await update.ExecuteNonQueryAsync(cancellationToken);
+        var handedBack = await update.ExecuteNonQueryAsync(cancellationToken);
+
+        // Running -> waiting is a change a screen must hear: without it a deferred search kept reading "running" until some
+        // other job happened to start or finish (#1180).
+        if (handedBack > 0 && await GetAsync(jobId, cancellationToken) is { } deferred)
+        {
+            await PublishJobChangedAsync(deferred, "waiting", null, timeProvider.GetUtcNow(), cancellationToken);
+        }
     }
 
     public async Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken, string? rawDetail = null)
