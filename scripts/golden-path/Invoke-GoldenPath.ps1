@@ -215,6 +215,18 @@ try {
     $setupName = Split-Path $InstallerPath -Leaf
 
     if ($Interactive) {
+        # The picker finds NZBGet's and Weir's latest releases through GitHub's anonymous API (60 calls an hour for
+        # each public address, shared by everything behind it). When that is used up the picker fails them with
+        # "Could not find ... latest release on GitHub" (rc.30.8 run), so say so before spending a run on it.
+        $budget = Invoke-InVm {
+            try { $c = (Invoke-RestMethod 'https://api.github.com/rate_limit' -UseBasicParsing -TimeoutSec 20).resources.core; "$($c.remaining)|$([DateTimeOffset]::FromUnixTimeSeconds($c.reset).ToLocalTime().ToString('HH:mm'))" } catch { "unknown|$($_.Exception.Message)" }
+        }
+        $left, $resets = ($budget -split '\|', 2)
+        if ($left -match '^\d+$' -and [int]$left -lt 20) {
+            Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'failed' "Only $left calls left until $resets (VM clock): the picker would fail NZBGet and Weir. Wait for the reset, then run again."
+            throw 'GitHub anonymous API budget is used up.'
+        }
+        Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'passed' "$left calls left (resets $resets)."
         Invoke-InteractiveInstall -SetupName $setupName
     } else {
     # 4. Silent install. Velopack's Setup takes --silent; the component picker is a first-run dialog
@@ -281,7 +293,7 @@ try {
             ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)" })
         $data = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $components = if (Test-Path (Join-Path $data 'components')) { @(Get-ChildItem (Join-Path $data 'components') -Directory | Select-Object -ExpandProperty FullName) } else { @() }
-        $clientFolders = @('C:\Downloads\Completed', 'C:\Downloads\Completed\Movies', 'C:\Downloads\Completed\TV', 'D:\Incomplete') | ForEach-Object { "$_ : $(Test-Path $_)" }
+        $clientFolders = @('C:\Downloads\Completed', 'C:\Downloads\Completed\Movies', 'C:\Downloads\Completed\TV', 'C:\Downloads\Incomplete') | ForEach-Object { "$_ : $(Test-Path $_)" }
         $configs = @(
             "$env:APPDATA\qBittorrent\qBittorrent.ini", "$env:LOCALAPPDATA\transmission", "$env:APPDATA\transmission",
             "$env:APPDATA\deluge", "$env:LOCALAPPDATA\sabnzbd", "$env:APPDATA\NZBGet", "$env:ProgramData\NZBGet", "$env:ProgramData\Weir", "$env:LOCALAPPDATA\Weir"
