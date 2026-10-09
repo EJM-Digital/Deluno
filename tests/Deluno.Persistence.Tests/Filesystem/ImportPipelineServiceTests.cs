@@ -4012,7 +4012,9 @@ public sealed class ImportPipelineServiceTests
     /// </summary>
     private async Task<(int Repaired, TestStorage Storage, SqliteSeriesCatalogRepository Series, SqliteJobStore Store, FakeJobScheduler Scheduler, string FilePath, string SeriesId, Deluno.Platform.RecycleBinService Bin, Func<Task<int>> Again)> RunMislabelledRepairAsync(
         string releaseName,
-        string libraryFileName)
+        string libraryFileName,
+        string? earlierReleaseName = null,
+        TimeSpan? earlierBy = null)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
@@ -4049,6 +4051,16 @@ public sealed class ImportPipelineServiceTests
 
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
         var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        if (earlierReleaseName is not null)
+        {
+            // An older import to the same path, which the next one replaced (#1189).
+            var earlierId = await store.RecordDownloadDispatchAsync(
+                library.Id, "tv", "episode", episodeId, earlierReleaseName, "TestIndexer", "client-1", "qBittorrent", "sent", null,
+                cancellationToken: CancellationToken.None);
+            await dispatches.RecordImportOutcomeAsync(earlierId, "imported", filePath, null, null, CancellationToken.None);
+            timeProvider.Advance(earlierBy ?? TimeSpan.FromHours(1));
+        }
+
         var dispatchId = await store.RecordDownloadDispatchAsync(
             library.Id, "tv", "episode", episodeId, releaseName, "TestIndexer", "client-1", "qBittorrent", "sent", null,
             cancellationToken: CancellationToken.None);
@@ -4096,6 +4108,54 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(0, await run.Again());
         Assert.Single(run.Scheduler.Requests);
         Assert.Single(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #1189 (rig, 8 Oct): two downloads were imported to one path. The older release's name carries another episode's
+    /// title; the newer one is right and its file is the one in place. Only the latest import is judged.
+    /// </summary>
+    [Fact]
+    public async Task A_file_is_judged_by_the_latest_import_to_its_path_not_an_older_one_it_replaced()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 Diary of a Chimpy Kid 1080p DSNP WEB-DL DDP5 1 H 264-NTb",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            earlierReleaseName: "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX");
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        Assert.Empty(run.Scheduler.Requests);
+        Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1189: the other way round, the newest import is the wrong one, so the file still goes.</summary>
+    [Fact]
+    public async Task A_file_whose_latest_import_is_the_wrong_episode_still_goes_to_the_recycle_bin()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            earlierReleaseName: "The Simpsons S38E02 Diary of a Chimpy Kid 1080p DSNP WEB-DL DDP5 1 H 264-NTb");
+        using var storage = run.Storage;
+        Assert.Equal(1, run.Repaired);
+        Assert.False(File.Exists(run.FilePath));
+    }
+
+    /// <summary>#1189: two imports at the same instant naming different releases cannot be told apart; the file is left and Activity says so.</summary>
+    [Fact]
+    public async Task A_file_two_imports_cannot_be_told_apart_on_is_left_alone_and_Activity_says_so()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            earlierReleaseName: "The Simpsons S38E02 Diary of a Chimpy Kid 1080p DSNP WEB-DL DDP5 1 H 264-NTb",
+            earlierBy: TimeSpan.Zero);
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        var events = await run.Store.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(events, e => e.Category == Deluno.Worker.Services.MislabelledEpisodeFileRepairService.ActivityCategory
+            && e.Message.Contains("cannot tell which"));
     }
 
     /// <summary>#1173: a file whose release carries the episode's own title is left alone.</summary>
