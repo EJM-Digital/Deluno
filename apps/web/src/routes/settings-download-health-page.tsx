@@ -3,11 +3,11 @@
  *
  * Its own page, replacing the flat per-kind toggles that used to sit on
  * Search & Cycles -> Failed Downloads: each rule kind here carries its own
- * strikes, its own timer, its own completion range/protocol scope, and its
- * own action - "Replace it", "Retry elsewhere, keep files", or "Just tell
- * me". Nothing is on for a rule that was not already on before this screen
- * existed (#936); the first read of /api/download-health/rules synthesizes
- * that starting point once, server-side.
+ * strikes, its own completion range/protocol scope, and its own action -
+ * "Replace it", "Retry elsewhere, keep files", or "Just tell me" - and every
+ * rule is checked on one shared "Check every" interval, a strike per check
+ * (#1194). A fresh install has no rule on: setup asks a Yes or No, and an
+ * install that existed before keeps exactly what it had.
  *
  * "Dangerous or junk file" (#816/#879) is offered here too, once a client
  * adapter can list what is actually inside a download - it checks that
@@ -80,18 +80,18 @@ const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; th
   },
   "dead-torrent": {
     label: "Dead torrent",
-    description: "Zero peers or seeders left, past a grace period so a magnet that has not yet announced is not judged instantly. Torrents only.",
+    description: "Zero peers or seeders at a check, once the download is older than a grace period so a magnet that has not yet announced is not judged instantly. Each check with none adds a strike; the first check with a peer clears them. Torrents only.",
     thresholdLabel: "Grace period",
     thresholdUnit: "minutes",
     thresholdHelp: "How long a freshly added download is left alone before zero peers can trip this rule."
   },
   "dangerous-file": {
     label: "Dangerous or junk file",
-    description: <>A file inside the download matches the content blocklist (<PageLink page="failedDownloads" label="Automation & Recovery, Failed Downloads, Content blocklist" />). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below.</>
+    description: <>A file inside the download matches the content blocklist (<PageLink page="failedDownloads" label="Automation & Recovery, Failed Downloads, Content blocklist" />). One confirmed match is enough - always a single instant strike, whatever strike count is set below.</>
   },
   "client-failure": {
     label: "Client-reported failure",
-    description: <>The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on <PageLink page="failedDownloads" />.</>
+    description: <>The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strike count and action, and it then replaces the platform-wide default on <PageLink page="failedDownloads" />.</>
   },
   "magnet-metadata": {
     label: "Magnet stuck fetching metadata",
@@ -859,7 +859,7 @@ export function SettingsDownloadHealthPage() {
           ) : null}
           {form.kind === "too-slow" ? (
             <>
-              <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has spent this many minutes in the queue in total, this rule trips whatever its current speed - leave blank for no ceiling.">
+              <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has been in the queue this many minutes in total, every check adds a strike whatever its current speed - leave blank for no ceiling.">
                 <div className="flex items-center gap-2">
                   <Input type="number" min="1" step="1" placeholder="No ceiling" value={form.tooSlowMaxTotalMinutes} onChange={(event) => setForm((current) => ({ ...current, tooSlowMaxTotalMinutes: event.target.value }))} />
                   <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
