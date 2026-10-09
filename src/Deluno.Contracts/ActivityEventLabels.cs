@@ -115,6 +115,7 @@ public static class ActivityEventLabels
             ["download.client.connectivity-retry-exhausted"] = "Gave up waiting for the download client",
             ["download.client.duplicate"] = "Download client reported a duplicate",
             ["download.client.failed"] = "Download client reported a failed download",
+            ["download.duplicate.failed"] = "An extra copy of a download failed, the release was kept",
             ["download.client.needs-attention"] = "Download needs attention in the client",
             ["download.client.setup-problem"] = "Download client has a setup problem",
             ["download.client.script-failed"] = "Download client script failed",

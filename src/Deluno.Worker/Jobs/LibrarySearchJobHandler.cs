@@ -296,6 +296,10 @@ public abstract class LibrarySearchJobHandler(
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
             var searchResult = decisionPlan.SearchResult;
+            // One send at a time for this title and release (#1192): the look and the recorded send are one step.
+            using var sendGate = decisionPlan.ShouldDispatch && bestCandidate is not null
+                ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken)
+                : null;
             var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
                 ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken)
                 : null;
@@ -996,6 +1000,9 @@ public abstract class LibrarySearchJobHandler(
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
             var searchResult = decisionPlan.SearchResult;
+            using var sendGate = decisionPlan.ShouldDispatch && bestCandidate is not null
+                ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
+                : null;
             var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
                 ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
                   ?? LeftToPlannedSeasonSearch(candidate.SeriesId, bestCandidate, plannedSeasonNumbersBySeries)

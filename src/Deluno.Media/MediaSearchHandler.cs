@@ -158,7 +158,27 @@ public static class MediaSearchHandler
         var failures = (searchPlan.Failures ?? []).ToList();
         DownloadClientGrabResult? grabResult = null;
 
-        if (decisionPlan.ShouldDispatch
+        // One send at a time for this title and release, and no second send of what is
+        // already on its way (#1192). "Search now" skipped the check the automatic
+        // searches make, so a film the add-time search had just sent to one Usenet
+        // client was sent again, a minute later, to the other. The look and the
+        // recorded send happen inside the gate, so a search running at the same moment
+        // finds this one's send. To send a second copy on purpose, pick a release and
+        // choose "Send as well" (#1175).
+        using var sendGate = decisionPlan.ShouldDispatch && bestCandidate is not null
+            && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null
+            ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [item.Id], cancellationToken)
+            : null;
+        var alreadyOnItsWay = sendGate is not null
+            ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate!.ReleaseName, [item.Id], cancellationToken)
+            : null;
+        if (alreadyOnItsWay is not null)
+        {
+            outcome = "skipped";
+        }
+
+        if (alreadyOnItsWay is null
+            && decisionPlan.ShouldDispatch
             && decisionPlan.SelectedDownloadClient is not null
             && decisionPlan.DispatchRequest is not null)
         {
@@ -226,7 +246,7 @@ public static class MediaSearchHandler
                 outcome,
                 now,
                 now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                decisionPlan.SearchResult,
+                alreadyOnItsWay ?? decisionPlan.SearchResult,
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
@@ -237,7 +257,7 @@ public static class MediaSearchHandler
             new DecisionExplanationPayload(
                 Scope: $"{entityType}.search",
                 Status: outcome,
-                Reason: decisionPlan.SearchResult,
+                Reason: alreadyOnItsWay ?? decisionPlan.SearchResult,
                 Inputs: new Dictionary<string, string?>
                 {
                     ["title"] = item.Title,
@@ -249,7 +269,7 @@ public static class MediaSearchHandler
                     ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
                 },
                 Outcome: grabResult is null
-                    ? searchPlan.Summary
+                    ? alreadyOnItsWay ?? searchPlan.Summary
                     : $"{grabResult.Status}: {grabResult.Message}",
                 Alternatives: decisionPlan.Alternatives),
             null,
@@ -259,7 +279,7 @@ public static class MediaSearchHandler
 
         await activityFeedRepository.RecordActivityAsync(
             $"{entityType}.search.manual",
-            $"{item.Title} was searched manually from the Deluno workspace.",
+            $"Search now was used for {item.Title}, from a screen or an outside app.",
             null,
             null,
             entityType,
@@ -269,7 +289,7 @@ public static class MediaSearchHandler
         return new MediaSearchResult(
             NotFound: false,
             Outcome: outcome,
-            Summary: searchPlan.Summary,
+            Summary: alreadyOnItsWay ?? searchPlan.Summary,
             Reason: searchPlan.Reason,
             ReleaseName: bestCandidate?.ReleaseName,
             IndexerName: bestCandidate?.IndexerName,

@@ -4844,7 +4844,7 @@ public sealed class SqliteJobStore(
             var context = ParseLibraryPayload(payloadJson);
             if (context is not null)
             {
-                var trigger = context.TriggeredBy == "manual" ? "right away" : "on schedule";
+                var trigger = SearchStartedWords.WhenQueued(context.TriggeredBy);
                 return $"Queued a library check for {context.LibraryName} {trigger}.";
             }
 
