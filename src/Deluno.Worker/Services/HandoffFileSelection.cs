@@ -8,7 +8,7 @@ namespace Deluno.Worker.Services;
 
 /// <summary>
 /// Builds the hand-off as it goes over the wire (#1199): the source path translated to the processor's, and, when the
-/// processor advertises a minimum file size for the library, the files at or above it named in <c>outputFiles</c>.
+/// processor advertises a minimum file size for the library, the files at or above it named in <c>sourceFiles</c>.
 ///
 /// <para>The processor refuses a file strictly smaller than its minimum, so a file of exactly the minimum is named.
 /// The smaller ones are not touched: they stay in the download folder, where seeding keeps them safe, and go only
@@ -80,7 +80,7 @@ public static class HandoffFileSelection
 
         return outbound with
         {
-            OutputFiles = named
+            SourceFiles = named
                 .Select(path => mappings.Count > 0 ? ProcessorPathMappingTranslator.ToProcessor(path, mappings) ?? path : path)
                 .ToList()
         };
