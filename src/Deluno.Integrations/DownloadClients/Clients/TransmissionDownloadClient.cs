@@ -253,7 +253,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     {
         var finished = IsFinishedWithTrackerError(item);
         var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, finished ? null : item.Error, finished ? null : item.ErrorString);
-        return item.IsStalled == true && status == DownloadQueueStatuses.Downloading
+        return item.IsStalled == true && status == DownloadQueueStatuses.Downloading && (item.PercentDone ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent
             ? DownloadQueueStatuses.Stalled
             : status;
     }

@@ -85,6 +85,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { healthChecksNeedingAttention, isHealthCheckSnoozed } from "../lib/health-snooze";
 
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
 interface SystemInstallationInfo {
@@ -364,7 +365,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
     </ListCard>
   );
 
-  const healthCheckAttention = healthChecks.checks.filter((check) => check.status !== "ok" && check.status !== "suggestion").length;
+  const healthCheckAttention = healthChecksNeedingAttention(healthChecks.checks).length;
   const healthChecksCard = <HealthChecksCard checks={healthChecks.checks} onChanged={() => revalidator.revalidate()} />;
 
   const jobsCard = <BackgroundJobsCard jobs={jobs} failedJobs={failedJobs} onChanged={() => revalidator.revalidate()} />;
@@ -1774,7 +1775,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
   // A suggestion (#1060) is a setting that starts off and is worth turning on.
   // It is not a problem: it never counts toward "need attention".
   const suggestions = checks.filter((check) => check.status === "suggestion");
-  const problems = checks.filter((check) => check.status !== "ok" && check.status !== "suggestion");
+  const problems = healthChecksNeedingAttention(checks);
   const sorted = checks.filter((check) => check.status !== "suggestion").sort((a, b) => {
     const rank = (status: string) => (status === "problem" ? 0 : status === "unknown" ? 1 : 2);
     return rank(a.status) - rank(b.status);
@@ -1930,7 +1931,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
           chevron={false}
         >
           {(rows) => rows.map((check) => {
-            const isSnoozed = check.snoozedUntilUtc !== null && new Date(check.snoozedUntilUtc).getTime() > Date.now();
+            const isSnoozed = isHealthCheckSnoozed(check);
             // A safety-net row for one unexpected item in a processor output
             // folder (#921) is acted on directly -- Import or Delete -- not
             // snoozed, because snoozing only hides a problem that stays true;

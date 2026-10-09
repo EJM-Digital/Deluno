@@ -72,6 +72,24 @@ export function applyHandoffChanged(client: Cache, event: ProcessorHandoffChange
     };
     return [added, ...list];
   });
+  // The download's own row follows its hand-off at once: Try again moves it from failed to waiting, and
+  // the drawer must not go on calling it failed until the client is read again (#1193).
+  const queueItemId = event.queueItemId;
+  if (!queueItemId) return;
+  const withProcessor = ["waiting", "submitted", "accepted", "started"].includes(status);
+  const failedNow = ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled", "source-gone"].includes(status);
+  if (!withProcessor && !failedNow) return;
+  const next = withProcessor ? "waitingForProcessor" : "processingFailed";
+  patch<DownloadTelemetryOverview>(client, sharedSources.telemetry.key, (overview) => {
+    let changed = false;
+    const clients = overview.clients.map((entry) => {
+      const hit = entry.queue.find((item) => item.id === queueItemId && (item.status === "processingFailed" || item.status === "waitingForProcessor") && item.status !== next);
+      if (!hit) return entry;
+      changed = true;
+      return { ...entry, queue: entry.queue.map((item) => (item === hit ? { ...item, status: next, errorMessage: withProcessor ? null : item.errorMessage } : item)) };
+    });
+    return changed ? { ...overview, clients } : undefined;
+  });
 }
 
 /* ------------------------------------------------- sent downloads */

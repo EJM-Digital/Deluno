@@ -231,4 +231,26 @@ public sealed class HeldReleaseTests
         await store.ForgetExceptAsync(new HashSet<string>(), CancellationToken.None, AttentionDismissalStore.HeldReleasePrefix);
         Assert.Empty(await store.ListAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_dismissed_release_offered_again_by_a_new_search_stays_dismissed_until_the_title_is_held_for_another_release()
+    {
+        var (storage, _) = await CreateAsync();
+        using var _ = storage;
+        var store = new AttentionDismissalStore(storage.Factory, new FixedTimeProvider(Now));
+        await store.DismissAsync(AttentionDismissalStore.HeldReleaseKey("h1"), CancellationToken.None);
+        await store.DismissAsync(AttentionDismissalStore.HeldReleaseNameKey("movie", "m1", null, "Profhigh.2020.1080p"), CancellationToken.None);
+
+        // The feed watch offers the same release again: a new row (h2), the same release of the same title.
+        var dismissed = await store.ListAsync(CancellationToken.None);
+        Assert.True(AttentionDismissalStore.IsHeldReleaseDismissed(dismissed, "h2", "movie", "m1", null, "profhigh.2020.1080P"));
+        Assert.False(AttentionDismissalStore.IsHeldReleaseDismissed(dismissed, "h2", "movie", "m2", null, "Profhigh.2020.1080p"));
+        Assert.False(AttentionDismissalStore.IsHeldReleaseDismissed(dismissed, "h2", "movie", "m1", null, "Profhigh.2020.2160p"));
+
+        // Nothing is held for the title now: the dismissal is kept. A different release held for it is new, and the old dismissal goes.
+        await store.ForgetSupersededHeldReleasesAsync([("movie", "m3", null, "Other")], CancellationToken.None);
+        Assert.Contains(AttentionDismissalStore.HeldReleaseNameKey("movie", "m1", null, "Profhigh.2020.1080p"), await store.ListAsync(CancellationToken.None));
+        await store.ForgetSupersededHeldReleasesAsync([("movie", "m1", null, "Profhigh.2020.2160p")], CancellationToken.None);
+        Assert.DoesNotContain(AttentionDismissalStore.HeldReleaseNameKey("movie", "m1", null, "Profhigh.2020.1080p"), await store.ListAsync(CancellationToken.None));
+    }
 }

@@ -160,6 +160,21 @@ public sealed class AttentionSummaryBuilderTests
     }
 
     [Fact]
+    public void A_client_with_warnings_opens_its_own_drawer_where_they_are_cleared()
+    {
+        var result = AttentionSummaryBuilder.Build(Sources(Summary(clients:
+        [
+            new DashboardClientRow("cl1", "SABnzbd", "usenet", true, null, null, 2, null, "healthy", 0, 0),
+            new DashboardClientRow("cl2", "NZBGet", "usenet", false, null, null, 0, null, "failing", 0, 0)
+        ])));
+
+        var warnings = result.Rows.Single(row => row.Id == "client:cl1");
+        Assert.Equal("Clear warnings", warnings.Action);
+        Assert.Equal("/indexers/download-clients?connection=cl1", warnings.To);
+        Assert.Equal("Open System", result.Rows.Single(row => row.Id == "client:cl2").Action);
+    }
+
+    [Fact]
     public void Rows_say_which_section_they_are_in_and_worst_comes_first()
     {
         var result = AttentionSummaryBuilder.Build(Sources(
