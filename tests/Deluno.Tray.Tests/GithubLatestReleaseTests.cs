@@ -329,15 +329,88 @@ public sealed class GithubRateLimitTests
     }
 
     [Fact]
-    public void The_message_names_the_limit_and_when_it_lifts_in_plain_words()
+    public void The_message_is_the_servers_sentence_with_the_reset_in_this_computers_time()
     {
-        var text = GithubLatestRelease.RateLimitMessage("NZBGet", new DateTimeOffset(2026, 10, 8, 21, 21, 0, TimeSpan.Zero));
+        var at = new DateTimeOffset(2026, 10, 8, 21, 21, 0, TimeSpan.Zero);
 
-        Assert.Contains("hourly limit", text);
-        Assert.Contains("NZBGet", text);
-        Assert.Contains("Try again", text);
-        Assert.DoesNotContain("Could not find", text);
-        Assert.Contains("hourly limit", GithubLatestRelease.RateLimitMessage("Weir", null));
+        Assert.Equal(Deluno.Infrastructure.Http.GitHubRateLimitException.MessageFor(at), GithubLatestRelease.RateLimitMessage(at, TimeZoneInfo.Utc).Replace("9:21 pm", "2026-10-08 21:21 UTC"));
+        Assert.Contains("9:21 pm", GithubLatestRelease.RateLimitMessage(at, TimeZoneInfo.Utc));
+        Assert.DoesNotContain("UTC", GithubLatestRelease.RateLimitMessage(at, TimeZoneInfo.Utc));
+    }
+
+    [Fact]
+    public async Task The_api_fallback_reuses_a_304_body_and_remembers_the_limit_with_no_call_before_the_reset()
+    {
+        var state = new Deluno.Infrastructure.Http.GitHubApiState();
+        var clock = new FakeClock(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero));
+        var reset = clock.GetUtcNow().AddMinutes(30);
+        var api = new ApiSequence(reset);
+        var nzbget = Nzbget();
+
+        var first = await GithubLatestRelease.LookupAsync(nzbget, CancellationToken.None, api, state, clock);
+        var second = await GithubLatestRelease.LookupAsync(nzbget, CancellationToken.None, api, state, clock);
+
+        Assert.NotNull(first.Asset);
+        Assert.Equal(first.Asset!.AssetUrl, second.Asset!.AssetUrl);
+        Assert.Equal("\"v1\"", Assert.Single(api.IfNoneMatchSeen, v => v is not null));
+
+        var third = await GithubLatestRelease.LookupAsync(nzbget, CancellationToken.None, api, state, clock);
+        Assert.True(third.RateLimited);
+        Assert.Equal(reset, third.LimitResetsUtc);
+        var calls = api.Calls;
+
+        var fourth = await GithubLatestRelease.LookupAsync(nzbget, CancellationToken.None, api, state, clock);
+        Assert.True(fourth.RateLimited);
+        Assert.Equal(calls, api.Calls);
+
+        clock.Now = reset.AddSeconds(1);
+        api.StopLimiting();
+        Assert.False((await GithubLatestRelease.LookupAsync(nzbget, CancellationToken.None, api, state, clock)).RateLimited);
+        Assert.True(api.Calls > calls);
+    }
+
+    private sealed class FakeClock(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = start;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    /// <summary>api.github.com: call 1 answers with an ETag, call 2 answers 304, call 3 is the limit.</summary>
+    private sealed class ApiSequence(DateTimeOffset reset) : HttpMessageHandler
+    {
+        private bool limiting = true;
+
+        public int Calls { get; private set; }
+
+        public List<string?> IfNoneMatchSeen { get; } = [];
+
+        public void StopLimiting() => limiting = false;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            IfNoneMatchSeen.Add(request.Headers.IfNoneMatch.FirstOrDefault()?.Tag);
+            if (Calls == 1 || !limiting)
+            {
+                var ok = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/nzbget-21.1-bin-windows-setup.exe"}]}"""),
+                };
+                ok.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"v1\"");
+                return Task.FromResult(ok);
+            }
+
+            if (Calls == 2)
+            {
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotModified));
+            }
+
+            var limited = new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden);
+            limited.Headers.TryAddWithoutValidation("X-RateLimit-Remaining", "0");
+            limited.Headers.TryAddWithoutValidation("X-RateLimit-Reset", reset.ToUnixTimeSeconds().ToString());
+            return Task.FromResult(limited);
+        }
     }
 }
 

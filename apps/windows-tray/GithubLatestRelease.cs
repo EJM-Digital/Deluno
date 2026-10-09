@@ -31,45 +31,12 @@ public static class GithubLatestRelease
         => (await LookupAsync(spec, cancellationToken, handler)).Asset;
 
     /// <summary>
-    /// GitHub says its anonymous limit is used up: a 403 or 429 with no calls remaining (or a Retry-After).
-    /// The reset time comes from <c>X-RateLimit-Reset</c> (seconds since 1970) or, failing that, <c>Retry-After</c>.
+    /// Plain words for a lookup that GitHub's limit stopped: the one sentence the server says too
+    /// (<see cref="Deluno.Infrastructure.Http.GitHubRateLimitException.MessageFor"/>), with when it lifts in this computer's own time.
     /// </summary>
-    public static bool IsRateLimited(HttpResponseMessage response, DateTimeOffset now, out DateTimeOffset? resetsUtc)
-    {
-        resetsUtc = null;
-        if (response.StatusCode is not (System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests))
-        {
-            return false;
-        }
-
-        var remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var left) ? left.FirstOrDefault() : null;
-        var retryAfter = response.Headers.RetryAfter;
-        if (!(remaining == "0" || (remaining is null && retryAfter is not null) || response.StatusCode == System.Net.HttpStatusCode.TooManyRequests))
-        {
-            return false;
-        }
-
-        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var reset) && long.TryParse(reset.FirstOrDefault(), out var seconds))
-        {
-            resetsUtc = DateTimeOffset.FromUnixTimeSeconds(seconds);
-        }
-        else if (retryAfter?.Delta is { } delta)
-        {
-            resetsUtc = now + delta;
-        }
-        else if (retryAfter?.Date is { } date)
-        {
-            resetsUtc = date;
-        }
-
-        return true;
-    }
-
-    /// <summary>Plain words for a lookup that GitHub's limit stopped, with when it lifts in this computer's own time.</summary>
-    public static string RateLimitMessage(string displayName, DateTimeOffset? resetsUtc)
-        => resetsUtc is { } at
-            ? $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. It allows more at {at.ToLocalTime():h:mm tt}. Choose Try again from the Deluno icon after that."
-            : $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. Choose Try again from the Deluno icon in about an hour.";
+    public static string RateLimitMessage(DateTimeOffset resetsUtc, TimeZoneInfo? zone = null)
+        => Deluno.Infrastructure.Http.GitHubRateLimitException.LocalizeResetTimes(
+            Deluno.Infrastructure.Http.GitHubRateLimitException.MessageFor(resetsUtc), zone);
 
     /// <summary>The release feed answered 404: the repository is private or does not exist, and the API would say the same (#1181).</summary>
     private sealed class FeedNotFoundException : Exception;
@@ -78,24 +45,14 @@ public static class GithubLatestRelease
     public static string FeedNotFoundMessage(string displayName)
         => $"Couldn't check for {displayName}'s latest release: the release feed isn't reachable (GitHub says it isn't there, so the repository may be private).";
 
-    private sealed class RateLimitedException(DateTimeOffset? resetsUtc) : Exception
-    {
-        public DateTimeOffset? ResetsUtc { get; } = resetsUtc;
-    }
-
     private static async Task<string> GetJsonAsync(HttpClient http, string url, CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(url, cancellationToken);
-        if (IsRateLimited(response, DateTimeOffset.UtcNow, out var resetsUtc))
-        {
-            throw new RateLimitedException(resetsUtc);
-        }
-
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
 
-    public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null)
+    public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null)
     {
         var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
         if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
@@ -105,9 +62,8 @@ public static class GithubLatestRelease
 
         try
         {
-            using var http = handler is null ? new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) : new HttpClient(handler, disposeHandler: false);
-            http.Timeout = TimeSpan.FromSeconds(30);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
+            // Every api.github.com call goes through the shared conditional handler (ETag, 304, the limit remembered).
+            using var http = GithubApiClient.Create(handler, "Deluno-Installer", TimeSpan.FromSeconds(30), apiState, time);
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
             // The free route first (#1181): the newest tag from github.com's own release feed and the files from
@@ -172,9 +128,9 @@ public static class GithubLatestRelease
 
             return new GithubLookup(new ResolvedGithubAsset(asset.BrowserDownloadUrl, sha256));
         }
-        catch (RateLimitedException limited)
+        catch (Deluno.Infrastructure.Http.GitHubRateLimitException limited)
         {
-            return new GithubLookup(null, RateLimited: true, LimitResetsUtc: limited.ResetsUtc);
+            return new GithubLookup(null, RateLimited: true, LimitResetsUtc: limited.ResetsAt);
         }
         catch (FeedNotFoundException)
         {
