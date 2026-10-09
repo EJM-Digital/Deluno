@@ -267,6 +267,43 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
         Assert.Contains("stopped trying", _said[^1].Message);
     }
 
+    /// <summary>
+    /// #1182: the rig's partial hand-off. Weir answers every report with a 409 that carries no "already recorded"
+    /// code until its next release, so the report stays owed. It must keep being sent, backing off to once an
+    /// hour, for the whole week, and not drop out after a few attempts.
+    /// </summary>
+    [Fact]
+    public async Task A_report_the_processor_keeps_refusing_with_a_conflict_is_sent_every_hour_for_the_whole_week()
+    {
+        Answers(new ProcessorOutcomeResult(ProcessorAnswer.Busy, false, "This hand-off ended failed, so Weir handed back no file to import."));
+        await Reporter().ReportAsync("handoff-1", ProcessorHandoffOutcome.Imported, "/films/Clown.mkv", "left one small extra out", CancellationToken.None);
+
+        var end = Start + ProcessorOutcomeDeliveries.GiveUpAfter;
+        var lastGap = TimeSpan.Zero;
+        while (_clock.GetUtcNow() + TimeSpan.FromHours(1) < end)
+        {
+            var before = Owed().NextAttemptUtc!.Value;
+            _clock.Advance(before - _clock.GetUtcNow());
+            await Reporter().SendDueAsync(CancellationToken.None);
+
+            Assert.Equal(ProcessorOutcomeDeliveries.Pending, Owed().Delivery);
+            lastGap = Owed().NextAttemptUtc!.Value - _clock.GetUtcNow();
+            Assert.True(lastGap <= TimeSpan.FromHours(1), "never waits longer than an hour between attempts");
+        }
+
+        // About 170 attempts in the week, not five; and the next one is at most an hour away.
+        Assert.True(Owed().Attempts > 150, $"attempts: {Owed().Attempts}");
+        Assert.Equal(TimeSpan.FromHours(1), lastGap);
+        Assert.Single(_said, item => item.Kind == "processing.outcome-delayed");
+
+        // Only when the week is over does it stop, and it says so.
+        var due = Owed().NextAttemptUtc!.Value;
+        _clock.Advance((due > end ? due : end) - _clock.GetUtcNow());
+        await Reporter().SendDueAsync(CancellationToken.None);
+        Assert.Equal(ProcessorOutcomeDeliveries.GivenUp, Owed().Delivery);
+        Assert.Contains("stopped trying", _said[^1].Message);
+    }
+
     [Fact]
     public async Task A_removed_connection_leaves_nobody_to_tell()
     {
