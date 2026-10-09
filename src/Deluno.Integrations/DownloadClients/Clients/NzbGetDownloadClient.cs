@@ -298,60 +298,82 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
         var http = CreateHttp(client);
         var endpoint = new Uri(baseUri, "jsonrpc");
 
-        async Task Edit(string command, int offset = 0) =>
-            await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<object>>(
-                http, endpoint, new NzbGetRequest("editqueue", [command, offset, "", new[] { id }]), cancellationToken);
+        // NZBGet answers 200 with {"result": false} when it did nothing, and with
+        // an "error" object when it refused, so the result is what counts (#1201).
+        string? lastError = null;
+        async Task<bool> Edit(string command, int offset = 0)
+        {
+            try
+            {
+                var reply = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool?>>(
+                    http, endpoint, new NzbGetRequest("editqueue", [command, offset, "", new[] { id }]), cancellationToken);
+                lastError = reply?.Error?.Message;
+                return reply is { Error: null, Result: true };
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                lastError = exception.Message;
+                return false;
+            }
+        }
+
+        DownloadClientActionResult Done(bool worked, string message, string what)
+            => worked
+                ? Sent(client, queueItemId, action, message)
+                : DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                    $"NZBGet did not {what}{(string.IsNullOrWhiteSpace(lastError) ? string.Empty : $": {lastError}")}. Nothing was changed.",
+                    upstreamDetail: lastError);
 
         switch (action)
         {
             case DownloadClientActions.Pause:
-                await Edit("GroupPause");
-                return Sent(client, queueItemId, action, "Paused this download in NZBGet.");
+                return Done(await Edit("GroupPause"), "Paused this download in NZBGet.", "pause this download");
 
             case DownloadClientActions.Resume:
-                await Edit("GroupResume");
-                return Sent(client, queueItemId, action, "Resumed this download in NZBGet.");
+                return Done(await Edit("GroupResume"), "Resumed this download in NZBGet.", "resume this download");
 
-            // Out of the queue, files left where they are.
+            // Out of the queue, files left where they are. A finished job is in
+            // NZBGet's history rather than its queue, so when the queue edit
+            // removes nothing the history one is tried.
             case DownloadClientActions.Delete:
-                await Edit("GroupDelete");
-                return Sent(client, queueItemId, action, "Removed this download from NZBGet, leaving its files.");
+                return Done(await Edit("GroupDelete") || await Edit("HistoryDelete"),
+                    "Removed this download from NZBGet, leaving its files.", "remove this download");
 
             // The same, and the files with it. GroupFinalDelete is the only
             // command that does both; GroupDelete does not.
             case DownloadClientActions.DeleteWithData:
-                await Edit("GroupFinalDelete");
-                return Sent(client, queueItemId, action, "Removed this download from NZBGet, along with its files.");
+                return Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
+                    "Removed this download from NZBGet, along with its files.", "remove this download");
 
             // Two requests, because NZBGet keeps the thing that refuses a
             // release somewhere the first one does not reach. The history entry
             // is what its duplicate check reads, and HistoryFinalDelete is the
             // only command that removes it — HistoryDelete hides it, and a
-            // hidden entry still refuses the release.
+            // hidden entry still refuses the release. The job is in one place
+            // or the other, so either one working is enough.
             case DownloadClientActions.Forget:
-                await Edit("GroupFinalDelete");
-                await Edit("HistoryFinalDelete");
-                return Sent(client, queueItemId, action, "Removed this download and its history entry from NZBGet, so it will accept this release again.");
+            {
+                var fromQueue = await Edit("GroupFinalDelete");
+                var fromHistory = await Edit("HistoryFinalDelete");
+                return Done(fromQueue || fromHistory,
+                    "Removed this download and its history entry from NZBGet, so it will accept this release again.", "forget this download");
+            }
 
             // #810: GroupMoveTop/GroupMoveBottom are NZBGet's own edit-queue
             // commands for the ends of the queue; GroupMoveOffset moves it by
             // one position in either direction for up/down, the same
             // editqueue call the pause/delete commands above already use.
             case DownloadClientActions.MoveToTop:
-                await Edit("GroupMoveTop");
-                return Sent(client, queueItemId, action, "Moved this download to the top of NZBGet's queue.");
+                return Done(await Edit("GroupMoveTop"), "Moved this download to the top of NZBGet's queue.", "move this download");
 
             case DownloadClientActions.MoveUp:
-                await Edit("GroupMoveOffset", -1);
-                return Sent(client, queueItemId, action, "Moved this download up in NZBGet's queue.");
+                return Done(await Edit("GroupMoveOffset", -1), "Moved this download up in NZBGet's queue.", "move this download");
 
             case DownloadClientActions.MoveDown:
-                await Edit("GroupMoveOffset", 1);
-                return Sent(client, queueItemId, action, "Moved this download down in NZBGet's queue.");
+                return Done(await Edit("GroupMoveOffset", 1), "Moved this download down in NZBGet's queue.", "move this download");
 
             case DownloadClientActions.MoveToBottom:
-                await Edit("GroupMoveBottom");
-                return Sent(client, queueItemId, action, "Moved this download to the bottom of NZBGet's queue.");
+                return Done(await Edit("GroupMoveBottom"), "Moved this download to the bottom of NZBGet's queue.", "move this download");
 
             // NZBGet verifies a download itself and exposes no per-item recheck,
             // so this is refused rather than quietly mapped to something else.
