@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, CircleAlert, Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { localizeResetTimes } from "../../lib/reset-times";
 
 export type SaveStatusState = "idle" | "syncing" | "saved" | "error";
 
@@ -67,8 +68,10 @@ interface SaveStatusProps {
   className?: string;
 }
 
-export function SaveStatus({ state, message, className }: SaveStatusProps) {
+export function SaveStatus({ state, message: rawMessage, className }: SaveStatusProps) {
   if (state === "idle") return null;
+  // A server sentence can carry GitHub's reset as a UTC stamp (#1181): show it in the viewer's own time.
+  const message = rawMessage ? localizeResetTimes(rawMessage) : rawMessage;
 
   const config = {
     syncing: {

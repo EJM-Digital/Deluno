@@ -1,4 +1,5 @@
 import { toneSortValue } from "../lib/status-tones";
+import { localizeResetTimes } from "../lib/reset-times";
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { ExternalLink, Loader2 } from "lucide-react";
@@ -116,7 +117,7 @@ export function CompanionToolsPage() {
         {!data.availability.available ? (
           <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-warning">{data.availability.reason}</p>
         ) : message ? (
-          <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-destructive" role="alert">{message}</p>
+          <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-destructive" role="alert">{localizeResetTimes(message)}</p>
         ) : notice ? (
           <p className="px-(--card-pad-x) py-3 text-(length:--type-caption) text-muted-foreground" role="status">{notice}</p>
         ) : null}
@@ -142,7 +143,7 @@ export function CompanionToolsPage() {
                   <ListCell
                     primary={tool.state === "connected" ? `Connected as “${tool.connectionName ?? tool.name}”` : tool.state === "installed" ? "Installed" : "Not installed"}
                   />
-                  <ListCell primary={tool.job?.message ?? <span className="text-muted-foreground">—</span>} />
+                  <ListCell primary={tool.job?.message ? localizeResetTimes(tool.job.message) : <span className="text-muted-foreground">—</span>} />
                   <ListCell mobile><Chip tone={chip.tone}>{chip.label}</Chip></ListCell>
                   <ListCell mobile>
                     <span onClick={(event) => event.stopPropagation()}>
@@ -178,7 +179,7 @@ export function CompanionToolsPage() {
           <>
             <DrawerSection title="Status" aside={stateChip(open).label}>
               <p className="text-(length:--type-body-sm) text-foreground">
-                {open.job?.message ?? (open.state === "connected" ? `Connected to Deluno as “${open.connectionName ?? open.name}”.` : open.state === "installed" ? open.installedByInstaller ? "Installed on this computer but not connected to Deluno yet. Connect it under Download Clients." : "Installed on this computer but not connected to Deluno yet. Tick it and set it up to connect it." : "Not installed. Tick it and set it up.")}
+                {(open.job?.message ? localizeResetTimes(open.job.message) : null) ?? (open.state === "connected" ? `Connected to Deluno as “${open.connectionName ?? open.name}”.` : open.state === "installed" ? open.installedByInstaller ? "Installed on this computer but not connected to Deluno yet. Connect it under Download Clients." : "Installed on this computer but not connected to Deluno yet. Tick it and set it up to connect it." : "Not installed. Tick it and set it up.")}
               </p>
               {open.job?.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Working" /> : null}
             </DrawerSection>

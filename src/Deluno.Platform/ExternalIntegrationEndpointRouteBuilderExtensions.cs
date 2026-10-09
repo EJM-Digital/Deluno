@@ -730,6 +730,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             [FromBody] CreateProcessorConnectionRequest request,
             IProcessorConnectionService processorConnections,
             IProcessorRepository repository,
+            [FromServices] IConnectionVersionStore? versions,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -738,7 +739,11 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var machineName = await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? string.Empty, request.AuthHeaderName, request.Secret, cancellationToken);
             var productName = await processorConnections.GetProductNameAsync(request.SubmissionUrl ?? string.Empty, request.AuthHeaderName, request.Secret, cancellationToken);
-            return Results.Ok(await repository.CreateProcessorConnectionAsync(request with { MachineName = machineName, ProductName = productName }, cancellationToken));
+            var created = await repository.CreateProcessorConnectionAsync(request with { MachineName = machineName, ProductName = productName }, cancellationToken);
+            // A connection just made says which version it runs now (#1181).
+            await Deluno.Connections.Versions.ConnectionVersionRecording.RememberVersionAsync(
+                versions, ConnectionKinds.Processor, created.Id, ProcessorProjects.ProjectFor(created), await processorConnections.ReadVersionAsync(created, cancellationToken), cancellationToken);
+            return Results.Ok(created);
         });
 
         integrations.MapPut("/processors/connections/{id}", async (
@@ -747,6 +752,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             [FromBody] UpdateProcessorConnectionRequest request,
             IProcessorConnectionService processorConnections,
             IProcessorRepository repository,
+            [FromServices] IConnectionVersionStore? versions,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -757,6 +763,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var machineName = current is null ? null : await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? current.SubmissionUrl, request.AuthHeaderName ?? current.AuthHeaderName, string.IsNullOrWhiteSpace(request.Secret) ? current.Secret : request.Secret, cancellationToken);
             var productName = current is null ? null : await processorConnections.GetProductNameAsync(request.SubmissionUrl ?? current.SubmissionUrl, request.AuthHeaderName ?? current.AuthHeaderName, string.IsNullOrWhiteSpace(request.Secret) ? current.Secret : request.Secret, cancellationToken);
             var updated = await repository.UpdateProcessorConnectionAsync(id, request with { MachineName = machineName, ProductName = productName }, cancellationToken);
+            if (updated is not null)
+            {
+                // A connection saved again (a new address or credential, a reinstalled processor) reports its version at once (#1181).
+                await Deluno.Connections.Versions.ConnectionVersionRecording.RememberVersionAsync(
+                    versions, ConnectionKinds.Processor, updated.Id, ProcessorProjects.ProjectFor(updated), await processorConnections.ReadVersionAsync(updated, cancellationToken), cancellationToken);
+            }
+
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
 

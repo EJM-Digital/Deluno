@@ -50,6 +50,11 @@ describe("a connection's version in its row (#1117)", () => {
     expect(container.textContent).toContain(formatResetTime(until));
   });
 
+  it("says when the release feed could not be read, never that the version is the newest (#1181)", () => {
+    const { container } = render(<ConnectionVersionText info={{ ...upToDate, latestVersion: null, latestCheckProblem: "the release feed isn't reachable" }} />);
+    expect(container.textContent).toBe("5.0.2 · can't look for a newer version: the release feed isn't reachable");
+  });
+
   it("shows nothing for a connection that reported no version", () => {
     const { container } = render(<ConnectionVersionBeside info={undefined} />);
     expect(container.textContent).toBe("");

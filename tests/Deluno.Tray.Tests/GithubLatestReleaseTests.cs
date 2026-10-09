@@ -305,6 +305,30 @@ public sealed class GithubRateLimitTests
     }
 
     [Fact]
+    public async Task A_404_from_the_release_feed_says_the_feed_is_unreachable_and_does_not_fall_back_to_the_api()
+    {
+        var seen = new List<string>();
+        var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
+
+        var lookup = await GithubLatestRelease.LookupAsync(weir, CancellationToken.None, new Recording(seen));
+
+        Assert.True(lookup.FeedNotFound);
+        Assert.False(lookup.RateLimited);
+        Assert.Null(lookup.Asset);
+        Assert.DoesNotContain(seen, url => url.Contains("api.github.com"));
+        Assert.Contains("release feed isn't reachable", GithubLatestRelease.FeedNotFoundMessage("Weir"));
+    }
+
+    private sealed class Recording(List<string> seen) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            seen.Add(request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }
+    }
+
+    [Fact]
     public void The_message_names_the_limit_and_when_it_lifts_in_plain_words()
     {
         var text = GithubLatestRelease.RateLimitMessage("NZBGet", new DateTimeOffset(2026, 10, 8, 21, 21, 0, TimeSpan.Zero));

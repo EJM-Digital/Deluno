@@ -371,6 +371,20 @@ public sealed class ConnectionUpdateTests : IDisposable
         Assert.DoesNotContain("internet connection", failure.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_404_from_the_release_feed_names_the_feed_and_never_asks_the_api()
+    {
+        using var weir = new TinyWeir();
+        var requested = new List<string>();
+        var tool = NewWeir(WeirSystem(weir.Port).Object, new string('A', 64), [1], feedAvailable: false, feedNotFound: true, requested: requested);
+
+        var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None));
+
+        Assert.Contains("release feed isn't reachable", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("internet connection", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(requested, url => url.Contains("api.github.com", StringComparison.Ordinal));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static ConnectionUpdateFacts Facts(string project, string installed, string latest, string? host, string? pinned, bool installedByDeluno)
@@ -440,12 +454,12 @@ public sealed class ConnectionUpdateTests : IDisposable
     }
 
     /// <summary>A Weir whose GitHub release, installer and checksum file are answered by a stub, never the network.</summary>
-    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null)
+    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false)
     {
         // The real client sits behind the GitHub handler, which turns a used-up limit into its plain failure.
         HttpMessageHandler handler = new Deluno.Infrastructure.Http.GitHubApiConditionalHandler(new Deluno.Infrastructure.Http.GitHubApiState(), TimeProvider.System)
         {
-            InnerHandler = new StubGitHub(publishedHash, setupBytes, apiLimited, feedAvailable, requested)
+            InnerHandler = new StubGitHub(publishedHash, setupBytes, apiLimited, feedAvailable, requested, feedNotFound)
         };
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler, disposeHandler: false));
@@ -458,7 +472,7 @@ public sealed class ConnectionUpdateTests : IDisposable
             factory.Object);
     }
 
-    private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null) : HttpMessageHandler
+    private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -477,7 +491,7 @@ public sealed class ConnectionUpdateTests : IDisposable
             {
                 if (!feedAvailable)
                 {
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+                    return Task.FromResult(new HttpResponseMessage(feedNotFound ? HttpStatusCode.NotFound : HttpStatusCode.ServiceUnavailable));
                 }
 
                 var repository = CompanionCatalog.WeirRepository;
