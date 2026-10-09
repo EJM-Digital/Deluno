@@ -1,5 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect as baseExpect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+
+// Cause of the flakes (#1191): the default 5 s wait for a heading or a control is shorter than a cold render takes on a busy machine.
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 // #1179: System, Find & Download and the search schedule change by themselves. Each test opens the
 // screen, then the server raises the event (through the Testing-only push endpoint, or by a real

@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect as baseExpect, test } from "@playwright/test";
 import { fallbackCredentials } from "../helpers/auth-helper";
+
+// Cause of the flakes (#1191): the default 5 s wait for a heading or a control is shorter than a cold render takes on a busy machine.
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 let credentials: { username: string; password: string } | null = null;
 
