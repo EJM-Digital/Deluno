@@ -1,3 +1,4 @@
+import { formatResetTime } from "./reset-times";
 import { describe, expect, it } from "vitest";
 import { updateHeadline } from "./update-headline";
 
@@ -12,9 +13,11 @@ describe("updateHeadline", () => {
     expect(updateHeadline({ ...base, state: "error", message: "Update check failed." })).toBe("Update needs attention");
   });
 
-  it("names the GitHub limit and when to retry, as the server words it", () => {
-    expect(updateHeadline({ ...base, state: "error", message: "Couldn't check for updates (GitHub limit, retry after 9:21 PM)." }))
-      .toBe("Couldn't check for updates (GitHub limit, retry after 9:21 PM)");
+  it("names the GitHub limit and shows when to retry in the viewer's own time, not the server's", () => {
+    const text = updateHeadline({ ...base, state: "error", message: "Couldn't check for updates (GitHub limit, retry after 2026-10-09 00:35 UTC)." });
+    const local = formatResetTime(new Date(Date.UTC(2026, 9, 9, 0, 35)));
+    expect(text).toBe(`Couldn't check for updates (GitHub limit, retry after ${local})`);
+    expect(text).not.toContain("UTC");
   });
 
   it("keeps the restart and update-available headlines", () => {

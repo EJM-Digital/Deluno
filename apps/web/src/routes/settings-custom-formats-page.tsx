@@ -87,6 +87,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { KNOWN_INDEXER_FLAGS } from "./connections/presets";
+import { localizeResetTimes } from "../lib/reset-times";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -860,7 +861,7 @@ export function SettingsCustomFormatsPage() {
             <div className="min-w-0">
               <p className="text-(length:--type-body-sm) font-medium text-foreground">{guideUpdateCheckLabel(updateCheck.status)}</p>
               <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">
-                {updateCheck.error ?? updateCheck.report?.summary ?? (updateCheck.isEnabled ? "No guide check has run yet." : "Enable checks to allow an outbound TRaSH Guides comparison.")}
+                {(updateCheck.error ? localizeResetTimes(updateCheck.error) : null) ?? updateCheck.report?.summary ?? (updateCheck.isEnabled ? "No guide check has run yet." : "Enable checks to allow an outbound TRaSH Guides comparison.")}
               </p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => void runGuideUpdateCheck()} disabled={!updateCheck.isEnabled || updateCheckBusy !== null}>

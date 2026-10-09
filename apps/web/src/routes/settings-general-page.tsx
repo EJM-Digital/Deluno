@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { localizeResetTimes } from "../lib/reset-times";
 import { Field } from "../components/ui/field";
 import { Loader2, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -284,7 +285,7 @@ function TrackerDefinitionsCard() {
       const next = await fetchJson<TrackerDefinitionUpdateState>("/api/trackers/definitions/update-check/run", { method: "POST" });
       setState(next);
       if (next.status === "failed") {
-        toast.error(next.error ?? "The tracker definitions could not be updated.");
+        toast.error(localizeResetTimes(next.error ?? "The tracker definitions could not be updated."));
       } else if (next.updatedTrackerIds.length > 0) {
         toast.success(`Updated ${next.updatedTrackerIds.length} tracker definition${next.updatedTrackerIds.length === 1 ? "" : "s"}.`);
       } else {
@@ -354,7 +355,7 @@ function TrackerDefinitionsCard() {
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             Update now
           </Button>
-          {state?.status === "failed" && state.error ? <span role="status" className="text-destructive">{state.error}</span> : null}
+          {state?.status === "failed" && state.error ? <span role="status" className="text-destructive">{localizeResetTimes(state.error)}</span> : null}
         </div>
       </div>
     </ListCard>

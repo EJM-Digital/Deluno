@@ -270,6 +270,21 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
         Assert.Empty(activity.Recorded);
     }
 
+    [Fact]
+    public async Task GitHubs_limit_is_told_as_the_limit_with_when_it_lifts_not_as_an_unreachable_source()
+    {
+        var (service, store, _, source, _, _) = Build();
+        await store.SetSettingsAsync(isEnabled: true, intervalHours: 24, CancellationToken.None);
+        source.LimitLiftsAt = DateTimeOffset.Parse("2026-10-09T00:35:00Z");
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Equal(TrackerDefinitionUpdateStatuses.Failed, state.Status);
+        Assert.Contains("GitHub's limit", state.Error);
+        Assert.Contains("2026-10-09 00:35 UTC", state.Error);
+        Assert.DoesNotContain("could not reach", state.Error);
+    }
+
     private static string ValidYaml(string id) =>
         """
         id: __ID__
@@ -307,11 +322,17 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
     {
         public List<RemoteTrackerDefinition> Definitions { get; } = [];
         public bool ThrowOnFetch { get; set; }
+        public DateTimeOffset? LimitLiftsAt { get; set; }
         public bool WasCalled { get; private set; }
 
         public Task<IReadOnlyList<RemoteTrackerDefinition>> FetchAsync(CancellationToken cancellationToken)
         {
             WasCalled = true;
+            if (LimitLiftsAt is { } lifts)
+            {
+                throw new Deluno.Infrastructure.Http.GitHubRateLimitException(lifts);
+            }
+
             if (ThrowOnFetch)
             {
                 throw new HttpRequestException("The remote tracker-definitions source did not answer.");

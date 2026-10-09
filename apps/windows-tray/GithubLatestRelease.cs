@@ -103,6 +103,16 @@ public static class GithubLatestRelease
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
+            // The free route first (#1181): the newest tag from github.com's own release feed and the files from
+            // the release download folder, neither of which counts against GitHub's 60 API calls an hour. It needs
+            // the asset names to be exact, so a component whose file name carries its version (a pattern) uses
+            // the API as before.
+            if (!hasPattern && string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern)
+                && await ResolveFromFeedAsync(http, spec, cancellationToken) is { } fromFeed)
+            {
+                return new GithubLookup(fromFeed);
+            }
+
             // Weir alone may be a pre-release (#1123): it is published as release candidates, so its newest
             // release by version order is taken, drafts never. Every other component keeps GitHub's own
             // "latest release", which is the newest stable one and never a pre-release.
@@ -162,6 +172,60 @@ public static class GithubLatestRelease
         catch
         {
             return new GithubLookup(null);
+        }
+    }
+
+    /// <summary>
+    /// The installer and its checksum found without the API: the newest tag (release candidates only for a
+    /// component that publishes them, drafts never) from <c>releases.atom</c>, then the files from
+    /// <c>releases/download/&lt;tag&gt;/</c>. Null when the feed cannot be read or the release lacks the file, so the
+    /// caller falls back to the API.
+    /// </summary>
+    private static async Task<ResolvedGithubAsset?> ResolveFromFeedAsync(HttpClient http, BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(Deluno.Contracts.ReleaseAtomFeed.ReleasesUri(spec.GithubRepo!), cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var tag = Deluno.Contracts.ReleaseAtomFeed.NewestTag(await response.Content.ReadAsStringAsync(cancellationToken), spec.IncludePreReleases);
+            if (tag is null)
+            {
+                return null;
+            }
+
+            var assetUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(spec.GithubRepo!, tag, spec.GithubAsset!);
+            string? sha256 = null;
+            if (!string.IsNullOrWhiteSpace(spec.GithubChecksumAsset))
+            {
+                using var sums = await http.GetAsync(Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(spec.GithubRepo!, tag, spec.GithubChecksumAsset), cancellationToken);
+                if (!sums.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                sha256 = ParseChecksum(await sums.Content.ReadAsStringAsync(cancellationToken), spec.GithubAsset!);
+            }
+
+            if (sha256 is null)
+            {
+                // Without a checksum to read, make sure the file is really in that release before saying so.
+                using var head = new HttpRequestMessage(HttpMethod.Head, assetUrl);
+                using var exists = await http.SendAsync(head, cancellationToken);
+                if (!exists.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+            }
+
+            return new ResolvedGithubAsset(assetUrl, sha256);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
     }
 

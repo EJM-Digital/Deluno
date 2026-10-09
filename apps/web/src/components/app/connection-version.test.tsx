@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchJson } from "../../lib/api";
 import { useConnectionVersions, versionKey, type ConnectionVersion } from "../../lib/connection-versions";
+import { formatResetTime } from "../../lib/reset-times";
 import { ConnectionVersionBeside, ConnectionVersionText } from "./connection-version";
 
 vi.mock("../../lib/api", () => ({ fetchJson: vi.fn() }));
@@ -40,6 +41,13 @@ describe("a connection's version in its row (#1117)", () => {
     const { container } = render(<ConnectionVersionText info={{ ...outOfDate, latestVersion: null, updateAvailable: true }} />);
     expect(container.textContent).toBe("4.6.7");
     expect(container.textContent).not.toContain("available");
+  });
+
+  it("says when GitHub's limit stopped the look for a newer version, in the viewer's own time (#1181)", () => {
+    const until = new Date(Date.now() + 40 * 60_000);
+    const { container } = render(<ConnectionVersionText info={{ ...upToDate, latestVersion: null, latestCheckPausedUntilUtc: until.toISOString() }} />);
+    expect(container.textContent).toContain("5.0.2 · can't look for a newer version until ");
+    expect(container.textContent).toContain(formatResetTime(until));
   });
 
   it("shows nothing for a connection that reported no version", () => {
