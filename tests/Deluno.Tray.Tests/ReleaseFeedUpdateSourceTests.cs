@@ -69,6 +69,75 @@ public sealed class ReleaseFeedUpdateSourceTests
         Assert.Equal((null, true), await ReleaseFeedUpdateSource.LookUpNewestTagAsync("owner/private", true, handler, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task The_api_fallback_reuses_a_304_then_records_the_limit_says_it_in_the_servers_sentence_and_makes_no_call_before_the_reset()
+    {
+        var state = new Deluno.Infrastructure.Http.GitHubApiState();
+        var reset = DateTimeOffset.UtcNow.AddMinutes(40);
+        var api = new Api(reset);
+        // The release feed cannot be read (503), so each check falls back to the API.
+        var source = new ReleaseFeedUpdateSource("https://github.com/owner/app", includePreReleases: true, new ApiRecordingDownloader(), new Page(null), api, state);
+        var logger = new NullVelopackLogger();
+
+        await source.GetReleaseFeed(logger, "Deluno", "win");
+        await source.GetReleaseFeed(logger, "Deluno", "win");
+
+        Assert.Equal(2, api.Calls);
+        Assert.Null(api.IfNoneMatch[0]);
+        Assert.Equal("\"e1\"", api.IfNoneMatch[1]);
+
+        var limited = await Assert.ThrowsAnyAsync<Exception>(() => source.GetReleaseFeed(logger, "Deluno", "win"));
+        var limit = Assert.IsType<Deluno.Infrastructure.Http.GitHubRateLimitException>(GithubApiClient.LimitOf(limited));
+        Assert.Equal(Deluno.Infrastructure.Http.GitHubRateLimitException.MessageFor(reset), UpdateFeedErrors.CheckFailedMessage(limited));
+        Assert.Equal(limit.Message, UpdateFeedErrors.CheckFailedMessage(limited));
+        var calls = api.Calls;
+
+        await Assert.ThrowsAnyAsync<Exception>(() => source.GetReleaseFeed(logger, "Deluno", "win"));
+        Assert.Equal(calls, api.Calls);
+    }
+
+    private sealed class Api(DateTimeOffset reset) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        public List<string?> IfNoneMatch { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            IfNoneMatch.Add(request.Headers.IfNoneMatch.FirstOrDefault()?.Tag);
+            if (Calls == 1)
+            {
+                var ok = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") };
+                ok.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"e1\"");
+                return Task.FromResult(ok);
+            }
+
+            if (Calls == 2)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotModified));
+            }
+
+            var limited = new HttpResponseMessage(HttpStatusCode.Forbidden);
+            limited.Headers.TryAddWithoutValidation("X-RateLimit-Remaining", "0");
+            limited.Headers.TryAddWithoutValidation("X-RateLimit-Reset", reset.ToUnixTimeSeconds().ToString());
+            return Task.FromResult(limited);
+        }
+    }
+
+    /// <summary>The ordinary downloader: only update files; the API listing never comes here.</summary>
+    private sealed class ApiRecordingDownloader : IFileDownloader
+    {
+        public Task DownloadFile(string url, string targetFile, Action<int> progress, IDictionary<string, string>? headers = null, double timeout = 30, CancellationToken cancelToken = default)
+            => Task.CompletedTask;
+
+        public Task<byte[]> DownloadBytes(string url, IDictionary<string, string>? headers = null, double timeout = 30)
+            => Task.FromResult(Array.Empty<byte>());
+
+        public Task<string> DownloadString(string url, IDictionary<string, string>? headers = null, double timeout = 30)
+            => throw new InvalidOperationException("The API listing must not use the ordinary downloader.");
+    }
+
     private sealed class Page(string? atom, HttpStatusCode failure = HttpStatusCode.ServiceUnavailable) : HttpMessageHandler
     {
         public List<string> Requested { get; } = [];
