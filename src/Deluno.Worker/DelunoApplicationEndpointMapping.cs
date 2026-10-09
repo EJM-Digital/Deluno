@@ -115,6 +115,7 @@ public static class DelunoApplicationEndpointMapping
         // it needs ISubtitleInventoryService, and Deluno.Movies cannot depend
         // on Deluno.Filesystem, which already depends on Deluno.Movies (#782).
         writeEndpoints.MapDelunoMovieFilesEndpoints();
+        writeEndpoints.MapDelunoEpisodeFilesEndpoints();
         writeEndpoints.MapDelunoSeriesEndpoints();
         writeEndpoints.MapDelunoDiscoverEndpoints();
         writeEndpoints.MapDelunoAutomationEndpoints();

@@ -110,6 +110,24 @@ public static class PlatformEndpointRouteBuilderExtensions
                         TitleEntityType = outcome.Restored ? snapshot.EntityType : null
                     };
                 }
+                else if (restored.FileOwner is { } fileOwner)
+                {
+                    // #1188: one file taken off a title that stayed in Deluno.
+                    // The file is back on disk; the film or episode takes it again.
+                    var restorer = restorers.FirstOrDefault(candidate => candidate.Handles(fileOwner.MediaType));
+                    var outcome = restorer is null
+                        ? new TitleRestoreOutcome(false, string.Empty)
+                        : await restorer.RelinkFileAsync(restored, fileOwner, cancellationToken);
+                    if (outcome.Message.Length > 0)
+                    {
+                        result = result with { Message = $"{result.Message} {outcome.Message}" };
+                    }
+
+                    if (outcome.Restored)
+                    {
+                        await realtime.PublishEntityChangedAsync(fileOwner.EntityType == "series" ? "Series" : "Movie", fileOwner.TitleId, cancellationToken);
+                    }
+                }
                 else if (restored.IsDirectory && restored.MediaType is "movies" or "tv" && restored.TitleSnapshotId is null)
                 {
                     // Removed before Deluno kept the title record: the files
