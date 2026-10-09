@@ -244,8 +244,15 @@ public sealed class LaneRunnerTests
     [Fact]
     public async Task A_wake_signal_does_not_cut_a_failure_backoff_short()
     {
-        var tickTimes = new ConcurrentQueue<DateTime>();
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+        // The backoff runs on a fake clock, so the rule is asserted exactly:
+        // a retry may not come before the backoff has elapsed, and must come
+        // once it has. The earlier version measured real elapsed time between
+        // retries inside a 900 ms real window, which failed on a loaded Linux
+        // runner when a tick or timer was scheduled late.
+        var backoff = TimeSpan.FromMilliseconds(300);
+        var time = new TimerSignallingTimeProvider();
+        var ticks = 0;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var wake = new SemaphoreSlim(0, 1);
 
         var runnerTask = new LaneRunner().RunAsync(
@@ -253,27 +260,54 @@ public sealed class LaneRunnerTests
             wake,
             (_, _) =>
             {
-                tickTimes.Enqueue(DateTime.UtcNow);
+                Interlocked.Increment(ref ticks);
                 throw new InvalidOperationException("database is locked");
             },
             (_, _) => Task.CompletedTask,
             cancellation.Token,
-            maxBackoff: TimeSpan.FromMilliseconds(300));
+            maxBackoff: backoff,
+            timeProvider: time);
 
-        // Something is queued the whole time the database is struggling.
-        while (!cancellation.IsCancellationRequested)
+        for (var retry = 1; retry <= 3; retry++)
         {
+            // The runner has ticked and is now sitting in its backoff.
+            await time.NextTimer.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(retry, Volatile.Read(ref ticks));
+
+            // Something is queued the whole time the database is struggling.
             try { wake.Release(); } catch (SemaphoreFullException) { }
-            await Task.Delay(5);
+
+            time.Advance(backoff - TimeSpan.FromMilliseconds(1));
+            // Absence cannot be waited for; give a wrongly-woken runner ample
+            // time to show itself. This can only miss a bug, never fail a good run.
+            await Task.Delay(100);
+            Assert.Equal(retry, Volatile.Read(ref ticks));
+
+            time.ArmNextTimerSignal();
+            time.Advance(TimeSpan.FromMilliseconds(1));
         }
 
-        await runnerTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await time.NextTimer.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(4, Volatile.Read(ref ticks));
 
-        var times = tickTimes.ToArray();
-        Assert.True(times.Length >= 2);
-        for (var i = 1; i < times.Length; i++)
+        cancellation.Cancel();
+        await runnerTask.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private sealed class TimerSignallingTimeProvider : Microsoft.Extensions.Time.Testing.FakeTimeProvider
+    {
+        private TaskCompletionSource _next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task NextTimer => _next.Task;
+
+        public void ArmNextTimerSignal()
+            => Interlocked.Exchange(ref _next, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            Assert.True(times[i] - times[i - 1] >= TimeSpan.FromMilliseconds(250), $"retry {i} came after {(times[i] - times[i - 1]).TotalMilliseconds}ms");
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _next.TrySetResult();
+            return timer;
         }
     }
 

@@ -88,14 +88,26 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
         await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
         var firstCapture = world.Store.CapturedUtc!.Value;
 
-        world.Fake.DelayAll(TimeSpan.FromSeconds(8));
-        var timer = Stopwatch.StartNew();
-        // maxAge zero: the reading is "too old", so a refresh is started - and not waited for.
-        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.Zero, CancellationToken.None);
-        timer.Stop();
+        // Every client now hangs until released, so the only way the read can
+        // come back is by not waiting for them. That is checked as a condition
+        // (it completed while the clients were still held), not as an elapsed
+        // time, which only measured how busy the machine was.
+        world.Fake.HoldAll();
+        try
+        {
+            // maxAge zero: the reading is "too old", so a refresh is started - and not waited for.
+            var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.Zero, CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+            AssertSnapshotServed(overview, world, firstCapture);
+        }
+        finally
+        {
+            world.Fake.Release();
+        }
+    }
 
-        output.WriteLine($"Screen read while every client hangs for 8 s: {timer.ElapsedMilliseconds} ms");
-        Assert.True(timer.ElapsedMilliseconds < 500, $"took {timer.ElapsedMilliseconds} ms");
+    private static void AssertSnapshotServed(DownloadTelemetryOverview overview, World world, DateTimeOffset firstCapture)
+    {
         Assert.Equal(ClientCount, overview.Clients.Count);
         Assert.All(overview.Clients, client => Assert.Equal(ItemsPerClient, client.Queue.Count));
         Assert.Equal(firstCapture, world.Store.CapturedUtc);
@@ -106,14 +118,15 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
     public async Task Clients_are_read_side_by_side_not_one_after_another()
     {
         using var world = await World.CreateAsync();
-        world.Fake.DelayAll(TimeSpan.FromMilliseconds(1000));
+        // Each client call waits until every client has been called. One
+        // after another, the first would wait for the rest forever and the
+        // read could never finish, so finishing proves they ran side by side.
+        // No elapsed-time bound, which only measured how busy the machine was.
+        world.Fake.RequireConcurrentCalls(ClientCount);
 
-        var timer = Stopwatch.StartNew();
-        await world.Service.GetOverviewAsync(CancellationToken.None);
-        timer.Stop();
+        await world.Service.GetOverviewAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
 
-        output.WriteLine($"Live pass, {ClientCount} clients x 400 ms: {timer.ElapsedMilliseconds} ms (one after another it would be over {ClientCount * 1000} ms)");
-        Assert.True(timer.ElapsedMilliseconds < ClientCount * 1000 - 1000, $"took {timer.ElapsedMilliseconds} ms");
+        Assert.Equal(ClientCount, world.Fake.PeakConcurrentCalls);
     }
 
     [Fact]
@@ -174,14 +187,12 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
         Directory.SetLastWriteTimeUtc(second, DateTime.UtcNow - TimeSpan.FromHours(5));
         var callsBefore = world.Fake.TotalCalls;
 
-        var timer = Stopwatch.StartNew();
         var again = await world.Orphans.ListCachedAsync(CancellationToken.None);
-        timer.Stop();
 
-        output.WriteLine($"Orphans read from the cache: {timer.ElapsedMilliseconds} ms");
+        // Served from the cache means no client was asked; the elapsed time
+        // of a read is only a measure of how busy the machine is.
         Assert.Single(again);
         Assert.Equal(callsBefore, world.Fake.TotalCalls);
-        Assert.True(timer.ElapsedMilliseconds < 150);
 
         // The background scan finds it.
         await world.Cache.RefreshAsync(CancellationToken.None);
@@ -209,6 +220,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
 
         await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
         await world.Cache.RefreshAsync(CancellationToken.None);
+        var callsBeforeServed = world.Fake.TotalCalls;
         var served = Stopwatch.StartNew();
         await world.Service.GetLatestOverviewAsync(DownloadTelemetryFreshness.Screen, CancellationToken.None);
         served.Stop();
@@ -218,8 +230,10 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
 
         output.WriteLine($"GET telemetry: live pass {live.ElapsedMilliseconds} ms, served from the snapshot {served.ElapsedMilliseconds} ms");
         output.WriteLine($"GET orphans:   live pass {liveOrphans.ElapsedMilliseconds} ms, served from the cache {servedOrphans.ElapsedMilliseconds} ms");
-        Assert.True(served.ElapsedMilliseconds < 150);
-        Assert.True(servedOrphans.ElapsedMilliseconds < 150);
+        // Served from the snapshot and the cache means no client was asked.
+        // The timings above are printed for the record, not asserted: an
+        // elapsed-time bound only measured how busy the machine was.
+        Assert.Equal(callsBeforeServed, world.Fake.TotalCalls);
     }
 
     private sealed class World : IDisposable
@@ -409,12 +423,47 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
 
         public void DelayAll(TimeSpan value) => delay = value;
 
+        private TaskCompletionSource? hold;
+        private int requiredConcurrent;
+        private int concurrent;
+        private int peakConcurrent;
+        private TaskCompletionSource allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int PeakConcurrentCalls => Volatile.Read(ref peakConcurrent);
+
+        /// <summary>Every call waits until <see cref="Release"/>.</summary>
+        public void HoldAll() => hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Release() => hold?.TrySetResult();
+
+        /// <summary>Every call waits until this many calls are in flight at once.</summary>
+        public void RequireConcurrentCalls(int count) => requiredConcurrent = count;
+
         public async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem requested, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
         {
             calls.AddOrUpdate(requested.Id, 1, (_, count) => count + 1);
             if (delay > TimeSpan.Zero)
             {
                 await Task.Delay(delay, cancellationToken);
+            }
+
+            if (hold is not null)
+            {
+                await hold.Task.WaitAsync(cancellationToken);
+            }
+
+            if (requiredConcurrent > 0)
+            {
+                var now = Interlocked.Increment(ref concurrent);
+                int seen;
+                while ((seen = Volatile.Read(ref peakConcurrent)) < now
+                    && Interlocked.CompareExchange(ref peakConcurrent, now, seen) != seen) { }
+                if (now >= requiredConcurrent)
+                {
+                    allArrived.TrySetResult();
+                }
+
+                await allArrived.Task.WaitAsync(cancellationToken);
             }
 
             var queue = Enumerable.Range(0, ItemsPerClient).Select(index => new DownloadQueueItem(
