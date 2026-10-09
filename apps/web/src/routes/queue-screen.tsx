@@ -69,7 +69,7 @@ import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, 
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
 import { dispatchWasImported } from "../lib/dispatch-final-state";
-import { SOURCE_GONE, canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
+import { SOURCE_GONE, canTryAgain, handoffNeedsPerson, handoffStatusLabel, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -2706,42 +2706,7 @@ function processorSays(handoff: ProcessorHandoffItem, formatWhen: (utc: string) 
   }
 }
 
-function processorStageLabel(status: string) {
-  switch (status.toLowerCase()) {
-    case "waiting":
-      return "Waiting to submit";
-    case "submitted":
-      return "Submitted to connector";
-    case "accepted":
-      return "Accepted by connector";
-    case "started":
-      return "Processing media";
-    case "completed":
-      return "Output received";
-    case "timed-out":
-    case "timeout":
-      return "Timed out";
-    case "failed":
-      return "Processing failed";
-    case "rejected":
-      return "Rejected · searching again";
-    case "stalled":
-      return "Stalled";
-    case "lost":
-      return "Processor has no record";
-    case "cancelled":
-      return "Cancelled";
-    case "source-gone":
-      return "Download gone";
-    case "released":
-      return "Importing the original";
-    case "dismissed":
-      return "Dismissed";
-    default:
-      return status || "Waiting";
-  }
-
-}
+const processorStageLabel = handoffStatusLabel;
 
 /** What the Connector cell adds under its name: never the words the Stage cell and the Status chip already say (#1168). */
 export function connectorSubLine(handoff: Pick<ProcessorHandoffItem, "status" | "outputPath">, says: string | null) {

@@ -34,7 +34,7 @@ public static class ProcessorHandoffQueueStatus
                 // Needs action entry beside it (#1189).
                 return !string.IsNullOrWhiteSpace(handoff.ImportJobId)
                     && jobsById.TryGetValue(handoff.ImportJobId, out var failedImport)
-                    && Deluno.Integrations.DownloadClients.DownloadAttempts.ImportJobFailedSince(failedImport, handoff.UpdatedUtc)
+                    && DownloadAttempts.ImportJobFailedSince(failedImport, handoff.UpdatedUtc)
                         ? DownloadQueueStatuses.ImportFailed
                         : DownloadQueueStatuses.WaitingForProcessor;
 
@@ -45,7 +45,7 @@ public static class ProcessorHandoffQueueStatus
                 // the library, not "Ready to import".
                 return !string.IsNullOrWhiteSpace(handoff.ImportJobId)
                     && jobsById.TryGetValue(handoff.ImportJobId, out var dismissedImport)
-                    && dismissedImport.Status == "completed"
+                    && DownloadAttempts.ImportRan(handoff, dismissedImport.Status)
                         ? DownloadQueueStatuses.Imported
                         : fallback;
 
@@ -73,14 +73,21 @@ public static class ProcessorHandoffQueueStatus
         // The job list is a recent window. A hand-off whose import job has aged
         // out of it is finished work, not work still in flight, so it must not
         // fall back to a Processing status and pin the stage open again.
-        return jobsById.TryGetValue(handoff.ImportJobId, out var importJob)
-            ? importJob.Status switch
-            {
-                "queued" or "running" => DownloadQueueStatuses.ImportQueued,
-                "completed" => DownloadQueueStatuses.Imported,
-                "failed" or "dead-letter" => DownloadQueueStatuses.ImportFailed,
-                _ => fallback
-            }
-            : DownloadQueueStatuses.Imported;
+        if (!jobsById.TryGetValue(handoff.ImportJobId, out var importJob))
+        {
+            return DownloadQueueStatuses.Imported;
+        }
+
+        if (DownloadAttempts.ImportJobInFlight(importJob.Status))
+        {
+            return DownloadQueueStatuses.ImportQueued;
+        }
+
+        return importJob.Status switch
+        {
+            "completed" => DownloadQueueStatuses.Imported,
+            "failed" or "dead-letter" => DownloadQueueStatuses.ImportFailed,
+            _ => fallback
+        };
     }
 }

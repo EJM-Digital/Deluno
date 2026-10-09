@@ -203,7 +203,7 @@ public sealed class HandledProblemsSettler(
             var importJob = handoff.Status == ProcessorHandoffStatuses.Completed && !string.IsNullOrWhiteSpace(handoff.ImportJobId)
                 ? await jobs.GetAsync(handoff.ImportJobId, cancellationToken)
                 : null;
-            if (importJob is { Status: "queued" or "running" or "requeued" })
+            if (importJob is not null && Deluno.Integrations.DownloadClients.DownloadAttempts.ImportJobInFlight(importJob.Status))
             {
                 continue;
             }

@@ -16,7 +16,7 @@
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { dispatchImportEnded } from "../../../lib/dispatch-final-state";
-import { isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
+import { handoffStatusLabel, isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
 import { plainReason } from "./plain";
@@ -446,7 +446,10 @@ export function processorHasStarted(card: Pick<JourneyCard, "state">): boolean {
 
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
   const status = handoff.status.toLowerCase();
-  if (isProcessorFailure(status) || handoff.failureMessage) return { tone: "bad", label: "Processor failed" };
+  // The words are Transfers' own (#1186): a download that was gone before the processor could clean it says so, it
+  // does not blame the processor. A failure message on a status with no failure word of its own stays "Processor failed".
+  if (isProcessorFailure(status)) return { tone: "bad", label: handoffStatusLabel(status) };
+  if (handoff.failureMessage) return { tone: "bad", label: "Processor failed" };
   if (status === "waiting") return { tone: "info", label: WAITING_FOR_PROCESSOR };
   if (status === "completed") return { tone: "ok", label: "Returned" };
   return { tone: "info", label: "Being cleaned" };

@@ -67,4 +67,14 @@ public static class DownloadAttempts
             || (handoff.Status == ProcessorHandoffStatuses.Dismissed
                 && string.Equals(importJobStatus, "completed", StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// The one list of job statuses that mean an import job has not finished yet (#1182): waiting for its turn,
+    /// running, or put back to wait after a try. Transfers reads it as "Import queued" and the settler waits on it.
+    /// </summary>
+    public static bool ImportJobInFlight(string? importJobStatus)
+        => importJobStatus is not null
+           && (string.Equals(importJobStatus, "queued", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(importJobStatus, "running", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(importJobStatus, "requeued", StringComparison.OrdinalIgnoreCase));
 }

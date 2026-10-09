@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handoffStatusLabel } from "../../../lib/needs-action";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
 import { buildJourney, IMPORTING_NOW, LANDED_MS, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
 import { buildOperations } from "./band";
@@ -129,7 +130,11 @@ describe("the journey of a title", () => {
     const working = byStage(buildJourney({ ...base, handoffs: [handoff({})] })).processor;
     expect(working[0]).toMatchObject({ processor: "Cleaner", state: { label: "Being cleaned", tone: "info" }, title: "Metropolis (1927)" });
     const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).processor;
-    expect(failed[0].state).toEqual({ tone: "bad", label: "Processor failed" });
+    expect(failed[0].state).toEqual({ tone: "bad", label: "Processing failed" });
+    // The same words Transfers uses (#1186): a download that was gone is not a processor failure.
+    const gone = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "source-gone", failureMessage: "The download was gone before Cleaner could clean it." })] })).processor;
+    expect(gone[0].state).toEqual({ tone: "bad", label: handoffStatusLabel("source-gone") });
+    expect(gone[0].state.label).toBe("Download gone");
     expect(failed[0].reason).toBe("The processor took too long and Deluno stopped waiting.");
     const returned = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "completed" })] }));
     expect(returned.importing[0].state.label).toBe("Back from the processor");

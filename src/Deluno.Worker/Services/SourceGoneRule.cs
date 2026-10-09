@@ -33,6 +33,14 @@ public static class SourceGoneRule
             return "Deluno removed that download itself, so there is nothing to do.";
         }
 
+        // Archived for any other reason (the title was unmonitored, a housekeeping close, a settled issue): the
+        // record is closed and nobody wants that download, but Deluno did not necessarily remove it, so the line
+        // says only what is true.
+        if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Deluno had already closed that download, so there is nothing to do.";
+        }
+
         if (!string.IsNullOrWhiteSpace(dispatch.EntityId))
         {
             var entityType = dispatch.EntityType.ToLowerInvariant();
@@ -89,9 +97,8 @@ public static class SourceGoneRule
             .FirstOrDefault();
     }
 
-    /// <summary>Deluno ended this download: it archived the record, or imported it and cleaned up, or its own rules replaced it.</summary>
+    /// <summary>Deluno ended this download itself: it imported it and cleaned up, or its own stall and failed-download rules removed it.</summary>
     private static bool DelunoRemoved(DownloadDispatchItem dispatch)
-        => string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)
-           || string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
+        => string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
            || string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase);
 }

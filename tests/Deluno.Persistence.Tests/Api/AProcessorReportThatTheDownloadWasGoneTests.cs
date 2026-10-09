@@ -65,7 +65,7 @@ public sealed class AProcessorReportThatTheDownloadWasGoneTests
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored!.Status);
         var settled = Assert.Single(await ActivityAsync(app, handoff.Id), item => item.Category == "processing.source-gone.settled");
-        Assert.Contains("Deluno removed that download itself", settled.Message);
+        Assert.Contains("Deluno had already closed that download", settled.Message);
         Assert.DoesNotContain(await ActivityAsync(app, handoff.Id), item => item.Category == "processing.source-gone");
         Assert.Empty(await BlockedAsync(app));
     }
