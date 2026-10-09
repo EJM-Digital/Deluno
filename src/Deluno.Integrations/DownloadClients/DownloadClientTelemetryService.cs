@@ -343,7 +343,8 @@ public sealed class DownloadClientTelemetryService(
                         enriched,
                         settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
                         titleUnmonitorService,
-                        cancellationToken)));
+                        cancellationToken,
+                        handoffs)));
                 continue;
             }
 
@@ -3250,7 +3251,8 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<DownloadDispatchItem> settledDispatches,
         IDispatchTitleUnmonitorService? titleFiles,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<ProcessorHandoffItem>? handoffs = null)
     {
         if (titleFiles is null || !snapshot.Queue.Any(item => item.Status == DownloadQueueStatuses.Imported))
         {
@@ -3272,6 +3274,18 @@ public sealed class DownloadClientTelemetryService(
                     && !string.IsNullOrWhiteSpace(dispatch.EntityId)
                     && await titleFiles.HasFileAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) == false)
                 {
+                    // "Ready to import" is a promise that Deluno imports this next. When the hand-off for this very
+                    // download ran to its end and its import finished, Deluno has done that already and the
+                    // planner never imports it twice: the file left the library afterwards (a wrong episode moved
+                    // to the recycle bin, say). The row stays what happened to the download, Imported, and the
+                    // title's own Missing state and the search for it say the rest (#1182). A release sent again
+                    // since is a new attempt and is handed over again, so for that one the row is ready to import.
+                    if (ImportEndedAndTheFileLeft(item, handoffs, settledDispatches))
+                    {
+                        queue.Add(item);
+                        continue;
+                    }
+
                     queue.Add(item with { Status = DownloadQueueStatuses.ImportReady });
                     continue;
                 }
@@ -3281,6 +3295,21 @@ public sealed class DownloadClientTelemetryService(
         }
 
         return snapshot with { Queue = queue };
+    }
+
+    private static bool ImportEndedAndTheFileLeft(
+        DownloadQueueItem item,
+        IReadOnlyList<ProcessorHandoffItem>? handoffs,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches)
+    {
+        var handoff = handoffs?
+            .Where(candidate =>
+                string.Equals(candidate.ClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(candidate.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(candidate => candidate.UpdatedUtc)
+            .FirstOrDefault();
+        return handoff is { Status: ProcessorHandoffStatuses.Completed, ImportJobId: { Length: > 0 } }
+            && !DownloadAttempts.SentAgainSince(settledDispatches, item.ClientId, item.ReleaseName, handoff.UpdatedUtc);
     }
 
     internal static DownloadClientTelemetrySnapshot EnrichQueueImportState(
