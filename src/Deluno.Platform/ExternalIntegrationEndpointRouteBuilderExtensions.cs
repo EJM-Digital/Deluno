@@ -821,8 +821,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var previousHealthStatus = connection.HealthStatus;
             var result = await processorConnections.TestAsync(connection, cancellationToken);
             await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
-            await Deluno.Connections.Versions.ConnectionVersionRecording.RememberVersionAsync(
-                versions, ConnectionKinds.Processor, connection.Id, ProcessorProjects.ProjectFor(connection), result.IsReachable ? await processorConnections.ReadVersionAsync(connection, cancellationToken) : null, cancellationToken);
+            // The processor service stores its version whenever it reads the processor's health (#1200).
             if (result.IsReachable)
             {
                 connection = await ProcessorAutoNames.RenameIfGeneratedAsync(connection, repository, processorConnections, cancellationToken);
@@ -1319,7 +1318,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 var gone = await failureReports.HandleSourceGoneAsync(
                     new ProcessorFailureReport(library, handoff, processorName, message ?? "The download is no longer there.", request.FailureClass),
                     cancellationToken);
-                var goneMessage = $"The download was gone before {processorName} could clean it.";
+                var goneMessage = ProcessorFailureClasses.SourceGoneMessage(processorName);
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
                     gone.Settled ? ProcessorHandoffStatuses.Dismissed : ProcessorHandoffStatuses.SourceGone,

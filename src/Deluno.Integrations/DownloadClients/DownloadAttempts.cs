@@ -77,4 +77,14 @@ public static class DownloadAttempts
            && (string.Equals(importJobStatus, "queued", StringComparison.OrdinalIgnoreCase)
                || string.Equals(importJobStatus, "running", StringComparison.OrdinalIgnoreCase)
                || string.Equals(importJobStatus, "requeued", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// True when this hand-off ended because its download was gone and was then dismissed (#1200). It is closed
+    /// history, never "ready to import": the files it would import are not there. A release sent again since is a
+    /// new attempt and not covered by it.
+    /// </summary>
+    public static bool SourceGoneClosed(ProcessorHandoffItem handoff)
+        => handoff.Status == ProcessorHandoffStatuses.Dismissed
+           && string.IsNullOrWhiteSpace(handoff.ImportJobId)
+           && ProcessorFailureClasses.IsSourceGoneMessage(handoff.FailureMessage);
 }

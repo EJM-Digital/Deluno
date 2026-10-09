@@ -25,6 +25,9 @@ export const downloadQueueStatuses = {
   imported: "imported",
   // Imported earlier, but the title no longer holds the file and nothing will import it again (#1182): history.
   importedFileLeft: "importedFileLeft",
+  // The files are gone: the client still lists the download but they are not on disk, or its hand-off ended because
+  // they were gone and was dismissed (#1200). Never ready to import.
+  filesGone: "filesGone",
   importFailed: "importFailed"
 } as const;
 
@@ -62,6 +65,7 @@ export function queueStatusLabel(status: string) {
       importQueued: "Import queued",
       imported: "Imported",
       importedFileLeft: "Imported earlier, but the file has since left the library",
+      filesGone: "Files are gone",
       importFailed: "Import failed",
       stalled: "Stalled",
       notTransferring: "Not transferring",
