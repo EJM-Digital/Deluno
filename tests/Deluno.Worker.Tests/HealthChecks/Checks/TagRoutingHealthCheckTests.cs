@@ -150,4 +150,17 @@ public sealed class TagRoutingHealthCheckTests
         Assert.Contains("1 monitored title in TV shows can't use any indexer because of tags: Severance.", outcome.Message);
         Assert.Contains("\"link\":\"/tv\"", outcome.DetailsJson);
     }
+
+    [Fact]
+    public async Task Two_tagged_clients_nothing_uses_read_differently()
+    {
+        var check = Build(
+            clients: [Client("c1", "Kids qBit", "kidz"), Client("c2", "Teens qBit", "kidz")],
+            movies: [Title("m1", "Sintel", true)]);
+
+        var outcomes = await check.RunAsync(CancellationToken.None);
+
+        SameProblemReadsDifferentlyPerItemTests.AssertEachReadsDifferently(
+            outcomes.Where(item => item.Id.StartsWith("tags:unused:", StringComparison.Ordinal)).ToArray());
+    }
 }

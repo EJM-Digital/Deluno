@@ -201,4 +201,14 @@ public sealed class RemotePathMappingHealthCheckTests
         registry.Setup(instance => instance.TryGet(It.IsAny<string?>(), out captured)).Returns(true);
         return registry.Object;
     }
+
+    [Fact]
+    public async Task Two_mappings_with_missing_local_folders_read_differently()
+    {
+        var first = Mapping(localPath: Path.Combine(Path.GetTempPath(), "deluno-missing-a-" + Guid.NewGuid().ToString("n")), remotePath: "/downloads/movies");
+        var second = Mapping(localPath: Path.Combine(Path.GetTempPath(), "deluno-missing-b-" + Guid.NewGuid().ToString("n")), remotePath: "/downloads/tv");
+        var check = new RemotePathMappingHealthCheck(ConnectionsReturning(mappings: [first, second]), RegistryReturning(null));
+
+        SameProblemReadsDifferentlyPerItemTests.AssertEachReadsDifferently(await check.RunAsync(CancellationToken.None));
+    }
 }

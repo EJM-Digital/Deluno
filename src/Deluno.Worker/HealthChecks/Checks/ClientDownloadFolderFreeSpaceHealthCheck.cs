@@ -59,8 +59,9 @@ public sealed class ClientDownloadFolderFreeSpaceHealthCheck(IDownloadClientTele
 
             outcomes.Add(lowSpace
                 ? HealthCheckOutcome.Problem(
-                    id, Category, name, client.LastHealthMessage!,
-                    cause: "The download client's own download folder is running low on space.",
+                    id, Category, name,
+                    client.LastHealthMessage!.Contains(client.ClientName, StringComparison.OrdinalIgnoreCase) ? client.LastHealthMessage : $"{client.ClientName}: {client.LastHealthMessage}",
+                    cause: $"{client.ClientName}'s own download folder is running low on space.",
                     fix: $"Free up space where {client.ClientName} downloads to, or move some of its downloads elsewhere.")
                 : HealthCheckOutcome.Ok(id, Category, name, $"{client.ClientName} reports {freeGb:0.#} GB free."));
         }

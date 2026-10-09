@@ -231,8 +231,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             HealthCheckCategories.Processor,
             $"A second copy of {heldTitle} is waiting in the {library.Name} library's processor output folder",
             $"The {library.Name} library already has {heldTitle}, and a second copy is sitting in its processor output folder: {name}.",
-            cause: "A processor made more than one file for the same film, or the film was fetched twice.",
-            fix: "Remove the spare copy, or keep it for now.",
+            cause: $"A processor made more than one file for {heldTitle}, or it was fetched twice.",
+            fix: $"Remove the spare copy of {heldTitle} ({name}), or keep it for now.",
             detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind = Directory.Exists(path) ? "folder" : "file", isMedia = true, spareCopyOf = heldTitle }));
     }
 
@@ -287,8 +287,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             HealthCheckCategories.Processor,
             $"Unexpected files in the {library.Name} library's processor output folder",
             message,
-            cause: "This shouldn't happen: it only occurs after something else already went wrong, or another app shares this folder.",
-            fix: isMedia ? "Import it, or clear it." : "Clear it, or leave it for now.",
+            cause: $"{name} should not be in the {library.Name} library's processor output folder: it only occurs after something else already went wrong, or another app shares this folder.",
+            fix: isMedia ? $"Import {name}, or clear it." : $"Clear {name}, or leave it for now.",
             detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind, isMedia }));
 }
 

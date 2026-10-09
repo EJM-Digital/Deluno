@@ -158,7 +158,7 @@ public sealed class ProcessorHealthCheck(
                 HealthCheckCategories.Processor,
                 name,
                 $"{connection.Name} says it is watching {support.WatchedPath}, but the {library.Name} library's downloads folder is {library.DownloadsPath}.",
-                cause: "The folder the processor watches and the library's downloads folder no longer agree.",
+                cause: $"The folder {connection.Name} watches and the {library.Name} library's downloads folder no longer agree.",
                 fix: $"Point {connection.Name} at {library.DownloadsPath}, or update the {library.Name} library's downloads folder to match {connection.Name}.",
                 detailsJson: $$"""{"processorId":"{{connection.Id}}","libraryId":"{{library.Id}}","watchedPath":"{{support.WatchedPath}}","expectedPath":"{{library.DownloadsPath}}"}""");
     }
@@ -188,7 +188,7 @@ public sealed class ProcessorHealthCheck(
                 HealthCheckCategories.Processor,
                 name,
                 $"{connection.Name} says it writes to {outputFolder}, but {library.Name} imports from {library.ProcessorOutputPath}.",
-                cause: "The folder the processor writes to and the library's ready folder no longer agree.",
+                cause: $"The folder {connection.Name} writes to and the {library.Name} library's ready folder no longer agree.",
                 fix: $"Point {connection.Name}'s output at {library.ProcessorOutputPath}, or update the {library.Name} library's ready folder to match.",
                 detailsJson: $$"""{"processorId":"{{connection.Id}}","libraryId":"{{library.Id}}","outputPath":"{{outputFolder}}","expectedPath":"{{library.ProcessorOutputPath}}"}""");
     }
