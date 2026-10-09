@@ -24,6 +24,8 @@ public sealed class DownloadClientHealthCheck(IConnectionsRepository connections
 
     public string Category => HealthCheckCategories.DownloadClient;
 
+    public static string NoProviderMessage(string clientName) => $"{clientName} has no Usenet provider set up.";
+
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
         var clients = await connections.ListDownloadClientsAsync(cancellationToken);
@@ -41,6 +43,20 @@ public sealed class DownloadClientHealthCheck(IConnectionsRepository connections
 
             var id = $"download-client:{client.Id}";
             var name = $"{client.Name} (download client)";
+
+            // A Usenet client that answers but has no news server is a setup problem, not one that is down (#1198).
+            if (string.Equals(client.LastHealthMessage?.Trim(), Deluno.Connections.Usenet.UsenetProviderText.NoProvider, StringComparison.Ordinal))
+            {
+                outcomes.Add(HealthCheckOutcome.Problem(
+                    id,
+                    Category,
+                    name,
+                    NoProviderMessage(client.Name),
+                    cause: $"{client.Name} is running, but it has no Usenet provider (news server) to download from.",
+                    fix: "Add your Usenet provider under Find & Download, Download clients. Deluno writes it to every Usenet client.",
+                    detailsJson: $$"""{"clientId":"{{client.Id}}","protocol":"{{client.Protocol}}"}"""));
+                continue;
+            }
 
             outcomes.Add(string.Equals(client.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
                 ? HealthCheckOutcome.Ok(id, Category, name, $"{client.Name} is reachable.")

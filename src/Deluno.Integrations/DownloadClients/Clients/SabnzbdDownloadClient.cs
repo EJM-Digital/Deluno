@@ -655,7 +655,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         // short of the library — the same "processing" NZBGet's post-processing
         // stages map to and Deluno's own cleanup step already uses.
         if (IsPostProcessingStage(normalized)) return DownloadQueueStatuses.Processing;
-        if ((progress ?? 0) >= 99.9 || normalized.Contains("complete")) return DownloadQueueStatuses.ImportReady;
+        if (Deluno.Platform.Contracts.DownloadHealthStrikes.IsFinishedPercent(progress) || normalized.Contains("complete")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("fail") || normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;

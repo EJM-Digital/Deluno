@@ -176,7 +176,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             var queueItem = new DownloadQueueItem(hash, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, category), DownloadClientHelpers.CleanReleaseTitle(name), name,
                 category, status,
                 Math.Clamp(progress, 0, 100), (speed), item.Count > 10 ? Math.Max(0, Convert.ToInt32(AsDouble(item[10]))) : 0, size,
-                (long)(size * (progress / 100d)), item.Count > 12 ? Convert.ToInt32(AsDouble(item[12])) : 0, "uTorrent",
+                (long)(size * (progress / 100d)), (item.Count > 12 ? Convert.ToInt32(AsDouble(item[12])) : 0) + (item.Count > 14 ? Convert.ToInt32(AsDouble(item[14])) : 0), "uTorrent",
                 errored && !string.IsNullOrWhiteSpace(statusMessage) ? statusMessage : null,
                 item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc,
                 SourcePath: string.IsNullOrWhiteSpace(savePath) ? null : savePath,
@@ -277,7 +277,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         // and reading progress first raced the import against a file uTorrent
         // was still hashing.
         if ((bits & UTorrentStatus.Checking) != 0) return DownloadQueueStatuses.Downloading;
-        if (progress >= 100) return DownloadQueueStatuses.ImportReady;
+        if (Deluno.Platform.Contracts.DownloadHealthStrikes.IsFinishedPercent(progress)) return DownloadQueueStatuses.ImportReady;
         if ((bits & (UTorrentStatus.Paused | UTorrentStatus.Queued)) != 0) return DownloadQueueStatuses.Queued;
         if ((bits & UTorrentStatus.Started) != 0) return DownloadQueueStatuses.Downloading;
         return DownloadQueueStatuses.Queued;

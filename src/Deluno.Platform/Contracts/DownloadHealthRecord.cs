@@ -195,7 +195,7 @@ public static class DownloadHealthStrikes
     /// library's "if processing fails" choice, or the person, may act on it.
     /// </summary>
     public static bool IsFinishedOrHandedOff(string? status, double progressPercent)
-        => progressPercent >= 100d ||
+        => IsFinishedPercent(progressPercent) ||
            status is "completed" or "importReady" or "processing" or "processed" or "processingFailed"
                or "waitingForProcessor" or "notHandedOver" or "handedOverElsewhere" or "importQueued" or "imported" or "importFailed";
 
@@ -205,6 +205,13 @@ public static class DownloadHealthStrikes
     /// piece is a real stall.
     /// </summary>
     public const double FinishingPercent = 99.9d;
+
+    /// <summary>
+    /// The one finished-by-percent rule every client adapter uses (#1198): only 100% is finished. There is no 99.9%
+    /// threshold anywhere, because a torrent stuck at 99.9x% is a real stall. A client's own state (completed,
+    /// seeding, upload) may also say a download is complete; that is the adapter's own mapping.
+    /// </summary>
+    public static bool IsFinishedPercent(double? progressPercent) => (progressPercent ?? 0d) >= 100d;
 
     /// <summary>
     /// The one kind of finding that may still act on a finished download: a
@@ -233,9 +240,29 @@ public static class DownloadHealthStrikes
 
     /// <summary>
     /// Whether a check at <paramref name="now"/> adds a strike (#1194). The observation pass runs more often than the
-    /// check interval, so a pass less than one interval after the last strike adds nothing. A small allowance keeps a
-    /// pass that lands a few seconds early from slipping a whole pass.
+    /// check interval, so a pass less than one interval after the last strike adds nothing. There is no allowance: a
+    /// strike lands once per interval, never earlier (#1198).
     /// </summary>
     public static bool IsDueForStrike(DateTimeOffset lastStrikeUtc, DateTimeOffset now, TimeSpan checkInterval, TimeSpan outageOverlap)
-        => now - lastStrikeUtc - outageOverlap >= checkInterval - TimeSpan.FromSeconds(30);
+        => now - lastStrikeUtc - outageOverlap >= checkInterval;
+
+    /// <summary>
+    /// When a strike that is due is recorded as having landed (#1198). The pass that notices it is due runs a few
+    /// seconds late, so the strike is booked at its scheduled moment (the last strike plus one interval) and the
+    /// next one is due one interval after that, not one interval after the late pass. Over a long spell the strikes
+    /// stay exactly one interval apart. After a gap of a whole interval or more the schedule starts again at
+    /// <paramref name="now"/>.
+    /// </summary>
+    public static DateTimeOffset StrikeLandedAt(DateTimeOffset lastStrikeUtc, DateTimeOffset now, TimeSpan checkInterval, TimeSpan outageOverlap)
+    {
+        var scheduled = lastStrikeUtc + checkInterval + outageOverlap;
+        return now - scheduled < checkInterval ? scheduled : now;
+    }
+
+    /// <summary>
+    /// The strike count a record shows (#1198): it never runs past the rule's own limit, so a limit of 3 reads
+    /// "3 of 3" when the download is acted on, not "4 of 3" because the acting pass came a little later.
+    /// </summary>
+    public static int CapAtLimit(int strikes, int? ruleStrikeLimit)
+        => ruleStrikeLimit is { } limit && limit >= 1 ? Math.Min(strikes, limit) : strikes;
 }
