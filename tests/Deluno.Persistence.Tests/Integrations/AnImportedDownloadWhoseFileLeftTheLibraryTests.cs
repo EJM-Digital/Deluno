@@ -18,7 +18,7 @@ public sealed class AnImportedDownloadWhoseFileLeftTheLibraryTests
     private const string Release = "The.Simpsons.S38E02.Diary.of.a.Chimpy.Kid.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb";
 
     [Fact]
-    public async Task A_finished_hand_off_and_import_with_the_file_gone_stays_Imported_not_Ready_to_import()
+    public async Task A_finished_hand_off_and_import_with_the_file_gone_reads_as_history_not_Imported_or_Ready_to_import()
     {
         var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
             Snapshot(DownloadQueueStatuses.Imported),
@@ -27,7 +27,7 @@ public sealed class AnImportedDownloadWhoseFileLeftTheLibraryTests
             CancellationToken.None,
             [Handoff("completed", "job-1")]);
 
-        Assert.Equal(DownloadQueueStatuses.Imported, Assert.Single(result.Queue).Status);
+        Assert.Equal(DownloadQueueStatuses.ImportedFileLeft, Assert.Single(result.Queue).Status);
     }
 
     [Fact]
