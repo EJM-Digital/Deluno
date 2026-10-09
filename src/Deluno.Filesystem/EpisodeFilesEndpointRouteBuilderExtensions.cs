@@ -91,14 +91,15 @@ public static class EpisodeFilesEndpointRouteBuilderExtensions
                 }
             }
 
-            // Same writer the library check uses when a file is gone: the file
-            // fields cleared, the episode Missing and no longer wanted, and the
+            // The file
+            // fields cleared, the episode Missing but still monitored and wanted, and the
             // show's own file notes corrected, in one step.
-            await repository.MarkTrackedFileGoneAsync(seriesId, episodeId, library.Id, filePath, cancellationToken);
+            await repository.ClearMislabelledEpisodeFileAsync(
+                episodeId, filePath, cancellationToken, "The file was moved to the recycle bin, so Deluno will look for it again.");
 
             await activityFeedRepository.RecordActivityAsync(
                 "library.episode.file-deleted",
-                $"{inventory.Title} {code}'s file was moved to the recycle bin, so Deluno stopped wanting it. You can restore it from there.",
+                $"{inventory.Title} {code}'s file was moved to the recycle bin. Deluno will look for it again. You can restore it from there.",
                 null,
                 null,
                 "episode",

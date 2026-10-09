@@ -113,8 +113,8 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
       if (!response.ok) throw new Error("delete-failed");
       toast.success(
         item.isPrimary && item.libraryName
-          ? `File moved to the recycle bin. Deluno stopped wanting this film in ${item.libraryName}. The other copy is still managed. You can restore it from the recycle bin.`
-          : item.isPrimary ? "File moved to the recycle bin. This title now shows as missing. You can restore it from the recycle bin." : "File moved to the recycle bin. You can restore it from there.");
+          ? `File moved to the recycle bin. Deluno will look for it again in ${item.libraryName}. You can restore it from the recycle bin.`
+          : item.isPrimary ? "File moved to the recycle bin. This title now shows as missing and Deluno will look for it again. You can restore it from the recycle bin." : "File moved to the recycle bin. You can restore it from there.");
       setConfirmingDeletePath(null);
       reload();
     } catch {
@@ -195,7 +195,7 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
                       </>
                     ) : confirmingDeletePath === item.path ? (
                       <>
-                        <span className="mr-1 text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it.</span>
+                        <span className="mr-1 text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it. Deluno will look for it again.</span>
                         <Button type="button" size="sm" variant="destructive" onClick={() => void confirmDelete(item)} disabled={busyPath === item.path}>
                           {busyPath === item.path ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Confirm delete"}
                         </Button>

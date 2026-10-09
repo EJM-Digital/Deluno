@@ -269,7 +269,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             MovieFileGoneOutcome goneOutcome = default;
             if (wasPrimary)
             {
-                goneOutcome = await repository.ClearFileAsync(id, primaryPath, cancellationToken);
+                goneOutcome = await repository.ClearFileKeepWantedAsync(id, primaryPath, cancellationToken);
             }
             else
             {
@@ -278,14 +278,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 await mediaSubtitleRepository.ClearScansAsync(MediaKind.Movie, [id], cancellationToken);
             }
 
-            string primaryMessage = $"{movie.Title}'s file was moved to the recycle bin, so Deluno stopped wanting it. You can restore it from there.";
-            if (wasPrimary && goneOutcome.OnlyThatLibrary)
-            {
-                // #1065: kept in two libraries, so only the library that lost its file is switched off.
-                var allLibraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-                string LibraryName(string? libraryId) => allLibraries.FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "that library";
-                primaryMessage = $"{movie.Title}'s file in {LibraryName(goneOutcome.LibraryId)} was moved to the recycle bin, so Deluno stopped wanting it in {LibraryName(goneOutcome.LibraryId)}. The {string.Join(" and ", (goneOutcome.OtherLibraryIds ?? []).Select(LibraryName))} copy is still managed.";
-            }
+            // #1188: a file deleted by hand usually means "get me a better one", so the film stays monitored and wanted.
+            var primaryMessage = $"{movie.Title}'s file was moved to the recycle bin. Deluno will look for it again. You can restore it from there.";
 
             await activityFeedRepository.RecordActivityAsync(
                 "library.movie.file-deleted",
