@@ -29,7 +29,7 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Contracts/PendingComponentInstalls.cs"] = (1, "A state file under the data root. " + OwnData),
         ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (2, "Leftover files of a season pack, refused unless under a configured download path; and a write-probe file. " + DownloadArea),
         ["src/Deluno.Filesystem/FilesystemReconciliationService.cs"] = (1, "Only a Deluno staging or backup artifact of an interrupted import (IsDelunoArtifact)."),
-        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync."),
+        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188)."),
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs"] = (2, "A processor's partial output and empty folders inside its output folder. " + DownloadArea),
@@ -83,6 +83,55 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
+
+    /// <summary>
+    /// #1188: a private <c>TryDelete(path)</c> wrapper hid a real <c>File.Delete</c> from the count above (a pack
+    /// import deleted the library file it replaced and its subtitles with it). Calls to a wrapper are counted
+    /// here, per file, so a new one cannot slip in. The eleven in the import pipeline are staging and backup
+    /// artifacts Deluno itself created, plus the fallbacks of an instance built without a recycle bin (the host
+    /// always supplies one); a replaced library video is never deleted when no library matches, it is left alone.
+    /// </summary>
+    private static readonly Dictionary<string, int> AllowedWrapperCalls = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["src/Deluno.Companions/CompanionDownloads.cs"] = 2,
+        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = 11,
+        ["src/Deluno.Filesystem/FilesystemReconciliationService.cs"] = 1,
+        ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = 10,
+    };
+
+    private static readonly Regex WrapperCall = new(@"\bTryDelete\(", RegexOptions.Compiled);
+    private static readonly Regex WrapperDefinition = new(@"\b(?:void|bool)\s+TryDelete\(", RegexOptions.Compiled);
+
+    [Fact]
+    public void A_private_delete_wrapper_is_counted_like_a_direct_delete()
+    {
+        var root = RepositoryRoot();
+        var problems = new List<string>();
+        var sep = Path.DirectorySeparatorChar;
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+                     .Where(file => !file.Contains($"{sep}obj{sep}") && !file.Contains($"{sep}bin{sep}")))
+        {
+            var count = File.ReadLines(file)
+                .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal) && !WrapperDefinition.IsMatch(line))
+                .Sum(line => WrapperCall.Matches(line).Count);
+            if (count == 0)
+            {
+                continue;
+            }
+
+            var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (!AllowedWrapperCalls.TryGetValue(relative, out var max))
+            {
+                problems.Add($"{relative}: {count} TryDelete calls, none listed. Library media must leave through IRecycleBinService.");
+            }
+            else if (count > max)
+            {
+                problems.Add($"{relative}: {count} TryDelete calls, {max} listed. Check the new one cannot reach library media, then raise the count.");
+            }
+        }
+
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
     [Fact]
     public void A_films_Files_tab_and_an_episodes_file_delete_go_through_the_recycle_bin()
     {

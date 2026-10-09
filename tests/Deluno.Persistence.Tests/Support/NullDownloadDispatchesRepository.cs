@@ -79,7 +79,8 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         string? importFailureCode,
         string? importFailureMessage,
         CancellationToken cancellationToken,
-        IntegrationFailure? failure = null) =>
+        IntegrationFailure? failure = null,
+        long? importedFileBytes = null) =>
         throw new NotImplementedException("Test only - should not be called");
 
     public Task<IReadOnlyList<DispatchTimelineEvent>> GetDispatchTimelineAsync(
