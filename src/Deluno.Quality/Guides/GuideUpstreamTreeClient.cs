@@ -22,6 +22,17 @@ public sealed class GuideUpstreamTreeClient(IHttpClientFactory httpClientFactory
     public async Task<GuideUpstreamTreeSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
+        try
+        {
+            // The way that spends none of GitHub's 60 API calls an hour for this network (#1181): the branch's
+            // commit from the Git address, and the tracked files from the archive at that commit.
+            return await GetSnapshotFromArchiveAsync(client, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Not readable that way: the API below is the slower, limited route.
+        }
+
         var reference = await GetAsync<GitReference>(client, $"{RepositoryPath}/git/ref/heads/master", cancellationToken);
         var commitSha = reference.Object.Sha;
         var commit = await GetAsync<GitCommit>(client, $"{RepositoryPath}/git/commits/{commitSha}", cancellationToken);
@@ -35,6 +46,64 @@ public sealed class GuideUpstreamTreeClient(IHttpClientFactory httpClientFactory
             .Where(item => string.Equals(item.Type, "blob", StringComparison.Ordinal))
             .Where(item => !string.IsNullOrWhiteSpace(item.Path) && !string.IsNullOrWhiteSpace(item.Sha))
             .ToDictionary(item => item.Path, item => item.Sha, StringComparer.Ordinal);
+        return new GuideUpstreamTreeSnapshot(commitSha, blobs);
+    }
+
+    private const long MaximumSnapshotArchiveBytes = 50L * 1024 * 1024;
+
+    private static readonly System.Text.RegularExpressions.Regex MasterRefPattern = new(@"([0-9a-f]{40}) refs/heads/master(?![\w/.-])", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private async Task<GuideUpstreamTreeSnapshot> GetSnapshotFromArchiveAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        string refs;
+        using (var refsResponse = await client.GetAsync("https://github.com/TRaSH-Guides/Guides.git/info/refs?service=git-upload-pack", cancellationToken))
+        {
+            refsResponse.EnsureSuccessStatusCode();
+            refs = await refsResponse.Content.ReadAsStringAsync(cancellationToken);
+        }
+
+        var match = MasterRefPattern.Match(refs);
+        if (!match.Success)
+        {
+            throw new InvalidDataException("The Git address did not name the master branch's commit.");
+        }
+
+        var commitSha = match.Groups[1].Value;
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://codeload.github.com/TRaSH-Guides/Guides/zip/{commitSha}");
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is > MaximumSnapshotArchiveBytes)
+        {
+            throw new InvalidDataException("The TRaSH Guides source archive is unexpectedly large.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false, Encoding.UTF8);
+        var blobs = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in archive.Entries)
+        {
+            var path = RemoveArchiveRoot(entry.FullName);
+            if (!GuideUpstreamSourceInventoryBuilder.IsTrackedSourcePath(path))
+            {
+                continue;
+            }
+
+            if (entry.Length > 1_024 * 1_024)
+            {
+                throw new InvalidDataException($"The TRaSH Guides source '{path}' is unexpectedly large.");
+            }
+
+            await using var entryStream = entry.Open();
+            using var bytes = new MemoryStream((int)entry.Length);
+            await entryStream.CopyToAsync(bytes, cancellationToken);
+            blobs[path] = ComputeGitBlobSha(bytes.ToArray());
+        }
+
+        if (blobs.Count == 0)
+        {
+            throw new InvalidDataException("The TRaSH Guides archive held none of the files Deluno tracks.");
+        }
+
         return new GuideUpstreamTreeSnapshot(commitSha, blobs);
     }
 

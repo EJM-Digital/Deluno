@@ -129,6 +129,24 @@ public sealed class GitHubRateLimitException(DateTimeOffset resetsAt)
 {
     public DateTimeOffset ResetsAt { get; } = resetsAt;
 
+    /// <summary>
+    /// The plain sentence. The reset is written as a UTC instant ("2026-10-09 00:35 UTC") because the server's own
+    /// clock zone means nothing to someone looking from elsewhere; the web app shows it in the viewer's local time
+    /// (<c>localizeResetTimes</c>) and <see cref="LocalizeResetTimes"/> does the same on this computer.
+    /// </summary>
     public static string MessageFor(DateTimeOffset resetsAt)
-        => $"GitHub's limit for checking releases from this network is used up until {resetsAt.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant()}. Deluno will try again then.";
+        => $"GitHub's limit for checking releases from this network is used up until {UtcStamp(resetsAt)}. Deluno will try again then.";
+
+    /// <summary>"2026-10-09 00:35 UTC", the form the web app finds and shows in the viewer's time.</summary>
+    public static string UtcStamp(DateTimeOffset instant)
+        => instant.UtcDateTime.AddSeconds(59).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+
+    private static readonly System.Text.RegularExpressions.Regex StampPattern = new(@"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>Replaces each UTC stamp in <paramref name="text"/> with the time in this computer's own zone ("5:35 pm"), for screens on the same computer as the server (the tray).</summary>
+    public static string LocalizeResetTimes(string text, TimeZoneInfo? zone = null)
+        => StampPattern.Replace(text, match =>
+            DateTime.TryParseExact(match.Groups[1].Value, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var utc)
+                ? TimeZoneInfo.ConvertTimeFromUtc(utc, zone ?? TimeZoneInfo.Local).ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant()
+                : match.Value);
 }

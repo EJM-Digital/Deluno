@@ -198,6 +198,43 @@ public sealed class DirectoryListingLatestReleaseTests
         Assert.Equal("https://x.test/2.1.0-rc.1/Weir-win-Setup.exe", resolved!.AssetUrl);
     }
 
+    // #1181: the free route first. The newest tag comes from github.com's release feed and the files from the release
+    // download folder; neither counts against GitHub's 60 API calls an hour.
+    private sealed class FeedOnly : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            Requests.Add(url);
+            if (request.RequestUri.Host == "api.github.com")
+            {
+                throw new InvalidOperationException("the API must not be called");
+            }
+
+            var content = url.EndsWith("/releases.atom", StringComparison.Ordinal)
+                ? """<feed><entry><link href="https://github.com/o/weir/releases/tag/v2.0.0"/></entry><entry><link href="https://github.com/o/weir/releases/tag/v2.1.0-rc.1"/></entry></feed>"""
+                : url.Contains("SHA256", StringComparison.OrdinalIgnoreCase) || url.Contains("SUMS", StringComparison.OrdinalIgnoreCase)
+                    ? "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd  Weir-win-Setup.exe\n"
+                    : "installer";
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(content) });
+        }
+    }
+
+    [Fact]
+    public async Task Weir_is_found_through_the_release_feed_release_candidates_included_without_the_api()
+    {
+        var weir = BundledComponents.Load().Single(s => s.Kind == "weir") with { GithubRepo = "o/weir" };
+        var handler = new FeedOnly();
+
+        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, handler);
+
+        Assert.Equal("https://github.com/o/weir/releases/download/v2.1.0-rc.1/Weir-win-Setup.exe", resolved!.AssetUrl);
+        Assert.Equal("abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd", resolved.Sha256);
+        Assert.DoesNotContain(handler.Requests, url => url.Contains("api.github.com", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Only_Weir_includes_pre_releases_in_the_shipped_manifest()
     {

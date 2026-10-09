@@ -38,7 +38,7 @@ public static class UpdateFeedErrors
         return false;
     }
 
-    /// <summary>What the Updates page says when a check could not be made, with the cause and when to retry when GitHub's limit is it.</summary>
+    /// <summary>What the Updates page says when a check could not be made, with the cause and when to retry when GitHub's limit is it. The time is a UTC stamp; the web page shows it in the viewer's own time (#1181).</summary>
     public static string CheckFailedMessage(Exception exception, DateTimeOffset? limitResetsUtc)
     {
         if (!IsRateLimited(exception))
@@ -47,7 +47,7 @@ public static class UpdateFeedErrors
         }
 
         return limitResetsUtc is { } at
-            ? $"Couldn't check for updates (GitHub limit, retry after {at.ToLocalTime():h:mm tt})."
+            ? $"Couldn't check for updates (GitHub limit, retry after {Deluno.Infrastructure.Http.GitHubRateLimitException.UtcStamp(at)})."
             : "Couldn't check for updates (GitHub limit, retry in about an hour).";
     }
 
@@ -554,7 +554,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         // prereleases so a freshly-installed RC can find its own channel.
         var includePrereleases = !string.Equals(settings.UpdateChannel, "stable", StringComparison.OrdinalIgnoreCase);
         IUpdateSource source = sourceUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase)
-            ? new GithubSource(sourceUrl, accessToken: null, prerelease: includePrereleases)
+            ? new ReleaseFeedUpdateSource(sourceUrl, includePrereleases)
             : new SimpleWebSource(sourceUrl);
 
         _manager = new UpdateManager(source, options);

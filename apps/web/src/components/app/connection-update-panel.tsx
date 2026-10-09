@@ -7,6 +7,7 @@ import { DrawerSection } from "../ui/drawer";
 import { fetchJson } from "../../lib/api";
 import { queryClient } from "../../lib/route-cache";
 import { dismissPath, updateNoticeTitle, useConnectionUpdates, type ConnectionUpdate, type ConnectionUpdateResult } from "../../lib/connection-updates";
+import { localizeResetTimes } from "../../lib/reset-times";
 
 /**
  * What a connection says about its newer version, in its own drawer (#1118): the release notes, and then what
@@ -30,7 +31,7 @@ export function ConnectionUpdatePanel({ kind, id }: { kind: string; id: string }
 function ResultLine({ result }: { result: ConnectionUpdateResult }) {
   return (
     <p role="status" className={result.outcome === "failed" ? "text-(length:--type-caption) text-destructive" : "text-(length:--type-caption) text-success"}>
-      {result.message}
+      {localizeResetTimes(result.message)}
     </p>
   );
 }
@@ -44,7 +45,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
     try {
       const outcome = await fetchJson<ConnectionUpdateResult>(`/api/connections/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.id)}/update`, { method: "POST" });
       setResult(outcome);
-      if (outcome.outcome === "failed") toast.error(outcome.message);
+      if (outcome.outcome === "failed") toast.error(localizeResetTimes(outcome.message));
       else toast.success(outcome.message);
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -74,7 +75,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
     <DrawerSection title="New version">
       <div className="space-y-2.5" data-testid="connection-update-panel">
         <p className="text-(length:--type-body-sm) text-foreground">{updateNoticeTitle(item)}</p>
-        <p className="text-(length:--type-caption) text-muted-foreground">{item.message}</p>
+        <p className="text-(length:--type-caption) text-muted-foreground">{localizeResetTimes(item.message)}</p>
         {result ? <ResultLine result={result} /> : null}
         <div className="flex flex-wrap items-center gap-2">
           {item.releaseUrl ? (

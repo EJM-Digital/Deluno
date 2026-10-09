@@ -20,7 +20,8 @@ public sealed record ConnectionVersionItem(
     string Version,
     string? LatestVersion,
     bool UpdateAvailable,
-    string? ReleaseUrl);
+    string? ReleaseUrl,
+    DateTimeOffset? LatestCheckPausedUntilUtc = null);
 
 /// <summary>Remembers the version a connection last reported, so a screen never waits on the connection.</summary>
 public interface IConnectionVersionStore
@@ -53,4 +54,10 @@ public interface ILatestReleaseService
     /// none. When the answer is more than a day old this starts a refresh in the background.
     /// </summary>
     LatestRelease? Peek(string project);
+
+    /// <summary>
+    /// When GitHub's hourly limit, which stopped the last read of this project's newest release, lifts; null when
+    /// nothing is stopped. The read is not tried again before then (#1181).
+    /// </summary>
+    DateTimeOffset? LimitResetsUtc(string project) => null;
 }

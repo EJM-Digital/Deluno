@@ -1,0 +1,92 @@
+using Deluno.Contracts;
+using Velopack;
+using Velopack.Logging;
+using Velopack.Sources;
+
+namespace Deluno.Tray;
+
+/// <summary>
+/// Where Deluno looks for its own updates (#1181). Velopack's <see cref="GithubSource"/> asks api.github.com,
+/// and an unauthenticated network gets only 60 of those an hour, shared with every other app on it. This finds the
+/// newest tag on github.com's own release feed (<c>releases.atom</c>, which spends none of them), release
+/// candidates included when the channel wants them, and reads that tag's update files from its
+/// <c>releases/download/&lt;tag&gt;/</c> folder with <see cref="SimpleWebSource"/>. The API-based source is kept only
+/// as the fallback for a feed that cannot be read.
+/// </summary>
+public sealed class ReleaseFeedUpdateSource : IUpdateSource
+{
+    private readonly string repositoryUrl;
+    private readonly bool includePreReleases;
+    private readonly IFileDownloader? downloader;
+    private readonly HttpMessageHandler? feedHandler;
+    private IUpdateSource? chosen;
+
+    public ReleaseFeedUpdateSource(string repositoryUrl, bool includePreReleases, IFileDownloader? downloader = null, HttpMessageHandler? feedHandler = null)
+    {
+        this.repositoryUrl = repositoryUrl;
+        this.includePreReleases = includePreReleases;
+        this.downloader = downloader;
+        this.feedHandler = feedHandler;
+    }
+
+    /// <summary>"owner/name" for a github.com repository address; null for any other address.</summary>
+    public static string? RepositoryOf(string repositoryUrl)
+    {
+        if (!Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0]}/{parts[1].Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase)}" : null;
+    }
+
+    /// <summary>The newest tag on the repository's release feed, or null when the feed cannot be read.</summary>
+    public static async Task<string?> FindNewestTagAsync(string repository, bool includePreReleases, HttpMessageHandler? handler, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var http = handler is null
+                ? new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler())
+                : new HttpClient(handler, disposeHandler: false);
+            http.Timeout = TimeSpan.FromSeconds(15);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Updater");
+            using var response = await http.GetAsync(ReleaseAtomFeed.ReleasesUri(repository), cancellationToken);
+            return response.IsSuccessStatusCode
+                ? ReleaseAtomFeed.NewestTag(await response.Content.ReadAsStringAsync(cancellationToken), includePreReleases)
+                : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel, Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
+    {
+        if (RepositoryOf(repositoryUrl) is { } repository
+            && await FindNewestTagAsync(repository, includePreReleases, feedHandler, CancellationToken.None) is { } tag)
+        {
+            var folder = new SimpleWebSource(ReleaseAtomFeed.DownloadFolderUrl(repository, tag), downloader);
+            try
+            {
+                var feed = await folder.GetReleaseFeed(logger, appId, channel, stagingId, latestLocalRelease);
+                chosen = folder;
+                return feed;
+            }
+            catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or System.Net.WebException)
+            {
+                // The newest tag's update files could not be read from its download folder: use the API below.
+            }
+        }
+
+        var api = new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, downloader);
+        chosen = api;
+        return await api.GetReleaseFeed(logger, appId, channel, stagingId, latestLocalRelease);
+    }
+
+    public Task DownloadReleaseEntry(IVelopackLogger logger, VelopackAsset releaseEntry, string localFile, Action<int> progress, CancellationToken cancelToken = default)
+        => (chosen ?? new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, downloader))
+            .DownloadReleaseEntry(logger, releaseEntry, localFile, progress, cancelToken);
+}

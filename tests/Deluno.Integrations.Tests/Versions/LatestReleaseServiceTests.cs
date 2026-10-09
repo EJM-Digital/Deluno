@@ -229,6 +229,116 @@ public sealed class LatestReleaseServiceTests
         Assert.False(Deluno.Contracts.ReleaseVersions.IsOutOfDate("1.0.0-rc.2", ReleaseFeedParsers.FromGitHubReleaseList(WeirReleases)!.Version));
     }
 
+    // ---- #1181: the free route first, the limit remembered
+
+    private const string Atom = """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry><link rel="alternate" type="text/html" href="https://github.com/w/weir/releases/tag/v1.0.0-rc.1"/></entry>
+          <entry><link rel="alternate" type="text/html" href="https://github.com/w/weir/releases/tag/v1.0.0-rc.2"/></entry>
+          <entry><link rel="alternate" type="text/html" href="https://github.com/w/weir/releases/tag/v0.9.0"/></entry>
+        </feed>
+        """;
+
+    [Fact]
+    public void The_free_route_is_the_releases_page_on_github_com_and_takes_release_candidates_only_where_asked()
+    {
+        var weir = new GitHubReleasesFeed("weir", "w/weir", IncludePreReleases: true);
+        var sab = new GitHubReleasesFeed("sabnzbd", "sabnzbd/sabnzbd");
+
+        Assert.Equal("https://github.com/w/weir/releases.atom", weir.FreeRequestUri!.AbsoluteUri);
+        Assert.Equal("1.0.0-rc.2", weir.PickFree(Atom)!.Version);
+        Assert.Equal("https://github.com/w/weir/releases/tag/v1.0.0-rc.2", weir.PickFree(Atom)!.Url);
+        Assert.Equal("0.9.0", sab.PickFree(Atom)!.Version);
+        Assert.Null(sab.PickFree("<feed/>"));
+    }
+
+    [Fact]
+    public void A_tag_only_project_reads_its_tags_page_by_prefix()
+    {
+        var feed = new GitHubTagsFeed("qbittorrent", "qbittorrent/qBittorrent", "release-");
+        const string tags = """
+            <feed><entry><link href="https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.3.0rc1"/></entry>
+            <entry><link href="https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.2.4"/></entry>
+            <entry><link href="https://github.com/qbittorrent/qBittorrent/releases/tag/v9.9.9"/></entry></feed>
+            """;
+
+        Assert.Equal("https://github.com/qbittorrent/qBittorrent/tags.atom", feed.FreeRequestUri!.AbsoluteUri);
+        Assert.Equal("5.2.4", feed.PickFree(tags)!.Version);
+    }
+
+    [Fact]
+    public async Task The_newest_release_is_read_from_the_free_page_and_the_api_is_never_called()
+    {
+        var seen = new List<string>();
+        var handler = new RoutingHandler(request =>
+        {
+            seen.Add(request.RequestUri!.Host);
+            return request.RequestUri.Host == "github.com" ? Ok(Atom) : throw new InvalidOperationException("the API must not be called");
+        });
+        var service = new LatestReleaseService(new Factory(handler), [new GitHubReleasesFeed("weir", "w/weir", IncludePreReleases: true)], new Clock(Start));
+
+        await service.RefreshIfDueAsync("weir", CancellationToken.None);
+
+        Assert.Equal("1.0.0-rc.2", service.Peek("weir")!.Version);
+        Assert.Equal(["github.com"], seen);
+    }
+
+    [Fact]
+    public async Task The_api_is_asked_only_when_the_free_page_cannot_be_read()
+    {
+        var seen = new List<string>();
+        var handler = new RoutingHandler(request =>
+        {
+            seen.Add(request.RequestUri!.Host);
+            return request.RequestUri.Host == "github.com"
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : Ok(WeirReleases);
+        });
+        var service = new LatestReleaseService(new Factory(handler), [new GitHubReleasesFeed("weir", "w/weir", IncludePreReleases: true)], new Clock(Start));
+
+        await service.RefreshIfDueAsync("weir", CancellationToken.None);
+
+        Assert.Equal("1.0.0-rc.2", service.Peek("weir")!.Version);
+        Assert.Equal(["github.com", "api.github.com"], seen);
+    }
+
+    [Fact]
+    public async Task When_the_limit_stops_both_routes_it_is_recorded_shown_and_not_asked_again_before_it_lifts()
+    {
+        var clock = new Clock(Start);
+        var reset = Start.AddMinutes(40);
+        var calls = 0;
+        var handler = new RoutingHandler(request =>
+        {
+            calls++;
+            return request.RequestUri!.Host == "github.com"
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : throw new Deluno.Infrastructure.Http.GitHubRateLimitException(reset);
+        });
+        var service = new LatestReleaseService(new Factory(handler), [new GitHubReleasesFeed("sabnzbd", "sabnzbd/sabnzbd")], clock);
+
+        await service.RefreshIfDueAsync("sabnzbd", CancellationToken.None);
+
+        Assert.Null(service.Peek("sabnzbd"));
+        Assert.Equal(reset, service.LimitResetsUtc("sabnzbd"));
+        Assert.Equal(2, calls);
+
+        clock.Now = Start.AddMinutes(39);
+        await service.RefreshIfDueAsync("sabnzbd", CancellationToken.None);
+        Assert.Equal(2, calls);
+
+        clock.Now = reset.AddSeconds(1);
+        Assert.Null(service.LimitResetsUtc("sabnzbd"));
+        await service.RefreshIfDueAsync("sabnzbd", CancellationToken.None);
+        Assert.Equal(4, calls);
+    }
+
+    private sealed class RoutingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(respond(request));
+    }
+
     private static bool ReleaseVersions_IsOutOfDate(string running, string latest) => Deluno.Contracts.ReleaseVersions.IsOutOfDate(running, latest);
 
     private static LatestReleaseService Service(CountingHandler handler, Clock clock)
@@ -270,6 +380,13 @@ public sealed class LatestReleaseServiceTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // github.com's release pages are the free route (#1181); these older tests are about the API route, so
+            // that page is simply unavailable here and is not counted. The tests below it cover the free route.
+            if (request.RequestUri!.Host == "github.com")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            }
+
             Interlocked.Increment(ref calls);
             return respond(request);
         }

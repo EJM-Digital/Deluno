@@ -1,5 +1,6 @@
 import type { ConnectionVersion } from "../../lib/connection-versions";
 import { cn } from "../../lib/utils";
+import { formatResetTime } from "../../lib/reset-times";
 
 /**
  * A connection's own version, in the row's secondary style (#1117): "4.6.7", and when a newer stable release is
@@ -10,9 +11,12 @@ import { cn } from "../../lib/utils";
 export function ConnectionVersionText({ info, className }: { info: ConnectionVersion | null | undefined; className?: string }) {
   if (!info?.version) return null;
   const update = info.updateAvailable && info.latestVersion ? `${info.latestVersion} available` : null;
+  const pausedUntil = !update && info.latestCheckPausedUntilUtc ? new Date(info.latestCheckPausedUntilUtc) : null;
+  const paused = pausedUntil && !Number.isNaN(pausedUntil.getTime()) ? `can't look for a newer version until ${formatResetTime(pausedUntil)} (GitHub's limit)` : null;
   return (
     <span className={cn("font-normal text-muted-foreground", className)}>
       {info.version}
+      {paused ? <>{" · "}{paused}</> : null}
       {update ? (
         <>
           {" · "}

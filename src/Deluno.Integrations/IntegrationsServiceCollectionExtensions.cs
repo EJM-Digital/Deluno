@@ -34,7 +34,7 @@ public static class IntegrationsServiceCollectionExtensions
         // catalog above already treats as an override.
         services.AddHttpClient(Search.Trackers.GitHubTrackerDefinitionSource.HttpClientName, client =>
         {
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = TimeSpan.FromSeconds(120);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno tracker-definitions-update/1.0");
         }).AddHttpMessageHandler(() => new Deluno.Infrastructure.Http.GitHubApiConditionalHandler());
         services.AddSingleton<Search.Trackers.IRemoteTrackerDefinitionSource, Search.Trackers.GitHubTrackerDefinitionSource>();
