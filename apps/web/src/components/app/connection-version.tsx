@@ -12,7 +12,8 @@ export function ConnectionVersionText({ info, className }: { info: ConnectionVer
   if (!info?.version) return null;
   const update = info.updateAvailable && info.latestVersion ? `${info.latestVersion} available` : null;
   const pausedUntil = !update && info.latestCheckPausedUntilUtc ? new Date(info.latestCheckPausedUntilUtc) : null;
-  const paused = pausedUntil && !Number.isNaN(pausedUntil.getTime()) ? `can't look for a newer version until ${formatResetTime(pausedUntil)} (GitHub's limit)` : null;
+  const pausedText = pausedUntil && !Number.isNaN(pausedUntil.getTime()) ? `can't look for a newer version until ${formatResetTime(pausedUntil)} (GitHub's limit)` : null;
+  const paused = pausedText ?? (!update && info.latestCheckProblem ? `can't look for a newer version: ${info.latestCheckProblem}` : null);
   return (
     <span className={cn("font-normal text-muted-foreground", className)}>
       {info.version}

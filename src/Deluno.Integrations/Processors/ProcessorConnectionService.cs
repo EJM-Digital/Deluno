@@ -124,10 +124,46 @@ public sealed class ProcessorConnectionService(
     }
 
     public async Task<string?> ReadVersionAsync(ProcessorConnectionItem connection, CancellationToken cancellationToken)
-        => connection.SecretUnreadable
-            ? null
-            : Deluno.Connections.Versions.ConnectionVersionParsers.FromProcessorCapabilities(
-                await ReadCapabilitiesAsync(connection.SubmissionUrl, connection.AuthHeaderName, connection.Secret, cancellationToken));
+    {
+        if (connection.SecretUnreadable)
+        {
+            return null;
+        }
+
+        var fromCapabilities = Deluno.Connections.Versions.ConnectionVersionParsers.FromProcessorCapabilities(
+            await ReadCapabilitiesAsync(connection.SubmissionUrl, connection.AuthHeaderName, connection.Secret, cancellationToken));
+        if (fromCapabilities is not null)
+        {
+            return fromCapabilities;
+        }
+
+        // The capabilities answer is for whoever holds the credential. When it cannot be had (a credential that no
+        // longer matches, an older processor) the version the processor's own API description states, which it
+        // answers to anyone, keeps the stored version from going stale (#1181).
+        return Deluno.Connections.Versions.ConnectionVersionParsers.FromOpenApiInfo(
+            await ReadOpenApiAsync(connection.SubmissionUrl, cancellationToken));
+    }
+
+    private async Task<string?> ReadOpenApiAsync(string? submissionUrl, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(submissionUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, "/openapi.json"));
+            using var response = await httpClientFactory.CreateClient("processor-health").SendAsync(request, timeout.Token);
+            return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(timeout.Token) : null;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or OperationCanceledException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
     public async Task<string?> GetMachineNameAsync(
         string submissionUrl,

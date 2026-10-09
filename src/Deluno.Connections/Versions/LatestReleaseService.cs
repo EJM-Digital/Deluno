@@ -248,7 +248,12 @@ public sealed class LatestReleaseService : ILatestReleaseService
         public Task? InFlight;
         /// <summary>When GitHub's limit stopped the last read and lifts; null when it did not. Cleared by the next read.</summary>
         public DateTimeOffset? LimitResetsUtc;
+        /// <summary>True when the project's release page answered 404 (a private or missing repository) on the last read.</summary>
+        public bool FeedNotFound;
     }
+
+    /// <summary>The free route answered 404: a repository that is private or does not exist. The API would say the same and still cost a call.</summary>
+    private sealed class FeedNotFoundException : Exception;
 
     private readonly IHttpClientFactory httpClientFactory;
     private readonly TimeProvider timeProvider;
@@ -272,6 +277,19 @@ public sealed class LatestReleaseService : ILatestReleaseService
         lock (entry.Gate)
         {
             return entry.LimitResetsUtc is { } until && until > timeProvider.GetUtcNow() ? until : null;
+        }
+    }
+
+    public string? CheckProblem(string project)
+    {
+        if (string.IsNullOrWhiteSpace(project) || !entries.TryGetValue(project, out var entry))
+        {
+            return null;
+        }
+
+        lock (entry.Gate)
+        {
+            return entry.FeedNotFound && entry.Release is null ? "the release feed isn't reachable" : null;
         }
     }
 
@@ -347,6 +365,7 @@ public sealed class LatestReleaseService : ILatestReleaseService
     {
         LatestRelease? release = null;
         DateTimeOffset? limit = null;
+        var notFound = false;
         try
         {
             // The free route first (github.com's own release page, which GitHub's API allowance does not cover),
@@ -357,13 +376,21 @@ public sealed class LatestReleaseService : ILatestReleaseService
                 {
                     release = await TryReadAsync(free, feed.PickFree, cancellationToken);
                 }
+                catch (FeedNotFoundException)
+                {
+                    // 404 here means the repository is private or missing: the API would 404 too and still spend a call.
+                    notFound = true;
+                }
                 catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
                 {
                     // Not readable that way: the API below is the limited route.
                 }
             }
 
-            release ??= await TryReadAsync(feed.RequestUri, feed.Pick, cancellationToken);
+            if (!notFound)
+            {
+                release ??= await TryReadAsync(feed.RequestUri, feed.Pick, cancellationToken);
+            }
         }
         catch (GitHubRateLimitException exception)
         {
@@ -386,6 +413,7 @@ public sealed class LatestReleaseService : ILatestReleaseService
             }
 
             entry.LimitResetsUtc = limit;
+            entry.FeedNotFound = notFound;
             // Not again before GitHub's limit lifts; otherwise a day after a good read, an hour after a failed one.
             entry.NextDueUtc = limit is { } reset
                 ? reset
@@ -402,6 +430,11 @@ public sealed class LatestReleaseService : ILatestReleaseService
         request.Headers.UserAgent.ParseAdd("Deluno");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(uri.Host == "github.com" ? "application/atom+xml" : "application/json"));
         using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request, timeout.Token);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound && uri.Host == "github.com")
+        {
+            throw new FeedNotFoundException();
+        }
+
         return response.IsSuccessStatusCode ? pick(await response.Content.ReadAsStringAsync(timeout.Token)) : null;
     }
 }

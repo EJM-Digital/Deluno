@@ -54,7 +54,22 @@ public sealed class ReleaseFeedUpdateSourceTests
         Assert.DoesNotContain("api.github.com", url);
     }
 
-    private sealed class Page(string? atom) : HttpMessageHandler
+    [Fact]
+    public async Task A_404_from_the_release_feed_is_final_and_the_api_is_never_asked()
+    {
+        var handler = new Page(null, HttpStatusCode.NotFound);
+        var source = new ReleaseFeedUpdateSource("https://github.com/owner/private", includePreReleases: true, new RecordingDownloader(), handler);
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => source.GetReleaseFeed(new NullVelopackLogger(), "Deluno", "win"));
+
+        Assert.Equal(HttpStatusCode.NotFound, failure.StatusCode);
+        Assert.True(UpdateFeedErrors.IsNotFound(failure));
+        var only = Assert.Single(handler.Requested);
+        Assert.Equal("https://github.com/owner/private/releases.atom", only);
+        Assert.Equal((null, true), await ReleaseFeedUpdateSource.LookUpNewestTagAsync("owner/private", true, handler, CancellationToken.None));
+    }
+
+    private sealed class Page(string? atom, HttpStatusCode failure = HttpStatusCode.ServiceUnavailable) : HttpMessageHandler
     {
         public List<string> Requested { get; } = [];
 
@@ -62,7 +77,7 @@ public sealed class ReleaseFeedUpdateSourceTests
         {
             Requested.Add(request.RequestUri!.AbsoluteUri);
             return Task.FromResult(atom is null
-                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                ? new HttpResponseMessage(failure)
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(atom) });
         }
     }

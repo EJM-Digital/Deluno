@@ -21,7 +21,8 @@ public sealed record ConnectionVersionItem(
     string? LatestVersion,
     bool UpdateAvailable,
     string? ReleaseUrl,
-    DateTimeOffset? LatestCheckPausedUntilUtc = null);
+    DateTimeOffset? LatestCheckPausedUntilUtc = null,
+    string? LatestCheckProblem = null);
 
 /// <summary>Remembers the version a connection last reported, so a screen never waits on the connection.</summary>
 public interface IConnectionVersionStore
@@ -60,4 +61,7 @@ public interface ILatestReleaseService
     /// nothing is stopped. The read is not tried again before then (#1181).
     /// </summary>
     DateTimeOffset? LimitResetsUtc(string project) => null;
+
+    /// <summary>Why the last read of this project's newest release could not be made, in plain words ("the release feed isn't reachable"); null when it was made or nothing was tried (#1181).</summary>
+    string? CheckProblem(string project) => null;
 }

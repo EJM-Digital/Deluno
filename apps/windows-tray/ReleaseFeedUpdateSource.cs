@@ -44,6 +44,14 @@ public sealed class ReleaseFeedUpdateSource : IUpdateSource
 
     /// <summary>The newest tag on the repository's release feed, or null when the feed cannot be read.</summary>
     public static async Task<string?> FindNewestTagAsync(string repository, bool includePreReleases, HttpMessageHandler? handler, CancellationToken cancellationToken)
+        => (await LookUpNewestTagAsync(repository, includePreReleases, handler, cancellationToken)).Tag;
+
+    /// <summary>
+    /// The newest tag, and whether the feed answered 404. github.com answers 404 for a repository that is private or
+    /// does not exist, and the API answers the same for it while still spending one of the hourly calls, so a 404 is
+    /// final (#1181).
+    /// </summary>
+    public static async Task<(string? Tag, bool NotFound)> LookUpNewestTagAsync(string repository, bool includePreReleases, HttpMessageHandler? handler, CancellationToken cancellationToken)
     {
         try
         {
@@ -53,20 +61,38 @@ public sealed class ReleaseFeedUpdateSource : IUpdateSource
             http.Timeout = TimeSpan.FromSeconds(15);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Updater");
             using var response = await http.GetAsync(ReleaseAtomFeed.ReleasesUri(repository), cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return (null, true);
+            }
+
             return response.IsSuccessStatusCode
-                ? ReleaseAtomFeed.NewestTag(await response.Content.ReadAsStringAsync(cancellationToken), includePreReleases)
-                : null;
+                ? (ReleaseAtomFeed.NewestTag(await response.Content.ReadAsStringAsync(cancellationToken), includePreReleases), false)
+                : (null, false);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return null;
+            return (null, false);
         }
     }
 
     public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel, Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
     {
-        if (RepositoryOf(repositoryUrl) is { } repository
-            && await FindNewestTagAsync(repository, includePreReleases, feedHandler, CancellationToken.None) is { } tag)
+        var repository = RepositoryOf(repositoryUrl);
+        string? tag = null;
+        if (repository is not null)
+        {
+            var lookup = await LookUpNewestTagAsync(repository, includePreReleases, feedHandler, CancellationToken.None);
+            if (lookup.NotFound)
+            {
+                // Private or missing repository: the API would answer 404 too, and the call still counts.
+                throw new HttpRequestException($"The release feed for {repository} answered 404 (Not Found).", null, System.Net.HttpStatusCode.NotFound);
+            }
+
+            tag = lookup.Tag;
+        }
+
+        if (repository is not null && tag is not null)
         {
             var folder = new SimpleWebSource(ReleaseAtomFeed.DownloadFolderUrl(repository, tag), downloader);
             try

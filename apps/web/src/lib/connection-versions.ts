@@ -13,6 +13,8 @@ export interface ConnectionVersion {
   releaseUrl: string | null;
   /** When GitHub's hourly limit, which stopped the read of the newest release, lifts (an instant in UTC); null when nothing is stopped (#1181). */
   latestCheckPausedUntilUtc?: string | null;
+  /** Why the newest release could not be read, in plain words, when it could not (#1181). */
+  latestCheckProblem?: string | null;
 }
 
 export type ConnectionVersions = ReadonlyMap<string, ConnectionVersion>;
