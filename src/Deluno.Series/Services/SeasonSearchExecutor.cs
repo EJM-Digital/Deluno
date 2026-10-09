@@ -346,6 +346,9 @@ public sealed class SeasonSearchExecutor(
         // of each other whenever a season qualifies for its own search
         // (#655). Nothing else here knows that happened, so it is checked
         // here, against the same series id every path dispatches under.
+        using var sendGate = !noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && bestCandidate is not null
+            ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken)
+            : null;
         var onItsWay = !noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && bestCandidate is not null
             ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken)
             : null;

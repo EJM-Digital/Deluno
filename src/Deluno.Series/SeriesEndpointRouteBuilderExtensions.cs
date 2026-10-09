@@ -1894,6 +1894,9 @@ public static class SeriesEndpointRouteBuilderExtensions
 
                 var willDispatch = !request.ChooseOnly
                     && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null;
+                using var sendGate = willDispatch
+                    ? await DispatchSendGate.EnterAsync(bestCandidate!.ReleaseName, [episode.EpisodeId, seriesItem.Id], cancellationToken)
+                    : null;
                 if (willDispatch)
                 {
                     // An episode already downloading is never sent a second release (#1175).
