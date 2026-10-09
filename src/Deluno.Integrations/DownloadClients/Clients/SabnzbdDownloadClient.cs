@@ -285,10 +285,9 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return false;
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
-        using var response = await http.GetAsync(
-            new Uri(baseUri, $"api?mode=warnings&name=clear&output=json&apikey={Uri.EscapeDataString(client.Secret)}"),
-            cancellationToken);
-        return response.IsSuccessStatusCode;
+        var outcome = await SendAsync(http, baseUri, $"api?mode=warnings&name=clear&output=json&apikey={Uri.EscapeDataString(client.Secret)}", cancellationToken);
+        // Clearing may answer with the (now empty) warnings list rather than a status; only a stated "no" is a failure.
+        return outcome.Reached && outcome.StatusCode is { } code && (int)code is >= 200 and < 300 && (outcome.Accepted || !outcome.Readable);
     }
 
     /// <summary>Resumes SABnzbd as a whole (mode=resume), which is what its queue-level pause (queue.paused) needs.</summary>
@@ -529,18 +528,63 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             DownloadClientActions.MoveToBottom => "&value2=-2",
             _ => string.Empty
         };
-        using var response = await http.GetAsync(new Uri(baseUri, $"api?mode={mode}&value={Uri.EscapeDataString(queueItemId)}{priorityValue}&apikey={Uri.EscapeDataString(client.Secret)}&output=json"), cancellationToken);
-        if (response.IsSuccessStatusCode)
+        var itemId = Uri.EscapeDataString(queueItemId);
+        var key = Uri.EscapeDataString(client.Secret);
+
+        // A finished or failed job is in SABnzbd's history, not its queue, so a
+        // queue delete finds nothing there (#1201). Try the queue first and, when
+        // it removed nothing, the history, which is where the job and its folder
+        // live once it is done.
+        if (action is DownloadClientActions.Delete or DownloadClientActions.DeleteWithData)
         {
-            return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.");
+            var withFiles = action == DownloadClientActions.DeleteWithData;
+            var fromQueue = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}&apikey={key}&output=json", cancellationToken);
+            if (fromQueue.Removed)
+            {
+                return DownloadClientHelpers.ActionSuccess(client, queueItemId, action,
+                    withFiles ? "Removed this download from SABnzbd's queue, along with its files." : "Removed this download from SABnzbd's queue.");
+            }
+
+            var fromHistory = await SendAsync(http, baseUri,
+                $"api?mode=history&name=delete&value={itemId}&del_files={(withFiles ? 1 : 0)}&apikey={key}&output=json", cancellationToken);
+            if (fromHistory.Removed)
+            {
+                return DownloadClientHelpers.ActionSuccess(client, queueItemId, action,
+                    withFiles ? "Removed this finished download from SABnzbd's history, along with its files." : "Removed this finished download from SABnzbd's history.");
+            }
+
+            return DidNotWork(client, queueItemId, action, fromHistory.Reached ? fromHistory : fromQueue, "had no download with that id to remove");
         }
 
-        return DownloadClientHelpers.ActionFailure(
-            client,
-            queueItemId,
-            action,
-            $"SABnzbd returned {(int)response.StatusCode}.",
-            response.StatusCode);
+        var sent = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}{priorityValue}&apikey={key}&output=json", cancellationToken);
+        return sent.Accepted
+            ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.")
+            : DidNotWork(client, queueItemId, action, sent, "did not accept it");
+    }
+
+    /// <summary>
+    /// A failure in plain words for an answer that was not a yes (#1201). SABnzbd
+    /// answers 200 even when it did nothing, so the JSON status is what counts.
+    /// </summary>
+    private static DownloadClientActionResult DidNotWork(
+        DownloadClientItem client, string queueItemId, string action, SabActionOutcome outcome, string noReason)
+    {
+        if (!outcome.Reached)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                "SABnzbd could not be reached, so nothing was changed.", category: "unreachable");
+        }
+
+        if (outcome.StatusCode is { } code && (int)code is < 200 or >= 300)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"SABnzbd returned {(int)code}.", code);
+        }
+
+        var message = outcome.Readable
+            ? $"SABnzbd {noReason}{(string.IsNullOrWhiteSpace(outcome.Error) ? string.Empty : $": {outcome.Error}")}. Nothing was changed."
+            : "SABnzbd's answer could not be read, so Deluno cannot tell that it did anything.";
+        return DownloadClientHelpers.ActionFailure(client, queueItemId, action, message,
+            outcome.StatusCode, upstreamDetail: outcome.Error);
     }
 
     /// <summary>
@@ -632,9 +676,13 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             }
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            var accepted = body.Contains("\"status\": true", StringComparison.OrdinalIgnoreCase)
-                           || body.Contains("\"status\":true", StringComparison.OrdinalIgnoreCase);
-            return new SabActionOutcome(Reached: true, accepted, response.StatusCode);
+            var answer = ReadAnswer(body);
+            return new SabActionOutcome(Reached: true, answer.Status == true, response.StatusCode)
+            {
+                Readable = answer.Status is not null,
+                Error = answer.Error,
+                NoneListed = answer.NzoIdsEmpty
+            };
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
         {
@@ -642,7 +690,49 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         }
     }
 
-    private readonly record struct SabActionOutcome(bool Reached, bool Accepted, HttpStatusCode? StatusCode);
+    private readonly record struct SabActionOutcome(bool Reached, bool Accepted, HttpStatusCode? StatusCode)
+    {
+        /// <summary>SABnzbd's reply was JSON with a status in it.</summary>
+        public bool Readable { get; init; }
+
+        public string? Error { get; init; }
+
+        /// <summary>SABnzbd listed the ids it removed and the list was empty.</summary>
+        public bool NoneListed { get; init; }
+
+        /// <summary>Said yes, and (when it says which jobs it removed) removed at least one.</summary>
+        public bool Removed => Accepted && !NoneListed;
+    }
+
+    private readonly record struct SabAnswer(bool? Status, string? Error, bool NzoIdsEmpty);
+
+    /// <summary>
+    /// Reads SABnzbd's <c>{"status": true|false, "error": ..., "nzo_ids": [...]}</c>.
+    /// A status of null means the reply was not that shape.
+    /// </summary>
+    private static SabAnswer ReadAnswer(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return new SabAnswer(null, null, false);
+            }
+
+            bool? status = root.TryGetProperty("status", out var s)
+                ? s.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null }
+                : null;
+            var error = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            var idsEmpty = root.TryGetProperty("nzo_ids", out var ids) && ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() == 0;
+            return new SabAnswer(status, error, idsEmpty);
+        }
+        catch (JsonException)
+        {
+            return new SabAnswer(null, null, false);
+        }
+    }
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
