@@ -217,12 +217,31 @@ public sealed class DownloadClientTelemetryService(
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
-        var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
+        IReadOnlyList<JobQueueItem> importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         // The hand-off is the only thing that knows a download in
         // C:\...\Downloads-Complete and a refined file in C:\...\Refined are
         // the same item; without it the queue never learns its import finished
         // (#280).
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
+        // A dismissed hand-off reads as an import that ran when its job completed (#1182); the recent-jobs window
+        // may no longer hold an older one, so those are fetched by id.
+        var knownJobIds = importJobs.Select(job => job.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<JobQueueItem>? extraJobs = null;
+        foreach (var dismissed in handoffs.Where(item => item.Status == ProcessorHandoffStatuses.Dismissed
+                     && !string.IsNullOrWhiteSpace(item.ImportJobId) && !knownJobIds.Contains(item.ImportJobId)))
+        {
+            if (await jobQueueRepository.GetAsync(dismissed.ImportJobId!, cancellationToken) is { } extra)
+            {
+                (extraJobs ??= []).Add(extra);
+                knownJobIds.Add(extra.Id);
+            }
+        }
+
+        if (extraJobs is not null)
+        {
+            importJobs = importJobs.Concat(extraJobs).ToList();
+        }
+
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
         var liveAnswered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var listedQueueItemIdsByClientId = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
@@ -344,7 +363,8 @@ public sealed class DownloadClientTelemetryService(
                         settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
                         titleUnmonitorService,
                         cancellationToken,
-                        handoffs)));
+                        handoffs,
+                        importJobs)));
                 continue;
             }
 
@@ -3266,7 +3286,8 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<DownloadDispatchItem> settledDispatches,
         IDispatchTitleUnmonitorService? titleFiles,
         CancellationToken cancellationToken,
-        IReadOnlyList<ProcessorHandoffItem>? handoffs = null)
+        IReadOnlyList<ProcessorHandoffItem>? handoffs = null,
+        IReadOnlyList<JobQueueItem>? importJobs = null)
     {
         if (titleFiles is null || !snapshot.Queue.Any(item => item.Status == DownloadQueueStatuses.Imported))
         {
@@ -3294,7 +3315,7 @@ public sealed class DownloadClientTelemetryService(
                     // to the recycle bin, say). The row says so, as history: it is neither "In library" nor ready to
                     // import (#1182). A release sent again since is a new attempt and is handed over again, so for
                     // that one the row is ready to import.
-                    if (ImportEndedAndTheFileLeft(item, handoffs, settledDispatches))
+                    if (ImportEndedAndTheFileLeft(item, handoffs, settledDispatches, importJobs))
                     {
                         queue.Add(item with { Status = DownloadQueueStatuses.ImportedFileLeft });
                         continue;
@@ -3314,7 +3335,8 @@ public sealed class DownloadClientTelemetryService(
     private static bool ImportEndedAndTheFileLeft(
         DownloadQueueItem item,
         IReadOnlyList<ProcessorHandoffItem>? handoffs,
-        IReadOnlyList<DownloadDispatchItem> settledDispatches)
+        IReadOnlyList<DownloadDispatchItem> settledDispatches,
+        IReadOnlyList<JobQueueItem>? importJobs)
     {
         var handoff = handoffs?
             .Where(candidate =>
@@ -3322,7 +3344,12 @@ public sealed class DownloadClientTelemetryService(
                 && string.Equals(candidate.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => candidate.UpdatedUtc)
             .FirstOrDefault();
-        return handoff is { Status: ProcessorHandoffStatuses.Completed, ImportJobId: { Length: > 0 } }
+        // A hand-off settled Dismissed a moment before its import job finished is the same as a completed one (#1182).
+        var jobStatus = handoff?.ImportJobId is { Length: > 0 } jobId
+            ? importJobs?.FirstOrDefault(job => string.Equals(job.Id, jobId, StringComparison.OrdinalIgnoreCase))?.Status
+            : null;
+        return handoff is not null
+            && DownloadAttempts.ImportRan(handoff, jobStatus)
             && !DownloadAttempts.SentAgainSince(settledDispatches, item.ClientId, item.ReleaseName, handoff.UpdatedUtc);
     }
 
