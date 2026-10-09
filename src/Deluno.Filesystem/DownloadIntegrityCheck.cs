@@ -74,10 +74,11 @@ public static class DownloadIntegrityCheck
             return DownloadIntegrityResult.StillWriting;
         }
 
-        // A season pack's files are each checked in turn; the first one that
-        // fails or is still settling ends the check for the whole download,
-        // the same as it would for a single file.
-        foreach (var filePath in files)
+        // A film is judged by its main video only (#1187): a short extra in the
+        // same folder is not held to the film's runtime. A TV download is judged
+        // per episode file, with extras and featurettes left alone. The first
+        // file that fails or is still settling ends the check.
+        foreach (var filePath in SelectFilesToJudge(files, releaseName))
         {
             var result = await RunOnFileAsync(
                 filePath, releaseName, knownRuntimeMinutes, minimumRuntimePercent, probeService, cancellationToken, languagePreference, knownTitle);
@@ -88,6 +89,52 @@ public static class DownloadIntegrityCheck
         }
 
         return DownloadIntegrityResult.Passed;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex EpisodeMarker = new(
+        @"(?<![a-z0-9])(s\d{1,2}[ ._-]?e\d{1,3}|\d{1,2}x\d{2,3})(?![a-z0-9])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static readonly System.Text.RegularExpressions.Regex SeasonMarker = new(
+        @"(?<![a-z0-9])(s\d{1,2}|season[ ._-]?\d{1,2})(?![a-z0-9])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Which of the resolved videos get judged (#1187). <paramref name="files"/> is
+    /// largest first. A single file is always judged. For a TV release (the name
+    /// has a season or episode marker) every file named like an episode is judged
+    /// and anything else (featurettes, extras) is left alone; when none is named
+    /// like an episode, all are judged as before. For a film only the main video
+    /// is judged: the file whose name is the release name, else the largest.
+    /// </summary>
+    internal static IReadOnlyList<string> SelectFilesToJudge(IReadOnlyList<string> files, string releaseName)
+    {
+        if (files.Count <= 1)
+        {
+            return files;
+        }
+
+        // TV when the release name says so, or when the folder holds more than
+        // one file named like an episode (a pack whose name carries no marker).
+        var episodes = files
+            .Where(path => EpisodeMarker.IsMatch(Path.GetFileNameWithoutExtension(path)))
+            .ToArray();
+        if (SeasonMarker.IsMatch(releaseName) || EpisodeMarker.IsMatch(releaseName) || episodes.Length > 1)
+        {
+            return episodes.Length > 0 ? episodes : files;
+        }
+
+        var wanted = Normalize(releaseName);
+        if (wanted.Length > 0)
+        {
+            var named = files.FirstOrDefault(path => Normalize(Path.GetFileNameWithoutExtension(path)) == wanted);
+            if (named is not null)
+            {
+                return [named];
+            }
+        }
+
+        return [files[0]];
     }
 
     private static async Task<DownloadIntegrityResult> RunOnFileAsync(
