@@ -170,7 +170,9 @@ public sealed class HandledProblemsSettler(
         var byHandoff = new List<(Deluno.Platform.Contracts.ProcessorHandoffItem Handoff, DownloadDispatchItem Dispatch)>();
         foreach (var handoff in open)
         {
-            var dispatch = await dispatches.FindAnyDispatchByHashAsync(handoff.ClientId, handoff.QueueItemId, cancellationToken);
+            // The send this hand-off belongs to, found the way the gone-download rule finds it (#1186): the latest send of
+            // the release, never an older archived one of the same hash.
+            var dispatch = await SourceGoneRule.DispatchOfAsync(handoff, dispatches, cancellationToken);
             if (dispatch is not null && !string.IsNullOrWhiteSpace(dispatch.EntityId))
             {
                 byHandoff.Add((handoff, dispatch));
@@ -203,7 +205,7 @@ public sealed class HandledProblemsSettler(
             var importJob = handoff.Status == ProcessorHandoffStatuses.Completed && !string.IsNullOrWhiteSpace(handoff.ImportJobId)
                 ? await jobs.GetAsync(handoff.ImportJobId, cancellationToken)
                 : null;
-            if (importJob is { Status: "queued" or "running" or "requeued" })
+            if (importJob is not null && Deluno.Integrations.DownloadClients.DownloadAttempts.ImportJobInFlight(importJob.Status))
             {
                 continue;
             }
