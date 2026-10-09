@@ -198,8 +198,7 @@ public sealed class CommandService(
             }
             case CommandNames.CheckForUpdate:
             {
-                await updates.CheckForUpdatesAsync(cancellationToken);
-                return "Checked for updates.";
+                return Deluno.Api.Backup.UpdateCheckWording.Say(await updates.CheckForUpdatesAsync(cancellationToken));
             }
             case CommandNames.RefreshMonitoredDownloads:
             {

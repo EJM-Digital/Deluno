@@ -1,3 +1,4 @@
+using Deluno.Connections.Versions;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Deluno.Infrastructure.Http;
@@ -16,9 +17,29 @@ namespace Deluno.Integrations.Processors;
 public sealed class ProcessorConnectionService(
     IHttpClientFactory httpClientFactory,
     IProcessorHandoffTitleResolver? titleResolver = null,
-    ILogger<ProcessorConnectionService>? logger = null) : IProcessorConnectionService
+    ILogger<ProcessorConnectionService>? logger = null,
+    Deluno.Contracts.IConnectionVersionStore? versions = null) : IProcessorConnectionService
 {
+    /// <summary>
+    /// Reads the processor's health. A processor that answers also has its version read and stored (#1200), so the
+    /// stored version follows an upgrade without anyone pressing a check, from every place that reads its health.
+    /// </summary>
     public async Task<ProcessorConnectionTestResult> TestAsync(
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+    {
+        var result = await CheckHealthAsync(connection, cancellationToken);
+        if (result.IsReachable && versions is not null)
+        {
+            await versions.RememberVersionAsync(
+                Deluno.Contracts.ConnectionKinds.Processor, connection.Id, ProcessorProjects.ProjectFor(connection),
+                await ReadVersionAsync(connection, cancellationToken), cancellationToken);
+        }
+
+        return result;
+    }
+
+    private async Task<ProcessorConnectionTestResult> CheckHealthAsync(
         ProcessorConnectionItem connection,
         CancellationToken cancellationToken)
     {

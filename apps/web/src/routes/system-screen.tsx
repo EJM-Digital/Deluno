@@ -1,6 +1,6 @@
 import { comparablePath } from "../lib/library-paths";
 import { toneSortValue } from "../lib/status-tones";
-import { updateHeadline } from "../lib/update-headline";
+import { latestVersionLabel, updateHeadline } from "../lib/update-headline";
 import { localizeResetTimes } from "../lib/reset-times";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -1566,7 +1566,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       <CardContent className="space-y-3">
         <SaveStatus state={actionStatus.state} message={actionStatus.message} />
         <HealthRow label="Current version" status={current.currentVersion} />
-        <HealthRow label="Latest version" status={current.latestVersion ?? "No update available"} />
+        <HealthRow label="Latest version" status={latestVersionLabel(current)} />
         <HealthRow label="Channel" status={current.channel} />
         <HealthRow label="Install kind" status={installKindLabel(current.installKind)} />
         {isDocker && current.currentImageRef ? <HealthRow label="Image" status={current.currentImageRef} /> : null}

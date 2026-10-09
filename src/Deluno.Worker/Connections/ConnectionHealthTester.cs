@@ -45,12 +45,33 @@ public sealed class ConnectionHealthTester(
         => await RunManyAsync(await ListTargetsAsync(cancellationToken), automatic: false, cancellationToken);
 
     public async Task<IReadOnlyList<ConnectionCheckedEvent>> TestStaleAsync(DateTimeOffset staleBeforeUtc, CancellationToken cancellationToken)
-        => await RunManyAsync(
-            (await ListTargetsAsync(cancellationToken))
-                .Where(target => target.LastTouchedUtc is null || target.LastTouchedUtc < staleBeforeUtc)
-                .ToArray(),
-            automatic: true,
-            cancellationToken);
+    {
+        var targets = await ListTargetsAsync(cancellationToken);
+        var stale = targets.Where(target => target.LastTouchedUtc is null || target.LastTouchedUtc < staleBeforeUtc).ToArray();
+        var results = await RunManyAsync(stale, automatic: true, cancellationToken);
+
+        // #1200: a processor that was used recently is not tested again, but its version is still read on every
+        // regular pass, so an upgrade of the processor shows without waiting for a quiet spell.
+        foreach (var target in targets.Where(target => target.Kind == ConnectionKinds.Processor && !stale.Contains(target)))
+        {
+            try
+            {
+                var item = await processors.GetProcessorConnectionAsync(target.Id, cancellationToken);
+                if (item is not null)
+                {
+                    using var scope = services.CreateScope();
+                    var processorService = scope.ServiceProvider.GetRequiredService<IProcessorConnectionService>();
+                    await versions.RememberVersionAsync(ConnectionKinds.Processor, item.Id, ProcessorProjects.ProjectFor(item), await processorService.ReadVersionAsync(item, cancellationToken), cancellationToken);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Reading a version never fails the pass.
+            }
+        }
+
+        return results;
+    }
 
     private async Task<IReadOnlyList<ConnectionCheckedEvent>> RunManyAsync(
         IReadOnlyList<Target> targets,
@@ -195,7 +216,7 @@ public sealed class ConnectionHealthTester(
                     var processorService = scoped.GetRequiredService<IProcessorConnectionService>();
                     var result = await processorService.TestAsync(item, cancellationToken);
                     await processors.RecordProcessorConnectionHealthAsync(item.Id, result.Status, result.Message, cancellationToken);
-                    await versions.RememberVersionAsync(ConnectionKinds.Processor, item.Id, ProcessorProjects.ProjectFor(item), result.IsReachable ? await processorService.ReadVersionAsync(item, cancellationToken) : null, cancellationToken);
+                    // The processor service stores its version whenever it reads the processor's health (#1200).
                     // #1144: a connection still called "Processor on <machine>" takes the processor's own name once it publishes one.
                     if (result.IsReachable)
                     {
