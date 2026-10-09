@@ -132,4 +132,41 @@ public sealed class ProcessorHandoffQueueStatusTests
             DownloadQueueStatuses.Imported,
             ProcessorHandoffQueueStatus.Resolve(Handoff("completed", "job-long-gone"), Jobs(("job-1", "completed")), DownloadQueueStatuses.ImportReady));
     }
+
+    private static IReadOnlyDictionary<string, JobQueueItem> JobAt(string id, string status, DateTimeOffset at) =>
+        new Dictionary<string, JobQueueItem>(StringComparer.OrdinalIgnoreCase)
+        {
+            [id] = new JobQueueItem(id, "filesystem.import.execute", "processor-output-watch", status, null, 3,
+                at, at, null, at, null, null, null, null, null, null, null, 3, at, null)
+        };
+
+    /// <summary>
+    /// #1189: a hand-off sent again whose own import dead-lettered (the processor's output was gone) is not
+    /// "waiting for the processor": Transfers' Needs action entry says it failed, and the row says the same.
+    /// </summary>
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("dead-letter")]
+    public void A_submitted_handoff_whose_import_ended_in_failure_reads_as_import_failed(string jobStatus)
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.ImportFailed,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("submitted", "job-1"), JobAt("job-1", jobStatus, Now.AddMinutes(2)), DownloadQueueStatuses.ImportReady));
+    }
+
+    [Fact]
+    public void A_handoff_sent_again_after_an_older_import_failed_is_still_waiting()
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.WaitingForProcessor,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("submitted", "job-1"), JobAt("job-1", "dead-letter", Now.AddMinutes(-30)), DownloadQueueStatuses.ImportReady));
+    }
+
+    [Fact]
+    public void A_completed_handoff_whose_import_job_dead_lettered_reads_as_import_failed()
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.ImportFailed,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("completed", "job-1"), Jobs(("job-1", "dead-letter")), DownloadQueueStatuses.ImportReady));
+    }
 }

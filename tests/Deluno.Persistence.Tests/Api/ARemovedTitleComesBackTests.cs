@@ -234,6 +234,95 @@ public sealed class ARemovedTitleComesBackTests
         Assert.True(await HasFileAsync(app, MediaKind.Movie, id));
     }
 
+    // ------------------------------------------------------------------ #1189: items binned with no recorded owner
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Restoring_a_file_binned_with_no_owner_finds_its_film_or_episode_from_the_path_and_links_it(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+        var file = WriteFileInLibrary(app, kind);
+        var id = await AddAsync(app, kind, libraryId);
+        Assert.True(await HasFileAsync(app, kind, id));
+        var library = (await app.Services.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None)).Single(l => l.Id == libraryId);
+
+        // Binned the way the older writers did: no owner recorded (a bin with no way to look one up).
+        var options = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Deluno.Infrastructure.Storage.StoragePathOptions>>();
+        var oldWriter = new RecycleBinService(options, TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<RecycleBinService>.Instance);
+        var binned = await oldWriter.StoreReplacementAsync(library, file, file, CancellationToken.None);
+        Assert.NotNull(binned);
+        Assert.Null(binned!.FileOwner);
+
+        // The catalogue lets go of the file, as the wrong-episode repair did.
+        if (kind == MediaKind.Movie)
+        {
+            await app.Services.GetRequiredService<IMovieCatalogRepository>().ClearFileKeepWantedAsync(id, file, CancellationToken.None);
+        }
+        else
+        {
+            var link = (await app.Services.GetRequiredService<ISeriesCatalogRepository>().ListEpisodeFileLinksAsync(CancellationToken.None)).Single();
+            await app.Services.GetRequiredService<ISeriesCatalogRepository>().ClearMislabelledEpisodeFileAsync(link.EpisodeId, link.FilePath, CancellationToken.None);
+        }
+
+        Assert.False(await HasFileAsync(app, kind, id));
+
+        var restore = await app.Client.PostAsync($"/api/recycle-bin/{binned.Id}/restore", null);
+        var body = await restore.Content.ReadAsStringAsync();
+        Assert.True(restore.IsSuccessStatusCode, body);
+        Assert.True(File.Exists(file));
+        Assert.True(await HasFileAsync(app, kind, id), "the restored file should have been linked to its film or episode: " + body);
+        using var result = JsonDocument.Parse(body);
+        var message = result.RootElement.GetProperty("message").GetString();
+        Assert.Contains(kind == MediaKind.Movie ? "Nosferatu has its file again." : "Nosferatu S01E01 has its file again.", message);
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Every_file_the_bin_takes_records_the_film_or_episode_it_belonged_to(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+        var file = WriteFileInLibrary(app, kind);
+        var id = await AddAsync(app, kind, libraryId);
+        var library = (await app.Services.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None)).Single(l => l.Id == libraryId);
+
+        // A replacement, which has no owner of its own to give.
+        var bin = app.Services.GetRequiredService<IRecycleBinService>();
+        var item = await bin.StoreReplacementAsync(library, file, file, CancellationToken.None);
+
+        Assert.NotNull(item?.FileOwner);
+        Assert.Equal(id, item!.FileOwner!.TitleId);
+        Assert.Equal(kind == MediaKind.Movie, item.FileOwner.EpisodeId is null);
+    }
+
+    [Fact]
+    public async Task Restoring_a_file_whose_title_cannot_be_found_says_so_plainly_and_points_at_import_existing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, MediaKind.Movie);
+        var folder = Path.Combine(app.DataRoot, "movies", "Unknown Film (1999)");
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "Unknown.Film.1999.1080p.BluRay.x264-HD4U.mkv");
+        File.WriteAllText(file, "not really a film");
+        var library = (await app.Services.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None)).Single(l => l.Id == libraryId);
+        var bin = app.Services.GetRequiredService<IRecycleBinService>();
+        var item = await bin.StoreReplacementAsync(library, file, file, CancellationToken.None);
+        Assert.NotNull(item);
+        Assert.Null(item!.FileOwner);
+
+        var restore = await app.Client.PostAsync($"/api/recycle-bin/{item.Id}/restore", null);
+        var body = await restore.Content.ReadAsStringAsync();
+        Assert.True(restore.IsSuccessStatusCode, body);
+        using var result = JsonDocument.Parse(body);
+        var message = result.RootElement.GetProperty("message").GetString();
+        Assert.Contains("could not tell which film it belongs to", message);
+        Assert.Contains("Import Existing", message);
+        Assert.True(File.Exists(file));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static string Route(MediaKind kind) => kind == MediaKind.Movie ? "/api/movies/" : "/api/series/";

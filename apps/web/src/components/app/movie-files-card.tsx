@@ -194,15 +194,17 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
                         </Button>
                       </>
                     ) : confirmingDeletePath === item.path ? (
-                      <>
-                        <span className="mr-1 text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it. Deluno will look for it again.</span>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => void confirmDelete(item)} disabled={busyPath === item.path}>
-                          {busyPath === item.path ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Confirm delete"}
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmingDeletePath(null)} disabled={busyPath === item.path}>
-                          Cancel
-                        </Button>
-                      </>
+                      <div className="flex min-w-0 flex-col items-end gap-2 text-right">
+                        <p className="text-(length:--type-caption) leading-snug text-muted-foreground">Goes to the recycle bin. You can restore it. Deluno will look for it again.</p>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <Button type="button" size="sm" variant="destructive" onClick={() => void confirmDelete(item)} disabled={busyPath === item.path}>
+                            {busyPath === item.path ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Confirm delete"}
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmingDeletePath(null)} disabled={busyPath === item.path}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         {canEdit ? (

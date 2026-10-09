@@ -112,7 +112,12 @@ public sealed class MislabelledEpisodeFileRepairService(
                 }
 
                 var (otherEpisode, otherTitle) = wrongName.Value;
-                if (await recycleBin.StoreReplacementAsync(library, link.FilePath, link.FilePath, cancellationToken) is null)
+                // #1189: the owner is recorded so a restore links the episode again.
+                if (await recycleBin.StoreRemovedFileAsync(
+                        library,
+                        link.FilePath,
+                        new RecycleBinFileOwner("tv", "series", link.SeriesId, link.SeriesTitle, inventory.StartYear, link.EpisodeId, true),
+                        cancellationToken) is null)
                 {
                     continue;
                 }
