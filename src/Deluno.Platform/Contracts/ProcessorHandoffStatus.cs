@@ -67,9 +67,10 @@ public sealed record ProcessorStatusSupport(
 /// One entry of a processor's <c>library-folders</c> capability (#1144): the folder it watches for the library its
 /// workflow was set up from. <see cref="ManagerLibraryKey"/> is the Deluno library id, or null for a workflow made
 /// some other way; <see cref="FoldersFromManager"/> says the processor took the folders from Deluno. Generic: any
-/// processor may publish this list.
+/// processor may publish this list. <see cref="MinimumFileSizeBytes"/> is the optional <c>minimum_file_size_bytes</c>: the
+/// processor refuses files strictly smaller than it, so a hand-off names none of them (#1199); null when absent.
 /// </summary>
-public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager, string? OutputFolder = null)
+public sealed record ProcessorLibraryFolder(string? ManagerLibraryKey, string? WatchedFolder, bool FoldersFromManager, string? OutputFolder = null, long? MinimumFileSizeBytes = null)
 {
     /// <summary>
     /// The entry for one library. Two entries carry the same key only when someone copied a workflow by hand, so

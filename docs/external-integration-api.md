@@ -586,6 +586,14 @@ An episode:
 
 A season pack names the show but no `season` or `episode`.
 
+### Library folders and the minimum file size
+
+A processor that advertises the `library-folders` capability answers `GET <intake root>/library-folders` with one entry per library workflow, as a bare array or inside the first array property of an object. Fields Deluno reads: `manager_library_key` (the Deluno library id), `watched_folder`, `output_folder`, `folders_from_manager`, and the optional `minimum_file_size_bytes`.
+
+`minimum_file_size_bytes` is an integer number of bytes, or null (an older processor does not send it, and absent means null). It is the processor's own rule, read from the processor and never copied into Deluno: the processor refuses files strictly smaller than it (`size < minimum`). When a library's entry carries one, a hand-off for that library names only the files at or above it, in an extra `outputFiles` array of absolute paths (in the processor's paths, after the connection's path mappings) added after the keys above; `sourcePath` stays the release folder. A file of exactly the minimum is named.
+
+The files below the minimum are not named, and nothing deletes, moves or renames them: they stay in the download folder, so seeding is safe, and go only when Deluno removes the whole download after seeding. Activity lists them once as "left in the download". With no minimum advertised, a source that is a single file, or no file at or above the minimum, the hand-off has no `outputFiles` and means the whole folder, as before. A processor that does not know `outputFiles` ignores it and works on `sourcePath`.
+
 The selected connection may use an `Authorization: Bearer …` token or a custom header. Deluno never includes that secret in activity, diagnostics, or API responses. A connection test uses a safe `HEAD` request; a processor that rejects `HEAD` is still shown as reachable, and its first actual hand-off validates the submission path.
 
 Any existing automation can use `sourcePath` as its input, preserve `handoffId`, and call Deluno back when it has produced its clean output. Treat `handoffId` as the idempotency key: if automation sees it again after a Deluno restart, it must not run the same file twice. Deluno will not import merely because the outbound POST succeeded. If no processor connection is configured, Deluno watches the processed-output folder itself instead.

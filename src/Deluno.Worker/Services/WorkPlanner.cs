@@ -1283,9 +1283,7 @@ public sealed class WorkPlanner(
                     // processor's (#962). The stored hand-off keeps Deluno's
                     // path; only what goes out over the wire changes.
                     var pathMappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-                    var outboundHandoff = pathMappings.Count > 0
-                        ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, pathMappings) ?? handoff.SourcePath }
-                        : handoff;
+                    var outboundHandoff = await HandoffFileSelection.ForProcessorAsync(handoff, library, connection, pathMappings, processorConnectionService, activityFeedRepository, cancellationToken);
                     submission = await processorConnectionService.SubmitAsync(connection, outboundHandoff, cancellationToken);
                     currentHandoff = await processorRepository.UpdateProcessorHandoffAsync(
                         handoff.Id,
