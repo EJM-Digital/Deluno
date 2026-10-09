@@ -197,48 +197,85 @@ public sealed class TrayBehaviourTests
 
     // ------------------------------------------------------------------ the icon
 
+    private static readonly TrayIconSpec Plain = new(TrayDot.Green, TrayMark.None);
+
     [Theory]
     [InlineData(16)]
     [InlineData(24)]
     [InlineData(32)]
     public void The_icon_is_drawn_at_the_size_asked_for(int size)
     {
-        using var bitmap = TrayIconRenderer.RenderBitmap(TrayBadge.None, size);
+        using var bitmap = TrayIconRenderer.RenderBitmap(Plain, size);
         Assert.Equal(size, bitmap.Width);
         Assert.Equal(size, bitmap.Height);
     }
 
     [Theory]
-    [InlineData(TrayBadge.Starting)]
-    [InlineData(TrayBadge.Paused)]
-    [InlineData(TrayBadge.NeedsYou)]
-    [InlineData(TrayBadge.UpdateReady)]
-    public void A_mark_changes_the_bottom_right_corner_and_leaves_the_top_left_alone(TrayBadge badge)
+    [InlineData(TrayDot.Green)]
+    [InlineData(TrayDot.Amber)]
+    [InlineData(TrayDot.Red)]
+    [InlineData(TrayDot.Starting)]
+    public void The_dot_sits_in_the_bottom_right_corner_in_its_colour(TrayDot dot)
     {
-        using var plain = TrayIconRenderer.RenderBitmap(TrayBadge.None, 32);
-        using var marked = TrayIconRenderer.RenderBitmap(badge, 32);
-        var corner = TrayIconRenderer.BadgeBounds(32);
+        using var bitmap = TrayIconRenderer.RenderBitmap(new TrayIconSpec(dot, TrayMark.None), 32);
+        var bounds = TrayIconRenderer.DotBounds(32);
+        Assert.True(bounds.X > 8, "the dot stays in the corner");
 
-        Assert.NotEqual(plain.GetPixel(31 - 2, 31 - 2), marked.GetPixel(31 - 2, 31 - 2));
-        Assert.True(corner.X > 8, "the mark stays in the corner");
-        Assert.Equal(plain.GetPixel(2, 2), marked.GetPixel(2, 2));
+        if (dot != TrayDot.Starting)
+        {
+            // Three pixels in from the ring, on the dot's own colour.
+            var pixel = bitmap.GetPixel(bounds.X + 3, bounds.Y + bounds.Height / 2);
+            Assert.Equal(TrayIconRenderer.DotColor(dot).ToArgb(), pixel.ToArgb());
+        }
     }
 
     [Fact]
-    public void Each_mark_is_a_different_colour_at_its_centre()
-    {
-        var centres = new[] { TrayBadge.NeedsYou, TrayBadge.UpdateReady, TrayBadge.Starting, TrayBadge.Paused }
-            .Select(badge =>
-            {
-                using var bitmap = TrayIconRenderer.RenderBitmap(badge, 32);
-                var b = TrayIconRenderer.BadgeBounds(32);
-                return bitmap.GetPixel(b.X + 3, b.Y + b.Height / 2);
-            })
-            .Select(color => color.ToArgb())
-            .Distinct()
-            .Count();
+    public void Green_amber_and_red_are_three_different_colours()
+        => Assert.Equal(3, new[] { TrayDot.Green, TrayDot.Amber, TrayDot.Red }.Select(dot => TrayIconRenderer.DotColor(dot).ToArgb()).Distinct().Count());
 
-        Assert.True(centres >= 3);
+    [Fact]
+    public void The_off_frame_of_a_blink_leaves_the_dot_out()
+    {
+        var starting = new TrayIconSpec(TrayDot.Starting, TrayMark.None);
+        using var on = TrayIconRenderer.RenderBitmap(starting, 32, dotShown: true);
+        using var off = TrayIconRenderer.RenderBitmap(starting, 32, dotShown: false);
+        var b = TrayIconRenderer.DotBounds(32);
+
+        Assert.NotEqual(on.GetPixel(b.X + 3, b.Y + b.Height / 2), off.GetPixel(b.X + 3, b.Y + b.Height / 2));
+    }
+
+    [Theory]
+    [InlineData(TrayMark.Paused)]
+    [InlineData(TrayMark.UpdateReady)]
+    public void An_extra_mark_is_in_the_opposite_corner_and_leaves_the_dot_alone(TrayMark mark)
+    {
+        using var plain = TrayIconRenderer.RenderBitmap(Plain, 32);
+        using var marked = TrayIconRenderer.RenderBitmap(new TrayIconSpec(TrayDot.Green, mark), 32);
+        var dot = TrayIconRenderer.DotBounds(32);
+        var corner = TrayIconRenderer.MarkBounds(32);
+
+        Assert.NotEqual(plain.GetPixel(corner.Width / 2, corner.Height / 2), marked.GetPixel(corner.Width / 2, corner.Height / 2));
+        Assert.Equal(plain.GetPixel(dot.X + 3, dot.Y + dot.Height / 2), marked.GetPixel(dot.X + 3, dot.Y + dot.Height / 2));
+        Assert.True(corner.Right <= dot.X + 4, "the two marks do not sit on each other");
+    }
+
+    [Fact]
+    public void The_pause_bars_and_the_update_arrow_look_different()
+    {
+        using var paused = TrayIconRenderer.RenderBitmap(new TrayIconSpec(TrayDot.Green, TrayMark.Paused), 32);
+        using var update = TrayIconRenderer.RenderBitmap(new TrayIconSpec(TrayDot.Green, TrayMark.UpdateReady), 32);
+        var corner = TrayIconRenderer.MarkBounds(32);
+
+        var differs = false;
+        for (var x = 0; x < corner.Width; x++)
+        {
+            for (var y = 0; y < corner.Height; y++)
+            {
+                differs |= paused.GetPixel(x, y) != update.GetPixel(x, y);
+            }
+        }
+
+        Assert.True(differs);
     }
 
     [Fact]
@@ -246,7 +283,7 @@ public sealed class TrayBehaviourTests
     {
         for (var i = 0; i < 50; i++)
         {
-            using var icon = TrayIconRenderer.Render(i % 2 == 0 ? TrayBadge.NeedsYou : TrayBadge.None, 16);
+            using var icon = TrayIconRenderer.Render(new TrayIconSpec(i % 2 == 0 ? TrayDot.Red : TrayDot.Green, TrayMark.None), 16);
             Assert.Equal(16, icon.Icon.Width);
         }
     }

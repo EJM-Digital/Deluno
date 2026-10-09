@@ -1,6 +1,7 @@
 using Deluno.Api.Updates;
 using Deluno.Contracts;
-using Deluno.Worker.Attention;
+using Deluno.Connections.Contracts;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Tray.Tests;
 
@@ -15,54 +16,199 @@ public sealed class TrayStandardTests
         State = TrayState.Running,
         Address = "http://localhost:7879",
         Port = 7879,
-        Version = "1.2.3"
+        Version = "1.2.3",
+        HealthKnown = true
     };
 
-    // ------------------------------------------------------------------ the corner mark
+    private static TrayUpdate UpdateReady() => TrayUpdate.Describe(true, UpdateStates.ReadyToRestart, "1.3.0", true, true);
+
+    // ------------------------------------------------------------------ the dot and the extra mark
 
     [Fact]
-    public void Nothing_differs_so_there_is_no_mark()
-        => Assert.Equal(TrayBadge.None, TrayBadges.Choose(Running()));
-
-    [Theory]
-    [InlineData(TrayState.Starting)]
-    [InlineData(TrayState.Updating)]
-    public void Starting_shows_the_grey_ring(TrayState state)
-        => Assert.Equal(TrayBadge.Starting, TrayBadges.Choose(Running() with { State = state }));
+    public void Running_with_everything_answering_is_a_green_dot_and_no_mark()
+        => Assert.Equal(new TrayIconSpec(TrayDot.Green, TrayMark.None), TrayBadges.Choose(Running()));
 
     [Fact]
-    public void Paused_automation_shows_two_bars()
-        => Assert.Equal(TrayBadge.Paused, TrayBadges.Choose(Running() with { AutomationPaused = true }));
+    public void One_dependency_down_is_an_amber_dot()
+        => Assert.Equal(new TrayIconSpec(TrayDot.Amber, TrayMark.None), TrayBadges.Choose(Running() with { Down = ["SABnzbd isn't answering"] }));
 
     [Fact]
-    public void An_update_waiting_shows_the_blue_dot()
-    {
-        var update = TrayUpdate.Describe(true, UpdateStates.ReadyToRestart, "1.3.0", true, true);
-        Assert.Equal(TrayBadge.UpdateReady, TrayBadges.Choose(Running() with { Update = update }));
-    }
+    public void Several_dependencies_down_is_still_one_amber_dot()
+        => Assert.Equal(TrayDot.Amber, TrayBadges.Choose(Running() with { Down = ["SABnzbd isn't answering", "NZBgeek isn't answering", "Weir isn't answering"] }).Dot);
 
     [Theory]
     [InlineData(TrayState.Error)]
     [InlineData(TrayState.Stopped)]
-    public void A_host_that_stopped_or_gave_up_shows_the_red_dot(TrayState state)
-        => Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(Running() with { State = state }));
+    public void A_host_that_stopped_or_gave_up_is_a_red_dot(TrayState state)
+        => Assert.Equal(TrayDot.Red, TrayBadges.Choose(Running() with { State = state }).Dot);
 
     [Fact]
-    public void Things_that_need_a_look_show_the_red_dot()
-        => Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(Running() with { NeedsLookCount = 2 }));
+    public void A_host_that_is_down_is_red_even_when_a_connection_is_down_too()
+        => Assert.Equal(TrayDot.Red, TrayBadges.Choose(Running() with { State = TrayState.Error, Down = ["SABnzbd isn't answering"] }).Dot);
 
-    [Fact]
-    public void Only_one_mark_shows_in_the_standards_order()
+    [Theory]
+    [InlineData(TrayState.Starting)]
+    [InlineData(TrayState.Updating)]
+    public void Starting_is_a_blinking_dot(TrayState state)
     {
-        var ready = TrayUpdate.Describe(true, UpdateStates.ReadyToRestart, "1.3.0", true, true);
-        var everything = Running() with { NeedsLookCount = 1, AutomationPaused = true, Update = ready };
-        Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(everything));
+        var spec = TrayBadges.Choose(Running() with { State = state });
+        Assert.Equal(TrayDot.Starting, spec.Dot);
+        Assert.True(spec.Blinking);
+    }
 
-        // Red dot, then grey ring, then two bars, then blue dot.
-        var startingPausedUpdate = everything with { NeedsLookCount = 0, State = TrayState.Starting };
-        Assert.Equal(TrayBadge.Starting, TrayBadges.Choose(startingPausedUpdate));
-        Assert.Equal(TrayBadge.Paused, TrayBadges.Choose(startingPausedUpdate with { State = TrayState.Running }));
-        Assert.Equal(TrayBadge.UpdateReady, TrayBadges.Choose(startingPausedUpdate with { State = TrayState.Running, AutomationPaused = false }));
+    [Fact]
+    public void A_running_host_blinks_until_the_first_health_reading()
+    {
+        Assert.True(TrayBadges.Choose(Running() with { HealthKnown = false }).Blinking);
+        Assert.False(TrayBadges.Choose(Running()).Blinking);
+    }
+
+    [Fact]
+    public void Only_starting_blinks()
+    {
+        foreach (var status in new[]
+                 {
+                     Running(),
+                     Running() with { Down = ["SABnzbd isn't answering"] },
+                     Running() with { State = TrayState.Error },
+                     Running() with { AutomationPaused = true },
+                     Running() with { Update = UpdateReady() }
+                 })
+        {
+            Assert.False(TrayBadges.Choose(status).Blinking);
+        }
+    }
+
+    [Fact]
+    public void Paused_automation_shows_the_pause_bars_on_the_green_dot()
+        => Assert.Equal(new TrayIconSpec(TrayDot.Green, TrayMark.Paused), TrayBadges.Choose(Running() with { AutomationPaused = true }));
+
+    [Fact]
+    public void An_update_waiting_shows_the_arrow_on_the_green_dot()
+        => Assert.Equal(new TrayIconSpec(TrayDot.Green, TrayMark.UpdateReady), TrayBadges.Choose(Running() with { Update = UpdateReady() }));
+
+    [Fact]
+    public void Paused_and_an_update_together_show_the_pause_bars()
+        => Assert.Equal(TrayMark.Paused, TrayBadges.Choose(Running() with { AutomationPaused = true, Update = UpdateReady() }).Mark);
+
+    [Fact]
+    public void The_marks_sit_on_top_of_the_colour()
+    {
+        Assert.Equal(
+            new TrayIconSpec(TrayDot.Amber, TrayMark.Paused),
+            TrayBadges.Choose(Running() with { Down = ["SABnzbd isn't answering"], AutomationPaused = true }));
+        Assert.Equal(
+            new TrayIconSpec(TrayDot.Red, TrayMark.UpdateReady),
+            TrayBadges.Choose(Running() with { State = TrayState.Stopped, Update = UpdateReady() }));
+    }
+
+    [Fact]
+    public void A_failed_download_or_a_bell_item_does_not_change_the_colour()
+    {
+        // The tray carries no count of things that need a look, and the status has nowhere to put one: the colour is
+        // decided from the host and from what does not answer, so a failed download or a bell row cannot move it.
+        Assert.DoesNotContain(typeof(TrayStatus).GetProperties(), property => property.Name.Contains("NeedsLook", StringComparison.Ordinal));
+        Assert.DoesNotContain(typeof(TrayServerSignals).GetProperties(), property => property.Name.Contains("NeedsLook", StringComparison.Ordinal));
+        Assert.Equal(TrayDot.Green, TrayBadges.Choose(Running()).Dot);
+
+        // Health rows for a failed download, a held hand-off or a failed grab are not platform health.
+        var rows = new[]
+        {
+            Problem("download:failed:1", "download", "A download failed"),
+            Problem("handoff:1", "processor", "A hand-off is held"),
+            Problem("grab:1", "grab", "A grab failed")
+        };
+        Assert.Empty(TrayPlatformHealth.Down([], [], [], [], rows, Now));
+    }
+
+    // ------------------------------------------ reading what does not answer, from the server's health data
+
+    private static readonly DateTimeOffset Now = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+
+    private static HealthCheckResultItem Problem(string id, string category, string name, string status = HealthCheckStatuses.Problem, DateTimeOffset? snoozedUntil = null)
+        => new(id, category, name, status, "message", null, null, null, Now, Now, snoozedUntil);
+
+    private static ConnectionCheckItem Check(string kind, string id, string name, bool ok)
+        => new(kind, id, name, ok, false, ok ? "Answered." : "Did not answer.", Now);
+
+    private static DownloadClientItem Client(string id, string name, string health, bool enabled = true)
+        => new(id, name, "sabnzbd", null, null, null, null, null, false, null, null, null, null, 100, enabled, health, null, null, null, null, Now, Now);
+
+    private static IndexerItem Indexer(string id, string name, string health, bool enabled = true)
+        => new(id, name, "newznab", "private", "http://indexer.invalid", null, 100, "", "", "both", enabled, health, null, null, null, null, 0, null, null, Now, Now);
+
+    private static ProcessorConnectionItem Processor(string id, string name, string health, bool enabled = true)
+        => new(id, name, "generic", "http://processor.invalid/intake", "Authorization", null, enabled, health, null, null, Now, Now);
+
+    [Fact]
+    public void Everything_answering_leaves_nothing_down()
+        => Assert.Empty(TrayPlatformHealth.Down(
+            [Check("downloadClient", "c1", "SABnzbd", true)],
+            [Client("c1", "SABnzbd", "healthy")],
+            [Indexer("i1", "NZBgeek", "healthy")],
+            [Processor("p1", "Weir", "healthy")],
+            [Problem("library:l1:root", "library", "Movies (library root)", HealthCheckStatuses.Ok)],
+            Now));
+
+    [Fact]
+    public void A_download_client_an_indexer_and_the_processor_that_do_not_answer_are_named()
+    {
+        var down = TrayPlatformHealth.Down(
+            [],
+            [Client("c1", "SABnzbd", "unreachable")],
+            [Indexer("i1", "NZBgeek", "unreachable")],
+            [Processor("p1", "Weir", "unreachable")],
+            [],
+            Now);
+
+        Assert.Equal(["SABnzbd isn't answering", "NZBgeek isn't answering", "Weir isn't answering"], down);
+    }
+
+    [Fact]
+    public void The_latest_real_check_wins_over_the_stored_health()
+    {
+        var down = TrayPlatformHealth.Down(
+            [Check("downloadClient", "c1", "SABnzbd", false), Check("indexer", "i1", "NZBgeek", true)],
+            [Client("c1", "SABnzbd", "healthy")],
+            [Indexer("i1", "NZBgeek", "unreachable")],
+            [],
+            [],
+            Now);
+
+        Assert.Equal(["SABnzbd isn't answering"], down);
+    }
+
+    [Fact]
+    public void A_connection_that_is_switched_off_is_not_a_problem()
+        => Assert.Empty(TrayPlatformHealth.Down([], [Client("c1", "SABnzbd", "unreachable", enabled: false)], [], [], [], Now));
+
+    [Fact]
+    public void The_metadata_service_a_library_folder_and_the_disk_are_named()
+    {
+        var down = TrayPlatformHealth.Down(
+            [Check("metadata", "metadata", "TMDb", false)],
+            [], [], [],
+            [
+                Problem("library:l1:root", "library", "Movies (library root)"),
+                Problem("system:disk-space", "system", "Deluno's own storage")
+            ],
+            Now);
+
+        Assert.Equal(["TMDb isn't answering", "The Movies library folder has a problem", "Deluno's own disk is running low"], down);
+    }
+
+    [Fact]
+    public void Other_health_problems_and_snoozed_ones_do_not_colour_the_dot()
+    {
+        var down = TrayPlatformHealth.Down(
+            [], [], [], [],
+            [
+                Problem("library:l1:folder-chain", "library", "The Movies library's category and save path"),
+                Problem("library:l2:root", "library", "TV (library root)", snoozedUntil: Now.AddHours(1))
+            ],
+            Now);
+
+        Assert.Empty(down);
     }
 
     // ------------------------------------------------------------------ the hover text
@@ -72,12 +218,32 @@ public sealed class TrayStandardTests
         => Assert.Equal("Deluno - Running at http://localhost:7879", TrayHoverText.Build(Running()));
 
     [Fact]
-    public void Running_with_things_to_look_at_says_what_needs_you()
-        => Assert.Equal("Deluno - Running at http://localhost:7879 - 2 things need a look", TrayHoverText.Build(Running() with { NeedsLookCount = 2 }));
+    public void One_dependency_down_says_what_is_wrong()
+        => Assert.Equal("Deluno - SABnzbd isn't answering", TrayHoverText.Build(Running() with { Down = ["SABnzbd isn't answering"] }));
 
     [Fact]
-    public void One_thing_reads_as_one_thing()
-        => Assert.Equal("Deluno - Running at http://localhost:7879 - 1 thing needs a look", TrayHoverText.Build(Running() with { NeedsLookCount = 1 }));
+    public void Several_down_name_the_first_and_count_the_rest()
+    {
+        var down = new[] { "SABnzbd isn't answering", "NZBgeek isn't answering", "Weir isn't answering" };
+        Assert.Equal("Deluno - SABnzbd isn't answering and 2 more", TrayHoverText.Build(Running() with { Down = down }));
+        Assert.Equal("Deluno - SABnzbd isn't answering and 1 more", TrayHoverText.Build(Running() with { Down = down[..2] }));
+    }
+
+    [Fact]
+    public void The_status_line_says_the_same_words_as_the_hover_text()
+    {
+        var status = Running() with { Down = ["SABnzbd isn't answering"], AutomationPaused = true };
+        Assert.Equal(TrayHoverText.Build(status), TrayMenuState.Build(status).Get(TrayMenuId.StatusLine).Text);
+        Assert.Equal("Deluno - SABnzbd isn't answering - Paused", TrayHoverText.Build(status));
+    }
+
+    [Fact]
+    public void The_hover_text_never_carries_a_count_of_things_to_look_at()
+    {
+        var text = TrayHoverText.Build(Running() with { Down = ["SABnzbd isn't answering"], Update = UpdateReady() });
+        Assert.DoesNotContain("need a look", text);
+        Assert.DoesNotContain("needs a look", text);
+    }
 
     [Fact]
     public void Paused_says_paused()
@@ -101,7 +267,7 @@ public sealed class TrayStandardTests
 
     [Fact]
     public void A_host_that_gave_up_says_how_to_get_it_back()
-        => Assert.Equal("Deluno - Stopped - choose Restart Deluno", TrayHoverText.Build(Running() with { State = TrayState.Error, NeedsLookCount = 3 }));
+        => Assert.Equal("Deluno - Stopped - choose Restart Deluno", TrayHoverText.Build(Running() with { State = TrayState.Error, Down = ["SABnzbd isn't answering"] }));
 
     [Fact]
     public void A_long_text_is_shortened_by_whole_parts_never_mid_word()
@@ -109,22 +275,21 @@ public sealed class TrayStandardTests
         var status = Running() with
         {
             Address = "http://an-extremely-long-machine-name-on-the-local-network.example.internal:7879",
-            NeedsLookCount = 12,
+            Down = ["SABnzbd isn't answering", "NZBgeek isn't answering", "Weir isn't answering"],
             Update = TrayUpdate.Describe(true, UpdateStates.ReadyToRestart, "1.3.0-rc.10", true, true)
         };
 
         var text = TrayHoverText.Build(status);
 
         Assert.True(text.Length <= TrayHoverText.Limit, text);
-        Assert.StartsWith("Deluno - Running", text);
-        Assert.Contains("12 things need a look", text);
+        Assert.StartsWith("Deluno - SABnzbd isn't answering and 2 more", text);
         Assert.DoesNotContain("...", text);
     }
 
     [Fact]
     public void The_last_resort_cut_lands_on_a_word_boundary()
     {
-        var status = Running() with { NeedsLookCount = 1, AutomationPaused = false };
+        var status = Running();
         var words = string.Join(" ", Enumerable.Repeat("wordy", 40));
         var text = TrayHoverText.Build(status with { RestartNote = words, State = TrayState.Starting });
 
@@ -320,15 +485,14 @@ public sealed class TrayStandardTests
     }
 
     [Theory]
-    [InlineData("AttentionChanged", true)]
+    [InlineData("ConnectionChecked", true)]
     [InlineData("HealthChanged", true)]
+    [InlineData("AttentionChanged", false)]
     [InlineData("SettingsChanged", true)]
     [InlineData("DownloadProgress", false)]
     [InlineData("ActivityEventAdded", false)]
-    public void Only_the_pushes_that_can_move_the_marks_wake_the_watcher(string name, bool moves)
-        => Assert.Equal(moves, TrayAttentionWatcher.Moves(name));
-
-    // ------------------------------------------------------------------ the red dot's count
+    public void Only_the_pushes_that_can_move_the_marks_wake_the_health_watcher(string name, bool moves)
+        => Assert.Equal(moves, TrayHealthWatcher.Moves(name));
 
     // ------------------------------------------------------------------ a check that failed says so (#1185)
 
@@ -342,84 +506,38 @@ public sealed class TrayStandardTests
     }
 
     [Fact]
-    public void The_status_line_and_hover_text_carry_the_failed_check_after_what_needs_you()
+    public void The_status_line_and_hover_text_carry_the_failed_check_after_what_is_wrong()
     {
         var status = new TrayStatus
         {
             State = TrayState.Running,
-            NeedsLookCount = 2,
+            HealthKnown = true,
+            Down = ["SABnzbd isn't answering"],
             UpdateCheckProblem = "Couldn't check for updates (GitHub limit, retry after 10:35 AM)."
         };
 
         var words = TrayHoverText.StatusWords(status, withAddress: false);
 
-        Assert.Equal("Running - 2 things need a look - Couldn't check for updates (GitHub limit, retry after 10:35 AM)", words);
+        Assert.Equal("SABnzbd isn't answering - Couldn't check for updates (GitHub limit, retry after 10:35 AM)", words);
         Assert.True(("Deluno - " + words).Length <= TrayHoverText.Limit);
         Assert.DoesNotContain("Couldn't", TrayHoverText.StatusWords(status with { UpdateCheckProblem = null }));
     }
 
     [Fact]
-    public void A_failed_check_never_pushes_out_what_needs_you_when_the_text_is_too_long()
+    public void A_failed_check_never_pushes_out_what_is_wrong_when_the_text_is_too_long()
     {
         var status = new TrayStatus
         {
             State = TrayState.Running,
+            HealthKnown = true,
             Address = "http://localhost:7879",
-            NeedsLookCount = 12,
+            Down = ["SABnzbd isn't answering", "NZBgeek isn't answering"],
             UpdateCheckProblem = "Couldn't check for updates (GitHub limit, retry after 10:35 AM)."
         };
 
         var text = TrayHoverText.Build(status);
 
         Assert.True(text.Length <= TrayHoverText.Limit);
-        Assert.Contains("12 things need a look", text);
-    }
-
-    // ------------------------------------------- the tray and the bell count with one function (#1185)
-
-    /// <summary>The attention summary service, standing in for the real one; it records every time it is asked.</summary>
-    private sealed class FakeAttention(int count) : IAttentionSummaryService, IServiceProvider
-    {
-        public List<bool> Asked { get; } = [];
-
-        public Task<AttentionSummary> GetAsync(bool fresh, CancellationToken cancellationToken)
-        {
-            Asked.Add(fresh);
-            var rows = Enumerable.Range(0, count)
-                .Select(i => new AttentionRow($"row{i}", "deluno", "health:system", "warn", "Row", "Text", "/system", "Open System", 1, null, null))
-                .ToArray();
-            // A notice is listed but never part of the number.
-            var notice = new AttentionRow("update", "deluno", "update", "warn", "A new version is ready", "Text", "/system/updates", "Open Updates", 1, null, null);
-            return Task.FromResult(new AttentionSummary(count, rows, [notice], 0, 0));
-        }
-
-        public object? GetService(Type serviceType) => serviceType == typeof(IAttentionSummaryService) ? this : null;
-    }
-
-    [Fact]
-    public async Task The_trays_number_is_the_servers_count_and_nothing_added_up_by_the_tray()
-    {
-        var server = new FakeAttention(15);
-
-        var count = await TrayAttentionWatcher.CountAsync(server);
-
-        Assert.Equal(15, count);
-        // The tray asks for a fresh reading, because a push said something moved.
-        Assert.Equal([true], server.Asked);
-    }
-
-    [Fact]
-    public async Task The_bell_and_the_tray_read_the_same_function_and_get_the_same_number()
-    {
-        var server = new FakeAttention(18);
-
-        var bell = await AttentionEndpoints.SummaryAsync(server, CancellationToken.None);
-        var tray = await TrayAttentionWatcher.CountAsync(server);
-
-        Assert.Equal(bell.Count, tray);
-        Assert.Equal(bell.Rows.Sum(row => row.Count), tray);
-        Assert.Equal(2, server.Asked.Count);
-        // Update notices are listed for the bell but are in neither number.
-        Assert.Single(bell.Notices);
+        Assert.Contains("SABnzbd isn't answering and 1 more", text);
     }
 }

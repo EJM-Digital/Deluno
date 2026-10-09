@@ -27,13 +27,16 @@ public sealed class TrayApplication : ApplicationContext
     private readonly IDisposable? _secondLaunch;
     private TrayStatus _status;
     private OwnedIcon? _icon;
-    private TrayBadge? _badge;
+    private TrayIconSpec? _spec;
+    private bool _dotShown = true;
+    // Blinks the dot, and only while starting: it stops as soon as the first health reading arrives.
+    private readonly System.Windows.Forms.Timer _blinkTimer = new() { Interval = 500 };
     private string _hover = string.Empty;
     private Action? _balloonClick;
     private bool _installPickerOpen;
     private bool _quitting;
     private DateTimeOffset? _offeredFor;
-    private TrayAttentionWatcher? _watcher;
+    private TrayHealthWatcher? _watcher;
     private VelopackUpdateOrchestrator? _updates;
     private string? _announcedUpdate;
 
@@ -75,6 +78,7 @@ public sealed class TrayApplication : ApplicationContext
         _menu.Opening += (_, _) => RefreshLocalStatus();
         _pendingInstallsTimer.Tick += (_, _) => CheckPendingInstalls();
         _pendingInstallsTimer.Start();
+        _blinkTimer.Tick += (_, _) => OnBlink();
 
         _secondLaunch = SecondLaunchSignal.Listen(() => InvokeOnUiThread(ShowAlreadyRunning));
 
@@ -125,17 +129,23 @@ public sealed class TrayApplication : ApplicationContext
 
     private void ApplyStatus()
     {
-        var badge = TrayBadges.Choose(_status);
-        if (_badge != badge || _icon is null)
+        var spec = TrayBadges.Choose(_status);
+        if (!spec.Blinking)
         {
-            var previous = _icon;
-            var next = TrayIconRenderer.Render(badge);
-            _notify.Icon = next.Icon;
-            _icon = next;
-            _badge = badge;
-            // The shell has taken the new icon; free the one it replaced.
-            previous?.Dispose();
+            _blinkTimer.Stop();
+            _dotShown = true;
         }
+        else if (!_blinkTimer.Enabled)
+        {
+            _blinkTimer.Start();
+        }
+
+        if (_spec != spec || _icon is null)
+        {
+            DrawIcon(spec);
+            _spec = spec;
+        }
+
 
         var hover = TrayHoverText.Build(_status);
         if (!string.Equals(hover, _hover, StringComparison.Ordinal))
@@ -145,6 +155,27 @@ public sealed class TrayApplication : ApplicationContext
         }
 
         ApplyMenu(TrayMenuState.Build(_status));
+    }
+
+    /// <summary>Draws the icon and hands it to the shell, then frees the one it replaced.</summary>
+    private void DrawIcon(TrayIconSpec spec)
+    {
+        var previous = _icon;
+        var next = TrayIconRenderer.Render(spec, _dotShown);
+        _notify.Icon = next.Icon;
+        _icon = next;
+        previous?.Dispose();
+    }
+
+    private void OnBlink()
+    {
+        if (_spec is not { Blinking: true })
+        {
+            return;
+        }
+
+        _dotShown = !_dotShown;
+        DrawIcon(_spec);
     }
 
     private void BuildMenu(TrayMenuState state)
@@ -526,6 +557,9 @@ public sealed class TrayApplication : ApplicationContext
         {
             State = TrayState.Running,
             RestartNote = null,
+            // The dot blinks until the server has said how its connections are.
+            HealthKnown = false,
+            Down = [],
             Port = port,
             Address = $"http://localhost:{port}",
             Lan = LanStateOf(_server.LanAccess)
@@ -553,7 +587,7 @@ public sealed class TrayApplication : ApplicationContext
             return;
         }
 
-        _watcher = new TrayAttentionWatcher(services, signals => InvokeOnUiThread(() => OnSignals(signals)));
+        _watcher = new TrayHealthWatcher(services, signals => InvokeOnUiThread(() => OnSignals(signals)));
         _watcher.Schedule();
 
         if (services.GetService(typeof(IUpdateOrchestrator)) is VelopackUpdateOrchestrator orchestrator)
@@ -567,7 +601,8 @@ public sealed class TrayApplication : ApplicationContext
     private void OnSignals(TrayServerSignals signals)
         => Change(s => s with
         {
-            NeedsLookCount = signals.NeedsLookCount,
+            HealthKnown = true,
+            Down = signals.Down,
             AutomationPaused = signals.AutomationPaused
         });
 
@@ -1006,6 +1041,7 @@ public sealed class TrayApplication : ApplicationContext
             _watcher?.Dispose();
             _secondLaunch?.Dispose();
             _pendingInstallsTimer.Dispose();
+            _blinkTimer.Dispose();
             _notify.Visible = false;
             _notify.Dispose();
             _icon?.Dispose();

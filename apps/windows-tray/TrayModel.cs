@@ -17,14 +17,28 @@ public enum TrayState
     Stopped
 }
 
-/// <summary>The corner mark on the brand icon. None means all is well.</summary>
-public enum TrayBadge
+/// <summary>The coloured dot on the brand icon: the health of the platform itself, never of downloads or files.</summary>
+public enum TrayDot
+{
+    /// <summary>Grey, and blinking: starting, until the first health reading.</summary>
+    Starting,
+    Green,
+    Amber,
+    Red
+}
+
+/// <summary>The extra mark in the opposite corner. Pause bars win over the update arrow.</summary>
+public enum TrayMark
 {
     None,
-    Starting,
     Paused,
-    NeedsYou,
     UpdateReady
+}
+
+/// <summary>What the icon is: the dot, and the extra mark. A starting dot blinks.</summary>
+public sealed record TrayIconSpec(TrayDot Dot, TrayMark Mark)
+{
+    public bool Blinking => Dot == TrayDot.Starting;
 }
 
 /// <summary>What the update menu item is, and so what a click on it does.</summary>
@@ -107,10 +121,16 @@ public sealed record TrayStatus
     public int Port { get; init; } = 7879;
 
     /// <summary>
-    /// The bell's "things need a look" count: the server's own attention summary (#1185), the number the bell shows.
-    /// A Health problem is one of its rows, so there is no separate Health flag to disagree with it.
+    /// True once the server has said how the things Deluno relies on are (the first health reading). Until then the
+    /// dot blinks. It never reads the attention summary: downloads, hand-offs and bell items are not platform health.
     /// </summary>
-    public int NeedsLookCount { get; init; }
+    public bool HealthKnown { get; init; }
+
+    /// <summary>
+    /// What does not answer, one plain phrase each ("SABnzbd isn't answering"), the first being the one the hover text
+    /// names. A download client, an indexer, the processor, the metadata service, a library folder or the disk.
+    /// </summary>
+    public IReadOnlyList<string> Down { get; init; } = [];
 
     public bool AutomationPaused { get; init; }
 
@@ -137,30 +157,33 @@ public sealed record TrayStatus
     /// <summary>Apps are still to install; the text is what the item says.</summary>
     public string? InstallAppsText { get; init; }
 
-    public bool NeedsYou => State is TrayState.Error or TrayState.Stopped || NeedsLookCount > 0;
+    /// <summary>The host itself is stopped, crashed, gave up restarting or failed to start.</summary>
+    public bool HostDown => State is TrayState.Error or TrayState.Stopped;
+
+    /// <summary>Starting: the host is coming up, or running but nothing has said how its connections are yet.</summary>
+    public bool IsStarting => State is TrayState.Starting or TrayState.Updating || (State == TrayState.Running && !HealthKnown);
 }
 
 public static class TrayBadges
 {
-    /// <summary>One mark shows. The order is red dot, grey ring, two bars, blue dot.</summary>
-    public static TrayBadge Choose(TrayStatus status)
+    /// <summary>
+    /// The dot is red when the host is down, grey and blinking while it starts, amber when a connection it relies on
+    /// does not answer, else green. The mark is pause bars, else the update arrow, else none.
+    /// </summary>
+    public static TrayIconSpec Choose(TrayStatus status)
     {
-        if (status.NeedsYou)
+        var mark = status.AutomationPaused ? TrayMark.Paused : status.Update.HasUpdate ? TrayMark.UpdateReady : TrayMark.None;
+        if (status.HostDown)
         {
-            return TrayBadge.NeedsYou;
+            return new TrayIconSpec(TrayDot.Red, mark);
         }
 
-        if (status.State is TrayState.Starting or TrayState.Updating)
+        if (status.IsStarting)
         {
-            return TrayBadge.Starting;
+            return new TrayIconSpec(TrayDot.Starting, mark);
         }
 
-        if (status.AutomationPaused)
-        {
-            return TrayBadge.Paused;
-        }
-
-        return status.Update.HasUpdate ? TrayBadge.UpdateReady : TrayBadge.None;
+        return new TrayIconSpec(status.Down.Count > 0 ? TrayDot.Amber : TrayDot.Green, mark);
     }
 }
 
@@ -169,42 +192,52 @@ public static class TrayHoverText
     /// <summary>The longest text Windows shows for a tray icon (127 characters, WinForms' own limit).</summary>
     public const int Limit = 127;
 
-    /// <summary>What needs the person, in words: "2 things need a look".</summary>
-    public static string? NeedsText(TrayStatus status)
+    /// <summary>What is wrong, in words: the first thing down, and "and 2 more" for the rest. Null when all answer.</summary>
+    public static string? ProblemText(TrayStatus status)
     {
-        if (status.State is TrayState.Error or TrayState.Stopped)
+        if (status.HostDown || status.Down.Count == 0)
         {
             return null;
         }
 
-        if (status.NeedsLookCount > 0)
-        {
-            return status.NeedsLookCount == 1
-                ? "1 thing needs a look"
-                : string.Create(CultureInfo.InvariantCulture, $"{status.NeedsLookCount} things need a look");
-        }
-
-        return null;
+        var rest = status.Down.Count - 1;
+        return rest == 0
+            ? status.Down[0]
+            : string.Create(CultureInfo.InvariantCulture, $"{status.Down[0]} and {rest} more");
     }
 
     /// <summary>The status words after "Deluno - ", also the greyed status line at the top of the menu.</summary>
     public static string StatusWords(TrayStatus status, bool withAddress = true)
     {
-        var primary = status.State switch
+        var parts = new List<string>();
+        if (status.HostDown)
         {
-            TrayState.Starting => status.RestartNote is { } note ? $"Stopped by itself - {note}" : "Starting...",
-            TrayState.Updating => "Updating...",
-            TrayState.Stopped => "Stopped - choose Restart Deluno",
-            TrayState.Error => "Stopped - choose Restart Deluno",
-            _ => status.AutomationPaused
-                ? "Paused"
-                : withAddress && status.Address is { } address ? $"Running at {address}" : "Running"
-        };
+            parts.Add("Stopped - choose Restart Deluno");
+        }
+        else if (status.State == TrayState.Updating)
+        {
+            parts.Add("Updating...");
+        }
+        else if (status.IsStarting)
+        {
+            parts.Add(status.RestartNote is { } note ? $"Stopped by itself - {note}" : "Starting...");
+        }
+        else
+        {
+            if (ProblemText(status) is { } problem)
+            {
+                parts.Add(problem);
+            }
 
-        var parts = new List<string> { primary };
-        if (NeedsText(status) is { } needs)
-        {
-            parts.Add(needs);
+            if (status.AutomationPaused)
+            {
+                parts.Add("Paused");
+            }
+
+            if (parts.Count == 0)
+            {
+                parts.Add(withAddress && status.Address is { } address ? $"Running at {address}" : "Running");
+            }
         }
 
         if (status.Update.HasUpdate)
@@ -241,7 +274,7 @@ public static class TrayHoverText
         }
 
         // The address is the longest, least urgent part.
-        if (status.State == TrayState.Running && !status.AutomationPaused)
+        if (parts[0].StartsWith("Running at ", StringComparison.Ordinal))
         {
             parts[0] = "Running";
         }
