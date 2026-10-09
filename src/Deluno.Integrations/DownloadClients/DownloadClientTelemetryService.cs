@@ -337,7 +337,7 @@ public sealed class DownloadClientTelemetryService(
                     outsideByClientId[client.Id] = (split.OutsideQueue, split.OutsideHistory);
                 }
 
-                liveSnapshot = await ApplyDownloadProgressStallAsync(split.Own, capturedUtc, downloadHealthRules, cancellationToken);
+                liveSnapshot = await ApplyDownloadProgressStallAsync(split.Own, capturedUtc, downloadHealthRules, TimeSpan.FromMinutes(Math.Clamp(platformSettings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440)), cancellationToken);
                 // The vanished-download check needs everything the client
                 // lists (an empty own list is not "the client lost it"), so it
                 // reads the whole answer while only Deluno's own is kept.
@@ -1544,6 +1544,7 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         DateTimeOffset capturedUtc,
         IReadOnlyList<DownloadHealthRule> rules,
+        TimeSpan checkInterval,
         CancellationToken cancellationToken)
     {
         if (snapshot.Queue.Count == 0)
@@ -1570,9 +1571,8 @@ public sealed class DownloadClientTelemetryService(
             allowReset: noProgressRule?.ResetStrikesOnProgress ?? true,
             minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0);
 
-        // With the rule switched off the status word still follows the default window, so a download a client
-        // flags stalled is not shown Stalled sooner or later than a person's own window would show it (#1193).
-        var statusWindow = noProgressRule?.Timer;
+        // A download is Stalled once a whole check interval passes with no byte gain, rule or no rule (#1193, #1194).
+        var statusWindow = checkInterval;
 
         var reconciled = new List<DownloadQueueItem>(snapshot.Queue.Count);
         foreach (var item in snapshot.Queue)

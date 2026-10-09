@@ -167,7 +167,7 @@ public sealed record PlatformSettingsSnapshot(
     // reachability guard before any cleanup pass runs at all (#824). Off/at
     // their old defaults so an existing install is unaffected (#936).
     bool DownloadHealthDryRunEnabled = false,
-    int DownloadHealthDefaultStrikeWindowMinutes = 30,
+    int DownloadHealthDefaultStrikeWindowMinutes = 5,
     int DownloadHealthStrikeInactivityHours = 72,
     bool DownloadHealthConnectivityCheckEnabled = false,
     string DownloadHealthConnectivityCheckUrls = "",

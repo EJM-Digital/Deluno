@@ -152,7 +152,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             var statusBits = item.Count > 1 ? Convert.ToInt32(AsDouble(item[1])) : 0;
             var name = item.Count > 2 ? AsString(item[2]) : "Unknown uTorrent item";
             var size = item.Count > 3 ? AsInt64(item[3]) : 0;
-            var progress = item.Count > 4 ? Math.Round(AsDouble(item[4]) / 10d, 1) : 0;
+            var progress = item.Count > 4 ? (AsDouble(item[4]) / 10d) : 0;
             // uTorrent's list array is positional: index 8 is upload rate in
             // bytes per second, index 9 is download.
             var uploadSpeed = item.Count > 8 ? AsDouble(item[8]) / 1_000_000d : 0;
@@ -175,12 +175,12 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
             var queueItem = new DownloadQueueItem(hash, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, category), DownloadClientHelpers.CleanReleaseTitle(name), name,
                 category, status,
-                Math.Clamp(progress, 0, 100), Math.Round(speed, 1), item.Count > 10 ? Math.Max(0, Convert.ToInt32(AsDouble(item[10]))) : 0, size,
+                Math.Clamp(progress, 0, 100), (speed), item.Count > 10 ? Math.Max(0, Convert.ToInt32(AsDouble(item[10]))) : 0, size,
                 (long)(size * (progress / 100d)), item.Count > 12 ? Convert.ToInt32(AsDouble(item[12])) : 0, "uTorrent",
                 errored && !string.IsNullOrWhiteSpace(statusMessage) ? statusMessage : null,
                 item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc,
                 SourcePath: string.IsNullOrWhiteSpace(savePath) ? null : savePath,
-                UploadSpeedMbps: Math.Round(uploadSpeed, 1),
+                UploadSpeedMbps: (uploadSpeed),
                 Ratio: ratioPerMille is null ? null : Math.Round(ratioPerMille.Value / 1000d, 3),
                 SeedingMinutes: seedingMinutesByHash.TryGetValue(hash, out var minutes) ? minutes : null,
                 // #880/#881: uTorrent's status bitfield gives no tracker-vs-local

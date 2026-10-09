@@ -117,7 +117,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             var item = pair.Value;
             return new DownloadQueueItem(pair.Key, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, item.Label),
                 DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Deluge item"), item.Name ?? "Unknown Deluge item", item.Label ?? string.Empty,
-                StillMoving(item, finalFolders) ? DownloadQueueStatuses.Downloading : NormalizeStatus(item.State, item.Progress), Math.Clamp(Math.Round(item.Progress ?? 0, 1), 0, 100), Math.Round((item.DownloadPayloadRate ?? 0) / 1_000_000d, 1),
+                StillMoving(item, finalFolders) ? DownloadQueueStatuses.Downloading : NormalizeStatus(item.State, item.Progress), Math.Clamp((item.Progress ?? 0), 0, 100), ((item.DownloadPayloadRate ?? 0) / 1_000_000d),
                 Math.Max(0, Convert.ToInt32(item.Eta ?? 0)), Convert.ToInt64(item.TotalSize ?? 0), Convert.ToInt64(item.TotalDone ?? 0), item.NumPeers ?? 0, "Deluge",
                 (IsComplete(item) ? null : TrackerError(item.TrackerStatus)) ?? DelugeMessage(item.Message), DownloadClientHelpers.FromUnix(Convert.ToInt64(item.TimeAdded ?? 0)), DownloadClientHelpers.ResolveDownloadPath(item.SavePath, item.Name),
                 // Both come back on the same web.update_ui call, so a sharing
@@ -125,7 +125,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // the torrent completed; it is 0 while still downloading.
                 Ratio: item.Ratio,
                 SeedingMinutes: item.SeedingTime is null ? null : (int)Math.Clamp(Convert.ToInt64(item.SeedingTime.Value) / 60, 0, int.MaxValue),
-                UploadSpeedMbps: Math.Round((item.UploadPayloadRate ?? 0) / 1_000_000d, 1),
+                UploadSpeedMbps: ((item.UploadPayloadRate ?? 0) / 1_000_000d),
                 // #880/#881: tracker_status carries a tracker banning,
                 // unregistering, or dropping the release — a release-side
                 // finding. Deluge's own message field is the daemon speaking

@@ -33,7 +33,8 @@ public sealed class AnActiveDownloadIsNeverCalledStalledByOneTimeoutTests
 
         var findings = new DownloadHealthEvaluator().Evaluate(item, Now);
 
-        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
+        // The default No progress rule now owns a stall with nothing arriving (#1194), so the finding is its own.
+        Assert.Contains(findings, finding => finding.Kind is DownloadHealthStrikes.ClientStalled or DownloadHealthStrikes.NoThroughput);
     }
 
     [Fact]

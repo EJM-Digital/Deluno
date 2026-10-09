@@ -547,7 +547,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             item.Hash ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
             item.Name ?? "Unknown qBittorrent item", item.Category ?? string.Empty, NormalizeStatus(item.State, item.Progress),
-            Math.Clamp(Math.Round((item.Progress ?? 0) * 100, 1), 0, 100), Math.Round((item.DownloadSpeed ?? 0) / 1_000_000d, 1),
+            Math.Clamp(((item.Progress ?? 0) * 100), 0, 100), ((item.DownloadSpeed ?? 0) / 1_000_000d),
             // Seeds alone undercounted a swarm with active leechers and no seeds
             // yet, which the no-progress stall gate (#659) reads as "no peers at
             // all" (#660).
@@ -561,7 +561,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // completed; it is 0 while still downloading.
             Ratio: item.Ratio,
             SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1),
+            UploadSpeedMbps: ((item.UploadSpeed ?? 0) / 1_000_000d),
             // #880/#881: qBittorrent only says something specific in the state
             // string itself for missingFiles (the payload is gone from disk)
             // and a bare "error" state (I/O, permissions, disk space). Both

@@ -17,7 +17,7 @@ namespace Deluno.Persistence.Tests.Integrations;
 public sealed class EveryStrikeRuleStrikesResetsAndActsTests
 {
     private const double Progress = 99.95;
-    private static readonly TimeSpan Window = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(5);
 
     public enum Condition { NoProgress, TooSlow, LowPeers, ClientStalled }
 
@@ -68,6 +68,51 @@ public sealed class EveryStrikeRuleStrikesResetsAndActsTests
         Assert.False(DownloadHealthStrikes.IsFinishedOrHandedOff(DownloadQueueStatuses.Downloading, 99.99));
         Assert.False(DownloadHealthStrikes.IsFinishedOrHandedOff(DownloadQueueStatuses.Stalled, 99.999));
         Assert.True(DownloadHealthStrikes.IsFinishedOrHandedOff(DownloadQueueStatuses.Downloading, 100));
+    }
+
+    [Fact]
+    public async Task Passes_closer_together_than_the_check_interval_add_no_strike()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-09T09:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
+        await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteDownloadHealthRepository(storage.Factory, time);
+        var observation = new DownloadHealthObservation("client-1", "queue-1", "Example.Movie", DownloadHealthStrikes.LowSpeed, "warning", "slow");
+
+        var counts = new List<int>();
+        for (var pass = 0; pass < 7; pass++)
+        {
+            var touched = await repository.RecordDownloadHealthObservationsAsync("client-1", ["queue-1"], [observation], Window, TimeSpan.FromHours(24), CancellationToken.None);
+            counts.Add(Assert.Single(touched).StrikeCount);
+            time.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        // Seven one-minute passes with a five-minute interval: strike 1 at once, strike 2 five minutes later.
+        Assert.Equal([1, 1, 1, 1, 1, 2, 2], counts);
+    }
+
+    [Fact]
+    public void A_zero_speed_download_is_owned_by_the_stall_rule_and_never_counted_as_slow_as_well()
+    {
+        var rules = new[] { Rule(Condition.NoProgress), Rule(Condition.TooSlow) };
+
+        var findings = new DownloadHealthEvaluator().Evaluate(Snapshot(Condition.NoProgress, bad: true, DateTimeOffset.Parse("2026-10-09T08:59:00Z")), DateTimeOffset.Parse("2026-10-09T09:00:00Z"), rules);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void A_stall_a_rule_covers_is_not_also_struck_by_the_platform_wide_fallback()
+    {
+        var rules = new[] { Rule(Condition.NoProgress) };
+        var item = Snapshot(Condition.ClientStalled, bad: true, DateTimeOffset.Parse("2026-10-09T06:00:00Z")) with { SpeedMbps = 0 };
+
+        var findings = new DownloadHealthEvaluator().Evaluate(item, DateTimeOffset.Parse("2026-10-09T09:00:00Z"), rules);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
     }
 
     private static RecoveryQueueSnapshot Snapshot(Condition condition, bool bad, DateTimeOffset added)

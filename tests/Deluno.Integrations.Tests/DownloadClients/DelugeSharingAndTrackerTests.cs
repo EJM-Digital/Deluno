@@ -52,7 +52,8 @@ public sealed class DelugeSharingAndTrackerTests
         var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
 
         var findings = Evaluate(item);
-        var finding = Assert.Single(findings, finding => finding.Kind == "client-stalled");
+        // The default No progress rule owns a stall with nothing arriving (#1194); either way the client's words are kept.
+        var finding = Assert.Single(findings, finding => finding.Kind is "client-stalled" or "no-progress");
         Assert.Equal("Error: torrent banned", finding.Evidence);
     }
 

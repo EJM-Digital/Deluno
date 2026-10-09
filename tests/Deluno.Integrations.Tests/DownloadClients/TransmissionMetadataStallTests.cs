@@ -42,7 +42,7 @@ public sealed class TransmissionMetadataStallTests
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
 
         var findings = Evaluate(item, addedUtc.AddMinutes(40));
-        var finding = Assert.Single(findings, finding => finding.Kind == "client-stalled");
+        var finding = Assert.Single(findings, finding => finding.Kind is "client-stalled" or "no-progress");
         Assert.True(Deluno.Platform.Contracts.DownloadHealthStrikes.Counts(finding.Kind));
     }
 
