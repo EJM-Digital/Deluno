@@ -40,8 +40,22 @@ public static class AttentionEndpoints
             .ToArray();
     }
 
+    /// <summary>What <c>GET /api/attention/summary</c> answers: the same reading the tray takes in-process.</summary>
+    public static Task<AttentionSummary> SummaryAsync(IAttentionSummaryService summaries, CancellationToken cancellationToken)
+        => summaries.GetAsync(fresh: false, cancellationToken);
+
     public static IEndpointRouteBuilder MapDelunoAttentionReadEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Everything that needs a person, and its count, from the one definition the tray reads in-process too (#1185).
+        endpoints.MapGet("/api/attention/summary", async (
+            IAttentionSummaryService summaries,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            httpContext.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(await SummaryAsync(summaries, cancellationToken));
+        });
+
         // Wanted titles whose newest search found nothing Deluno would take, minus the ones the person dismissed.
         endpoints.MapGet("/api/attention/no-release", async (
             INoAcceptableReleaseReader reader,
