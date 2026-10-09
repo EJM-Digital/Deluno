@@ -128,6 +128,26 @@ public static class PlatformEndpointRouteBuilderExtensions
                         await realtime.PublishEntityChangedAsync(fileOwner.EntityType == "series" ? "Series" : "Movie", fileOwner.TitleId, cancellationToken);
                     }
                 }
+                else if (!restored.IsDirectory && restored.TitleSnapshotId is null && restored.MediaType is "movies" or "tv")
+                {
+                    // #1189: binned before every writer recorded its owner (a
+                    // replacement, the wrong-episode repair, a library check).
+                    // The owner is found from where the file lived; if none is
+                    // found the message says so and where to go next.
+                    var restorer = restorers.FirstOrDefault(candidate => candidate.Handles(restored.MediaType));
+                    var outcome = restorer is null
+                        ? new TitleRestoreOutcome(false, string.Empty)
+                        : await restorer.RelinkUnownedFileAsync(restored, cancellationToken);
+                    if (outcome.Message.Length > 0)
+                    {
+                        result = result with { Message = $"{result.Message} {outcome.Message}" };
+                    }
+
+                    if (outcome.Restored && outcome.TitleId is not null)
+                    {
+                        await realtime.PublishEntityChangedAsync(restored.MediaType == "tv" ? "Series" : "Movie", outcome.TitleId, cancellationToken);
+                    }
+                }
                 else if (restored.IsDirectory && restored.MediaType is "movies" or "tv" && restored.TitleSnapshotId is null)
                 {
                     // Removed before Deluno kept the title record: the files

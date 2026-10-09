@@ -259,10 +259,146 @@ public sealed class TitleSnapshotService(
             await wanted.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return found.Matched
-            ? new TitleRestoreOutcome(true, $"{owner.Title} has its file again.", owner.TitleId)
-            : new TitleRestoreOutcome(false, $"The file is back, but Deluno could not match it to {owner.Title}. A library check will find it.", owner.TitleId);
+        // What the person is told names the thing that came back: the film, or
+        // the episode, not only the show it belongs to.
+        var name = owner.Title;
+        var linked = found.Matched;
+        if (owner.EpisodeId is { Length: > 0 })
+        {
+            using var episode = connection.CreateCommand();
+            episode.CommandText = "SELECT season_number, episode_number, has_file FROM episode_entries WHERE id = @id;";
+            AddParameter(episode, "@id", owner.EpisodeId);
+            using var reader = await episode.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                name = $"{owner.Title} S{reader.GetInt32(0):00}E{reader.GetInt32(1):00}";
+                linked = found.Matched && reader.GetInt64(2) == 1;
+            }
+            else
+            {
+                linked = false;
+            }
+        }
+
+        return linked
+            ? new TitleRestoreOutcome(true, $"{name} has its file again.", owner.TitleId)
+            : new TitleRestoreOutcome(false, $"The file is back, but Deluno could not match it to {name}. A library check will find it.", owner.TitleId);
     }
+
+    /// <summary>
+    /// #1189: a file came back from the bin with no recorded owner (it was
+    /// binned by a replacement, the wrong-episode repair, a library check and
+    /// so on, before every writer recorded one). The owner is found from where
+    /// the file lived, the way an import reads a library: the title folder's
+    /// name and year pick the film or show, and a show's file name picks the
+    /// episode.
+    /// </summary>
+    public async Task<TitleRestoreOutcome> RelinkUnownedFileAsync(
+        RecycleBinItem restored,
+        CancellationToken cancellationToken)
+    {
+        if (libraryImport is null)
+        {
+            return new TitleRestoreOutcome(false, string.Empty);
+        }
+
+        var fileName = Path.GetFileName(restored.OriginalPath);
+        if (SidecarExtensions.Contains(Path.GetExtension(fileName)))
+        {
+            // A subtitle or picture is not what a title is linked by.
+            return new TitleRestoreOutcome(false, string.Empty);
+        }
+
+        var owner = await FindFileOwnerAsync(restored.LibraryId, restored.MediaType, restored.OriginalPath, cancellationToken);
+        if (owner is null)
+        {
+            return new TitleRestoreOutcome(
+                false,
+                $"The file is back, but Deluno could not tell which {(KindOf(restored.MediaType) == MediaKind.Series ? "show" : "film")} it belongs to, so nothing has been linked to it. Use Import Existing on the library, or add the title again, and Deluno will find {fileName}.");
+        }
+
+        return await RelinkFileAsync(restored, owner, cancellationToken);
+    }
+
+    /// <summary>
+    /// The film or episode a library file belongs to, found the way an import
+    /// reads a library: the title folder's name and year pick the film or show,
+    /// and a show's file name picks the episode (#1189). Null when it is not
+    /// exactly one title, or the file is a subtitle or picture.
+    /// </summary>
+    public async Task<RecycleBinFileOwner?> FindFileOwnerAsync(
+        string libraryId,
+        string mediaType,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var fileName = Path.GetFileName(path);
+        if (libraryImport is null || SidecarExtensions.Contains(Path.GetExtension(fileName)))
+        {
+            return null;
+        }
+
+        var guess = await libraryImport.ReadTitleOfPathAsync(libraryId, path, cancellationToken);
+        if (guess is null)
+        {
+            return null;
+        }
+
+        var kind = KindOf(mediaType);
+        var map = MediaTableMap.For(kind);
+        var wanted = NormalizeTitle(guess.Title);
+        var candidates = new List<(string Id, string Title, int? Year, bool Monitored)>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        using (var list = connection.CreateCommand())
+        {
+            list.CommandText = $"SELECT id, title, \"{map.YearColumn}\", monitored FROM \"{map.EntryTable}\";";
+            using var reader = await list.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (NormalizeTitle(reader.GetString(1)) == wanted)
+                {
+                    candidates.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetInt32(2), reader.GetInt64(3) == 1));
+                }
+            }
+        }
+
+        var matches = candidates.Where(candidate => guess.Year is null || candidate.Year is null || candidate.Year == guess.Year).ToList();
+        if (matches.Count != 1)
+        {
+            return null;
+        }
+
+        var (titleId, title, year, monitored) = matches[0];
+        string? episodeId = null;
+        if (kind == MediaKind.Series)
+        {
+            var code = System.Text.RegularExpressions.Regex.Match(fileName, @"[Ss](\d{1,3})[Ee](\d{1,4})");
+            if (code.Success)
+            {
+                using var find = connection.CreateCommand();
+                find.CommandText = "SELECT id, monitored FROM episode_entries WHERE series_id = @seriesId AND season_number = @season AND episode_number = @episode;";
+                AddParameter(find, "@seriesId", titleId);
+                AddParameter(find, "@season", int.Parse(code.Groups[1].Value));
+                AddParameter(find, "@episode", int.Parse(code.Groups[2].Value));
+                using var reader = await find.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    episodeId = reader.GetString(0);
+                    monitored = reader.GetInt64(1) == 1;
+                }
+            }
+        }
+
+        return new RecycleBinFileOwner(mediaType, kind == MediaKind.Series ? "series" : "movie", titleId, title, year, episodeId, monitored);
+    }
+
+    private static readonly HashSet<string> SidecarExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt", ".nfo", ".jpg", ".jpeg", ".png"
+    };
+
+    private static string NormalizeTitle(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
     private static MediaKind KindOf(string mediaType)
         => string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase) ? MediaKind.Series : MediaKind.Movie;

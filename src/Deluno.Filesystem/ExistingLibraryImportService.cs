@@ -348,6 +348,43 @@ public sealed class ExistingLibraryImportService(
         return new TitleFolderImportOutcome(true, folder);
     }
 
+    public async Task<TitleNameGuess?> ReadTitleOfPathAsync(
+        string libraryId,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var library = await FindLibraryAsync(libraryId, cancellationToken);
+        if (library is null || string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        string relative;
+        try
+        {
+            relative = Path.GetRelativePath(Path.GetFullPath(library.RootPath), Path.GetFullPath(path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        {
+            return null;
+        }
+
+        var segments = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return null;
+        }
+
+        var name = segments.Length == 1 ? Path.GetFileNameWithoutExtension(segments[0]) : segments[0];
+        var parsed = ParseTitle(name);
+        return string.IsNullOrWhiteSpace(parsed.Title) ? null : new TitleNameGuess(parsed.Title, parsed.Year);
+    }
+
     private static string NormalizeForMatch(string value)
         => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 

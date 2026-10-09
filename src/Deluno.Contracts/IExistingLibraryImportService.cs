@@ -87,7 +87,20 @@ public interface IExistingLibraryImportService
         string title,
         int? year,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads which title a path inside a library belongs to, the way an
+    /// existing-library import reads the folder name (#1189). Null when the
+    /// path is not inside the library.
+    /// </summary>
+    Task<TitleNameGuess?> ReadTitleOfPathAsync(
+        string libraryId,
+        string path,
+        CancellationToken cancellationToken);
 }
+
+/// <summary>The title and year a library path's top-level folder (or loose file) reads as.</summary>
+public sealed record TitleNameGuess(string Title, int? Year);
 
 /// <summary>What looking for a title's existing folder found (#1161).</summary>
 public sealed record TitleFolderImportOutcome(bool Matched, string? Path, string? Message = null)
