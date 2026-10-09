@@ -651,8 +651,10 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // so a Lost hand-off ends and searches again without blocklisting
             // anything. Every other give-up ending still blocklists using the
             // #874 key: the release's hash/id and its name, on every indexer.
+            // #1186: a download that was gone before the processor reached it says nothing about the release.
+            var isSourceGone = string.Equals(handoff.Status, ProcessorHandoffStatuses.SourceGone, StringComparison.OrdinalIgnoreCase);
             var isLost = string.Equals(handoff.Status, ProcessorHandoffStatuses.Lost, StringComparison.OrdinalIgnoreCase);
-            if (!isLost)
+            if (!isLost && !isSourceGone)
             {
                 await blockedReleases.BlockAsync(
                     new BlockedRelease(
@@ -687,7 +689,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
             await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
 
-            var message = isLost
+            var message = isSourceGone
+                ? $"The download of {handoff.ReleaseName} was gone before {handoff.ProcessorName ?? "the processor"} could clean it, so Deluno did not blocklist it. Started a new search.{removedNote}"
+                : isLost
                 ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search.{removedNote}"
                 : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.{removedNote}";
             var ended = await repository.UpdateProcessorHandoffAsync(
@@ -1283,6 +1287,52 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     cancellationToken);
                 return Results.Json(
                     new { status = "rejected", handoffId = handoff.Id, activityId = rejectedActivity.Id, outcome.BlockedReleaseId, outcome.SearchJobId },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
+            // The download disappeared before the processor could work on it (#1186). There is no file to try
+            // again and no release to blame: Deluno closes it when it removed the download itself or the title
+            // has its file, and otherwise asks a person only for a new copy.
+            if (status == "failed" && disposition is null && ProcessorFailureClasses.IsSourceGone(request.FailureClass))
+            {
+                if (handoff.Status is ProcessorHandoffStatuses.Completed or ProcessorHandoffStatuses.Released
+                    or ProcessorHandoffStatuses.Dismissed or ProcessorHandoffStatuses.SourceGone)
+                {
+                    return Results.Json(
+                        new { status = "failed", handoffId = handoff.Id, alreadyHandled = true },
+                        statusCode: StatusCodes.Status202Accepted);
+                }
+
+                var gone = await failureReports.HandleSourceGoneAsync(
+                    new ProcessorFailureReport(library, handoff, processorName, message ?? "The download is no longer there.", request.FailureClass),
+                    cancellationToken);
+                var goneMessage = $"The download was gone before {processorName} could clean it.";
+                await repository.UpdateProcessorHandoffAsync(
+                    handoff.Id,
+                    gone.Settled ? ProcessorHandoffStatuses.Dismissed : ProcessorHandoffStatuses.SourceGone,
+                    null,
+                    null,
+                    goneMessage,
+                    cancellationToken);
+                var goneActivity = await activityFeed.RecordActivityAsync(
+                    gone.Settled ? "processing.source-gone.settled" : "processing.source-gone",
+                    gone.Settled ? $"{goneMessage} {gone.Reason}" : goneMessage,
+                    JsonSerializer.Serialize(new
+                    {
+                        request.LibraryId,
+                        HandoffId = handoff.Id,
+                        handoff.ReleaseName,
+                        request.FailureClass,
+                        Message = message,
+                        ProcessorName = processorName,
+                        Settled = gone.Settled
+                    }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return Results.Json(
+                    new { status = "failed", handoffId = handoff.Id, activityId = goneActivity.Id, settled = gone.Settled },
                     statusCode: StatusCodes.Status202Accepted);
             }
 

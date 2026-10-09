@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, ProcessorHandoffItem, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, isVanished, needsAction, plainFailure } from "./needs-action";
+import { canTryAgain, handoffNeedsPerson, isVanished, needsAction, plainFailure } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -330,6 +330,18 @@ describe("needsAction: what Deluno handled itself is not for the user", () => {
 
     expect(needsAction({ handoffs: [handoff], dispatches: [] }).failedHandoffs).toHaveLength(1);
     expect(needsAction({ handoffs: [handoff], dispatches: [imported] }).failedHandoffs).toHaveLength(0);
+  });
+
+  it("a download the processor found gone counts once, as one row (#1186)", () => {
+    const handoff = {
+      id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "client-1", queueItemId: "hash-1", releaseName: "Oppenheimer.2023",
+      sourcePath: "/downloads/oppenheimer", processorName: "Weir", status: "source-gone", outputPath: null, importJobId: null,
+      failureMessage: "The download was gone before Weir could clean it.", createdUtc: "2026-10-07T03:00:00Z", updatedUtc: "2026-10-07T03:00:00Z"
+    } as ProcessorHandoffItem;
+
+    expect(handoffNeedsPerson(handoff)).toBe(true);
+    expect(needsAction({ handoffs: [handoff], dispatches: [] }).total).toBe(1);
+    expect(needsAction({ handoffs: [{ ...handoff, status: "dismissed" }], dispatches: [] }).total).toBe(0);
   });
 
   it("drops a recovery case once its download was imported", () => {

@@ -23,6 +23,26 @@ public static class ProcessorDispositions
 }
 
 /// <summary>
+/// The failure classes a processor names in a failed report that Deluno acts on by name.
+/// </summary>
+public static class ProcessorFailureClasses
+{
+    /// <summary>
+    /// The download disappeared before the processor could work on it, and stayed gone after its grace period
+    /// (#1186). Not a bad release and not a processor fault: there is nothing to try again.
+    /// </summary>
+    public const string SourceGone = "source_gone";
+
+    public static bool IsSourceGone(string? failureClass)
+        => string.Equals(failureClass?.Trim(), SourceGone, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>What Deluno decided about a report that the download was gone (#1186).</summary>
+/// <param name="Settled">True when nothing is left to ask a person: Deluno removed the download, or the title has its file.</param>
+/// <param name="Reason">Why it settled, in plain words, for the Activity line. Null when it did not.</param>
+public sealed record ProcessorSourceGoneOutcome(bool Settled, string? Reason);
+
+/// <summary>
 /// The capability a processor looks for before it offers to delete a file it
 /// cannot process. Advertised only because Deluno acts on the report: the file
 /// is refused, the client forgets it, and another copy is searched for.
@@ -86,6 +106,14 @@ public interface IProcessorFailureReportHandler
     /// person sees it, rather than leaving it in activity alone.
     /// </summary>
     Task HandleHeldAsync(
+        ProcessorFailureReport report,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The processor says the download was gone before it could work on it (#1186): settled when Deluno removed that
+    /// download itself or the title already has its file, otherwise left for a person to answer.
+    /// </summary>
+    Task<ProcessorSourceGoneOutcome> HandleSourceGoneAsync(
         ProcessorFailureReport report,
         CancellationToken cancellationToken);
 

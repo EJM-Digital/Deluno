@@ -287,6 +287,12 @@ public static class ProcessorHandoffStatuses
     public const string Cancelled = "cancelled";
 
     /// <summary>
+    /// The processor says the download was gone before it could clean it (#1186). Asks a person only for a new
+    /// copy: there is no file to send again or to import as it is.
+    /// </summary>
+    public const string SourceGone = "source-gone";
+
+    /// <summary>
     /// Deluno imports the original download instead of waiting for a processed
     /// copy — by the library's rule or by a person choosing it.
     /// </summary>
@@ -301,7 +307,7 @@ public static class ProcessorHandoffStatuses
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        Waiting, Submitted, Accepted, Started, Completed, Failed, Rejected, TimedOut, Stalled, Lost, Cancelled, Released, Dismissed
+        Waiting, Submitted, Accepted, Started, Completed, Failed, Rejected, TimedOut, Stalled, Lost, Cancelled, Released, Dismissed, SourceGone
     };
 
     /// <summary>With the processor, as far as Deluno knows.</summary>
@@ -340,7 +346,7 @@ public static class ProcessorHandoffStatuses
     /// went quiet, stopped reporting, or never received it (#1099). Not
     /// <see cref="Cancelled"/>, which a person or Deluno can ask for.
     /// </summary>
-    public static readonly IReadOnlyList<string> WentWrong = [Failed, Rejected, TimedOut, Stalled, Lost];
+    public static readonly IReadOnlyList<string> WentWrong = [Failed, Rejected, TimedOut, Stalled, Lost, SourceGone];
 
     /// <summary>Where a person can choose to import the original instead.</summary>
     public static bool CanReleaseOriginal(string? status)
@@ -356,7 +362,7 @@ public static class ProcessorHandoffStatuses
     public static bool NeedsPerson(string? status, string? failureMessage)
         => status is not Dismissed
            && !IsWithProcessor(status)
-           && (status is Rejected || CanReleaseOriginal(status) || !string.IsNullOrWhiteSpace(failureMessage));
+           && (status is Rejected or SourceGone || CanReleaseOriginal(status) || !string.IsNullOrWhiteSpace(failureMessage));
 
     /// <summary>
     /// Anything a person is asked about, they can say they are finished with.

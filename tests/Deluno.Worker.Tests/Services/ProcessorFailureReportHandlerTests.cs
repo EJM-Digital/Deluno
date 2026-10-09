@@ -255,6 +255,84 @@ public sealed class ProcessorFailureReportHandlerTests
             EntityId = "movie-1"
         };
 
+    private void GivenTheDispatchRecord(string status = "queued", string? importStatus = null, DateTimeOffset? created = null)
+    {
+        var dispatch = (DownloadDispatchItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(DownloadDispatchItem));
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("qbittorrent", "hash-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(dispatch with
+            {
+                Id = "dispatch-1",
+                EntityType = "movie",
+                EntityId = "movie-1",
+                ReleaseName = "Sintel.2010.1080p",
+                Status = status,
+                ImportStatus = importStatus,
+                CreatedUtc = created ?? DateTimeOffset.UnixEpoch
+            });
+    }
+
+    // #1186: the exact report shape Weir sends.
+    private static ProcessorFailureReport SourceGoneReport()
+        => Report("movies", sourceRemoved: false) with { FailureClass = ProcessorFailureClasses.SourceGone, Message = "The download is no longer there, so Weir had nothing to do." };
+
+    [Fact]
+    public void The_source_gone_class_is_one_shared_string()
+    {
+        Assert.Equal("source_gone", ProcessorFailureClasses.SourceGone);
+        Assert.True(ProcessorFailureClasses.IsSourceGone(" Source_Gone "));
+        Assert.False(ProcessorFailureClasses.IsSourceGone("guardrail"));
+        Assert.False(ProcessorFailureClasses.IsSourceGone(null));
+    }
+
+    [Theory]
+    [InlineData("archived", null)]
+    [InlineData("queued", "imported")]
+    public async Task A_gone_download_Deluno_removed_itself_is_settled(string status, string? importStatus)
+    {
+        GivenTheDispatchRecord(status, importStatus);
+
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.True(outcome.Settled);
+        Assert.Contains("Deluno removed that download itself", outcome.Reason);
+        _blocked.Verify(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        _scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_gone_download_whose_title_has_its_file_is_settled()
+    {
+        GivenTheDispatchRecord();
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TitleFileHolds(new Dictionary<string, DateTimeOffset?> { ["movie-1"] = DateTimeOffset.UnixEpoch.AddHours(1) }));
+
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.True(outcome.Settled);
+        Assert.Contains("in the library already", outcome.Reason);
+    }
+
+    [Fact]
+    public async Task A_gone_download_nothing_explains_is_left_for_a_person()
+    {
+        GivenTheDispatchRecord();
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TitleFileHolds.None);
+
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.False(outcome.Settled);
+        Assert.Null(outcome.Reason);
+    }
+
+    [Fact]
+    public async Task A_gone_download_with_no_record_at_all_is_left_for_a_person()
+    {
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.False(outcome.Settled);
+    }
+
     private void GivenTheDispatch(string entityType = "movie")
     {
         _jobQueue.Setup(repo => repo.FindRecentDispatchLinkAsync("qbittorrent", "Sintel.2010.1080p", It.IsAny<CancellationToken>()))

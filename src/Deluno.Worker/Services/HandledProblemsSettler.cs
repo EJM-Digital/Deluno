@@ -127,7 +127,7 @@ public sealed class HandledProblemsSettler(
                 [
                     ProcessorHandoffStatuses.Failed, ProcessorHandoffStatuses.Rejected, ProcessorHandoffStatuses.TimedOut,
                     ProcessorHandoffStatuses.Stalled, ProcessorHandoffStatuses.Lost, ProcessorHandoffStatuses.Cancelled,
-                    ProcessorHandoffStatuses.Completed
+                    ProcessorHandoffStatuses.Completed, ProcessorHandoffStatuses.SourceGone
                 ],
                 cancellationToken) ?? [])
             .Where(handoff => ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
@@ -135,6 +135,36 @@ public sealed class HandledProblemsSettler(
         if (open.Count == 0)
         {
             return 0;
+        }
+
+        var settled = 0;
+
+        // A processor said the download was gone (#1186): it closes when Deluno removed that download or the title
+        // has its file, whichever happened since the report.
+        foreach (var gone in open.Where(handoff => handoff.Status == ProcessorHandoffStatuses.SourceGone))
+        {
+            if (await SourceGoneRule.SettledBecauseAsync(gone, dispatches, movies, series, cancellationToken) is not { } reason)
+            {
+                continue;
+            }
+
+            await processors.UpdateProcessorHandoffAsync(
+                gone.Id, ProcessorHandoffStatuses.Dismissed, null, null, gone.FailureMessage, cancellationToken);
+            settled++;
+            await activityFeed.RecordActivityAsync(
+                "processing.source-gone.settled",
+                $"{gone.FailureMessage ?? $"The download of {gone.ReleaseName} was gone."} {reason}",
+                JsonSerializer.Serialize(new { HandoffId = gone.Id, gone.LibraryId, PreviousStatus = gone.Status }),
+                null,
+                "processor-handoff",
+                gone.Id,
+                cancellationToken);
+        }
+
+        open = open.Where(handoff => handoff.Status != ProcessorHandoffStatuses.SourceGone).ToList();
+        if (open.Count == 0)
+        {
+            return settled;
         }
 
         var byHandoff = new List<(Deluno.Platform.Contracts.ProcessorHandoffItem Handoff, DownloadDispatchItem Dispatch)>();
@@ -153,7 +183,6 @@ public sealed class HandledProblemsSettler(
             ["episode"] = await series.GetTitleFileHoldsAsync(IdsOf(byHandoff.Select(pair => pair.Dispatch), "episode"), cancellationToken) ?? TitleFileHolds.None
         };
 
-        var settled = 0;
         foreach (var (handoff, dispatch) in byHandoff)
         {
             if (!holds.TryGetValue(dispatch.EntityType.ToLowerInvariant(), out var held)
