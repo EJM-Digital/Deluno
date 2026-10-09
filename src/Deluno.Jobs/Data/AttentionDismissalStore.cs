@@ -18,6 +18,49 @@ public sealed class AttentionDismissalStore(IDelunoDatabaseConnectionFactory dat
     /// <summary>A held release (#1159) is dismissed by its search-history row, so a later held search is a new item.</summary>
     public static string HeldReleaseKey(string historyId) => $"{HeldReleasePrefix}{historyId}";
 
+    public const string HeldReleaseNamePrefix = "held-release-name:";
+
+    /// <summary>
+    /// The same release for the same title or episode (#1193). A feed watch that offers a dismissed release again
+    /// starts a new search-history row, which the row key alone would call a new item; this key says it is not.
+    /// </summary>
+    public static string HeldReleaseNameKey(string mediaType, string id, string? episodeId, string releaseName)
+        => $"{HeldReleaseNamePrefix}{mediaType}:{id}:{episodeId}:{releaseName.Trim().ToLowerInvariant()}";
+
+    /// <summary>Whether a held release was dismissed, by its row or as the same release of the same title.</summary>
+    public static bool IsHeldReleaseDismissed(IReadOnlySet<string> dismissed, string historyId, string mediaType, string id, string? episodeId, string releaseName)
+        => dismissed.Contains(HeldReleaseKey(historyId)) || dismissed.Contains(HeldReleaseNameKey(mediaType, id, episodeId, releaseName));
+
+    /// <summary>
+    /// A title's dismissed release is forgotten once the title is held for a different release: that is something
+    /// new, so it is offered. Titles with no held release now keep their dismissal.
+    /// </summary>
+    public async Task ForgetSupersededHeldReleasesAsync(IEnumerable<(string MediaType, string Id, string? EpisodeId, string ReleaseName)> held, CancellationToken cancellationToken)
+    {
+        var current = held.ToArray();
+        var existing = await ListAsync(cancellationToken);
+        var gone = new List<string>();
+        foreach (var group in current.GroupBy(item => $"{HeldReleaseNamePrefix}{item.MediaType}:{item.Id}:{item.EpisodeId}:", StringComparer.OrdinalIgnoreCase))
+        {
+            var keep = group.Select(item => HeldReleaseNameKey(item.MediaType, item.Id, item.EpisodeId, item.ReleaseName)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            gone.AddRange(existing.Where(key => key.StartsWith(group.Key, StringComparison.OrdinalIgnoreCase) && !keep.Contains(key)));
+        }
+
+        if (gone.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await databases.OpenConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
+        foreach (var key in gone)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM attention_dismissals WHERE dismissal_key = @key;";
+            Add(command, "@key", key);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
     public async Task DismissAsync(string key, CancellationToken cancellationToken)
     {
         await using var connection = await databases.OpenConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);

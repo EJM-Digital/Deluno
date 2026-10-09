@@ -142,3 +142,40 @@ describe("ClientDrawerBody page link for a client on the server only (#1142)", (
     expect(screen.getByRole("link", { name: /page$/ }).getAttribute("href")).toBe("http://192.168.1.10:6789/");
   });
 });
+
+describe("ClientDrawerBody the client's own warnings (#1193)", () => {
+  function renderWarnings(warnings: string[] | undefined, onClear: () => void, busy: string | null = null) {
+    render(
+      <QueryClientProvider client={new QueryClient()}><ClientDrawerBody
+        form={{ ...emptyClientForm(), protocol: "sabnzbd" }}
+        setForm={() => {}}
+        editing={{ id: "c1", name: "SABnzbd" } as never}
+        errors={{}}
+        clearError={() => {}}
+        mappings={[]}
+        newMapping={{ remotePath: "", localPath: "" }}
+        setNewMapping={() => {}}
+        busy={busy}
+        onAddMapping={() => {}}
+        onRemoveMapping={() => {}}
+        onTestMapping={() => {}}
+        onRemove={() => {}}
+        warnings={warnings}
+        onClearWarnings={onClear}
+      /></QueryClientProvider>
+    );
+  }
+
+  it("lists them and clears them through the client from the drawer", () => {
+    let cleared = 0;
+    renderWarnings(["Failed to connect to news.example"], () => { cleared += 1; });
+    expect(screen.getByText("Failed to connect to news.example")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear all of SABnzbd's warnings" }));
+    expect(cleared).toBe(1);
+  });
+
+  it("shows nothing when the client has no warnings", () => {
+    renderWarnings([], () => {});
+    expect(screen.queryByRole("button", { name: /warnings/ })).toBeNull();
+  });
+});

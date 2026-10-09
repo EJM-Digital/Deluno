@@ -1497,6 +1497,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             blocklistSync={editingClient ? qbittorrentBlocklistSync[editingClient.id] ?? null : null}
             routeOnAdd={routeNewClient}
             onRouteOnAddChange={setRouteNewClient}
+            warnings={editingClient ? telemetryByClient.get(editingClient.id)?.clientWarnings ?? undefined : undefined}
+            onClearWarnings={() => editingClient && void clearClientWarnings(editingClient)}
             versionLine={editingClient ? connectionVersionLine(versions.get(versionKey("downloadClient", editingClient.id)), telemetryByClient.get(editingClient.id)?.clientVersion) : undefined}
           />
         ) : null}

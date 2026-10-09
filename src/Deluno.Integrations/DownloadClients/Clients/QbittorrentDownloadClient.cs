@@ -919,7 +919,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // queuedDL, which is qBittorrent holding it back on its own.
         if (normalized is "pauseddl" or "stoppeddl") return DownloadQueueStatuses.Paused;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
-        if (normalized.Contains("error") || normalized.Contains("stalled")) return DownloadQueueStatuses.Stalled;
+        if (normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
+        // stalledDL with almost nothing left is finishing, not stalled (#1193).
+        if (normalized.Contains("stalled") && (progress ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;
     }
 

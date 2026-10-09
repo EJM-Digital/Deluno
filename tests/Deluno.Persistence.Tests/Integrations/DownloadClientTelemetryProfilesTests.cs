@@ -332,7 +332,6 @@ public sealed class DownloadClientTelemetryProfilesTests
     [InlineData("deluge", "Error")]
     [InlineData("deluge", "error")]
     [InlineData("utorrent", "Error")]
-    [InlineData("utorrent", "Stalled")]
     [InlineData("deluge", "Checking failed")]
     public void A_completed_download_the_client_calls_errored_is_not_import_ready(
         string protocol,

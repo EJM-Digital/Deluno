@@ -126,6 +126,7 @@ public static class ActivityEventLabels
             ["download.health.strikes-purged"] = "Cleared download health strikes",
             ["download.queue.removed"] = "Removed from the download queue",
             ["download.client.resumed"] = "Resumed a paused download client",
+            ["download.client.warnings-cleared"] = "Cleared a download client's own warnings",
             ["download.vanished"] = "Download disappeared from the client",
             ["download.vanished.recovered"] = "Found its files after it left the client",
             ["download.detection.timeout"] = "Finished downloading but was never imported",

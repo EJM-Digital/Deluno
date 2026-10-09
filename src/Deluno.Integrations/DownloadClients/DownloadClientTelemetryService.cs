@@ -2332,14 +2332,43 @@ public sealed class DownloadClientTelemetryService(
             return false;
         }
 
+        bool cleared;
         try
         {
-            return await implementation.ClearWarningsAsync(client, cancellationToken);
+            cleared = await implementation.ClearWarningsAsync(client, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
         {
             return false;
         }
+
+        if (!cleared)
+        {
+            return false;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.warnings-cleared",
+            $"Cleared the warnings {client.Name} was showing, in {client.Name} itself.",
+            null,
+            null,
+            "download_client",
+            client.Id,
+            cancellationToken);
+        // The bell, the tray and the screens read the stored snapshot, so bring it up to date now (#1193).
+        if (snapshotStore is not null)
+        {
+            try
+            {
+                await snapshotStore.RefreshAsync(TimeSpan.Zero, cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+            {
+                // The warnings are cleared; the next poll shows it.
+            }
+        }
+
+        return true;
     }
 
     public async Task<DownloadClientActionResult> ResumeClientAsync(string clientId, CancellationToken cancellationToken)
