@@ -603,6 +603,7 @@ public sealed class TrayApplication : ApplicationContext
         {
             HealthKnown = true,
             Down = signals.Down,
+            HealthUnreadable = signals.HealthUnreadable,
             AutomationPaused = signals.AutomationPaused
         });
 

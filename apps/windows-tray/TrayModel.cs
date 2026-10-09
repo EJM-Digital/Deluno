@@ -132,6 +132,9 @@ public sealed record TrayStatus
     /// </summary>
     public IReadOnlyList<string> Down { get; init; } = [];
 
+    /// <summary>The first health reading failed, so nothing is known: amber, not green, until a reading works.</summary>
+    public bool HealthUnreadable { get; init; }
+
     public bool AutomationPaused { get; init; }
 
     public TrayUpdate Update { get; init; } = TrayUpdate.None;
@@ -183,7 +186,7 @@ public static class TrayBadges
             return new TrayIconSpec(TrayDot.Starting, mark);
         }
 
-        return new TrayIconSpec(status.Down.Count > 0 ? TrayDot.Amber : TrayDot.Green, mark);
+        return new TrayIconSpec(status.Down.Count > 0 || status.HealthUnreadable ? TrayDot.Amber : TrayDot.Green, mark);
     }
 }
 
@@ -195,9 +198,14 @@ public static class TrayHoverText
     /// <summary>What is wrong, in words: the first thing down, and "and 2 more" for the rest. Null when all answer.</summary>
     public static string? ProblemText(TrayStatus status)
     {
-        if (status.HostDown || status.Down.Count == 0)
+        if (status.HostDown)
         {
             return null;
+        }
+
+        if (status.Down.Count == 0)
+        {
+            return status.HealthUnreadable ? "can't read its own health yet" : null;
         }
 
         var rest = status.Down.Count - 1;

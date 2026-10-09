@@ -11,7 +11,7 @@ namespace Deluno.Tray;
 /// What the tray's dot and pause bars are drawn from: the things Deluno relies on that do not answer (in the words the
 /// hover text uses) and whether automation is paused.
 /// </summary>
-public sealed record TrayServerSignals(IReadOnlyList<string> Down, bool AutomationPaused);
+public sealed record TrayServerSignals(IReadOnlyList<string> Down, bool AutomationPaused, bool HealthUnreadable = false);
 
 /// <summary>
 /// Follows the in-process server's own pushes about platform health (HealthChanged, ConnectionChecked and the changes
@@ -94,12 +94,11 @@ public sealed class TrayHealthWatcher : IDisposable
             }
             catch
             {
-                // A reading that failed leaves the dot as it was; the next push reads again. The first reading must
-                // still end the blinking, so a host that cannot read its health shows green rather than blinking forever.
+                // A reading that failed leaves the dot as it was; the next push reads again. Until a first reading has
+                // worked the dot is amber and says so: green would claim everything answers, which is not known.
                 if (!_everRead)
                 {
-                    _everRead = true;
-                    _changed(new TrayServerSignals([], false));
+                    _changed(new TrayServerSignals([], false, HealthUnreadable: true));
                 }
             }
         });

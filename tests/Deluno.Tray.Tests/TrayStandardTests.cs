@@ -80,6 +80,19 @@ public sealed class TrayStandardTests
     }
 
     [Fact]
+    public void A_health_reading_that_failed_is_amber_and_says_so_never_green()
+    {
+        var status = Running() with { HealthUnreadable = true };
+        Assert.Equal(new TrayIconSpec(TrayDot.Amber, TrayMark.None), TrayBadges.Choose(status));
+        Assert.False(TrayBadges.Choose(status).Blinking);
+        Assert.Equal("Deluno - can't read its own health yet", TrayHoverText.Build(status));
+        Assert.Equal("Deluno - can't read its own health yet", TrayMenuState.Build(status).Get(TrayMenuId.StatusLine).Text);
+
+        // The next reading that works clears it.
+        Assert.Equal(TrayDot.Green, TrayBadges.Choose(status with { HealthUnreadable = false }).Dot);
+    }
+
+    [Fact]
     public void Paused_automation_shows_the_pause_bars_on_the_green_dot()
         => Assert.Equal(new TrayIconSpec(TrayDot.Green, TrayMark.Paused), TrayBadges.Choose(Running() with { AutomationPaused = true }));
 
