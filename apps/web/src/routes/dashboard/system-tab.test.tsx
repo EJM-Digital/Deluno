@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
-import { computeAttention } from "./attention";
+import { serverRow, summaryOf } from "../../lib/attention-summary-fixtures";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
 import { SystemTab } from "./system-tab";
 
@@ -41,6 +41,7 @@ function seedBusy() {
       check({ id: "db:open", name: "The database opens", status: "ok", message: "Opened in 3 ms." })
     ]
   };
+  lists["/api/attention/summary"] = summaryOf([serverRow({ id: "failed-jobs", kind: "jobs", tone: "bad", title: "1 background job gave up", text: "Nothing else waits on them, but the work was not done." })]);
   lists["/api/jobs"] = [{ id: "j2", jobType: "library.scan", status: "failed", lastError: "Out of memory", attempts: 3, maxAttempts: 3, nextAttemptUtc: null }];
   lists["/api/integrations/processors/handoffs"] = [{ id: "h1", releaseName: "Metropolis (1927)", status: "failed", failureMessage: "The processor timed out.", processorName: "Cleaner", updatedUtc: "2026-09-30T09:55:00Z" }];
   lists["/api/indexers"] = [
@@ -162,10 +163,13 @@ describe("System", () => {
     expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|importFailed/);
   });
 
-  it("counts exactly what it lists", () => {
-    const attention = computeAttention(fullSummary, { handoffs: [] as never, indexers: [{ id: "i2", name: "Nyaa.si", isEnabled: true, healthStatus: "unreachable" }] as never });
-    expect(attention.counts.system).toBe(attention.items.filter((item) => item.tab === "system").reduce((sum, item) => sum + item.count, 0));
-    expect(computeAttention(emptySummary).counts.system).toBe(0);
+  it("lists the server's rows and invents none of its own", async () => {
+    lists["/api/attention/summary"] = summaryOf([
+      serverRow({ id: "outage", kind: "outage", tone: "bad", title: "Deluno can't reach the internet", text: "Searching and cleanup are paused until it is back." })
+    ]);
+    renderTab(fullSummary);
+    expect(await screen.findByText("Deluno can't reach the internet")).toBeInTheDocument();
+    delete lists["/api/attention/summary"];
   });
 
   it("says something true on a new install", async () => {

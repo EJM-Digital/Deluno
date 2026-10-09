@@ -24,7 +24,6 @@ import { LiveTab } from "./dashboard/live-tab";
 import { SystemTab } from "./dashboard/system-tab";
 import type { DashboardSummary } from "../lib/api";
 import { liveSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
-import { useDashboardAttention } from "./dashboard/use-dashboard-attention";
 import "./dashboard/phone-wrap.css";
 
 export const DASHBOARD_TABS = ["live", "system"] as const;
@@ -161,8 +160,7 @@ export function DashboardPage() {
     }, { replace: false });
   }, [setSearchParams]);
 
-  // Problems are in the bell, counted once for every screen; neither tab carries a number (#1098). The Dashboard keeps its stored lists warm for the bell.
-  useDashboardAttention(summary, setup.needs);
+  // Problems are in the bell, counted once by the server for every screen; neither tab carries a number (#1098, #1185).
 
   // Nothing to draw the first time until the summary arrives. After that the
   // last answer stays on screen while a newer one is fetched behind it.

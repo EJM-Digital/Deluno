@@ -170,6 +170,15 @@ async function serveBusyInstall(page: Page) {
   };
   const queue = Array.from({ length: 30 }, (_, n) => ({ id: `q${n}`, clientId: "c1", clientName: "Deluge on MEDIA-SERVER", protocol: "torrent", mediaType: "movie", title: `Stalled download number ${n + 1} (2010)`, releaseName: "Release.Name.1080p", category: "movies", status: "stalled", progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 1e9, downloadedBytes: 1e9, peers: 0, indexerName: "x", errorMessage: "Missing or invalid torrent data", addedUtc: now, sourcePath: null, libraryId: null, healthFindings: null }));
   const cases = Array.from({ length: 30 }, (_, n) => ({ id: `r${n}`, title: `Recovery case number ${n + 1}`, failureKind: "importFailed", summary: "Import failed: release refused", recommendedAction: "retry", detailsJson: null, detectedUtc: now }));
+  // What the server's attention summary (#1185) makes of the same busy install: the bell draws these rows and this count.
+  const row = (over: Record<string, unknown>) => ({ section: "deluno", tone: "warn", text: "Something needs a look.", to: "/system", action: "Open System", count: 1, sinceUtc: null, data: null, ...over });
+  const attentionRows = [
+    ...queue.map((item) => row({ id: `stuck:${item.clientId}:${item.id}`, kind: "stuck", section: "media", tone: "bad", title: item.title, to: "/queue", action: "Open Transfers", text: item.errorMessage, data: item })),
+    ...cases.map((item) => row({ id: `recovery:movie:${item.id}`, kind: "recovery", section: "media", title: item.title, to: "/queue", action: "Open Transfers", text: `Movies: ${item.summary}`, data: { ...item, mediaType: "movie", status: "open", resolvedUtc: null } })),
+    ...clients.filter((client) => !client.reachable || client.paused || client.warnings > 0).map((client) => row({ id: `client:${client.id}`, kind: "connection", title: `${client.name} isn’t answering`, data: { id: client.id, name: client.name } })),
+    ...summary.health.topProblems.map((problem) => row({ id: `health:${problem.id}`, kind: "health:system", title: problem.title, text: problem.message, data: { id: problem.id, category: "system", name: problem.title, link: "/system" } }))
+  ];
+  await page.route("**/api/attention/summary", (route) => route.fulfill(json({ count: attentionRows.length, rows: attentionRows, notices: [], leftovers: 20, suggestions: 0 })));
   await page.route("**/api/dashboard/summary", (route) => route.fulfill(json(summary)));
   await page.route("**/api/download-clients/telemetry", (route) => route.fulfill(json({ summary: { activeCount: 0, queuedCount: 0, stalledCount: 30, importReadyCount: 0, waitingForProcessorCount: 0 }, clients: [{ clientId: "c1", clientName: "Deluge on MEDIA-SERVER", queue }], capturedUtc: now })));
   await page.route("**/api/movies/import-recovery*", (route) => route.fulfill(json({ openCount: 30, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 30, recentCases: cases })));

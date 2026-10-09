@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { healthProblemActions } from "../../../lib/alert-actions";
+import { serverRow, summaryOf } from "../../../lib/attention-summary-fixtures";
 import { bellRows } from "../../../lib/bell-rows";
-import { computeAttention } from "../attention";
 import { emptySummary } from "../summary-fixtures";
 import { buildHealth } from "./problems";
 
@@ -17,7 +17,7 @@ const MACHINE = [
 
 describe("System's Health and the bell offer the same buttons (#1098)", () => {
   it("every Machine problem's Health row has exactly the buttons the shared definition gives", () => {
-    const model = buildHealth({ summary: emptySummary(), attention: computeAttention(emptySummary()), checks: MACHINE });
+    const model = buildHealth({ summary: emptySummary(), attention: summaryOf([]), checks: MACHINE });
 
     for (const item of MACHINE) {
       const row = model.rows.find((candidate) => candidate.id === `problem:${(item as { id: string }).id}`)!;
@@ -33,8 +33,8 @@ describe("System's Health and the bell offer the same buttons (#1098)", () => {
   it("the bell shows the same labels for the same problem", () => {
     const summary = emptySummary();
     summary.health = { ...summary.health!, problems: 1, topProblems: [{ id: "machine:sleep", title: "Computer sleep", category: "machine", message: "m", sinceUtc: null, link: "/system", snoozed: false }] };
-    const rows = bellRows(computeAttention(summary));
-    const model = buildHealth({ summary, attention: computeAttention(summary), checks: [check("machine:sleep", "Computer sleep")] });
+    const rows = bellRows(summaryOf([serverRow({ id: "health:machine:sleep", kind: "health:machine", title: "Computer sleep", data: { id: "machine:sleep", category: "machine", name: "Computer sleep", link: "/system" } })]));
+    const model = buildHealth({ summary, attention: summaryOf([]), checks: [check("machine:sleep", "Computer sleep")] });
 
     const bell = rows.deluno.find((row) => row.key === "health:machine:sleep")!;
     const health = model.rows.find((row) => row.id === "problem:machine:sleep")!;
@@ -42,7 +42,7 @@ describe("System's Health and the bell offer the same buttons (#1098)", () => {
   });
 
   it("Keep awake sends the settings change, not a navigation", () => {
-    const model = buildHealth({ summary: emptySummary(), attention: computeAttention(emptySummary()), checks: [check("machine:sleep", "Computer sleep")] });
+    const model = buildHealth({ summary: emptySummary(), attention: summaryOf([]), checks: [check("machine:sleep", "Computer sleep")] });
 
     const keepAwake = model.rows.find((row) => row.id === "problem:machine:sleep")!.buttons[0]!;
     expect(keepAwake.to).toBeUndefined();

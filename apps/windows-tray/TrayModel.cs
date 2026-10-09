@@ -106,11 +106,11 @@ public sealed record TrayStatus
 
     public int Port { get; init; } = 7879;
 
-    /// <summary>The bell's "things need a look" count, built from the server's own counts.</summary>
+    /// <summary>
+    /// The bell's "things need a look" count: the server's own attention summary (#1185), the number the bell shows.
+    /// A Health problem is one of its rows, so there is no separate Health flag to disagree with it.
+    /// </summary>
     public int NeedsLookCount { get; init; }
-
-    /// <summary>Health has a problem (a client, indexer or processor that can't be reached, or anything else it flags).</summary>
-    public bool HealthProblem { get; init; }
 
     public bool AutomationPaused { get; init; }
 
@@ -137,7 +137,7 @@ public sealed record TrayStatus
     /// <summary>Apps are still to install; the text is what the item says.</summary>
     public string? InstallAppsText { get; init; }
 
-    public bool NeedsYou => State is TrayState.Error or TrayState.Stopped || HealthProblem || NeedsLookCount > 0;
+    public bool NeedsYou => State is TrayState.Error or TrayState.Stopped || NeedsLookCount > 0;
 }
 
 public static class TrayBadges
@@ -184,7 +184,7 @@ public static class TrayHoverText
                 : string.Create(CultureInfo.InvariantCulture, $"{status.NeedsLookCount} things need a look");
         }
 
-        return status.HealthProblem ? "Health has a problem" : null;
+        return null;
     }
 
     /// <summary>The status words after "Deluno - ", also the greyed status line at the top of the menu.</summary>

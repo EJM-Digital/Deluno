@@ -15,7 +15,6 @@ vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve(new
 
 const { DashboardPage, dashboardShouldRevalidate, tabFromSearch } = await import("./dashboard-page");
 const { queryClient } = await import("../lib/route-cache");
-const { computeAttention } = await import("./dashboard/attention");
 
 function Where() {
   const location = useLocation();
@@ -104,11 +103,6 @@ describe("DashboardPage tabs", () => {
   it("carries no number on either tab, however many things need you: the bell holds the count (#1098)", async () => {
     open("/");
     await screen.findByRole("tab", { name: /^Live/ });
-    // The lists read through fetchJson answer empty here, so the summary's counts stand in for them; plenty needs a person.
-    const none = [] as never;
-    const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
-    expect(attention.counts.system).toBeGreaterThan(0);
-    expect(attention.counts.live).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByRole("tab", { name: /^System/ }).textContent).toBe("System"));
     expect(screen.getByRole("tab", { name: /^Live/ }).textContent).toBe("Live");
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();

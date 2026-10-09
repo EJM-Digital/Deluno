@@ -119,17 +119,18 @@ test.describe("Activity, the bell and the outage banner are live (#1179)", () =>
   test("the bell's count changes when the server says something that needs a person changed", async ({ page }) => {
     test.setTimeout(90_000);
     // A failed job not about a title is one row (cleared on System); one about a title is a second row (cleared on Activity).
-    const failedJob = (n: number) => ({
-      id: `probe-failed-${n}`, jobType: "movies.metadata.refresh", label: "Refresh film details", source: "scheduler", sourceLabel: "The schedule", status: "failed",
-      payloadJson: "{}", attempts: 3, maxAttempts: 3, createdUtc: "2026-10-08T00:00:00Z", scheduledUtc: "2026-10-08T00:00:00Z", startedUtc: "2026-10-08T00:00:00Z",
-      completedUtc: "2026-10-08T00:01:00Z", leasedUntilUtc: null, workerId: null, lastError: "The provider did not answer.", relatedEntityType: n === 0 ? null : "movie",
-      relatedEntityId: n === 0 ? null : `probe-movie-${n}`, idempotencyKey: null, dedupeKey: null, lastAttemptUtc: null, nextAttemptUtc: null
+    // The server builds the rows and the count (#1185); the page asks for them once and again on the push, so the
+    // answer is stood in for by a route and the push itself comes from the real server.
+    const jobRow = (id: string, title: string, to: string, action: string) => ({
+      id, section: "deluno", kind: "jobs", tone: "bad", title, text: "They failed on every attempt.", to, action, count: 1, sinceUtc: null, data: null
     });
     let failing = 1;
-    await page.route("**/api/jobs?**", async (route) => {
-      const failedOnly = route.request().url().includes("failed=true");
-      const items = failedOnly ? Array.from({ length: failing }, (_, n) => failedJob(n)) : [];
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items, hasMore: false, nextPageToken: null }) });
+    await page.route("**/api/attention/summary", async (route) => {
+      const rows = [
+        jobRow("failed-jobs", "1 background job gave up", "/system", "Open System"),
+        ...(failing > 1 ? [jobRow("failed-title-jobs", "1 job about a title gave up", "/activity?status=failed", "Open Activity")] : [])
+      ];
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ count: rows.length, rows, notices: [], leftovers: 0, suggestions: 0 }) });
     });
 
     await authenticateAndNavigate(page, "/system");

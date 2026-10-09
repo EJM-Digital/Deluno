@@ -1,6 +1,6 @@
 using Deluno.Api.Updates;
 using Deluno.Contracts;
-using Deluno.Worker.Dashboard;
+using Deluno.Worker.Attention;
 
 namespace Deluno.Tray.Tests;
 
@@ -48,10 +48,6 @@ public sealed class TrayStandardTests
         => Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(Running() with { State = state }));
 
     [Fact]
-    public void A_health_problem_shows_the_red_dot()
-        => Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(Running() with { HealthProblem = true }));
-
-    [Fact]
     public void Things_that_need_a_look_show_the_red_dot()
         => Assert.Equal(TrayBadge.NeedsYou, TrayBadges.Choose(Running() with { NeedsLookCount = 2 }));
 
@@ -82,10 +78,6 @@ public sealed class TrayStandardTests
     [Fact]
     public void One_thing_reads_as_one_thing()
         => Assert.Equal("Deluno - Running at http://localhost:7879 - 1 thing needs a look", TrayHoverText.Build(Running() with { NeedsLookCount = 1 }));
-
-    [Fact]
-    public void A_health_problem_with_no_count_is_still_said()
-        => Assert.Equal("Deluno - Running at http://localhost:7879 - Health has a problem", TrayHoverText.Build(Running() with { HealthProblem = true }));
 
     [Fact]
     public void Paused_says_paused()
@@ -338,60 +330,6 @@ public sealed class TrayStandardTests
 
     // ------------------------------------------------------------------ the red dot's count
 
-    [Fact]
-    public void The_count_adds_up_each_kind_of_thing_that_needs_a_look()
-    {
-        var inputs = new TrayAttentionInputs(RecoveryOpen: 2, FailedProcessorHandoffs: 1, Stalled: 3, IndexersFailing: 1, InternetOutage: true);
-        Assert.Equal(8, TrayAttention.Total(inputs));
-        Assert.Equal(0, TrayAttention.Total(new TrayAttentionInputs()));
-    }
-
-    [Fact]
-    public void A_health_problem_about_a_connection_is_not_counted_twice()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var health = new[]
-        {
-            Check("indexer:abc", HealthCheckStatuses.Problem),
-            Check("download-client:xyz", HealthCheckStatuses.Problem),
-            Check("library-root:1", HealthCheckStatuses.Problem),
-            Check("disk:c", HealthCheckStatuses.Ok)
-        };
-
-        var attention = TrayAttention.From(summary: null, health, now);
-
-        Assert.Equal(1, attention.Count);
-        Assert.True(attention.HealthProblem);
-    }
-
-    [Fact]
-    public void A_snoozed_problem_is_neither_counted_nor_a_red_dot()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var snoozed = Check("library-root:1", HealthCheckStatuses.Problem) with { SnoozedUntilUtc = now.AddHours(1) };
-
-        var attention = TrayAttention.From(summary: null, [snoozed], now);
-
-        Assert.Equal(0, attention.Count);
-        Assert.False(attention.HealthProblem);
-    }
-
-    [Fact]
-    public void The_count_reads_the_summarys_own_numbers()
-    {
-        var summary = new DashboardSummary(
-            DateTimeOffset.UtcNow, 0, [], null, null, null,
-            new DashboardImportsSection(DateTimeOffset.UtcNow, 4, new Dictionary<string, int>(), 2, 1),
-            null, null, null, null, null, null, null, null, null, null, null);
-
-        var inputs = TrayAttention.InputsFrom(summary, []);
-
-        Assert.Equal(4, inputs.RecoveryOpen);
-        Assert.Equal(2, inputs.FailedImportJobs);
-        Assert.Equal(1, inputs.FailedProcessorHandoffs);
-        Assert.Equal(7, TrayAttention.Total(inputs));
-    }
-
     // ------------------------------------------------------------------ a check that failed says so (#1185)
 
     [Fact]
@@ -437,77 +375,51 @@ public sealed class TrayStandardTests
         Assert.Contains("12 things need a look", text);
     }
 
-    // ------------------------------------------- the tray and the bell count the same kinds of thing (#1185)
+    // ------------------------------------------- the tray and the bell count with one function (#1185)
 
-    private sealed record Category(string Id, string? Tray);
-
-    /// <summary>docs/attention-categories.json, the one list the bell's tests read too.</summary>
-    private static List<Category> SharedCategories()
+    /// <summary>The attention summary service, standing in for the real one; it records every time it is asked.</summary>
+    private sealed class FakeAttention(int count) : IAttentionSummaryService, IServiceProvider
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Deluno.slnx")))
+        public List<bool> Asked { get; } = [];
+
+        public Task<AttentionSummary> GetAsync(bool fresh, CancellationToken cancellationToken)
         {
-            directory = directory.Parent;
+            Asked.Add(fresh);
+            var rows = Enumerable.Range(0, count)
+                .Select(i => new AttentionRow($"row{i}", "deluno", "health:system", "warn", "Row", "Text", "/system", "Open System", 1, null, null))
+                .ToArray();
+            // A notice is listed but never part of the number.
+            var notice = new AttentionRow("update", "deluno", "update", "warn", "A new version is ready", "Text", "/system/updates", "Open Updates", 1, null, null);
+            return Task.FromResult(new AttentionSummary(count, rows, [notice], 0, 0));
         }
 
-        Assert.NotNull(directory);
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(directory!.FullName, "docs", "attention-categories.json")));
-        return json.RootElement.GetProperty("categories").EnumerateArray()
-            .Select(item => new Category(
-                item.GetProperty("id").GetString()!,
-                item.GetProperty("tray").ValueKind == System.Text.Json.JsonValueKind.Null ? null : item.GetProperty("tray").GetString()))
-            .ToList();
+        public object? GetService(Type serviceType) => serviceType == typeof(IAttentionSummaryService) ? this : null;
     }
 
     [Fact]
-    public void Every_count_the_tray_adds_is_in_the_shared_list_and_every_one_in_the_list_is_counted()
+    public async Task The_trays_number_is_the_servers_count_and_nothing_added_up_by_the_tray()
     {
-        var listed = SharedCategories().Where(c => c.Tray is not null).Select(c => c.Tray!).Order().ToList();
-        var counted = typeof(TrayAttentionInputs).GetProperties().Select(p => p.Name).Order().ToList();
+        var server = new FakeAttention(15);
 
-        Assert.Equal(counted, listed);
-        Assert.Equal(listed.Count, listed.Distinct().Count());
+        var count = await TrayAttentionWatcher.CountAsync(server);
+
+        Assert.Equal(15, count);
+        // The tray asks for a fresh reading, because a push said something moved.
+        Assert.Equal([true], server.Asked);
     }
 
     [Fact]
-    public void One_of_each_counted_kind_adds_up_to_the_shared_lists_number()
+    public async Task The_bell_and_the_tray_read_the_same_function_and_get_the_same_number()
     {
-        var expected = SharedCategories().Count(c => c.Tray is not null);
-        var values = typeof(TrayAttentionInputs).GetConstructors().Single().GetParameters()
-            .Select(p => p.ParameterType == typeof(bool) ? (object)true : 1).ToArray();
-        var inputs = (TrayAttentionInputs)Activator.CreateInstance(typeof(TrayAttentionInputs), values)!;
+        var server = new FakeAttention(18);
 
-        Assert.Equal(expected, TrayAttention.Total(inputs));
+        var bell = await AttentionEndpoints.SummaryAsync(server, CancellationToken.None);
+        var tray = await TrayAttentionWatcher.CountAsync(server);
+
+        Assert.Equal(bell.Count, tray);
+        Assert.Equal(bell.Rows.Sum(row => row.Count), tray);
+        Assert.Equal(2, server.Asked.Count);
+        // Update notices are listed for the bell but are in neither number.
+        Assert.Single(bell.Notices);
     }
-
-    [Fact]
-    public void The_same_data_as_the_bells_fixture_gives_the_shared_lists_number()
-    {
-        // The same one-of-each situation the bell's test builds (apps/web/src/routes/dashboard/attention.test.ts).
-        var now = DateTimeOffset.UtcNow;
-        var empty = new Dictionary<string, int>();
-        var summary = new DashboardSummary(
-            now, 0, [],
-            Library: new DashboardLibrarySection(now, null!, null!, 0, [], null!, new DashboardCollections(1, 1, 0, 0, 1, null)),
-            Downloads: new DashboardDownloadsSection(now, true, now, 0, 0, 1, 0, 0, 0, 0, 0,
-                [new DashboardClientRow("c1", "Client", "torrent", false, null, null, 0, null, "failing", 0, 0)],
-                0, 0, new DashboardLeftovers(false, 0, 0, null), 0),
-            Pipeline: null,
-            Imports: new DashboardImportsSection(now, 1, empty, 1, 1),
-            Automation: new DashboardAutomationSection(now, true, new DashboardQueuePauseGate(true, 5, false, false, 0, 0, true, "unread"), [], null, []),
-            Indexers: new DashboardIndexersSection(now, 1, 0, 1, 0, 0, 0, 0, 0, []),
-            Processors: new DashboardProcessorsSection(now, 1, 0, 1, 0, 0),
-            Retention: null, Subtitles: null,
-            Requests: new DashboardRequestsSection(now, 1, 0, 1, empty, 0, empty, 0),
-            Blocklist: null, Health: null, Storage: null,
-            System: new DashboardSystemSection(now, "1", false, null, 0, null, new DashboardJobCounts(0, 0, 2), [new DashboardLane("Searching", "failing", 0, null)], null, null, false, true, now),
-            Activity: null);
-
-        var attention = TrayAttention.From(summary, [Check("library-root:1", HealthCheckStatuses.Problem)], now, noAcceptableRelease: 1);
-
-        Assert.Equal(SharedCategories().Count(c => c.Tray is not null), attention.Count);
-    }
-
-    private static HealthCheckResultItem Check(string id, string status)
-        => new(id, "category", "name", status, "message", null, null, null, DateTimeOffset.UtcNow, null, null);
 }
