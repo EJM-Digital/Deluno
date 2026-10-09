@@ -101,6 +101,67 @@ public sealed class AnImportedDownloadWhoseFileLeftTheLibraryTests
         Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(result.Queue).Status);
     }
 
+    // Rig, 9 Oct (#1200): Dismiss on a "download was gone" row made the download read "Ready to import" in Transfers and the Dashboard.
+    [Fact]
+    public async Task A_dismissed_source_gone_hand_off_reads_as_closed_history_never_Ready_to_import()
+    {
+        var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
+            Snapshot(DownloadQueueStatuses.Imported),
+            [Dispatch(importStatus: "imported", created: Imported.AddMinutes(-3))],
+            new Files(false),
+            CancellationToken.None,
+            [GoneHandoff("dismissed")]);
+
+        Assert.Equal(DownloadQueueStatuses.FilesGone, Assert.Single(result.Queue).Status);
+    }
+
+    [Fact]
+    public async Task A_dismissed_source_gone_hand_off_followed_by_a_new_send_is_a_new_attempt()
+    {
+        var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
+            Snapshot(DownloadQueueStatuses.Imported),
+            [Dispatch(importStatus: "imported", created: Imported.AddMinutes(-3)), Dispatch(importStatus: null, created: SentAgain)],
+            new Files(false),
+            CancellationToken.None,
+            [GoneHandoff("dismissed")]);
+
+        Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(result.Queue).Status);
+    }
+
+    [Fact]
+    public void Only_a_dismissed_hand_off_with_the_source_gone_sentence_is_closed_as_gone()
+    {
+        Assert.True(DownloadAttempts.SourceGoneClosed(GoneHandoff("dismissed")));
+        Assert.False(DownloadAttempts.SourceGoneClosed(GoneHandoff("source-gone")));
+        Assert.False(DownloadAttempts.SourceGoneClosed(Handoff("dismissed", null)));
+    }
+
+    // #1200: the client still lists the download as done, but its files are not on disk.
+    [Fact]
+    public void A_download_listed_as_done_whose_files_are_not_on_disk_says_its_files_are_gone()
+    {
+        var result = DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+            Snapshot(DownloadQueueStatuses.ImportReady), path => path.Replace((char)92, (char)47) == "/downloads");
+
+        var item = Assert.Single(result.Queue);
+        Assert.Equal(DownloadQueueStatuses.FilesGone, item.Status);
+        Assert.False(string.IsNullOrWhiteSpace(item.ErrorMessage));
+    }
+
+    [Fact]
+    public void A_download_whose_files_are_there_or_whose_folder_cannot_be_seen_is_left_alone()
+    {
+        Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+            Snapshot(DownloadQueueStatuses.ImportReady), _ => true).Queue).Status);
+        Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+            Snapshot(DownloadQueueStatuses.ImportReady), _ => false).Queue).Status);
+        Assert.Equal(DownloadQueueStatuses.Downloading, Assert.Single(DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+            Snapshot(DownloadQueueStatuses.Downloading), path => path.Replace((char)92, (char)47) == "/downloads").Queue).Status);
+    }
+
+    private static ProcessorHandoffItem GoneHandoff(string status)
+        => Handoff(status, null) with { FailureMessage = ProcessorFailureClasses.SourceGoneMessage("Weir") };
+
     private static JobQueueItem Job(string id, string status)
         => new(id, "filesystem.import.execute", "processor", status, null, 1, Imported, Imported, Imported, Imported, null, null, null, null, null, null, null, 3, Imported, null);
 

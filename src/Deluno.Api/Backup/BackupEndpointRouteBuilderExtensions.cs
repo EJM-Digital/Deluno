@@ -114,7 +114,8 @@ public static class BackupEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var status = await orchestrator.CheckForUpdatesAsync(cancellationToken);
-            return Results.Ok(new UpdateActionResponse(true, "Checked for updates.", status));
+            // #1200: a check that could not run says so, in the feed's own sentence, never "Checked for updates.".
+            return Results.Ok(new UpdateActionResponse(true, UpdateCheckWording.Say(status), status));
         });
 
         update.MapPost("/download", async (
@@ -152,4 +153,15 @@ public static class BackupEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+}
+
+/// <summary>What a manual update check says it did (#1200).</summary>
+public static class UpdateCheckWording
+{
+    public static string Say(UpdateStatusResponse status)
+        => string.Equals(status.State, "error", StringComparison.OrdinalIgnoreCase)
+            ? (status.Message.StartsWith("Couldn't check for updates", StringComparison.Ordinal)
+                ? status.Message
+                : "Couldn't check for updates.")
+            : "Checked for updates.";
 }

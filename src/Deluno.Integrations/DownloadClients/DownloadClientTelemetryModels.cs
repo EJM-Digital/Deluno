@@ -250,6 +250,12 @@ public static class DownloadQueueStatuses
     /// nothing will import this download again (#1182). History, never an active import: not "In library".
     /// </summary>
     public const string ImportedFileLeft = "importedFileLeft";
+
+    /// <summary>
+    /// The download's files are gone: the client still lists it as done but its files are not on disk (#1200), or
+    /// its hand-off ended because they were gone and was dismissed. History or a problem to clear, never ready to import.
+    /// </summary>
+    public const string FilesGone = "filesGone";
     public const string ImportFailed = "importFailed";
     public const string Completed = "completed";
 
