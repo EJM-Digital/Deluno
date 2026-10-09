@@ -24,7 +24,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         "torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc, " +
         "import_completed_utc, imported_file_path, import_failure_code, " +
         "import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count, " +
-        "client_completed_utc, decision_quality, decision_custom_format_score, decision_language, indexer_id, started_by, started_by_detail";
+        "client_completed_utc, decision_quality, decision_custom_format_score, decision_language, indexer_id, started_by, started_by_detail, " +
+        "imported_file_bytes";
 
     /// <summary>
     /// The largest notes / grab-response JSON a list keeps (#1081). Above it the
@@ -286,7 +287,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         string? importFailureCode,
         string? importFailureMessage,
         CancellationToken cancellationToken,
-        IntegrationFailure? failure = null)
+        IntegrationFailure? failure = null,
+        long? importedFileBytes = null)
     {
         var now = timeProvider.GetUtcNow();
         importStatus = NormalizeImportStatus(importStatus);
@@ -326,6 +328,7 @@ public sealed class SqliteDownloadDispatchesRepository(
                         ELSE import_completed_utc
                     END,
                     imported_file_path = @importedFilePath,
+                    imported_file_bytes = @importedFileBytes,
                     import_failure_code = @importFailureCode,
                     import_failure_message = @importFailureMessage,
                     import_failure_json = @importFailureJson
@@ -337,6 +340,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             AddParameter(command, "@importDetectedUtc", now.ToString("O"));
             AddParameter(command, "@importCompletedUtc", now.ToString("O"));
             AddParameter(command, "@importedFilePath", importedFilePath);
+            AddParameter(command, "@importedFileBytes", importedFileBytes);
             AddParameter(command, "@importFailureCode", importFailureCode);
             AddParameter(command, "@importFailureMessage", importFailureMessage);
             AddParameter(
@@ -1149,7 +1153,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             DecisionLanguage: reader.IsDBNull(35) ? null : reader.GetString(35),
             IndexerId: reader.IsDBNull(36) ? null : reader.GetString(36),
             StartedBy: reader.IsDBNull(37) ? null : reader.GetString(37),
-            StartedByDetail: reader.IsDBNull(38) ? null : reader.GetString(38));
+            StartedByDetail: reader.IsDBNull(38) ? null : reader.GetString(38),
+            ImportedFileBytes: reader.IsDBNull(39) ? null : reader.GetInt64(39));
 
         return dispatch with
         {
