@@ -62,6 +62,18 @@ async function renameOnRead(page: Page, movieId: string, renamed: { to: string |
   });
 }
 
+/**
+ * Waits until the page has joined the Dashboard subject, the one the shelf and the Calendar listen on (and the app shell
+ * shares). An announcement made before that reaches nobody (#1191), so the announcement is sent once, after this.
+ */
+async function joinedDashboard(page: Page) {
+  // Exactly one connection (this page's: the one from the page it replaced has gone) and it is in the Dashboard subject.
+  await expect.poll(async () => {
+    const seen = (await server(page, "/api/testing/realtime/watchers")).json as { connections: number; dashboard: number };
+    return seen.connections === 1 && seen.dashboard === 1;
+  }, { timeout: 20_000, message: "the page never became the one connection in the dashboard subject" }).toBe(true);
+}
+
 function countNavigations(page: Page) {
   const state = { count: 0 };
   page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) state.count += 1; });
@@ -125,14 +137,10 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
 
     // Cause of the flake (#1191): the card is on screen before the page has joined the subject the server announces on (the
     // connection opens after the first paint), so an announcement made at once reached nobody and the card never changed.
-    // The shelf joins the Dashboard subject, shared with the app shell, so a watcher count cannot say this page is in it. Say
-    // it again until the card changes; every announcement is the same change, so repeating one proves nothing less.
+    await joinedDashboard(page);
     renamed.to = `Live shelf movie renamed ${stamp}`;
-    const renamedCard = page.getByText(`Live shelf movie renamed ${stamp}`).first();
-    await expect.poll(async () => {
-      expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: movieId })).status).toBe(204);
-      return renamedCard.isVisible();
-    }, { timeout: 30_000, intervals: [500, 1_000, 1_500, 2_000] }).toBe(true);
+    expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: movieId })).status).toBe(204);
+    await expect(page.getByText(`Live shelf movie renamed ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(`Live shelf movie ${stamp}`, { exact: true })).toHaveCount(0);
 
     expect(navigations.count, "the page reloaded or navigated").toBe(afterLoad);
@@ -157,13 +165,10 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
     const afterLoad = navigations.count;
 
     shown.title = `Calendar probe added ${stamp}`;
-    // Cause of the flake (#1191): same as the shelf above. The list is on screen before the page has joined the Dashboard
-    // subject, so an announcement made at once reached nobody. Say the same change again until the page shows it.
-    const added = page.getByText(`Calendar probe added ${stamp}`).first();
-    await expect.poll(async () => {
-      expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: "calendar-probe" })).status).toBe(204);
-      return added.isVisible();
-    }, { timeout: 30_000, intervals: [500, 1_000, 1_500, 2_000] }).toBe(true);
+    // Cause of the flake (#1191): same as the shelf above. Join first, then announce once.
+    await joinedDashboard(page);
+    expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: "calendar-probe" })).status).toBe(204);
+    await expect(page.getByText(`Calendar probe added ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
 
     expect(navigations.count, "the page reloaded or navigated").toBe(afterLoad);
   });
