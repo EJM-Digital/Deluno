@@ -179,6 +179,12 @@ public sealed class TrackerDefinitionUpdateService(
         {
             throw;
         }
+        catch (Deluno.Infrastructure.Http.GitHubRateLimitException limit)
+        {
+            // GitHub's hourly allowance is used up (#1181): not an unreachable source. Say so, and when it lifts.
+            logger.LogWarning("Tracker definition update stopped by GitHub's limit: {Message}", limit.Message);
+            return await store.SaveFailureAsync(limit.Message, checkedUtc, cancellationToken);
+        }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Tracker definition update could not complete.");

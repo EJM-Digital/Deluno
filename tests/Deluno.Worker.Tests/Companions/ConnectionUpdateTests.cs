@@ -328,6 +328,22 @@ public sealed class ConnectionUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task Weir_is_found_through_the_release_feed_first_and_the_API_is_never_asked_when_the_feed_works()
+    {
+        var setupBytes = new byte[5_100_000];
+        Random.Shared.NextBytes(setupBytes);
+        using var weir = new TinyWeir();
+        var system = WeirSystem(weir.Port);
+        var requested = new List<string>();
+        var tool = NewWeir(system.Object, Hash(setupBytes), setupBytes, apiLimited: false, requested: requested);
+
+        await tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None);
+
+        Assert.DoesNotContain(requested, url => url.Contains("api.github.com", StringComparison.Ordinal));
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirSetupAsset}", requested);
+    }
+
+    [Fact]
     public async Task The_feed_fallback_keeps_the_checksum_check_as_strict_and_never_runs_a_mismatched_installer()
     {
         var setupBytes = new byte[5_100_000];

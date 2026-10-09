@@ -11,6 +11,8 @@ export interface ConnectionVersion {
   updateAvailable: boolean;
   /** The release page of `latestVersion`, only when an update is available. */
   releaseUrl: string | null;
+  /** When GitHub's hourly limit, which stopped the read of the newest release, lifts (an instant in UTC); null when nothing is stopped (#1181). */
+  latestCheckPausedUntilUtc?: string | null;
 }
 
 export type ConnectionVersions = ReadonlyMap<string, ConnectionVersion>;
