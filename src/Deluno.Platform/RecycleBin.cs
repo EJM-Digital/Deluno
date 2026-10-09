@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -77,6 +78,22 @@ public interface ITitleRestorer
     /// </summary>
     Task<TitleRestoreOutcome> RelinkFileAsync(RecycleBinItem restored, RecycleBinFileOwner owner, CancellationToken cancellationToken)
         => Task.FromResult(new TitleRestoreOutcome(false, string.Empty));
+
+    /// <summary>
+    /// The same, for a file whose bin item recorded no owner (binned before
+    /// every writer recorded one, #1189): the owner is found from the file's
+    /// original library path, and the outcome says plainly when none is found.
+    /// </summary>
+    Task<TitleRestoreOutcome> RelinkUnownedFileAsync(RecycleBinItem restored, CancellationToken cancellationToken)
+        => Task.FromResult(new TitleRestoreOutcome(false, string.Empty));
+
+    /// <summary>
+    /// Which film or episode a library file belongs to, found from its path
+    /// (#1189). The recycle bin asks this for every file it takes, so no writer
+    /// has to remember to name the owner. Null when none can be found.
+    /// </summary>
+    Task<RecycleBinFileOwner?> FindFileOwnerAsync(string libraryId, string mediaType, string path, CancellationToken cancellationToken)
+        => Task.FromResult<RecycleBinFileOwner?>(null);
 }
 
 /// <param name="Items">Exactly what a manual empty would take, in the order it would take it.</param>
@@ -171,7 +188,8 @@ public sealed class RecycleBinService(
     IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
     ILogger<RecycleBinService> logger,
-    IRealtimeEventPublisher? realtime = null)
+    IRealtimeEventPublisher? realtime = null,
+    IServiceScopeFactory? scopeFactory = null)
     : IRecycleBinService
 {
     private const int DefaultRetentionDays = 30;
@@ -262,6 +280,8 @@ public sealed class RecycleBinService(
                     continue;
                 }
 
+                // #1189: every file taken names its owner, found while the title still has it.
+                var owner = unit.IsDirectory ? null : await FindOwnerAsync(unit.Library, unit.OriginalPath, cancellationToken);
                 var id = Guid.CreateVersion7().ToString("N");
                 var holdingRoot = HoldingRoot(unit.Library.RootPath!);
                 var itemRoot = Path.Combine(holdingRoot, id);
@@ -290,7 +310,8 @@ public sealed class RecycleBinService(
                         IsDirectory: unit.IsDirectory,
                         SizeBytes: sizeBytes,
                         CreatedUtc: now,
-                        ExpiresUtc: now.AddDays(state.Settings.RetentionDays));
+                        ExpiresUtc: now.AddDays(state.Settings.RetentionDays),
+                        FileOwner: unit.IsDirectory ? null : owner);
                     state.Items.Add(item);
                     moved.Add(item);
                 }
@@ -355,6 +376,42 @@ public sealed class RecycleBinService(
         return await StoreFileAsync(library, full, full, owner, cancellationToken);
     }
 
+    private async Task<RecycleBinFileOwner?> FindOwnerAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (scopeFactory is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            foreach (var restorer in scope.ServiceProvider.GetServices<ITitleRestorer>())
+            {
+                if (!restorer.Handles(library.MediaType))
+                {
+                    continue;
+                }
+
+                var owner = await restorer.FindFileOwnerAsync(library.Id, library.MediaType, path, cancellationToken);
+                if (owner is not null)
+                {
+                    return owner;
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Naming the owner is a help for Restore, never a reason to keep a file from the bin.
+            logger.LogDebug(exception, "Could not find which title {Path} belongs to.", path);
+        }
+
+        return null;
+    }
+
     private async Task<RecycleBinItem?> StoreFileAsync(
         Libraries.Contracts.LibraryItem library,
         string originalPath,
@@ -370,6 +427,8 @@ public sealed class RecycleBinService(
                 return null;
             }
 
+            // #1189: whoever moves a file, the bin records which film or episode it belonged to.
+            owner ??= await FindOwnerAsync(library, originalPath, cancellationToken);
             var state = await ReadStateAsync(cancellationToken);
             var id = Guid.CreateVersion7().ToString("N");
             var holdingRoot = HoldingRoot(library.RootPath);
