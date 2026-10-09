@@ -5,6 +5,7 @@
  * is down), so the "N need you" on This instance is exactly the number of problem rows here.
  */
 import type { DashboardSummary, HealthCheckResultItem } from "../../../lib/api";
+import { isHealthCheckSnoozed } from "../../../lib/health-snooze";
 import { healthProblemActions, jobsGaveUpActions, screenLinkActions, STARTUP_PROBLEM_PREFIX, type AlertAction } from "../../../lib/alert-actions";
 import type { AttentionSummary } from "../../../lib/attention-summary";
 import { plainWords } from "../downloads-kit";
@@ -72,7 +73,7 @@ export interface HealthModel {
   lastRunUtc: string | null;
 }
 
-const isSnoozed = (check: HealthCheckResultItem) => check.snoozedUntilUtc !== null && Date.parse(check.snoozedUntilUtc) > Date.now();
+const isSnoozed = (check: HealthCheckResultItem) => isHealthCheckSnoozed(check);
 
 export function buildHealth(args: { summary: DashboardSummary | undefined; attention: AttentionSummary; checks: HealthCheckResultItem[] | undefined }): HealthModel {
   const { summary, attention, checks } = args;

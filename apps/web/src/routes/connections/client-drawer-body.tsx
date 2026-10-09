@@ -49,7 +49,9 @@ export function ClientDrawerBody({
   blocklistSync,
   routeOnAdd = true,
   onRouteOnAddChange = () => {},
-  versionLine
+  versionLine,
+  warnings,
+  onClearWarnings
 }: {
   form: ClientForm;
   setForm: (updater: (current: ClientForm) => ClientForm) => void;
@@ -71,6 +73,9 @@ export function ClientDrawerBody({
   onRouteOnAddChange?: (value: boolean) => void;
   /** The client's own version, in full (the list row cuts it short on a phone). */
   versionLine?: string;
+  /** The client's own queue-level warnings (SABnzbd's), which Deluno can clear through the client's API (#1193). */
+  warnings?: string[];
+  onClearWarnings?: () => void;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -122,6 +127,20 @@ export function ClientDrawerBody({
       {editing && versionLine ? (
         <DrawerSection title="Version">
           <p className="break-words text-(length:--type-body-sm) text-foreground">{versionLine}</p>
+        </DrawerSection>
+      ) : null}
+      {editing && warnings?.length ? (
+        <DrawerSection title="Warnings from the client">
+          {warnings.map((warning) => (
+            <p key={warning} className="break-words text-(length:--type-body-sm) text-foreground">{warning}</p>
+          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" aria-label={`Clear all of ${editing.name}'s warnings`} disabled={busy !== null || !onClearWarnings} onClick={() => onClearWarnings?.()}>
+              {busy === `warnings:clear:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Clear warnings
+            </Button>
+            <span className="text-(length:--type-caption) text-muted-foreground">Clears them in the client itself, so they do not come back.</span>
+          </div>
         </DrawerSection>
       ) : null}
       {editing ? <ConnectionUpdatePanel kind="downloadClient" id={editing.id} /> : null}

@@ -257,10 +257,12 @@ public static class AttentionSummaryBuilder
 
         foreach (var client in clients)
         {
+            // Warnings are cleared in the client's own drawer, through the client's API (#1193).
+            var warningsOnly = client.Reachable && client.Paused != true;
             rows.Add(new AttentionRow($"client:{client.Id}", Deluno, "connection", Warn,
                 !client.Reachable ? $"{client.Name} isn’t answering" : client.Paused == true ? $"{client.Name} is paused" : $"{client.Name} has warnings",
-                !client.Reachable ? "Downloads can’t start there until it answers." : client.Paused == true ? "Nothing downloads there while it is paused." : "The download client reported something to clear.",
-                "/system", "Open System", 1, null, new { id = client.Id, name = client.Name }));
+                !client.Reachable ? "Downloads can’t start there until it answers." : client.Paused == true ? "Nothing downloads there while it is paused." : "The download client reported something to clear. Open it to read the warnings and clear them.",
+                warningsOnly ? ConnectionLink("downloadClient", client.Id) : "/system", warningsOnly ? "Clear warnings" : "Open System", 1, null, new { id = client.Id, name = client.Name }));
         }
 
         foreach (var processor in processors)

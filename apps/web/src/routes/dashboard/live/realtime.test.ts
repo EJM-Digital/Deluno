@@ -21,6 +21,19 @@ describe("pushed Live events, applied to the lists the board reads", () => {
     expect(handoffStatusOf("passed-through")).toBe("completed");
   });
 
+  it("moves a download's row from failed to waiting the moment Try again is pushed, and back when the result is a failure (#1193)", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(sharedSources.telemetry.key, { clients: [{ clientId: "c", queue: [{ id: "q1", status: "processingFailed", errorMessage: "boom" }, { id: "q2", status: "downloading", errorMessage: null }] }] });
+    applyHandoffChanged(qc, { handoffId: "h1", queueItemId: "q1", libraryId: null, releaseName: "A", state: "waiting", processorName: "Cleaner", message: null, at });
+    const queue = () => qc.getQueryData<{ clients: Array<{ queue: Array<{ id: string; status: string; errorMessage: string | null }> }> }>(sharedSources.telemetry.key)!.clients[0]!.queue;
+    expect(queue()[0]).toMatchObject({ status: "waitingForProcessor", errorMessage: null });
+    applyHandoffChanged(qc, { handoffId: "h1", queueItemId: "q1", libraryId: null, releaseName: "A", state: "failed", processorName: "Cleaner", message: "No.", at });
+    expect(queue()[0]!.status).toBe("processingFailed");
+    // A download that is not waiting on a processor is never rewritten by a hand-off push.
+    applyHandoffChanged(qc, { handoffId: "h2", queueItemId: "q2", libraryId: null, releaseName: "B", state: "waiting", processorName: null, message: null, at });
+    expect(queue()[1]!.status).toBe("downloading");
+  });
+
   it("marks a sent download imported, adds a new grab, and drops an archived one", () => {
     const qc = new QueryClient();
     qc.setQueryData(sharedSources.dispatches.key, [{ id: "d1", releaseName: "A", importCompletedUtc: null }]);

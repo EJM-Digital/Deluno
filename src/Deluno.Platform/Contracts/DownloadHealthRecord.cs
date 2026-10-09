@@ -194,9 +194,15 @@ public static class DownloadHealthStrikes
     /// library's "if processing fails" choice, or the person, may act on it.
     /// </summary>
     public static bool IsFinishedOrHandedOff(string? status, double progressPercent)
-        => progressPercent >= 100d ||
+        => progressPercent >= FinishingPercent ||
            status is "completed" or "importReady" or "processing" or "processed" or "processingFailed"
                or "waitingForProcessor" or "notHandedOver" or "handedOverElsewhere" or "importQueued" or "imported" or "importFailed";
+
+    /// <summary>
+    /// From here a download is finishing, not stalling (#1193): a screen shows it as 100%, so "Stalled" beside 100%
+    /// told a person nothing true. A client that still says stalled here is only closing the last few blocks.
+    /// </summary>
+    public const double FinishingPercent = 99.99d;
 
     /// <summary>
     /// The one kind of finding that may still act on a finished download: a

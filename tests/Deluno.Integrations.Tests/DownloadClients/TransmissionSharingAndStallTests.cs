@@ -47,6 +47,14 @@ public sealed class TransmissionSharingAndStallTests
     }
 
     [Fact]
+    public async Task IsStalled_on_a_torrent_with_almost_nothing_left_is_finishing_not_stalled()
+    {
+        var finishing = await Snapshot(status: 4, percentDone: 0.99995, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
+
+        Assert.Equal(DownloadQueueStatuses.Downloading, finishing.Status);
+    }
+
+    [Fact]
     public async Task IsStalled_false_leaves_an_actively_downloading_torrent_alone()
     {
         var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false);
