@@ -35,6 +35,43 @@ export function isWithProcessor(status: string) {
 /** Mirrors `ProcessorHandoffStatuses.SourceGone`: the download was gone before the processor could clean it (#1186). */
 export const SOURCE_GONE = "source-gone";
 
+/** What a hand-off's status says in words, on Transfers and on the Dashboard alike (#1186): one map, never two. */
+export function handoffStatusLabel(status: string) {
+  switch (status.toLowerCase()) {
+    case "waiting":
+      return "Waiting to submit";
+    case "submitted":
+      return "Submitted to connector";
+    case "accepted":
+      return "Accepted by connector";
+    case "started":
+      return "Processing media";
+    case "completed":
+      return "Output received";
+    case "timed-out":
+    case "timeout":
+      return "Timed out";
+    case "failed":
+      return "Processing failed";
+    case "rejected":
+      return "Rejected · searching again";
+    case "stalled":
+      return "Stalled";
+    case "lost":
+      return "Processor has no record";
+    case "cancelled":
+      return "Cancelled";
+    case "source-gone":
+      return "Download gone";
+    case "released":
+      return "Importing the original";
+    case "dismissed":
+      return "Dismissed";
+    default:
+      return status || "Waiting";
+  }
+}
+
 export function isProcessorFailure(status: string) {
   return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled", SOURCE_GONE].includes(status.toLowerCase());
 }

@@ -59,6 +59,30 @@ public sealed class ProcessorHandoffQueueStatusTests
     }
 
     [Theory]
+    [InlineData("completed", DownloadQueueStatuses.Imported)]
+    [InlineData("failed", DownloadQueueStatuses.ImportReady)]
+    [InlineData("requeued", DownloadQueueStatuses.ImportReady)]
+    public void A_dismissed_hand_off_reads_imported_only_when_the_shared_import_ran_rule_says_so(string jobStatus, string expected)
+    {
+        Assert.Equal(
+            expected,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("dismissed", "job-1"), Jobs(("job-1", jobStatus)), DownloadQueueStatuses.ImportReady));
+    }
+
+    [Theory]
+    [InlineData("queued", true)]
+    [InlineData("running", true)]
+    [InlineData("requeued", true)]
+    [InlineData("Requeued", true)]
+    [InlineData("completed", false)]
+    [InlineData("failed", false)]
+    [InlineData(null, false)]
+    public void One_list_says_which_import_job_statuses_are_still_in_flight(string? status, bool inFlight)
+    {
+        Assert.Equal(inFlight, DownloadAttempts.ImportJobInFlight(status));
+    }
+
+    [Theory]
     [InlineData("rejected")]
     [InlineData("timed-out")]
     [InlineData("stalled")]
@@ -98,6 +122,7 @@ public sealed class ProcessorHandoffQueueStatusTests
     [Theory]
     [InlineData("queued", DownloadQueueStatuses.ImportQueued)]
     [InlineData("running", DownloadQueueStatuses.ImportQueued)]
+    [InlineData("requeued", DownloadQueueStatuses.ImportQueued)]
     [InlineData("completed", DownloadQueueStatuses.Imported)]
     [InlineData("failed", DownloadQueueStatuses.ImportFailed)]
     public void The_import_job_decides_once_the_processor_is_done(string jobStatus, string expected)

@@ -92,7 +92,7 @@ public sealed class HandledProblemsSettlerTests
         Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
         processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno removed that download itself"));
+        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno had already closed that download"));
     }
 
     [Fact]
