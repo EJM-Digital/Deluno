@@ -1345,27 +1345,41 @@ public sealed class DownloadClientTelemetryService(
 
         try
         {
-            var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
-            if (dispatch is not null)
+            // Every open record for this download closes, not only the newest: one release sent twice shares
+            // its hash, and the older record left open kept the title "already downloading" (#1190).
+            var openDispatches = await dispatchesRepository.FindOpenDispatchesByHashAsync(client.Id, queueItemId, cancellationToken);
+            var dispatch = openDispatches.FirstOrDefault();
+            foreach (var open in openDispatches)
             {
-                if (dispatchProblemLog is not null)
-                {
-                    await dispatchProblemLog.RecordAcknowledgedAsync(dispatch.Id, "vanished-downloading", cancellationToken);
-                }
-
                 // Deluno took this download out of the client itself, so its record is closed with it. Left
                 // open, the title kept reading "downloading ... on its way", a new pick said "already
-                // downloading" and the activity row never ended (golden path, rc.30.9).
+                // downloading" and the activity row never ended (golden path, rc.30.9). Closed first, so a
+                // later step that fails cannot leave the title looking busy.
                 await dispatchesRepository.ArchiveDispatchAsync(
-                    dispatch.Id, $"Deluno removed this download from {client.Name}.", cancellationToken);
+                    open.Id, $"Deluno removed this download from {client.Name}.", cancellationToken);
 
-                // What was open about a download that is gone has nothing left to answer: the recovery cases
-                // written for it close, and a hand-off that ended badly stops asking for a decision.
-                if (recoveryHandler is not null)
+                try
                 {
-                    await recoveryHandler.HandleDispatchSettledAsync(dispatch.Id, $"Deluno removed this download from {client.Name} itself.", cancellationToken);
-                }
+                    if (dispatchProblemLog is not null)
+                    {
+                        await dispatchProblemLog.RecordAcknowledgedAsync(open.Id, "vanished-downloading", cancellationToken);
+                    }
 
+                    // What was open about a download that is gone has nothing left to answer: the recovery cases
+                    // written for it close, and a hand-off that ended badly stops asking for a decision.
+                    if (recoveryHandler is not null)
+                    {
+                        await recoveryHandler.HandleDispatchSettledAsync(open.Id, $"Deluno removed this download from {client.Name} itself.", cancellationToken);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Bookkeeping only: the record is already closed.
+                }
+            }
+
+            if (dispatch is not null)
+            {
                 var handoff = await processorRepository.FindProcessorHandoffForDownloadAsync(client.Id, queueItemId, cancellationToken);
                 if (handoff is not null && ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
                 {
