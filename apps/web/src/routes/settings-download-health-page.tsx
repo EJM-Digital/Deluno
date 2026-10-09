@@ -62,21 +62,21 @@ import { useDisplayPreferences } from "../lib/display-preferences";
 const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
     label: "No progress",
-    description: "Nothing has arrived at all, whatever the client's other numbers say."
+    description: "Nothing has arrived since the last check, at any percent. Each check with no progress adds a strike; the first check that shows progress clears them."
   },
   "too-slow": {
     label: "Too slow",
-    description: "Slower than a speed floor you choose. Off until a floor makes sense for your own connections.",
+    description: "Slower than a speed limit you choose, at any percent. Each check under the limit adds a strike; the first check back over it clears them. Off until a limit makes sense for your own connections.",
     thresholdLabel: "Slower than",
     thresholdUnit: "KB/s",
-    thresholdHelp: "A download under this speed, for the timer below, trips this rule."
+    thresholdHelp: "A check that finds the download under this speed adds a strike. A check over it clears the strikes."
   },
   "low-peers": {
     label: "Not enough peers",
-    description: "Fewer peers or seeders than a floor you choose. Torrents only; Usenet has no peers.",
+    description: "Fewer peers or seeders than a floor you choose, at any percent. Each check under the floor adds a strike; the first check back over it clears them. Torrents only; Usenet has no peers.",
     thresholdLabel: "Fewer than",
     thresholdUnit: "peers",
-    thresholdHelp: "A download under this peer count, for the timer below, trips this rule."
+    thresholdHelp: "A check that finds the download under this peer count adds a strike. A check over it clears the strikes."
   },
   "dead-torrent": {
     label: "Dead torrent",
@@ -217,7 +217,7 @@ function StrikeInactivityCard({ settings }: { settings: PlatformSettingsSnapshot
   return (
     <ListCard title="Strike inactivity window" count="When a quiet download's strikes clear entirely">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x) sm:grid-cols-[1fr_auto] sm:items-end">
-        <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Separate from any rule's own timer - a download that goes this long without tripping any rule again starts from zero.">
+        <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Strikes also clear the moment a check finds the problem gone. This only covers a download Deluno has not been able to check for this long: it starts from zero.">
           <div className="flex items-center gap-2">
             <Input type="number" min="1" max="720" step="1" value={hours} onChange={(event) => setHours(event.target.value)} className="max-w-32" />
             <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
@@ -239,15 +239,19 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [windowMinutes, setWindowMinutes] = useState(String(settings.downloadHealthDefaultStrikeWindowMinutes));
   const [samplerMinutes, setSamplerMinutes] = useState(String(settings.downloadThroughputSamplerIntervalMinutes));
+  const [strikeLimit, setStrikeLimit] = useState(String(settings.downloadHealthStrikeThreshold));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [errors, setErrors] = useState<{ window?: string; sampler?: string }>({});
-  const dirty = windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
+  const [errors, setErrors] = useState<{ window?: string; sampler?: string; strikes?: string }>({});
+  const dirty = strikeLimit !== String(settings.downloadHealthStrikeThreshold) ||
+    windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
     samplerMinutes !== String(settings.downloadThroughputSamplerIntervalMinutes);
 
   async function save() {
     const window = Number(windowMinutes);
     const sampler = Number(samplerMinutes);
-    const nextErrors: { window?: string; sampler?: string } = {};
+    const strikes = Number(strikeLimit);
+    const nextErrors: { window?: string; sampler?: string; strikes?: string } = {};
+    if (!Number.isInteger(strikes) || strikes < 1 || strikes > 20) nextErrors.strikes = "Must be between 1 and 20.";
     if (!Number.isFinite(window) || window < 1 || window > 1440) nextErrors.window = "Must be between 1 and 1440 minutes.";
     if (!Number.isFinite(sampler) || sampler < 1 || sampler > 60) nextErrors.sampler = "Must be between 1 and 60 minutes.";
     setErrors(nextErrors);
@@ -257,8 +261,10 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     try {
       const next = await mutation.mutate({
         downloadHealthDefaultStrikeWindowMinutes: window,
+        downloadHealthStrikeThreshold: strikes,
         downloadThroughputSamplerIntervalMinutes: sampler
       });
+      setStrikeLimit(String(next.downloadHealthStrikeThreshold));
       setWindowMinutes(String(next.downloadHealthDefaultStrikeWindowMinutes));
       setSamplerMinutes(String(next.downloadThroughputSamplerIntervalMinutes));
       setSaveState("saved");
@@ -271,6 +277,9 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     <ListCard title="Timing" count="How often Deluno checks in">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <FieldRow>
+          <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help="For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. 1 to 20.">
+            <Input type="number" min="1" max="20" step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
+          </Field>
           <Field label="Strike pacing outside the rules above" error={errors.window} help="Only applies to a finding no rule above covers, such as the client itself reporting stalled or errored. A rule's own timer above is unaffected.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="1440" step="1" value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} />
@@ -849,23 +858,27 @@ export function SettingsDownloadHealthPage() {
 
         <DrawerSection title="Strikes & timer">
           <FieldRow>
-            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 20. 1 acts the moment the problem is first seen.">
+            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 20. Each check where the problem is still there adds one strike, and the first check where it is gone clears them. At this many strikes the download is removed and cleaned up as chosen below. 1 acts the moment the problem is first seen.">
               <Input type="number" min="1" max="20" step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
             </Field>
-            <Field label="Timer" error={errors.timerMinutes} help="How often, in minutes, a further strike can be added while the problem continues.">
+            <Field label="Timer" error={errors.timerMinutes} help="How often, in minutes, a check can add a further strike while the problem continues.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="1" max="1440" step="1" value={form.timerMinutes} onChange={(event) => setForm((current) => ({ ...current, timerMinutes: event.target.value }))} />
                 <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
               </div>
             </Field>
           </FieldRow>
-          <SwitchRow
-            label="Reset strikes on progress"
-            description="Any byte of further progress ends the spell early, the same as the problem clearing on its own."
-            checked={form.resetStrikesOnProgress}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, resetStrikesOnProgress: checked }))}
-          />
-          {form.resetStrikesOnProgress ? (
+          {form.kind !== "no-progress" ? (
+            <p className="text-(length:--type-body-sm) text-muted-foreground">The first check where the problem is gone (speed back over the limit, peers back) clears this rule's strikes.</p>
+          ) : (
+            <SwitchRow
+              label="Reset strikes on progress"
+              description="Any byte of further progress ends the spell early, the same as the problem clearing on its own."
+              checked={form.resetStrikesOnProgress}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, resetStrikesOnProgress: checked }))}
+            />
+          )}
+          {form.kind === "no-progress" && form.resetStrikesOnProgress ? (
             <Field label="Minimum progress to reset" error={errors.resetStrikesMinimumProgressMb} help="Optional. A gain smaller than this does not reset the spell - leave blank to let any amount of progress reset it, as above.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" placeholder="Any amount" value={form.resetStrikesMinimumProgressMb} onChange={(event) => setForm((current) => ({ ...current, resetStrikesMinimumProgressMb: event.target.value }))} />

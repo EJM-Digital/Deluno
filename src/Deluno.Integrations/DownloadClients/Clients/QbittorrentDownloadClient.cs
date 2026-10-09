@@ -920,8 +920,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         if (normalized is "pauseddl" or "stoppeddl") return DownloadQueueStatuses.Paused;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
-        // stalledDL with almost nothing left is finishing, not stalled (#1193).
-        if (normalized.Contains("stalled") && (progress ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent) return DownloadQueueStatuses.Stalled;
+        // stalledDL is the client's own flag, not proof (#1193): Downloading until Deluno's own no-progress window
+        // (DownloadClientHelpers.ReconcileTorrentStatus) finds no byte gain, whatever the percent.
         return DownloadQueueStatuses.Downloading;
     }
 

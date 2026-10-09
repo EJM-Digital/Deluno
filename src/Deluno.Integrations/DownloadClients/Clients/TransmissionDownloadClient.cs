@@ -232,13 +232,11 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     }
 
     /// <summary>
-    /// Transmission's own stall detection folded in on top of the status-code
-    /// mapping (#661): it watches real peer/tracker activity Deluno does not
-    /// see, so a torrent it has already flagged stalled should read as
-    /// <see cref="DownloadQueueStatuses.Stalled"/> immediately rather than
-    /// waiting on the generic no-throughput health check to notice on its own.
-    /// Only promotes a torrent still reading as Downloading — an error, a
-    /// completion or a pause already outranks "stalled".
+    /// Transmission's status mapping, with its tracker-error handling. Its own
+    /// <c>isStalled</c> flag is deliberately not read as Stalled (#1193, which
+    /// replaces #661's immediate promotion): a torrent may only be closing its
+    /// last blocks, so it stays Downloading until Deluno's own no-progress
+    /// window finds no byte gain, the same rule for every client.
     /// </summary>
     /// <summary>
     /// #1183: a torrent at 100% whose only complaint is its tracker (error 1 =
@@ -253,9 +251,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     {
         var finished = IsFinishedWithTrackerError(item);
         var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, finished ? null : item.Error, finished ? null : item.ErrorString);
-        return item.IsStalled == true && status == DownloadQueueStatuses.Downloading && (item.PercentDone ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent
-            ? DownloadQueueStatuses.Stalled
-            : status;
+        // isStalled is the client's own flag, not proof (#1193): the status stays as mapped (Downloading) until
+        // Deluno's own no-progress window (DownloadClientHelpers.ReconcileTorrentStatus) finds no byte gain.
+        return status;
     }
 
     /// <summary>

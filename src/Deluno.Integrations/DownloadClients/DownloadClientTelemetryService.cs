@@ -1570,10 +1570,9 @@ public sealed class DownloadClientTelemetryService(
             allowReset: noProgressRule?.ResetStrikesOnProgress ?? true,
             minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0);
 
-        if (noProgressRule is null)
-        {
-            return snapshot;
-        }
+        // With the rule switched off the status word still follows the default window, so a download a client
+        // flags stalled is not shown Stalled sooner or later than a person's own window would show it (#1193).
+        var statusWindow = noProgressRule?.Timer;
 
         var reconciled = new List<DownloadQueueItem>(snapshot.Queue.Count);
         foreach (var item in snapshot.Queue)
@@ -1594,7 +1593,7 @@ public sealed class DownloadClientTelemetryService(
                 item with { AddedUtc = effectiveAddedUtc },
                 capturedUtc,
                 effectiveSince,
-                noProgressRule.Timer);
+                statusWindow);
             reconciled.Add(item with { Status = reconciledItem.Status });
         }
 

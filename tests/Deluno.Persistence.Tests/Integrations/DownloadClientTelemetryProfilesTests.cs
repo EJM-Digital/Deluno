@@ -289,7 +289,7 @@ public sealed class DownloadClientTelemetryProfilesTests
     [Theory]
     [InlineData("qbittorrent", "downloading", 0.42, null, null, DownloadQueueStatuses.Downloading)]
     [InlineData("qbittorrent", "queuedDL", 0.0, null, null, DownloadQueueStatuses.Queued)]
-    [InlineData("qbittorrent", "stalledDL", 0.5, null, null, DownloadQueueStatuses.Stalled)]
+    [InlineData("qbittorrent", "stalledDL", 0.5, null, null, DownloadQueueStatuses.Downloading)]
     [InlineData("qbittorrent", "uploading", 1.0, null, null, DownloadQueueStatuses.ImportReady)]
     [InlineData("sabnzbd", "Paused", 12.0, null, null, DownloadQueueStatuses.Queued)]
     [InlineData("sabnzbd", "Downloading", 50.0, null, null, DownloadQueueStatuses.Downloading)]

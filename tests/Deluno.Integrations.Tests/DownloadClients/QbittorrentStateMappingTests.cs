@@ -24,7 +24,7 @@ public sealed class QbittorrentStateMappingTests
     [InlineData("metaDL", DownloadQueueStatuses.Downloading)]
     [InlineData("forcedDL", DownloadQueueStatuses.Downloading)]
     [InlineData("allocating", DownloadQueueStatuses.Downloading)]
-    [InlineData("stalledDL", DownloadQueueStatuses.Stalled)]
+    [InlineData("stalledDL", DownloadQueueStatuses.Downloading)]
     [InlineData("error", DownloadQueueStatuses.Stalled)]
     // The top-priority defect: the payload is gone from disk and this cannot
     // progress on its own, but used to fall through to Downloading.
