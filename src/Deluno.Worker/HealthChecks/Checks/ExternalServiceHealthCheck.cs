@@ -53,6 +53,6 @@ public sealed class ExternalServiceHealthCheck(
             : HealthCheckOutcome.Problem(
                 id, category, name,
                 lastMessage is { Length: > 0 } message ? $"{displayName}: {message}" : $"{displayName} is not answering.",
-                cause: "Deluno could not confirm this connection's last test.",
+                cause: $"Deluno could not confirm {displayName}'s last test.",
                 fix: $"Open Connections and test {displayName}.");
 }

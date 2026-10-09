@@ -128,7 +128,7 @@ public sealed class TagRoutingHealthCheck(
             Category,
             $"{subject} has no titles",
             $"{subject} only {verb} titles tagged {JoinWords(tags)}, and no title has {(tags.Length == 1 ? "that tag" : "any of those tags")}.",
-            cause: "Nothing in the library carries this tag, so this connection is never used.",
+            cause: $"Nothing in the library carries {JoinWords(tags)}, so {subject} is never used.",
             fix: fix,
             detailsJson: JsonSerializer.Serialize(new { link, kind, connectionId = id })));
     }

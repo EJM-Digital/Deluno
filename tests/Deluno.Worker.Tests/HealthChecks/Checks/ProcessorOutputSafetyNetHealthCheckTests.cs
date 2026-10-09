@@ -177,4 +177,13 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
         var check = new ProcessorOutputSafetyNetHealthCheck(libraries.Object, processors.Object, jobQueue.Object, catalogue.Object);
         return await check.RunAsync(CancellationToken.None);
     }
+
+    [Fact]
+    public async Task Two_stray_files_read_differently()
+    {
+        WriteReadyFile(Path.Combine(_root, "Sintel.2010.1080p.mkv"));
+        WriteReadyFile(Path.Combine(_root, "Big.Buck.Bunny.2008.1080p.mkv"));
+
+        SameProblemReadsDifferentlyPerItemTests.AssertEachReadsDifferently(await RunAsync());
+    }
 }
