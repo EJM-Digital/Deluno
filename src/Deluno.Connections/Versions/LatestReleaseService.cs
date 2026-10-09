@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Infrastructure.Http;
 
 namespace Deluno.Connections.Versions;
 
@@ -13,6 +14,16 @@ public abstract record ReleaseFeed(string Project)
 
     /// <summary>Picks the newest stable release out of the feed's answer, or null.</summary>
     public abstract LatestRelease? Pick(string body);
+
+    /// <summary>
+    /// A way to read the newest release that does not count against GitHub's 60 API calls an hour for a network
+    /// (#1181): the project's releases.atom page. Null for a feed that has none. It is tried first; the API
+    /// (<see cref="RequestUri"/>) only when this cannot be read.
+    /// </summary>
+    public virtual Uri? FreeRequestUri => null;
+
+    /// <summary>Picks the newest release out of the free route's answer, or null.</summary>
+    public virtual LatestRelease? PickFree(string body) => null;
 }
 
 /// <summary>
@@ -28,6 +39,11 @@ public sealed record GitHubReleasesFeed(string Project, string Repository, bool 
 
     public override LatestRelease? Pick(string body)
         => IncludePreReleases ? ReleaseFeedParsers.FromGitHubReleaseList(body) : ReleaseFeedParsers.FromGitHubRelease(body);
+
+    public override Uri? FreeRequestUri => ReleaseAtomFeed.ReleasesUri(Repository);
+
+    public override LatestRelease? PickFree(string body)
+        => ReleaseFeedParsers.FromAtom(body, Repository, includePreReleases: IncludePreReleases, tagPrefix: "");
 }
 
 /// <summary>A GitHub project that only tags its releases (qBittorrent "release-5.2.4", Deluge "deluge-2.2.0").</summary>
@@ -36,6 +52,11 @@ public sealed record GitHubTagsFeed(string Project, string Repository, string Ta
     public override Uri RequestUri => new($"https://api.github.com/repos/{Repository}/tags?per_page=100");
 
     public override LatestRelease? Pick(string body) => ReleaseFeedParsers.FromGitHubTags(body, Repository, TagPrefix);
+
+    public override Uri? FreeRequestUri => ReleaseAtomFeed.TagsUri(Repository);
+
+    public override LatestRelease? PickFree(string body)
+        => ReleaseFeedParsers.FromAtom(body, Repository, includePreReleases: false, tagPrefix: TagPrefix);
 }
 
 /// <summary>Plex's own downloads feed, the public Plex Media Server build.</summary>
@@ -89,6 +110,26 @@ public static class ReleaseFeedParsers
 
         var url = root.TryGetProperty("html_url", out var html) && html.ValueKind == JsonValueKind.String ? SafeUrl(html.GetString()) : null;
         return new LatestRelease(text, url);
+    }
+
+    /// <summary>
+    /// The newest release out of a github.com releases.atom or tags.atom page (#1181), by version order.
+    /// Release candidates only when asked for; a draft is never in the page. The version text has no tag prefix and no leading "v".
+    /// </summary>
+    public static LatestRelease? FromAtom(string atom, string repository, bool includePreReleases, string tagPrefix)
+    {
+        if (ReleaseAtomFeed.NewestTag(atom, includePreReleases, tagPrefix) is not { } tag)
+        {
+            return null;
+        }
+
+        var text = tag[tagPrefix.Length..].Trim();
+        if (text.Length > 1 && (text[0] is 'v' or 'V') && char.IsDigit(text[1]))
+        {
+            text = text[1..];
+        }
+
+        return new LatestRelease(text, ReleaseAtomFeed.TagPageUrl(repository, tag));
     }
 
     public static LatestRelease? FromGitHubTags(string body, string repository, string tagPrefix)
@@ -205,6 +246,8 @@ public sealed class LatestReleaseService : ILatestReleaseService
         public LatestRelease? Release;
         public DateTimeOffset NextDueUtc = DateTimeOffset.MinValue;
         public Task? InFlight;
+        /// <summary>When GitHub's limit stopped the last read and lifts; null when it did not. Cleared by the next read.</summary>
+        public DateTimeOffset? LimitResetsUtc;
     }
 
     private readonly IHttpClientFactory httpClientFactory;
@@ -217,6 +260,19 @@ public sealed class LatestReleaseService : ILatestReleaseService
         this.httpClientFactory = httpClientFactory;
         this.timeProvider = timeProvider;
         this.feeds = feeds.ToDictionary(feed => feed.Project, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public DateTimeOffset? LimitResetsUtc(string project)
+    {
+        if (string.IsNullOrWhiteSpace(project) || !entries.TryGetValue(project, out var entry))
+        {
+            return null;
+        }
+
+        lock (entry.Gate)
+        {
+            return entry.LimitResetsUtc is { } until && until > timeProvider.GetUtcNow() ? until : null;
+        }
     }
 
     public LatestRelease? Peek(string project)
@@ -290,20 +346,28 @@ public sealed class LatestReleaseService : ILatestReleaseService
     private async Task FetchAsync(Entry entry, ReleaseFeed feed, CancellationToken cancellationToken)
     {
         LatestRelease? release = null;
-        var ok = false;
+        DateTimeOffset? limit = null;
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            using var request = new HttpRequestMessage(HttpMethod.Get, feed.RequestUri);
-            request.Headers.UserAgent.ParseAdd("Deluno");
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request, timeout.Token);
-            if (response.IsSuccessStatusCode)
+            // The free route first (github.com's own release page, which GitHub's API allowance does not cover),
+            // the API only when that cannot be read (#1181).
+            if (feed.FreeRequestUri is { } free)
             {
-                release = feed.Pick(await response.Content.ReadAsStringAsync(timeout.Token));
-                ok = release is not null;
+                try
+                {
+                    release = await TryReadAsync(free, feed.PickFree, cancellationToken);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    // Not readable that way: the API below is the limited route.
+                }
             }
+
+            release ??= await TryReadAsync(feed.RequestUri, feed.Pick, cancellationToken);
+        }
+        catch (GitHubRateLimitException exception)
+        {
+            limit = exception.ResetsAt;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or OperationCanceledException or InvalidOperationException)
         {
@@ -313,6 +377,7 @@ public sealed class LatestReleaseService : ILatestReleaseService
             }
         }
 
+        var ok = release is not null;
         lock (entry.Gate)
         {
             if (ok)
@@ -320,7 +385,23 @@ public sealed class LatestReleaseService : ILatestReleaseService
                 entry.Release = release;
             }
 
-            entry.NextDueUtc = timeProvider.GetUtcNow() + (ok ? RefreshEvery : RetryAfterFailure);
+            entry.LimitResetsUtc = limit;
+            // Not again before GitHub's limit lifts; otherwise a day after a good read, an hour after a failed one.
+            entry.NextDueUtc = limit is { } reset
+                ? reset
+                : timeProvider.GetUtcNow() + (ok ? RefreshEvery : RetryAfterFailure);
         }
+    }
+
+    /// <summary>One read of one address. Null when it answered something that is not a release; a limit or a network fault throws.</summary>
+    private async Task<LatestRelease?> TryReadAsync(Uri uri, Func<string, LatestRelease?> pick, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.UserAgent.ParseAdd("Deluno");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(uri.Host == "github.com" ? "application/atom+xml" : "application/json"));
+        using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request, timeout.Token);
+        return response.IsSuccessStatusCode ? pick(await response.Content.ReadAsStringAsync(timeout.Token)) : null;
     }
 }

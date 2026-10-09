@@ -47,7 +47,7 @@ public sealed class UpdateCheckRateLimitTests
     }
 
     [Fact]
-    public void The_message_names_the_limit_and_when_to_retry_in_this_computers_time()
+    public void The_message_names_the_limit_and_gives_the_reset_as_a_UTC_stamp_the_web_page_shows_in_the_viewers_time()
     {
         var limit = new HttpRequestException("no", null, HttpStatusCode.Forbidden);
         var at = new DateTimeOffset(2026, 10, 8, 20, 21, 0, TimeSpan.Zero);
@@ -55,7 +55,8 @@ public sealed class UpdateCheckRateLimitTests
         var text = UpdateFeedErrors.CheckFailedMessage(limit, at);
 
         Assert.StartsWith("Couldn't check for updates (GitHub limit, retry after ", text);
-        Assert.Contains(at.ToLocalTime().ToString("h:mm tt"), text);
+        Assert.Contains("retry after 2026-10-08 20:21 UTC", text);
+        Assert.DoesNotContain(at.ToLocalTime().ToString("h:mm tt") + ")", text.Replace("UTC)", ""));
         Assert.Contains("GitHub limit", UpdateFeedErrors.CheckFailedMessage(limit, null));
         Assert.DoesNotContain("GitHub", UpdateFeedErrors.CheckFailedMessage(new IOException("x"), null));
     }

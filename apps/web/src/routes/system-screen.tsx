@@ -1,6 +1,7 @@
 import { comparablePath } from "../lib/library-paths";
 import { toneSortValue } from "../lib/status-tones";
 import { updateHeadline } from "../lib/update-headline";
+import { localizeResetTimes } from "../lib/reset-times";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defineSources, queryClient, refetchSources, sourceLoader, useRouteSources, type RouteSource, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -1570,7 +1571,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         {isDocker && current.currentImageRef ? <HealthRow label="Image" status={current.currentImageRef} /> : null}
         {isDocker && current.currentImageDigest ? <HealthRow label="Image digest" status={current.currentImageDigest} /> : null}
         <HealthRow label="State" status={updateStateLabel(current.state)} />
-        <p className="text-sm leading-relaxed text-muted-foreground">{current.message}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">{localizeResetTimes(current.message)}</p>
         {current.progressPercent !== null ? (
           <p className="text-xs text-muted-foreground">Download progress: {current.progressPercent}%</p>
         ) : null}

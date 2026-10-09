@@ -113,6 +113,69 @@ public sealed class GuideUpdateCheckServiceTests
         Assert.True(change.IsInUse);
     }
 
+    [Fact]
+    public async Task The_upstream_snapshot_is_read_without_the_api_from_the_git_address_and_the_archive()
+    {
+        const string sha = "0123456789abcdef0123456789abcdef01234567";
+        const string path = "docs/json/radarr/cf/example.json";
+        const string json = "{\"name\":\"Example\"}";
+        var requests = new List<string>();
+        var handler = new DelegateHandler(request =>
+        {
+            requests.Add(request.RequestUri!.Host);
+            if (request.RequestUri.Host == "github.com")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("001e# service=git-upload-pack\n00000100" + sha + " refs/heads/master\n") };
+            }
+
+            Assert.Equal("codeload.github.com", request.RequestUri.Host);
+            Assert.EndsWith("/" + sha, request.RequestUri.AbsolutePath);
+            var buffer = new MemoryStream();
+            using (var archive = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                using (var writer = new StreamWriter(archive.CreateEntry("Guides-" + sha + "/" + path).Open()))
+                {
+                    writer.Write(json);
+                }
+
+                using (var other = new StreamWriter(archive.CreateEntry("Guides-" + sha + "/README.md").Open()))
+                {
+                    other.Write("not tracked");
+                }
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(buffer.ToArray()) };
+        });
+
+        var snapshot = await new GuideUpstreamTreeClient(new FixedClientFactory(handler)).GetSnapshotAsync(CancellationToken.None);
+
+        Assert.Equal(sha, snapshot.Revision);
+        var expected = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes("blob " + json.Length + "\0" + json))).ToLowerInvariant();
+        Assert.Equal(expected, snapshot.BlobShaByPath[path]);
+        Assert.DoesNotContain("api.github.com", requests);
+    }
+
+    [Fact]
+    public async Task The_api_is_the_fallback_when_the_free_route_cannot_be_read()
+    {
+        var source = GuidePackageCatalog.Current.SourceInventory!;
+        var api = new FixedGitHubHandler(source, null);
+        var handler = new DelegateHandler(request => request.RequestUri!.Host == "api.github.com"
+            ? api.Send(request)
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var snapshot = await new GuideUpstreamTreeClient(new FixedClientFactory(handler)).GetSnapshotAsync(CancellationToken.None);
+
+        Assert.Equal("remote-guide-revision", snapshot.Revision);
+        Assert.True(api.RequestCount > 0);
+    }
+
+    private sealed class DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(respond(request));
+    }
+
     private static async Task InitializePlatformAsync(TestStorage storage, TimeProvider time)
     {
         await new PlatformSchemaInitializer(
@@ -149,11 +212,18 @@ public sealed class GuideUpdateCheckServiceTests
     {
         public int RequestCount { get; private set; }
 
+        public HttpResponseMessage Send(HttpRequestMessage request) => SendAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            RequestCount++;
+            // Only the API calls are counted: the free route is tried first and is answered "unexpected" here.
+            if (request.RequestUri!.Host == "api.github.com")
+            {
+                RequestCount++;
+            }
+
             var path = request.RequestUri!.PathAndQuery;
             object response = path switch
             {

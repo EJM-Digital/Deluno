@@ -594,36 +594,42 @@ public sealed class WeirCompanion(
         try
         {
             string setupUrl, sumsUrl;
-            try
+            // The free route first (#1181): the newest tag, release candidates included and drafts never, from the
+            // release feed on github.com, which GitHub's 60 API calls an hour do not cover; the release files
+            // are then fetched from the release download address. The API is only for a feed that cannot be read.
+            var feedTag = await NewestTagFromReleaseFeedAsync(http, cancellationToken);
+            if (feedTag is not null)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{CompanionCatalog.WeirRepository}/releases?per_page=100");
-                request.Headers.UserAgent.ParseAdd("Deluno");
-                using var response = await http.SendAsync(request, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                // The newest release by version order, release candidates included, drafts never (#1123).
-                var newest = Deluno.Contracts.ReleaseVersions.NewestGitHubRelease(await response.Content.ReadAsStringAsync(cancellationToken))
-                    ?? throw new CompanionStepException($"{Name} has no published release for Deluno to install.");
-                var assets = newest.GetProperty("assets").EnumerateArray().ToArray();
-                var setup = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirSetupAsset);
-                var sums = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirChecksumsAsset);
-                if (setup.ValueKind != JsonValueKind.Object || sums.ValueKind != JsonValueKind.Object)
-                {
-                    throw NoChecksum();
-                }
-
-                setupUrl = setup.GetProperty("browser_download_url").GetString()!;
-                sumsUrl = sums.GetProperty("browser_download_url").GetString()!;
+                setupUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(CompanionCatalog.WeirRepository, feedTag, CompanionCatalog.WeirSetupAsset);
+                sumsUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(CompanionCatalog.WeirRepository, feedTag, CompanionCatalog.WeirChecksumsAsset);
             }
-            catch (Deluno.Infrastructure.Http.GitHubRateLimitException limit)
+            else
             {
-                // GitHub's hourly allowance for this network is used up (#1181). The release list on github.com's
-                // own pages does not count against it, so the newest tag is found there and its files are fetched
-                // from the release download address. The checksum check below is the same.
-                context.Progress.Report("download", $"{limit.Message} Finding {Name}'s latest release another way.");
-                var tag = await NewestTagFromReleaseFeedAsync(http, cancellationToken) ?? throw new CompanionStepException(limit.Message);
-                var baseUrl = $"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{Uri.EscapeDataString(tag)}/";
-                setupUrl = baseUrl + CompanionCatalog.WeirSetupAsset;
-                sumsUrl = baseUrl + CompanionCatalog.WeirChecksumsAsset;
+                try
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{CompanionCatalog.WeirRepository}/releases?per_page=100");
+                    request.Headers.UserAgent.ParseAdd("Deluno");
+                    using var response = await http.SendAsync(request, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    // The newest release by version order, release candidates included, drafts never (#1123).
+                    var newest = Deluno.Contracts.ReleaseVersions.NewestGitHubRelease(await response.Content.ReadAsStringAsync(cancellationToken))
+                        ?? throw new CompanionStepException($"{Name} has no published release for Deluno to install.");
+                    var assets = newest.GetProperty("assets").EnumerateArray().ToArray();
+                    var setup = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirSetupAsset);
+                    var sums = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirChecksumsAsset);
+                    if (setup.ValueKind != JsonValueKind.Object || sums.ValueKind != JsonValueKind.Object)
+                    {
+                        throw NoChecksum();
+                    }
+
+                    setupUrl = setup.GetProperty("browser_download_url").GetString()!;
+                    sumsUrl = sums.GetProperty("browser_download_url").GetString()!;
+                }
+                catch (Deluno.Infrastructure.Http.GitHubRateLimitException limit)
+                {
+                    // Both routes failed and the API said why: GitHub's hourly allowance is used up (#1181).
+                    throw new CompanionStepException(limit.Message);
+                }
             }
 
             string checksums;
@@ -680,34 +686,7 @@ public sealed class WeirCompanion(
 
     /// <summary>Reads the tags out of a GitHub <c>releases.atom</c> feed and returns the highest by version order; null when none is readable.</summary>
     public static string? NewestTagInReleaseFeed(string atom)
-    {
-        string? bestTag = null;
-        Deluno.Contracts.ParsedVersion? best = null;
-        const string marker = "/releases/tag/";
-        foreach (System.Text.RegularExpressions.Match link in System.Text.RegularExpressions.Regex.Matches(atom, "<link[^>]*href=\"([^\"]+)\""))
-        {
-            var href = link.Groups[1].Value;
-            var at = href.IndexOf(marker, StringComparison.Ordinal);
-            if (at < 0)
-            {
-                continue;
-            }
-
-            var tag = Uri.UnescapeDataString(href[(at + marker.Length)..]);
-            if (Deluno.Contracts.ReleaseVersions.Parse(tag) is not { } version)
-            {
-                continue;
-            }
-
-            if (best is null || Deluno.Contracts.ReleaseVersions.ComparePrecedence(version, best) > 0)
-            {
-                best = version;
-                bestTag = tag;
-            }
-        }
-
-        return bestTag;
-    }
+        => Deluno.Contracts.ReleaseAtomFeed.NewestTag(atom);
 
     /// <summary>
     /// The Weir this account installed, answering.

@@ -713,7 +713,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             {
                 var latest = row.Project is null ? null : latestReleases.Peek(row.Project);
                 var update = latest is not null && ReleaseVersions.IsOutOfDate(row.Version, latest.Version);
-                return new ConnectionVersionItem(row.Kind, row.Id, row.Version, latest?.Version, update, update ? latest!.Url : null);
+                return new ConnectionVersionItem(row.Kind, row.Id, row.Version, latest?.Version, update, update ? latest!.Url : null,
+                    latest is null && row.Project is not null ? latestReleases.LimitResetsUtc(row.Project) : null);
             });
             return Results.Ok(items);
         });
