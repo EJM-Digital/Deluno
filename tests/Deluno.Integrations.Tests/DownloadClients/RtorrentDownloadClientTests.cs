@@ -217,6 +217,15 @@ public sealed class RtorrentDownloadClientTests
     }
 
     [Fact]
+    public async Task Peers_are_every_connected_peer_seeds_included()
+    {
+        var snapshot = await new RtorrentDownloadClient(new StubFactory(new RtorrentSnapshotHandler(peers: 7)))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(7, Assert.Single(snapshot!.Queue).Peers);
+    }
+
+    [Fact]
     public async Task Snapshot_reads_the_multicall_response_into_a_queue_item()
     {
         var handler = new RtorrentSnapshotHandler();
@@ -418,7 +427,7 @@ public sealed class RtorrentDownloadClientTests
     /// tracker's own enabled flag and message -- or a failure, when asked to
     /// simulate a tracker rTorrent cannot reach at all.
     /// </summary>
-    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false) : HttpMessageHandler
+    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false, int peers = 0) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -449,7 +458,8 @@ public sealed class RtorrentDownloadClientTests
                 AsValue(TypedInt(0)), // up.rate
                 AsValue(TypedInt(1500)), // ratio (x1000)
                 AsValue(TypedString(message ?? string.Empty)),
-                AsValue(TypedString("/downloads/Example.Movie.2024.1080p"))
+                AsValue(TypedString("/downloads/Example.Movie.2024.1080p")),
+                AsValue(TypedInt(peers)) // peers_connected (seeds included)
             };
             var row = AsValue(ArrayOf(fields));
             return XmlResponse(MethodResponse(AsValue(ArrayOf([row]))));

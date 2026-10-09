@@ -24,6 +24,14 @@ public sealed class UTorrentSnapshotTests
     private const int Queued = 0x40;
 
     [Fact]
+    public async Task Peers_include_the_connected_seeds()
+    {
+        var item = await Snapshot(statusBits: Started, progress: 50, speed: 1_000_000, statusMessage: string.Empty, peers: 2, seeds: 5);
+
+        Assert.Equal(7, item.Peers);
+    }
+
+    [Fact]
     public async Task Errored_torrent_is_stalled_not_queued()
     {
         // speed 0, matching a queued torrent exactly, except for the error bit.
@@ -204,7 +212,9 @@ public sealed class UTorrentSnapshotTests
         string label = "movies",
         string savePath = "D:\\Downloads\\release",
         int ratioPerMille = 0,
-        long seedTimeSeconds = 0)
+        long seedTimeSeconds = 0,
+        int peers = 3,
+        int seeds = 0)
     {
         var hash = "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555";
         // uTorrent's list array is positional. Index: 0 hash, 1 status, 2 name,
@@ -214,8 +224,8 @@ public sealed class UTorrentSnapshotTests
         var list = $$"""
         {"torrents":[[
             "{{hash}}", {{statusBits}}, "The.Show.S01E01.2023.720p.WEB-DL", 1000000, {{(progress * 10).ToString(System.Globalization.CultureInfo.InvariantCulture)}},
-            0, 0, {{ratioPerMille}}, 1000000, {{speed.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, 60, "{{label}}", 3,
-            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, {{ratioPerMille}}, 1000000, {{speed.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, 60, "{{label}}", {{peers}},
+            0, {{seeds}}, 0, 0, 0, 0, 0, 0,
             "{{statusMessage}}", 0, 1700000000, 0, 0, "{{savePath.Replace("\\", "\\\\")}}"
         ]]}
         """;

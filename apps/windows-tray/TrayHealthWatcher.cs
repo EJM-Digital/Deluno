@@ -149,6 +149,12 @@ public static class TrayPlatformHealth
 
     public static string NotAnswering(string name) => $"{name} isn't answering";
 
+    /// <summary>A Usenet client that answers but has no news server is a setup problem, not a client that is down (#1198).</summary>
+    public static string NoUsenetProvider(string name) => $"{name} has no Usenet provider set up";
+
+    private static bool HasNoProvider(string? message)
+        => string.Equals(message?.Trim(), Deluno.Connections.Usenet.UsenetProviderText.NoProvider, StringComparison.Ordinal);
+
     /// <summary>One plain phrase for each thing that is down: download clients, then indexers, the processor, then the rest.</summary>
     public static IReadOnlyList<string> Down(
         IReadOnlyList<ConnectionCheckItem> checks,
@@ -165,7 +171,14 @@ public static class TrayPlatformHealth
         bool Answers(string kind, string id, string? status)
             => latest.TryGetValue($"{kind}:{id}", out var check) ? check.Ok : !IsDownStatus(status);
 
-        down.AddRange(clients.Where(item => item.IsEnabled && !Answers(ConnectionKinds.DownloadClient, item.Id, item.HealthStatus)).Select(item => NotAnswering(item.Name)));
+        // A Usenet client that signs in but has no news server yet says so in plain words, whether the latest real
+        // check or the stored health carries the reason. It still counts as a problem, so the dot stays amber.
+        string ClientProblem(DownloadClientItem item)
+            => HasNoProvider(latest.TryGetValue($"{ConnectionKinds.DownloadClient}:{item.Id}", out var check) ? check.Message : item.LastHealthMessage)
+                ? NoUsenetProvider(item.Name)
+                : NotAnswering(item.Name);
+
+        down.AddRange(clients.Where(item => item.IsEnabled && !Answers(ConnectionKinds.DownloadClient, item.Id, item.HealthStatus)).Select(ClientProblem));
         down.AddRange(indexers.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Indexer, item.Id, item.HealthStatus)).Select(item => NotAnswering(item.Name)));
         down.AddRange(processors.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Processor, item.Id, item.HealthStatus)).Select(item => NotAnswering(item.Name)));
 

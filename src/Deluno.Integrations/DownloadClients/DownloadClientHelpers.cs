@@ -528,7 +528,7 @@ internal static class DownloadClientHelpers
             return DownloadQueueStatuses.NotTransferring;
         }
 
-        if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
+        if (DownloadHealthStrikes.IsFinishedPercent(progress) || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
         return DownloadQueueStatuses.Downloading;
     }

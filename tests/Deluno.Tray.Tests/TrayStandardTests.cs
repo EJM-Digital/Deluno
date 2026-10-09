@@ -192,6 +192,29 @@ public sealed class TrayStandardTests
     }
 
     [Fact]
+    public void A_usenet_client_with_no_provider_reads_as_a_setup_problem_and_keeps_the_dot_amber()
+    {
+        var noProvider = Deluno.Connections.Usenet.UsenetProviderText.NoProvider;
+        var down = TrayPlatformHealth.Down(
+            [new ConnectionCheckItem("downloadClient", "c1", "SABnzbd", false, false, noProvider, Now)],
+            [Client("c1", "SABnzbd", "degraded")],
+            [], [], [], Now);
+
+        Assert.Equal(["SABnzbd has no Usenet provider set up"], down);
+        var status = Running() with { Down = down };
+        Assert.Equal("Deluno - SABnzbd has no Usenet provider set up", TrayHoverText.Build(status));
+        Assert.Equal(TrayDot.Amber, TrayBadges.Choose(status).Dot);
+    }
+
+    [Fact]
+    public void A_usenet_client_whose_stored_health_carries_the_no_provider_reason_reads_the_same_without_a_check()
+    {
+        var item = Client("c1", "SABnzbd", "unreachable") with { LastHealthMessage = Deluno.Connections.Usenet.UsenetProviderText.NoProvider };
+
+        Assert.Equal(["SABnzbd has no Usenet provider set up"], TrayPlatformHealth.Down([], [item], [], [], [], Now));
+    }
+
+    [Fact]
     public void A_connection_that_is_switched_off_is_not_a_problem()
         => Assert.Empty(TrayPlatformHealth.Down([], [Client("c1", "SABnzbd", "unreachable", enabled: false)], [], [], [], Now));
 
