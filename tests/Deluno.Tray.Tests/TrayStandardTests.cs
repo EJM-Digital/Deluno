@@ -392,6 +392,122 @@ public sealed class TrayStandardTests
         Assert.Equal(7, TrayAttention.Total(inputs));
     }
 
+    // ------------------------------------------------------------------ a check that failed says so (#1185)
+
+    [Fact]
+    public void A_failed_check_is_the_updates_pages_sentence_and_a_good_one_is_nothing()
+    {
+        const string sentence = "Couldn't check for updates (GitHub limit, retry after 10:35 AM).";
+        Assert.Equal(sentence, TrayUpdate.CheckProblem(Deluno.Api.Updates.UpdateStates.Error, sentence));
+        Assert.Null(TrayUpdate.CheckProblem(Deluno.Api.Updates.UpdateStates.UpToDate, "You are on the latest version."));
+        Assert.Null(TrayUpdate.CheckProblem(Deluno.Api.Updates.UpdateStates.Error, " "));
+    }
+
+    [Fact]
+    public void The_status_line_and_hover_text_carry_the_failed_check_after_what_needs_you()
+    {
+        var status = new TrayStatus
+        {
+            State = TrayState.Running,
+            NeedsLookCount = 2,
+            UpdateCheckProblem = "Couldn't check for updates (GitHub limit, retry after 10:35 AM)."
+        };
+
+        var words = TrayHoverText.StatusWords(status, withAddress: false);
+
+        Assert.Equal("Running - 2 things need a look - Couldn't check for updates (GitHub limit, retry after 10:35 AM)", words);
+        Assert.True(("Deluno - " + words).Length <= TrayHoverText.Limit);
+        Assert.DoesNotContain("Couldn't", TrayHoverText.StatusWords(status with { UpdateCheckProblem = null }));
+    }
+
+    [Fact]
+    public void A_failed_check_never_pushes_out_what_needs_you_when_the_text_is_too_long()
+    {
+        var status = new TrayStatus
+        {
+            State = TrayState.Running,
+            Address = "http://localhost:7879",
+            NeedsLookCount = 12,
+            UpdateCheckProblem = "Couldn't check for updates (GitHub limit, retry after 10:35 AM)."
+        };
+
+        var text = TrayHoverText.Build(status);
+
+        Assert.True(text.Length <= TrayHoverText.Limit);
+        Assert.Contains("12 things need a look", text);
+    }
+
+    // ------------------------------------------- the tray and the bell count the same kinds of thing (#1185)
+
+    private sealed record Category(string Id, string? Tray);
+
+    /// <summary>docs/attention-categories.json, the one list the bell's tests read too.</summary>
+    private static List<Category> SharedCategories()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Deluno.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(directory!.FullName, "docs", "attention-categories.json")));
+        return json.RootElement.GetProperty("categories").EnumerateArray()
+            .Select(item => new Category(
+                item.GetProperty("id").GetString()!,
+                item.GetProperty("tray").ValueKind == System.Text.Json.JsonValueKind.Null ? null : item.GetProperty("tray").GetString()))
+            .ToList();
+    }
+
+    [Fact]
+    public void Every_count_the_tray_adds_is_in_the_shared_list_and_every_one_in_the_list_is_counted()
+    {
+        var listed = SharedCategories().Where(c => c.Tray is not null).Select(c => c.Tray!).Order().ToList();
+        var counted = typeof(TrayAttentionInputs).GetProperties().Select(p => p.Name).Order().ToList();
+
+        Assert.Equal(counted, listed);
+        Assert.Equal(listed.Count, listed.Distinct().Count());
+    }
+
+    [Fact]
+    public void One_of_each_counted_kind_adds_up_to_the_shared_lists_number()
+    {
+        var expected = SharedCategories().Count(c => c.Tray is not null);
+        var values = typeof(TrayAttentionInputs).GetConstructors().Single().GetParameters()
+            .Select(p => p.ParameterType == typeof(bool) ? (object)true : 1).ToArray();
+        var inputs = (TrayAttentionInputs)Activator.CreateInstance(typeof(TrayAttentionInputs), values)!;
+
+        Assert.Equal(expected, TrayAttention.Total(inputs));
+    }
+
+    [Fact]
+    public void The_same_data_as_the_bells_fixture_gives_the_shared_lists_number()
+    {
+        // The same one-of-each situation the bell's test builds (apps/web/src/routes/dashboard/attention.test.ts).
+        var now = DateTimeOffset.UtcNow;
+        var empty = new Dictionary<string, int>();
+        var summary = new DashboardSummary(
+            now, 0, [],
+            Library: new DashboardLibrarySection(now, null!, null!, 0, [], null!, new DashboardCollections(1, 1, 0, 0, 1, null)),
+            Downloads: new DashboardDownloadsSection(now, true, now, 0, 0, 1, 0, 0, 0, 0, 0,
+                [new DashboardClientRow("c1", "Client", "torrent", false, null, null, 0, null, "failing", 0, 0)],
+                0, 0, new DashboardLeftovers(false, 0, 0, null), 0),
+            Pipeline: null,
+            Imports: new DashboardImportsSection(now, 1, empty, 1, 1),
+            Automation: new DashboardAutomationSection(now, true, new DashboardQueuePauseGate(true, 5, false, false, 0, 0, true, "unread"), [], null, []),
+            Indexers: new DashboardIndexersSection(now, 1, 0, 1, 0, 0, 0, 0, 0, []),
+            Processors: new DashboardProcessorsSection(now, 1, 0, 1, 0, 0),
+            Retention: null, Subtitles: null,
+            Requests: new DashboardRequestsSection(now, 1, 0, 1, empty, 0, empty, 0),
+            Blocklist: null, Health: null, Storage: null,
+            System: new DashboardSystemSection(now, "1", false, null, 0, null, new DashboardJobCounts(0, 0, 2), [new DashboardLane("Searching", "failing", 0, null)], null, null, false, true, now),
+            Activity: null);
+
+        var attention = TrayAttention.From(summary, [Check("library-root:1", HealthCheckStatuses.Problem)], now, noAcceptableRelease: 1);
+
+        Assert.Equal(SharedCategories().Count(c => c.Tray is not null), attention.Count);
+    }
+
     private static HealthCheckResultItem Check(string id, string status)
         => new(id, "category", "name", status, "message", null, null, null, DateTimeOffset.UtcNow, null, null);
 }

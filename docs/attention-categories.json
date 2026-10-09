@@ -1,0 +1,90 @@
+{
+  "note": "One list of the kinds of thing the bell counts as 'things need a look' (apps/web/src/routes/dashboard/attention.ts) and whether the tray (apps/windows-tray/TrayAttention.cs) counts it too. An id ending in ':' is a prefix. 'tray' is the TrayAttentionInputs property that counts it, or null with the reason it is left out. Tests on both sides fail when the code and this list disagree.",
+  "categories": [
+    {
+      "id": "outage",
+      "tray": "InternetOutage"
+    },
+    {
+      "id": "queue-gate",
+      "tray": "QueueUnreadable"
+    },
+    {
+      "id": "queue-warnings",
+      "tray": null,
+      "whyNotInTray": "Needs the browser's own reading of the download queue; the tray has no copy of it."
+    },
+    {
+      "id": "collections",
+      "tray": "CollectionsFailing"
+    },
+    {
+      "id": "requests",
+      "tray": "RequestServersFailing"
+    },
+    {
+      "id": "stalled",
+      "tray": "Stalled"
+    },
+    {
+      "id": "clients",
+      "tray": "ClientsNeedingAction"
+    },
+    {
+      "id": "indexers",
+      "tray": "IndexersFailing"
+    },
+    {
+      "id": "recovery",
+      "tray": "RecoveryOpen"
+    },
+    {
+      "id": "failed-imports",
+      "tray": "FailedImportJobs"
+    },
+    {
+      "id": "handoffs",
+      "tray": "FailedProcessorHandoffs"
+    },
+    {
+      "id": "no-release",
+      "tray": "NoAcceptableRelease"
+    },
+    {
+      "id": "processors",
+      "tray": "ProcessorsFailing"
+    },
+    {
+      "id": "health:",
+      "tray": "HealthProblemsNotOtherwiseCounted"
+    },
+    {
+      "id": "failed-jobs",
+      "tray": "BackgroundJobsGaveUp"
+    },
+    {
+      "id": "failed-title-jobs",
+      "tray": null,
+      "whyNotInTray": "The summary cannot tell a job about a title from a background job, so the tray counts both in the one jobs-gave-up row."
+    },
+    {
+      "id": "lanes",
+      "tray": "LanesFailing"
+    },
+    {
+      "id": "update",
+      "tray": null,
+      "whyNotInTray": "A ready update is the blue dot, not the red one."
+    },
+    {
+      "id": "setup:",
+      "tray": null,
+      "whyNotInTray": "Setup checks are made in the browser."
+    },
+    {
+      "id": "connection-update:",
+      "tray": null,
+      "whyNotInTray": "Connected-app update notices are read in the browser."
+    }
+  ]
+}

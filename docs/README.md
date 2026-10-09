@@ -35,6 +35,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `MEDIA_AUTOMATION_TERMINOLOGY.md`: familiar media-automation terms and Deluno's simpler, media-first equivalents.
 - `tracker-definitions.md`: the tracker definition format Deluno's native tracker engine reads (#606, #986): fields, the built-in Prowlarr site list and which of it loads, how to add a definition without a Deluno release, and the two Deluno-written sites kept over it.
 - `security-allowed-hosts.md`: System &rarr; Security &rarr; Allowed Hosts (#939) -- what it does, the setup-guide question, the lock-out protection, and the config/env-var + tray recovery path.
+- `attention-categories.json`: the one list of what the bell counts as "things need a look" and whether the tray counts it too (#1185); tests on the web and tray sides read it and fail when a count and the list disagree.
 
 ## Execution Plans
 
