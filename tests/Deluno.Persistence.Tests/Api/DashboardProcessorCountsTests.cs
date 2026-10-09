@@ -35,8 +35,8 @@ public sealed class DashboardProcessorCountsTests
 
         // waiting, submitted, accepted, started
         Assert.Equal(4, counts.Waiting);
-        // failed, rejected, timed-out, stalled, lost
-        Assert.Equal(5, counts.FailedHandoffs);
+        // failed, rejected, timed-out, stalled, lost, and a download that was gone (#1186): counted once each
+        Assert.Equal(6, counts.FailedHandoffs);
         Assert.Equal(ProcessorHandoffStatuses.All.Count, counts.HandoffsToday);
     }
 }

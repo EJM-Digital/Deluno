@@ -261,6 +261,15 @@ public sealed class ProcessorFailureReportHandler(
         }
     }
 
+    public async Task<ProcessorSourceGoneOutcome> HandleSourceGoneAsync(
+        ProcessorFailureReport report,
+        CancellationToken cancellationToken)
+    {
+        var reason = await SourceGoneRule.SettledBecauseAsync(
+            report.Handoff, dispatches, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+        return new ProcessorSourceGoneOutcome(reason is not null, reason);
+    }
+
     public async Task HandleHeldAsync(
         ProcessorFailureReport report,
         CancellationToken cancellationToken)
