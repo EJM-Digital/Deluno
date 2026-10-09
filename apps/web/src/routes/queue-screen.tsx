@@ -1790,7 +1790,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
             >
               {/* After Try again the answer is still to come: say so, never "failed" (#1193). */}
-              {openQueueHandoff && resentHandoffIds.has(openQueueHandoff.id) && isWithProcessor(openQueueHandoff.status) ? (
+              {openQueueHandoff && isResendingHandoff(openQueueHandoff, resentHandoffIds) ? (
                 <p className="flex items-center gap-2 text-(length:--type-body-sm) text-foreground" role="status">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Sending it to {openQueueHandoff.processorName ?? "the processor"} again. The result shows here when it answers.
@@ -1799,7 +1799,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               {/* The processor's own reason and the way out, where the failure
                   is shown (#616): the hand-off drawer had both, this one had
                   neither, and Queue import is closed to a failed hand-off. */}
-              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed ? (
+              {/* While "Sending it again" shows, the old failure is hidden, not shown beside it (#1198). */}
+              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed && !isResendingHandoff(openQueueHandoff, resentHandoffIds) ? (
                 <div className="grid gap-3 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
                   <p className="text-(length:--type-body-sm) text-foreground">
                     {plainFailure(openQueueHandoff.failureMessage, `Sending it to ${openQueueHandoff.processorName ?? "the processor"}`)}
@@ -2537,6 +2538,14 @@ export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<Processo
   return (item.healthFindings ?? []).filter((finding) =>
     (!finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now)
     && !(goneAlready && finding.kind === "post-processing-failed"));
+}
+
+/**
+ * Whether a hand-off the person has just sent again is still waiting for the processor's answer (#1193, #1198). While it
+ * is, the drawer says "Sending it again" and hides the old failure, so the two never sit side by side.
+ */
+export function isResendingHandoff(handoff: Pick<ProcessorHandoffItem, "id" | "status">, resentHandoffIds: ReadonlySet<string>) {
+  return resentHandoffIds.has(handoff.id) && isWithProcessor(handoff.status);
 }
 
 /**
