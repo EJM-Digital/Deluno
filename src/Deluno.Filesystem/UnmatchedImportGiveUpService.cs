@@ -4,6 +4,7 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Notifications;
+using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Recovery.Services;
@@ -42,7 +43,9 @@ public sealed class UnmatchedImportGiveUpService(
     IJobScheduler? jobScheduler = null,
     ILibrariesRepository? librariesRepository = null,
     IOutboundNotificationService? outboundNotificationService = null,
-    INotificationService? notificationPreferences = null)
+    INotificationService? notificationPreferences = null,
+    // #1188: a file inside a library goes to the recycle bin, never off the disk.
+    Deluno.Platform.IRecycleBinService? recycleBinService = null)
     : IUnmatchedImportGiveUpService
 {
     public async Task<int> RunAsync(CancellationToken cancellationToken)
@@ -86,14 +89,34 @@ public sealed class UnmatchedImportGiveUpService(
     {
         var (dispatchId, sourcePath) = ParseDetails(detailsJson);
         var deletedFile = false;
+        var recycledFile = false;
         if (!string.IsNullOrWhiteSpace(sourcePath))
         {
             try
             {
                 if (File.Exists(sourcePath))
                 {
-                    File.Delete(sourcePath);
-                    deletedFile = true;
+                    // #1188: an untracked file the library check found INSIDE a library is a
+                    // person's media until they say otherwise. It leaves through the recycle
+                    // bin or not at all. Only a file in a download area is deleted outright.
+                    var owner = librariesRepository is null
+                        ? null
+                        : (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                            .FirstOrDefault(item => IsInsideLibrary(sourcePath, item.RootPath));
+                    if (owner is null)
+                    {
+                        File.Delete(sourcePath);
+                        deletedFile = true;
+                    }
+                    else if (recycleBinService is not null
+                             && await recycleBinService.StoreRemovedFileAsync(
+                                 owner,
+                                 sourcePath,
+                                 null,
+                                 cancellationToken) is not null)
+                    {
+                        recycledFile = true;
+                    }
                 }
             }
             catch (Exception exception)
@@ -164,6 +187,7 @@ public sealed class UnmatchedImportGiveUpService(
         var summary = string.Join(", ", new[]
         {
             deletedFile ? "deleted the file" : null,
+            recycledFile ? "moved the file to the recycle bin" : null,
             removedFromClient ? "removed it from the download client" : null,
             blocklisted ? "blocklisted the release" : null,
             searchStarted ? "started a new search" : null
@@ -174,7 +198,7 @@ public sealed class UnmatchedImportGiveUpService(
                 ? $"Gave up waiting to match {title} by hand: {summary}."
                 : $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
             : $"Gave up waiting to match {title} by hand, but nothing was left to clean up.";
-        var giveUpDetails = JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted });
+        var giveUpDetails = JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RecycledFile = recycledFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted });
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.unmatched-given-up",
             giveUpMessage,
@@ -224,6 +248,28 @@ public sealed class UnmatchedImportGiveUpService(
         catch (JsonException)
         {
             return (null, null);
+        }
+    }
+
+    private static bool IsInsideLibrary(string path, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return false;
+        }
+
+        try
+        {
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var full = Path.GetFullPath(path);
+            var normalized = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return full.StartsWith(normalized + Path.DirectorySeparatorChar, comparison)
+                   || full.StartsWith(normalized + Path.AltDirectorySeparatorChar, comparison);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // A path that cannot be read is treated as inside: it is then never deleted outright.
+            return true;
         }
     }
 }
