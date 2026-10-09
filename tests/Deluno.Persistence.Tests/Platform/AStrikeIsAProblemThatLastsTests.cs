@@ -95,7 +95,7 @@ public sealed class AStrikeIsAProblemThatLastsTests
         var seen = Assert.Single(await world.SeeAsync(Start.AddHours(3), Stalled()));
 
         Assert.Equal(Start, seen.FirstObservedUtc);
-        Assert.Equal(7, seen.StrikeCount); // 1 + floor(180 minutes / 30-minute window)
+        Assert.Equal(2, seen.StrikeCount); // one strike per check: the first sighting, and this check (the 20-minute one was within no new interval)
     }
 
     /// <summary>Only a gap past the (independently configurable) inactivity window itself starts a new spell.</summary>

@@ -423,7 +423,18 @@ public sealed record DownloadQueueItem(
     /// own release name (#1062).
     /// </summary>
     [property: System.Text.Json.Serialization.JsonIgnore]
-    string? LegacyId = null);
+    string? LegacyId = null,
+    /// <summary>
+    /// The client's own tags or labels on this item (#1194), for the ignore list. Never sent to a screen.
+    /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    IReadOnlyList<string>? Tags = null,
+    /// <summary>
+    /// The hosts of this torrent's tracker announce URLs (#1194), for the ignore list's tracker-domain entries.
+    /// Never sent to a screen.
+    /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    IReadOnlyList<string>? TrackerHosts = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

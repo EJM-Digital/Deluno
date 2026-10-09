@@ -213,11 +213,11 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
-            if (string.IsNullOrWhiteSpace(request.Hash) && string.IsNullOrWhiteSpace(request.Category) && string.IsNullOrWhiteSpace(request.TrackerDomain))
+            if (string.IsNullOrWhiteSpace(request.Hash) && string.IsNullOrWhiteSpace(request.Category) && string.IsNullOrWhiteSpace(request.TrackerDomain) && string.IsNullOrWhiteSpace(request.Tag))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["entry"] = ["Give at least a hash, a client category, or a tracker/indexer domain to ignore."]
+                    ["entry"] = ["Give at least a hash, a client category, a tag, or a tracker domain to ignore."]
                 });
             }
 
@@ -227,7 +227,8 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 Category: request.Category?.Trim(),
                 TrackerDomain: request.TrackerDomain?.Trim(),
                 Note: request.Note?.Trim(),
-                CreatedUtc: timeProvider.GetUtcNow());
+                CreatedUtc: timeProvider.GetUtcNow(),
+                Tag: request.Tag?.Trim());
             return Results.Ok(await platformRepository.AddDownloadHealthIgnoreEntryAsync(entry, cancellationToken));
         });
 
@@ -666,6 +667,7 @@ public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Hash,
     string? Category,
     string? TrackerDomain,
-    string? Note);
+    string? Note,
+    string? Tag = null);
 
 public sealed record PurgeDownloadHealthStrikesResult(int PurgedCount);

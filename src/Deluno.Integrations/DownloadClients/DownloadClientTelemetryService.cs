@@ -337,7 +337,7 @@ public sealed class DownloadClientTelemetryService(
                     outsideByClientId[client.Id] = (split.OutsideQueue, split.OutsideHistory);
                 }
 
-                liveSnapshot = await ApplyDownloadProgressStallAsync(split.Own, capturedUtc, downloadHealthRules, cancellationToken);
+                liveSnapshot = await ApplyDownloadProgressStallAsync(split.Own, capturedUtc, downloadHealthRules, TimeSpan.FromMinutes(Math.Clamp(platformSettings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440)), cancellationToken);
                 // The vanished-download check needs everything the client
                 // lists (an empty own list is not "the client lost it"), so it
                 // reads the whole answer while only Deluno's own is kept.
@@ -1544,6 +1544,7 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         DateTimeOffset capturedUtc,
         IReadOnlyList<DownloadHealthRule> rules,
+        TimeSpan checkInterval,
         CancellationToken cancellationToken)
     {
         if (snapshot.Queue.Count == 0)
@@ -1570,10 +1571,8 @@ public sealed class DownloadClientTelemetryService(
             allowReset: noProgressRule?.ResetStrikesOnProgress ?? true,
             minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0);
 
-        if (noProgressRule is null)
-        {
-            return snapshot;
-        }
+        // A download is Stalled once a whole check interval passes with no byte gain, rule or no rule (#1193, #1194).
+        var statusWindow = checkInterval;
 
         var reconciled = new List<DownloadQueueItem>(snapshot.Queue.Count);
         foreach (var item in snapshot.Queue)
@@ -1594,11 +1593,37 @@ public sealed class DownloadClientTelemetryService(
                 item with { AddedUtc = effectiveAddedUtc },
                 capturedUtc,
                 effectiveSince,
-                noProgressRule.Timer);
+                statusWindow);
             reconciled.Add(item with { Status = reconciledItem.Status });
         }
 
         return snapshot with { Queue = reconciled };
+    }
+
+    /// <summary>
+    /// Whether the ignore list exempts this download (#817, #1194): by hash, client category, a tracker domain (the
+    /// host of the torrent's announce URL, or the indexer's name), or a tag (the client's own on the torrent, or
+    /// Deluno's on the title or indexer it came from).
+    /// </summary>
+    private async Task<bool> IsOnTheIgnoreListAsync(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        IReadOnlyList<DownloadHealthIgnoreEntry> ignoreList,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? indexerTags,
+        CancellationToken cancellationToken)
+    {
+        if (ignoreList.Count == 0) return false;
+        IReadOnlyList<string>? delunoTags = null;
+        if (ignoreList.Any(entry => entry.NamesATag))
+        {
+            var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, item.Id, item.ReleaseName));
+            var tags = new List<string>();
+            if (indexerTags is not null && indexerTags.TryGetValue(dispatch?.IndexerName ?? item.IndexerName, out var forIndexer)) tags.AddRange(forIndexer);
+            if (dispatch is not null && await mediaTagStore.ListTitleTagNamesAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) is { } forTitle) tags.AddRange(forTitle);
+            delunoTags = tags;
+        }
+
+        return ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts, delunoTags));
     }
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
@@ -1626,6 +1651,11 @@ public sealed class DownloadClientTelemetryService(
         var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
         var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(settings.DownloadHealthStrikeInactivityHours, 1, 720));
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
+        // #1194: Deluno's own indexer tags are only read when an ignore entry names a tag.
+        var ignoredIndexerTags = ignoreList.Any(entry => entry.NamesATag)
+            ? (await connectionsRepository.ListIndexersAsync(cancellationToken)).ToDictionary(
+                indexer => indexer.Name, indexer => DownloadClientHelpers.SplitTags(indexer.Tags), StringComparer.OrdinalIgnoreCase)
+            : null;
 
         // #824: a failed connectivity check skips this poll's evaluation
         // entirely for every item on this client - not adjusted the way an
@@ -1647,7 +1677,7 @@ public sealed class DownloadClientTelemetryService(
                 // #817: a download on the ignore list is treated the same way -
                 // exempt from every health rule, with no finding and no strike.
                 if (!IsDelunosOwnDownload(item, clientDispatches) ||
-                    ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+                    await IsOnTheIgnoreListAsync(item, clientDispatches, ignoreList, ignoredIndexerTags, cancellationToken))
                 {
                     annotated.Add((item, []));
                     continue;
@@ -1947,7 +1977,7 @@ public sealed class DownloadClientTelemetryService(
                 // its first sighting the same way.
                 var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
                     DownloadHealthStrikes.Counts(finding.Kind) &&
-                    finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 20) &&
+                    finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 100) &&
                     (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc));
                 if (struck is null)
                 {

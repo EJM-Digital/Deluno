@@ -114,7 +114,8 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
         var afterOutage = await world.PollAsync();
         var strikesAfter = Assert.Single(Assert.Single(afterOutage.Clients).Queue).HealthFindings!.Single().StrikeCount;
 
-        Assert.Equal(strikesBefore, strikesAfter);
+        // The failed check added nothing and cleared nothing; the first good check afterwards is one more strike.
+        Assert.Equal(strikesBefore + 1, strikesAfter);
     }
 
     private sealed class StalledClient(string protocol, string clientId, string clientName, Func<DateTimeOffset> addedUtc) : IDownloadClient
@@ -187,7 +188,10 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
                     await settingsRepository.GetAsync(CancellationToken.None),
                     new PatchPlatformSettingsRequest(
                         DownloadHealthConnectivityCheckEnabled: connectivityCheckEnabled,
-                        DownloadHealthConnectivityCheckUrls: "https://fixture.invalid")),
+                        DownloadHealthConnectivityCheckUrls: "https://fixture.invalid",
+                        CleanupBlockReleaseAfterThreshold: true,
+                        CleanupQueueReplacementAfterThreshold: true,
+                        DownloadHealthNoProgressEnabled: true)),
                 CancellationToken.None);
             var connections = new SqliteConnectionsRepository(storage.Factory, time, secretProtection);
             var libraries = new SqliteLibrariesRepository(storage.Factory, time);

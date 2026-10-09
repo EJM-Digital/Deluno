@@ -2553,6 +2553,12 @@ export function reorderControlsFor(client: Pick<DownloadClientTelemetrySnapshot,
   };
 }
 
+/** Almost done and only closing its last blocks, moving or checking (#1193): the plain word "Finishing", never Stalled. */
+function isFinishing(item: DownloadQueueItem) {
+  if (item.progress < 99.9) return false;
+  return (item.status === downloadQueueStatuses.downloading && item.progress < 100) || item.status === downloadQueueStatuses.notTransferring;
+}
+
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
@@ -2561,6 +2567,7 @@ function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone
   // done, and a release waiting to be imported is mid-pipeline.
   if (isImportReadyStatus(item.status)) return statusPresentation("transfer.importReady");
   if (item.status === downloadQueueStatuses.paused) return statusPresentation("transfer.paused");
+  if (isFinishing(item)) return { tone: "info", label: "Finishing" };
   if (item.status === downloadQueueStatuses.notTransferring) return statusPresentation("transfer.notTransferring");
   if (isProcessingStatus(item.status)) return { tone: "info", label: queueStatusLabel(item.status) };
   return { tone: "info", label: queueStatusLabel(item.status) };
@@ -2600,6 +2607,7 @@ function pipelineStage(item: DownloadQueueItem) {
   if (item.status === downloadQueueStatuses.importFailed || item.status === downloadQueueStatuses.processingFailed) return "Needs attention";
   if (isImportReadyStatus(item.status)) return "Ready for import";
   if (item.status === downloadQueueStatuses.paused) return "Paused";
+  if (isFinishing(item)) return "Finishing";
   if (item.status === downloadQueueStatuses.notTransferring) return "Not transferring";
   return item.status === downloadQueueStatuses.queued ? "Waiting for client" : "Downloading";
 }

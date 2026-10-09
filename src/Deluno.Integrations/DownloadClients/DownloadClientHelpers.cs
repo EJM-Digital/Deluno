@@ -450,9 +450,11 @@ internal static class DownloadClientHelpers
             return item with { Status = DownloadQueueStatuses.Stalled };
         }
 
-        // A download with almost nothing left, or only moving or checking, is finishing and is never Stalled (#1193).
+        // The one place a download below 100% becomes Stalled (#1193). A client's own "stalled" flag is not read as
+        // Stalled by any adapter (it may only be closing its last blocks); only no byte gain for the whole window
+        // is, at any percent. Moving, checking and complete downloads are not Downloading here, so are never struck.
         if (item.Status == DownloadQueueStatuses.Downloading &&
-            item.Progress < DownloadHealthStrikes.FinishingPercent &&
+            item.Progress < 100d &&
             lastProgressUtc is { } since &&
             capturedUtc - since >= (noProgressWindow ?? DownloadHealthStrikes.DefaultWindow))
         {
@@ -461,6 +463,20 @@ internal static class DownloadClientHelpers
 
         return item;
     }
+
+    /// <summary>The host of a tracker announce URL (#1194), lower case; null for anything that is not a URL, such as qBittorrent's "** [DHT] **" rows.</summary>
+    internal static string? HostOf(string? url)
+        => Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host) ? uri.Host.ToLowerInvariant() : null;
+
+    /// <summary>The distinct hosts of several announce URLs (#1194).</summary>
+    internal static IReadOnlyList<string> HostsOf(IEnumerable<string?> urls)
+        => urls.Select(HostOf).Where(host => host is not null).Select(host => host!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    /// <summary>A comma-separated tag list as a client reports it (#1194), trimmed, empty entries dropped.</summary>
+    internal static IReadOnlyList<string> SplitTags(string? tags)
+        => string.IsNullOrWhiteSpace(tags)
+            ? []
+            : tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     internal static string NormalizeTextStatus(string? status, double? progress)
     {
@@ -474,10 +490,16 @@ internal static class DownloadClientHelpers
         // the client were happy with it. Deluge and uTorrent both normalise
         // through here, and neither passes an error code, so this text is the
         // only signal there is.
-        if (normalized.Contains("error") || normalized.Contains("fail") ||
-            (normalized.Contains("stalled") && (progress ?? 0) < DownloadHealthStrikes.FinishingPercent))
+        if (normalized.Contains("error") || normalized.Contains("fail"))
         {
             return DownloadQueueStatuses.Stalled;
+        }
+
+        // A client's own "stalled" flag below 100% is not proof on its own (#1193): it reads Downloading until
+        // ReconcileTorrentStatus finds no progress for Deluno's own window. The same rule every adapter follows.
+        if (normalized.Contains("stalled") && (progress ?? 0) < 100d)
+        {
+            return DownloadQueueStatuses.Downloading;
         }
 
         // NZBGet's post-processing stages (#663) — checked ahead of the

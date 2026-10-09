@@ -40,6 +40,7 @@ const UNANSWERED: AutomationChoices = {
   subtitleFetching: null,
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
+  stallStrikes: null,
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
   forceImport: null,
@@ -56,6 +57,7 @@ const ALL_NO: AutomationChoices = {
   subtitleFetching: false,
   removeBadDownloads: false,
   deleteBadDownloadFiles: false,
+  stallStrikes: false,
   leftoverCleanup: false,
   leftoverDownloadCleanup: false,
   forceImport: false,
@@ -72,6 +74,7 @@ const ALL_YES: AutomationChoices = {
   subtitleFetching: true,
   removeBadDownloads: true,
   deleteBadDownloadFiles: true,
+  stallStrikes: true,
   leftoverCleanup: true,
   leftoverDownloadCleanup: true,
   forceImport: true,
@@ -150,6 +153,7 @@ describe("setup guide Automation step (#936)", () => {
       "renameOnImport",
       "rssGrabs",
       "searchMissingTitles",
+      "stallStrikes",
       "startAutomation",
       "subtitleFetching"
     ]);
@@ -169,6 +173,13 @@ describe("setup guide Automation step (#936)", () => {
       autoStartJobs: false,
       renameOnImport: false,
       cleanupRemoveClientEntryAfterThreshold: false,
+      cleanupBlockReleaseAfterThreshold: false,
+      cleanupQueueReplacementAfterThreshold: false,
+      downloadHealthNoProgressEnabled: false,
+      downloadHealthMinSpeedEnabled: false,
+      downloadHealthMinSpeedKbps: 50,
+      downloadHealthStrikeThreshold: 3,
+      downloadHealthDefaultStrikeWindowMinutes: 5,
       cleanupPurgePayloadAfterThreshold: false,
       subtitleFetchAutomaticEnabled: false,
       leftoverDownloadCleanupEnabled: false,
@@ -460,5 +471,35 @@ describe("setup guide keeps every Yes/No answer in the draft (#1132)", () => {
     expect(said).not.toContain("picture quality");
     expect(said).not.toContain("Update automatically");
     expect(describeMissingForFinish({ ...form, skipSignInLocalNetwork: false })).toBe("Everything is chosen.");
+  });
+});
+
+describe("the stall and slow-speed question (#1194)", () => {
+  it("is asked with the strike count, speed limit and check interval it will use", () => {
+    const question = AUTOMATION_QUESTIONS.find((item) => item.key === "stallStrikes")!;
+    expect(question.question).toBe("Remove downloads that stall or crawl, after 3 strikes?");
+    expect(question.help).toContain("50 KB/s");
+    expect(question.help).toContain("Every 5 minutes");
+  });
+
+  it("switches the stall and slow-speed rules on with a Yes, and leaves everything off with a No", () => {
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, stallStrikes: true })).toMatchObject({
+      downloadHealthNoProgressEnabled: true,
+      downloadHealthMinSpeedEnabled: true,
+      cleanupBlockReleaseAfterThreshold: true,
+      cleanupQueueReplacementAfterThreshold: true,
+      cleanupRemoveClientEntryAfterThreshold: true,
+      cleanupPurgePayloadAfterThreshold: false
+    });
+    expect(buildAutomationSettingsPayload(ALL_NO)).toMatchObject({
+      downloadHealthNoProgressEnabled: false,
+      downloadHealthMinSpeedEnabled: false,
+      cleanupBlockReleaseAfterThreshold: false
+    });
+  });
+
+  it("holds Start until the stall question has an answer", () => {
+    expect(hasAnsweredAllAutomationQuestions({ ...ALL_NO, stallStrikes: null })).toBe(false);
+    expect(hasAnsweredAllAutomationQuestions(ALL_NO)).toBe(true);
   });
 });
