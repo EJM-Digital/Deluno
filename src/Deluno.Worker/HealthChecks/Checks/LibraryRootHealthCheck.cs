@@ -50,25 +50,25 @@ public sealed class LibraryRootHealthCheck(
             {
                 LibraryRootProblem.None when status.WarnLowFreeSpace =>
                     HealthCheckOutcome.Problem(id, Category, name, status.Message,
-                        cause: "Free space on this root is running low.",
-                        fix: "Free up space, or move some of this library elsewhere, before it reaches the pause threshold.",
+                        cause: $"Free space on the {library.Name} library's root is running low.",
+                        fix: $"Free up space, or move some of the {library.Name} library elsewhere, before it reaches the pause threshold.",
                         detailsJson: DetailsJson(library.Id, status)),
                 LibraryRootProblem.None =>
                     HealthCheckOutcome.Ok(id, Category, name, status.Message, DetailsJson(library.Id, status)),
                 LibraryRootProblem.Unreachable =>
                     HealthCheckOutcome.Problem(id, Category, name, status.Message,
-                        cause: "The root could not be reached -- check that the drive or share is mounted.",
-                        fix: "Reconnect the drive or share. Deluno resumes this library on its own once the path answers again.",
+                        cause: $"The {library.Name} library's root could not be reached -- check that the drive or share is mounted.",
+                        fix: $"Reconnect the drive or share. Deluno resumes the {library.Name} library on its own once the path answers again.",
                         detailsJson: DetailsJson(library.Id, status)),
                 LibraryRootProblem.ReadOnly =>
                     HealthCheckOutcome.Problem(id, Category, name, status.Message,
-                        cause: "The root answers but refuses writes -- often a read-only mount, full permissions, or a share reconnected read-only.",
-                        fix: "Remount or repair permissions on this root so Deluno can write to it again.",
+                        cause: $"The {library.Name} library's root answers but refuses writes -- often a read-only mount, full permissions, or a share reconnected read-only.",
+                        fix: $"Remount or repair permissions on the {library.Name} library's root so Deluno can write to it again.",
                         detailsJson: DetailsJson(library.Id, status)),
                 LibraryRootProblem.LowFreeSpace =>
                     HealthCheckOutcome.Problem(id, Category, name, status.Message,
-                        cause: "Free space fell to or below the configured pause threshold.",
-                        fix: "Free up space on this root. Deluno resumes this library on its own once it is back above the threshold.",
+                        cause: $"Free space on the {library.Name} library's root fell to or below the configured pause threshold.",
+                        fix: $"Free up space on the {library.Name} library's root. Deluno resumes it on its own once it is back above the threshold.",
                         detailsJson: DetailsJson(library.Id, status)),
                 _ => HealthCheckOutcome.Unknown(id, Category, name, status.Message, DetailsJson(library.Id, status))
             });

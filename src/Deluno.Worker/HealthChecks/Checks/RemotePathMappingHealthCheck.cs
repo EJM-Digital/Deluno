@@ -75,8 +75,8 @@ public sealed class RemotePathMappingHealthCheck(
             return HealthCheckOutcome.Problem(
                 id, HealthCheckCategories.RemotePathMapping, name,
                 $"{mapping.LocalPath} is not a full path.",
-                cause: "A remote path mapping's local side must be a full path Deluno can open directly.",
-                fix: "Edit this mapping and give it a full local path, such as C:\\Downloads\\Complete or \\\\nas\\downloads.");
+                cause: $"{clientName}'s path mapping from {mapping.RemotePath} needs a local side that is a full path Deluno can open directly.",
+                fix: $"Edit {clientName}'s mapping for {mapping.RemotePath} and give it a full local path, such as C:\\Downloads\\Complete or \\\\nas\\downloads.");
         }
 
         return ReadFolder(mapping.LocalPath) switch
@@ -87,12 +87,12 @@ public sealed class RemotePathMappingHealthCheck(
                 id, HealthCheckCategories.RemotePathMapping, name,
                 $"{mapping.LocalPath} does not exist.",
                 cause: $"This mapping translates {clientName}'s {mapping.RemotePath} to {mapping.LocalPath}, but that folder is not there -- a drive or share may be unmounted, or the path may no longer be correct.",
-                fix: "Reconnect the drive or share, or correct the local path on this mapping."),
+                fix: $"Reconnect the drive or share, or correct the local path on {clientName}'s mapping for {mapping.RemotePath}."),
             _ => HealthCheckOutcome.Problem(
                 id, HealthCheckCategories.RemotePathMapping, name,
                 $"{mapping.LocalPath} exists but Deluno cannot read it.",
-                cause: "The folder answers but refuses to be listed -- often a permissions problem.",
-                fix: "Fix permissions on this folder so Deluno can read it.")
+                cause: $"{mapping.LocalPath} answers but refuses to be listed -- often a permissions problem.",
+                fix: $"Fix permissions on {mapping.LocalPath} so Deluno can read it for {clientName}.")
         };
     }
 
@@ -195,13 +195,13 @@ public sealed class RemotePathMappingHealthCheck(
             FolderReadability.Missing => HealthCheckOutcome.Problem(
                 id, HealthCheckCategories.RemotePathMapping, name,
                 $"{client.Name} saves {category} to {translated}, but that folder does not exist.",
-                cause: "The client's reported save path translates to a local folder Deluno cannot find -- a drive or share may be unmounted, or a path mapping may need adding or correcting.",
+                cause: $"{client.Name}'s reported {category} save path ({translated}) translates to a local folder Deluno cannot find -- a drive or share may be unmounted, or a path mapping may need adding or correcting.",
                 fix: $"Reconnect the drive or share, or add/fix a remote path mapping for {client.Name}."),
             _ => HealthCheckOutcome.Problem(
                 id, HealthCheckCategories.RemotePathMapping, name,
                 $"{client.Name} saves {category} to {translated}, but Deluno cannot read it.",
-                cause: "The folder answers but refuses to be listed -- often a permissions problem.",
-                fix: "Fix permissions on this folder so Deluno can read it.")
+                cause: $"{translated} answers but refuses to be listed -- often a permissions problem.",
+                fix: $"Fix permissions on {translated} so Deluno can read {client.Name}'s {category} downloads.")
         };
     }
 

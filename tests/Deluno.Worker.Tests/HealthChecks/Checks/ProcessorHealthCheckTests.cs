@@ -213,4 +213,20 @@ public sealed class ProcessorHealthCheckTests
         Priority: 10,
         CreatedUtc: Now,
         UpdatedUtc: Now);
+
+    [Fact]
+    public async Task Two_libraries_whose_folder_disagrees_read_differently()
+    {
+        var films = Library(downloadsPath: "/data/films");
+        var shows = films with { Id = "library-2", Name = "Shows", DownloadsPath = "/data/shows" };
+
+        var outcomes = await RunAsync(
+            Connection(),
+            [films, shows],
+            support: new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { WatchedPath = "/data/elsewhere" },
+            mappings: []);
+
+        SameProblemReadsDifferentlyPerItemTests.AssertEachReadsDifferently(
+            outcomes.Where(item => item.Id.Contains(":watching:")).ToArray());
+    }
 }

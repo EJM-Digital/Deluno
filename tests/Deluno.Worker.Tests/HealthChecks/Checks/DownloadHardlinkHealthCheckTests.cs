@@ -48,4 +48,16 @@ public sealed class DownloadHardlinkHealthCheckTests
         Assert.Contains("no longer shares", outcome.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("safe to reclaim", outcome.Fix, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Two_lost_hardlinks_read_differently()
+    {
+        var sharing = new Mock<IDownloadSharingRepository>();
+        sharing.Setup(repo => repo.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(
+            new DownloadSharingHold("c1", "qBittorrent", "q1", "Big Buck Bunny", "Lost.", 1000, false, SharesLibraryCopy: false, LostHardlink: true),
+            new DownloadSharingHold("c1", "qBittorrent", "q2", "Sintel", "Lost.", 2000, false, SharesLibraryCopy: false, LostHardlink: true)));
+
+        SameProblemReadsDifferentlyPerItemTests.AssertEachReadsDifferently(
+            await new DownloadHardlinkHealthCheck(sharing.Object).RunAsync(CancellationToken.None));
+    }
 }
