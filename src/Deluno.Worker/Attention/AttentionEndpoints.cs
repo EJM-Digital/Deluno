@@ -19,6 +19,27 @@ public static class AttentionEndpoints
         string ReleaseName, string? IndexerName, string? IndexerId, string? DownloadUrl, string? Quality, long? SizeBytes, int? Seeders,
         string? Reason, DateTimeOffset HeldUtc);
 
+    /// <summary>
+    /// The titles the bell lists as having no acceptable release. The bell reads this through the endpoint and the
+    /// tray's count reads it here, so both count the same rows.
+    /// </summary>
+    public static async Task<NoReleaseRow[]> ListNoReleaseAsync(
+        INoAcceptableReleaseReader reader,
+        AttentionDismissalStore dismissals,
+        CancellationToken cancellationToken)
+    {
+        var all = await reader.ListAsync(500, cancellationToken);
+        var dismissed = await dismissals.ListAsync(cancellationToken);
+        // A dismissal is forgotten once its title stops being this problem, so it can come back as a new one.
+        await dismissals.ForgetExceptAsync(
+            all.Select(item => AttentionDismissalStore.NoReleaseKey(item.MediaType, item.Id)).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            cancellationToken);
+        return all
+            .Where(item => !dismissed.Contains(AttentionDismissalStore.NoReleaseKey(item.MediaType, item.Id)))
+            .Select(item => new NoReleaseRow(item.MediaType, item.Id, item.Title, item.Year, item.LibraryId, item.LastSearchUtc, item.MissingSinceUtc, item.Reason))
+            .ToArray();
+    }
+
     public static IEndpointRouteBuilder MapDelunoAttentionReadEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // Wanted titles whose newest search found nothing Deluno would take, minus the ones the person dismissed.
@@ -26,19 +47,7 @@ public static class AttentionEndpoints
             INoAcceptableReleaseReader reader,
             AttentionDismissalStore dismissals,
             CancellationToken cancellationToken) =>
-        {
-            var all = await reader.ListAsync(500, cancellationToken);
-            var dismissed = await dismissals.ListAsync(cancellationToken);
-            // A dismissal is forgotten once its title stops being this problem, so it can come back as a new one.
-            await dismissals.ForgetExceptAsync(
-                all.Select(item => AttentionDismissalStore.NoReleaseKey(item.MediaType, item.Id)).ToHashSet(StringComparer.OrdinalIgnoreCase),
-                cancellationToken);
-            var rows = all
-                .Where(item => !dismissed.Contains(AttentionDismissalStore.NoReleaseKey(item.MediaType, item.Id)))
-                .Select(item => new NoReleaseRow(item.MediaType, item.Id, item.Title, item.Year, item.LibraryId, item.LastSearchUtc, item.MissingSinceUtc, item.Reason))
-                .ToArray();
-            return Results.Ok(rows);
-        });
+            Results.Ok(await ListNoReleaseAsync(reader, dismissals, cancellationToken)));
 
         // Searches that ended "held": a usable release that needs a person's yes (#1159), minus the ones already answered.
         endpoints.MapGet("/api/attention/held-releases", async (

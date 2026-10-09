@@ -46,6 +46,13 @@ public sealed record TrayUpdate(UpdateMenuAction Action, string Text, bool Enabl
     /// <summary>True when an update is waiting on the person: one to download, or one downloaded and waiting for a restart.</summary>
     public bool HasUpdate => Action is UpdateMenuAction.Download or UpdateMenuAction.Restart;
 
+    /// <summary>
+    /// What a check that failed says, in the sentence the Updates page uses ("Couldn't check for updates (GitHub limit,
+    /// retry after 10:35 am)."). Null when the check did not fail.
+    /// </summary>
+    public static string? CheckProblem(string state, string? message)
+        => state == Deluno.Api.Updates.UpdateStates.Error && !string.IsNullOrWhiteSpace(message) ? message.Trim() : null;
+
     /// <summary>The five states: Check, Checking (grey), Downloading (grey), Download, Restart.</summary>
     public static TrayUpdate Describe(bool isInstalled, string state, string? latestVersion, bool updateAvailable, bool restartRequired)
     {
@@ -108,6 +115,9 @@ public sealed record TrayStatus
     public bool AutomationPaused { get; init; }
 
     public TrayUpdate Update { get; init; } = TrayUpdate.None;
+
+    /// <summary>Why the last "Check for updates" failed, until the next check starts. Null when it did not fail.</summary>
+    public string? UpdateCheckProblem { get; init; }
 
     public bool StartsWithWindows { get; init; }
 
@@ -202,6 +212,12 @@ public static class TrayHoverText
             parts.Add(status.Update.Action == UpdateMenuAction.Restart
                 ? $"Update ready{VersionSuffix(status.Update.Version)}"
                 : $"Update available{VersionSuffix(status.Update.Version)}");
+        }
+
+        // Last, so it is the first to go when the text is too long; the balloon and the Updates page say it as well.
+        if (status.UpdateCheckProblem is { } checkProblem)
+        {
+            parts.Add(checkProblem.TrimEnd('.'));
         }
 
         return Fit(parts, Limit - "Deluno - ".Length, status);

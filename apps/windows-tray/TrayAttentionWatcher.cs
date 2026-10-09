@@ -1,6 +1,9 @@
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Media;
 using Deluno.Platform.Data;
 using Deluno.Realtime;
+using Deluno.Worker.Attention;
 using Deluno.Worker.Dashboard;
 
 namespace Deluno.Tray;
@@ -96,7 +99,12 @@ public sealed class TrayAttentionWatcher : IDisposable
         var summary = await summaries.GetAsync(CancellationToken.None).ConfigureAwait(false);
         var health = await _services.GetRequiredService<IHealthCheckRepository>().ListAsync(CancellationToken.None).ConfigureAwait(false);
         var settings = await _services.GetRequiredService<IPlatformSettingsRepository>().GetAsync(CancellationToken.None).ConfigureAwait(false);
-        return new TrayServerSignals(TrayAttention.From(summary, health, DateTimeOffset.UtcNow), !settings.AutoStartJobs);
+        // The titles with no acceptable release come from the same read the bell's list uses.
+        var noRelease = await AttentionEndpoints.ListNoReleaseAsync(
+            _services.GetRequiredService<INoAcceptableReleaseReader>(),
+            _services.GetRequiredService<AttentionDismissalStore>(),
+            CancellationToken.None).ConfigureAwait(false);
+        return new TrayServerSignals(TrayAttention.From(summary, health, DateTimeOffset.UtcNow, noRelease.Length), !settings.AutoStartJobs);
     }
 
     public void Dispose()
