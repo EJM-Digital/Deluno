@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect as baseExpect, test } from "@playwright/test";
 import { fallbackCredentials } from "../helpers/auth-helper";
+
+// Cause of the flakes (#1191): the default 5 s wait for a heading or a control is shorter than a cold render takes on a busy machine.
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 let credentials: { username: string; password: string } | null = null;
 
@@ -40,6 +43,10 @@ test.describe("authenticated app smoke", () => {
   test.beforeEach(async ({ page }) => {
     test.skip(!credentials, "Existing install detected. Set DELUNO_E2E_USERNAME and DELUNO_E2E_PASSWORD to run authenticated route checks against it.");
 
+    // Cause of the flake (#1191): this signs in through the real login form, whose cold render waits on bootstrap-status, and on a
+    // busy machine that wait plus the test's own steps outran the 30 s budget ("waiting for getByLabel(/username/i)"). The form is
+    // the thing proved here, so it stays; the budget is what changes.
+    test.setTimeout(120_000);
     await page.goto("/login");
     await page.getByLabel(/username/i).fill(credentials!.username);
     await page.getByLabel("Password", { exact: true }).fill(credentials!.password);

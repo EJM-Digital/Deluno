@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { noteRealtimePosition } from "./realtime-position";
 
 export interface UserProfile {
   id: string;
@@ -305,6 +306,9 @@ export function authedFetch(
     headers.set("Authorization", `Bearer ${effectiveToken}`);
   }
 
-  return fetch(url, { ...init, headers }).then(handleUnauthorizedResponse);
+  return fetch(url, { ...init, headers }).then((response) => {
+    noteRealtimePosition(response);
+    return handleUnauthorizedResponse(response);
+  });
 }
 

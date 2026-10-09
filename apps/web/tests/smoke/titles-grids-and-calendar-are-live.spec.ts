@@ -62,6 +62,18 @@ async function renameOnRead(page: Page, movieId: string, renamed: { to: string |
   });
 }
 
+/**
+ * Waits until the page has joined the Dashboard subject, the one the shelf and the Calendar listen on (and the app shell
+ * shares). An announcement made before that reaches nobody (#1191), so the announcement is sent once, after this.
+ */
+async function joinedDashboard(page: Page) {
+  // Exactly one connection (this page's: the one from the page it replaced has gone) and it is in the Dashboard subject.
+  await expect.poll(async () => {
+    const seen = (await server(page, "/api/testing/realtime/watchers")).json as { connections: number; dashboard: number };
+    return seen.connections === 1 && seen.dashboard === 1;
+  }, { timeout: 20_000, message: "the page never became the one connection in the dashboard subject" }).toBe(true);
+}
+
 function countNavigations(page: Page) {
   const state = { count: 0 };
   page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) state.count += 1; });
@@ -123,6 +135,9 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
     await expect(page.getByText(`Live shelf movie ${stamp}`).first()).toBeVisible();
     const afterLoad = navigations.count;
 
+    // Cause of the flake (#1191): the card is on screen before the page has joined the subject the server announces on (the
+    // connection opens after the first paint), so an announcement made at once reached nobody and the card never changed.
+    await joinedDashboard(page);
     renamed.to = `Live shelf movie renamed ${stamp}`;
     expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: movieId })).status).toBe(204);
     await expect(page.getByText(`Live shelf movie renamed ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
@@ -150,6 +165,8 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
     const afterLoad = navigations.count;
 
     shown.title = `Calendar probe added ${stamp}`;
+    // Cause of the flake (#1191): same as the shelf above. Join first, then announce once.
+    await joinedDashboard(page);
     expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: "calendar-probe" })).status).toBe(204);
     await expect(page.getByText(`Calendar probe added ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
 

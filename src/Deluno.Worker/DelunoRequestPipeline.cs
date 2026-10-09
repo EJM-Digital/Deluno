@@ -5,6 +5,7 @@ using Deluno.Api.Monitoring;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
+using Deluno.Realtime;
 using Deluno.Security;
 using Deluno.Security.Hardening;
 using Microsoft.AspNetCore.Builder;
@@ -210,6 +211,7 @@ public static class DelunoRequestPipeline
         app.UseDelunoAllowedHosts();
 
         app.UseDelunoApiVersioning();
+        app.UseDelunoRealtimePosition();
 
         // Explicit, so the version alias above takes effect on dispatch and the
         // sign-in gate can see which endpoint a request is for. An explicit
