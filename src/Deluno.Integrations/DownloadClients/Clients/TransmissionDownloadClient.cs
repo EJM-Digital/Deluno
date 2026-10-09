@@ -163,12 +163,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             TrackerHosts: DownloadClientHelpers.HostsOf((item.TrackerStats ?? []).Select(stat => stat.Announce))))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        var (freeSpaceBytes, clientVersion) = await ReadSessionAsync(client, baseUri, cancellationToken);
+        var (freeSpaceBytes, clientVersion, alternateSpeedLimitEnabled) = await ReadSessionAsync(client, baseUri, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
     }
 
     /// <summary>
@@ -209,28 +209,31 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// with nothing configured to ask about, reports nothing rather than a
     /// guessed number.
     /// </summary>
-    private async Task<(long? FreeSpaceBytes, string? Version)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
+    private async Task<(long? FreeSpaceBytes, string? Version, bool? AlternateSpeedLimitEnabled)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
     {
         string? version = null;
+        bool? alternateSpeedLimit = null;
         try
         {
             // The same session-get also carries Transmission's own version (#1117), "4.0.5 (a6fe2de319)".
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version" } }), cancellationToken);
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version", "alt-speed-enabled" } }), cancellationToken);
             version = Deluno.Connections.Versions.ConnectionVersionParsers.Clean(session.Arguments?.Version);
+            // #1194: Transmission's alternate speed limit ("turtle mode"), so a Too slow rule can skip while it is on.
+            alternateSpeedLimit = session.Arguments?.AltSpeedEnabled;
             var downloadDir = session.Arguments?.DownloadDir;
             if (string.IsNullOrWhiteSpace(downloadDir))
             {
-                return (null, version);
+                return (null, version, alternateSpeedLimit);
             }
 
             var freeSpace = await SendAsync(client, baseUri, new TransmissionRequest("free-space", new() { ["path"] = downloadDir }), cancellationToken);
             // #1060: a download folder that does not exist yet answers nothing; measure the drive it will be created on.
             return (freeSpace.Arguments?.SizeBytes
-                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version);
+                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version, alternateSpeedLimit);
         }
         catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
-            return (null, version);
+            return (null, version, alternateSpeedLimit);
         }
     }
 
@@ -486,7 +489,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("rpc-version")] int? RpcVersion = null,
         [property: JsonPropertyName("version")] string? Version = null,
         [property: JsonPropertyName("incomplete-dir")] string? IncompleteDir = null,
-        [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null);
+        [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null,
+        [property: JsonPropertyName("alt-speed-enabled")] bool? AltSpeedEnabled = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null, [property: JsonPropertyName("hashString")] string? HashString = null);
 

@@ -875,7 +875,7 @@ export function SettingsDownloadHealthPage() {
               </Field>
               <SwitchRow
                 label="Skip while the client's alternate speed limit is on"
-                description="A download you deliberately throttled is not unhealthy. Only qBittorrent reports whether this is on; this switch has no effect on any other client."
+                description="A download you deliberately throttled is not unhealthy. qBittorrent and Transmission (its alt-speed, or turtle mode) report whether this is on; this switch has no effect on any other client. Off by default."
                 checked={form.skipWhileAlternateSpeedLimitOn}
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, skipWhileAlternateSpeedLimitOn: checked }))}
               />

@@ -214,7 +214,7 @@ public sealed record DownloadHealthRule(
     /// download client's own alternate/scheduled speed limit is turned on,
     /// this rule never trips - a download a person deliberately throttled is
     /// not unhealthy. False (the default) leaves every existing rule's
-    /// behaviour unchanged. Only qBittorrent's adapter reports whether this
+    /// behaviour unchanged. Only qBittorrent's and Transmission's adapters report whether this
     /// is on today; for every other client this option has no effect, since
     /// nothing about that client's speed limit is known.
     /// </summary>
