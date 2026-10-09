@@ -55,9 +55,12 @@ crosses areas: backend and web, a migration, or a shared contract (James, 3 Oct 
 npm run gate
 ```
 
-It builds Release once, then runs the backend tests, `npm run ci:check` and
-`npm run test:web` side by side (about 8 minutes instead of about 20 one after
-another), and says which step failed with the tail of its log.
+It builds Release once, then runs the backend tests, `npm run ci:check`, the web
+unit tests and the browser smoke side by side (about 8 minutes instead of about
+20 one after another), and says which step failed with the tail of its log. The
+gate runs the smoke in CI's two shards (`--shard=1/2` and `2/2`), each against its
+own fresh smoke host and database on its own ports, so a spec that depends on
+state an earlier spec left behind fails before the push, not in CI.
 
 Changes land on `main` directly, and each push runs CI once (`ci.yml`). Every
 run costs Actions minutes, so batch the work: push once, after the local gates
@@ -79,6 +82,10 @@ release comment, every workflow has `permissions` and every job a timeout.
   does not wait: tag while CI is still running and the release fails at once.
   A green push run on a documents-only commit proves little, so tag a commit
   whose own run ran the jobs, or run `ci.yml` by hand on it first.
+- **Tags are made only through `scripts/tag-release.ps1 -Version <x.y.z[-rc.N[.M]]>`** (9 Oct 2026). It
+  refuses unless the working tree is clean, HEAD is `origin/main`, `Directory.Build.props` and
+  `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed
+  on HEAD. Then it creates and pushes the annotated tag. Never run `git tag` for a release by hand.
 - **A tag is made only after the golden path has passed on that exact commit**
   (James, 7 Oct 2026; `docs/golden-path.md`, Deluno issue 1158). The release's
   `golden-path` job runs `scripts/verify-golden-path-for-release.mjs`: it passes

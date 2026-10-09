@@ -5,7 +5,8 @@ import { pipeline } from "node:stream";
 
 const port = Number(process.env.DELUNO_WEB_PORT ?? 5174);
 const apiOrigin = new URL(process.env.DELUNO_API_ORIGIN ?? "http://127.0.0.1:5199");
-const distRoot = resolve(process.cwd(), "dist");
+// The local gate serves its own copy of the bundle (DELUNO_SMOKE_DIST) so a second build into dist cannot empty it.
+const distRoot = process.env.DELUNO_SMOKE_DIST ? resolve(process.env.DELUNO_SMOKE_DIST) : resolve(process.cwd(), "dist");
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",

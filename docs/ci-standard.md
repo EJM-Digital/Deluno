@@ -17,6 +17,10 @@ Deluno and Weir each keep their own identical copy of this standard and of the s
 
 Any other workflow follows the same rules below.
 
+## The local gate matches CI
+
+The local pre-push gate (`npm run gate`, `scripts/gate.ps1`) runs the browser smoke in CI's two shards (`--shard=1/2` and `--shard=2/2`, same Playwright config), each against its own fresh smoke host and database on its own ports, so state left by earlier specs is the same here as in a CI shard.
+
 ## The required check
 
 **`ci-passed` is the one check branch protection requires.** Nothing else is listed as required, so a job can be added, renamed or skipped by a path filter without touching the repository settings.
