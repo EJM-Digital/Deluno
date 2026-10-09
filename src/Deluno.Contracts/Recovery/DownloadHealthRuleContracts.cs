@@ -295,9 +295,9 @@ public static class DownloadHealthRuleValidator
             return "The completion range must be between 0% and 100%, with the low end at or below the high end.";
         }
 
-        if (candidate.StrikeLimit < 1 || candidate.StrikeLimit > 20)
+        if (candidate.StrikeLimit < 1 || candidate.StrikeLimit > 100)
         {
-            return "Strikes must be between 1 and 20.";
+            return "Strikes must be between 1 and 100.";
         }
 
         if (candidate.TimerMinutes < 1 || candidate.TimerMinutes > 1440)

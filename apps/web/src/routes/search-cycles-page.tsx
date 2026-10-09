@@ -440,7 +440,7 @@ export function SearchCyclesPage() {
     try {
       const [, nextQualityModel] = await Promise.all([
         settingsMutation.mutate({
-            downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Number(cleanup.strikeThreshold || 3))),
+            downloadHealthStrikeThreshold: Math.max(1, Math.min(100, Number(cleanup.strikeThreshold || 3))),
             cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
             cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
             cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,

@@ -644,7 +644,7 @@ public sealed class SqliteDownloadHealthRepository(
     /// </summary>
     private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
     {
-        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 20);
+        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 100);
         var actionPreset = LegacyActionPreset(legacy);
 
         DownloadHealthRule Rule(string id, string kind, bool enabled, int timerMinutes, double threshold) => new(

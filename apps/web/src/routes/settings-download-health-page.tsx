@@ -251,7 +251,7 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     const sampler = Number(samplerMinutes);
     const strikes = Number(strikeLimit);
     const nextErrors: { window?: string; sampler?: string; strikes?: string } = {};
-    if (!Number.isInteger(strikes) || strikes < 1 || strikes > 20) nextErrors.strikes = "Must be between 1 and 20.";
+    if (!Number.isInteger(strikes) || strikes < 1 || strikes > 100) nextErrors.strikes = "Must be between 1 and 100.";
     if (!Number.isFinite(window) || window < 1 || window > 1440) nextErrors.window = "Must be between 1 and 1440 minutes.";
     if (!Number.isFinite(sampler) || sampler < 1 || sampler > 60) nextErrors.sampler = "Must be between 1 and 60 minutes.";
     setErrors(nextErrors);
@@ -283,8 +283,8 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
           </Field>
-          <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help="For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. 1 to 20.">
-            <Input type="number" min="1" max="20" step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
+          <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help="For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. 1 to 100.">
+            <Input type="number" min="1" max="100" step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
           </Field>
           <Field label="Speed chart sampling" error={errors.sampler} help="How often Deluno records a throughput sample for the speed chart.">
             <div className="flex items-center gap-2">
@@ -883,8 +883,8 @@ export function SettingsDownloadHealthPage() {
 
         <DrawerSection title="Strikes">
           <FieldRow>
-            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 20. Each check where the problem is still there adds one strike, and the first check where it is gone clears them. At this many strikes the download is removed and cleaned up as chosen below. 1 acts the moment the problem is first seen.">
-              <Input type="number" min="1" max="20" step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
+            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 100. Each check where the problem is still there adds one strike, and the first check where it is gone clears them. At this many strikes the download is removed and cleaned up as chosen below. 1 acts the moment the problem is first seen.">
+              <Input type="number" min="1" max="100" step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
             </Field>
           </FieldRow>
           <p className="text-(length:--type-body-sm) text-muted-foreground">
@@ -1007,7 +1007,7 @@ function sameForm(left: RuleForm, right: RuleForm) {
 function validate(form: RuleForm): Record<string, string> {
   const errors: Record<string, string> = {};
   const strikeLimit = Number(form.strikeLimit);
-  if (!Number.isFinite(strikeLimit) || strikeLimit < 1 || strikeLimit > 20) errors.strikeLimit = "Strikes must be between 1 and 20.";
+  if (!Number.isFinite(strikeLimit) || strikeLimit < 1 || strikeLimit > 100) errors.strikeLimit = "Strikes must be between 1 and 100.";
   const min = Number(form.minCompletionPercent);
   const max = Number(form.maxCompletionPercent);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {

@@ -61,7 +61,7 @@ public sealed record DownloadHealthRecord(
     /// </summary>
     public bool BlocksCandidate(DateTimeOffset now, int fallbackThreshold = 3)
         => DownloadHealthStrikes.Counts(Kind) &&
-           StrikeCount >= Math.Clamp(RuleStrikeLimit ?? fallbackThreshold, 1, 20) &&
+           StrikeCount >= Math.Clamp(RuleStrikeLimit ?? fallbackThreshold, 1, 100) &&
            !IsIgnored(now);
 
     /// <summary>When the next check can add a strike: one check interval after the last strike (#1194).</summary>

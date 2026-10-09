@@ -1946,7 +1946,7 @@ public sealed class DownloadClientTelemetryService(
                 // its first sighting the same way.
                 var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
                     DownloadHealthStrikes.Counts(finding.Kind) &&
-                    finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 20) &&
+                    finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 100) &&
                     (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc));
                 if (struck is null)
                 {
