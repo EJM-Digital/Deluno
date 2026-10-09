@@ -278,9 +278,7 @@ public sealed class ProcessorHandoffWatcher(
             }
 
             var mappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-            var outbound = mappings.Count > 0
-                ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, mappings) ?? handoff.SourcePath }
-                : handoff;
+            var outbound = await HandoffFileSelection.ForProcessorAsync(handoff, library, connection, mappings, processorConnections, activityFeed, cancellationToken);
             var submission = await processorConnections.SubmitAsync(connection, outbound, cancellationToken);
             if (!submission.IsAccepted)
             {
@@ -416,9 +414,7 @@ public sealed class ProcessorHandoffWatcher(
         var processorName = connection.Name;
         if (string.IsNullOrEmpty(handoff.FailureMessage) || !handoff.FailureMessage.StartsWith(SentAgainNotice, StringComparison.Ordinal))
         {
-            var outbound = mappings.Count > 0
-                ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, mappings) ?? handoff.SourcePath }
-                : handoff;
+            var outbound = await HandoffFileSelection.ForProcessorAsync(handoff, library, connection, mappings, processorConnections, activityFeed, cancellationToken);
             var submission = await processorConnections.SubmitAsync(connection, outbound, cancellationToken);
             if (submission.IsAccepted)
             {

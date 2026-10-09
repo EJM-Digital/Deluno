@@ -305,7 +305,10 @@ public sealed class ProcessorConnectionService(
                 Text("manager_library_key"),
                 watched,
                 entry.TryGetProperty("folders_from_manager", out var fromManager) && fromManager.ValueKind == JsonValueKind.True,
-                output));
+                output,
+                entry.TryGetProperty("minimum_file_size_bytes", out var minimum) && minimum.ValueKind == JsonValueKind.Number && minimum.TryGetInt64(out var bytes) && bytes > 0
+                    ? bytes
+                    : null));
         }
 
         return found;
@@ -406,6 +409,11 @@ public sealed class ProcessorConnectionService(
             Add("season", title.Season);
             Add("episode", title.Episode);
             Add("posterUrl", title.PosterUrl);
+        }
+
+        if (handoff.OutputFiles is { Count: > 0 } files)
+        {
+            payload["outputFiles"] = files;
         }
 
         return payload;
