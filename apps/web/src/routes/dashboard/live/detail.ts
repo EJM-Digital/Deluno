@@ -6,7 +6,7 @@
  */
 import { ago, formatEta, formatSize } from "../downloads-kit";
 import type { JourneyCard } from "./journey";
-import { STARTED_LABEL } from "./provenance";
+import { startedLabel } from "./provenance";
 import { doneAbout } from "./times";
 
 /** A piece of a line: plain words, or a bold one. */
@@ -82,7 +82,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       break;
   }
   // Why Deluno is fetching it, when what it recorded says (a request already says so in its own line).
-  if (card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr")) lines.push({ parts: [bold(STARTED_LABEL[card.startedBy])] });
+  if (card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr")) lines.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
   return lines.slice(0, 4);
 }
 

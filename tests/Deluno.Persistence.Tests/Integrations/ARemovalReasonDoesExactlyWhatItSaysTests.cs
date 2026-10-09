@@ -107,6 +107,46 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     }
 
     /// <summary>
+    /// #1190: after any removal Deluno makes, the title has no active send, so a new search or hand send
+    /// is accepted and never refused as already downloading. One release sent twice shares its hash, so
+    /// there are two open records, and both close.
+    /// </summary>
+    [Theory]
+    [InlineData(QueueRemovalReasons.Unwanted)]
+    [InlineData(QueueRemovalReasons.Failed)]
+    [InlineData(QueueRemovalReasons.Forget)]
+    [InlineData(QueueRemovalReasons.Reclaim)]
+    [InlineData(QueueRemovalReasons.GaveUp)]
+    public async Task A_removal_leaves_the_title_with_no_active_send(string reason)
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var again = await world.Jobs.RecordDownloadDispatchAsync(
+            world.LibraryId, world.MediaType, "movie", world.EntityId, Release, Indexer, world.ClientId, "qbittorrent", "sent", null,
+            cancellationToken: CancellationToken.None);
+        await world.Dispatches.RecordDetectionAsync(again, QueueItemId, null, completed: false, CancellationToken.None);
+        Assert.NotEmpty(await world.Dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None));
+
+        var result = await world.RemoveAsync(reason);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(await world.Dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None));
+        Assert.Empty(await world.Dispatches.FindOpenDispatchesByHashAsync(world.ClientId, QueueItemId, CancellationToken.None));
+    }
+
+    /// <summary>The flag-based API call ("remove from client", no blocklist) closes the send the same way.</summary>
+    [Fact]
+    public async Task A_removal_by_flags_leaves_the_title_with_no_active_send()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        Assert.NotEmpty(await world.Dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None));
+
+        var result = await world.RemoveAsync(removeFromClient: true, blocklist: false, skipRedownload: true);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(await world.Dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None));
+    }
+
+    /// <summary>
     /// #924: "I don't want it" does the unmonitor itself now, server-side, so
     /// an API caller that never makes the web client's old separate call
     /// gets the same outcome — and Activity says so in the same sentence as
