@@ -9,6 +9,59 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.14
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Stalled and slow downloads, the way Cleanuparr does it
+- Each check where a download is under your speed limit, not moving, or short
+  of peers adds one strike. The first check where it recovers clears them. At
+  your count (1 to 100, 3 by default) it is removed and cleaned up as you chose.
+- You set how often Deluno checks (every 5 minutes by default), the speed limit
+  in KB/s or MB/s, and the strikes for each rule. The screen says when strike 1
+  and removal land.
+- A download stuck at 99.9% is struck like any other, while one only finishing
+  its last blocks reads "Finishing", not Stalled.
+- New installs have nothing switched on: setup asks whether to remove downloads
+  that stall or crawl. The ignore list can skip a tag or a tracker's domain.
+
+### Your files are safer
+- Deleting one film's or episode's file now sends it to the recycle bin, where
+  you can restore it, and the title stays wanted.
+- Restoring any file from the recycle bin puts it back on its film or episode.
+- The check for an episode file holding the wrong episode now judges only the
+  download that really produced it, including season packs, and leaves a file
+  alone when it cannot be sure.
+
+### Downloads and Weir
+- A film is never sent to two download clients at once, and a failed duplicate
+  never blocks the release or deletes files.
+- A film Weir cleaned with an extra left out now reads Imported, and Weir is
+  told.
+- When Weir reports a download is gone, Deluno says so plainly and offers to
+  search for another copy.
+
+### The tray
+- The tray dot shows Deluno's own health: green, amber when something it
+  connects to is not answering, red when Deluno is down, blinking while it
+  starts. The menu matches Weir's.
+
+### Everywhere
+- Screens that open just as something changes now catch that change.
+- Release lookups no longer spend GitHub's hourly allowance, and when a check
+  cannot run Deluno says so instead of claiming you are up to date.
+- Several problems with the same cause each name their own item, so nothing is
+  said twice.
+
 ## 1.0.0-rc.30
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
