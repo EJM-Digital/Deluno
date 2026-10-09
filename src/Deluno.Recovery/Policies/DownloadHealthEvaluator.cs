@@ -110,8 +110,10 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         }
 
         var noProgress = MatchRule(rules, DownloadHealthRuleKinds.NoProgress, item);
+        // Still counted once the no-progress window has flipped the status to stalled (#1193): the person's rule
+        // keeps its own strikes through the flip instead of handing them to the platform-wide fallback.
         if (noProgress is not null &&
-            item.Status == "downloading" &&
+            item.Status is "downloading" or "stalled" &&
             item.SpeedMbps <= 0 &&
             capturedUtc - item.AddedUtc >= noProgress.Timer)
         {
@@ -120,7 +122,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 "warning",
                 DownloadHealthStrikes.NoThroughput,
                 "This download has no observed throughput.",
-                $"0 MB/s after at least {noProgress.Timer.TotalMinutes:0} minutes in the queue.",
+                $"0 MB/s, and in the queue for at least {noProgress.Timer.TotalMinutes:0} minutes.",
                 "Check peers, the indexer/client connection, and then Resume or Recheck if appropriate."));
         }
 
@@ -156,7 +158,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     DownloadHealthStrikes.LowSpeed,
                     "This download is slower than the configured floor.",
                     underFloorTooLong
-                        ? $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, for at least {tooSlow.Timer.TotalMinutes:0} minutes."
+                        ? $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, in the queue for at least {tooSlow.Timer.TotalMinutes:0} minutes."
                         : $"Still downloading after {elapsed.TotalMinutes:0} minutes, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
                     "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
             }
@@ -195,7 +197,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 "warning",
                 DownloadHealthStrikes.LowPeers,
                 "This download has fewer peers or seeders than the configured floor.",
-                $"{item.Peers} peers, under {lowPeers.Threshold:0}, for at least {lowPeers.Timer.TotalMinutes:0} minutes.",
+                $"{item.Peers} peers, under {lowPeers.Threshold:0}, in the queue for at least {lowPeers.Timer.TotalMinutes:0} minutes.",
                 "Check whether the release still has a healthy swarm; a replacement may do better."));
         }
 
