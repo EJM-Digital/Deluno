@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem } from "../../lib/api";
 import type { AttentionSnapshot } from "../../lib/use-attention";
-import { computeAttention } from "../../routes/dashboard/attention";
+import { emptyAttentionSummary } from "../../lib/attention-summary";
 
 const fetchPageItems = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", async (importOriginal) => ({
@@ -26,7 +26,7 @@ const { queryClient } = await import("../../lib/route-cache");
 
 const attention: AttentionSnapshot = {
   failedJobs: 0, failedTitleJobs: 0, failedBackgroundJobs: 0, deadLetteredJobs: 0, indexerAlerts: 0, downloadsNeedingAction: 0,
-  failedImportJobs: 0, movieWanted: 0, tvWanted: 0, healthProblems: 0, total: 0, needs: computeAttention(undefined), loading: false
+  failedImportJobs: 0, movieWanted: 0, tvWanted: 0, healthProblems: 0, total: 0, summary: emptyAttentionSummary, loading: false
 };
 
 const older: ActivityEventItem = {

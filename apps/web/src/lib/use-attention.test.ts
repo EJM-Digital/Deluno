@@ -113,8 +113,10 @@ describe("useAttention", () => {
 
   it("reads only the lists a push names, and everything for a word it does not know (#1179)", () => {
     const keys = (reasons: string[]) => attentionSourcesForReasons(reasons)?.map((source) => source.key.join("/"));
-    expect(keys(["noRelease"])).toEqual(["src/attention-no-release", expect.stringContaining("dashboard")]);
-    expect(keys(["noRelease"])?.length).toBe(2);
+    // The bell's rows and count are one server answer (#1185), so a push that moves them reads just that.
+    expect(keys(["noRelease"])).toEqual(["src/attention-summary"]);
+    expect(keys(["update"])).toEqual(["src/attention-summary"]);
+    expect(keys(["recovery"])).toContain("src/attention-summary");
     expect(keys(["heldReleases"])).toEqual([]);
     // A burst names several words: their lists are read once each.
     expect(keys(["jobs", "recovery"])?.filter((key) => key.includes("failed")).length).toBe(1);
@@ -123,7 +125,7 @@ describe("useAttention", () => {
     expect(attentionSourcesForReasons(["all"])).toBeNull();
   });
 
-  it("an open bell reads again only the no-release list and the summary after a push naming it, with no timer (#1179)", async () => {
+  it("an open bell reads again only the server's attention summary after a push naming no-release, with no timer (#1179, #1185)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       mocks.answer = true;
@@ -137,9 +139,7 @@ describe("useAttention", () => {
       });
       await vi.advanceTimersByTimeAsync(1_000);
 
-      expect(mocks.fetchJsonCalls).toContain("/api/attention/no-release");
-      expect(mocks.fetchJsonCalls.some((url) => url.includes("/api/jobs") || url.includes("indexers"))).toBe(false);
-      expect(mocks.fetchJsonCalls.length).toBeLessThanOrEqual(2);
+      expect(mocks.fetchJsonCalls).toEqual(["/api/attention/summary"]);
     } finally {
       vi.useRealTimers();
     }
