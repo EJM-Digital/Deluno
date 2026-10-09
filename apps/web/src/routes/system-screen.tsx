@@ -1502,7 +1502,9 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
               : "/api/updates/restart-now";
       const result = await fetchJson<UpdateActionResponse>(path, { method: "POST" });
       setCurrent(result.status);
-      actionStatus.markSaved(result.message);
+      // The server message can carry GitHub's reset as a UTC stamp; SaveStatus shows it in the viewer's own time (#1181).
+      if (result.status.state === "error") actionStatus.markError(result.message);
+      else actionStatus.markSaved(result.message);
     } catch (error) {
       actionStatus.markError(error instanceof Error ? error.message : "Update action failed");
       await refreshStatus();

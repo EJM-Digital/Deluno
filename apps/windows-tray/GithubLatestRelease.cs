@@ -10,7 +10,7 @@ public sealed record ResolvedGithubAsset(string AssetUrl, string? Sha256);
 /// What a lookup found. <see cref="RateLimited"/> is GitHub's own limit on anonymous calls (60 an hour for
 /// everything behind one public address): not a missing release, so it is told apart and says when it resets.
 /// </summary>
-public sealed record GithubLookup(ResolvedGithubAsset? Asset, bool RateLimited = false, DateTimeOffset? LimitResetsUtc = null);
+public sealed record GithubLookup(ResolvedGithubAsset? Asset, bool RateLimited = false, DateTimeOffset? LimitResetsUtc = null, bool FeedNotFound = false);
 
 /// <summary>
 /// Resolves Weir's latest Windows installer straight from its own GitHub
@@ -70,6 +70,13 @@ public static class GithubLatestRelease
         => resetsUtc is { } at
             ? $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. It allows more at {at.ToLocalTime():h:mm tt}. Choose Try again from the Deluno icon after that."
             : $"GitHub's hourly limit on looking up releases from this internet connection is used up, so Deluno could not look up {displayName}'s latest release. Choose Try again from the Deluno icon in about an hour.";
+
+    /// <summary>The release feed answered 404: the repository is private or does not exist, and the API would say the same (#1181).</summary>
+    private sealed class FeedNotFoundException : Exception;
+
+    /// <summary>Plain words for a repository whose release feed answers 404.</summary>
+    public static string FeedNotFoundMessage(string displayName)
+        => $"Couldn't check for {displayName}'s latest release: the release feed isn't reachable (GitHub says it isn't there, so the repository may be private).";
 
     private sealed class RateLimitedException(DateTimeOffset? resetsUtc) : Exception
     {
@@ -169,6 +176,10 @@ public static class GithubLatestRelease
         {
             return new GithubLookup(null, RateLimited: true, LimitResetsUtc: limited.ResetsUtc);
         }
+        catch (FeedNotFoundException)
+        {
+            return new GithubLookup(null, FeedNotFound: true);
+        }
         catch
         {
             return new GithubLookup(null);
@@ -186,6 +197,11 @@ public static class GithubLatestRelease
         try
         {
             using var response = await http.GetAsync(Deluno.Contracts.ReleaseAtomFeed.ReleasesUri(spec.GithubRepo!), cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FeedNotFoundException();
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 return null;

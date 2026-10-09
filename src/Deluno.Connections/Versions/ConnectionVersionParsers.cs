@@ -64,6 +64,12 @@ public static class ConnectionVersionParsers
     public static string? FromProcessorCapabilities(string? json)
         => Clean(Read(json, root => Property(root, "version")));
 
+    /// <summary>
+    /// An OpenAPI document's <c>info.version</c> (<c>/openapi.json</c>, which a processor built on FastAPI and the like
+    /// answers without a credential). The fallback for a processor whose capabilities answer cannot be had (#1181).
+    /// </summary>
+    public static string? FromOpenApiInfo(string? json)
+        => Clean(Read(json, root => Property(Property(root, "info"), "version")));
 
     private static string? Read(string? json, Func<JsonElement?, JsonElement?> select)
     {

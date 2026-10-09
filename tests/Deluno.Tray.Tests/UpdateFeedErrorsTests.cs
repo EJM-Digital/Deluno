@@ -58,6 +58,22 @@ public sealed class UpdateCheckRateLimitTests
         Assert.Contains("retry after 2026-10-08 20:21 UTC", text);
         Assert.DoesNotContain(at.ToLocalTime().ToString("h:mm tt") + ")", text.Replace("UTC)", ""));
         Assert.Contains("GitHub limit", UpdateFeedErrors.CheckFailedMessage(limit, null));
+    }
+
+    [Fact]
+    public void A_feed_that_answers_404_is_a_check_that_could_not_be_made_never_up_to_date()
+    {
+        var text = UpdateFeedErrors.CheckFailedMessage(new HttpRequestException("gone", null, HttpStatusCode.NotFound), null);
+
+        Assert.Equal("Couldn't check for updates: the update feed isn't reachable.", text);
+        Assert.DoesNotContain("latest version", text);
+        Assert.DoesNotContain("up to date", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Other_failures_keep_their_own_words()
+    {
+        var limit = new HttpRequestException("no", null, HttpStatusCode.Forbidden);
         Assert.DoesNotContain("GitHub", UpdateFeedErrors.CheckFailedMessage(new IOException("x"), null));
     }
 

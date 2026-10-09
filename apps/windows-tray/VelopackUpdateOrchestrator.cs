@@ -41,6 +41,11 @@ public static class UpdateFeedErrors
     /// <summary>What the Updates page says when a check could not be made, with the cause and when to retry when GitHub's limit is it. The time is a UTC stamp; the web page shows it in the viewer's own time (#1181).</summary>
     public static string CheckFailedMessage(Exception exception, DateTimeOffset? limitResetsUtc)
     {
+        if (IsNotFound(exception))
+        {
+            return "Couldn't check for updates: the update feed isn't reachable.";
+        }
+
         if (!IsRateLimited(exception))
         {
             return "Couldn't check for updates right now. Try Check now again in a moment.";
@@ -519,21 +524,10 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
     }
 
     /// <summary>
-    /// Asks the feed for an update. A feed that answers 404 (nothing published for this channel yet, or a repository the
-    /// updater cannot see) means there is no update, so it is not an error and not a warning in the log.
+    /// Asks the feed for an update. A feed that answers 404 (a private or missing repository) is a check that could not
+    /// be made, never "up to date": the caller reports it as such (#1181).
     /// </summary>
-    private async Task<UpdateInfo?> CheckQuietlyAsync(UpdateManager manager)
-    {
-        try
-        {
-            return await manager.CheckForUpdatesAsync();
-        }
-        catch (Exception ex) when (UpdateFeedErrors.IsNotFound(ex))
-        {
-            logger.LogInformation("No update feed is published for this channel yet ({Message}); treating it as up to date.", ex.Message);
-            return null;
-        }
-    }
+    private Task<UpdateInfo?> CheckQuietlyAsync(UpdateManager manager) => manager.CheckForUpdatesAsync();
 
     private UpdateManager GetOrCreateManager(AppSettings settings)
     {

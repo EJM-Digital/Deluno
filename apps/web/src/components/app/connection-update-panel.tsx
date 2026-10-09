@@ -46,7 +46,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
       const outcome = await fetchJson<ConnectionUpdateResult>(`/api/connections/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.id)}/update`, { method: "POST" });
       setResult(outcome);
       if (outcome.outcome === "failed") toast.error(localizeResetTimes(outcome.message));
-      else toast.success(outcome.message);
+      else toast.success(localizeResetTimes(outcome.message));
       await queryClient.invalidateQueries();
     } catch (error) {
       const message = `Failed: ${error instanceof Error ? error.message : "Deluno could not update it."}`;
