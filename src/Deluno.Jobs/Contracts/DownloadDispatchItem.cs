@@ -77,7 +77,11 @@ public sealed record DownloadDispatchItem(
     string? StartedBy = null,
 
     // The list provider name when StartedBy is "list" (Trakt, MDBList ...).
-    string? StartedByDetail = null)
+    string? StartedByDetail = null,
+
+    // #1189: the size of the file the import placed, when it placed exactly one. A later check compares it with the
+    // file now at the path. Null for a pack import (its path is a folder) and for rows from before it was kept.
+    long? ImportedFileBytes = null)
 {
     /// <summary>The plain words for <see cref="StartedBy"/>, from the one shared helper; null when there is no reason.</summary>
     public string? StartedByLabel => DownloadStartedBy.Label(StartedBy, StartedByDetail, MediaType);

@@ -4014,7 +4014,9 @@ public sealed class ImportPipelineServiceTests
         string releaseName,
         string libraryFileName,
         string? earlierReleaseName = null,
-        TimeSpan? earlierBy = null)
+        TimeSpan? earlierBy = null,
+        string? packReleaseName = null,
+        long? latestImportBytes = null)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
@@ -4064,7 +4066,18 @@ public sealed class ImportPipelineServiceTests
         var dispatchId = await store.RecordDownloadDispatchAsync(
             library.Id, "tv", "episode", episodeId, releaseName, "TestIndexer", "client-1", "qBittorrent", "sent", null,
             cancellationToken: CancellationToken.None);
-        await dispatches.RecordImportOutcomeAsync(dispatchId, "imported", filePath, null, null, CancellationToken.None);
+        await dispatches.RecordImportOutcomeAsync(
+            dispatchId, "imported", filePath, null, null, CancellationToken.None, importedFileBytes: latestImportBytes);
+
+        if (packReleaseName is not null)
+        {
+            // #1189: a season-pack grab is recorded under the series, and its import path is the folder it was placed in.
+            timeProvider.Advance(TimeSpan.FromHours(1));
+            var packId = await store.RecordDownloadDispatchAsync(
+                library.Id, "tv", "series", seriesId, packReleaseName, "TestIndexer", "client-1", "qBittorrent", "sent", null,
+                cancellationToken: CancellationToken.None);
+            await dispatches.RecordImportOutcomeAsync(packId, "imported", folder, null, null, CancellationToken.None);
+        }
 
         var bin = new Deluno.Platform.RecycleBinService(
             Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }),
@@ -4136,6 +4149,68 @@ public sealed class ImportPipelineServiceTests
             "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
             "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
             earlierReleaseName: "The Simpsons S38E02 Diary of a Chimpy Kid 1080p DSNP WEB-DL DDP5 1 H 264-NTb");
+        using var storage = run.Storage;
+        Assert.Equal(1, run.Repaired);
+        Assert.False(File.Exists(run.FilePath));
+    }
+
+    /// <summary>
+    /// #1189: an older, wrong-named per-episode import was replaced by a newer season-pack import, recorded under the
+    /// series with the pack's folder as its path. The pack decides, so the correct file is kept.
+    /// </summary>
+    [Fact]
+    public async Task An_episode_import_replaced_by_a_newer_season_pack_import_does_not_decide_and_the_file_is_kept()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            packReleaseName: "The Simpsons S38 1080p DSNP WEB-DL DDP5 1 H 264-NTb");
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        Assert.Empty(run.Scheduler.Requests);
+        Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1189: a pack import is judged too. Its own name carries another episode's title, so the file goes to the bin.</summary>
+    [Fact]
+    public async Task A_season_pack_import_whose_own_name_is_wrong_for_the_episode_is_still_judged()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 Diary of a Chimpy Kid 1080p DSNP WEB-DL DDP5 1 H 264-NTb",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            packReleaseName: "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX");
+        using var storage = run.Storage;
+        Assert.Equal(1, run.Repaired);
+        Assert.False(File.Exists(run.FilePath));
+        Assert.Single(await run.Bin.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#1189: the latest import recorded another size than the file in place; it cannot say what the file is, so it is kept and Activity says so.</summary>
+    [Fact]
+    public async Task A_file_that_is_not_the_size_its_latest_import_recorded_is_left_alone_and_Activity_says_so()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            latestImportBytes: 999);
+        using var storage = run.Storage;
+        Assert.Equal(0, run.Repaired);
+        Assert.True(File.Exists(run.FilePath));
+        Assert.Empty(await run.Bin.ListAsync(CancellationToken.None));
+        var events = await run.Store.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(events, e => e.Category == Deluno.Worker.Services.MislabelledEpisodeFileRepairService.ActivityCategory
+            && e.Message.Contains("cannot tell what it is") && e.Message.Contains("left it where it is"));
+    }
+
+    /// <summary>#1189: when the recorded size does match the file, the wrong-named import is still judged.</summary>
+    [Fact]
+    public async Task A_file_of_the_size_its_import_recorded_is_still_judged_by_that_import()
+    {
+        var run = await RunMislabelledRepairAsync(
+            "The Simpsons S38E02 The Childrens Book Job 1080p DSNP WEB-DL DDP5 1 H 264-FLUX",
+            "The Simpsons - S38E02 - Diary of a Chimpy Kid.mkv",
+            latestImportBytes: 64);
         using var storage = run.Storage;
         Assert.Equal(1, run.Repaired);
         Assert.False(File.Exists(run.FilePath));

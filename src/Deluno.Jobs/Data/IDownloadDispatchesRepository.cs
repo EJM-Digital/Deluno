@@ -58,7 +58,8 @@ public interface IDownloadDispatchesRepository
         string? importFailureCode,
         string? importFailureMessage,
         CancellationToken cancellationToken,
-        IntegrationFailure? failure = null);
+        IntegrationFailure? failure = null,
+        long? importedFileBytes = null);
 
     /// <summary>
     /// Query dispatches with filtering and pagination.
