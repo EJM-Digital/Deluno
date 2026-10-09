@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 
 $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
@@ -33,12 +33,36 @@ function SetText($element, [string] $value) { $element.GetCurrentPattern([System
 function Texts($root) { @(AllOfType $root $CT::Text | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) }
 
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath) | Out-Null
-Log "waiting for the picker window"
+Log "waiting for the picker window (first run asks 'Start Deluno when you sign in to Windows?' before it)"
 $window = $null
+$asked = $false
 for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
     $window = ByName $AE::RootElement 'Set up download clients and Weir'
+    if (-not $window -and -not $asked) {
+        # First run asks "Start Deluno when you sign in to Windows?" (Yes / No) before the picker. A person answering
+        # a fresh install says No here, so do the same, and write down what the box said.
+        # A plain Windows message box shows its text and its buttons to UI Automation as Panes (class Static / Button),
+        # with no Invoke pattern, so find them by name and press the button through its window handle.
+        $box = $null
+        foreach ($candidate in $AE::RootElement.FindAll($Scope::Children, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Deluno')))) {
+            if (ByName $candidate 'Start Deluno when you sign in to Windows?') { $box = $candidate; break }
+        }
+        if ($box) {
+            $parts = @($box.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name } |
+                ForEach-Object { "'$($_.Current.Name)' ($($_.Current.ClassName), enabled=$($_.Current.IsEnabled))" })
+            Log "start-with-windows question shown: window title 'Deluno'; controls: $($parts -join ', ')"
+            $no = ByName $box 'No'
+            # BM_CLICK straight to the button's window: a mouse click needs the box in front, and Server Manager's own pop-up can cover it.
+            Add-Type -Namespace Gp -Name Win -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr SendMessage(System.IntPtr h, uint m, System.IntPtr w, System.IntPtr l);'
+            [void][Gp.Win]::SendMessage([System.IntPtr]$no.Current.NativeWindowHandle, 0x00F5, [System.IntPtr]::Zero, [System.IntPtr]::Zero)
+            Start-Sleep -Seconds 1
+            Log "start-with-windows question answered: No (pressed the No button); box still showing: $([bool](ByName $AE::RootElement 'Start Deluno when you sign in to Windows?'))"
+            $asked = $true
+        }
+    }
     if (-not $window) { Start-Sleep -Seconds 1 }
 }
+if (-not $asked) { Log "start-with-windows question was NOT shown before the picker" }
 if (-not $window) { Log "FAILED: the picker never appeared"; exit 1 }
 Log "picker open; texts: $((Texts $window) -join ' | ')"
 
