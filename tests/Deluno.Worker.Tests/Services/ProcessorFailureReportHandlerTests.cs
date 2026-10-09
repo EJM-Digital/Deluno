@@ -275,6 +275,53 @@ public sealed class ProcessorFailureReportHandlerTests
     private static ProcessorFailureReport SourceGoneReport()
         => Report("movies", sourceRemoved: false) with { FailureClass = ProcessorFailureClasses.SourceGone, Message = "The download is no longer there, so Weir had nothing to do." };
 
+    // #1186, rig 9 Oct: "Search for another copy" sent the same release again, so the second hand-off had the same
+    // hash. The first send was archived ("Deluno removed it"); the report for the live second one was settled by it.
+    [Fact]
+    public async Task A_gone_download_of_a_release_sent_again_is_judged_by_the_latest_send_not_the_archived_one()
+    {
+        var first = DispatchRecord("dispatch-1", "archived", DateTimeOffset.Parse("2026-10-09T03:00:00Z"));
+        var second = DispatchRecord("dispatch-2", "sent", DateTimeOffset.Parse("2026-10-09T03:14:17Z"));
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("qbittorrent", "hash-1", It.IsAny<CancellationToken>())).ReturnsAsync(first);
+        _dispatches.Setup(repo => repo.FindDispatchesByClientItemIdsAsync("qbittorrent", It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first]);
+        // The second send has not recorded the client's id yet, so only its release name finds it.
+        _dispatches.Setup(repo => repo.QueryDispatchesAsync(It.IsAny<DispatchQueryFilter>(), It.IsAny<DispatchPaginationOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(((IReadOnlyList<DownloadDispatchItem>)[second, first], (string?)null));
+
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.False(outcome.Settled);
+    }
+
+    [Fact]
+    public async Task A_gone_download_whose_latest_send_Deluno_removed_is_still_settled()
+    {
+        var first = DispatchRecord("dispatch-1", "sent", DateTimeOffset.Parse("2026-10-09T03:00:00Z"));
+        var second = DispatchRecord("dispatch-2", "archived", DateTimeOffset.Parse("2026-10-09T03:14:17Z"));
+        _dispatches.Setup(repo => repo.FindDispatchesByClientItemIdsAsync("qbittorrent", It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first, second]);
+
+        var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
+
+        Assert.True(outcome.Settled);
+    }
+
+    private static DownloadDispatchItem DispatchRecord(string id, string status, DateTimeOffset created)
+    {
+        var dispatch = (DownloadDispatchItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(DownloadDispatchItem));
+        return dispatch with
+        {
+            Id = id,
+            EntityType = "movie",
+            EntityId = "movie-1",
+            ReleaseName = "Sintel.2010.1080p",
+            DownloadClientId = "qbittorrent",
+            Status = status,
+            CreatedUtc = created
+        };
+    }
+
     [Fact]
     public void The_source_gone_class_is_one_shared_string()
     {

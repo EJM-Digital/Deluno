@@ -309,4 +309,51 @@ public sealed class HandledProblemsSettlerTests
         connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
             It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // #1182, rig 9 Oct: the settler ran at 02:56:40, the import job completed at 02:56:41. The hand-off was dismissed
+    // one second before the exception that keeps it Completed could apply.
+    [Theory]
+    [InlineData("queued")]
+    [InlineData("running")]
+    [InlineData("requeued")]
+    public async Task A_hand_off_whose_import_job_is_still_in_flight_waits_and_is_settled_Completed_once_it_finishes(string inFlight)
+    {
+        var processors = Processors(WithImport("completed", ExtrasNote));
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1"));
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(2)));
+        Listed();
+
+        // The file has arrived but the job has not written "completed" yet.
+        _jobs.Setup(repo => repo.GetAsync("job-1", It.IsAny<CancellationToken>())).ReturnsAsync(Job(inFlight));
+        var settler = SettlerTelling(processors, Connections());
+        await settler.SettleAsync(CancellationToken.None);
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.DoesNotContain(_said, line => line.Category == "processing.dismissed");
+
+        // A second later the job completes; the next pass keeps the hand-off Completed.
+        _jobs.Setup(repo => repo.GetAsync("job-1", It.IsAny<CancellationToken>())).ReturnsAsync(Job("completed"));
+        await settler.SettleAsync(CancellationToken.None);
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "completed", null, null, null, It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), "dismissed", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_hand_off_whose_import_job_failed_is_still_dismissed_once_the_title_has_its_file()
+    {
+        var processors = Processors(WithImport("completed", ExtrasNote));
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1"));
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(2)));
+        Listed();
+        _jobs.Setup(repo => repo.GetAsync("job-1", It.IsAny<CancellationToken>())).ReturnsAsync(Job("failed"));
+
+        await SettlerTelling(processors, Connections()).SettleAsync(CancellationToken.None);
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

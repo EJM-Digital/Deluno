@@ -196,9 +196,19 @@ public sealed class HandledProblemsSettler(
             // worked, and only carries a note (the small extras the processor left out, #1182). It stays
             // Completed, the note is cleared so it stops asking for a person, and Transfers reads it as any
             // other import. Activity already holds the note.
-            if (handoff.Status == ProcessorHandoffStatuses.Completed
-                && !string.IsNullOrWhiteSpace(handoff.ImportJobId)
-                && await jobs.GetAsync(handoff.ImportJobId, cancellationToken) is { Status: "completed" })
+            //
+            // The import job may be queued or running at this moment: the film's file arrives a little before the
+            // job writes "completed" (the rig, 9 Oct: one second). Dismissing then would lose this exception, so the
+            // settler waits for the job to finish and looks again on its next pass (#1182).
+            var importJob = handoff.Status == ProcessorHandoffStatuses.Completed && !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                ? await jobs.GetAsync(handoff.ImportJobId, cancellationToken)
+                : null;
+            if (importJob is { Status: "queued" or "running" or "requeued" })
+            {
+                continue;
+            }
+
+            if (importJob is { Status: "completed" })
             {
                 await processors.UpdateProcessorHandoffAsync(
                     handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
