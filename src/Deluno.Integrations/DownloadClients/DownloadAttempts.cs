@@ -31,4 +31,21 @@ public static class DownloadAttempts
             && string.Equals(latest.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(latest.ImportStatus);
     }
+
+    /// <summary>
+    /// True when an import job ended in failure (it failed or was dead-lettered) at or after <paramref name="sinceUtc"/>.
+    /// A hand-off that was sent to the processor again after an older import failed is a new attempt and still waits;
+    /// one whose own import failed is not waiting for anything (#1189), whichever screen is reading it.
+    /// </summary>
+    public static bool ImportJobFailedSince(JobQueueItem job, DateTimeOffset sinceUtc)
+    {
+        if (!string.Equals(job.Status, "failed", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var endedUtc = job.CompletedUtc ?? job.LastAttemptUtc ?? job.CreatedUtc;
+        return endedUtc >= sinceUtc;
+    }
 }
