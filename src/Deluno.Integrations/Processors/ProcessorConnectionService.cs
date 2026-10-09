@@ -411,9 +411,9 @@ public sealed class ProcessorConnectionService(
             Add("posterUrl", title.PosterUrl);
         }
 
-        if (handoff.OutputFiles is { Count: > 0 } files)
+        if (handoff.SourceFiles is { Count: > 0 } files)
         {
-            payload["outputFiles"] = files;
+            payload["sourceFiles"] = files;
         }
 
         return payload;

@@ -29,7 +29,7 @@ public sealed record ProcessorHandoffItem(
     /// The files of <see cref="SourcePath"/> the processor is asked to take, set only on the copy that goes over the wire and
     /// only when the processor advertises a minimum file size (#1199). Null means the whole folder.
     /// </summary>
-    IReadOnlyList<string>? OutputFiles = null);
+    IReadOnlyList<string>? SourceFiles = null);
 
 /// <param name="DownloadAddedUtc">
 /// When the download client took this download, when it says. A torrent's queue

@@ -71,7 +71,7 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
 
         var (outbound, notes) = await Run(Handoff(), Minimum);
 
-        Assert.Equal([movie], outbound.OutputFiles);
+        Assert.Equal([movie], outbound.SourceFiles);
         Assert.Equal(_folder, outbound.SourcePath);
         Assert.True(File.Exists(extra));
         Assert.Equal(200, new FileInfo(extra).Length);
@@ -91,7 +91,7 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
 
         var (outbound, _) = await Run(Handoff(), Minimum);
 
-        Assert.Equal(new[] { exact, movie }.Order(StringComparer.Ordinal).ToList(), outbound.OutputFiles);
+        Assert.Equal(new[] { exact, movie }.Order(StringComparer.Ordinal).ToList(), outbound.SourceFiles);
         Assert.True(File.Exists(below));
     }
 
@@ -103,7 +103,7 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
 
         var (outbound, notes) = await Run(Handoff(), minimum: null);
 
-        Assert.Null(outbound.OutputFiles);
+        Assert.Null(outbound.SourceFiles);
         Assert.Equal(_folder, outbound.SourcePath);
         Assert.Empty(notes);
     }
@@ -115,7 +115,7 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
 
         var (outbound, notes) = await Run(Handoff(), Minimum);
 
-        Assert.Null(outbound.OutputFiles);
+        Assert.Null(outbound.SourceFiles);
         Assert.Empty(notes);
     }
 
@@ -129,9 +129,9 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
         var (outbound, _) = await Run(Handoff(), Minimum, [mapping]);
 
         Assert.StartsWith("/processor", outbound.SourcePath);
-        Assert.All(outbound.OutputFiles!, file => Assert.StartsWith("/processor", file));
-        Assert.Single(outbound.OutputFiles!);
-        Assert.EndsWith("Movie.mkv", outbound.OutputFiles![0]);
+        Assert.All(outbound.SourceFiles!, file => Assert.StartsWith("/processor", file));
+        Assert.Single(outbound.SourceFiles!);
+        Assert.EndsWith("Movie.mkv", outbound.SourceFiles![0]);
         Assert.True(File.Exists(movie));
     }
 
@@ -160,11 +160,11 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
         }))));
 
-        await service.SubmitAsync(Connection, Handoff() with { OutputFiles = ["/a/Movie.mkv"] }, CancellationToken.None);
-        Assert.Equal("/a/Movie.mkv", JsonDocument.Parse(body!).RootElement.GetProperty("outputFiles")[0].GetString());
+        await service.SubmitAsync(Connection, Handoff() with { SourceFiles = ["/a/Movie.mkv"] }, CancellationToken.None);
+        Assert.Equal("/a/Movie.mkv", JsonDocument.Parse(body!).RootElement.GetProperty("sourceFiles")[0].GetString());
 
         await service.SubmitAsync(Connection, Handoff(), CancellationToken.None);
-        Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("outputFiles", out _));
+        Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("sourceFiles", out _));
     }
 
     [Theory]
