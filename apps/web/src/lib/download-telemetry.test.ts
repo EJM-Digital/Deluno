@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_HISTORY_OUTCOMES, clientHistoryOutcomeLabel } from "./download-telemetry";
+import { CLIENT_HISTORY_OUTCOMES, clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "./download-telemetry";
 
 describe("clientHistoryOutcomeLabel", () => {
   it.each(CLIENT_HISTORY_OUTCOMES)(
@@ -15,5 +15,18 @@ describe("clientHistoryOutcomeLabel", () => {
 
   it("falls back to the raw code for an outcome nobody has answered yet", () => {
     expect(clientHistoryOutcomeLabel("somethingBrandNew")).toBe("somethingBrandNew");
+  });
+});
+
+describe("a download imported earlier whose file has since left the library (#1182)", () => {
+  const status = downloadQueueStatuses.importedFileLeft;
+
+  it("says so in plain words, never In library or Imported", () => {
+    expect(queueStatusLabel(status)).toBe("Imported earlier, but the file has since left the library");
+  });
+
+  it("is history: not ready to import and not being processed", () => {
+    expect(isImportReadyStatus(status)).toBe(false);
+    expect(isProcessingStatus(status)).toBe(false);
   });
 });

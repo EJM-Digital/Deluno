@@ -2579,6 +2579,7 @@ function pipelineStage(item: DownloadQueueItem) {
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Checking media";
   if (item.status === downloadQueueStatuses.importQueued) return "Importing & naming";
   if (item.status === downloadQueueStatuses.imported) return "In library";
+  if (item.status === downloadQueueStatuses.importedFileLeft) return "Imported earlier";
   if (item.status === downloadQueueStatuses.importFailed || item.status === downloadQueueStatuses.processingFailed) return "Needs attention";
   if (isImportReadyStatus(item.status)) return "Ready for import";
   if (item.status === downloadQueueStatuses.paused) return "Paused";
@@ -2596,6 +2597,7 @@ function pipelineDetail(item: DownloadQueueItem) {
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Media quality and processor output are being checked.";
   if (item.status === downloadQueueStatuses.importQueued) return "The destination and final name are being applied.";
   if (item.status === downloadQueueStatuses.imported) return "The file has been placed in the library.";
+  if (item.status === downloadQueueStatuses.importedFileLeft) return "Imported earlier, but the file has since left the library. The title shows as missing and Deluno searches for it.";
   if (isImportReadyStatus(item.status)) return "Preview the destination and final name before importing.";
   return item.sourcePath ? `Source: ${item.sourcePath}` : "External client owns the download.";
 }
