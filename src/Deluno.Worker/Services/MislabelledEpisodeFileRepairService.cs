@@ -194,17 +194,25 @@ public sealed class MislabelledEpisodeFileRepairService(
         CancellationToken cancellationToken)
     {
         var names = new List<string>();
-        var page = await dispatches.ListDownloadDispatchesPageAsync(
-            new PageRequest(50), "tv", cancellationToken, includeArchived: true, entityId: link.EpisodeId);
-        var imports = page.Items
-            .Where(dispatch => string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(dispatch.ImportedFilePath)
-                    || string.Equals(dispatch.ImportedFilePath, link.FilePath, StringComparison.OrdinalIgnoreCase)))
+        var imports = (await ImportsThatCouldHaveProducedAsync(dispatches, link, cancellationToken))
             .OrderByDescending(dispatch => dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc)
             .ThenByDescending(dispatch => dispatch.CreatedUtc)
             .ToArray();
         if (imports.Length > 0)
         {
+            var label = $"{link.SeriesTitle} S{link.SeasonNumber:00}E{link.EpisodeNumber:00}";
+
+            // #1189: the latest import recorded the size of the file it placed. A file of another size is not that
+            // file (it was replaced, or restored from an older copy), so the record cannot say what it is.
+            if (imports[0].ImportedFileBytes is { } recordedBytes && FileSizeOrNull(link.FilePath) is { } actualBytes && actualBytes != recordedBytes)
+            {
+                await activity.RecordActivityOnChangeAsync(
+                    ActivityCategory,
+                    $"{label} has a file that is not the size of the one its latest download placed, so Deluno cannot tell what it is and left it where it is.",
+                    null, null, "episode", link.EpisodeId, cancellationToken);
+                return null;
+            }
+
             var latestAt = imports[0].ImportCompletedUtc ?? imports[0].CreatedUtc;
             var sameMoment = imports
                 .TakeWhile(dispatch => (dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc) == latestAt)
@@ -213,7 +221,6 @@ public sealed class MislabelledEpisodeFileRepairService(
                 .ToArray();
             if (sameMoment.Length > 1)
             {
-                var label = $"{link.SeriesTitle} S{link.SeasonNumber:00}E{link.EpisodeNumber:00}";
                 await activity.RecordActivityOnChangeAsync(
                     ActivityCategory,
                     $"{label} has a file, but Deluno cannot tell which of {sameMoment.Length} downloads produced it, so it left the file where it is.",
@@ -234,5 +241,65 @@ public sealed class MislabelledEpisodeFileRepairService(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Every imported download that could have produced the file at this path (#1189): the grabs recorded under the
+    /// episode, and the season-pack grabs recorded under the series, whose import path is the folder the pack was
+    /// placed in. A series-level import counts only when its path is this file or a folder holding it; an
+    /// episode-level import with no path recorded still counts, as before.
+    /// </summary>
+    private static async Task<IReadOnlyList<DownloadDispatchItem>> ImportsThatCouldHaveProducedAsync(
+        IJobQueueRepository dispatches,
+        EpisodeFileLink link,
+        CancellationToken cancellationToken)
+    {
+        var byEpisode = await dispatches.ListDownloadDispatchesPageAsync(
+            new PageRequest(50), "tv", cancellationToken, includeArchived: true, entityId: link.EpisodeId);
+        var bySeries = await dispatches.ListDownloadDispatchesPageAsync(
+            new PageRequest(100), "tv", cancellationToken, includeArchived: true, entityId: link.SeriesId);
+        return byEpisode.Items
+            .Where(dispatch => IsImported(dispatch)
+                && (string.IsNullOrWhiteSpace(dispatch.ImportedFilePath) || CoversFile(dispatch.ImportedFilePath, link.FilePath)))
+            .Concat(bySeries.Items.Where(dispatch => IsImported(dispatch)
+                && !string.IsNullOrWhiteSpace(dispatch.ImportedFilePath)
+                && CoversFile(dispatch.ImportedFilePath, link.FilePath)))
+            .DistinctBy(dispatch => dispatch.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsImported(DownloadDispatchItem dispatch)
+        => string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The import's path is the file itself, or a folder the file is inside (a season pack).</summary>
+    private static bool CoversFile(string importedPath, string filePath)
+    {
+        var imported = importedPath.Trim().TrimEnd('/', '\\');
+        if (imported.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.Equals(imported, filePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return filePath.Length > imported.Length
+            && filePath.StartsWith(imported, StringComparison.OrdinalIgnoreCase)
+            && (filePath[imported.Length] == '/' || filePath[imported.Length] == '\\');
+    }
+
+    private static long? FileSizeOrNull(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? info.Length : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
