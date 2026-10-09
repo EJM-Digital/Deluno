@@ -18,12 +18,13 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 public sealed class QbittorrentMetadataStallTests
 {
     [Fact]
-    public async Task StalledDL_is_stalled_immediately()
+    public async Task StalledDL_alone_is_not_read_as_stalled()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
         var item = await Snapshot("stalledDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
-        Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
+        // #1193: the client's own flag is not proof; Deluno's no-progress window decides.
+        Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
     [Fact]

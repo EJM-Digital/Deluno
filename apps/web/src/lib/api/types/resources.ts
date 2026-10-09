@@ -1395,6 +1395,8 @@ export interface DownloadHealthIgnoreEntry {
   hash: string | null;
   category: string | null;
   trackerDomain: string | null;
+  /** #1194: a tag the client put on the torrent, or one Deluno holds for its title or indexer. */
+  tag?: string | null;
   note: string | null;
   createdUtc: string;
 }

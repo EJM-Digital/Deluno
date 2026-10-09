@@ -43,6 +43,12 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         else if (!DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent)
             && (item.Status == "stalled" || (!string.IsNullOrWhiteSpace(item.ErrorMessage) && !IsTransferring(item))))
         {
+            // One rule owns a stall (#1194): when a "No progress" or "Client-reported failure" rule covers this
+            // download, that rule's strikes, check interval and action decide, and the platform-wide fallback below
+            // (with its own threshold) does not also strike or act on it.
+            var stallOwnedByRule = (MatchRule(rules, DownloadHealthRuleKinds.NoProgress, item) is not null && item.SpeedMbps <= 0) ||
+                MatchRule(rules, DownloadHealthRuleKinds.ClientFailure, item) is not null;
+            if (!stallOwnedByRule)
             findings.Add(new(
                 Severity: "critical",
                 Kind: DownloadHealthStrikes.ClientStalled,
@@ -110,17 +116,20 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         }
 
         var noProgress = MatchRule(rules, DownloadHealthRuleKinds.NoProgress, item);
+        // Still counted once the no-progress window has flipped the status to stalled (#1193): the person's rule
+        // keeps its own strikes through the flip instead of handing them to the platform-wide fallback.
+        // A strike per check: nothing arriving at this check is one strike, however old the download is.
         if (noProgress is not null &&
-            item.Status == "downloading" &&
-            item.SpeedMbps <= 0 &&
-            capturedUtc - item.AddedUtc >= noProgress.Timer)
+            item.Status is "downloading" or "stalled" &&
+            !DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent) &&
+            item.SpeedMbps <= 0)
         {
             findings.Add(RuleFinding(
                 noProgress,
                 "warning",
                 DownloadHealthStrikes.NoThroughput,
                 "This download has no observed throughput.",
-                $"0 MB/s after at least {noProgress.Timer.TotalMinutes:0} minutes in the queue.",
+                string.IsNullOrWhiteSpace(item.ErrorMessage) ? "Nothing was arriving (0 MB/s) at this check." : item.ErrorMessage,
                 "Check peers, the indexer/client connection, and then Resume or Recheck if appropriate."));
         }
 
@@ -143,7 +152,8 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
             !(tooSlow.IgnoreAboveSizeBytes is { } ignoreAboveSize && ignoreAboveSize > 0 && item.SizeBytes > ignoreAboveSize))
         {
             var elapsed = capturedUtc - item.AddedUtc;
-            var underFloorTooLong = item.SpeedMbps * 1000 < tooSlow.Threshold && elapsed >= tooSlow.Timer;
+            // A download moving nothing at all belongs to the "No progress" rule, never counted by both (#1194).
+            var underFloorTooLong = item.SpeedMbps > 0 && item.SpeedMbps * 1000 < tooSlow.Threshold;
             var overMaxTotalTime = tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
                 maxTotalMinutes > 0 &&
                 elapsed >= TimeSpan.FromMinutes(maxTotalMinutes);
@@ -156,7 +166,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     DownloadHealthStrikes.LowSpeed,
                     "This download is slower than the configured floor.",
                     underFloorTooLong
-                        ? $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, for at least {tooSlow.Timer.TotalMinutes:0} minutes."
+                        ? $"{item.SpeedMbps * 1000:0.#} KB/s at this check, under the limit of {tooSlow.Threshold:0} KB/s."
                         : $"Still downloading after {elapsed.TotalMinutes:0} minutes, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
                     "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
             }
@@ -168,15 +178,14 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         var magnetMetadata = MatchRule(rules, DownloadHealthRuleKinds.MagnetMetadata, item);
         if (magnetMetadata is not null &&
             !item.IsUsenetProtocol &&
-            item.IsFetchingMetadata &&
-            capturedUtc - item.AddedUtc >= magnetMetadata.Timer)
+            item.IsFetchingMetadata)
         {
             findings.Add(RuleFinding(
                 magnetMetadata,
                 "warning",
                 DownloadHealthStrikes.MagnetMetadata,
                 "This magnet has not finished fetching its metadata.",
-                $"Still fetching metadata after at least {magnetMetadata.Timer.TotalMinutes:0} minutes.",
+                "The magnet had not finished fetching its metadata at this check.",
                 "The magnet's DHT/peer exchange may be unreachable; a replacement search may find a direct torrent instead."));
         }
 
@@ -187,15 +196,14 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         if (lowPeers is not null &&
             !item.IsUsenetProtocol &&
             item.Status == "downloading" &&
-            item.Peers < lowPeers.Threshold &&
-            capturedUtc - item.AddedUtc >= lowPeers.Timer)
+            item.Peers < lowPeers.Threshold)
         {
             findings.Add(RuleFinding(
                 lowPeers,
                 "warning",
                 DownloadHealthStrikes.LowPeers,
                 "This download has fewer peers or seeders than the configured floor.",
-                $"{item.Peers} peers, under {lowPeers.Threshold:0}, for at least {lowPeers.Timer.TotalMinutes:0} minutes.",
+                $"{item.Peers} peers at this check, under the floor of {lowPeers.Threshold:0}.",
                 "Check whether the release still has a healthy swarm; a replacement may do better."));
         }
 
@@ -213,8 +221,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
             !item.IsUsenetProtocol &&
             item.Status == "downloading" &&
             (item.Peers <= 0 || trackerUnregistered) &&
-            capturedUtc - item.AddedUtc >= TimeSpan.FromMinutes(deadTorrent.Threshold) &&
-            capturedUtc - item.AddedUtc >= deadTorrent.Timer)
+            capturedUtc - item.AddedUtc >= TimeSpan.FromMinutes(deadTorrent.Threshold))
         {
             findings.Add(RuleFinding(
                 deadTorrent,
@@ -225,7 +232,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     : "This torrent has no seeds or peers left.",
                 trackerUnregistered
                     ? $"Tracker reports this torrent unregistered, past its {deadTorrent.Threshold:0}-minute grace period."
-                    : $"0 peers for at least {deadTorrent.Timer.TotalMinutes:0} minutes, past its {deadTorrent.Threshold:0}-minute grace period.",
+                    : $"0 peers at this check, past its {deadTorrent.Threshold:0}-minute grace period.",
                 "This release may no longer be available anywhere. A replacement search may find a healthier one."));
         }
 

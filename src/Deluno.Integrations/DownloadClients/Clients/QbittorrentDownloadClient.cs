@@ -533,6 +533,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     // How long a tracker verdict for one torrent is reused (#1081).
     private static readonly TimeSpan TrackerStatusTtl = TimeSpan.FromMinutes(1);
     private readonly ConcurrentDictionary<string, (string Status, DateTimeOffset At)> trackerStatusCache = new(StringComparer.OrdinalIgnoreCase);
+    // #1194: every announce host of a torrent whose tracker list was read, kept beside its verdict.
+    private readonly ConcurrentDictionary<string, IReadOnlyList<string>> trackerHostsCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private IReadOnlyList<string> TrackerHostsOf(string clientId, QbitTorrentItem item)
+    {
+        var hosts = new List<string>();
+        if (DownloadClientHelpers.HostOf(item.Tracker) is { } current) hosts.Add(current);
+        if (item.Hash is { Length: > 0 } hash && trackerHostsCache.TryGetValue($"{clientId}|{hash}", out var known))
+        {
+            hosts.AddRange(known.Where(host => !hosts.Contains(host, StringComparer.OrdinalIgnoreCase)));
+        }
+        return hosts;
+    }
 
     private async Task<DownloadClientTelemetrySnapshot?> ReadSnapshotAsync(
         HttpClient http, DownloadClientItem client, Uri baseUri, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -547,7 +560,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             item.Hash ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
             item.Name ?? "Unknown qBittorrent item", item.Category ?? string.Empty, NormalizeStatus(item.State, item.Progress),
-            Math.Clamp(Math.Round((item.Progress ?? 0) * 100, 1), 0, 100), Math.Round((item.DownloadSpeed ?? 0) / 1_000_000d, 1),
+            Math.Clamp(((item.Progress ?? 0) * 100), 0, 100), ((item.DownloadSpeed ?? 0) / 1_000_000d),
             // Seeds alone undercounted a swarm with active leechers and no seeds
             // yet, which the no-progress stall gate (#659) reads as "no peers at
             // all" (#660).
@@ -561,7 +574,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // completed; it is 0 while still downloading.
             Ratio: item.Ratio,
             SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1),
+            UploadSpeedMbps: ((item.UploadSpeed ?? 0) / 1_000_000d),
             // #880/#881: qBittorrent only says something specific in the state
             // string itself for missingFiles (the payload is gone from disk)
             // and a bare "error" state (I/O, permissions, disk space). Both
@@ -581,7 +594,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // resolved its own metadata (name, file list, size) yet. NormalizeStatus
             // maps metaDL to Downloading (it has no "fetching metadata" status of
             // its own), so this is read from the raw state string directly.
-            IsFetchingMetadata: string.Equals(item.State, "metaDL", StringComparison.OrdinalIgnoreCase)))
+            IsFetchingMetadata: string.Equals(item.State, "metaDL", StringComparison.OrdinalIgnoreCase),
+            // #1194: for the ignore list. torrents/info names the tracker in use; the full list is added when it was read.
+            Tags: DownloadClientHelpers.SplitTags(item.Tags),
+            TrackerHosts: TrackerHostsOf(client.Id, item)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var (freeSpaceBytes, alternateSpeedLimitEnabled) = await serverStateTask;
@@ -920,8 +936,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         if (normalized is "pauseddl" or "stoppeddl") return DownloadQueueStatuses.Paused;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
-        // stalledDL with almost nothing left is finishing, not stalled (#1193).
-        if (normalized.Contains("stalled") && (progress ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent) return DownloadQueueStatuses.Stalled;
+        // stalledDL is the client's own flag, not proof (#1193): Downloading until Deluno's own no-progress window
+        // (DownloadClientHelpers.ReconcileTorrentStatus) finds no byte gain, whatever the percent.
         return DownloadQueueStatuses.Downloading;
     }
 
@@ -1072,7 +1088,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // #811 telemetry fields, all on the same torrents/info call.
         [property: JsonPropertyName("availability")] double? Availability = null,
         [property: JsonPropertyName("last_activity")] long? LastActivity = null,
-        [property: JsonPropertyName("completion_on")] long? CompletionOn = null);
+        [property: JsonPropertyName("completion_on")] long? CompletionOn = null,
+        // #1194: qBittorrent's comma-separated tags, and the tracker it is announcing to now (empty when none works).
+        [property: JsonPropertyName("tags")] string? Tags = null,
+        [property: JsonPropertyName("tracker")] string? Tracker = null);
 
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
 
@@ -1085,7 +1104,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// <summary>qBittorrent's per-tracker status: 4 is "Not working", and only then does <c>msg</c> carry the tracker's own reason.</summary>
     private sealed record QbitTrackerItem(
         [property: JsonPropertyName("status")] int? Status,
-        [property: JsonPropertyName("msg")] string? Message);
+        [property: JsonPropertyName("msg")] string? Message,
+        [property: JsonPropertyName("url")] string? Url = null);
 
     private const int TrackerNotWorking = 4;
 
@@ -1140,6 +1160,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                         ? DownloadTrackerStatuses.Unregistered
                         : DownloadTrackerStatuses.Ok;
                     trackerStatusCache[$"{clientId}|{hash}"] = (status, now);
+                    trackerHostsCache[$"{clientId}|{hash}"] = DownloadClientHelpers.HostsOf(trackers.Select(tracker => tracker.Url));
                 }
                 catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
                 {
@@ -1166,6 +1187,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             foreach (var key in trackerStatusCache.Keys.Where(key => key.StartsWith(clientId + "|", StringComparison.OrdinalIgnoreCase) && !live.Contains(key)).ToArray())
             {
                 trackerStatusCache.TryRemove(key, out _);
+                trackerHostsCache.TryRemove(key, out _);
             }
         }
 

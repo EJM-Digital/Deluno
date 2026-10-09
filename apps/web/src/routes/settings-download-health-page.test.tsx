@@ -75,3 +75,14 @@ describe("connectivity check skip history (#964)", () => {
     expect(screen.queryByRole("link", { name: /See in Activity/i })).not.toBeInTheDocument();
   });
 });
+
+describe("strike counts and check interval are settable on the screen (#1194)", () => {
+  it("shows the shared Check every setting and the stalled-download strike count, with the person's numbers", () => {
+    loaderData = { ...loaderData, connectivityCheckSkips: [] };
+    renderPage();
+
+    expect(screen.getByLabelText("Check every")).toHaveValue(5);
+    expect(screen.getByLabelText("Strikes before a stalled download is acted on")).toHaveValue(3);
+    expect(screen.getByText(/Each check where a problem is found adds one strike, and the first check where it is gone clears them/i)).toBeInTheDocument();
+  });
+});

@@ -83,7 +83,8 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     public async Task Qbittorrent_incomplete_torrent_whose_tracker_is_not_working_keeps_its_behaviour()
     {
         var item = await Qbit("stalledDL", 0.4, "[{\"status\":4,\"msg\":\"The tracker is not answering\"}]");
-        Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
+        // #1193: stalledDL alone stays Downloading until Deluno's no-progress window finds no byte gain.
+        Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
     private static async Task<DownloadQueueItem> Deluge(string state, double progress, string trackerStatus)

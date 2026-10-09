@@ -38,20 +38,15 @@ public sealed class TransmissionSharingAndStallTests
         Assert.Null(item.SeedingMinutes);
     }
 
-    [Fact]
-    public async Task Transmissions_own_isStalled_flag_marks_the_item_stalled_immediately()
+    [Theory]
+    [InlineData(0.4)]
+    [InlineData(0.99995)]
+    public async Task Transmissions_own_isStalled_flag_alone_is_not_read_as_stalled(double percentDone)
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
+        // #1193: Deluno's own no-progress window decides, at any percent (DownloadClientHelpers.ReconcileTorrentStatus).
+        var item = await Snapshot(status: 4, percentDone: percentDone, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
 
-        Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
-    }
-
-    [Fact]
-    public async Task IsStalled_on_a_torrent_with_almost_nothing_left_is_finishing_not_stalled()
-    {
-        var finishing = await Snapshot(status: 4, percentDone: 0.99995, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
-
-        Assert.Equal(DownloadQueueStatuses.Downloading, finishing.Status);
+        Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
     [Fact]

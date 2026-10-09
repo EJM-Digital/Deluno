@@ -744,7 +744,8 @@ public sealed class WorkPlanner(
 
             // #817: exempt from seeding reclaim the same way it is exempt from
             // every strike/blocklist rule.
-            if (ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+            if (ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts,
+                (source?.Tags ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))))
             {
                 continue;
             }

@@ -173,6 +173,7 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
             await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
             await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
             var settings = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+            await AnInstallThatHasTheStrikeActionsOn.ApplyAsync(settings);
             var connections = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var libraries = new SqliteLibrariesRepository(storage.Factory, time);
             var library = await libraries.CreateLibraryAsync(new CreateLibraryRequest(

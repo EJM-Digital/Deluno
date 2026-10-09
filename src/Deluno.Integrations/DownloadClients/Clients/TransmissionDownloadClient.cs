@@ -130,14 +130,14 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             StableId(item) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Labels?.FirstOrDefault()), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Transmission item"),
             item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, Status(item),
-            Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
+            Math.Clamp(((item.PercentDone ?? 0) * 100), 0, 100), ((item.RateDownload ?? 0) / 1_000_000d), Math.Max(0, item.Eta ?? 0),
             item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", IsFinishedWithTrackerError(item) || string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
             DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
             // Both come back on the same torrent-get call, so a sharing rule
             // costs no extra request. secondsSeeding is 0 while still downloading.
             Ratio: item.UploadRatio,
             SeedingMinutes: item.SecondsSeeding is null ? null : (int)Math.Clamp(item.SecondsSeeding.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1),
+            UploadSpeedMbps: ((item.RateUpload ?? 0) / 1_000_000d),
             // #880/#881: Transmission's own error field distinguishes a local
             // problem from a tracker one. TR_STAT_LOCAL_ERROR (3) is
             // Transmission's word for a problem on this machine — disk space,
@@ -157,15 +157,18 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // The seed limits are the torrent's own mode and limit, in plain words.
             QueuePosition: item.QueuePosition is >= 0 ? item.QueuePosition + 1 : null,
             SeedLimit: SeedLimitText.ForTransmission(item.SeedRatioMode, item.SeedRatioLimit, item.SeedIdleMode, item.SeedIdleLimit),
-            LegacyId: string.IsNullOrWhiteSpace(item.HashString) ? null : item.Id?.ToString(CultureInfo.InvariantCulture)))
+            LegacyId: string.IsNullOrWhiteSpace(item.HashString) ? null : item.Id?.ToString(CultureInfo.InvariantCulture),
+            // #1194: for the ignore list.
+            Tags: item.Labels ?? [],
+            TrackerHosts: DownloadClientHelpers.HostsOf((item.TrackerStats ?? []).Select(stat => stat.Announce))))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        var (freeSpaceBytes, clientVersion) = await ReadSessionAsync(client, baseUri, cancellationToken);
+        var (freeSpaceBytes, clientVersion, alternateSpeedLimitEnabled) = await ReadSessionAsync(client, baseUri, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
     }
 
     /// <summary>
@@ -206,39 +209,40 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// with nothing configured to ask about, reports nothing rather than a
     /// guessed number.
     /// </summary>
-    private async Task<(long? FreeSpaceBytes, string? Version)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
+    private async Task<(long? FreeSpaceBytes, string? Version, bool? AlternateSpeedLimitEnabled)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
     {
         string? version = null;
+        bool? alternateSpeedLimit = null;
         try
         {
             // The same session-get also carries Transmission's own version (#1117), "4.0.5 (a6fe2de319)".
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version" } }), cancellationToken);
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version", "alt-speed-enabled" } }), cancellationToken);
             version = Deluno.Connections.Versions.ConnectionVersionParsers.Clean(session.Arguments?.Version);
+            // #1194: Transmission's alternate speed limit ("turtle mode"), so a Too slow rule can skip while it is on.
+            alternateSpeedLimit = session.Arguments?.AltSpeedEnabled;
             var downloadDir = session.Arguments?.DownloadDir;
             if (string.IsNullOrWhiteSpace(downloadDir))
             {
-                return (null, version);
+                return (null, version, alternateSpeedLimit);
             }
 
             var freeSpace = await SendAsync(client, baseUri, new TransmissionRequest("free-space", new() { ["path"] = downloadDir }), cancellationToken);
             // #1060: a download folder that does not exist yet answers nothing; measure the drive it will be created on.
             return (freeSpace.Arguments?.SizeBytes
-                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version);
+                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version, alternateSpeedLimit);
         }
         catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
-            return (null, version);
+            return (null, version, alternateSpeedLimit);
         }
     }
 
     /// <summary>
-    /// Transmission's own stall detection folded in on top of the status-code
-    /// mapping (#661): it watches real peer/tracker activity Deluno does not
-    /// see, so a torrent it has already flagged stalled should read as
-    /// <see cref="DownloadQueueStatuses.Stalled"/> immediately rather than
-    /// waiting on the generic no-throughput health check to notice on its own.
-    /// Only promotes a torrent still reading as Downloading — an error, a
-    /// completion or a pause already outranks "stalled".
+    /// Transmission's status mapping, with its tracker-error handling. Its own
+    /// <c>isStalled</c> flag is deliberately not read as Stalled (#1193, which
+    /// replaces #661's immediate promotion): a torrent may only be closing its
+    /// last blocks, so it stays Downloading until Deluno's own no-progress
+    /// window finds no byte gain, the same rule for every client.
     /// </summary>
     /// <summary>
     /// #1183: a torrent at 100% whose only complaint is its tracker (error 1 =
@@ -253,9 +257,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     {
         var finished = IsFinishedWithTrackerError(item);
         var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, finished ? null : item.Error, finished ? null : item.ErrorString);
-        return item.IsStalled == true && status == DownloadQueueStatuses.Downloading && (item.PercentDone ?? 0) * 100d < Deluno.Platform.Contracts.DownloadHealthStrikes.FinishingPercent
-            ? DownloadQueueStatuses.Stalled
-            : status;
+        // isStalled is the client's own flag, not proof (#1193): the status stays as mapped (Downloading) until
+        // Deluno's own no-progress window (DownloadClientHelpers.ReconcileTorrentStatus) finds no byte gain.
+        return status;
     }
 
     /// <summary>
@@ -485,7 +489,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("rpc-version")] int? RpcVersion = null,
         [property: JsonPropertyName("version")] string? Version = null,
         [property: JsonPropertyName("incomplete-dir")] string? IncompleteDir = null,
-        [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null);
+        [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null,
+        [property: JsonPropertyName("alt-speed-enabled")] bool? AltSpeedEnabled = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null, [property: JsonPropertyName("hashString")] string? HashString = null);
 
@@ -493,7 +498,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     private sealed record TransmissionTrackerStat(
         [property: JsonPropertyName("lastAnnounceResult")] string? LastAnnounceResult,
         [property: JsonPropertyName("lastAnnounceSucceeded")] bool? LastAnnounceSucceeded,
-        [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced);
+        [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced,
+        [property: JsonPropertyName("announce")] string? Announce = null);
 
     /// <summary>One file inside a torrent (#816); <c>name</c> is its path relative to the torrent's own folder.</summary>
     private sealed record TransmissionFile([property: JsonPropertyName("name")] string? Name);

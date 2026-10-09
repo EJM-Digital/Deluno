@@ -86,24 +86,34 @@ public sealed class SqliteDownloadHealthRepository(
             // the rule's own (usually much tighter) timer, not this window.
             var continuing = record is not null && now - record.LastObservedUtc <= strikeInactivityWindow;
             var since = continuing ? record!.FirstObservedUtc : now;
-            var window = observation.RuleTimerMinutes is { } ruleMinutes
-                ? TimeSpan.FromMinutes(Math.Clamp(ruleMinutes, 1, 1440))
-                : defaultStrikeWindow;
+            // One check interval for every rule (#1194): a strike per check, not per elapsed time.
+            var window = defaultStrikeWindow;
             // #901: strikes are time, and outage time is not held against a
             // download. FirstObservedUtc itself is left true to when the
             // problem was actually first seen (evidence still reads right);
             // only the elapsed span the strike count is built from skips
             // whatever part of it was an outage rather than a bad release.
-            var outageOverlap = await _connectivityMonitor.OutageOverlapAsync(since, now, cancellationToken);
+            var lastStrike = continuing ? record!.LastStrikeUtc ?? record.FirstObservedUtc : now;
+            var outageOverlap = continuing
+                ? await _connectivityMonitor.OutageOverlapAsync(lastStrike, now, cancellationToken)
+                : TimeSpan.Zero;
+            var counts = DownloadHealthStrikes.Counts(observation.Kind);
+            var previousStrikes = continuing ? record!.StrikeCount : 0;
+            var strikes = !counts ? 0
+                : !continuing || previousStrikes == 0 ? 1
+                : DownloadHealthStrikes.IsDueForStrike(lastStrike, now, window, outageOverlap) ? previousStrikes + 1
+                : previousStrikes;
+            var struckAt = counts && strikes != previousStrikes || !continuing ? now : lastStrike;
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
                 since, now,
                 // Only a problem with getting the bytes earns strikes (#560, #1154). A failed hand-off or import
                 // on a finished download is shown, but it is not struck, so it never reads "53 strikes so far".
-                DownloadHealthStrikes.Counts(observation.Kind) ? DownloadHealthStrikes.For(since + outageOverlap, now, window) : 0,
+                strikes,
                 record?.IgnoredUntilUtc,
-                observation.RuleId, observation.RuleStrikeLimit, observation.RuleTimerMinutes, observation.RuleActionPreset);
+                observation.RuleId, observation.RuleStrikeLimit, observation.RuleTimerMinutes, observation.RuleActionPreset,
+                counts ? struckAt : null);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);
             touched.Add(updated);
@@ -634,7 +644,7 @@ public sealed class SqliteDownloadHealthRepository(
     /// </summary>
     private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
     {
-        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 20);
+        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 100);
         var actionPreset = LegacyActionPreset(legacy);
 
         DownloadHealthRule Rule(string id, string kind, bool enabled, int timerMinutes, double threshold) => new(

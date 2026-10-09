@@ -143,11 +143,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             var sizeBytes = ParseSize(item.Mb) * 1_000_000L;
             var remainingBytes = ParseSize(item.Mbleft) * 1_000_000L;
             var downloadedBytes = Math.Max(0, sizeBytes - remainingBytes);
-            var progress = sizeBytes <= 0 ? 0 : Math.Round(downloadedBytes / (double)sizeBytes * 100, 1);
+            var progress = sizeBytes <= 0 ? 0 : (downloadedBytes / (double)sizeBytes * 100);
             return new DownloadQueueItem(item.NzoId ?? item.Filename ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Filename ?? "Unknown SABnzbd item"),
                 item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress,
-                Math.Round((double)ParseSize(payload?.Queue?.Speed), 1), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
+                ((double)ParseSize(payload?.Queue?.Speed)), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
                 QueueError(item.Status), capturedUtc);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, apiKey, capturedUtc, cancellationToken);

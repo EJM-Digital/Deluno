@@ -3,11 +3,11 @@
  *
  * Its own page, replacing the flat per-kind toggles that used to sit on
  * Search & Cycles -> Failed Downloads: each rule kind here carries its own
- * strikes, its own timer, its own completion range/protocol scope, and its
- * own action - "Replace it", "Retry elsewhere, keep files", or "Just tell
- * me". Nothing is on for a rule that was not already on before this screen
- * existed (#936); the first read of /api/download-health/rules synthesizes
- * that starting point once, server-side.
+ * strikes, its own completion range/protocol scope, and its own action -
+ * "Replace it", "Retry elsewhere, keep files", or "Just tell me" - and every
+ * rule is checked on one shared "Check every" interval, a strike per check
+ * (#1194). A fresh install has no rule on: setup asks a Yes or No, and an
+ * install that existed before keeps exactly what it had.
  *
  * "Dangerous or junk file" (#816/#879) is offered here too, once a client
  * adapter can list what is actually inside a download - it checks that
@@ -62,36 +62,36 @@ import { useDisplayPreferences } from "../lib/display-preferences";
 const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
     label: "No progress",
-    description: "Nothing has arrived at all, whatever the client's other numbers say."
+    description: "Nothing has arrived since the last check, at any percent. Each check with no progress adds a strike; the first check that shows progress clears them."
   },
   "too-slow": {
     label: "Too slow",
-    description: "Slower than a speed floor you choose. Off until a floor makes sense for your own connections.",
+    description: "Slower than a speed limit you choose, at any percent. Each check under the limit adds a strike; the first check back over it clears them. Off until a limit makes sense for your own connections.",
     thresholdLabel: "Slower than",
     thresholdUnit: "KB/s",
-    thresholdHelp: "A download under this speed, for the timer below, trips this rule."
+    thresholdHelp: "A check that finds the download under this speed adds a strike. A check over it clears the strikes."
   },
   "low-peers": {
     label: "Not enough peers",
-    description: "Fewer peers or seeders than a floor you choose. Torrents only; Usenet has no peers.",
+    description: "Fewer peers or seeders than a floor you choose, at any percent. Each check under the floor adds a strike; the first check back over it clears them. Torrents only; Usenet has no peers.",
     thresholdLabel: "Fewer than",
     thresholdUnit: "peers",
-    thresholdHelp: "A download under this peer count, for the timer below, trips this rule."
+    thresholdHelp: "A check that finds the download under this peer count adds a strike. A check over it clears the strikes."
   },
   "dead-torrent": {
     label: "Dead torrent",
-    description: "Zero peers or seeders left, past a grace period so a magnet that has not yet announced is not judged instantly. Torrents only.",
+    description: "Zero peers or seeders at a check, once the download is older than a grace period so a magnet that has not yet announced is not judged instantly. Each check with none adds a strike; the first check with a peer clears them. Torrents only.",
     thresholdLabel: "Grace period",
     thresholdUnit: "minutes",
     thresholdHelp: "How long a freshly added download is left alone before zero peers can trip this rule."
   },
   "dangerous-file": {
     label: "Dangerous or junk file",
-    description: <>A file inside the download matches the content blocklist (<PageLink page="failedDownloads" label="Automation & Recovery, Failed Downloads, Content blocklist" />). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below.</>
+    description: <>A file inside the download matches the content blocklist (<PageLink page="failedDownloads" label="Automation & Recovery, Failed Downloads, Content blocklist" />). One confirmed match is enough - always a single instant strike, whatever strike count is set below.</>
   },
   "client-failure": {
     label: "Client-reported failure",
-    description: <>The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on <PageLink page="failedDownloads" />.</>
+    description: <>The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strike count and action, and it then replaces the platform-wide default on <PageLink page="failedDownloads" />.</>
   },
   "magnet-metadata": {
     label: "Magnet stuck fetching metadata",
@@ -217,7 +217,7 @@ function StrikeInactivityCard({ settings }: { settings: PlatformSettingsSnapshot
   return (
     <ListCard title="Strike inactivity window" count="When a quiet download's strikes clear entirely">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x) sm:grid-cols-[1fr_auto] sm:items-end">
-        <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Separate from any rule's own timer - a download that goes this long without tripping any rule again starts from zero.">
+        <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Strikes also clear the moment a check finds the problem gone. This only covers a download Deluno has not been able to check for this long: it starts from zero.">
           <div className="flex items-center gap-2">
             <Input type="number" min="1" max="720" step="1" value={hours} onChange={(event) => setHours(event.target.value)} className="max-w-32" />
             <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">hours</span>
@@ -239,15 +239,19 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [windowMinutes, setWindowMinutes] = useState(String(settings.downloadHealthDefaultStrikeWindowMinutes));
   const [samplerMinutes, setSamplerMinutes] = useState(String(settings.downloadThroughputSamplerIntervalMinutes));
+  const [strikeLimit, setStrikeLimit] = useState(String(settings.downloadHealthStrikeThreshold));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [errors, setErrors] = useState<{ window?: string; sampler?: string }>({});
-  const dirty = windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
+  const [errors, setErrors] = useState<{ window?: string; sampler?: string; strikes?: string }>({});
+  const dirty = strikeLimit !== String(settings.downloadHealthStrikeThreshold) ||
+    windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
     samplerMinutes !== String(settings.downloadThroughputSamplerIntervalMinutes);
 
   async function save() {
     const window = Number(windowMinutes);
     const sampler = Number(samplerMinutes);
-    const nextErrors: { window?: string; sampler?: string } = {};
+    const strikes = Number(strikeLimit);
+    const nextErrors: { window?: string; sampler?: string; strikes?: string } = {};
+    if (!Number.isInteger(strikes) || strikes < 1 || strikes > 100) nextErrors.strikes = "Must be between 1 and 100.";
     if (!Number.isFinite(window) || window < 1 || window > 1440) nextErrors.window = "Must be between 1 and 1440 minutes.";
     if (!Number.isFinite(sampler) || sampler < 1 || sampler > 60) nextErrors.sampler = "Must be between 1 and 60 minutes.";
     setErrors(nextErrors);
@@ -257,8 +261,10 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     try {
       const next = await mutation.mutate({
         downloadHealthDefaultStrikeWindowMinutes: window,
+        downloadHealthStrikeThreshold: strikes,
         downloadThroughputSamplerIntervalMinutes: sampler
       });
+      setStrikeLimit(String(next.downloadHealthStrikeThreshold));
       setWindowMinutes(String(next.downloadHealthDefaultStrikeWindowMinutes));
       setSamplerMinutes(String(next.downloadThroughputSamplerIntervalMinutes));
       setSaveState("saved");
@@ -271,11 +277,14 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     <ListCard title="Timing" count="How often Deluno checks in">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <FieldRow>
-          <Field label="Strike pacing outside the rules above" error={errors.window} help="Only applies to a finding no rule above covers, such as the client itself reporting stalled or errored. A rule's own timer above is unaffected.">
+          <Field label="Check every" error={errors.window} help="How often Deluno checks every download for the problems above. Each check where a problem is found adds one strike, and the first check where it is gone clears them. 1 to 1440 minutes; 5 by default.">
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="1440" step="1" value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
+          </Field>
+          <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help="For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. 1 to 100.">
+            <Input type="number" min="1" max="100" step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
           </Field>
           <Field label="Speed chart sampling" error={errors.sampler} help="How often Deluno records a throughput sample for the speed chart.">
             <div className="flex items-center gap-2">
@@ -454,6 +463,8 @@ interface RuleForm {
   resetStrikesOnProgress: boolean;
   actionPreset: string;
   threshold: string;
+  /** "Too slow" only (#1194): the unit the speed limit is typed in. It is stored in KB/s either way. */
+  thresholdUnit: "kb" | "mb";
   privacyScope: string;
   /** "Too slow" only (#951, G157). Empty string means "no ceiling". */
   tooSlowMaxTotalMinutes: string;
@@ -479,6 +490,7 @@ function emptyForm(kind: string): RuleForm {
     resetStrikesOnProgress: true,
     actionPreset: "just-tell-me",
     threshold: "0",
+    thresholdUnit: "kb",
     privacyScope: "both",
     tooSlowMaxTotalMinutes: "",
     ignoreAboveSizeMb: "",
@@ -498,13 +510,26 @@ function formFrom(rule: DownloadHealthRule): RuleForm {
     maxCompletionPercent: String(rule.maxCompletionPercent),
     resetStrikesOnProgress: rule.resetStrikesOnProgress,
     actionPreset: rule.actionPreset,
-    threshold: String(rule.threshold),
+    ...thresholdFields(rule),
     privacyScope: rule.privacyScope,
     tooSlowMaxTotalMinutes: rule.tooSlowMaxTotalMinutes ? String(rule.tooSlowMaxTotalMinutes) : "",
     ignoreAboveSizeMb: rule.ignoreAboveSizeBytes ? String(Math.round(rule.ignoreAboveSizeBytes / 1_000_000)) : "",
     skipWhileAlternateSpeedLimitOn: rule.skipWhileAlternateSpeedLimitOn,
     resetStrikesMinimumProgressMb: rule.resetStrikesMinimumProgressBytes ? String(Math.round(rule.resetStrikesMinimumProgressBytes / 1_000_000)) : ""
   };
+}
+
+/** A speed limit is saved in KB/s. A whole number of MB/s shows in MB/s so 2 MB/s reads as 2, not 2000. */
+function thresholdFields(rule: DownloadHealthRule): { threshold: string; thresholdUnit: "kb" | "mb" } {
+  if (rule.kind === "too-slow" && rule.threshold >= 1000 && rule.threshold % 1000 === 0) {
+    return { threshold: String(rule.threshold / 1000), thresholdUnit: "mb" };
+  }
+  return { threshold: String(rule.threshold), thresholdUnit: "kb" };
+}
+
+function thresholdToSave(form: RuleForm) {
+  const value = Number(form.threshold || 0);
+  return form.kind === "too-slow" && form.thresholdUnit === "mb" ? value * 1000 : value;
 }
 
 function kindLabel(kind: string) {
@@ -532,7 +557,7 @@ export function SettingsDownloadHealthPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [ignoreDraft, setIgnoreDraft] = useState({ hash: "", category: "", trackerDomain: "", note: "" });
+  const [ignoreDraft, setIgnoreDraft] = useState({ hash: "", category: "", trackerDomain: "", tag: "", note: "" });
   const [ignoreBusy, setIgnoreBusy] = useState<string | null>(null);
 
   const editing = mode.kind === "edit" ? rules.find((rule) => rule.id === mode.id) ?? null : null;
@@ -590,7 +615,7 @@ export function SettingsDownloadHealthPage() {
         maxCompletionPercent: Number(form.maxCompletionPercent),
         resetStrikesOnProgress: form.resetStrikesOnProgress,
         actionPreset: form.actionPreset,
-        threshold: Number(form.threshold || 0),
+        threshold: thresholdToSave(form),
         privacyScope: form.privacyScope,
         tooSlowMaxTotalMinutes: form.tooSlowMaxTotalMinutes.trim() ? Number(form.tooSlowMaxTotalMinutes) : null,
         ignoreAboveSizeBytes: form.ignoreAboveSizeMb.trim() ? Math.round(Number(form.ignoreAboveSizeMb) * 1_000_000) : null,
@@ -636,8 +661,8 @@ export function SettingsDownloadHealthPage() {
 
   async function addIgnoreEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!ignoreDraft.hash.trim() && !ignoreDraft.category.trim() && !ignoreDraft.trackerDomain.trim()) {
-      toast.error("Give at least a hash, a client category, or a tracker/indexer domain to ignore.");
+    if (!ignoreDraft.hash.trim() && !ignoreDraft.category.trim() && !ignoreDraft.trackerDomain.trim() && !ignoreDraft.tag.trim()) {
+      toast.error("Give at least a hash, a client category, a tag, or a tracker domain to ignore.");
       return;
     }
     setIgnoreBusy("add");
@@ -649,11 +674,12 @@ export function SettingsDownloadHealthPage() {
           hash: ignoreDraft.hash.trim() || null,
           category: ignoreDraft.category.trim() || null,
           trackerDomain: ignoreDraft.trackerDomain.trim() || null,
+          tag: ignoreDraft.tag.trim() || null,
           note: ignoreDraft.note.trim() || null
         })
       });
       if (!response.ok) throw new Error("Could not add that to the ignore list.");
-      setIgnoreDraft({ hash: "", category: "", trackerDomain: "", note: "" });
+      setIgnoreDraft({ hash: "", category: "", trackerDomain: "", tag: "", note: "" });
       toast.success("Added to the ignore list");
       revalidator.revalidate();
     } catch (error) {
@@ -705,7 +731,7 @@ export function SettingsDownloadHealthPage() {
         {rules.length === 0 ? (
           <ListEmpty
             title="No rules configured"
-            description="Nothing is on by default. Add a rule for a kind of stuck download, choose its strikes and timer, and pick what happens once it trips."
+            description="Nothing is on by default. Add a rule for a kind of stuck download, choose its strikes, and pick what happens once it trips."
             actions={<Button type="button" size="sm" onClick={() => openRule(null)}>New rule</Button>}
           />
         ) : (
@@ -715,7 +741,7 @@ export function SettingsDownloadHealthPage() {
             columns={[
               { id: "rule", label: "Rule", width: "minmax(0,1.3fr)", sort: (rule) => kindLabel(rule.kind).toLowerCase() },
               { id: "scope", label: "Scope", width: "minmax(0,1fr)", sort: (rule) => scopeLabel(rule).toLowerCase() },
-              { id: "strikes", label: "Strikes & timer", width: "minmax(0,1fr)", sort: (rule) => rule.strikeLimit },
+              { id: "strikes", label: "Strikes", width: "minmax(0,1fr)", sort: (rule) => rule.strikeLimit },
               { id: "action", label: "Action", width: "minmax(0,1fr)", sort: (rule) => actionLabel(rule.actionPreset).toLowerCase() }
             ]}
           >
@@ -723,7 +749,7 @@ export function SettingsDownloadHealthPage() {
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={kindLabel(rule.kind)} sub={rule.enabled ? "On" : "Off"} />
                 <ListCell primary={scopeLabel(rule)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
-                <ListCell primary={`${rule.strikeLimit} strike${rule.strikeLimit === 1 ? "" : "s"}`} secondary={`Every ${rule.timerMinutes} min`} />
+                <ListCell primary={`${rule.strikeLimit} strike${rule.strikeLimit === 1 ? "" : "s"}`} secondary={`Checked every ${settings.downloadHealthDefaultStrikeWindowMinutes} min`} />
                 <ListCell primary={actionLabel(rule.actionPreset)} />
               </ListRow>
             ))}
@@ -734,12 +760,13 @@ export function SettingsDownloadHealthPage() {
       <ListCard title="Ignored downloads" count={ignoreEntries.length ? `${ignoreEntries.length} entry${ignoreEntries.length === 1 ? "" : "ies"}` : undefined}>
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
-            A download matching any of these is exempt from every rule above - never struck, whatever it does.
+            A download matching any of these is exempt from every rule above - never struck, whatever it does. A tracker domain is the host the torrent announces to (a private tracker's own domain, subdomains included) or an indexer's name; a tag is one the client put on the torrent, or one you gave its title or indexer in Deluno.
           </p>
-          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-(--grid-gap) sm:grid-cols-4">
+          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-(--grid-gap) sm:grid-cols-5">
             <Input placeholder="Hash" value={ignoreDraft.hash} onChange={(event) => setIgnoreDraft((current) => ({ ...current, hash: event.target.value }))} />
             <Input placeholder="Client category" value={ignoreDraft.category} onChange={(event) => setIgnoreDraft((current) => ({ ...current, category: event.target.value }))} />
-            <Input placeholder="Tracker/indexer domain" value={ignoreDraft.trackerDomain} onChange={(event) => setIgnoreDraft((current) => ({ ...current, trackerDomain: event.target.value }))} />
+            <Input placeholder="Tracker domain" aria-label="Tracker domain" value={ignoreDraft.trackerDomain} onChange={(event) => setIgnoreDraft((current) => ({ ...current, trackerDomain: event.target.value }))} />
+            <Input placeholder="Tag" aria-label="Tag" value={ignoreDraft.tag} onChange={(event) => setIgnoreDraft((current) => ({ ...current, tag: event.target.value }))} />
             <div className="flex gap-2">
               <Input placeholder="Note (optional)" value={ignoreDraft.note} onChange={(event) => setIgnoreDraft((current) => ({ ...current, note: event.target.value }))} />
               <Button type="submit" size="sm" disabled={ignoreBusy === "add"}>Add</Button>
@@ -751,14 +778,14 @@ export function SettingsDownloadHealthPage() {
               listId="download-health-ignored"
               items={ignoreEntries}
               columns={[
-                { id: "matches", label: "Matches", sort: (entry) => [entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ").toLowerCase() },
+                { id: "matches", label: "Matches", sort: (entry) => [entry.hash, entry.category, entry.trackerDomain, entry.tag].filter(Boolean).join(" · ").toLowerCase() },
                 { id: "note", label: "Note", sort: (entry) => (entry.note ?? "").toLowerCase() },
                 { id: "actions", label: "", width: "80px" }
               ]}
             >
               {(rows) => rows.map((entry) => (
                 <ListRow key={entry.id}>
-                  <ListCell primary={[entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ") || "—"} />
+                  <ListCell primary={[entry.hash, entry.category, entry.trackerDomain, entry.tag ? `tag ${entry.tag}` : null].filter(Boolean).join(" · ") || "—"} />
                   <ListCell primary={entry.note || "—"} />
                   <ListCell primary={
                     <Button type="button" variant="outline" size="sm" onClick={() => void removeIgnoreEntry(entry)} disabled={ignoreBusy === entry.id}>
@@ -818,14 +845,23 @@ export function SettingsDownloadHealthPage() {
           {kindCopy?.thresholdLabel ? (
             <Field label={kindCopy.thresholdLabel} error={errors.threshold} help={kindCopy.thresholdHelp}>
               <div className="flex items-center gap-2">
-                <Input type="number" min="0" step="1" value={form.threshold} onChange={(event) => setForm((current) => ({ ...current, threshold: event.target.value }))} />
-                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">{kindCopy.thresholdUnit}</span>
+                <Input type="number" min="0" step={form.kind === "too-slow" ? "any" : "1"} value={form.threshold} onChange={(event) => setForm((current) => ({ ...current, threshold: event.target.value }))} />
+                {form.kind === "too-slow" ? (
+                  <Select
+                    aria-label="Speed unit"
+                    value={form.thresholdUnit}
+                    onChange={(event) => setForm((current) => ({ ...current, thresholdUnit: event.target.value === "mb" ? "mb" : "kb" }))}
+                    options={[{ value: "kb", label: "KB/s" }, { value: "mb", label: "MB/s" }]}
+                  />
+                ) : (
+                  <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">{kindCopy.thresholdUnit}</span>
+                )}
               </div>
             </Field>
           ) : null}
           {form.kind === "too-slow" ? (
             <>
-              <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has spent this many minutes in the queue in total, this rule trips whatever its current speed - leave blank for no ceiling.">
+              <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has been in the queue this many minutes in total, every check adds a strike whatever its current speed - leave blank for no ceiling.">
                 <div className="flex items-center gap-2">
                   <Input type="number" min="1" step="1" placeholder="No ceiling" value={form.tooSlowMaxTotalMinutes} onChange={(event) => setForm((current) => ({ ...current, tooSlowMaxTotalMinutes: event.target.value }))} />
                   <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
@@ -839,7 +875,7 @@ export function SettingsDownloadHealthPage() {
               </Field>
               <SwitchRow
                 label="Skip while the client's alternate speed limit is on"
-                description="A download you deliberately throttled is not unhealthy. Only qBittorrent reports whether this is on; this switch has no effect on any other client."
+                description="A download you deliberately throttled is not unhealthy. qBittorrent and Transmission (its alt-speed, or turtle mode) report whether this is on; this switch has no effect on any other client. Off by default."
                 checked={form.skipWhileAlternateSpeedLimitOn}
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, skipWhileAlternateSpeedLimitOn: checked }))}
               />
@@ -847,25 +883,26 @@ export function SettingsDownloadHealthPage() {
           ) : null}
         </DrawerSection>
 
-        <DrawerSection title="Strikes & timer">
+        <DrawerSection title="Strikes">
           <FieldRow>
-            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 20. 1 acts the moment the problem is first seen.">
-              <Input type="number" min="1" max="20" step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
-            </Field>
-            <Field label="Timer" error={errors.timerMinutes} help="How often, in minutes, a further strike can be added while the problem continues.">
-              <div className="flex items-center gap-2">
-                <Input type="number" min="1" max="1440" step="1" value={form.timerMinutes} onChange={(event) => setForm((current) => ({ ...current, timerMinutes: event.target.value }))} />
-                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
-              </div>
+            <Field label="Strikes before it acts" error={errors.strikeLimit} help="1 to 100. Each check where the problem is still there adds one strike, and the first check where it is gone clears them. At this many strikes the download is removed and cleaned up as chosen below. 1 acts the moment the problem is first seen.">
+              <Input type="number" min="1" max="100" step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
             </Field>
           </FieldRow>
-          <SwitchRow
-            label="Reset strikes on progress"
-            description="Any byte of further progress ends the spell early, the same as the problem clearing on its own."
-            checked={form.resetStrikesOnProgress}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, resetStrikesOnProgress: checked }))}
-          />
-          {form.resetStrikesOnProgress ? (
+          <p className="text-(length:--type-body-sm) text-muted-foreground">
+            {strikeTimeline(Number(form.strikeLimit), settings.downloadHealthDefaultStrikeWindowMinutes)}
+          </p>
+          {form.kind !== "no-progress" ? (
+            <p className="text-(length:--type-body-sm) text-muted-foreground">The first check where the problem is gone (speed back over the limit, peers back) clears this rule's strikes.</p>
+          ) : (
+            <SwitchRow
+              label="Reset strikes on progress"
+              description="Any byte of further progress ends the spell early, the same as the problem clearing on its own."
+              checked={form.resetStrikesOnProgress}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, resetStrikesOnProgress: checked }))}
+            />
+          )}
+          {form.kind === "no-progress" && form.resetStrikesOnProgress ? (
             <Field label="Minimum progress to reset" error={errors.resetStrikesMinimumProgressMb} help="Optional. A gain smaller than this does not reset the spell - leave blank to let any amount of progress reset it, as above.">
               <div className="flex items-center gap-2">
                 <Input type="number" min="0" step="1" placeholder="Any amount" value={form.resetStrikesMinimumProgressMb} onChange={(event) => setForm((current) => ({ ...current, resetStrikesMinimumProgressMb: event.target.value }))} />
@@ -961,6 +998,7 @@ function sameForm(left: RuleForm, right: RuleForm) {
     left.resetStrikesOnProgress === right.resetStrikesOnProgress &&
     left.actionPreset === right.actionPreset &&
     left.threshold === right.threshold &&
+    left.thresholdUnit === right.thresholdUnit &&
     left.privacyScope === right.privacyScope &&
     left.tooSlowMaxTotalMinutes === right.tooSlowMaxTotalMinutes &&
     left.ignoreAboveSizeMb === right.ignoreAboveSizeMb &&
@@ -971,9 +1009,7 @@ function sameForm(left: RuleForm, right: RuleForm) {
 function validate(form: RuleForm): Record<string, string> {
   const errors: Record<string, string> = {};
   const strikeLimit = Number(form.strikeLimit);
-  if (!Number.isFinite(strikeLimit) || strikeLimit < 1 || strikeLimit > 20) errors.strikeLimit = "Strikes must be between 1 and 20.";
-  const timerMinutes = Number(form.timerMinutes);
-  if (!Number.isFinite(timerMinutes) || timerMinutes < 1 || timerMinutes > 1440) errors.timerMinutes = "The timer must be between 1 minute and 24 hours.";
+  if (!Number.isFinite(strikeLimit) || strikeLimit < 1 || strikeLimit > 100) errors.strikeLimit = "Strikes must be between 1 and 100.";
   const min = Number(form.minCompletionPercent);
   const max = Number(form.maxCompletionPercent);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {
@@ -995,6 +1031,15 @@ function validate(form: RuleForm): Record<string, string> {
     errors.resetStrikesMinimumProgressMb = "The minimum progress amount cannot be negative.";
   }
   return errors;
+}
+
+/** When strike 1 and removal land (#1194), in the person's own numbers. */
+function strikeTimeline(strikeLimit: number, checkEveryMinutes: number) {
+  if (!Number.isFinite(strikeLimit) || strikeLimit < 1) return "";
+  const first = "Strike 1 lands on the first check where the problem is found.";
+  if (strikeLimit === 1) return `${first} With 1 strike the download is removed at that same check.`;
+  const wait = (strikeLimit - 1) * checkEveryMinutes;
+  return `${first} Checks run every ${checkEveryMinutes} min, so with ${strikeLimit} strikes it is removed about ${wait} min later, if it is still a problem at every check.`;
 }
 
 function appliesToLabel(appliesTo: string) {
