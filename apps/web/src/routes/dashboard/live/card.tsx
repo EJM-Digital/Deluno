@@ -21,7 +21,7 @@ import { cn } from "../../../lib/utils";
 import { formatSpeed } from "../downloads-kit";
 import { IMPORTING_NOW, processorHasStarted, routeOf, type JourneyCard } from "./journey";
 import { LANES } from "./lanes";
-import { STARTED_LABEL } from "./provenance";
+import { startedLabel } from "./provenance";
 import { detailLines, type Part } from "./detail";
 import { faceOf, type TitleLookup } from "./titles";
 
@@ -167,7 +167,7 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
       data-journey-card=""
       data-glide-stage={card.stage}
       aria-label={`${face.title}: ${status.text}`}
-      title={[card.release && face.linked ? card.release : face.title, card.startedBy ? STARTED_LABEL[card.startedBy] : null, card.reasonFull || card.reason, route].filter(Boolean).join(" · ")}
+      title={[card.release && face.linked ? card.release : face.title, card.startedBy ? startedLabel(card.startedBy, card.entity, card.release) : null, card.reasonFull || card.reason, route].filter(Boolean).join(" · ")}
       className={cn("lj-token lj-fresh", card.landed && "lj-done", edge === "bad" && "lj-bad", edge === "warn" && "lj-warn", place?.hidden && "lj-hidden", arrivals.has(card.key) && motionAllowed() && "lj-arrive")}
       style={style}
       tabIndex={place?.hidden ? -1 : undefined}
