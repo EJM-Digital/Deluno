@@ -286,6 +286,85 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         }
     }
 
+    private static MediaProbeInfo InfoOf(double minutes) => new(
+        "succeeded", "ffprobe", null, minutes * 60, "mkv", null,
+        [new MediaVideoStreamInfo(0, "h264", null, 1920, 1080, "yuv420p", 24, null, null)],
+        [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+        []);
+
+    private static async Task<DownloadIntegrityResult> RunInFolderAsync(
+        string releaseName, int? knownRuntime, (string RelativePath, int Bytes, double Minutes)[] files)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-integrity-1187-{Guid.NewGuid():n}")).FullName;
+        try
+        {
+            var minutesByPath = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (relative, bytes, minutes) in files)
+            {
+                var full = Path.Combine(folder, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                File.WriteAllBytes(full, new byte[bytes]);
+                File.SetLastWriteTimeUtc(full, DateTime.UtcNow.AddMinutes(-5));
+                minutesByPath[full] = minutes;
+            }
+
+            var probe = new PerPathProbe(path => InfoOf(minutesByPath[path]));
+            return await DownloadIntegrityCheck.RunAsync(folder, releaseName, knownRuntime, 80, probe, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>#1187: a short extra next to the film is not held to the film's runtime.</summary>
+    [Fact]
+    public async Task A_film_with_a_short_extra_passes()
+    {
+        var result = await RunInFolderAsync("Sintel.2010.1080p.WEB-DL", 90,
+        [
+            ("Sintel.2010.1080p.WEB-DL.mkv", 5000, 90),
+            ("Featurettes/Making.Of.mkv", 100, 6)
+        ]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    /// <summary>#1187: the film's own video still has to be long enough.</summary>
+    [Fact]
+    public async Task A_film_whose_main_video_is_too_short_still_fails()
+    {
+        var result = await RunInFolderAsync("Sintel.2010.1080p.WEB-DL", 90,
+        [
+            ("Sintel.2010.1080p.WEB-DL.mkv", 5000, 20),
+            ("Featurettes/Making.Of.mkv", 100, 6)
+        ]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+        Assert.Contains("Name said 90 minutes", result.Reason);
+    }
+
+    /// <summary>#1187: a season pack is judged per episode, and its extras are left alone.</summary>
+    [Fact]
+    public async Task A_season_pack_judges_each_episode_and_ignores_extras()
+    {
+        var passing = await RunInFolderAsync("Show.S01.1080p.WEB-DL", 45,
+        [
+            ("Show.S01E01.1080p.mkv", 5000, 44),
+            ("Show.S01E02.1080p.mkv", 4000, 46),
+            ("Extras/Behind.The.Scenes.mkv", 100, 5)
+        ]);
+        Assert.Equal(DownloadIntegrityOutcome.Pass, passing.Outcome);
+
+        var failing = await RunInFolderAsync("Show.S01.1080p.WEB-DL", 45,
+        [
+            ("Show.S01E01.1080p.mkv", 5000, 44),
+            ("Show.S01E02.1080p.mkv", 4000, 10)
+        ]);
+        Assert.Equal(DownloadIntegrityOutcome.Failed, failing.Outcome);
+        Assert.Contains("Name said 45 minutes", failing.Reason);
+    }
+
     /// <summary>"Not the film the title says", on strong evidence: the embedded title tag names a different film (#917).</summary>
     [Fact]
     public async Task An_embedded_title_naming_a_different_film_fails()
