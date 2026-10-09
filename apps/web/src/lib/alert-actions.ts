@@ -206,14 +206,27 @@ export function failedImportActions(job: Pick<JobQueueItem, "id">): AlertActions
  * Whether sending the finished download to the processor again would do anything (#1151). Once the hand-off has its
  * processed file, an import job or an imported outcome, it is closed: the server answers 409 and the button is not offered.
  */
-export function handoffCanBeSentAgain(handoff: Partial<Pick<ProcessorHandoffItem, "outputPath" | "importJobId" | "outcome">>): boolean {
-  return !handoff.outputPath?.trim() && !handoff.importJobId?.trim() && handoff.outcome?.outcome !== "imported";
+export function handoffCanBeSentAgain(handoff: Partial<Pick<ProcessorHandoffItem, "outputPath" | "importJobId" | "outcome" | "status">>): boolean {
+  // A download that was gone has nothing left to send (#1186).
+  return handoff.status?.toLowerCase() !== "source-gone" && !handoff.outputPath?.trim() && !handoff.importJobId?.trim() && handoff.outcome?.outcome !== "imported";
 }
 
 /** A refused hand-off to the processor: send it again (unless it already has its processed file), or dismiss it. */
-export function handoffActions(handoff: Pick<ProcessorHandoffItem, "id" | "releaseName"> & Partial<Pick<ProcessorHandoffItem, "outputPath" | "importJobId" | "outcome">>): AlertActions {
+export function handoffActions(handoff: Pick<ProcessorHandoffItem, "id" | "releaseName"> & Partial<Pick<ProcessorHandoffItem, "outputPath" | "importJobId" | "outcome" | "status">>): AlertActions {
   const base = `/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}`;
   const dismissal = dismiss(`handoff-dismiss:${handoff.id}`, { method: "POST", path: `${base}/dismiss`, done: "Dismissed", failure: "That could not be dismissed." });
+  // The download was gone before the processor reached it (#1186): a new copy or nothing, never a retry.
+  if (handoff.status?.toLowerCase() === "source-gone") {
+    return [
+      {
+        id: `handoff-search-another:${handoff.id}`,
+        label: "Find another",
+        hint: "Searches for another copy of this title now, as your own search would. Nothing is blocklisted.",
+        request: { method: "POST", path: `${base}/search-again`, done: `Searching for another copy of ${handoff.releaseName}.`, failure: "Deluno could not search for another copy." }
+      },
+      dismissal
+    ];
+  }
   if (!handoffCanBeSentAgain(handoff)) return [dismissal];
   return [
     {

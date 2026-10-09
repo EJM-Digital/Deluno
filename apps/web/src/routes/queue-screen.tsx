@@ -69,7 +69,7 @@ import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, 
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
 import { dispatchWasImported } from "../lib/dispatch-final-state";
-import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
+import { SOURCE_GONE, canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction, plainFailure } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -815,6 +815,22 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     );
     return (
       <div className="grid gap-3">
+        {handoff.status.toLowerCase() === SOURCE_GONE
+          ? (
+            <>
+              <p className="text-(length:--type-caption) text-muted-foreground">
+                The download was gone before {processor} could clean it, so there is nothing to send again or import.
+              </p>
+              {line(
+                <Button type="button" variant="outline" size="sm" onClick={() => void searchAgainForHandoff(handoff, "copy")} disabled={busy}>
+                  {spin(`handoff:search-again:${handoff.id}`)}
+                  Search for another copy
+                </Button>,
+                "Looks for a different copy of this title right now. Nothing is blocklisted."
+              )}
+            </>
+          )
+          : null}
         {canImportOriginal(handoff.status)
           ? (
             <>
@@ -971,11 +987,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
    * hand-off, and starts a search for a replacement, instead of waiting on
    * the same processor or the same download any longer.
    */
-  async function searchAgainForHandoff(handoff: ProcessorHandoffItem) {
+  async function searchAgainForHandoff(handoff: ProcessorHandoffItem, what = "release") {
     const done = await run(`handoff:search-again:${handoff.id}`, async () => {
       const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/search-again`, { method: "POST" });
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
-      if (!response.ok) throw new Error(body?.message || "Deluno could not search for another release.");
+      if (!response.ok) throw new Error(body?.message || `Deluno could not search for another ${what}.`);
       toast.success(body?.message ?? `Deluno is searching for a replacement for ${handoff.releaseName}.`);
     });
     if (done) setDrawer(null);
@@ -2707,6 +2723,8 @@ function processorStageLabel(status: string) {
       return "Processor has no record";
     case "cancelled":
       return "Cancelled";
+    case "source-gone":
+      return "Download gone";
     case "released":
       return "Importing the original";
     case "dismissed":

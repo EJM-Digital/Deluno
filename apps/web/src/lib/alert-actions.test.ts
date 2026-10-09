@@ -4,6 +4,7 @@ import {
   connectionDownActions,
   failedImportActions,
   handoffActions,
+  handoffCanBeSentAgain,
   jobsGaveUpActions,
   healthProblemActions,
   noReleaseActions,
@@ -75,6 +76,14 @@ describe("alert buttons (#1098)", () => {
     expect(handoffActions({ id: "h1", releaseName: "R", outputPath: null, importJobId: null }).map((a) => a.label)).toEqual(["Retry", "Dismiss"]);
     expect(handoffActions({ id: "h1", releaseName: "R", outputPath: "D:/Refined/R.mkv" }).map((a) => a.label)).toEqual(["Dismiss"]);
     expect(handoffActions({ id: "h1", releaseName: "R", importJobId: "job" }).map((a) => a.label)).toEqual(["Dismiss"]);
+  });
+
+  it("a download that was gone is offered another copy and Dismiss, never Retry (#1186)", () => {
+    const actions = handoffActions({ id: "h1", releaseName: "R", status: "source-gone" });
+    expect(actions.map((a) => a.label)).toEqual(["Find another", "Dismiss"]);
+    expect(actions[0]!.request?.path).toBe("/api/integrations/processors/handoffs/h1/search-again");
+    expect(handoffCanBeSentAgain({ status: "source-gone" })).toBe(false);
+    for (const action of actions) expect(action.label.length).toBeLessThanOrEqual(ALERT_LABEL_MAX);
   });
 
   it("Dismiss says it stops showing the problem and deletes nothing", () => {

@@ -32,8 +32,11 @@ export function isWithProcessor(status: string) {
   return ["waiting", "submitted", "accepted", "started"].includes(status.toLowerCase());
 }
 
+/** Mirrors `ProcessorHandoffStatuses.SourceGone`: the download was gone before the processor could clean it (#1186). */
+export const SOURCE_GONE = "source-gone";
+
 export function isProcessorFailure(status: string) {
-  return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
+  return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled", SOURCE_GONE].includes(status.toLowerCase());
 }
 
 /**
