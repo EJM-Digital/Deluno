@@ -450,7 +450,9 @@ internal static class DownloadClientHelpers
             return item with { Status = DownloadQueueStatuses.Stalled };
         }
 
+        // A download with almost nothing left, or only moving or checking, is finishing and is never Stalled (#1193).
         if (item.Status == DownloadQueueStatuses.Downloading &&
+            item.Progress < DownloadHealthStrikes.FinishingPercent &&
             lastProgressUtc is { } since &&
             capturedUtc - since >= (noProgressWindow ?? DownloadHealthStrikes.DefaultWindow))
         {
@@ -472,7 +474,8 @@ internal static class DownloadClientHelpers
         // the client were happy with it. Deluge and uTorrent both normalise
         // through here, and neither passes an error code, so this text is the
         // only signal there is.
-        if (normalized.Contains("error") || normalized.Contains("fail") || normalized.Contains("stalled"))
+        if (normalized.Contains("error") || normalized.Contains("fail") ||
+            (normalized.Contains("stalled") && (progress ?? 0) < DownloadHealthStrikes.FinishingPercent))
         {
             return DownloadQueueStatuses.Stalled;
         }

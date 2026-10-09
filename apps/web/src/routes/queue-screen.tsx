@@ -234,6 +234,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   });
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  /** Hand-offs sent again from here: shown as in progress until the processor's answer arrives by push (#1193). */
+  const [resentHandoffIds, setResentHandoffIds] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<DrawerMode>(null);
   const [dispatchDetails, setDispatchDetails] = useState<Record<string, DownloadDispatchDetail>>({});
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
@@ -955,7 +957,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         }
       },
       `Sent to ${handoff.processorName ?? "the processor"} again.`
-    );
+    ).then((sent) => {
+      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id));
+    });
   }
 
   /** Say again what became of the file, from the start (#580). */
@@ -1785,6 +1789,13 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               title="Import"
               aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
             >
+              {/* After Try again the answer is still to come: say so, never "failed" (#1193). */}
+              {openQueueHandoff && resentHandoffIds.has(openQueueHandoff.id) && isWithProcessor(openQueueHandoff.status) ? (
+                <p className="flex items-center gap-2 text-(length:--type-body-sm) text-foreground" role="status">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Sending it to {openQueueHandoff.processorName ?? "the processor"} again. The result shows here when it answers.
+                </p>
+              ) : null}
               {/* The processor's own reason and the way out, where the failure
                   is shown (#616): the hand-off drawer had both, this one had
                   neither, and Queue import is closed to a failed hand-off. */}

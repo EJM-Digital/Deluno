@@ -75,8 +75,14 @@ public static class AttentionEndpoints
                 all.Select(item => AttentionDismissalStore.HeldReleaseKey(item.HistoryId)).ToHashSet(StringComparer.OrdinalIgnoreCase),
                 cancellationToken,
                 AttentionDismissalStore.HeldReleasePrefix);
+            // A dismissed release stays dismissed when the feed watch offers it again (a new search row), until the
+            // title is held for a different release (#1193).
+            await dismissals.ForgetSupersededHeldReleasesAsync(
+                all.Where(item => !AttentionDismissalStore.IsHeldReleaseDismissed(dismissed, item.HistoryId, item.MediaType, item.Id, item.EpisodeId, item.ReleaseName))
+                    .Select(item => (item.MediaType, item.Id, item.EpisodeId, item.ReleaseName)),
+                cancellationToken);
             var rows = all
-                .Where(item => !dismissed.Contains(AttentionDismissalStore.HeldReleaseKey(item.HistoryId)))
+                .Where(item => !AttentionDismissalStore.IsHeldReleaseDismissed(dismissed, item.HistoryId, item.MediaType, item.Id, item.EpisodeId, item.ReleaseName))
                 .Select(item => new HeldReleaseRow(
                     item.HistoryId, item.MediaType, item.Id, item.EpisodeId, item.Title, item.Year, item.EpisodeLabel, item.LibraryId,
                     item.ReleaseName, item.IndexerName, item.IndexerId, item.DownloadUrl, item.Quality, item.SizeBytes, item.Seeders,
@@ -110,6 +116,7 @@ public static class AttentionEndpoints
         // sent (or refused) by the grab and blocklist routes the screen calls first (#1159).
         endpoints.MapPost("/api/attention/held-releases/{historyId}/dismiss", async (
             string historyId,
+            IHeldReleaseReader heldReader,
             AttentionDismissalStore dismissals,
             CancellationToken cancellationToken) =>
         {
@@ -119,6 +126,13 @@ public static class AttentionEndpoints
             }
 
             await dismissals.DismissAsync(AttentionDismissalStore.HeldReleaseKey(historyId), cancellationToken);
+            if (await heldReader.CheckAsync(historyId, cancellationToken) is { } held)
+            {
+                await dismissals.DismissAsync(
+                    AttentionDismissalStore.HeldReleaseNameKey(held.Item.MediaType, held.Item.Id, held.Item.EpisodeId, held.Item.ReleaseName),
+                    cancellationToken);
+            }
+
             return Results.NoContent();
         });
 
