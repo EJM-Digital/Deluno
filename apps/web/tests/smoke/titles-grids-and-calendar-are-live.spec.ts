@@ -123,9 +123,16 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
     await expect(page.getByText(`Live shelf movie ${stamp}`).first()).toBeVisible();
     const afterLoad = navigations.count;
 
+    // Cause of the flake (#1191): the card is on screen before the page has joined the subject the server announces on (the
+    // connection opens after the first paint), so an announcement made at once reached nobody and the card never changed.
+    // The shelf joins the Dashboard subject, shared with the app shell, so a watcher count cannot say this page is in it. Say
+    // it again until the card changes; every announcement is the same change, so repeating one proves nothing less.
     renamed.to = `Live shelf movie renamed ${stamp}`;
-    expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: movieId })).status).toBe(204);
-    await expect(page.getByText(`Live shelf movie renamed ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
+    const renamedCard = page.getByText(`Live shelf movie renamed ${stamp}`).first();
+    await expect.poll(async () => {
+      expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: movieId })).status).toBe(204);
+      return renamedCard.isVisible();
+    }, { timeout: 30_000, intervals: [500, 1_000, 1_500, 2_000] }).toBe(true);
     await expect(page.getByText(`Live shelf movie ${stamp}`, { exact: true })).toHaveCount(0);
 
     expect(navigations.count, "the page reloaded or navigated").toBe(afterLoad);
@@ -150,8 +157,13 @@ test.describe("titles, the shelf and the calendar are live (#1179)", () => {
     const afterLoad = navigations.count;
 
     shown.title = `Calendar probe added ${stamp}`;
-    expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: "calendar-probe" })).status).toBe(204);
-    await expect(page.getByText(`Calendar probe added ${stamp}`).first()).toBeVisible({ timeout: 15_000 });
+    // Cause of the flake (#1191): same as the shelf above. The list is on screen before the page has joined the Dashboard
+    // subject, so an announcement made at once reached nobody. Say the same change again until the page shows it.
+    const added = page.getByText(`Calendar probe added ${stamp}`).first();
+    await expect.poll(async () => {
+      expect((await server(page, "/api/testing/realtime/title-changed", { entityType: "Movie", id: "calendar-probe" })).status).toBe(204);
+      return added.isVisible();
+    }, { timeout: 30_000, intervals: [500, 1_000, 1_500, 2_000] }).toBe(true);
 
     expect(navigations.count, "the page reloaded or navigated").toBe(afterLoad);
   });

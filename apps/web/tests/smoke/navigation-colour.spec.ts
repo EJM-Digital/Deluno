@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { waitForLayoutCalm } from "../helpers/layout-calm";
 
 /**
  * #290 — navigation colour must not collide with the status palette.
@@ -54,7 +55,12 @@ for (const theme of ["light", "dark"] as const) {
   test(`no navigation element uses a semantic hue in ${theme} mode`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
     await authenticateAndNavigate(page, "/movies");
-    await page.waitForTimeout(500);
+    // Cause of the flake (#1191): a fixed half second did not outlast the shell's colour transitions on a busy machine, so
+    // a colour part-way between two real ones (which can land on a status hue) was read as painted. Wait until the fonts are
+    // in and no colour transition is still running, then read.
+    // The phone's navigation is rendered a beat after the page; reading before it exists found nothing painted at all.
+    await expect(page.locator("nav, [data-shell-nav]").first()).toBeAttached();
+    await waitForLayoutCalm(page);
 
     const reserved = await semanticColours(page);
     expect(reserved.length).toBeGreaterThan(0);
