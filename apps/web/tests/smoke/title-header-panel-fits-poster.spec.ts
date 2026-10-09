@@ -156,6 +156,12 @@ for (const spec of pages) {
 const longOverview = Array.from({ length: 8 }, (_, i) =>
   `Sentence ${i + 1} of a long synopsis that goes on for a good while so the text cannot fit in three lines of the header.`).join(" ");
 
+// Cause of one failure in 3,140 runs (#1191): the test ended while the page's last read of the title was still being answered by the
+// route below, and Playwright reported the closed page as the test's error. Let routes in flight finish quietly.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 async function crowd(page: Page, kind: "movie" | "show") {
   const rich = {
     overview: longOverview,
