@@ -22,7 +22,8 @@ public sealed class LaneRunner
         Action<JobQueueItem, Exception>? onUnhandledJobFailure = null,
         Action<Exception, TimeSpan>? onTickFailure = null,
         TimeSpan? maxBackoff = null,
-        Action<int, Exception?>? onFailureStreak = null)
+        Action<int, Exception?>? onFailureStreak = null,
+        TimeProvider? timeProvider = null)
     {
         var backoffCap = maxBackoff ?? TimeSpan.FromMinutes(1);
         var consecutiveTickFailures = 0;
@@ -88,7 +89,7 @@ public sealed class LaneRunner
                     // A wake signal (any job queued while the database is
                     // struggling) must not cut the backoff short, so wait it
                     // out without listening to the wake semaphore.
-                    await Task.Delay(backoff, cancellationToken);
+                    await Task.Delay(backoff, timeProvider ?? TimeProvider.System, cancellationToken);
                     drainImmediately = true;
                     continue;
                 }
