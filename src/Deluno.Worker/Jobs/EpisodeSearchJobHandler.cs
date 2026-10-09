@@ -214,6 +214,9 @@ public sealed class EpisodeSearchJobHandler(
         // An episode has no downloading mark, so this is what stops it being
         // grabbed again while its download is on its way. Its series counts too:
         // a series-level grab can be this very episode, or a pack holding it.
+        using var sendGate = decisionPlan.ShouldDispatch && bestCandidate is not null
+            ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken)
+            : null;
         var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
             ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken)
             : null;
