@@ -29,8 +29,14 @@ public static class ProcessorHandoffQueueStatus
             case ProcessorHandoffStatuses.Submitted:
             case ProcessorHandoffStatuses.Accepted:
             case ProcessorHandoffStatuses.Started:
-                // The processor still has it.
-                return DownloadQueueStatuses.WaitingForProcessor;
+                // The processor still has it, unless the import for this very hand-off has already ended in
+                // failure: the output Deluno was told about was gone, and "waiting" would disagree with the
+                // Needs action entry beside it (#1189).
+                return !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                    && jobsById.TryGetValue(handoff.ImportJobId, out var failedImport)
+                    && Deluno.Integrations.DownloadClients.DownloadAttempts.ImportJobFailedSince(failedImport, handoff.UpdatedUtc)
+                        ? DownloadQueueStatuses.ImportFailed
+                        : DownloadQueueStatuses.WaitingForProcessor;
 
             case ProcessorHandoffStatuses.Dismissed:
                 // Closed on purpose, by a person or because the title was imported another way.
@@ -72,7 +78,7 @@ public static class ProcessorHandoffQueueStatus
             {
                 "queued" or "running" => DownloadQueueStatuses.ImportQueued,
                 "completed" => DownloadQueueStatuses.Imported,
-                "failed" => DownloadQueueStatuses.ImportFailed,
+                "failed" or "dead-letter" => DownloadQueueStatuses.ImportFailed,
                 _ => fallback
             }
             : DownloadQueueStatuses.Imported;
