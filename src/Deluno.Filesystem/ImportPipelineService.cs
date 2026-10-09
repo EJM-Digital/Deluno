@@ -1613,15 +1613,14 @@ public sealed partial class ImportPipelineService(
 
                 if (library is null)
                 {
-                    TryDelete(backup.BackupPath);
-                    foreach (var subtitlePath in oldSubtitlePaths)
-                    {
-                        TryDelete(subtitlePath);
-                    }
+                    // #1188: with no library to file it under, the replaced video and its subtitles are left
+                    // where they are, as the single-file path does. A person's media is never deleted outside
+                    // the recycle bin, and the bin needs the library to put it under.
                     logger.LogWarning(
-                        "The replaced file was left at {BackupPath} because no library matched {ExistingPath}.",
+                        "The replaced file was left at {BackupPath}, with {SubtitleCount} subtitle file(s) beside {ExistingPath}, because no library matched it; nothing was deleted.",
                         backup.BackupPath,
                         backup.ExistingPath);
+                        oldSubtitlePaths.Count,
                     continue;
                 }
 
