@@ -147,3 +147,28 @@ public sealed class EveryStrikeRuleStrikesResetsAndActsTests
             Threshold: condition switch { Condition.TooSlow => 100, Condition.LowPeers => 3, _ => 0 });
     }
 }
+
+public sealed class TheStrikeCountRangeTests
+{
+    private static DownloadHealthRule Rule(int strikes) => new(
+        Id: "r", Kind: DownloadHealthRuleKinds.TooSlow, Enabled: true, StrikeLimit: strikes, TimerMinutes: 5,
+        AppliesTo: DownloadHealthAppliesTo.Both, MinCompletionPercent: 0, MaxCompletionPercent: 100,
+        ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.JustTellMe,
+        CreatedUtc: DateTimeOffset.MinValue, UpdatedUtc: DateTimeOffset.MinValue, Threshold: 100);
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(100, true)]
+    [InlineData(0, false)]
+    [InlineData(101, false)]
+    public void A_rule_takes_one_to_a_hundred_strikes(int strikes, bool accepted)
+        => Assert.Equal(accepted, DownloadHealthRuleValidator.Validate(Rule(strikes), []) is null);
+
+    [Fact]
+    public void A_record_at_fifty_strikes_is_not_cut_back_to_twenty()
+    {
+        var record = new DownloadHealthRecord("c", "q", "r", "r", DownloadHealthStrikes.LowSpeed, "warning", "slow",
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 30, null, RuleStrikeLimit: 50);
+        Assert.False(record.BlocksCandidate(DateTimeOffset.UnixEpoch));
+    }
+}

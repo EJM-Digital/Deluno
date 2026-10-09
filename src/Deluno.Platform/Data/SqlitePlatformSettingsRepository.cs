@@ -226,7 +226,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // ReleasePreferencePlanFactory when it compiles a profile's plan.
         await UpsertSettingAsync(connection, transaction, "search.properRepackAcquisitionMode", NormalizeProperRepackAcquisitionMode(request.ProperRepackAcquisitionMode), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.fileCheckHours", Math.Clamp(request.LibraryFileCheckHours ?? 6, 1, 168).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 100).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
         // Left as it is when a caller does not send it, so an older screen saving everything else cannot flip a choice.
@@ -776,7 +776,7 @@ public sealed class SqlitePlatformSettingsRepository(
 
     private static int ReadDownloadHealthStrikeThreshold(IReadOnlyDictionary<string, string> settings)
         => int.TryParse(GetValue(settings, "cleanup.strikeThreshold"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var threshold)
-            ? Math.Clamp(threshold, 1, 20)
+            ? Math.Clamp(threshold, 1, 100)
             : 3;
 
     private static SetupProgressItem CreateSetupProgress(IReadOnlyDictionary<string, string> settings)
