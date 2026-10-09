@@ -92,7 +92,7 @@ public sealed class HandledProblemsSettlerTests
         Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
         processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno removed that download itself"));
+        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno had already closed that download"));
     }
 
     [Fact]
@@ -355,5 +355,31 @@ public sealed class HandledProblemsSettlerTests
         await SettlerTelling(processors, Connections()).SettleAsync(CancellationToken.None);
 
         processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // #1186: "Search for another copy" sends the same release again, so both sends share a hash. The settler judges the
+    // hand-off by the newer, live send (the one it belongs to), found the way the gone-download rule finds it.
+    [Fact]
+    public async Task A_failed_hand_off_is_judged_by_the_newer_live_send_of_its_release_not_the_older_archived_one()
+    {
+        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
+        var older = FailedImport("d-old", "movie", "movie-old") with { Status = "archived", CreatedUtc = Created.AddMinutes(-30) };
+        var newer = FailedImport("d-new", "movie", "movie-new") with { Status = "sent", CreatedUtc = Created };
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>())).ReturnsAsync(older);
+        _dispatches.Setup(repo => repo.FindDispatchesByClientItemIdsAsync("client-1", It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([older]);
+        _dispatches.Setup(repo => repo.QueryDispatchesAsync(It.IsAny<DispatchQueryFilter>(), It.IsAny<DispatchPaginationOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(((IReadOnlyList<DownloadDispatchItem>)[newer, older], (string?)null));
+        // Only the newer send's title holds a file since the hand-off; the older send's title does not.
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<string> ids, CancellationToken _) =>
+                ids.Contains("movie-new") ? Holds("movie-new", Created.AddHours(2)) : new TitleFileHolds(new Dictionary<string, DateTimeOffset?>()));
+        Listed();
+
+        Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

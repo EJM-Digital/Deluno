@@ -332,16 +332,17 @@ public sealed class ProcessorFailureReportHandlerTests
     }
 
     [Theory]
-    [InlineData("archived", null)]
-    [InlineData("queued", "imported")]
-    public async Task A_gone_download_Deluno_removed_itself_is_settled(string status, string? importStatus)
+    [InlineData("archived", null, "Deluno had already closed that download")]
+    [InlineData("queued", "imported", "Deluno removed that download itself")]
+    public async Task A_gone_download_Deluno_ended_itself_is_settled_with_a_sentence_that_is_true(string status, string? importStatus, string sentence)
     {
         GivenTheDispatchRecord(status, importStatus);
 
         var outcome = await Handler().HandleSourceGoneAsync(SourceGoneReport(), CancellationToken.None);
 
         Assert.True(outcome.Settled);
-        Assert.Contains("Deluno removed that download itself", outcome.Reason);
+        Assert.Contains(sentence, outcome.Reason);
+        Assert.DoesNotContain("removed that download itself", status == "archived" ? outcome.Reason : "");
         _blocked.Verify(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
         _scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }

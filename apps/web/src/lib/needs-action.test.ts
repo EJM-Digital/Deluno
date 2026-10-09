@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, ProcessorHandoffItem, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, handoffNeedsPerson, isVanished, needsAction, plainFailure } from "./needs-action";
+import { canTryAgain, handoffStatusLabel, handoffNeedsPerson, isVanished, needsAction, plainFailure } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -446,5 +446,15 @@ describe("plainFailure", () => {
 
   it("leaves a message that already says something as it is", () => {
     expect(plainFailure("Weir's watched folder is not set for this media scope.", "Sending it to Weir")).toBe("Weir's watched folder is not set for this media scope.");
+  });
+});
+
+describe("handoffStatusLabel", () => {
+  it("is the one set of words for a hand-off status, and a gone download never blames the processor (#1186)", () => {
+    expect(handoffStatusLabel("source-gone")).toBe("Download gone");
+    expect(handoffStatusLabel("SOURCE-GONE")).toBe("Download gone");
+    expect(handoffStatusLabel("failed")).toBe("Processing failed");
+    expect(handoffStatusLabel("timeout")).toBe("Timed out");
+    expect(handoffStatusLabel("")).toBe("Waiting");
   });
 });

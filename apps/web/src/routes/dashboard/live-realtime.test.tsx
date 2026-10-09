@@ -114,7 +114,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     const before = asked.paths.length;
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "failed", processorName: "Cleaner", message: "The processor timed out.", at: at() });
-    await waitFor(() => expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Processor failed"));
+    await waitFor(() => expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Processing failed"));
     // A problem is for the bell: nothing on Live asks to be settled.
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
     expect(within(board).queryByRole("button")).toBeNull();
