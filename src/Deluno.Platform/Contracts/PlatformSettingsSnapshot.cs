@@ -36,8 +36,8 @@ public sealed record PlatformSettingsSnapshot(
     DateTimeOffset UpdatedUtc,
     bool MdbListApiKeyConfigured = false,
     int DownloadHealthStrikeThreshold = 3,
-    bool CleanupBlockReleaseAfterThreshold = true,
-    bool CleanupQueueReplacementAfterThreshold = true,
+    bool CleanupBlockReleaseAfterThreshold = false,
+    bool CleanupQueueReplacementAfterThreshold = false,
     // #1098: a read-only real test of every connection every 15 minutes it has not been used. On for new and
     // existing installs alike because it only reads; a missing key reads as on.
     bool CheckConnectionsRegularly = true,
@@ -97,7 +97,7 @@ public sealed record PlatformSettingsSnapshot(
     // install that never opens the settings screen behaves the same as
     // before. Only "no progress" starts on; the other two are sharper rules a
     // person opts into once they know their own swarms.
-    bool DownloadHealthNoProgressEnabled = true,
+    bool DownloadHealthNoProgressEnabled = false,
     int DownloadHealthNoProgressMinutes = 30,
     bool DownloadHealthMinSpeedEnabled = false,
     int DownloadHealthMinSpeedKbps = 50,

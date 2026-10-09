@@ -46,6 +46,7 @@ import {
   type AllowedHostsOverview,
   type LocalNetworkAuthOverview,
   type ContentBlocklistSettings,
+  type DownloadHealthRule,
   type UpdatePreferencesResponse,
   emptyContentBlocklistSettings,
   readErrorText,
@@ -100,6 +101,7 @@ type AutomationChoiceKey =
   | "subtitleFetching"
   | "removeBadDownloads"
   | "deleteBadDownloadFiles"
+  | "stallStrikes"
   | "leftoverCleanup"
   | "leftoverDownloadCleanup"
   | "forceImport"
@@ -117,12 +119,18 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
   subtitleFetching: null,
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
+  stallStrikes: null,
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
   forceImport: null,
   pauseSearchWhenQueueLong: null,
   dangerousFileCheck: null
 };
+
+/** The numbers the stall question shows and, on a Yes, switches the rules on with (#1194). All changeable on Download Health. */
+export const STALL_STRIKE_COUNT = 3;
+export const STALL_SPEED_LIMIT_KBPS = 50;
+export const STALL_CHECK_EVERY_MINUTES = 5;
 
 export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string; help: string }[] = [
   {
@@ -164,6 +172,11 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
     key: "deleteBadDownloadFiles",
     question: "Delete a bad download's files on its own?",
     help: "Only applies once a download has already been judged bad."
+  },
+  {
+    key: "stallStrikes",
+    question: `Remove downloads that stall or crawl, after ${STALL_STRIKE_COUNT} strikes?`,
+    help: `Every ${STALL_CHECK_EVERY_MINUTES} minutes Deluno checks each download it sent. A check that finds nothing arriving, or a speed under ${STALL_SPEED_LIMIT_KBPS} KB/s, is a strike; a check that finds it moving again clears the strikes. At ${STALL_STRIKE_COUNT} strikes the download is removed from the client, the release is blocked and Deluno searches for another. If off, nothing is struck. You can change the strike count, the speed limit and the check interval later in Automation, Download health.`
   },
   {
     key: "leftoverCleanup",
@@ -299,7 +312,15 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     // the individual searches below only says what runs once it is started.
     autoStartJobs: automation.startAutomation === true,
     renameOnImport: automation.renameOnImport === true,
-    cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
+    cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true || automation.stallStrikes === true,
+    // #1194: a Yes to the stall question is what switches the stall and slow-speed rules on, with the numbers it showed.
+    cleanupBlockReleaseAfterThreshold: automation.stallStrikes === true,
+    cleanupQueueReplacementAfterThreshold: automation.stallStrikes === true,
+    downloadHealthNoProgressEnabled: automation.stallStrikes === true,
+    downloadHealthMinSpeedEnabled: automation.stallStrikes === true,
+    downloadHealthMinSpeedKbps: STALL_SPEED_LIMIT_KBPS,
+    downloadHealthStrikeThreshold: STALL_STRIKE_COUNT,
+    downloadHealthDefaultStrikeWindowMinutes: STALL_CHECK_EVERY_MINUTES,
     cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,
     subtitleFetchAutomaticEnabled: automation.subtitleFetching === true,
     // #932: the age threshold is not asked here - it keeps its own 24-hour
@@ -2564,6 +2585,37 @@ export async function saveDangerousFileCheck(form: GuideForm, loaded: ContentBlo
   });
 }
 
+/**
+ * #1194: a Yes or No to the stall question always writes the real rules. The settings above only seed rules that
+ * Deluno has not yet read, so this sets the No progress and Too slow rules themselves: a Yes turns both on at the
+ * strike count and speed limit the question showed, a No leaves any such rule off.
+ */
+export async function saveStallStrikeRules(form: GuideForm) {
+  const answer = form.automation.stallStrikes;
+  if (answer === null) return;
+  const rules = await fetchJson<DownloadHealthRule[]>("/api/download-health/rules");
+  for (const kind of ["no-progress", "too-slow"] as const) {
+    const existing = rules.find((rule) => rule.kind === kind);
+    if (!answer && (!existing || !existing.enabled)) continue;
+    const base = existing ?? {
+      id: "new", kind, enabled: false, strikeLimit: STALL_STRIKE_COUNT, timerMinutes: STALL_CHECK_EVERY_MINUTES, appliesTo: "both",
+      minCompletionPercent: 0, maxCompletionPercent: 100, resetStrikesOnProgress: true, actionPreset: "replace", threshold: 0,
+      privacyScope: "both", tooSlowMaxTotalMinutes: null, ignoreAboveSizeBytes: null, skipWhileAlternateSpeedLimitOn: false,
+      resetStrikesMinimumProgressBytes: null
+    };
+    await fetchJson(`/api/download-health/rules/${existing?.id ?? "new"}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...base,
+        enabled: answer,
+        ...(answer ? { strikeLimit: STALL_STRIKE_COUNT, actionPreset: "replace" } : {}),
+        ...(answer && kind === "too-slow" ? { threshold: STALL_SPEED_LIMIT_KBPS } : {})
+      })
+    });
+  }
+}
+
 type SelectedFormatGoal = Exclude<GuideForm["formatGoal"], "">;
 type SelectedQualityPreset = Exclude<GuideForm["qualityPreset"], "">;
 
@@ -2674,6 +2726,8 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   // install's migration may have already frozen this on, and a plain
   // "No" answer here should still be honored.
   await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => notApplied.push("the dangerous-file check"));
+  // #1194: an explicit Yes or No always writes the real stall and slow-speed rules.
+  await saveStallStrikeRules(form).catch(() => notApplied.push("the stalled and slow download rules"));
   // "Clean files with Weir before they go into your library?" A Yes sets that library to refine before import and
   // links it to the connected Weir; a No (or no answer) leaves the library as it is.
   for (const [library, answer, outputPath, label] of [

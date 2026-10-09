@@ -31,6 +31,7 @@ public sealed class DownloadHealthGrabGuardTests
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        await AnInstallThatHasTheStrikeActionsOn.ApplyAsync(settingsRepository);
         var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
@@ -81,6 +82,7 @@ public sealed class DownloadHealthGrabGuardTests
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        await AnInstallThatHasTheStrikeActionsOn.ApplyAsync(settingsRepository);
         var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
@@ -139,6 +141,7 @@ public sealed class DownloadHealthGrabGuardTests
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        await AnInstallThatHasTheStrikeActionsOn.ApplyAsync(settingsRepository);
         var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
@@ -192,6 +195,7 @@ public sealed class DownloadHealthGrabGuardTests
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        await AnInstallThatHasTheStrikeActionsOn.ApplyAsync(settingsRepository);
         var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);

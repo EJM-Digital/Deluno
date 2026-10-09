@@ -1038,14 +1038,15 @@ public sealed class PlatformSettingsPersistenceTests
     /// off.
     /// </summary>
     [Fact]
-    public async Task Download_health_rules_default_to_the_original_hard_coded_behaviour()
+    public async Task Download_health_rules_default_to_off_with_the_original_numbers()
     {
         using var storage = TestStorage.Create();
         var repository = await SettingsAsync(storage);
 
         var loaded = await repository.GetAsync(CancellationToken.None);
 
-        Assert.True(loaded.DownloadHealthNoProgressEnabled);
+        // #1194: nothing is on for a fresh install.
+        Assert.False(loaded.DownloadHealthNoProgressEnabled);
         Assert.Equal(30, loaded.DownloadHealthNoProgressMinutes);
         Assert.False(loaded.DownloadHealthMinSpeedEnabled);
         Assert.Equal(50, loaded.DownloadHealthMinSpeedKbps);
