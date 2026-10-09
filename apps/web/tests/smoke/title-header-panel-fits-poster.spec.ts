@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { waitForLayoutCalm } from "../helpers/layout-calm";
 
 // #1058. The Ratings & IDs panel is never taller than the poster: the poster sets
 // the header height. Every action is a visible button, two to a row.
@@ -193,7 +194,7 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
       const more = page.getByRole("button", { name: "Read the full synopsis" });
       await expect(more).toBeVisible();
 
-      const m = await page.evaluate(() => {
+      const measureHeader = () => page.evaluate(() => {
         const box = (e: Element) => e.getBoundingClientRect();
         const grid = document.querySelector("div.grid.items-start") as HTMLElement;
         const card = grid.closest("[class*='overflow-hidden']") as HTMLElement;
@@ -212,6 +213,17 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
           middleScroll: middle.scrollHeight - middle.clientHeight
         };
       });
+      // Cause of the flake (#1191): the card was measured the moment the synopsis showed, before the poster, the fonts and the
+      // metadata answer had settled, and the header lays itself out again as each arrives. Measure when two looks agree.
+      await waitForLayoutCalm(page);
+      let previous = "";
+      await expect.poll(async () => {
+        const now = JSON.stringify(await measureHeader());
+        const same = now === previous;
+        previous = now;
+        return same;
+      }, { timeout: 15_000, intervals: [250, 250, 500, 1_000] }).toBe(true);
+      const m = JSON.parse(previous) as Awaited<ReturnType<typeof measureHeader>>;
       console.log(`${spec.kind} ${size.width}px card=${m.card} poster=${m.poster} padding=${m.padding}`);
       expect(m.card).toBeLessThanOrEqual(m.poster + m.padding + 2);
       expect(Math.abs(m.posterBottom - m.middleBottom)).toBeLessThanOrEqual(2);
