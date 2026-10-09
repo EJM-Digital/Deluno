@@ -59,7 +59,7 @@ export function applyHandoffChanged(client: Cache, event: ProcessorHandoffChange
   const status = handoffStatusOf(event.state);
   patch<ProcessorHandoffItem[]>(client, sharedSources.handoffs.key, (list) => {
     const known = list.find((item) => item.id === event.handoffId);
-    const failed = ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status);
+    const failed = ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled", "source-gone"].includes(status);
     if (known) {
       return list.map((item) => (item.id === event.handoffId
         ? { ...item, status, updatedUtc: event.at, failureMessage: failed ? event.message ?? item.failureMessage : null, processorName: event.processorName ?? item.processorName }

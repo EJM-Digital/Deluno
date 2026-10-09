@@ -53,6 +53,61 @@ public sealed class HandledProblemsSettlerTests
     private static Deluno.Platform.Contracts.ProcessorHandoffItem Handoff(string status, string? failure)
         => new("h-1", "lib", "movies", "client-1", "hash", "Nosferatu.1922.1080p.BluRay.x264-HD4U", "/downloads/x", "Weir", status, null, null, failure, Created, Created);
 
+    private HandledProblemsSettler SettlerWithProcessors(Mock<Deluno.Platform.Data.IProcessorRepository> processors)
+        => new(_movies.Object, _series.Object, _jobs.Object, _dispatches.Object, _activity.Object, processors.Object);
+
+    private static Mock<Deluno.Platform.Data.IProcessorRepository> WithSourceGone()
+    {
+        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff("source-gone", "The download was gone before Weir could clean it.")]);
+        return processors;
+    }
+
+    // #1186
+    [Fact]
+    public async Task A_gone_download_row_closes_once_its_title_holds_the_file()
+    {
+        var processors = WithSourceGone();
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1"));
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(2)));
+        Listed();
+
+        Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "The download was gone before Weir could clean it.", It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("in the library already"));
+    }
+
+    [Fact]
+    public async Task A_gone_download_row_closes_once_Deluno_has_removed_that_download()
+    {
+        var processors = WithSourceGone();
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1") with { Status = "archived", ImportStatus = null, ImportFailureCode = null });
+        Listed();
+
+        Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno removed that download itself"));
+    }
+
+    [Fact]
+    public async Task A_gone_download_row_stays_while_nothing_explains_it()
+    {
+        var processors = WithSourceGone();
+        _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(FailedImport("d-9", "movie", "movie-1") with { Status = "completed", ImportStatus = null, ImportFailureCode = null });
+        Listed();
+
+        Assert.Equal(0, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
+
+        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task A_failed_hand_off_whose_film_holds_its_file_since_is_dismissed_with_a_line()
     {

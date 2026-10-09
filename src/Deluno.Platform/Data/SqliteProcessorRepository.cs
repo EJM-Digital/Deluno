@@ -488,7 +488,7 @@ public sealed class SqliteProcessorRepository(
                   -- again: fetched a second time, it found that row, was not
                   -- handed over, and sat in the client (seen on the rig).
                   AND (
-                    ((status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
+                    ((status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed', 'source-gone')
                     -- The processor said it finished this cycle, but nothing
                     -- closed it, because its output had already been imported
                     -- for an earlier download of the same release. That cycle
