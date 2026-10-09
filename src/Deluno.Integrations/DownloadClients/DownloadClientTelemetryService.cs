@@ -2018,6 +2018,17 @@ public sealed class DownloadClientTelemetryService(
                     wantPurge = true;
                 }
 
+                // #1192: a stalled or slow extra copy of a release that another send is
+                // downloading, or has imported, is not a reason to refuse the release,
+                // delete anything or search again. The release is fine; only this copy is.
+                if ((wantBlock || wantReplacement || wantRemove || wantPurge)
+                    && !string.Equals(struck.Kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase)
+                    && await FindLiveSendOfSameReleaseAsync(dispatch, cancellationToken) is { } otherSend)
+                {
+                    wantBlock = wantReplacement = wantRemove = wantPurge = false;
+                    notes.Add($"{item.ReleaseName}: left alone, because the same release is {(otherSend.ImportStatus == "imported" ? "already imported" : "still downloading")} from {otherSend.DownloadClientName}.");
+                }
+
                 var canRefuse = wantBlock && blockedReleases is not null;
 
                 // "Do not select the same failed release again": on the one
@@ -2689,6 +2700,31 @@ public sealed class DownloadClientTelemetryService(
             dispatch.Id,
             cancellationToken);
 
+        // #1192: a copy of this release that was sent to a second client fails on its own
+        // terms (NZBGet and SABnzbd both wanted the same folder name). While another send
+        // of the same release is downloading, or has imported, the release is not bad: it
+        // is not blocklisted, no files are deleted, and no new search is queued.
+        var sibling = await FindLiveSendOfSameReleaseAsync(dispatch, cancellationToken);
+        if (sibling is not null)
+        {
+            await dispatchesRepository.RecordTimelineEventAsync(
+                dispatch.Id,
+                "duplicate-send-failed-kept-release",
+                JsonSerializer.Serialize(new { otherDispatchId = sibling.Id, otherClient = sibling.DownloadClientName, otherImportStatus = sibling.ImportStatus }),
+                cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "download.duplicate.failed",
+                sibling.ImportStatus == "imported"
+                    ? $"The extra copy of {dispatch.ReleaseName} in {dispatch.DownloadClientName} failed, but the release was already imported from {sibling.DownloadClientName}. Deluno kept the release and deleted nothing."
+                    : $"The extra copy of {dispatch.ReleaseName} in {dispatch.DownloadClientName} failed, but the same release is still downloading in {sibling.DownloadClientName}. Deluno kept the release, deleted nothing and started no new search.",
+                null,
+                null,
+                "download_dispatch",
+                dispatch.Id,
+                cancellationToken);
+            return;
+        }
+
         if (blockedReleases is not null)
         {
             // Blocked the same way a stalled torrent is: on the spot, not
@@ -2939,6 +2975,44 @@ public sealed class DownloadClientTelemetryService(
     /// release name, because a duplicate's own release name is often not the
     /// name of the copy NZBGet kept.
     /// </summary>
+    /// <summary>
+    /// Another send of the very same release for the same title that is downloading or has
+    /// imported (#1192); null when there is none. A send that failed, was refused or never
+    /// reached its client does not count, so a release that really is bad everywhere is
+    /// still blocked.
+    /// </summary>
+    internal async Task<DownloadDispatchItem?> FindLiveSendOfSameReleaseAsync(
+        DownloadDispatchItem dispatch,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dispatch.EntityId) || string.IsNullOrWhiteSpace(dispatch.ReleaseName))
+        {
+            return null;
+        }
+
+        var (items, _) = await dispatchesRepository.QueryDispatchesAsync(
+            new DispatchQueryFilter
+            {
+                EntityType = dispatch.EntityType,
+                EntityId = dispatch.EntityId,
+                IncludeArchived = true
+            },
+            new DispatchPaginationOptions { PageSize = 100 },
+            cancellationToken);
+
+        return items
+            .Where(item => !string.Equals(item.Id, dispatch.Id, StringComparison.Ordinal)
+                && string.Equals(item.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(item.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
+                    || (string.IsNullOrEmpty(item.ImportStatus)
+                        && !string.Equals(item.Status, "archived", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(item.Status, "failed", StringComparison.OrdinalIgnoreCase))))
+            .OrderByDescending(item => string.Equals(item.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(item => item.CreatedUtc)
+            .FirstOrDefault();
+    }
+
     private async Task<DownloadDispatchItem?> FindExistingImportForSameEntityAsync(
         DownloadDispatchItem dispatch,
         CancellationToken cancellationToken)
