@@ -157,7 +157,10 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // The seed limits are the torrent's own mode and limit, in plain words.
             QueuePosition: item.QueuePosition is >= 0 ? item.QueuePosition + 1 : null,
             SeedLimit: SeedLimitText.ForTransmission(item.SeedRatioMode, item.SeedRatioLimit, item.SeedIdleMode, item.SeedIdleLimit),
-            LegacyId: string.IsNullOrWhiteSpace(item.HashString) ? null : item.Id?.ToString(CultureInfo.InvariantCulture)))
+            LegacyId: string.IsNullOrWhiteSpace(item.HashString) ? null : item.Id?.ToString(CultureInfo.InvariantCulture),
+            // #1194: for the ignore list.
+            Tags: item.Labels ?? [],
+            TrackerHosts: DownloadClientHelpers.HostsOf((item.TrackerStats ?? []).Select(stat => stat.Announce))))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var (freeSpaceBytes, clientVersion) = await ReadSessionAsync(client, baseUri, cancellationToken);
@@ -491,7 +494,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     private sealed record TransmissionTrackerStat(
         [property: JsonPropertyName("lastAnnounceResult")] string? LastAnnounceResult,
         [property: JsonPropertyName("lastAnnounceSucceeded")] bool? LastAnnounceSucceeded,
-        [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced);
+        [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced,
+        [property: JsonPropertyName("announce")] string? Announce = null);
 
     /// <summary>One file inside a torrent (#816); <c>name</c> is its path relative to the torrent's own folder.</summary>
     private sealed record TransmissionFile([property: JsonPropertyName("name")] string? Name);

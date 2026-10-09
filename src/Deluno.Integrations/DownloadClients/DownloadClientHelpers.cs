@@ -464,6 +464,20 @@ internal static class DownloadClientHelpers
         return item;
     }
 
+    /// <summary>The host of a tracker announce URL (#1194), lower case; null for anything that is not a URL, such as qBittorrent's "** [DHT] **" rows.</summary>
+    internal static string? HostOf(string? url)
+        => Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host) ? uri.Host.ToLowerInvariant() : null;
+
+    /// <summary>The distinct hosts of several announce URLs (#1194).</summary>
+    internal static IReadOnlyList<string> HostsOf(IEnumerable<string?> urls)
+        => urls.Select(HostOf).Where(host => host is not null).Select(host => host!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    /// <summary>A comma-separated tag list as a client reports it (#1194), trimmed, empty entries dropped.</summary>
+    internal static IReadOnlyList<string> SplitTags(string? tags)
+        => string.IsNullOrWhiteSpace(tags)
+            ? []
+            : tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
     internal static string NormalizeTextStatus(string? status, double? progress)
     {
         var normalized = status?.ToLowerInvariant() ?? string.Empty;

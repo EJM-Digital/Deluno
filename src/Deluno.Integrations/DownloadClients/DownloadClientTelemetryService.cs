@@ -1600,6 +1600,32 @@ public sealed class DownloadClientTelemetryService(
         return snapshot with { Queue = reconciled };
     }
 
+    /// <summary>
+    /// Whether the ignore list exempts this download (#817, #1194): by hash, client category, a tracker domain (the
+    /// host of the torrent's announce URL, or the indexer's name), or a tag (the client's own on the torrent, or
+    /// Deluno's on the title or indexer it came from).
+    /// </summary>
+    private async Task<bool> IsOnTheIgnoreListAsync(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        IReadOnlyList<DownloadHealthIgnoreEntry> ignoreList,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? indexerTags,
+        CancellationToken cancellationToken)
+    {
+        if (ignoreList.Count == 0) return false;
+        IReadOnlyList<string>? delunoTags = null;
+        if (ignoreList.Any(entry => entry.NamesATag))
+        {
+            var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, item.Id, item.ReleaseName));
+            var tags = new List<string>();
+            if (indexerTags is not null && indexerTags.TryGetValue(dispatch?.IndexerName ?? item.IndexerName, out var forIndexer)) tags.AddRange(forIndexer);
+            if (dispatch is not null && await mediaTagStore.ListTitleTagNamesAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken) is { } forTitle) tags.AddRange(forTitle);
+            delunoTags = tags;
+        }
+
+        return ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts, delunoTags));
+    }
+
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
@@ -1625,6 +1651,11 @@ public sealed class DownloadClientTelemetryService(
         var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
         var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(settings.DownloadHealthStrikeInactivityHours, 1, 720));
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
+        // #1194: Deluno's own indexer tags are only read when an ignore entry names a tag.
+        var ignoredIndexerTags = ignoreList.Any(entry => entry.NamesATag)
+            ? (await connectionsRepository.ListIndexersAsync(cancellationToken)).ToDictionary(
+                indexer => indexer.Name, indexer => DownloadClientHelpers.SplitTags(indexer.Tags), StringComparer.OrdinalIgnoreCase)
+            : null;
 
         // #824: a failed connectivity check skips this poll's evaluation
         // entirely for every item on this client - not adjusted the way an
@@ -1646,7 +1677,7 @@ public sealed class DownloadClientTelemetryService(
                 // #817: a download on the ignore list is treated the same way -
                 // exempt from every health rule, with no finding and no strike.
                 if (!IsDelunosOwnDownload(item, clientDispatches) ||
-                    ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+                    await IsOnTheIgnoreListAsync(item, clientDispatches, ignoreList, ignoredIndexerTags, cancellationToken))
                 {
                     annotated.Add((item, []));
                     continue;

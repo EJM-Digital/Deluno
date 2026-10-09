@@ -557,7 +557,7 @@ export function SettingsDownloadHealthPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [ignoreDraft, setIgnoreDraft] = useState({ hash: "", category: "", trackerDomain: "", note: "" });
+  const [ignoreDraft, setIgnoreDraft] = useState({ hash: "", category: "", trackerDomain: "", tag: "", note: "" });
   const [ignoreBusy, setIgnoreBusy] = useState<string | null>(null);
 
   const editing = mode.kind === "edit" ? rules.find((rule) => rule.id === mode.id) ?? null : null;
@@ -661,8 +661,8 @@ export function SettingsDownloadHealthPage() {
 
   async function addIgnoreEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!ignoreDraft.hash.trim() && !ignoreDraft.category.trim() && !ignoreDraft.trackerDomain.trim()) {
-      toast.error("Give at least a hash, a client category, or a tracker/indexer domain to ignore.");
+    if (!ignoreDraft.hash.trim() && !ignoreDraft.category.trim() && !ignoreDraft.trackerDomain.trim() && !ignoreDraft.tag.trim()) {
+      toast.error("Give at least a hash, a client category, a tag, or a tracker domain to ignore.");
       return;
     }
     setIgnoreBusy("add");
@@ -674,11 +674,12 @@ export function SettingsDownloadHealthPage() {
           hash: ignoreDraft.hash.trim() || null,
           category: ignoreDraft.category.trim() || null,
           trackerDomain: ignoreDraft.trackerDomain.trim() || null,
+          tag: ignoreDraft.tag.trim() || null,
           note: ignoreDraft.note.trim() || null
         })
       });
       if (!response.ok) throw new Error("Could not add that to the ignore list.");
-      setIgnoreDraft({ hash: "", category: "", trackerDomain: "", note: "" });
+      setIgnoreDraft({ hash: "", category: "", trackerDomain: "", tag: "", note: "" });
       toast.success("Added to the ignore list");
       revalidator.revalidate();
     } catch (error) {
@@ -759,12 +760,13 @@ export function SettingsDownloadHealthPage() {
       <ListCard title="Ignored downloads" count={ignoreEntries.length ? `${ignoreEntries.length} entry${ignoreEntries.length === 1 ? "" : "ies"}` : undefined}>
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
-            A download matching any of these is exempt from every rule above - never struck, whatever it does.
+            A download matching any of these is exempt from every rule above - never struck, whatever it does. A tracker domain is the host the torrent announces to (a private tracker's own domain, subdomains included) or an indexer's name; a tag is one the client put on the torrent, or one you gave its title or indexer in Deluno.
           </p>
-          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-(--grid-gap) sm:grid-cols-4">
+          <form onSubmit={(event) => void addIgnoreEntry(event)} className="grid gap-(--grid-gap) sm:grid-cols-5">
             <Input placeholder="Hash" value={ignoreDraft.hash} onChange={(event) => setIgnoreDraft((current) => ({ ...current, hash: event.target.value }))} />
             <Input placeholder="Client category" value={ignoreDraft.category} onChange={(event) => setIgnoreDraft((current) => ({ ...current, category: event.target.value }))} />
-            <Input placeholder="Tracker/indexer domain" value={ignoreDraft.trackerDomain} onChange={(event) => setIgnoreDraft((current) => ({ ...current, trackerDomain: event.target.value }))} />
+            <Input placeholder="Tracker domain" aria-label="Tracker domain" value={ignoreDraft.trackerDomain} onChange={(event) => setIgnoreDraft((current) => ({ ...current, trackerDomain: event.target.value }))} />
+            <Input placeholder="Tag" aria-label="Tag" value={ignoreDraft.tag} onChange={(event) => setIgnoreDraft((current) => ({ ...current, tag: event.target.value }))} />
             <div className="flex gap-2">
               <Input placeholder="Note (optional)" value={ignoreDraft.note} onChange={(event) => setIgnoreDraft((current) => ({ ...current, note: event.target.value }))} />
               <Button type="submit" size="sm" disabled={ignoreBusy === "add"}>Add</Button>
@@ -776,14 +778,14 @@ export function SettingsDownloadHealthPage() {
               listId="download-health-ignored"
               items={ignoreEntries}
               columns={[
-                { id: "matches", label: "Matches", sort: (entry) => [entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ").toLowerCase() },
+                { id: "matches", label: "Matches", sort: (entry) => [entry.hash, entry.category, entry.trackerDomain, entry.tag].filter(Boolean).join(" · ").toLowerCase() },
                 { id: "note", label: "Note", sort: (entry) => (entry.note ?? "").toLowerCase() },
                 { id: "actions", label: "", width: "80px" }
               ]}
             >
               {(rows) => rows.map((entry) => (
                 <ListRow key={entry.id}>
-                  <ListCell primary={[entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ") || "—"} />
+                  <ListCell primary={[entry.hash, entry.category, entry.trackerDomain, entry.tag ? `tag ${entry.tag}` : null].filter(Boolean).join(" · ") || "—"} />
                   <ListCell primary={entry.note || "—"} />
                   <ListCell primary={
                     <Button type="button" variant="outline" size="sm" onClick={() => void removeIgnoreEntry(entry)} disabled={ignoreBusy === entry.id}>
