@@ -371,7 +371,7 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// not touched here; the caller has already moved it to the recycle bin. False when the episode no longer holds
     /// that file, which makes a repeat run a no-op.
     /// </summary>
-    Task<bool> ClearMislabelledEpisodeFileAsync(string episodeId, string filePath, CancellationToken cancellationToken)
+    Task<bool> ClearMislabelledEpisodeFileAsync(string episodeId, string filePath, CancellationToken cancellationToken, string? reason = null)
         => Task.FromResult(false);
 
     /// <summary>

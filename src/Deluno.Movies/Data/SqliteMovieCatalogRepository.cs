@@ -2227,6 +2227,15 @@ public sealed class SqliteMovieCatalogRepository(
             unmonitor: true,
             cancellationToken);
 
+    public Task<MovieFileGoneOutcome> ClearFileKeepWantedAsync(string movieId, string filePath, CancellationToken cancellationToken)
+        => FileGoneAsync(
+            movieId,
+            libraryId: null,
+            filePath,
+            "The file was moved to the recycle bin, so Deluno will look for it again.",
+            unmonitor: false,
+            cancellationToken);
+
     public Task<MovieFileGoneOutcome> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
         => FileGoneAsync(
             movieId,

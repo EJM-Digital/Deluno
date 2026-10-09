@@ -32,7 +32,7 @@ public sealed class MovieFilesTabTwoLibrariesTests
     }
 
     [Fact]
-    public async Task Deleting_the_other_librarys_file_switches_off_only_that_library()
+    public async Task Deleting_the_other_librarys_file_leaves_the_film_wanted_in_both_libraries()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var film = await SeedAsync(app);
@@ -43,7 +43,7 @@ public sealed class MovieFilesTabTwoLibrariesTests
         Assert.False(File.Exists(film.FourKPath));
         Assert.True(File.Exists(film.HdPath), "the other library's file is untouched");
         var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
-        Assert.Equal([film.FourKLibraryId], (await movies.ListNotWantedLibraryIdsAsync(film.MovieId, CancellationToken.None)).ToArray());
+        Assert.Empty(await movies.ListNotWantedLibraryIdsAsync(film.MovieId, CancellationToken.None)); // #1188: still wanted, Deluno looks for it again
         Assert.True((await movies.GetByIdAsync(film.MovieId, CancellationToken.None))!.Monitored);
         var remaining = await movies.ListLibraryFilesAsync(film.MovieId, CancellationToken.None);
         Assert.Equal(film.HdPath, Assert.Single(remaining).FilePath);
@@ -59,7 +59,7 @@ public sealed class MovieFilesTabTwoLibrariesTests
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
-        Assert.Equal([film.HdLibraryId], (await movies.ListNotWantedLibraryIdsAsync(film.MovieId, CancellationToken.None)).ToArray());
+        Assert.Empty(await movies.ListNotWantedLibraryIdsAsync(film.MovieId, CancellationToken.None));
         Assert.True(File.Exists(film.FourKPath));
     }
 

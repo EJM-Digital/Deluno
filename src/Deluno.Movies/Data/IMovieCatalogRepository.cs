@@ -422,6 +422,12 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<MovieFileGoneOutcome> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A person moved the film's file to the recycle bin (#1188): the file fields are cleared and the film is Missing,
+    /// but it stays monitored and wanted in every library, so Deluno looks for a better copy.
+    /// </summary>
+    Task<MovieFileGoneOutcome> ClearFileKeepWantedAsync(string movieId, string filePath, CancellationToken cancellationToken);
+
+    /// <summary>
     /// "Want it again" for one library of a film that stopped being wanted there (#1065):
     /// clears the per-library flag so that library's row is Missing and searchable again.
     /// False when that library has no such row or it was not switched off.

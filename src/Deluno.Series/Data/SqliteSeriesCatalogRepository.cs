@@ -3917,7 +3917,8 @@ public sealed class SqliteSeriesCatalogRepository(
     public async Task<bool> ClearMislabelledEpisodeFileAsync(
         string episodeId,
         string filePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reason = null)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -3968,7 +3969,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 """
                 UPDATE episode_wanted_state
                 SET wanted_status = 'missing',
-                    wanted_reason = 'The file held here was a copy of another episode, so it went to the recycle bin.',
+                    wanted_reason = @reason,
                     current_quality = NULL,
                     quality_cutoff_met = 0,
                     next_eligible_search_utc = NULL,
@@ -3976,6 +3977,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 WHERE episode_id = @episodeId;
                 """;
             AddParameter(wanted, "@episodeId", episodeId);
+            AddParameter(wanted, "@reason", reason ?? "The file held here was a copy of another episode, so it went to the recycle bin.");
             AddParameter(wanted, "@now", now);
             await wanted.ExecuteNonQueryAsync(cancellationToken);
         }

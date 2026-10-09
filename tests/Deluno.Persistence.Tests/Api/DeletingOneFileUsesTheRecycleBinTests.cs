@@ -41,6 +41,7 @@ public sealed class DeletingOneFileUsesTheRecycleBinTests
         Assert.Equal(file, item.OriginalPath);
         Assert.True(File.Exists(item.RecyclePath), "the video is held in the recycle bin");
         Assert.False(await MovieHasFileAsync(app, movieId), "the title stays and shows no file");
+        Assert.True((await app.Services.GetRequiredService<IMovieCatalogRepository>().GetByIdAsync(movieId, CancellationToken.None))!.Monitored, "still monitored and wanted (#1188)");
         Assert.Equal(HttpStatusCode.OK, (await app.Client.GetAsync($"/api/movies/{movieId}")).StatusCode);
         Assert.Contains("recycle bin", await app.Client.GetStringAsync("/api/activity?take=50"));
 
@@ -80,6 +81,7 @@ public sealed class DeletingOneFileUsesTheRecycleBinTests
         Assert.True(File.Exists(item.RecyclePath));
         var after = await EpisodesAsync(app, seriesId);
         Assert.False(Assert.Single(after, entry => entry.Number == 1).HasFile, "the episode shows no file");
+        Assert.True(Assert.Single(after, entry => entry.Number == 1).Monitored, "still monitored and wanted (#1188)");
         Assert.True(Assert.Single(after, entry => entry.Number == 2).HasFile);
         Assert.Contains("recycle bin", await app.Client.GetStringAsync("/api/activity?take=50"));
 
@@ -88,7 +90,7 @@ public sealed class DeletingOneFileUsesTheRecycleBinTests
         Assert.True(File.Exists(first), "the file is back where it was");
         var restored = Assert.Single(await EpisodesAsync(app, seriesId), entry => entry.Number == 1);
         Assert.True(restored.HasFile, "the episode has its file again");
-        Assert.True(restored.Monitored, "an episode that was watched before is watched again");
+        Assert.True(restored.Monitored, "still monitored after the restore");
         Assert.Empty(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
     }
 

@@ -611,7 +611,7 @@ export function ShowDetailPage() {
     try {
       const response = await authedFetch(`/api/series/episodes/${episodeId}/file`, { method: "DELETE" });
       if (!response.ok) throw new Error("episode-file-delete-failed");
-      toast.success("File moved to the recycle bin. This episode now shows as missing. You can restore it from the recycle bin.");
+      toast.success("File moved to the recycle bin. This episode now shows as missing and Deluno will look for it again. You can restore it from the recycle bin.");
       setConfirmingEpisodeFileDelete(null);
       revalidator.revalidate();
     } catch {
@@ -2320,7 +2320,7 @@ export function ShowDetailPage() {
                 <div className="flex flex-wrap items-center gap-(--grid-gap)">
                   {confirmingEpisodeFileDelete === openEpisode.episodeId ? (
                     <>
-                      <span className="text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it.</span>
+                      <span className="text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it. Deluno will look for it again.</span>
                       <Button
                         type="button"
                         variant="destructive"
