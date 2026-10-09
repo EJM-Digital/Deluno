@@ -35,7 +35,7 @@ public sealed class NearlyFinishedDownloadsFollowTheStrikeRulesTests
     {
         var evaluator = new DownloadHealthEvaluator();
         var stalled = DownloadClientHelpers.ReconcileTorrentStatus(Item(99.95), Added.AddMinutes(45), Added);
-        var finding = Assert.Single(evaluator.Evaluate(Snapshot(stalled), Added.AddMinutes(45)), f => f.Kind == DownloadHealthStrikes.ClientStalled);
+        var finding = Assert.Single(evaluator.Evaluate(Snapshot(stalled), Added.AddMinutes(45)), f => f.Kind is DownloadHealthStrikes.ClientStalled or DownloadHealthStrikes.NoThroughput);
         Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
         Assert.False(DownloadHealthStrikes.IsFinishedOrHandedOff(stalled.Status, stalled.Progress));
 

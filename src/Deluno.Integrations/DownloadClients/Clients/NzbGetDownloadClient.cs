@@ -82,10 +82,10 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
             var size = item.FileSizeHi * 1_000_000L;
             var remaining = item.RemainingSizeHi * 1_000_000L;
             var downloaded = Math.Max(0, size - remaining);
-            var progress = size <= 0 ? 0 : Math.Round(downloaded / (double)size * 100, 1);
+            var progress = size <= 0 ? 0 : (downloaded / (double)size * 100);
             return new DownloadQueueItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? "Unknown NZBGet item"), item.NzbName ?? "Unknown NZBGet item",
-                item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress, Math.Round((status?.DownloadRate ?? 0) / 1_000_000d, 1),
+                item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
                 CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);

@@ -34,15 +34,14 @@ public sealed class DownloadHealthRulesAreConfigurableTests
     }
 
     [Fact]
-    public void No_progress_minutes_is_a_setting_not_a_constant()
+    public void No_progress_strikes_on_the_first_check_whatever_the_age_of_the_download()
     {
-        var rules = new[] { NoProgressRule(timerMinutes: 10) };
+        // #1194: a strike per check; the first strike never waits for the download to reach an age.
+        var rules = new[] { NoProgressRule() };
 
-        var tooSoonUnderDefault = Evaluate(CreateItem(speedMbps: 0, addedUtc: CapturedUtc.AddMinutes(-11)), DownloadHealthRules.Defaults);
-        var flaggedUnderCustom = Evaluate(CreateItem(speedMbps: 0, addedUtc: CapturedUtc.AddMinutes(-11)), rules);
+        var justAdded = Evaluate(CreateItem(speedMbps: 0, addedUtc: CapturedUtc.AddMinutes(-1)), rules);
 
-        Assert.DoesNotContain(tooSoonUnderDefault, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
-        Assert.Contains(flaggedUnderCustom, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
+        Assert.Contains(justAdded, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
     }
 
     [Fact]
@@ -432,8 +431,8 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.Equal("test-client-failure", finding.RuleId);
         Assert.Equal(DownloadHealthActionPresets.Replace, finding.RuleActionPreset);
         Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
-        // Still also has the unconditional finding, so the new rule never replaces the old signal.
-        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
+        // One rule owns the stall (#1194): the platform-wide fallback does not also strike beside it.
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
     }
 
     [Fact]

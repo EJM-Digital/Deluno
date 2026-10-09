@@ -49,7 +49,8 @@ public sealed record DownloadHealthRecord(
     string? RuleId = null,
     int? RuleStrikeLimit = null,
     int? RuleTimerMinutes = null,
-    string? RuleActionPreset = null)
+    string? RuleActionPreset = null,
+    DateTimeOffset? LastStrikeUtc = null)
 {
     public bool IsIgnored(DateTimeOffset now) => IgnoredUntilUtc is { } ignoredUntil && ignoredUntil > now;
 
@@ -63,9 +64,9 @@ public sealed record DownloadHealthRecord(
            StrikeCount >= Math.Clamp(RuleStrikeLimit ?? fallbackThreshold, 1, 20) &&
            !IsIgnored(now);
 
-    /// <summary>When the next strike is due, given the timer that produced <see cref="StrikeCount"/>.</summary>
-    public DateTimeOffset NextStrikeUtc(int fallbackTimerMinutes = 30)
-        => FirstObservedUtc + TimeSpan.FromMinutes(Math.Clamp(RuleTimerMinutes ?? fallbackTimerMinutes, 1, 1440) * StrikeCount);
+    /// <summary>When the next check can add a strike: one check interval after the last strike (#1194).</summary>
+    public DateTimeOffset NextStrikeUtc(int checkIntervalMinutes = 5)
+        => (LastStrikeUtc ?? FirstObservedUtc) + TimeSpan.FromMinutes(Math.Clamp(checkIntervalMinutes, 1, 1440));
 }
 
 /// <summary>
@@ -224,7 +225,17 @@ public static class DownloadHealthStrikes
            string.Equals(kind, ClientFailure, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, MagnetMetadata, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>, under <paramref name="window"/>.</summary>
-    public static int For(DateTimeOffset since, DateTimeOffset now, TimeSpan window)
-        => 1 + (int)Math.Clamp(Math.Floor((now - since) / window), 0, 10_000);
+    /// <summary>
+    /// A check interval of five minutes is the default (#1194): each check where a problem holds adds one strike, so
+    /// removal lands (strike limit - 1) intervals after the first strike.
+    /// </summary>
+    public static readonly TimeSpan DefaultCheckInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Whether a check at <paramref name="now"/> adds a strike (#1194). The observation pass runs more often than the
+    /// check interval, so a pass less than one interval after the last strike adds nothing. A small allowance keeps a
+    /// pass that lands a few seconds early from slipping a whole pass.
+    /// </summary>
+    public static bool IsDueForStrike(DateTimeOffset lastStrikeUtc, DateTimeOffset now, TimeSpan checkInterval, TimeSpan outageOverlap)
+        => now - lastStrikeUtc - outageOverlap >= checkInterval - TimeSpan.FromSeconds(30);
 }

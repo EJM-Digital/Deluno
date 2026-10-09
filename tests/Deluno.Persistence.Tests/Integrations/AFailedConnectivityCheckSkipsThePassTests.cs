@@ -114,7 +114,8 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
         var afterOutage = await world.PollAsync();
         var strikesAfter = Assert.Single(Assert.Single(afterOutage.Clients).Queue).HealthFindings!.Single().StrikeCount;
 
-        Assert.Equal(strikesBefore, strikesAfter);
+        // The failed check added nothing and cleared nothing; the first good check afterwards is one more strike.
+        Assert.Equal(strikesBefore + 1, strikesAfter);
     }
 
     private sealed class StalledClient(string protocol, string clientId, string clientName, Func<DateTimeOffset> addedUtc) : IDownloadClient

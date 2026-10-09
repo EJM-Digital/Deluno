@@ -261,7 +261,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // in IDownloadHealthRepository (download-health.rules.v1), these are
         // what sits alongside it. Off/at their old defaults (#936).
         await UpsertSettingAsync(connection, transaction, "download-health.dryRunEnabled", request.DownloadHealthDryRunEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "download-health.defaultStrikeWindowMinutes", Math.Clamp(request.DownloadHealthDefaultStrikeWindowMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.defaultStrikeWindowMinutes", Math.Clamp(request.DownloadHealthDefaultStrikeWindowMinutes ?? 5, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.strikeInactivityHours", Math.Clamp(request.DownloadHealthStrikeInactivityHours ?? 72, 1, 720).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.enabled", request.DownloadHealthConnectivityCheckEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.urls", request.DownloadHealthConnectivityCheckUrls ?? string.Empty, updatedUtc, cancellationToken);
@@ -697,7 +697,7 @@ public sealed class SqlitePlatformSettingsRepository(
             ChownGroup: NormalizeName(GetValue(settings, "media.chownGroup")),
             ProperRepackAcquisitionMode: NormalizeProperRepackAcquisitionMode(GetValue(settings, "search.properRepackAcquisitionMode")),
             DownloadHealthDryRunEnabled: string.Equals(GetValue(settings, "download-health.dryRunEnabled"), "true", StringComparison.OrdinalIgnoreCase),
-            DownloadHealthDefaultStrikeWindowMinutes: ReadPositiveInt(GetValue(settings, "download-health.defaultStrikeWindowMinutes"), 30, 1, 1440),
+            DownloadHealthDefaultStrikeWindowMinutes: ReadPositiveInt(GetValue(settings, "download-health.defaultStrikeWindowMinutes"), 5, 1, 1440),
             DownloadHealthStrikeInactivityHours: ReadPositiveInt(GetValue(settings, "download-health.strikeInactivityHours"), 72, 1, 720),
             DownloadHealthConnectivityCheckEnabled: string.Equals(GetValue(settings, "download-health.connectivityCheck.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthConnectivityCheckUrls: GetValue(settings, "download-health.connectivityCheck.urls") ?? string.Empty,

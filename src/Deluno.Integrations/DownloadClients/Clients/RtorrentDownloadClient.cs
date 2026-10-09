@@ -200,7 +200,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         var ratio = AsLong(Field(row, 9)) is { } scaledRatio ? scaledRatio / 1000d : (double?)null;
         var message = AsString(Field(row, 10));
         var directory = AsString(Field(row, 11));
-        var progress = sizeBytes <= 0 ? 0 : Math.Round(bytesDone / (double)sizeBytes * 100, 1);
+        var progress = sizeBytes <= 0 ? 0 : (bytesDone / (double)sizeBytes * 100);
 
         var nativeStatus = isHashChecking ? "hash_checking"
             : !string.IsNullOrWhiteSpace(message) ? "error"
@@ -213,11 +213,11 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             DownloadClientHelpers.InferMediaType(client, null),
             DownloadClientHelpers.CleanReleaseTitle(name), name, string.Empty,
             NormalizeStatus(nativeStatus, progress), progress,
-            Math.Round(downRate / 1_000_000d, 1), 0, sizeBytes, bytesDone, 0, "rTorrent",
+            (downRate / 1_000_000d), 0, sizeBytes, bytesDone, 0, "rTorrent",
             string.IsNullOrWhiteSpace(message) ? null : message,
             capturedUtc, directory,
             Ratio: ratio,
-            UploadSpeedMbps: Math.Round(upRate / 1_000_000d, 1),
+            UploadSpeedMbps: (upRate / 1_000_000d),
             // rTorrent's own message field is its own diagnostic text (a
             // tracker error included), so — like Deluge's equivalent field —
             // it is read as this machine's problem rather than the

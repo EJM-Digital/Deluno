@@ -130,14 +130,14 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             StableId(item) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Labels?.FirstOrDefault()), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Transmission item"),
             item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, Status(item),
-            Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
+            Math.Clamp(((item.PercentDone ?? 0) * 100), 0, 100), ((item.RateDownload ?? 0) / 1_000_000d), Math.Max(0, item.Eta ?? 0),
             item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", IsFinishedWithTrackerError(item) || string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
             DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
             // Both come back on the same torrent-get call, so a sharing rule
             // costs no extra request. secondsSeeding is 0 while still downloading.
             Ratio: item.UploadRatio,
             SeedingMinutes: item.SecondsSeeding is null ? null : (int)Math.Clamp(item.SecondsSeeding.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1),
+            UploadSpeedMbps: ((item.RateUpload ?? 0) / 1_000_000d),
             // #880/#881: Transmission's own error field distinguishes a local
             // problem from a tracker one. TR_STAT_LOCAL_ERROR (3) is
             // Transmission's word for a problem on this machine — disk space,
