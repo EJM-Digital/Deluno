@@ -1,6 +1,6 @@
 import { formatResetTime } from "./reset-times";
 import { describe, expect, it } from "vitest";
-import { updateHeadline } from "./update-headline";
+import { latestVersionLabel, updateHeadline } from "./update-headline";
 
 const base = { restartRequired: false, updateAvailable: false, state: "up-to-date", message: "You are on the latest version." };
 
@@ -23,5 +23,19 @@ describe("updateHeadline", () => {
   it("keeps the restart and update-available headlines", () => {
     expect(updateHeadline({ ...base, restartRequired: true })).toBe("Restart to finish updating");
     expect(updateHeadline({ ...base, updateAvailable: true, state: "update-available" })).toBe("Update available");
+  });
+});
+
+describe("latestVersionLabel", () => {
+  it("names the version when one is known", () => {
+    expect(latestVersionLabel({ state: "update-available", latestVersion: "1.2.3" })).toBe("1.2.3");
+  });
+
+  it("says there is no update only when the check ran", () => {
+    expect(latestVersionLabel({ state: "up-to-date", latestVersion: null })).toBe("No update available");
+  });
+
+  it("says the check could not run after a failed check", () => {
+    expect(latestVersionLabel({ state: "error", latestVersion: null })).toBe("Couldn't check");
   });
 });

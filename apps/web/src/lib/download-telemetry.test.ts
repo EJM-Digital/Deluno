@@ -30,3 +30,16 @@ describe("a download imported earlier whose file has since left the library (#11
     expect(isProcessingStatus(status)).toBe(false);
   });
 });
+
+describe("a download whose files are gone (#1200)", () => {
+  const status = downloadQueueStatuses.filesGone;
+
+  it("says so in plain words", () => {
+    expect(queueStatusLabel(status)).toBe("Files are gone");
+  });
+
+  it("is never ready to import and not being processed", () => {
+    expect(isImportReadyStatus(status)).toBe(false);
+    expect(isProcessingStatus(status)).toBe(false);
+  });
+});

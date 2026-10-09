@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Deluno.Contracts;
 using Deluno.Integrations.Processors;
 using Deluno.Platform.Contracts;
 
@@ -101,6 +102,51 @@ public sealed class ProcessorVersionTests
         Assert.Null(ProcessorProjects.ProjectFor(Connection(healthCheckUrl: null)));
         Assert.Null(ProcessorProjects.ProjectFor(Connection(healthCheckUrl: "http://nas:8788/health")));
         Assert.Null(ProcessorProjects.ProjectFor(Connection() with { SubmissionUrl = "https://fileflows.example.test/api/webhook/deluno" }));
+    }
+
+    // #1200: after Weir upgraded, Deluno kept the old version until someone tested the connection. Reading the
+    // processor's health now stores the version it reports.
+    [Fact]
+    public async Task Reading_a_reachable_processors_health_stores_the_version_it_reports()
+    {
+        var store = new Store();
+        var service = new ProcessorConnectionService(
+            new Factory(new HttpClient(new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/capabilities")
+                ? Json("""{"version":"1.0.0-rc.12"}""")
+                : new HttpResponseMessage(HttpStatusCode.OK)))),
+            versions: store);
+
+        var result = await service.TestAsync(Connection(), CancellationToken.None);
+
+        Assert.True(result.IsReachable);
+        var recorded = Assert.Single(store.Recorded);
+        Assert.Equal((ConnectionKinds.Processor, "connection-1", "weir", "1.0.0-rc.12"), recorded);
+    }
+
+    [Fact]
+    public async Task An_unreachable_processor_leaves_the_stored_version_alone()
+    {
+        var store = new Store();
+        var service = new ProcessorConnectionService(
+            new Factory(new HttpClient(new StubHandler(_ => throw new HttpRequestException("down")))),
+            versions: store);
+
+        var result = await service.TestAsync(Connection(), CancellationToken.None);
+
+        Assert.False(result.IsReachable);
+        Assert.Empty(store.Recorded);
+    }
+
+    private sealed class Store : IConnectionVersionStore
+    {
+        public List<(string Kind, string Id, string? Project, string? Version)> Recorded { get; } = [];
+        public Task RecordAsync(string kind, string id, string? project, string? version, CancellationToken cancellationToken)
+        {
+            Recorded.Add((kind, id, project, version));
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<ConnectionVersionRow>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ConnectionVersionRow>>([]);
+        public Task<bool> DismissAsync(string kind, string id, string version, CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
     private static ProcessorConnectionService Service(Func<HttpRequestMessage, HttpResponseMessage> send)

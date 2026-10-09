@@ -22,3 +22,12 @@ export function updateHeadline(status: UpdateHeadlineInput): string {
   if (status.updateAvailable) return "Update available";
   return "Up to date";
 }
+
+/**
+ * What the "Latest version" row says (#1200). A failed check did not find out whether there is a newer version, so
+ * it never reads "No update available"; it says the check could not run.
+ */
+export function latestVersionLabel(status: { state: string; latestVersion?: string | null }): string {
+  if (status.latestVersion) return status.latestVersion;
+  return status.state === "error" ? "Couldn't check" : "No update available";
+}

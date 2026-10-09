@@ -35,6 +35,16 @@ public static class ProcessorFailureClasses
 
     public static bool IsSourceGone(string? failureClass)
         => string.Equals(failureClass?.Trim(), SourceGone, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The sentence kept on a hand-off whose download was gone. It is the one record of why it ended, also after Dismiss.</summary>
+    public static string SourceGoneMessage(string processorName)
+        => $"The download was gone before {processorName} could clean it.";
+
+    /// <summary>True when a hand-off's kept sentence is <see cref="SourceGoneMessage"/>, whatever the processor was called.</summary>
+    public static bool IsSourceGoneMessage(string? failureMessage)
+        => failureMessage is not null
+           && failureMessage.StartsWith("The download was gone before ", StringComparison.Ordinal)
+           && failureMessage.Contains(" could clean it", StringComparison.Ordinal);
 }
 
 /// <summary>What Deluno decided about a report that the download was gone (#1186).</summary>

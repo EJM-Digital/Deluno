@@ -387,7 +387,9 @@ public sealed class DownloadClientTelemetryService(
             item => string.IsNullOrWhiteSpace(item.Host) ? null : item.Host.Trim().ToLowerInvariant(),
             StringComparer.OrdinalIgnoreCase);
         var mappedSnapshots = snapshots
-            .Select(snapshot => ApplyPathMappings(snapshot, pathMappings, clientHostsById.GetValueOrDefault(snapshot.ClientId)))
+            .Select(snapshot => MarkDownloadsWhoseFilesAreGone(
+                ApplyPathMappings(snapshot, pathMappings, clientHostsById.GetValueOrDefault(snapshot.ClientId)),
+                path => File.Exists(path) || Directory.Exists(path)))
             .ToArray();
 
         // Ownership is decided once, here, and carried into everything below
@@ -3448,6 +3450,14 @@ public sealed class DownloadClientTelemetryService(
                     // to the recycle bin, say). The row says so, as history: it is neither "In library" nor ready to
                     // import (#1182). A release sent again since is a new attempt and is handed over again, so for
                     // that one the row is ready to import.
+                    // A download whose hand-off ended because it was gone, and was dismissed, is closed history (#1200):
+                    // its files are not there to import, so it is never "ready to import". Sent again since, it is a new attempt.
+                    if (SourceGoneAndDismissed(item, handoffs, settledDispatches))
+                    {
+                        queue.Add(item with { Status = DownloadQueueStatuses.FilesGone });
+                        continue;
+                    }
+
                     if (ImportEndedAndTheFileLeft(item, handoffs, settledDispatches, importJobs))
                     {
                         queue.Add(item with { Status = DownloadQueueStatuses.ImportedFileLeft });
@@ -3461,6 +3471,63 @@ public sealed class DownloadClientTelemetryService(
 
             queue.Add(item);
         }
+
+        return snapshot with { Queue = queue };
+    }
+
+    private static bool SourceGoneAndDismissed(
+        DownloadQueueItem item,
+        IReadOnlyList<ProcessorHandoffItem>? handoffs,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches)
+    {
+        var handoff = handoffs?
+            .Where(candidate =>
+                string.Equals(candidate.ClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(candidate.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(candidate => candidate.UpdatedUtc)
+            .FirstOrDefault();
+        return handoff is not null
+            && DownloadAttempts.SourceGoneClosed(handoff)
+            && !DownloadAttempts.SentAgainSince(settledDispatches, item.ClientId, item.ReleaseName, handoff.UpdatedUtc);
+    }
+
+    /// <summary>
+    /// A download the client lists as done whose files are not on disk says so within the check (#1200), instead of
+    /// reading "Done 100%" for as long as the client keeps listing it. Only a path whose folder this machine can
+    /// see is judged: a path on another machine, unmapped, is not "gone", it is simply out of sight.
+    /// </summary>
+    internal static DownloadClientTelemetrySnapshot MarkDownloadsWhoseFilesAreGone(
+        DownloadClientTelemetrySnapshot snapshot,
+        Func<string, bool> pathExists)
+    {
+        if (!snapshot.Queue.Any(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed))
+        {
+            return snapshot;
+        }
+
+        var queue = snapshot.Queue.Select(item =>
+        {
+            if (item.Status is not (DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed)
+                || string.IsNullOrWhiteSpace(item.SourcePath)
+                || !Path.IsPathRooted(item.SourcePath)
+                || pathExists(item.SourcePath))
+            {
+                return item;
+            }
+
+            var parent = Path.GetDirectoryName(item.SourcePath.TrimEnd('\\', '/'));
+            if (string.IsNullOrWhiteSpace(parent) || !pathExists(parent))
+            {
+                return item;
+            }
+
+            return item with
+            {
+                Status = DownloadQueueStatuses.FilesGone,
+                ErrorMessage = "The download client lists this as done, but its files are no longer on disk. Remove it from the client, or search for another copy.",
+                IsSetupProblem = true
+            };
+        }).ToArray();
 
         return snapshot with { Queue = queue };
     }
