@@ -36,7 +36,7 @@ public sealed class TrackerSiteHealthCheck(IConnectionsRepository connections, I
                 Category,
                 $"{indexer.Name} (tracker site)",
                 $"{indexer.Name} cannot be searched as it is saved. {resolution.Problem}",
-                cause: "Deluno's tracker sites now come from the built-in Prowlarr site list, and this indexer's saved site is not in it.",
+                cause: $"Deluno's tracker sites now come from the built-in Prowlarr site list, and the saved site for {indexer.Name} is not in it.",
                 fix: $"Open Connections, edit {indexer.Name} and choose its site again, or remove it. Nothing was deleted.",
                 detailsJson: $$"""{"indexerId":"{{indexer.Id}}","definitionId":"{{indexer.DefinitionId}}"}"""));
         }

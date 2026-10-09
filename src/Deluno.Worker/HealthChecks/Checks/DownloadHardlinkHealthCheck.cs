@@ -26,8 +26,8 @@ public sealed class DownloadHardlinkHealthCheck(IDownloadSharingRepository shari
             Category,
             $"{hold.Title} (unlinked from library)",
             $"{hold.Title} on {hold.ClientName} no longer shares its file data with your library.",
-            cause: "The library copy of this title was upgraded or deleted after this download was linked to it.",
-            fix: "It is safe to reclaim: open it in Transfers and choose Remove this copy. The library file is not touched.",
+            cause: $"The library copy of {hold.Title} was upgraded or deleted after this download on {hold.ClientName} was linked to it.",
+            fix: $"{hold.Title} is safe to reclaim: open it in Transfers and choose Remove this copy. The library file is not touched.",
             detailsJson: $$"""{"clientId":"{{hold.ClientId}}","queueItemId":"{{hold.QueueItemId}}","sizeBytes":{{hold.SizeBytes}}}"""))
             .ToArray();
     }

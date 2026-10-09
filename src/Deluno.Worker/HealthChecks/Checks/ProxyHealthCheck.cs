@@ -68,8 +68,8 @@ public sealed class ProxyHealthCheck(IConnectionsRepository connections, IProxyR
             ? HealthCheckOutcome.Ok(id, Category, name, $"{result.Message}{usedBy}")
             : HealthCheckOutcome.Problem(
                 id, Category, name,
-                $"{result.Message}{usedBy}",
-                cause: "Deluno could not complete a request through this proxy.",
-                fix: "Confirm the proxy is running and its address is correct, then check again.");
+                $"{proxy.Name}: {result.Message}{usedBy}",
+                cause: $"Deluno could not complete a request through {proxy.Name}.",
+                fix: $"Confirm {proxy.Name} is running and its address is correct, then check again.");
     }
 }
