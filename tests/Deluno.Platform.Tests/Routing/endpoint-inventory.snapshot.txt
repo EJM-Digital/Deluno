@@ -501,7 +501,6 @@ POST /api/trakt/connect
 POST /api/trakt/connect/poll
 POST /api/trakt/credentials
 POST /api/trakt/disconnect
-POST /api/updates/apply-on-restart
 POST /api/updates/check
 POST /api/updates/download
 POST /api/updates/restart-now

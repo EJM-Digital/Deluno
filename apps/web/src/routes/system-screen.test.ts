@@ -116,3 +116,14 @@ describe("system screen host name (#1101)", () => {
     expect(source).toMatch(/<HostNameTip looksLikeContainerId=\{systemInfo\?\.hostLooksLikeContainerId\}/);
   });
 });
+
+describe("System > Updates actions (#1197)", () => {
+  it("offers Check now, Download update and Restart and apply only", () => {
+    const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
+    expect(source).not.toContain("Apply on restart");
+    expect(source).not.toContain("/api/updates/apply-on-restart");
+    expect(source).toContain("Check now");
+    expect(source).toContain("Download update");
+    expect(source).toContain("Restart and apply");
+  });
+});

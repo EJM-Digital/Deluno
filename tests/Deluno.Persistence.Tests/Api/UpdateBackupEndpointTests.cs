@@ -43,37 +43,34 @@ public sealed class UpdateBackupEndpointTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task ApplyOnRestart_creates_pre_update_backup_before_staging()
+    public async Task Apply_on_restart_endpoint_is_gone()
     {
         var response = await _client.PostAsync("/api/updates/apply-on-restart", content: null);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var result = document.RootElement;
-
-        Assert.True(result.GetProperty("accepted").GetBoolean());
-        Assert.Equal("Backup completed. Update is prepared for restart.", result.GetProperty("message").GetString());
-        Assert.Equal("pre-update", _backupService.LastReason);
-        Assert.Equal(1, _orchestrator.PrepareCalls);
-        Assert.Equal(0, _orchestrator.GetStatusCalls);
+        Assert.True(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed);
+        Assert.Null(_backupService.LastReason);
     }
 
     [Fact]
-    public async Task ApplyOnRestart_blocks_staging_when_pre_update_backup_fails()
+    public async Task Restart_now_takes_the_pre_update_backup_first()
+    {
+        var response = await _client.PostAsync("/api/updates/restart-now", content: null);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.GetProperty("accepted").GetBoolean());
+        Assert.Equal("pre-update", _backupService.LastReason);
+    }
+
+    [Fact]
+    public async Task Restart_now_is_blocked_when_the_pre_update_backup_fails()
     {
         _backupService.Failure = new IOException("backup folder is unavailable");
 
-        var response = await _client.PostAsync("/api/updates/apply-on-restart", content: null);
+        var response = await _client.PostAsync("/api/updates/restart-now", content: null);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var result = document.RootElement;
-
-        Assert.False(result.GetProperty("accepted").GetBoolean());
-        Assert.Contains("Backup failed and staging was blocked", result.GetProperty("message").GetString());
-        Assert.Equal("pre-update", _backupService.LastReason);
-        Assert.Equal(0, _orchestrator.PrepareCalls);
-        Assert.Equal(1, _orchestrator.GetStatusCalls);
+        Assert.False(document.RootElement.GetProperty("accepted").GetBoolean());
+        Assert.Contains("restart was blocked", document.RootElement.GetProperty("message").GetString());
     }
 
     public async ValueTask DisposeAsync()
@@ -146,7 +143,6 @@ public sealed class UpdateBackupEndpointTests : IAsyncDisposable
     {
         public int GetStatusCalls { get; private set; }
 
-        public int PrepareCalls { get; private set; }
 
         public Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
         {
@@ -159,12 +155,6 @@ public sealed class UpdateBackupEndpointTests : IAsyncDisposable
 
         public Task<UpdateStatusResponse> DownloadUpdatesAsync(CancellationToken cancellationToken) =>
             Task.FromResult(CreateStatus("downloaded"));
-
-        public Task<UpdateStatusResponse> PrepareApplyOnNextRestartAsync(CancellationToken cancellationToken)
-        {
-            PrepareCalls++;
-            return Task.FromResult(CreateStatus("prepared"));
-        }
 
         public Task<UpdateStatusResponse> ApplyAndRestartNowAsync(CancellationToken cancellationToken) =>
             Task.FromResult(CreateStatus("restarted"));
