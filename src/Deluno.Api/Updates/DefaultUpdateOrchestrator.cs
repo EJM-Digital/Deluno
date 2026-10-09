@@ -79,13 +79,6 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         return BuildStatus(history);
     }
 
-    public async Task<UpdateStatusResponse> PrepareApplyOnNextRestartAsync(CancellationToken cancellationToken)
-    {
-        var history = await DetectAppliedUpdateOnceAsync(cancellationToken);
-        await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
-        return BuildStatus(history);
-    }
-
     public async Task<UpdateStatusResponse> ApplyAndRestartNowAsync(CancellationToken cancellationToken)
     {
         var history = await DetectAppliedUpdateOnceAsync(cancellationToken);

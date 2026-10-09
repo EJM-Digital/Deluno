@@ -1456,7 +1456,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
   useEffect(() => { setCurrent(status); }, [status]);
   const [savedPreferences, setSavedPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [preferences, setPreferences] = useState<UpdatePreferencesResponse | null>(null);
-  const [busyAction, setBusyAction] = useState<"check" | "download" | "prepare" | "restart" | "prefs" | null>(null);
+  const [busyAction, setBusyAction] = useState<"check" | "download" | "restart" | "prefs" | null>(null);
   const actionStatus = useSaveStatus();
   const [preferencesSaveState, setPreferencesSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [preferencesMessage, setPreferencesMessage] = useState<string | null>(null);
@@ -1489,7 +1489,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
     setPreferences(next);
   }
 
-  async function runAction(action: "check" | "download" | "prepare" | "restart") {
+  async function runAction(action: "check" | "download" | "restart") {
     setBusyAction(action);
     actionStatus.markSyncing();
     try {
@@ -1498,9 +1498,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
           ? "/api/updates/check"
           : action === "download"
             ? "/api/updates/download"
-            : action === "prepare"
-              ? "/api/updates/apply-on-restart"
-              : "/api/updates/restart-now";
+            : "/api/updates/restart-now";
       const result = await fetchJson<UpdateActionResponse>(path, { method: "POST" });
       setCurrent(result.status);
       // The server message can carry GitHub's reset as a UTC stamp; SaveStatus shows it in the viewer's own time (#1181).
@@ -1620,10 +1618,6 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
             <Button type="button" variant="outline" disabled={busyAction !== null || !current.canDownload} onClick={() => void runAction("download")}>
               {busyAction === "download" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Download update
-            </Button>
-            <Button type="button" variant="outline" disabled={busyAction !== null || !current.canApply} onClick={() => void runAction("prepare")}>
-              {busyAction === "prepare" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <TimerReset className="h-4 w-4" />}
-              Apply on restart
             </Button>
             <Button type="button" disabled={busyAction !== null || !current.canApply || !current.restartRequired} onClick={() => void runAction("restart")}>
               {busyAction === "restart" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
