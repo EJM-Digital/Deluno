@@ -227,8 +227,8 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "search.properRepackAcquisitionMode", NormalizeProperRepackAcquisitionMode(request.ProperRepackAcquisitionMode), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.fileCheckHours", Math.Clamp(request.LibraryFileCheckHours ?? 6, 1, 168).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
         // Left as it is when a caller does not send it, so an older screen saving everything else cannot flip a choice.
         if (request.CheckConnectionsRegularly is { } checkRegularly)
         {
@@ -245,7 +245,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // the strike threshold above. Minutes are clamped to the same 1..1440
         // (a day) DownloadHealthRulesSettings itself clamps to, so a value
         // that survives being saved is one the shared rule will actually use.
-        await UpsertSettingAsync(connection, transaction, "download-health.noProgress.enabled", request.DownloadHealthNoProgressEnabled is false ? "false" : "true", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.noProgress.enabled", request.DownloadHealthNoProgressEnabled is true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.noProgress.minutes", Math.Clamp(request.DownloadHealthNoProgressMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.enabled", request.DownloadHealthMinSpeedEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.kbps", Math.Clamp(request.DownloadHealthMinSpeedKbps ?? 50, 1, 1_000_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
@@ -645,8 +645,8 @@ public sealed class SqlitePlatformSettingsRepository(
             MdbListApiKeyUnreadable: mdbKey.Unreadable,
             MetadataKeyProblem: keyProblem,
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
-            CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
-            CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
+            CleanupBlockReleaseAfterThreshold: string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
+            CleanupQueueReplacementAfterThreshold: string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             CheckConnectionsRegularly: !string.Equals(GetValue(settings, "connections.checkRegularly"), "false", StringComparison.OrdinalIgnoreCase),
             KeepComputerAwake: string.Equals(GetValue(settings, "machine.keepAwake"), "true", StringComparison.OrdinalIgnoreCase),
             // #904's "default on" change (commit 2e9f2125) never shipped in a
@@ -675,7 +675,7 @@ public sealed class SqlitePlatformSettingsRepository(
             LongDateFormat: NormalizeLongDateFormat(GetValue(settings, "ui.longDateFormat")),
             TimeFormat: NormalizeTimeFormat(GetValue(settings, "ui.timeFormat")),
             ShowRelativeDates: !string.Equals(GetValue(settings, "ui.relativeDates"), "false", StringComparison.OrdinalIgnoreCase),
-            DownloadHealthNoProgressEnabled: !string.Equals(GetValue(settings, "download-health.noProgress.enabled"), "false", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthNoProgressEnabled: string.Equals(GetValue(settings, "download-health.noProgress.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthNoProgressMinutes: ReadPositiveInt(GetValue(settings, "download-health.noProgress.minutes"), 30, 1, 1440),
             DownloadHealthMinSpeedEnabled: string.Equals(GetValue(settings, "download-health.minSpeed.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthMinSpeedKbps: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.kbps"), 50, 1, 1_000_000),

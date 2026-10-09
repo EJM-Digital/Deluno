@@ -188,7 +188,10 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
                     await settingsRepository.GetAsync(CancellationToken.None),
                     new PatchPlatformSettingsRequest(
                         DownloadHealthConnectivityCheckEnabled: connectivityCheckEnabled,
-                        DownloadHealthConnectivityCheckUrls: "https://fixture.invalid")),
+                        DownloadHealthConnectivityCheckUrls: "https://fixture.invalid",
+                        CleanupBlockReleaseAfterThreshold: true,
+                        CleanupQueueReplacementAfterThreshold: true,
+                        DownloadHealthNoProgressEnabled: true)),
                 CancellationToken.None);
             var connections = new SqliteConnectionsRepository(storage.Factory, time, secretProtection);
             var libraries = new SqliteLibrariesRepository(storage.Factory, time);
