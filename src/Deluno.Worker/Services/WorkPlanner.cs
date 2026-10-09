@@ -1180,7 +1180,7 @@ public sealed class WorkPlanner(
             // second time. Nor is it handed over while another copy of the same release holds a
             // hand-off, or when its title already holds the file from another download.
             if (ImportWorkflows.HandsToProcessor(library.ImportWorkflow) && !titleCameBack &&
-                await HasBeenDealtWithAsync(item, processorRepository, processorOutputImports, cancellationToken))
+                await HasBeenDealtWithAsync(item, processorRepository, processorOutputImports, cancellationToken, jobQueueRepository))
             {
                 continue;
             }
@@ -1265,7 +1265,9 @@ public sealed class WorkPlanner(
                         library.ProcessorName,
                         // A hand-off closed because its title was removed belongs to that acquisition; the
                         // title being back is a new one, though the client's download is the old one (#1155).
-                        titleCameBack && existing is { Status: ProcessorHandoffStatuses.Cancelled or ProcessorHandoffStatuses.Dismissed }
+                        (titleCameBack && existing is { Status: ProcessorHandoffStatuses.Cancelled or ProcessorHandoffStatuses.Dismissed })
+                            || (existing is { Status: ProcessorHandoffStatuses.Completed }
+                                && await ImportedDownloads.SentAgainSinceAsync(jobQueueRepository, item.ClientId, item.ReleaseName, existing.UpdatedUtc, cancellationToken))
                             ? now
                             : item.AddedUtc,
                         library.ProcessorConnectionId),
@@ -2590,7 +2592,8 @@ public sealed class WorkPlanner(
         DownloadQueueItem item,
         IProcessorRepository processorRepository,
         IProcessorOutputImportQueue? outputImports,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IJobQueueRepository? dispatches = null)
     {
         // A download the client took after the hand-off ended is a new acquisition.
         static bool IsNewer(DownloadQueueItem download, ProcessorHandoffItem handoff)
@@ -2601,7 +2604,12 @@ public sealed class WorkPlanner(
         {
             if (prior.Status is ProcessorHandoffStatuses.Dismissed or ProcessorHandoffStatuses.Completed)
             {
-                return true;
+                // A finished hand-off for a release that was sent again on purpose since (the title lost its
+                // file and search picked this very torrent, still finished in the client) is over: the new
+                // send is a new acquisition and gets a hand-off of its own (#1182).
+                return !(prior.Status == ProcessorHandoffStatuses.Completed
+                    && dispatches is not null
+                    && await ImportedDownloads.SentAgainSinceAsync(dispatches, item.ClientId, item.ReleaseName, prior.UpdatedUtc, cancellationToken));
             }
 
             // Still with the processor, or waiting to be sent, at another path: it is that hand-off's

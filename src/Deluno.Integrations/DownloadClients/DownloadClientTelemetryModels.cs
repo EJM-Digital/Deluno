@@ -244,6 +244,12 @@ public static class DownloadQueueStatuses
     public const string NotHandedOver = "notHandedOver";
     public const string ImportQueued = "importQueued";
     public const string Imported = "imported";
+
+    /// <summary>
+    /// Imported earlier, but the title no longer holds the file (a wrong episode moved to the recycle bin, say) and
+    /// nothing will import this download again (#1182). History, never an active import: not "In library".
+    /// </summary>
+    public const string ImportedFileLeft = "importedFileLeft";
     public const string ImportFailed = "importFailed";
     public const string Completed = "completed";
 

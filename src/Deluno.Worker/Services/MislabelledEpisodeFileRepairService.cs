@@ -105,7 +105,7 @@ public sealed class MislabelledEpisodeFileRepairService(
 
                 var expected = new ReleaseTitleExpectation(
                     link.SeriesTitle, inventory.StartYear, IsTv: true, link.SeasonNumber, link.EpisodeNumber, EpisodeTitles: titles);
-                var wrongName = await MislabelledNameAsync(dispatches, link, expected, cancellationToken);
+                var wrongName = await MislabelledNameAsync(dispatches, activity, link, expected, cancellationToken);
                 if (wrongName is null)
                 {
                     continue;
@@ -176,11 +176,14 @@ public sealed class MislabelledEpisodeFileRepairService(
     }
 
     /// <summary>
-    /// The first name this episode's file came from that carries another episode's title: the release names of the
-    /// grabs that were imported to it, then the library file's own name.
+    /// The name this episode's file came from, when it carries another episode's title: the release name of the
+    /// latest grab imported to this path (an older import the file replaced is never used, #1189), then the library
+    /// file's own name. When two imports to the path cannot be told apart by time and name different releases, which
+    /// one produced the file is unknown: the file is left alone and Activity says so.
     /// </summary>
     private static async Task<(int Episode, string Title)?> MislabelledNameAsync(
         IJobQueueRepository dispatches,
+        IActivityFeedRepository activity,
         EpisodeFileLink link,
         ReleaseTitleExpectation expected,
         CancellationToken cancellationToken)
@@ -188,14 +191,32 @@ public sealed class MislabelledEpisodeFileRepairService(
         var names = new List<string>();
         var page = await dispatches.ListDownloadDispatchesPageAsync(
             new PageRequest(50), "tv", cancellationToken, includeArchived: true, entityId: link.EpisodeId);
-        foreach (var dispatch in page.Items)
-        {
-            if (string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
+        var imports = page.Items
+            .Where(dispatch => string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
                 && (string.IsNullOrWhiteSpace(dispatch.ImportedFilePath)
                     || string.Equals(dispatch.ImportedFilePath, link.FilePath, StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(dispatch => dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc)
+            .ThenByDescending(dispatch => dispatch.CreatedUtc)
+            .ToArray();
+        if (imports.Length > 0)
+        {
+            var latestAt = imports[0].ImportCompletedUtc ?? imports[0].CreatedUtc;
+            var sameMoment = imports
+                .TakeWhile(dispatch => (dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc) == latestAt)
+                .Select(dispatch => dispatch.ReleaseName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (sameMoment.Length > 1)
             {
-                names.Add(dispatch.ReleaseName);
+                var label = $"{link.SeriesTitle} S{link.SeasonNumber:00}E{link.EpisodeNumber:00}";
+                await activity.RecordActivityOnChangeAsync(
+                    ActivityCategory,
+                    $"{label} has a file, but Deluno cannot tell which of {sameMoment.Length} downloads produced it, so it left the file where it is.",
+                    null, null, "episode", link.EpisodeId, cancellationToken);
+                return null;
             }
+
+            names.Add(imports[0].ReleaseName);
         }
 
         names.Add(Path.GetFileName(link.FilePath));

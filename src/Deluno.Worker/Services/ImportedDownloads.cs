@@ -41,4 +41,23 @@ internal static class ImportedDownloads
         return latest is not null
             && string.Equals(latest.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Whether this release was sent to this client again, on purpose, after <paramref name="sinceUtc"/> and that
+    /// send has not been imported (#1182). The torrent can still be in the client, finished: a title whose file
+    /// left the library (a wrong episode moved to the recycle bin, say) is Missing again, search picks the same
+    /// release, and the client already has it. That send is a new acquisition, so the old hand-off does not stand
+    /// in for it.
+    /// </summary>
+    public static async Task<bool> SentAgainSinceAsync(
+        IJobQueueRepository jobQueueRepository,
+        string clientId,
+        string releaseName,
+        DateTimeOffset sinceUtc,
+        CancellationToken cancellationToken)
+    {
+        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(
+            DispatchWindow, null, cancellationToken, includeArchived: true, clientId: clientId);
+        return dispatches is not null && Deluno.Integrations.DownloadClients.DownloadAttempts.SentAgainSince(dispatches, clientId, releaseName, sinceUtc);
+    }
 }
