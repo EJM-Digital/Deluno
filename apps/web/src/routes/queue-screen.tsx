@@ -1730,11 +1730,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </div>
             </DrawerSection>
 
-            {(!processorOwnsFailure && (openQueueItem.errorMessage || openQueueItem.failure)) || visibleFindings(openQueueItem).length ? (
+            {(!processorOwnsFailure && (openQueueItem.errorMessage || openQueueItem.failure)) || visibleFindings(openQueueItem, openQueueHandoff).length ? (
               <DrawerSection title="Health">
                 {!processorOwnsFailure && openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
                 {!processorOwnsFailure && openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
-                {visibleFindings(openQueueItem).map((finding, index) => (
+                {visibleFindings(openQueueItem, openQueueHandoff).map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-(length:--type-body-sm) text-foreground">{finding.summary}</span>
@@ -2517,9 +2517,15 @@ export function MediaInfoDetail({ probe }: { probe: MediaProbeInfo }) {
  * week is up) but drops out of the drawer the moment it is dismissed, rather
  * than sitting there after a person has already acted on it.
  */
-export function visibleFindings(item: DownloadQueueItem): DownloadHealthFinding[] {
+export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<ProcessorHandoffItem, "status"> | null): DownloadHealthFinding[] {
   const now = Date.now();
-  return (item.healthFindings ?? []).filter((finding) => !finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now);
+  // A download the processor found gone has its one plain row ("The download was gone before ... could clean it");
+  // the generic "post-processing step failed, review it before retrying" would say it a second time, with a Dismiss
+  // of its own and advice to retry something that cannot be sent again (#1186).
+  const goneAlready = handoff?.status === "source-gone";
+  return (item.healthFindings ?? []).filter((finding) =>
+    (!finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now)
+    && !(goneAlready && finding.kind === "post-processing-failed"));
 }
 
 /**

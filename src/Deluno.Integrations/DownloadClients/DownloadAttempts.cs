@@ -1,4 +1,5 @@
 using Deluno.Jobs.Contracts;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -30,5 +31,23 @@ public static class DownloadAttempts
             && latest.CreatedUtc > sinceUtc
             && string.Equals(latest.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(latest.ImportStatus);
+    }
+
+    /// <summary>
+    /// True when this hand-off's import ran to its end (#1182). A hand-off the processor finished stays Completed; a
+    /// partial one can be settled Dismissed in the second before its import job completes, and it is the same thing:
+    /// the import ran. A dismissed hand-off whose job did not complete (or is not known) is a closed problem, not an
+    /// import that happened.
+    /// </summary>
+    public static bool ImportRan(ProcessorHandoffItem handoff, string? importJobStatus)
+    {
+        if (string.IsNullOrWhiteSpace(handoff.ImportJobId))
+        {
+            return false;
+        }
+
+        return handoff.Status == ProcessorHandoffStatuses.Completed
+            || (handoff.Status == ProcessorHandoffStatuses.Dismissed
+                && string.Equals(importJobStatus, "completed", StringComparison.OrdinalIgnoreCase));
     }
 }

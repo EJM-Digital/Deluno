@@ -56,6 +56,54 @@ public sealed class AnImportedDownloadWhoseFileLeftTheLibraryTests
         Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(result.Queue).Status);
     }
 
+    // Rig, 9 Oct: the settler dismissed the hand-off one second before its import job completed.
+    [Fact]
+    public async Task A_dismissed_hand_off_whose_import_job_completed_reads_exactly_like_a_completed_one()
+    {
+        var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
+            Snapshot(DownloadQueueStatuses.Imported),
+            [Dispatch(importStatus: "imported", created: Imported.AddMinutes(-3))],
+            new Files(false),
+            CancellationToken.None,
+            [Handoff("dismissed", "job-1")],
+            [Job("job-1", "completed")]);
+
+        Assert.Equal(DownloadQueueStatuses.ImportedFileLeft, Assert.Single(result.Queue).Status);
+    }
+
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("queued")]
+    public async Task A_dismissed_hand_off_whose_import_job_did_not_complete_is_not_an_import_that_happened(string jobStatus)
+    {
+        var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
+            Snapshot(DownloadQueueStatuses.Imported),
+            [Dispatch(importStatus: "imported", created: Imported.AddMinutes(-3))],
+            new Files(false),
+            CancellationToken.None,
+            [Handoff("dismissed", "job-1")],
+            [Job("job-1", jobStatus)]);
+
+        Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(result.Queue).Status);
+    }
+
+    [Fact]
+    public async Task A_dismissed_hand_off_with_a_completed_import_and_a_newer_send_is_a_new_attempt()
+    {
+        var result = await DownloadClientTelemetryService.DemoteImportedWithoutItsFileAsync(
+            Snapshot(DownloadQueueStatuses.Imported),
+            [Dispatch(importStatus: "imported", created: Imported.AddMinutes(-3)), Dispatch(importStatus: null, created: SentAgain)],
+            new Files(false),
+            CancellationToken.None,
+            [Handoff("dismissed", "job-1")],
+            [Job("job-1", "completed")]);
+
+        Assert.Equal(DownloadQueueStatuses.ImportReady, Assert.Single(result.Queue).Status);
+    }
+
+    private static JobQueueItem Job(string id, string status)
+        => new(id, "filesystem.import.execute", "processor", status, null, 1, Imported, Imported, Imported, Imported, null, null, null, null, null, null, null, 3, Imported, null);
+
     [Theory]
     [InlineData("succeeded", null, true)]
     [InlineData("succeeded", "", true)]

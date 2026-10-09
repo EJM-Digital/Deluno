@@ -1266,7 +1266,8 @@ public sealed class WorkPlanner(
                         // A hand-off closed because its title was removed belongs to that acquisition; the
                         // title being back is a new one, though the client's download is the old one (#1155).
                         (titleCameBack && existing is { Status: ProcessorHandoffStatuses.Cancelled or ProcessorHandoffStatuses.Dismissed })
-                            || (existing is { Status: ProcessorHandoffStatuses.Completed }
+                            || (existing is { Status: ProcessorHandoffStatuses.Completed or ProcessorHandoffStatuses.Dismissed }
+                                && await ImportedDownloads.FinishedWithItsImportAsync(jobQueueRepository, existing, cancellationToken)
                                 && await ImportedDownloads.SentAgainSinceAsync(jobQueueRepository, item.ClientId, item.ReleaseName, existing.UpdatedUtc, cancellationToken))
                             ? now
                             : item.AddedUtc,
@@ -2607,8 +2608,8 @@ public sealed class WorkPlanner(
                 // A finished hand-off for a release that was sent again on purpose since (the title lost its
                 // file and search picked this very torrent, still finished in the client) is over: the new
                 // send is a new acquisition and gets a hand-off of its own (#1182).
-                return !(prior.Status == ProcessorHandoffStatuses.Completed
-                    && dispatches is not null
+                return !(dispatches is not null
+                    && await ImportedDownloads.FinishedWithItsImportAsync(dispatches, prior, cancellationToken)
                     && await ImportedDownloads.SentAgainSinceAsync(dispatches, item.ClientId, item.ReleaseName, prior.UpdatedUtc, cancellationToken));
             }
 

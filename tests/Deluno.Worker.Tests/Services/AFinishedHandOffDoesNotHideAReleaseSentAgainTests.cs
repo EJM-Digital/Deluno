@@ -32,13 +32,26 @@ public sealed class AFinishedHandOffDoesNotHideAReleaseSentAgainTests
         Assert.True(await Dealt(withNewerSend: false));
     }
 
-    private static async Task<bool> Dealt(bool withNewerSend)
+    // #1182: a hand-off settled Dismissed a second before its import job completed is a finished import all the same.
+    [Fact]
+    public async Task A_dismissed_hand_off_whose_import_completed_does_not_hide_a_release_sent_again()
+    {
+        Assert.False(await Dealt(withNewerSend: true, status: "dismissed", jobStatus: "completed"));
+    }
+
+    [Fact]
+    public async Task A_dismissed_hand_off_whose_import_did_not_complete_still_means_it_was_dealt_with()
+    {
+        Assert.True(await Dealt(withNewerSend: true, status: "dismissed", jobStatus: "failed"));
+    }
+
+    private static async Task<bool> Dealt(bool withNewerSend, string status = "completed", string jobStatus = "completed")
     {
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(repo => repo.FindProcessorHandoffForDownloadAsync("client-1", "hash-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProcessorHandoffItem(
                 "handoff-1", "library-1", "tv", "client-1", "hash-1", Release, "/downloads/" + Release, "Weir",
-                "completed", "/ready/" + Release, "job-1", null, HandoffEnded.AddMinutes(-1), HandoffEnded));
+                status, "/ready/" + Release, "job-1", null, HandoffEnded.AddMinutes(-1), HandoffEnded));
         processors.Setup(repo => repo.ListProcessorHandoffsForReleaseAsync(Release, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
 
@@ -49,6 +62,8 @@ public sealed class AFinishedHandOffDoesNotHideAReleaseSentAgainTests
         }
 
         var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repo => repo.GetAsync("job-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobQueueItem("job-1", "filesystem.import.execute", "processor", jobStatus, null, 1, HandoffEnded, HandoffEnded, HandoffEnded, HandoffEnded, null, null, null, null, null, null, null, 3, HandoffEnded, null));
         jobs.Setup(repo => repo.ListDownloadDispatchesAsync(It.IsAny<int>(), null, It.IsAny<CancellationToken>(), true, "client-1"))
             .ReturnsAsync(sends);
 
