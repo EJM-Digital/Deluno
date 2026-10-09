@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "./api";
 import type { RouteSource } from "./route-cache";
 
@@ -44,3 +45,12 @@ export const attentionSummarySource: RouteSource<AttentionSummary> = {
   label: "What needs a look",
   fetch: () => fetchJson<AttentionSummary>("/api/attention/summary")
 };
+
+/**
+ * The summary for a screen that draws from it (the System tab's Health list). It reads the same cached answer the bell
+ * does, so it is the same rows and the same number, and it moves when the bell's read moves on a push: no timer.
+ */
+export function useAttentionSummary(): AttentionSummary {
+  const { data } = useQuery({ queryKey: attentionSummarySource.key, queryFn: attentionSummarySource.fetch, staleTime: 30_000 });
+  return data && typeof data.count === "number" && Array.isArray(data.rows) ? data : emptyAttentionSummary;
+}

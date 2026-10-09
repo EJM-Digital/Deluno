@@ -23,7 +23,6 @@ import {
 import { queryClient, defineSources, useRouteSources, type RouteSource } from "../../lib/route-cache";
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
 import { sharedSources } from "../../lib/shared-sources";
-import type { SetupNeed } from "./attention";
 import type { IndexerScoreboardToday } from "./live/indexers";
 
 /** The Live extras for the person's own day; null from an older server that has none. */
@@ -64,6 +63,14 @@ function source<T>(key: string, label: string, fetch: () => Promise<T>, fallback
   return { key: ["src", key], label, fetch, fallback };
 }
 
+export interface SetupNeed {
+  id: string;
+  title: string;
+  text: string;
+  to: string;
+  action: string;
+}
+
 /** What the setup checklist reads; the same lists Media Management and Find & Download already keep. */
 export const setupSources = defineSources({
   libraries: { ...sharedSources.libraries, fallback: [] },
@@ -73,6 +80,14 @@ export const setupSources = defineSources({
   policySets: source<PolicySetItem[]>("policy-sets", "Library profiles", () => fetchJson("/api/policy-sets"), []),
   qualityProfiles: source<QualityProfileItem[]>("quality-profiles", "Quality profiles", () => fetchJson("/api/quality-profiles"), []),
   setupProgress: source<SetupProgressItem>("setup-progress", "Setup progress", () => fetchJson("/api/setup/progress"), EMPTY_PROGRESS)
+});
+
+/** The stored lists the Live and System tabs draw from, kept warm for the bell too. Nothing here is counted: the count is the server's. */
+export const storedLists = defineSources({
+  telemetry: sharedSources.telemetry,
+  handoffs: sharedSources.handoffs,
+  dispatches: sharedSources.dispatches,
+  indexers: sharedSources.indexers
 });
 
 /** What only the Now tab reads beyond the summary and the download queue. */

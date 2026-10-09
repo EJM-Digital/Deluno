@@ -15,7 +15,6 @@ import { StatusLed } from "../../components/ui/status-led";
 import type { AlertAction, AlertActions } from "../../lib/alert-actions";
 import type { BellRow } from "../../lib/bell-rows";
 import { ActionButton, plural, send, UNIFORM_BUTTON, useAction } from "./downloads-kit";
-import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
 
@@ -99,7 +98,7 @@ export function bellRowElement(row: BellRow, state: Action): ReactElement {
  * The one quiet line for what is worth a look but is not a problem and is never
  * counted: leftover folders and health suggestions. Nothing when there are none.
  */
-export function AlsoWorthALook({ attention }: { attention: Pick<DashboardAttention, "alsoWorthALook"> }) {
+export function AlsoWorthALook({ attention }: { attention: { alsoWorthALook: { leftovers: number; suggestions: number } } }) {
   const { leftovers, suggestions } = attention.alsoWorthALook;
   const quiet = [
     leftovers > 0 ? (

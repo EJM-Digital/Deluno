@@ -11,9 +11,8 @@ import { useMemo, useState, type JSX } from "react";
 import { useRouteSources } from "../../lib/route-cache";
 import type { DashboardSummary } from "../../lib/api";
 import { cn } from "../../lib/utils";
-import { attentionSources } from "./attention";
-import { useSetupState } from "./sources";
-import { useDashboardAttention } from "./use-dashboard-attention";
+import { storedLists } from "./sources";
+import { useAttentionSummary } from "../../lib/attention-summary";
 import { GRID_AREAS_SYSTEM, GRID_COLUMNS, gridRows, lowNeedOfGrid, pageLayout } from "./live/layout";
 import { useElementSize, useNow, useRemPx } from "./live/hooks";
 import { ComputerCard, InstanceCard, NetworkCard } from "./system/band";
@@ -30,9 +29,8 @@ import "./system/system.css";
 const NO_ROWS: never[] = [];
 
 export function SystemTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
-  const { data } = useRouteSources({ ...attentionSources, ...systemSources });
-  const setup = useSetupState();
-  const attention = useDashboardAttention(summary, setup.needs);
+  const { data } = useRouteSources({ ...storedLists, ...systemSources });
+  const attention = useAttentionSummary();
   const overview = useSystemOverview();
   const log = useSystemLog();
   const databases = useSystemDatabases();

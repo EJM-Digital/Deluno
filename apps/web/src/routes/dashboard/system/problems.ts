@@ -6,7 +6,7 @@
  */
 import type { DashboardSummary, HealthCheckResultItem } from "../../../lib/api";
 import { healthProblemActions, jobsGaveUpActions, screenLinkActions, STARTUP_PROBLEM_PREFIX, type AlertAction } from "../../../lib/alert-actions";
-import type { DashboardAttention } from "../attention";
+import type { AttentionSummary } from "../../../lib/attention-summary";
 import { plainWords } from "../downloads-kit";
 import { plural } from "../format";
 import { AREAS, areaOf, areaOfAttention, type HealthArea } from "./logic";
@@ -74,15 +74,17 @@ export interface HealthModel {
 
 const isSnoozed = (check: HealthCheckResultItem) => check.snoozedUntilUtc !== null && Date.parse(check.snoozedUntilUtc) > Date.now();
 
-export function buildHealth(args: { summary: DashboardSummary | undefined; attention: DashboardAttention; checks: HealthCheckResultItem[] | undefined }): HealthModel {
+export function buildHealth(args: { summary: DashboardSummary | undefined; attention: AttentionSummary; checks: HealthCheckResultItem[] | undefined }): HealthModel {
   const { summary, attention, checks } = args;
   const system = summary?.system;
   const failedLanes = system?.lanes.filter((lane) => lane.state === "failing") ?? [];
   // Connections have their own rows, with their own buttons, in Connections; here they read as that and are counted once.
-  const ownRows = new Set(["clients", "indexers", "processors"]);
-  const others = attention.items.filter((item) => item.tab === "system" && !ownRows.has(item.id) && !item.id.startsWith("health:") && item.id !== "failed-jobs" && item.id !== "lanes");
+  // The server's rows (#1185): the connection rows, the Health problems, the jobs that gave up and the workers have their own rows below.
+  const connectionKinds = new Set(["connection", "jobs", "lanes"]);
+  const others = attention.rows.filter((item) => item.section === "deluno" && !connectionKinds.has(item.kind) && !item.kind.startsWith("health:"));
+  const jobsGaveUp = attention.rows.filter((item) => item.kind === "jobs");
   const links = new Map((summary?.health?.topProblems ?? []).map((problem) => [problem.id, problem.link]));
-  const covered = new Set([...attention.downloads.clients.map((c) => `download-client:${c.id}`), ...attention.downloads.indexers.map((i) => `indexer:${i.id}`), ...attention.downloads.processors.map((p) => `processor:${p.id}`)]);
+  const covered = new Set(attention.rows.filter((row) => row.kind === "connection").map((row) => (row.id.startsWith("client:") ? `download-client:${row.id.slice(7)}` : row.id)));
 
   const all = checks ?? [];
   const real = all.filter((check) => check.status !== "suggestion");
@@ -95,7 +97,10 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
 
   const listed = checks
     ? open.filter((check) => !covered.has(check.id)).map((check) => ({ id: check.id, title: check.name, message: check.message, detail: [check.cause, check.fix].filter(Boolean).join(" "), link: links.get(check.id) ?? "/system", category: check.category as string | undefined, at: check.problemSinceUtc ?? check.lastRunUtc, area: areaOf(check) }))
-    : attention.healthListed.map((problem) => ({ id: problem.id, title: problem.title, message: problem.message, detail: "", link: problem.link || "/system", category: problem.category as string | undefined, at: null as string | null, area: "machine" as HealthArea }));
+    : attention.rows.filter((row) => row.kind.startsWith("health:")).map((row) => {
+      const problem = row.data as { id: string; category?: string; link?: string };
+      return { id: problem.id, title: row.title, message: row.text, detail: "", link: problem.link || "/system", category: problem.category as string | undefined, at: row.sinceUtc, area: "machine" as HealthArea };
+    });
   for (const problem of listed) {
     rows.push({
       id: `problem:${problem.id}`, area: problem.area, tone: "bad", title: problem.title, why: problem.detail ? `${problem.message} ${problem.detail}` : problem.message, atUtc: problem.at,
@@ -103,17 +108,9 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
     });
   }
 
-  if (attention.backgroundJobsGaveUp > 0) {
-    rows.push({
-      id: "jobs-gave-up", area: "machine", tone: "bad", title: `${plural(attention.backgroundJobsGaveUp, "background job")} gave up`, why: "They failed on every attempt and are waiting for you.", atUtc: null,
-      buttons: buttonsFor(jobsGaveUpActions("background"))
-    });
-  }
-  if (attention.titleJobsGaveUp > 0) {
-    rows.push({
-      id: "title-jobs-gave-up", area: "machine", tone: "bad", title: `${plural(attention.titleJobsGaveUp, "job")} about a title gave up`, why: "They failed on every attempt. Open them in Activity to retry or dismiss.", atUtc: null,
-      buttons: buttonsFor(jobsGaveUpActions("title"))
-    });
+  for (const job of jobsGaveUp) {
+    const about = job.id === "failed-title-jobs" ? "title" : "background";
+    rows.push({ id: about === "title" ? "title-jobs-gave-up" : "jobs-gave-up", area: "machine", tone: "bad", title: job.title, why: job.text, atUtc: null, buttons: buttonsFor(jobsGaveUpActions(about)) });
   }
   for (const lane of failedLanes) {
     rows.push({ id: `lane:${lane.name}`, area: "machine", tone: "bad", title: `${plainWords(lane.name, "A worker")} isn’t running`, why: lane.lastError ?? "It stopped and hasn’t come back.", atUtc: null, buttons: buttonsFor(screenLinkActions("Look", "/system", `look:${lane.name}`)) });
@@ -121,8 +118,9 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
   for (const check of checks ? open.filter((c) => covered.has(c.id)) : []) {
     rows.push({ id: `check:${check.id}`, area: areaOf(check), tone: "bad", title: check.name, why: `${check.message} Fix it in Connections.`, atUtc: check.problemSinceUtc ?? check.lastRunUtc, buttons: buttonsFor(healthProblemActions({ id: check.id, category: check.category as string, link: "/system" })) });
   }
-  const need = rows.length + (checks ? 0 : attention.items.find((item) => item.id === "health:more")?.count ?? 0);
-  const more = checks ? 0 : attention.items.find((item) => item.id === "health:more")?.count ?? 0;
+  // The server lists every open problem, so none is "more" than what is listed.
+  const need = rows.length;
+  const more = 0;
 
   // Not live problems: snoozed ones (still clearable), then what is not checked yet, suggestions, and what passes.
   for (const check of all.filter((c) => c.status === "problem" && isSnoozed(c))) {
