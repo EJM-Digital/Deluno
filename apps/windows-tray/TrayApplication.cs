@@ -536,6 +536,7 @@ public sealed class TrayApplication : ApplicationContext
             {
                 OnHostStarted(announce: true);
             });
+            await ReportBlockedUpdateAsync();
         }
         catch (Exception ex)
         {
@@ -547,6 +548,42 @@ public sealed class TrayApplication : ApplicationContext
                 TryWriteStartupLog(ex);
             });
         }
+    }
+
+    /// <summary>
+    /// An automatic install on Quit or at start that a failed backup stopped (#1197) is said now, once: in Activity, in
+    /// plain words, and as a tray notice.
+    /// </summary>
+    private async Task ReportBlockedUpdateAsync()
+    {
+        var note = BlockedUpdateNote.TryTake(BlockedUpdateNote.DefaultFolder());
+        if (note is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_server.Services is { } services)
+            {
+                using var scope = services.CreateScope();
+                var feed = scope.ServiceProvider.GetRequiredService<Deluno.Jobs.Data.IActivityFeedRepository>();
+                await feed.RecordActivityAsync(
+                    "app.update",
+                    note.Message,
+                    System.Text.Json.JsonSerializer.Serialize(new { version = note.Version, reason = note.Reason, atUtc = note.AtUtc }),
+                    null,
+                    "system",
+                    "app-update",
+                    CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            HookLog.Write($"could not write the blocked-update line to Activity: {ex.Message}");
+        }
+
+        InvokeOnUiThread(() => Balloon("Deluno did not install the update", note.Message, ToolTipIcon.Warning, problem: true));
     }
 
     /// <summary>The host is listening: take its live address, follow its pushes and its update state.</summary>
@@ -978,7 +1015,7 @@ public sealed class TrayApplication : ApplicationContext
         try
         {
             var updates = _updates ?? new VelopackUpdateOrchestrator(NullLogger<VelopackUpdateOrchestrator>.Instance);
-            updates.ApplyPendingOnExit();
+            await updates.ApplyPendingOnExitAsync(_server.Services);
         }
         catch
         {

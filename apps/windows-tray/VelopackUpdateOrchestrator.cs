@@ -84,57 +84,58 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
     }
 
     /// <summary>
-    /// A downloaded update is installed when this app exits (Quit), without restarting it. Returns true when one was queued.
+    /// A downloaded update is installed when this app exits (Quit), without restarting it. The "pre-update" backup is
+    /// taken first, while the host still runs; if it fails nothing is installed and a note is left for the next start
+    /// (#1197). Returns true when the install was queued.
     /// </summary>
-    public bool ApplyPendingOnExit()
+    public async Task<bool> ApplyPendingOnExitAsync(IServiceProvider? hostServices)
     {
+        UpdateManager manager;
+        VelopackAsset pending;
         lock (_snapshotLock)
         {
-            var manager = GetOrCreateManager(AppSettings.Load());
-            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } pending)
+            manager = GetOrCreateManager(AppSettings.Load());
+            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } found)
             {
                 return false;
             }
 
-            manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false);
-            return true;
+            pending = found;
         }
+
+        return await PreUpdateBackupGate.InstallOnQuitAsync(
+            pending.Version.ToString(),
+            BlockedUpdateNote.DefaultFolder(),
+            token => PreUpdateBackupGate.TakePreUpdateBackupAsync(hostServices, token),
+            () => manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false));
     }
 
     /// <summary>
-    /// At start, before the host runs: an update downloaded earlier is applied now and the app restarts into it.
-    /// Tried once per version, so an update that cannot apply never loops. Returns true when the app is restarting.
+    /// At start, before the host runs: an update downloaded earlier is applied now and the app restarts into it, after
+    /// the same "pre-update" backup (#1197). Tried once per version, so an update that cannot apply never loops; a
+    /// failed backup installs nothing and the app starts normally. Returns true when the app is restarting.
     /// </summary>
     public bool ApplyPendingAtStart(string attemptFolder)
     {
+        UpdateManager manager;
+        VelopackAsset pending;
         lock (_snapshotLock)
         {
-            var manager = GetOrCreateManager(AppSettings.Load());
-            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } pending)
+            manager = GetOrCreateManager(AppSettings.Load());
+            if (!manager.IsInstalled || manager.UpdatePendingRestart is not { } found)
             {
                 return false;
             }
 
-            var version = pending.Version.ToString();
-            var marker = Path.Combine(attemptFolder, "update-start-attempt.txt");
-            try
-            {
-                if (File.Exists(marker) && string.Equals(File.ReadAllText(marker).Trim(), version, StringComparison.Ordinal))
-                {
-                    return false;
-                }
-
-                Directory.CreateDirectory(attemptFolder);
-                File.WriteAllText(marker, version);
-            }
-            catch
-            {
-                return false;
-            }
-
-            manager.ApplyUpdatesAndRestart(pending);
-            return true;
+            pending = found;
         }
+
+        return Task.Run(() => PreUpdateBackupGate.InstallAtStartAsync(
+            pending.Version.ToString(),
+            attemptFolder,
+            BlockedUpdateNote.DefaultFolder(),
+            token => PreUpdateBackupGate.TakePreUpdateBackupAsync(null, token),
+            () => manager.ApplyUpdatesAndRestart(pending))).GetAwaiter().GetResult();
     }
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
@@ -245,67 +246,6 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             logger.LogWarning(ex, "Update download failed.");
             _runtime.MarkError(ex.Message);
             return await GetStatusUnlockedAsync(cancellationToken, "Download failed.");
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public async Task<UpdateStatusResponse> PrepareApplyOnNextRestartAsync(CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var settings = AppSettings.Load();
-            var manager = GetOrCreateManager(settings);
-            if (!manager.IsInstalled)
-            {
-                return BuildStatus(settings, manager, "Apply controls require a Velopack-installed app.");
-            }
-
-            if (manager.UpdatePendingRestart is null)
-            {
-                if (_availableUpdate is null)
-                {
-                    _availableUpdate = await CheckQuietlyAsync(manager);
-                    if (_availableUpdate is null)
-                    {
-                        _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
-                    }
-                    else
-                    {
-                        _runtime.MarkUpdateAvailable(DateTimeOffset.UtcNow, _availableUpdate.TargetFullRelease.Version.ToString());
-                    }
-                }
-
-                if (_availableUpdate is not null)
-                {
-                    await DownloadPendingUpdateAsync(settings, manager, cancellationToken);
-                }
-            }
-
-            var restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
-            if (restartRequired)
-            {
-                _runtime.MarkReadyToRestart();
-            }
-            else
-            {
-                _runtime.MarkUpToDate(_runtime.LastCheckedUtc ?? DateTimeOffset.UtcNow, restartRequired: false);
-            }
-            return BuildStatus(
-                settings,
-                manager,
-                restartRequired
-                    ? "Update is staged and will apply on restart."
-                    : "No update is ready to apply.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Apply-on-restart preparation failed.");
-            _runtime.MarkError(ex.Message);
-            return await GetStatusUnlockedAsync(cancellationToken, "Could not prepare the update.");
         }
         finally
         {
@@ -525,7 +465,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         {
             $"Updates are checked against the {settings.UpdateChannel} channel for this install.",
             "Deluno data lives outside the app install folder so updates do not overwrite your databases or keys.",
-            "A backup is created before restart-based apply from the System > Updates page."
+            "A backup is taken before every install: Restart and apply, and the install when Deluno quits or starts."
         };
 
         if (!canOperate)
