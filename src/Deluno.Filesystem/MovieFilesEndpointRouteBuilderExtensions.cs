@@ -7,6 +7,7 @@ using Deluno.Movies.Data;
 using Deluno.Series.Data;
 using Deluno.Notifications;
 using Deluno.Notifications.Contracts;
+using Deluno.Platform;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -193,6 +194,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             IMediaSubtitleRepository mediaSubtitleRepository,
             Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
             ISeriesCatalogRepository seriesRepository,
+            IRecycleBinService recycleBinService,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             ILogger<MovieFileDeleteNotification> logger,
@@ -249,16 +251,21 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 
             var fileName = Path.GetFileName(targetPath);
 
-            try
+            // #1188: a person's media only ever leaves through Deluno's recycle
+            // bin, so it can be restored. Exactly this one file is moved, never
+            // the folder around it.
+            var wasPrimary = string.Equals(targetPath, primaryPath, StringComparison.OrdinalIgnoreCase);
+            var libraryForBin = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, chosen.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (libraryForBin is null || await recycleBinService.StoreRemovedFileAsync(
+                    libraryForBin,
+                    targetPath,
+                    new RecycleBinFileOwner("movies", "movie", id, movie.Title, movie.ReleaseYear, null, movie.Monitored),
+                    cancellationToken) is null)
             {
-                File.Delete(targetPath);
-            }
-            catch (IOException)
-            {
-                return Results.Problem("The file could not be deleted.", statusCode: StatusCodes.Status500InternalServerError);
+                return Results.Problem("The file could not be moved to the recycle bin, so it was left where it is.", statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            var wasPrimary = string.Equals(targetPath, primaryPath, StringComparison.OrdinalIgnoreCase);
             MovieFileGoneOutcome goneOutcome = default;
             if (wasPrimary)
             {
@@ -271,20 +278,20 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 await mediaSubtitleRepository.ClearScansAsync(MediaKind.Movie, [id], cancellationToken);
             }
 
-            string primaryMessage = $"{movie.Title}'s file was deleted from disk, so Deluno stopped wanting it.";
+            string primaryMessage = $"{movie.Title}'s file was moved to the recycle bin, so Deluno stopped wanting it. You can restore it from there.";
             if (wasPrimary && goneOutcome.OnlyThatLibrary)
             {
                 // #1065: kept in two libraries, so only the library that lost its file is switched off.
                 var allLibraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
                 string LibraryName(string? libraryId) => allLibraries.FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "that library";
-                primaryMessage = $"{movie.Title}'s file in {LibraryName(goneOutcome.LibraryId)} was deleted, so Deluno stopped wanting it in {LibraryName(goneOutcome.LibraryId)}. The {string.Join(" and ", (goneOutcome.OtherLibraryIds ?? []).Select(LibraryName))} copy is still managed.";
+                primaryMessage = $"{movie.Title}'s file in {LibraryName(goneOutcome.LibraryId)} was moved to the recycle bin, so Deluno stopped wanting it in {LibraryName(goneOutcome.LibraryId)}. The {string.Join(" and ", (goneOutcome.OtherLibraryIds ?? []).Select(LibraryName))} copy is still managed.";
             }
 
             await activityFeedRepository.RecordActivityAsync(
                 "library.movie.file-deleted",
                 wasPrimary
                     ? primaryMessage
-                    : $"A file was deleted from {movie.Title}'s folder.",
+                    : $"A file was moved to the recycle bin from {movie.Title}'s folder, and can be restored there.",
                 null,
                 null,
                 "movie",
@@ -303,7 +310,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 notificationService,
                 "file.deleted",
                 $"File removed: {fileName}",
-                $"{fileName} was deleted from {movie.Title}'s folder.",
+                $"{fileName} was moved to the recycle bin from {movie.Title}'s folder, and can be restored there.",
                 JsonSerializer.Serialize(new { fileName, movieId = id, wasPrimary }),
                 prefs => prefs.FileDeletedEnabled,
                 "movie-files-delete",

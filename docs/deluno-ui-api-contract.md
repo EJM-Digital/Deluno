@@ -269,6 +269,7 @@ Implemented endpoints:
 - `PUT /api/series/{id}/numbering` — selects standard/daily/anime and standard/air-date/absolute/dvd/scene keys; explicit owner mappings are protected from provider refreshes
 - `PUT /api/series/monitoring`
 - `PUT /api/series/episodes/monitoring`
+- `DELETE /api/series/episodes/{episodeId}/file` — moves that episode's one file to the recycle bin (never off the disk for good); the episode shows missing and a restore puts the file back and links it again (#1188). A film's `DELETE /api/movies/{id}/files` does the same
 - `POST /api/series/{id}/search`
 - `POST /api/series/{id}/metadata/refresh`
 - `POST /api/series/{id}/metadata/link/preview` — adds proposed season/episode counts and the number of existing episodes absent from the proposed provider catalogue

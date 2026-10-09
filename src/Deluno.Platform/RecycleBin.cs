@@ -24,7 +24,24 @@ public sealed record RecycleBinItem(
     // #1161: set when the files left the library because a title was removed.
     // The catalogue record is kept beside the files so Restore can put the
     // title back with them, not only the folder.
-    string? TitleSnapshotId = null);
+    string? TitleSnapshotId = null,
+    // #1188: set when one file was taken off a title that stays in Deluno (a
+    // film's file, an episode's file). Restore puts the file back and then
+    // tells the catalogue so the title has its file again.
+    RecycleBinFileOwner? FileOwner = null);
+
+/// <summary>
+/// The title (and, for a series, the episode) a single recycled file belonged
+/// to, and whether it was being watched when the file went (#1188).
+/// </summary>
+public sealed record RecycleBinFileOwner(
+    string MediaType,
+    string EntityType,
+    string TitleId,
+    string Title,
+    int? Year,
+    string? EpisodeId,
+    bool WasMonitored);
 
 /// <summary>
 /// The catalogue record of a title that was removed with its files, kept for
@@ -53,6 +70,13 @@ public interface ITitleRestorer
     bool Handles(string mediaType);
 
     Task<TitleRestoreOutcome> RestoreAsync(RecycleBinTitleSnapshot snapshot, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A single file that was taken off a title which stayed in Deluno is back
+    /// on disk (#1188): link it to its film or episode again.
+    /// </summary>
+    Task<TitleRestoreOutcome> RelinkFileAsync(RecycleBinItem restored, RecycleBinFileOwner owner, CancellationToken cancellationToken)
+        => Task.FromResult(new TitleRestoreOutcome(false, string.Empty));
 }
 
 /// <param name="Items">Exactly what a manual empty would take, in the order it would take it.</param>
@@ -100,6 +124,18 @@ public interface IRecycleBinService
         string originalPath,
         string existingPath,
         CancellationToken cancellationToken);
+    /// <summary>
+    /// Moves exactly one file of a title that stays in Deluno to the bin (#1188):
+    /// never the title folder around it, and never a file outside the library
+    /// root. Restore puts the file back where it was and relinks the title.
+    /// Null when the file is not inside the library or could not be moved.
+    /// </summary>
+    Task<RecycleBinItem?> StoreRemovedFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        RecycleBinFileOwner? owner,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// Keeps a removed title's catalogue record with the items its files
     /// became, so a restore can bring the title back too (#1161).
@@ -283,10 +319,47 @@ public sealed class RecycleBinService(
         }
     }
 
-    public async Task<RecycleBinItem?> StoreReplacementAsync(
+    public Task<RecycleBinItem?> StoreReplacementAsync(
         Libraries.Contracts.LibraryItem library,
         string originalPath,
         string existingPath,
+        CancellationToken cancellationToken)
+        => StoreFileAsync(library, originalPath, existingPath, owner: null, cancellationToken);
+
+    public async Task<RecycleBinItem?> StoreRemovedFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        RecycleBinFileOwner? owner,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(library.RootPath))
+        {
+            return null;
+        }
+
+        string full;
+        try
+        {
+            var root = Path.GetFullPath(library.RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            full = Path.GetFullPath(path);
+            if (!IsInsideRoot(full, root))
+            {
+                return null;
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        return await StoreFileAsync(library, full, full, owner, cancellationToken);
+    }
+
+    private async Task<RecycleBinItem?> StoreFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string originalPath,
+        string existingPath,
+        RecycleBinFileOwner? owner,
         CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
@@ -319,7 +392,8 @@ public sealed class RecycleBinService(
                     IsDirectory: false,
                     SizeBytes: sizeBytes,
                     CreatedUtc: now,
-                    ExpiresUtc: now.AddDays(state.Settings.RetentionDays));
+                    ExpiresUtc: now.AddDays(state.Settings.RetentionDays),
+                    FileOwner: owner);
                 state.Items.Add(item);
                 await EnforceRetentionUnsafeAsync(state, cancellationToken);
                 await WriteStateAsync(state, cancellationToken);

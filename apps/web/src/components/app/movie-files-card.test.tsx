@@ -119,6 +119,8 @@ describe("MovieFilesCard (#782)", () => {
     // The first click only asks for confirmation.
     expect(authedFetch).not.toHaveBeenCalled();
     const confirmButton = await screen.findByRole("button", { name: "Confirm delete" });
+    // The confirmation says the file can be restored (#1188).
+    expect(screen.getByText(/recycle bin/i)).toBeVisible();
     await user.click(confirmButton);
 
     await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(

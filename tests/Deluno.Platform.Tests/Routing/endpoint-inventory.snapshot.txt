@@ -39,6 +39,7 @@ DELETE /api/retention/episode-removals/{episodeId}
 DELETE /api/retention/keeps/{id}
 DELETE /api/retention/rules/{id}
 DELETE /api/seerr-servers/{id}
+DELETE /api/series/episodes/{episodeId}/file
 DELETE /api/series/import-recovery/{id}
 DELETE /api/series/{id}
 DELETE /api/series/{id}/libraries/{libraryId}
