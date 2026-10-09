@@ -245,7 +245,7 @@ $workflowChecks = @(
     @{ Label = "every GitHub Action is pinned to a commit SHA"; Args = @("scripts/check-github-action-pins.mjs") },
     @{ Label = "every workflow has least-privilege permissions and job timeouts"; Args = @("scripts/check-workflow-hygiene.mjs") },
     @{ Label = "release workflow publishes only from its publish job, and ci-passed judges every CI job"; Args = @("scripts/check-release-workflow-gates.mjs") },
-    @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs", "scripts/verify-golden-path-for-release.test.mjs", "scripts/check-release-workflow-gates.test.mjs") },
+    @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs", "scripts/verify-golden-path-for-release.test.mjs", "scripts/tag-release.test.mjs", "scripts/check-release-workflow-gates.test.mjs") },
     @{ Label = "the installer's pinned download clients agree across the pin files, and the stale-pin check works"; Args = @("--test", "scripts/check-component-pins.test.mjs") },
     @{ Label = "the installer's pin files name the same versions and checksums"; Args = @("scripts/check-component-pins.mjs", "--offline") }
 )
