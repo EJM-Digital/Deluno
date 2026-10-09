@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeAttention } from "./attention";
 import { emptySummary, fullSummary } from "./summary-fixtures";
@@ -148,5 +150,45 @@ describe("computeAttention", () => {
       expect(attention.healthListed).toHaveLength(1);
       expect(attention.counts.system).toBe(1);
     });
+  });
+});
+
+/** docs/attention-categories.json is the one list the tray's tests (tests/Deluno.Tray.Tests) read as well. */
+const shared = JSON.parse(readFileSync(resolve(process.cwd(), "../../docs/attention-categories.json"), "utf8")) as {
+  categories: { id: string; tray: string | null }[];
+};
+const listed = (id: string) => shared.categories.some((category) => (category.id.endsWith(":") ? id.startsWith(category.id) : id === category.id));
+
+describe("the bell and the tray count the same kinds of thing", () => {
+  it("lists every kind of row the bell can add, so a new kind has to be decided for the tray too", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/routes/dashboard/attention.ts"), "utf8");
+    const ids = [...source.matchAll(/add\(\{\s*id: [`"]([^`"$]+)/g)].map((match) => match[1]);
+    expect(ids.length).toBeGreaterThan(15);
+    expect(ids.filter((id) => !listed(id))).toEqual([]);
+  });
+
+  it("gives, for one of each kind the tray counts, the number the shared list says the tray adds up to", () => {
+    const summary = emptySummary();
+    summary.library!.collections.syncFailing = 1;
+    summary.downloads = {
+      ...summary.downloads!, stalled: 1,
+      clients: [{ id: "c1", name: "Client", protocol: "torrent", reachable: false, paused: null, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "failing", active: 0, queued: 0 }]
+    };
+    summary.imports = { ...summary.imports!, recoveryOpen: 1, failedImportJobs: 1, failedProcessorHandoffs: 1 };
+    summary.automation!.queuePause = { ...summary.automation!.queuePause, enabled: true, unreadable: true, unreadableReason: "unread" };
+    summary.indexers = { ...summary.indexers!, failing: 1 };
+    summary.processors = { ...summary.processors!, failing: 1 };
+    summary.requests = { ...summary.requests!, seerrFailing: 1 };
+    summary.health = { ...summary.health!, problems: 1, topProblems: [{ id: "library-root:1", title: "T", category: "storage", message: "m", sinceUtc: null, link: "/system", snoozed: false }] };
+    summary.system = { ...summary.system!, internetOutage: true, jobs: { running: 0, queued: 0, failed: 2 }, lanes: [{ name: "Searching", state: "failing", activeJobs: 0, lastError: null }] };
+    const noRelease = [{ mediaType: "movie", id: "m1", title: "T", year: 2000, libraryId: "l", lastSearchUtc: NOW, missingSinceUtc: null, reason: null }] as never;
+
+    const attention = computeAttention(summary, { noRelease });
+
+    const countedByTray = shared.categories.filter((category) => category.tray !== null);
+    expect(attention.total).toBe(countedByTray.length);
+    for (const category of countedByTray) {
+      expect(attention.items.some((item) => (category.id.endsWith(":") ? item.id.startsWith(category.id) : item.id === category.id))).toBe(true);
+    }
   });
 });
