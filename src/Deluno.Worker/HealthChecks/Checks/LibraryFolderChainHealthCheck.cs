@@ -70,8 +70,8 @@ public sealed class LibraryFolderChainHealthCheck(
         return worst.link is { Status: FolderChainStatuses.Problem }
             ? HealthCheckOutcome.Problem(
                 id, HealthCheckCategories.Library, name, message,
-                cause: "A download client's category or save path no longer matches what this library expects.",
-                fix: "Open the library's folder chain and fix the category or path it names.")
+                cause: $"A download client's category or save path no longer matches what the {report.LibraryName} library expects.",
+                fix: $"Open the {report.LibraryName} library's folder chain and fix the category or path it names.")
             : HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, message);
     }
 

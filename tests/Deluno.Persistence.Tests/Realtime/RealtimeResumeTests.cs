@@ -51,8 +51,13 @@ public sealed class RealtimeResumeTests
                     })
                     .Configure(app =>
                     {
+                        app.UseDelunoRealtimePosition();
                         app.UseRouting();
-                        app.UseEndpoints(endpoints => endpoints.MapDelunoRealtime());
+                        app.UseEndpoints(endpoints =>
+                        {
+                            endpoints.MapDelunoRealtime();
+                            endpoints.MapGet("/api/probe", () => "ok");
+                        });
                     });
             });
 
@@ -67,6 +72,8 @@ public sealed class RealtimeResumeTests
 
         public IRealtimeEventPublisher Publisher => _server.Services.GetRequiredService<IRealtimeEventPublisher>();
         public IRealtimeResumeSource ResumeSource => _server.Services.GetRequiredService<IRealtimeResumeSource>();
+
+        public HttpClient Http => _server.CreateClient();
 
         public HubConnection Connect() =>
             new HubConnectionBuilder()
@@ -136,6 +143,33 @@ public sealed class RealtimeResumeTests
         Assert.Equal(converged.Distinct().Count(), converged.Length);
 
         await second.StopAsync();
+    }
+
+    // #1191: a page notes where the stream stood at its first read (the header), and on its first join asks for what came after.
+    [Fact]
+    public async Task A_change_between_a_pages_first_read_and_its_first_join_is_replayed_from_the_position_the_read_carried()
+    {
+        await using var fixture = await StartAsync();
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "before the read", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence >= 1);
+
+        using var http = fixture.Http;
+        var read = await http.GetAsync("/api/probe");
+        var position = long.Parse(read.Headers.GetValues(RealtimePositionHeader.Name).Single(), System.Globalization.CultureInfo.InvariantCulture);
+        Assert.InRange(position, 1, fixture.ResumeSource.CurrentSequence);
+
+        // After the read, before the page joins anything.
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "unreachable", "between read and join", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence > position);
+
+        // The ring is filled by the publisher's own loop, so the replay holds the change a moment after it was published.
+        await WaitUntilAsync(() => fixture.ResumeSource.Resume(position, new[] { RealtimeGroups.Dashboard }).Envelopes.Any(e => IsNotADashboardNudge(e)));
+        var replay = fixture.ResumeSource.Resume(position, new[] { RealtimeGroups.Dashboard });
+        Assert.Equal(RealtimeResumeStatus.Replayed, replay.Status);
+        var messages = replay.Envelopes.Where(IsNotADashboardNudge).ToArray();
+        Assert.Single(messages);
+        Assert.True(messages[0].Seq > position);
+        Assert.Contains("between read and join", System.Text.Json.JsonSerializer.Serialize(messages[0].Data));
     }
 
     [Fact]

@@ -96,6 +96,7 @@ import type {
 } from "./api/types/live-events";
 import type { ConnectionCheckedEvent, SystemOverviewChangedEvent } from "./api/types/system-overview";
 import type { SystemLogEntry } from "./api/types/system-log";
+import { firstRealtimePosition, forgetRealtimePosition } from "./realtime-position";
 
 export { useRealtimeConnected } from "./realtime-state";
 export type * from "./api/types/live-events";
@@ -532,13 +533,18 @@ export function SignalRProvider({
       // its data, so the server's answer to "resume from nothing" must not refetch it all (#1179).
       const firstConnect = !attachedBefore;
       attachedBefore = true;
+      // ...except for what was published after the page read its first data and before this join (#1191): ask the hub to
+      // replay from where the stream stood at that first read. If its buffer no longer reaches back that far, it says resync.
+      const since = firstConnect && lastSeqRef.current === 0 ? firstRealtimePosition() : 0;
+      if (since > 0) lastSeqRef.current = since;
+      if (firstConnect) forgetRealtimePosition();
       try {
         const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()]);
         if (result.status === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
         } else if (result.status === "ResyncRequired") {
           lastSeqRef.current = 0;
-          if (!firstConnect) for (const h of resyncHandlersRef.current) h();
+          if (!firstConnect || since > 0) for (const h of resyncHandlersRef.current) h();
         }
       } catch (error) {
         if (DEBUG) console.debug("[WS] resume failed", error);

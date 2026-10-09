@@ -77,7 +77,11 @@ function readCached<T>(source: RouteSource<T>): T | undefined {
   return queryClient.getQueryData<T>(source.key);
 }
 
-function readFresh<T>(source: RouteSource<T>, force: boolean): Promise<T> {
+async function readFresh<T>(source: RouteSource<T>, force: boolean, supersede = false): Promise<T> {
+  // A push-named read (supersede) means "this changed just now". A read already in flight began before the change, and
+  // fetchQuery would hand back that older answer as if it were new, with no later push to correct it (#1191: the bell kept
+  // counting a title that had just been dismissed). Drop the old request and ask again.
+  if (force && supersede && queryClient.isFetching({ queryKey: source.key }) > 0) await queryClient.cancelQueries({ queryKey: source.key });
   return queryClient.fetchQuery({ queryKey: source.key, queryFn: source.fetch, staleTime: force ? 0 : ATTENTION_FRESH_MS, retry: false });
 }
 
@@ -224,7 +228,7 @@ export function useAttention() {
 
   /** Reads only these sources again, for a change that can move nothing else (a title or an indexer changing). */
   const loadSome = useCallback(async (...sources: RouteSource<unknown>[]) => {
-    await Promise.all(sources.map((source) => readFresh(source, true).catch(() => undefined)));
+    await Promise.all(sources.map((source) => readFresh(source, true, true).catch(() => undefined)));
     const next = snapshotFromCache();
     if (next) setSnapshot(next);
   }, []);

@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { trackDataRequests } from "../helpers/data-settled";
+import { waitForLayoutCalm } from "../helpers/layout-calm";
 import { serveLiveBusy } from "../helpers/live-busy";
 import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
 
@@ -172,6 +173,19 @@ async function seedLongData(page: Page, seriesId: string) {
       qualityCutoffMet: false, lastSearchUtc: null, nextEligibleSearchUtc: null, updatedUtc: now
     }))
   })));
+}
+
+/**
+ * Libraries an earlier spec left behind (a test that ran out of time before its own clean-up) are rows on the Libraries
+ * screens this walk measures, so the walk starts from the libraries it makes itself and does not depend on another spec's tidiness (#1191).
+ */
+async function removeLeftoverLibraries(page: Page) {
+  const headers = await authHeaders(page);
+  const response = await page.request.get("/api/libraries", { headers });
+  if (!response.ok()) return;
+  for (const library of (await response.json()) as { id: string; name: string }[]) {
+    if (/^(Smoke-Library-|Fit check )/.test(library.name)) await page.request.delete(`/api/libraries/${library.id}`, { headers });
+  }
 }
 
 async function seedTitles(page: Page) {
@@ -394,6 +408,7 @@ test.describe("every screen fits three widths", () => {
       test.setTimeout(60_000 + routes.length * 8_000);
       await page.setViewportSize(size);
       await authenticateAndNavigate(page, "/movies");
+      await removeLeftoverLibraries(page);
       const { routes: titles, seriesId } = await seedTitles(page);
       await seedLongData(page, seriesId);
       const data = trackDataRequests(page);
@@ -404,6 +419,9 @@ test.describe("every screen fits three widths", () => {
       for (const route of [...new Set([...routes, "/?tab=system", ...titles])].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
         await page.goto(route);
         await data.settled();
+        // Cause of the flake (#1191): two equal looks can be two looks at the same frame of a card still opening or a font still
+        // arriving (a row's name read 0px on one run and passed on the next). Wait for fonts, images and finite transitions first.
+        await waitForLayoutCalm(page);
         // A title page lays itself out again when its metadata arrives (#1179): measure when two looks agree.
         let previous = "";
         await expect.poll(async () => {

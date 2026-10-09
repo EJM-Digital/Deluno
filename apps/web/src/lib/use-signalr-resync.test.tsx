@@ -11,23 +11,29 @@ const hub = vi.hoisted(() => ({
   state: "Disconnected" as string,
   onreconnecting: null as null | (() => void),
   onreconnected: null as null | (() => void),
-  resumes: 0
+  resumes: 0,
+  deliver: null as null | ((payload: unknown) => void),
+  resumeArgs: [] as unknown[][],
+  answer: "ResyncRequired" as string,
+  envelopes: [] as unknown[]
 }));
 
 vi.mock("@microsoft/signalr", () => {
   class FakeHubConnection {
     get state() { return hub.state; }
-    on() {}
+    on(name: string, handler: (payload: unknown) => void) { if (name === "RealtimeEvent") hub.deliver = handler; }
     onreconnecting(handler: () => void) { hub.onreconnecting = handler; }
     onreconnected(handler: () => void) { hub.onreconnected = handler; }
     onclose() {}
     async start() { hub.state = "Connected"; }
     async stop() { hub.state = "Disconnected"; }
-    async invoke(method: string) {
+    private handlers: Record<string, (payload: unknown) => void> = {};
+    async invoke(method: string, ...args: unknown[]) {
       await Promise.resolve();
       if (method === "Resume") {
         hub.resumes += 1;
-        return { status: "ResyncRequired", envelopes: [] };
+        hub.resumeArgs.push(args);
+        return { status: hub.answer, envelopes: hub.envelopes };
       }
       return undefined;
     }
@@ -41,6 +47,7 @@ vi.mock("@microsoft/signalr", () => {
   return { HubConnectionBuilder, HubConnectionState: { Connected: "Connected", Disconnected: "Disconnected" }, LogLevel: { Information: 1, None: 0 } };
 });
 
+const { forgetRealtimePosition, noteRealtimePosition } = await import("./realtime-position");
 const { SignalRProvider, useSignalRResync, useSignalREvent } = await import("./use-signalr");
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -52,6 +59,10 @@ beforeEach(() => {
   hub.onreconnecting = null;
   hub.onreconnected = null;
   hub.resumes = 0;
+  hub.resumeArgs = [];
+  hub.answer = "ResyncRequired";
+  hub.envelopes = [];
+  forgetRealtimePosition();
 });
 
 describe("resync (#1179)", () => {
@@ -72,6 +83,37 @@ describe("resync (#1179)", () => {
       hub.onreconnected?.();
     });
     await waitFor(() => expect(hub.resumes).toBe(2));
+    await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+  });
+
+  // #1191: a change made between the page's first read and its first join must reach the screen.
+  it("on the first connect asks for what was published since the page's first read, and delivers it", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "41" }) });
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "99" }) }); // a later read does not move it
+    hub.answer = "Replayed";
+    hub.envelopes = [{ seq: 42, name: "MovieChanged", subject: "dashboard", at: "", data: { id: "m1" } }];
+    const seen = vi.fn();
+    const resync = vi.fn();
+    renderHook(() => {
+      useSignalRResync(resync);
+      useSignalREvent("MovieChanged", "dashboard", seen);
+    }, { wrapper });
+
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    expect(hub.resumeArgs[0][0]).toBe(41);
+    await waitFor(() => expect(seen).toHaveBeenCalledTimes(1));
+    expect(resync).not.toHaveBeenCalled();
+  });
+
+  it("reads once when the hub's buffer no longer reaches back to the page's first read", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "7" }) });
+    hub.answer = "ResyncRequired";
+    const resync = vi.fn();
+    renderHook(() => {
+      useSignalRResync(resync);
+      useSignalREvent("DownloadProgress", "queue", () => {});
+    }, { wrapper });
+
     await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
   });
 });

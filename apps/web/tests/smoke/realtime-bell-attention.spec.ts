@@ -50,6 +50,14 @@ test.describe("the open bell follows a dismiss made elsewhere (#1179)", () => {
     await expect(page.getByText("Probe Film One").first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Probe Film Two").first()).toBeVisible();
 
+    // Cause of the flake (#1191): the dismiss was announced as soon as the list showed, before this page had joined the
+    // subject the announcement goes to (the connection opens after the first paint), so nothing reached the bell.
+    await expect.poll(async () => page.evaluate(async () => {
+      const token = localStorage.getItem("deluno-auth-token");
+      const response = await fetch("/api/testing/realtime/watchers", { headers: { Authorization: `Bearer ${token}` } });
+      return ((await response.json()) as { dashboard: number }).dashboard;
+    }), { timeout: 20_000, message: "the page never joined the dashboard subject" }).toBeGreaterThan(0);
+
     // Another tab dismisses the first title: the server stops listing it and pushes.
     listed.shift();
     expect(await asAnotherTab(page, "/api/attention/no-release/movie/probe-clown/dismiss")).toBe(204);

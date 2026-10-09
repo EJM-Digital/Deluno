@@ -647,6 +647,8 @@ public sealed class SignalRRealtimeEventPublisher(
         }
     }
 
+    public long CurrentSequence => Interlocked.Read(ref _seq);
+
     public RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects)
     {
         lock (_ringLock)

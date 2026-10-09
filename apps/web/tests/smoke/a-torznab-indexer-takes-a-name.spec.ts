@@ -1,6 +1,9 @@
 import os from "node:os";
-import { expect, test, type Page } from "@playwright/test";
+import { expect as baseExpect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+
+// Saving an indexer closes its drawer only once the server has answered, which on a busy machine takes longer than 5 s (#1191).
+const expect = baseExpect.configure({ timeout: 20_000 });
 
 // 8 Oct rig walk: a Torznab indexer added at a local address was named after the computer Deluno runs on, because the
 // add drawer had no name field. The drawer now has one. Left blank it shows the address's own host name as its hint and
@@ -57,6 +60,12 @@ test("a Torznab indexer is named after its address by default and keeps a name t
     await page.getByRole("row").filter({ hasText: "My private tracker" }).first().click();
     await expect(page.getByRole("dialog").getByLabel("Name", { exact: true })).toHaveValue("My private tracker");
   } finally {
+    // Cause of the flake (#1191): the indexers were only noted for removal once both had been saved and listed, so a slow save that
+    // timed out left them behind, and every later spec in the shared database then saw an indexer it did not expect (a "0 of 1 ready"
+    // heading, an unhealthy mark in the navigation). Remove whatever this test made, found by its addresses.
+    for (const item of await listIndexers(page).catch(() => [])) {
+      if ((item.baseUrl.includes("localhost:9117") || item.baseUrl.includes("tracker.example.test")) && !made.includes(item.id)) made.push(item.id);
+    }
     for (const id of made) await page.request.delete(`/api/indexers/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   }
 });

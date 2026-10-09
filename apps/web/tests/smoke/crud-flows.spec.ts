@@ -11,7 +11,7 @@ import { expect, test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fallbackCredentials } from "../helpers/auth-helper";
+import { authenticateAndNavigate, fallbackCredentials } from "../helpers/auth-helper";
 
 let credentials: { username: string; password: string } | null = null;
 let authToken: string | null = null;
@@ -659,11 +659,13 @@ test.describe("library editing", () => {
 
   test.beforeEach(async ({ page }) => {
     test.skip(!credentials, "Set DELUNO_E2E_USERNAME and DELUNO_E2E_PASSWORD to run CRUD tests against an existing install.");
-    await page.goto("/login");
-    await page.getByLabel(/username/i).fill(credentials!.username);
-    await page.getByLabel("Password", { exact: true }).fill(credentials!.password);
-    await page.getByRole("button", { name: /sign in/i }).click();
-    await expect(page).not.toHaveURL(/\/login/);
+    // Cause of the flake (#1191): signing in through the login form paid a cold render of /login (its loader waits on
+    // bootstrap-status) before every test, and on a busy machine that wait plus the test's own steps outran the 30 s budget,
+    // so the delete in the finally block was the call that happened to be waiting when time ran out, and the library stayed
+    // behind for every later spec. These tests are about libraries, not the form: sign in through the API as the others do,
+    // and give the budget room for the drawer steps under load.
+    test.setTimeout(90_000);
+    await authenticateAndNavigate(page, "/");
     authToken = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
   });
 

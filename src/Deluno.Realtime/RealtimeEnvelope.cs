@@ -33,4 +33,7 @@ public sealed record RealtimeResumeResult(RealtimeResumeStatus Status, IReadOnly
 public interface IRealtimeResumeSource
 {
     RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects);
+
+    /// <summary>The sequence of the newest event published so far (0 before any).</summary>
+    long CurrentSequence { get; }
 }
