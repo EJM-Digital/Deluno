@@ -3371,7 +3371,7 @@ public sealed class DownloadClientTelemetryService(
                     {
                         "queued" or "running" => DownloadQueueStatuses.ImportQueued,
                         "completed" => DownloadQueueStatuses.Imported,
-                        "failed" => DownloadQueueStatuses.ImportFailed,
+                        "failed" or "dead-letter" => DownloadQueueStatuses.ImportFailed,
                         _ => item.Status
                     }
                     : item.Status;
