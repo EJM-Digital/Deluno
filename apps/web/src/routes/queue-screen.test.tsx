@@ -646,6 +646,17 @@ describe("dismissing a health finding", () => {
 
     expect(visibleFindings(item)).toHaveLength(1);
   });
+
+  // #1186: a gone download says its one plain thing once; the generic post-processing block is not shown beside it.
+  it("drops the post-processing finding for a hand-off whose download was gone", () => {
+    const post = { ...findingAt(null), kind: "post-processing-failed" };
+    const other = { ...findingAt(null), kind: "import-failed" };
+    const item = { healthFindings: [post, other] } as DownloadQueueItem;
+
+    expect(visibleFindings(item, { status: "source-gone" }).map((finding) => finding.kind)).toEqual(["import-failed"]);
+    expect(visibleFindings(item, { status: "failed" })).toHaveLength(2);
+    expect(visibleFindings(item)).toHaveLength(2);
+  });
 });
 
 describe("healthFindingRuleSummary (#905)", () => {

@@ -60,4 +60,37 @@ internal static class ImportedDownloads
             DispatchWindow, null, cancellationToken, includeArchived: true, clientId: clientId);
         return dispatches is not null && Deluno.Integrations.DownloadClients.DownloadAttempts.SentAgainSince(dispatches, clientId, releaseName, sinceUtc);
     }
+
+    /// <summary>
+    /// Whether this hand-off's import ran to its end (#1182): it finished Completed, or it was settled Dismissed in
+    /// the moment before its import job completed. The same reading as the Transfers row's, so the planner never
+    /// treats a row as "ready to import" that the screen calls history.
+    /// </summary>
+    public static async Task<bool> ImportRanAsync(
+        IJobQueueRepository jobs,
+        Deluno.Platform.Contracts.ProcessorHandoffItem handoff,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(handoff.ImportJobId))
+        {
+            return false;
+        }
+
+        var status = handoff.Status == Deluno.Platform.Contracts.ProcessorHandoffStatuses.Dismissed
+            ? (await jobs.GetAsync(handoff.ImportJobId, cancellationToken))?.Status
+            : null;
+        return Deluno.Integrations.DownloadClients.DownloadAttempts.ImportRan(handoff, status);
+    }
+
+    /// <summary>
+    /// A Completed hand-off, or a Dismissed one whose import job completed (#1182): both are a cycle that ended with
+    /// the import done, so a release sent again since is a new acquisition.
+    /// </summary>
+    public static async Task<bool> FinishedWithItsImportAsync(
+        IJobQueueRepository jobs,
+        Deluno.Platform.Contracts.ProcessorHandoffItem handoff,
+        CancellationToken cancellationToken)
+        => handoff.Status == Deluno.Platform.Contracts.ProcessorHandoffStatuses.Completed
+           || (handoff.Status == Deluno.Platform.Contracts.ProcessorHandoffStatuses.Dismissed
+               && await ImportRanAsync(jobs, handoff, cancellationToken));
 }
