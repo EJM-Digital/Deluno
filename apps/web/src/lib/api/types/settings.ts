@@ -448,7 +448,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthStrikeInactivityHours: 72,
   downloadHealthConnectivityCheckEnabled: false,
   downloadHealthConnectivityCheckUrls: "",
-  downloadHealthDefaultStrikeWindowMinutes: 30,
+  downloadHealthDefaultStrikeWindowMinutes: 5,
   downloadThroughputSamplerIntervalMinutes: 1,
   historyRetentionDays: 365,
   maxSearchesPerHourEnabled: false,
