@@ -583,7 +583,8 @@ public sealed class TrayApplication : ApplicationContext
         {
             var snapshot = _updates.Snapshot();
             var update = TrayUpdate.Describe(snapshot.IsInstalled, snapshot.State, snapshot.LatestVersion, snapshot.UpdateAvailable, snapshot.RestartRequired);
-            Change(s => s with { Update = update });
+            // A new check clears the last one's problem; the manual check sets it again if it fails.
+            Change(s => s with { Update = update, UpdateCheckProblem = snapshot.State == UpdateStates.Error ? s.UpdateCheckProblem : null });
 
             // An update that could not be applied leaves the host stopped: start it again.
             if (snapshot.State == UpdateStates.Error && _status.State == TrayState.Updating)
@@ -854,8 +855,18 @@ public sealed class TrayApplication : ApplicationContext
                     OpenUpdatesPage();
                     break;
                 case UpdateMenuAction.Check when _updates is not null:
-                    await _updates.CheckForUpdatesAsync(CancellationToken.None);
+                {
+                    var result = await _updates.CheckForUpdatesAsync(CancellationToken.None);
+                    // A check that failed says so, plainly, here and in the status line (it used to go back to "Check for updates" silently).
+                    var problem = TrayUpdate.CheckProblem(result.State, result.Message);
+                    Change(s => s with { UpdateCheckProblem = problem });
+                    if (problem is not null)
+                    {
+                        Balloon("Couldn't check for updates", problem, ToolTipIcon.Warning, OpenUpdatesPage, problem: true);
+                    }
+
                     break;
+                }
                 case UpdateMenuAction.Download when _updates is not null:
                     await _updates.DownloadUpdatesAsync(CancellationToken.None);
                     break;
