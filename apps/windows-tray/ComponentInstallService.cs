@@ -303,7 +303,7 @@ public sealed class ComponentInstallService(
                     var retryAt = lookup.LimitResetsUtc ?? DateTimeOffset.UtcNow.AddHours(1);
                     _log.Write($"{spec.DisplayName}: GitHub's anonymous limit is used up until {retryAt:O}");
                     return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
-                        GithubLatestRelease.RateLimitMessage(spec.DisplayName, lookup.LimitResetsUtc), retryAt);
+                        GithubLatestRelease.RateLimitMessage(retryAt), retryAt);
                 }
 
                 if (lookup.FeedNotFound)

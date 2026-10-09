@@ -19,10 +19,14 @@ public sealed class ReleaseFeedUpdateSource : IUpdateSource
     private readonly bool includePreReleases;
     private readonly IFileDownloader? downloader;
     private readonly HttpMessageHandler? feedHandler;
+    private readonly IFileDownloader apiDownloader;
     private IUpdateSource? chosen;
 
-    public ReleaseFeedUpdateSource(string repositoryUrl, bool includePreReleases, IFileDownloader? downloader = null, HttpMessageHandler? feedHandler = null)
+    public ReleaseFeedUpdateSource(string repositoryUrl, bool includePreReleases, IFileDownloader? downloader = null, HttpMessageHandler? feedHandler = null,
+        HttpMessageHandler? apiHandler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null)
     {
+        // The API fallback asks through the shared conditional handler: ETag, 304 reuse, the limit remembered (#1181).
+        apiDownloader = new GithubApiFileDownloader(downloader ?? new HttpClientFileDownloader(), apiHandler, apiState, time);
         this.repositoryUrl = repositoryUrl;
         this.includePreReleases = includePreReleases;
         this.downloader = downloader;
@@ -107,12 +111,12 @@ public sealed class ReleaseFeedUpdateSource : IUpdateSource
             }
         }
 
-        var api = new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, downloader);
+        var api = new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, apiDownloader);
         chosen = api;
         return await api.GetReleaseFeed(logger, appId, channel, stagingId, latestLocalRelease);
     }
 
     public Task DownloadReleaseEntry(IVelopackLogger logger, VelopackAsset releaseEntry, string localFile, Action<int> progress, CancellationToken cancelToken = default)
-        => (chosen ?? new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, downloader))
+        => (chosen ?? new GithubSource(repositoryUrl, accessToken: null, prerelease: includePreReleases, apiDownloader))
             .DownloadReleaseEntry(logger, releaseEntry, localFile, progress, cancelToken);
 }
