@@ -110,6 +110,19 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every dispatch on this client that is still open for this hash or item id. One release sent twice
+    /// (same hash) leaves two, and removing the download has to close them all (#1190).
+    /// </summary>
+    async Task<IReadOnlyList<DownloadDispatchItem>> FindOpenDispatchesByHashAsync(
+        string clientId,
+        string hash,
+        CancellationToken cancellationToken)
+    {
+        var one = await FindDispatchByHashAsync(clientId, hash, cancellationToken);
+        return one is null ? [] : [one];
+    }
+
+    /// <summary>
     /// Like <see cref="FindDispatchByHashAsync"/> but counts archived dispatches
     /// too. An archived dispatch is still proof Deluno sent that download (#1062).
     /// </summary>

@@ -15,8 +15,19 @@ export const STARTED_LABEL: Record<StartedBy, string> = {
   seerr: "Asked for in Seerr",
   list: "On one of your lists",
   upgrade: "Looking for an upgrade",
-  missing: "A missing episode"
+  missing: "A missing title"
 };
+
+/** What a tag says for a card: "missing" names the card's own kind (film, episode, season or show) and never calls a film an episode. */
+export function startedLabel(by: StartedBy, entity?: { kind: string }, release?: string | null): string {
+  if (by !== "missing") return STARTED_LABEL[by];
+  if (entity?.kind === "movie") return "A missing film";
+  if (entity?.kind === "episode") return "A missing episode";
+  if (entity?.kind === "series") {
+    return /\bS\d{1,2}[\s._-]?E\d{1,3}\b/i.test(release ?? "") ? "A missing episode" : /\bS\d{1,2}\b|\bSeason[\s._-]?\d{1,2}\b/i.test(release ?? "") ? "A missing season" : "Missing episodes";
+  }
+  return STARTED_LABEL.missing;
+}
 
 /** The colour of each tag: the app's own tokens, so dark and light both read. */
 export const STARTED_TONE: Record<StartedBy, string> = {
