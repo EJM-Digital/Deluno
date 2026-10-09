@@ -167,7 +167,7 @@ public sealed class OutboundRequestThrottleTests
     [Fact]
     public async Task Concurrent_callers_are_paced_one_after_another_not_all_at_once()
     {
-        var time = new FakeTimeProvider(Start);
+        var time = new TimerCountingTimeProvider(Start);
         var throttle = Create(time);
         var rate = OutboundRate.PerIndexerDefault;
 
@@ -178,23 +178,50 @@ public sealed class OutboundRequestThrottleTests
         // Four callers computing "my slot is now" from the same instant is
         // exactly the burst this prevents, so only one may be through.
         //
-        // Waited for by state rather than by duration. The pacing itself runs
-        // on a fake clock and is exact; what is not exact is how soon this
-        // machine gets round to running the continuations, and a fixed 50 ms
-        // grace was quietly asserting that it would be prompt. On a loaded
-        // runner it is not, and this failed having found nothing wrong.
+        // Everything here is waited for by state, never by duration. The
+        // pacing runs on a fake clock and is exact; what is not exact is how
+        // soon this machine gets round to running each queued caller. The
+        // clock may only be advanced once the caller whose slot it releases
+        // has actually started waiting on it (its timer exists). Advancing
+        // earlier let that caller arrive after the jump, find its slot already
+        // past, and go straight through, which under load produced waits of
+        // 0, 0, 2, 4 instead of 0, 2, 4, 6 with nothing wrong in the throttle.
         await SettledAsync(calls, expected: 1);
         Assert.Equal(1, calls.Count(call => call.IsCompletedSuccessfully));
 
-        for (var index = 0; index < 4; index++)
+        for (var index = 0; index < 3; index++)
         {
+            await time.WaitForTimersAsync(index + 1);
             time.Advance(TimeSpan.FromSeconds(2));
-            await SettledAsync(calls, expected: Math.Min(index + 2, calls.Length));
+            await SettledAsync(calls, expected: index + 2);
         }
 
-        var waits = await Task.WhenAll(calls);
+        var waits = await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.All(waits, wait => Assert.NotNull(wait));
         Assert.Equal([0, 2, 4, 6], waits.Select(wait => (int)wait!.Value.TotalSeconds).Order().ToArray());
+    }
+
+    /// <summary>A fake clock that says how many timers have been started on it.</summary>
+    private sealed class TimerCountingTimeProvider(DateTimeOffset start) : FakeTimeProvider(start)
+    {
+        private int _timers;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            Interlocked.Increment(ref _timers);
+            return timer;
+        }
+
+        public async Task WaitForTimersAsync(int atLeast)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (Volatile.Read(ref _timers) < atLeast)
+            {
+                Assert.True(DateTime.UtcNow < deadline, $"Only {_timers} caller(s) started waiting; expected {atLeast}.");
+                await Task.Delay(5);
+            }
+        }
     }
 
     /// <summary>
