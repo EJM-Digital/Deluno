@@ -661,7 +661,7 @@ public sealed class WeirCompanion(
     /// The newest published release's tag, release candidates included and drafts never (a draft is not in the
     /// public feed), by version order, from the release feed on github.com. Null when the feed cannot be read.
     /// </summary>
-    private static async Task<string?> NewestTagFromReleaseFeedAsync(HttpClient http, CancellationToken cancellationToken)
+    private async Task<string?> NewestTagFromReleaseFeedAsync(HttpClient http, CancellationToken cancellationToken)
     {
         string atom;
         try
@@ -669,6 +669,12 @@ public sealed class WeirCompanion(
             using var request = new HttpRequestMessage(HttpMethod.Get, $"https://github.com/{CompanionCatalog.WeirRepository}/releases.atom");
             request.Headers.UserAgent.ParseAdd("Deluno");
             using var response = await http.SendAsync(request, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                // A private or missing repository: the API would answer 404 too and still spend one of the hourly calls (#1181).
+                throw new CompanionStepException($"Couldn't check for {Name}'s latest release: the release feed isn't reachable (GitHub says it isn't there, so the repository may be private).");
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 return null;

@@ -312,7 +312,7 @@ public sealed class LatestReleaseServiceTests
         {
             calls++;
             return request.RequestUri!.Host == "github.com"
-                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
                 : throw new Deluno.Infrastructure.Http.GitHubRateLimitException(reset);
         });
         var service = new LatestReleaseService(new Factory(handler), [new GitHubReleasesFeed("sabnzbd", "sabnzbd/sabnzbd")], clock);
@@ -331,6 +331,27 @@ public sealed class LatestReleaseServiceTests
         Assert.Null(service.LimitResetsUtc("sabnzbd"));
         await service.RefreshIfDueAsync("sabnzbd", CancellationToken.None);
         Assert.Equal(4, calls);
+    }
+
+    [Fact]
+    public async Task A_404_from_the_free_page_is_final_the_api_is_not_asked_and_the_problem_is_named()
+    {
+        var seen = new List<string>();
+        var handler = new RoutingHandler(request =>
+        {
+            seen.Add(request.RequestUri!.Host);
+            return request.RequestUri.Host == "github.com"
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : throw new InvalidOperationException("a private repository answers the API 404 too, and the call still counts");
+        });
+        var service = new LatestReleaseService(new Factory(handler), [new GitHubReleasesFeed("weir", "w/weir", IncludePreReleases: true)], new Clock(Start));
+
+        await service.RefreshIfDueAsync("weir", CancellationToken.None);
+
+        Assert.Null(service.Peek("weir"));
+        Assert.Equal(["github.com"], seen);
+        Assert.Equal("the release feed isn't reachable", service.CheckProblem("weir"));
+        Assert.Null(service.LimitResetsUtc("weir"));
     }
 
     private sealed class RoutingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
@@ -381,10 +402,10 @@ public sealed class LatestReleaseServiceTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             // github.com's release pages are the free route (#1181); these older tests are about the API route, so
-            // that page is simply unavailable here and is not counted. The tests below it cover the free route.
+            // that page is simply unavailable here (503; a 404 would mean a private repository) and is not counted. The tests below it cover the free route.
             if (request.RequestUri!.Host == "github.com")
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
             }
 
             Interlocked.Increment(ref calls);

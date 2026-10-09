@@ -306,6 +306,12 @@ public sealed class ComponentInstallService(
                         GithubLatestRelease.RateLimitMessage(spec.DisplayName, lookup.LimitResetsUtc), retryAt);
                 }
 
+                if (lookup.FeedNotFound)
+                {
+                    return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                        GithubLatestRelease.FeedNotFoundMessage(spec.DisplayName));
+                }
+
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
                     $"Could not find {spec.DisplayName}'s latest release on GitHub.");
             }

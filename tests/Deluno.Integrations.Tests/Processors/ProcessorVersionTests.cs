@@ -32,6 +32,36 @@ public sealed class ProcessorVersionTests
     }
 
     [Fact]
+    public async Task When_the_capabilities_answer_cannot_be_had_the_version_comes_from_the_processors_api_description()
+    {
+        var paths = new List<string>();
+        var service = Service(request =>
+        {
+            paths.Add(request.RequestUri!.AbsolutePath);
+            return request.RequestUri.AbsolutePath == "/openapi.json"
+                ? Json("""{"openapi":"3.1.0","info":{"title":"Weir API","version":"1.0.0-rc.10"}}""")
+                : new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        });
+
+        Assert.Equal("1.0.0-rc.10", await service.ReadVersionAsync(Connection(), CancellationToken.None));
+        Assert.Equal(["/api/v1/intake/capabilities", "/openapi.json"], paths);
+    }
+
+    [Fact]
+    public async Task The_capabilities_version_wins_and_the_description_is_not_asked()
+    {
+        var paths = new List<string>();
+        var service = Service(request =>
+        {
+            paths.Add(request.RequestUri!.AbsolutePath);
+            return Json("""{"version":"1.0.0-rc.10"}""");
+        });
+
+        Assert.Equal("1.0.0-rc.10", await service.ReadVersionAsync(Connection(), CancellationToken.None));
+        Assert.Single(paths);
+    }
+
+    [Fact]
     public async Task A_development_build_publishes_its_dev_version()
         => Assert.Equal("0.0.1-dev", await Service(_ => Json("""{"version":"0.0.1-dev"}""")).ReadVersionAsync(Connection(), CancellationToken.None));
 
