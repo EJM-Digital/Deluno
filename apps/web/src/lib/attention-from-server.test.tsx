@@ -1,4 +1,6 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { serverRow, summaryOf } from "./attention-summary-fixtures";
 
@@ -27,6 +29,7 @@ vi.mock("./api", async (importOriginal) => ({
 }));
 
 const { useAttention } = await import("./use-attention");
+const { useAttentionSummary } = await import("./attention-summary");
 const { queryClient } = await import("./route-cache");
 
 async function bell() {
@@ -72,5 +75,20 @@ describe("the bell shows the server's count and rows", () => {
     const result = await bell();
     expect(result.current.total).toBe(0);
     expect(result.current.summary.rows).toEqual([]);
+  });
+
+  it("the Dashboard's Health list and the bell show the same rows and the same count from the same summary (#1185)", async () => {
+    mocks.summary = summaryOf([serverRow({ id: "outage", kind: "outage", tone: "bad" }), serverRow({ id: "lanes", kind: "lanes", count: 2 })], [serverRow({ id: "update", kind: "update" })]);
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+
+    const bellHook = renderHook(() => useAttention());
+    const dashboard = renderHook(() => useAttentionSummary(), { wrapper });
+    await waitFor(() => expect(bellHook.result.current.total).toBe(3));
+    await waitFor(() => expect(dashboard.result.current.count).toBe(3));
+
+    expect(dashboard.result.current.count).toBe(bellHook.result.current.total);
+    expect(dashboard.result.current.rows.map((row) => row.id)).toEqual(bellHook.result.current.summary.rows.map((row) => row.id));
+    // One request served both: they read the same cached answer.
+    expect(mocks.calls.filter((path) => path === "/api/attention/summary")).toHaveLength(1);
   });
 });
