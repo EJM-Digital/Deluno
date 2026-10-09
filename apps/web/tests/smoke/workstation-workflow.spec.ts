@@ -569,7 +569,7 @@ test.describe("dashboard workflow", () => {
     // Strikes/timer/action moved to their own per-rule controls on the
     // Download health page (#951); this platform-wide default only decides
     // what happens once a rule's strikes run out.
-    await expect(page.getByText(/Strikes, timers and per-kind conditions belong to each rule under Download Health/)).toBeVisible();
+    await expect(page.getByText(/Strike counts and per-kind conditions belong to each rule under Download Health, and the check interval is set there too/)).toBeVisible();
     await expect(page.getByLabel("Act after this many strikes")).toHaveCount(0);
     await expect(page.getByText("Block this release", { exact: true })).toBeVisible();
     await expect(page.getByText("Search for a replacement", { exact: true })).toBeVisible();
