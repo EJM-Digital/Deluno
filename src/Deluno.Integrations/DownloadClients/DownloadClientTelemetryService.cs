@@ -3277,12 +3277,12 @@ public sealed class DownloadClientTelemetryService(
                     // "Ready to import" is a promise that Deluno imports this next. When the hand-off for this very
                     // download ran to its end and its import finished, Deluno has done that already and the
                     // planner never imports it twice: the file left the library afterwards (a wrong episode moved
-                    // to the recycle bin, say). The row stays what happened to the download, Imported, and the
-                    // title's own Missing state and the search for it say the rest (#1182). A release sent again
-                    // since is a new attempt and is handed over again, so for that one the row is ready to import.
+                    // to the recycle bin, say). The row says so, as history: it is neither "In library" nor ready to
+                    // import (#1182). A release sent again since is a new attempt and is handed over again, so for
+                    // that one the row is ready to import.
                     if (ImportEndedAndTheFileLeft(item, handoffs, settledDispatches))
                     {
-                        queue.Add(item);
+                        queue.Add(item with { Status = DownloadQueueStatuses.ImportedFileLeft });
                         continue;
                     }
 
