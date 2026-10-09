@@ -99,6 +99,8 @@ public static class WorkerServiceCollectionExtensions
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardSummaryService>();
         services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
         services.AddSingleton<Deluno.Contracts.IDashboardSectionSource>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
+        // What needs a person, built once for the bell and the tray (#1185).
+        services.AddSingleton<Deluno.Worker.Attention.IAttentionSummaryService, Deluno.Worker.Attention.AttentionSummaryService>();
 
         // The System overview (#1098): real readings of the machine, the network and Deluno itself,
         // taken every two seconds only while a screen shows them (see SystemOverviewSampler).

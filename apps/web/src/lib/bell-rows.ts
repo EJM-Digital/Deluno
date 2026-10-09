@@ -1,5 +1,8 @@
 /**
- * What the bell lists (#1098): "needs you", in two sections.
+ * What the bell lists (#1098): "needs you", in two sections, and a third for updates that are ready.
+ *
+ * The rows, their words and their count come from the server (`GET /api/attention/summary`, #1185); this file only
+ * groups old ones into piles and picks each row's buttons from `alert-actions.ts`.
  *
  *  - Your media: stuck downloads (one per row, with the reason), failed imports, refused hand-offs, titles
  *    with no acceptable release.
@@ -9,8 +12,9 @@
  * its own row, so something that has just gone wrong is never buried in a count. Each row carries its (at most
  * two) buttons from `alert-actions.ts`, so the bell and System's Health can never disagree about them.
  */
-import type { DashboardAttention } from "../routes/dashboard/attention";
-import { plainFailure } from "./needs-action";
+import type { AttentionSummary, AttentionSummaryRow } from "./attention-summary";
+import type { DownloadQueueItem, NoReleaseRow, ProcessorHandoffItem } from "./api";
+import type { RecoveryCaseRow } from "./needs-action";
 import {
   connectionDownActions,
   connectionUpdateActions,
@@ -22,13 +26,12 @@ import {
   recoveryActions,
   screenLinkActions,
   stuckDownloadActions,
-  stuckDownloadReason,
   updateReadyActions,
   type AlertAction,
   type AlertActions
 } from "./alert-actions";
 
-export type BellSection = "media" | "deluno";
+export type BellSection = "media" | "deluno" | "updates";
 
 export interface BellRow {
   key: string;
@@ -52,6 +55,8 @@ export interface BellRow {
 export interface BellRows {
   media: BellRow[];
   deluno: BellRow[];
+  /** A newer Deluno or connected app: listed on their own and never counted (an update ready is the blue dot). */
+  updates: BellRow[];
 }
 
 /** A problem is old once it has stood this long. */
@@ -189,205 +194,79 @@ function delunoPile(kind: string): PileWords | null {
   };
 }
 
-function ageOf(item: { lastActivityUtc?: string | null; addedUtc?: string | null }): string | null {
-  return item.lastActivityUtc ?? item.addedUtc ?? null;
+/** The buttons a server row offers, by what kind of row it is. The record behind the row is what they act on. */
+function actionsFor(row: AttentionSummaryRow): AlertActions {
+  const data = row.data as Record<string, unknown> | null;
+  switch (row.kind) {
+    case "stuck":
+      return stuckDownloadActions(data as unknown as DownloadQueueItem);
+    case "recovery":
+      return recoveryActions(data as unknown as RecoveryCaseRow);
+    case "import":
+      return failedImportActions({ id: String(data?.id) });
+    case "handoff":
+      return handoffActions(data as unknown as Pick<ProcessorHandoffItem, "id" | "releaseName">);
+    case "no-release":
+      return noReleaseActions(data as unknown as NoReleaseRow);
+    case "connection": {
+      const id = String(data?.id);
+      const name = String(data?.name);
+      if (row.id.startsWith("indexer:")) return connectionDownActions("indexer", id, name);
+      if (row.id.startsWith("client:")) return connectionDownActions("downloadClient", id, name);
+      return healthProblemActions({ id: `processor:${id}`, category: "processor", link: "/settings/processing" });
+    }
+    case "jobs":
+      return jobsGaveUpActions(row.id === "failed-title-jobs" ? "title" : "background");
+    case "update":
+      return updateReadyActions();
+    case "connection-update":
+      return connectionUpdateActions(String(data?.kind), String(data?.id));
+    default:
+      if (row.kind.startsWith("health:")) return healthProblemActions(data as unknown as Parameters<typeof healthProblemActions>[0]);
+      return screenLinkActions(row.action, row.to, `open:${row.id}`);
+  }
 }
 
-export function bellRows(attention: DashboardAttention, now: number = Date.now()): BellRows {
-  const { downloads } = attention;
-  const media: BellRow[] = [];
-  const deluno: BellRow[] = [];
+function toBellRow(row: AttentionSummaryRow, importNumber: number): BellRow {
+  return {
+    key: row.id,
+    subject: row.kind === "import" ? `failed import ${importNumber}` : undefined,
+    section: row.section,
+    kind: row.kind,
+    tone: row.tone,
+    title: row.title,
+    text: row.text,
+    to: row.to,
+    actions: actionsFor(row),
+    sinceUtc: row.sinceUtc,
+    count: row.count
+  };
+}
 
-  // ------------------------------------------------------------ your media
-  for (const item of downloads.queueAttention) {
-    media.push({
-      key: `stuck:${item.clientId}:${item.id}`,
-      section: "media",
-      kind: "stuck",
-      tone: item.status === "stalled" || item.errorMessage ? "bad" : "warn",
-      title: item.title || item.releaseName,
-      text: stuckDownloadReason(item),
-      to: "/queue",
-      actions: stuckDownloadActions(item),
-      sinceUtc: ageOf(item),
-      count: 1
-    });
-  }
-  for (const entry of downloads.recoveryCases) {
-    media.push({
-      key: `recovery:${entry.mediaType}:${entry.id}`,
-      section: "media",
-      kind: "recovery",
-      tone: "warn",
-      title: entry.title,
-      text: `${entry.mediaType === "movie" ? "Movies" : "TV"}: ${entry.summary}`,
-      to: "/queue",
-      actions: recoveryActions(entry),
-      sinceUtc: entry.detectedUtc ?? null,
-      count: 1
-    });
-  }
-  for (const [index, job] of downloads.failedImportJobs.entries()) {
-    media.push({
-      key: `import:${job.id}`,
-      subject: `failed import ${index + 1}`,
-      section: "media",
-      kind: "import",
-      tone: "bad",
-      title: "An import didn’t finish",
-      text: job.lastError ? plainFailure(job.lastError, "The import") : "It stopped without saying why.",
-      to: "/queue",
-      actions: failedImportActions(job),
-      sinceUtc: job.completedUtc ?? job.createdUtc ?? null,
-      count: 1
-    });
-  }
-  for (const handoff of downloads.handoffs) {
-    media.push({
-      key: `handoff:${handoff.id}`,
-      section: "media",
-      kind: "handoff",
-      tone: "bad",
-      title: handoff.releaseName,
-      text: handoff.failureMessage ? plainFailure(handoff.failureMessage, `Sending it to ${handoff.processorName ?? "the processor"}`) : `${handoff.processorName ?? "The processor"} could not finish it.`,
-      to: "/queue",
-      actions: handoffActions(handoff),
-      sinceUtc: handoff.updatedUtc ?? handoff.createdUtc ?? null,
-      count: 1
-    });
-  }
-  for (const row of attention.noRelease) {
-    media.push({
-      key: `no-release:${row.mediaType}:${row.id}`,
-      section: "media",
-      kind: "no-release",
-      tone: "warn",
-      title: row.year ? `${row.title} (${row.year})` : row.title,
-      text: "No acceptable release yet: every search found nothing Deluno would take.",
-      to: row.mediaType === "movie" ? `/movies/${encodeURIComponent(row.id)}` : `/tv/${encodeURIComponent(row.id)}`,
-      actions: noReleaseActions(row),
-      sinceUtc: row.missingSinceUtc ?? row.lastSearchUtc,
-      count: 1
-    });
-  }
-
-  // ---------------------------------------------------------------- Deluno
-  for (const indexer of downloads.indexers) {
-    deluno.push({
-      key: `indexer:${indexer.id}`,
-      section: "deluno",
-      kind: "connection",
-      tone: "warn",
-      title: `${indexer.name} isn’t answering`,
-      text: indexer.lastHealthMessage || "Deluno can’t search this site until it answers.",
-      to: HEALTH,
-      actions: connectionDownActions("indexer", indexer.id, indexer.name),
-      sinceUtc: null,
-      count: 1
-    });
-  }
-  for (const client of downloads.clients) {
-    deluno.push({
-      key: `client:${client.id}`,
-      section: "deluno",
-      kind: "connection",
-      tone: "warn",
-      title: !client.reachable ? `${client.name} isn’t answering` : client.paused ? `${client.name} is paused` : `${client.name} has warnings`,
-      text: !client.reachable ? "Downloads can’t start there until it answers." : client.paused ? "Nothing downloads there while it is paused." : "The download client reported something to clear.",
-      to: HEALTH,
-      actions: connectionDownActions("downloadClient", client.id, client.name),
-      sinceUtc: null,
-      count: 1
-    });
-  }
-  for (const processor of downloads.processors) {
-    deluno.push({
-      key: `processor:${processor.id}`,
-      section: "deluno",
-      kind: "connection",
-      tone: "warn",
-      title: `${processor.name} isn’t answering`,
-      text: processor.lastHealthMessage || "Finished downloads can’t be cleaned until it answers.",
-      to: HEALTH,
-      actions: healthProblemActions({ id: `processor:${processor.id}`, category: "processor", link: "/settings/processing" }),
-      sinceUtc: null,
-      count: 1
-    });
-  }
-  for (const problem of attention.healthListed) {
-    deluno.push({
-      key: `health:${problem.id}`,
-      section: "deluno",
-      kind: `health:${problem.category}`,
-      tone: "warn",
-      title: problem.title,
-      text: problem.message,
-      to: HEALTH,
-      actions: healthProblemActions(problem),
-      sinceUtc: problem.sinceUtc,
-      count: 1
-    });
-  }
-  // The rest of System's own rows: outage, the queue gate, collections, request servers, jobs that gave up,
-  // workers, setup, "more problems", and an update that is ready.
-  const handled = new Set(["clients", "indexers", "processors", "stalled", "queue-warnings", "recovery", "failed-imports", "handoffs", "no-release"]);
-  for (const item of attention.items) {
-    if (item.tab !== "system" || handled.has(item.id) || item.id.startsWith("health:") && item.id !== "health:more") continue;
-    if (item.id === "update") {
-      deluno.push({ key: "update", section: "deluno", kind: "update", tone: "warn", title: item.title, text: item.text, to: "/system/updates", actions: updateReadyActions(), sinceUtc: null, count: 1 });
-      continue;
-    }
-    if (item.id.startsWith("connection-update:")) {
-      const [, kind, id] = item.id.split(":");
-      deluno.push({ key: item.id, section: "deluno", kind: "connection-update", tone: "warn", title: item.title, text: item.text, to: item.to, actions: connectionUpdateActions(kind, id), sinceUtc: null, count: 1 });
-      continue;
-    }
-    if (item.id === "failed-title-jobs") {
-      deluno.push({ key: "failed-title-jobs", section: "deluno", kind: "jobs", tone: "bad", title: item.title, text: item.text, to: item.to, actions: jobsGaveUpActions("title"), sinceUtc: null, count: item.count });
-      continue;
-    }
-    if (item.id === "failed-jobs") {
-      deluno.push({
-        key: "failed-jobs",
-        section: "deluno",
-        kind: "jobs",
-        tone: "bad",
-        title: item.title,
-        text: item.text,
-        to: item.to,
-        actions: jobsGaveUpActions("background"),
-        sinceUtc: null,
-        count: item.count
-      });
-      continue;
-    }
-    deluno.push({
-      key: item.id,
-      section: "deluno",
-      kind: item.id,
-      tone: item.tone,
-      title: item.title,
-      text: item.text,
-      to: item.to.startsWith("/?tab=") ? HEALTH : item.to,
-      actions: screenLinkActions(item.action, item.to.startsWith("/?tab=") ? HEALTH : item.to, `open:${item.id}`),
-      sinceUtc: null,
-      count: item.count
-    });
-  }
+/**
+ * The bell's rows from the server's summary (#1185). Nothing is added up here: `summary.count` is the number, and
+ * every row is one the server put on the list. A pile of old ones of the same kind is one row, as before.
+ */
+export function bellRows(summary: AttentionSummary, now: number = Date.now()): BellRows {
+  let imports = 0;
+  const rows = summary.rows.map((row) => toBellRow(row, row.kind === "import" ? ++imports : 0));
+  const media = rows.filter((row) => row.section === "media");
+  const deluno = rows.filter((row) => row.section === "deluno");
 
   // A button name must be unique on screen: two rows about the same title are told apart by a number.
-  const unique = (rows: BellRow[]) => {
+  const unique = (list: BellRow[]) => {
     const seen = new Map<string, number>();
-    return rows.map((row) => {
+    return list.map((row) => {
       const base = row.subject ?? row.title;
       const n = (seen.get(base) ?? 0) + 1;
       seen.set(base, n);
       return n === 1 ? row : { ...row, subject: `${base} (${n})` };
     });
   };
-  const worstFirst = (rows: BellRow[]) => rows.map((row, index) => ({ row, index })).sort((a, b) => Number(b.row.tone === "bad") - Number(a.row.tone === "bad") || a.index - b.index).map((entry) => entry.row);
+  const worstFirst = (list: BellRow[]) => list.map((row, index) => ({ row, index })).sort((a, b) => Number(b.row.tone === "bad") - Number(a.row.tone === "bad") || a.index - b.index).map((entry) => entry.row);
   return {
     media: unique(worstFirst(pile(media, now, (kind) => MEDIA_PILES[kind] ?? null))),
-    deluno: unique(worstFirst(pile(deluno, now, delunoPile)))
+    deluno: unique(worstFirst(pile(deluno, now, delunoPile))),
+    updates: summary.notices.map((row) => ({ ...toBellRow(row, 0), section: "updates" as const }))
   };
 }

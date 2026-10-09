@@ -1,15 +1,12 @@
 using Deluno.Contracts;
-using Deluno.Jobs.Data;
-using Deluno.Media;
 using Deluno.Platform.Data;
 using Deluno.Realtime;
 using Deluno.Worker.Attention;
-using Deluno.Worker.Dashboard;
 
 namespace Deluno.Tray;
 
 /// <summary>What the tray's red dot and paused mark are drawn from.</summary>
-public sealed record TrayServerSignals(TrayAttention Attention, bool AutomationPaused);
+public sealed record TrayServerSignals(int NeedsLookCount, bool AutomationPaused);
 
 /// <summary>
 /// Follows the in-process server's own pushes (the same AttentionChanged, HealthChanged and Settings changes the open
@@ -91,20 +88,23 @@ public sealed class TrayAttentionWatcher : IDisposable
         });
     }
 
-    /// <summary>The bell's count from the server's own counts, Health's problems, and the Automation switch.</summary>
+    /// <summary>
+    /// The bell's count and the Automation switch. The count is the server's attention summary, read in-process through
+    /// the same <see cref="IAttentionSummaryService"/> the bell's <c>/api/attention/summary</c> answers from (#1185): the
+    /// tray adds nothing up itself, so the two numbers can only differ by being read at different moments.
+    /// </summary>
     public async Task<TrayServerSignals> ReadAsync()
     {
-        var summaries = _services.GetRequiredService<DashboardSummaryService>();
-        summaries.Invalidate();
-        var summary = await summaries.GetAsync(CancellationToken.None).ConfigureAwait(false);
-        var health = await _services.GetRequiredService<IHealthCheckRepository>().ListAsync(CancellationToken.None).ConfigureAwait(false);
+        var count = await CountAsync(_services).ConfigureAwait(false);
         var settings = await _services.GetRequiredService<IPlatformSettingsRepository>().GetAsync(CancellationToken.None).ConfigureAwait(false);
-        // The titles with no acceptable release come from the same read the bell's list uses.
-        var noRelease = await AttentionEndpoints.ListNoReleaseAsync(
-            _services.GetRequiredService<INoAcceptableReleaseReader>(),
-            _services.GetRequiredService<AttentionDismissalStore>(),
-            CancellationToken.None).ConfigureAwait(false);
-        return new TrayServerSignals(TrayAttention.From(summary, health, DateTimeOffset.UtcNow, noRelease.Length), !settings.AutoStartJobs);
+        return new TrayServerSignals(count, !settings.AutoStartJobs);
+    }
+
+    /// <summary>The number of things that need a look, read from the server's attention summary and used as it is.</summary>
+    public static async Task<int> CountAsync(IServiceProvider services)
+    {
+        var attention = await services.GetRequiredService<IAttentionSummaryService>().GetAsync(fresh: true, CancellationToken.None).ConfigureAwait(false);
+        return attention.Count;
     }
 
     public void Dispose()

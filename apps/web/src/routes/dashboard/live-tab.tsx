@@ -30,7 +30,6 @@ import { Button } from "../../components/ui/button";
 import type { DashboardSummary, DownloadDispatchItem } from "../../lib/api";
 import { queryClient, useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
-import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
@@ -48,13 +47,13 @@ import { Journey } from "./live/track";
 import { TurnedDownCard } from "./live/turned-down-card";
 import { useConnections, useTurnedDown } from "./live/use-pushed";
 import { useLiveBoardEvents } from "./live/use-live-board";
-import { liveSources, useSetupState } from "./sources";
+import { liveSources, storedLists, useSetupState } from "./sources";
 
 const NO_ROWS: never[] = [];
 
 export function LiveTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
-  const { data } = useRouteSources({ ...attentionSources, ...liveSources });
+  const { data } = useRouteSources({ ...storedLists, ...liveSources });
   const liveProgress = useLiveProgress();
   const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
   // Every pushed change is applied to the list it changes, so the board below moves as it happens (#1097).

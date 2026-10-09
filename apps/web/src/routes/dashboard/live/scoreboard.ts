@@ -5,10 +5,14 @@
  */
 import type { IndexerItem } from "../../../lib/api";
 import type { LiveConnection } from "../../../lib/api/types/operations";
-import { indexerNeedsButton } from "../attention";
 import type { ClientLight } from "./clients";
 import { connectionKey, connectionWords, sortConnections, tileName } from "./connections";
 import { SLOW_ANSWER_MS, type IndexerToday } from "./indexers";
+
+/** An enabled indexer that is not known to be healthy gets Test again (the bell's rule on the server is the same). */
+export function indexerNeedsButton(indexer: Pick<IndexerItem, "isEnabled" | "healthStatus">): boolean {
+  return indexer.isEnabled && indexer.healthStatus !== "healthy";
+}
 
 /** An indexer's standing, as the word on its pill: Good, Slow, Down or Off. */
 export type Standing = "good" | "slow" | "down" | "off";

@@ -92,7 +92,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const action = useAction();
   const total = attentionTotal(attention);
   // Two sections: what needs you about your media, and what needs you about Deluno itself (#1098).
-  const rows = useMemo(() => bellRows(attention.needs), [attention.needs]);
+  const rows = useMemo(() => bellRows(attention.summary), [attention.summary]);
   const drawSection = (label: string, list: BellRow[]) =>
     list.length === 0 ? null : (
       <section aria-label={label} key={label}>
@@ -101,7 +101,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
       </section>
     );
   const nothingNeedsYou = rows.media.length === 0 && rows.deluno.length === 0;
-  const { leftovers, suggestions } = attention.needs.alsoWorthALook;
+  const { leftovers, suggestions } = attention.summary;
 
   const [open, setOpen] = useState(false);
   // Read the first time the panel opens; after that the pushes below keep it current, open or closed.
@@ -251,6 +251,17 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                 {drawSection("Deluno", rows.deluno)}
               </div>
             )}
+            {rows.updates.length > 0 ? (
+              // Ready, not a problem: listed on their own and never part of the number above.
+              <div
+                className="max-h-[200px] overflow-y-auto border-t border-hairline"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a")) close(false);
+                }}
+              >
+                {drawSection("Updates ready", rows.updates)}
+              </div>
+            ) : null}
             {leftovers + suggestions > 0 ? (
               <div
                 className="border-t border-hairline px-4 py-2 text-(length:--type-caption) text-muted-foreground"
@@ -258,7 +269,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                   if ((event.target as HTMLElement).closest("a")) close(false);
                 }}
               >
-                <AlsoWorthALook attention={attention.needs} />
+                <AlsoWorthALook attention={{ alsoWorthALook: { leftovers, suggestions } }} />
               </div>
             ) : null}
           </section>

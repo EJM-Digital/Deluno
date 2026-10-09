@@ -567,8 +567,7 @@ public sealed class TrayApplication : ApplicationContext
     private void OnSignals(TrayServerSignals signals)
         => Change(s => s with
         {
-            NeedsLookCount = signals.Attention.Count,
-            HealthProblem = signals.Attention.HealthProblem,
+            NeedsLookCount = signals.NeedsLookCount,
             AutomationPaused = signals.AutomationPaused
         });
 
