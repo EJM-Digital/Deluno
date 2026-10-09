@@ -4,8 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem } from "../../lib/api";
 import type { AttentionSnapshot } from "../../lib/use-attention";
-import { computeAttention } from "../../routes/dashboard/attention";
-import { fullSummary } from "../../routes/dashboard/downloads-fixtures";
+import { emptyAttentionSummary } from "../../lib/attention-summary";
+import { serverRow, summaryOf } from "../../lib/attention-summary-fixtures";
 
 const fetchPageItems = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", async (importOriginal) => ({
@@ -37,21 +37,25 @@ const attention: AttentionSnapshot = {
   tvWanted: 0,
   healthProblems: 0,
   total: 0,
-  needs: computeAttention(undefined),
+  summary: emptyAttentionSummary,
   loading: false
 };
 
-/** A busy install: real problems on both tabs, plus a leftover folder and a suggestion that are not counted. */
+/** A busy install: real problems in both sections, a ready update, and a leftover folder and a suggestion that are not counted. */
 function busy(): AttentionSnapshot {
-  const needs = computeAttention(
-    fullSummary,
-    {
-      failedJobs: [{ id: "j1", jobType: "filesystem.import.execute", status: "failed", lastError: "Disk was full", attempts: 3, maxAttempts: 3, nextAttemptUtc: null }] as never,
-      handoffs: [{ id: "h1", releaseName: "Metropolis (1927)", status: "failed", failureMessage: "The processor timed out.", processorName: "Cleaner", updatedUtc: "2026-09-30T09:55:00Z" }] as never,
-      orphans: [{ name: "a" }, { name: "b" }] as never
-    }
+  const summary = summaryOf(
+    [
+      serverRow({ id: "import:j1", kind: "import", section: "media", tone: "bad", title: "An import didn’t finish", text: "Disk was full", to: "/queue", data: { id: "j1" } }),
+      serverRow({
+        id: "handoff:h1", kind: "handoff", section: "media", tone: "bad", title: "Metropolis (1927)", text: "The processor timed out.", to: "/queue",
+        data: { id: "h1", releaseName: "Metropolis (1927)", status: "failed", outputPath: null, importJobId: null, outcome: null }
+      }),
+      serverRow({ id: "health:system:backup", kind: "health:system", title: "A drive is nearly full", data: { id: "system:backup", category: "system", name: "A drive is nearly full", link: "/system" } })
+    ],
+    [serverRow({ id: "update", kind: "update", title: "A new version of Deluno is ready", to: "/system/updates", action: "Open Updates" })],
+    { leftovers: 2, suggestions: 0 }
   );
-  return { ...attention, total: needs.total, needs };
+  return { ...attention, total: summary.count, summary };
 }
 
 const events: ActivityEventItem[] = [
@@ -117,12 +121,13 @@ describe("notifications bell (#907)", () => {
     render(<MemoryRouter><NotificationsBell attention={snapshot} /></MemoryRouter>);
     const bell = screen.getByRole("button", { name: `Notifications — ${snapshot.total} things need a look` });
     expect(bell.textContent).toBe(String(snapshot.total));
-    // The number is the two Dashboard badges added together; leftovers and suggestions are not in it.
-    expect(snapshot.total).toBe(snapshot.needs.counts.live + snapshot.needs.counts.system);
-    expect(snapshot.needs.alsoWorthALook.leftovers).toBe(2);
+    // The number is the server's: three problems. The ready update, leftovers and suggestions are not in it.
+    expect(snapshot.total).toBe(3);
+    expect(snapshot.summary.notices).toHaveLength(1);
+    expect(snapshot.summary.leftovers).toBe(2);
   });
 
-  it("lists Needs you first, with the Dashboard's rows and buttons, then the recent events", async () => {
+  it("lists Needs you first, with the server's rows and their buttons, then the recent events", async () => {
     fetchPageItems.mockResolvedValue(events);
     const user = userEvent.setup();
     render(<MemoryRouter><NotificationsBell attention={busy()} /></MemoryRouter>);
@@ -332,17 +337,21 @@ describe("the bell is two sections, with the same buttons System's Health shows 
   const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
   function mixed(): AttentionSnapshot {
-    const summary = structuredClone(fullSummary);
-    summary.health = {
-      ...summary.health!,
-      problems: 1,
-      topProblems: [{ id: "machine:sleep", title: "Computer sleep", category: "machine", message: "This computer goes to sleep after 30 minutes on mains power.", sinceUtc: hoursAgo(1), link: "/system", snoozed: false }]
-    };
-    const needs = computeAttention(summary, {
-      telemetry: { clients: [{ queue: [{ id: "t1", clientId: "qb", clientName: "qBittorrent", title: "Sintel (2010)", releaseName: "Sintel.2010.1080p", status: "stalled", errorMessage: null, healthFindings: null, addedUtc: hoursAgo(2) }] }] } as never,
-      noRelease: [{ mediaType: "movie", id: "m1", title: "Obscure Film", year: 1971, libraryId: "lib", lastSearchUtc: hoursAgo(1), missingSinceUtc: hoursAgo(5), reason: null }]
-    });
-    return { ...attention, total: needs.total, needs };
+    const summary = summaryOf([
+      serverRow({
+        id: "stuck:qb:t1", kind: "stuck", section: "media", tone: "bad", title: "Sintel (2010)", text: "Not moving in qBittorrent.", to: "/queue", sinceUtc: hoursAgo(2),
+        data: { id: "t1", clientId: "qb", clientName: "qBittorrent", title: "Sintel (2010)", releaseName: "Sintel.2010.1080p", status: "stalled", errorMessage: null, healthFindings: null, addedUtc: hoursAgo(2) }
+      }),
+      serverRow({
+        id: "no-release:movie:m1", kind: "no-release", section: "media", title: "Obscure Film (1971)", to: "/movies/m1", sinceUtc: hoursAgo(5),
+        data: { mediaType: "movie", id: "m1", title: "Obscure Film", year: 1971, libraryId: "lib", lastSearchUtc: hoursAgo(1), missingSinceUtc: hoursAgo(5), reason: null }
+      }),
+      serverRow({
+        id: "health:machine:sleep", kind: "health:machine", title: "Computer sleep", text: "This computer goes to sleep after 30 minutes on mains power.", sinceUtc: hoursAgo(1),
+        data: { id: "machine:sleep", category: "machine", name: "Computer sleep", link: "/system" }
+      })
+    ]);
+    return { ...attention, total: summary.count, summary };
   }
 
   async function open() {

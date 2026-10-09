@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { healthProblemActions } from "../../../lib/alert-actions";
+import { serverRow, summaryOf } from "../../../lib/attention-summary-fixtures";
 import { bellRows } from "../../../lib/bell-rows";
 import { computeAttention } from "../attention";
 import { emptySummary } from "../summary-fixtures";
@@ -33,7 +34,7 @@ describe("System's Health and the bell offer the same buttons (#1098)", () => {
   it("the bell shows the same labels for the same problem", () => {
     const summary = emptySummary();
     summary.health = { ...summary.health!, problems: 1, topProblems: [{ id: "machine:sleep", title: "Computer sleep", category: "machine", message: "m", sinceUtc: null, link: "/system", snoozed: false }] };
-    const rows = bellRows(computeAttention(summary));
+    const rows = bellRows(summaryOf([serverRow({ id: "health:machine:sleep", kind: "health:machine", title: "Computer sleep", data: { id: "machine:sleep", category: "machine", name: "Computer sleep", link: "/system" } })]));
     const model = buildHealth({ summary, attention: computeAttention(summary), checks: [check("machine:sleep", "Computer sleep")] });
 
     const bell = rows.deluno.find((row) => row.key === "health:machine:sleep")!;

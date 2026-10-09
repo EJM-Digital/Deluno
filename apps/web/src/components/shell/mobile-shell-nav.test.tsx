@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionSnapshot } from "../../lib/use-attention";
-import { computeAttention } from "../../routes/dashboard/attention";
+import { emptyAttentionSummary } from "../../lib/attention-summary";
 import { MobileShellNav } from "./mobile-shell-nav";
 
 const attention = {
@@ -17,7 +17,7 @@ const attention = {
   tvWanted: 0,
   healthProblems: 0,
   total: 0,
-  needs: computeAttention(undefined),
+  summary: emptyAttentionSummary,
   loading: false
 } as AttentionSnapshot;
 

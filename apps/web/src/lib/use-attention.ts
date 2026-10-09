@@ -5,9 +5,7 @@ import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
 import { isBackgroundJob } from "./background-jobs";
-import type { DashboardSummary } from "./api";
-import { attentionSources, computeAttention, type AttentionLists, type DashboardAttention } from "../routes/dashboard/attention";
-import { SUMMARY_KEY, summaryQuery, setupNeedsFromCache, setupSources } from "../routes/dashboard/sources";
+import { attentionSummarySource, emptyAttentionSummary, type AttentionSummary } from "./attention-summary";
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
 
 /** The activity categories that move the failed-job count. */
@@ -33,16 +31,12 @@ export interface AttentionSnapshot {
   /** Health checks currently reporting a problem that is not snoozed (#909). */
   healthProblems: number;
   /**
-   * Everything that needs a person, in one number: the two Dashboard badges
-   * added together (`computeAttention`, over the same stored sources), so the
-   * bell and the Dashboard never disagree (#1087).
+   * Everything that needs a person, in one number: the server's own count (`GET /api/attention/summary`, #1185),
+   * the same function the tray reads. This file adds nothing up.
    */
   total: number;
-  /**
-   * The rows behind the number: the same ones the Dashboard's Needs you and Setup
-   * health list, for the bell's panel to draw (#1087).
-   */
-  needs: DashboardAttention;
+  /** The rows behind the number, for the bell's panel to draw (#1087, #1185). */
+  summary: AttentionSummary;
   loading: boolean;
 }
 
@@ -58,7 +52,7 @@ const empty: AttentionSnapshot = {
   tvWanted: 0,
   healthProblems: 0,
   total: 0,
-  needs: computeAttention(undefined),
+  summary: emptyAttentionSummary,
   loading: true
 };
 
@@ -78,9 +72,6 @@ export function attentionTotal(snapshot: Pick<AttentionSnapshot, "total">): numb
  * each asking. A read is a cache read whenever the answer is recent enough.
  */
 const ATTENTION_FRESH_MS = 30_000;
-
-/** The Dashboard summary, read through the cache the Dashboard itself uses. */
-const summarySource: RouteSource<DashboardSummary> = { key: [...SUMMARY_KEY], label: "Dashboard summary", fetch: summaryQuery.queryFn };
 
 function readCached<T>(source: RouteSource<T>): T | undefined {
   return queryClient.getQueryData<T>(source.key);
@@ -106,9 +97,9 @@ function snapshotFromCache(): AttentionSnapshot | null {
   const orphans = readCached(sharedSources.orphans) ?? [];
   const health = readCached(sharedSources.healthSummary) ?? null;
 
-  // The one count: the Dashboard's, over the same summary and the same stored lists.
-  const lists = Object.fromEntries(Object.entries(attentionSources).map(([name, source]) => [name, readCached(source as RouteSource<unknown>)])) as AttentionLists;
-  const attention = computeAttention(readCached(summarySource), lists, setupNeedsFromCache());
+  // The one count: the server's. Nothing here adds it up.
+  const read = readCached(attentionSummarySource);
+  const summary = read && typeof read.count === "number" && Array.isArray(read.rows) ? read : emptyAttentionSummary;
 
   return {
     failedJobs: stopped.length,
@@ -121,8 +112,8 @@ function snapshotFromCache(): AttentionSnapshot | null {
     movieWanted: readCached(sharedSources.movieWanted)?.totalWanted ?? 0,
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
     healthProblems: health?.unsnoozedProblemCount ?? 0,
-    total: attention.total,
-    needs: attention,
+    total: summary.count,
+    summary,
     loading: false
   };
 }
@@ -138,25 +129,25 @@ export function attentionSourcesForReasons(reasons: readonly string[]): RouteSou
   for (const reason of reasons) {
     switch (reason) {
       case "noRelease":
-        add(attentionSources.noRelease as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(attentionSummarySource as RouteSource<unknown>);
         break;
       case "recovery":
-        add(sharedSources.movieRecovery as RouteSource<unknown>, sharedSources.seriesRecovery as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(sharedSources.movieRecovery as RouteSource<unknown>, sharedSources.seriesRecovery as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "handoff":
-        add(sharedSources.handoffs as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(sharedSources.handoffs as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "jobs":
-        add(sharedSources.failedJobs as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "orphans":
-        add(sharedSources.orphans as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(sharedSources.orphans as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "update":
-        add(attentionSources.connectionUpdates as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(attentionSummarySource as RouteSource<unknown>);
         break;
       case "health":
-        add(sharedSources.healthSummary as RouteSource<unknown>, summarySource as RouteSource<unknown>);
+        add(sharedSources.healthSummary as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "heldReleases":
         break;
@@ -213,14 +204,8 @@ export function useAttention() {
         orphansKnown ? Promise.resolve(undefined) : readFresh(sharedSources.orphans, false).catch(() => undefined),
         // #909: the same summary System -> Health and the Dashboard tile read.
         readFresh(sharedSources.healthSummary, force).catch(() => undefined),
-        // The Dashboard's own summary (memoised, stored numbers only) and the lists its count also reads.
-        readFresh(summarySource, force).catch(() => undefined),
-        readFresh(attentionSources.processors, force).catch(() => undefined),
-        // Wanted titles no search could satisfy (#1098).
-        readFresh(attentionSources.noRelease, force).catch(() => undefined),
-        // A newer version of a connected app (#1118).
-        readFresh(attentionSources.connectionUpdates, force).catch(() => undefined),
-        ...Object.values(setupSources).map((source) => readFresh(source as RouteSource<unknown>, force).catch(() => undefined))
+        // What needs a person, worked out once on the server (#1185): the bell's rows and its count.
+        readFresh(attentionSummarySource, force).catch(() => undefined)
       ]);
 
       // A job Deluno will try again on its own is not one the pill should
@@ -291,10 +276,10 @@ export function useAttention() {
     reloadAfterAttention();
   });
   // A title or an indexer changing moves only the wanted counts, or the indexers and the Dashboard summary.
-  const reloadWanted = useCoalescedRevalidate(() => void loadSome(sharedSources.movieWanted, sharedSources.seriesWanted, summarySource), 2_500);
+  const reloadWanted = useCoalescedRevalidate(() => void loadSome(sharedSources.movieWanted, sharedSources.seriesWanted), 2_500);
   useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => reloadWanted());
   useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, () => reloadWanted());
-  const reloadIndexers = useCoalescedRevalidate(() => void loadSome(sharedSources.indexers, summarySource), 1_500);
+  const reloadIndexers = useCoalescedRevalidate(() => void loadSome(sharedSources.indexers, attentionSummarySource as RouteSource<unknown>), 1_500);
   useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => reloadIndexers());
   // #1098: a real test of a connection finished. A connection that stopped (or started) answering changes what needs a person; a burst of quiet results is folded into one read.
   const reloadAfterCheck = useCoalescedRevalidate(() => void load(true), 1_500);

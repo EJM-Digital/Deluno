@@ -99,7 +99,7 @@ export function bellRowElement(row: BellRow, state: Action): ReactElement {
  * The one quiet line for what is worth a look but is not a problem and is never
  * counted: leftover folders and health suggestions. Nothing when there are none.
  */
-export function AlsoWorthALook({ attention }: { attention: DashboardAttention }) {
+export function AlsoWorthALook({ attention }: { attention: Pick<DashboardAttention, "alsoWorthALook"> }) {
   const { leftovers, suggestions } = attention.alsoWorthALook;
   const quiet = [
     leftovers > 0 ? (
