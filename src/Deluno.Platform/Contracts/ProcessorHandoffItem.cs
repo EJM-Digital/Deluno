@@ -24,7 +24,12 @@ public sealed record ProcessorHandoffItem(
     ProcessorHandoffObservation? Processor = null,
     ProcessorOutcomeRecord? Outcome = null,
     /// <summary>The processor connection's id (#1077). <see cref="ProcessorName"/> is its current name for display; every lookup goes by this id.</summary>
-    string? ProcessorConnectionId = null);
+    string? ProcessorConnectionId = null,
+    /// <summary>
+    /// The files of <see cref="SourcePath"/> the processor is asked to take, set only on the copy that goes over the wire and
+    /// only when the processor advertises a minimum file size (#1199). Null means the whole folder.
+    /// </summary>
+    IReadOnlyList<string>? OutputFiles = null);
 
 /// <param name="DownloadAddedUtc">
 /// When the download client took this download, when it says. A torrent's queue
