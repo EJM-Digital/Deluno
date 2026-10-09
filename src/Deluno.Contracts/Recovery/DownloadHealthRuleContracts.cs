@@ -394,17 +394,67 @@ public static class DownloadHealthRules
     ];
 }
 
+/// <summary>
+/// One entry on the ignore list (#817): a download matching any filled-in field is exempt from every rule.
+/// <paramref name="Tag"/> (#1194) matches a tag the client put on the torrent, or a tag Deluno holds for the title
+/// or indexer it came from. <paramref name="TrackerDomain"/> matches the host of the torrent's tracker announce
+/// URL (a private tracker's domain, subdomains included) and, as it always has, the indexer's name.
+/// </summary>
 public sealed record DownloadHealthIgnoreEntry(
     string Id,
     string? Hash,
     string? Category,
     string? TrackerDomain,
     string? Note,
-    DateTimeOffset CreatedUtc)
+    DateTimeOffset CreatedUtc,
+    string? Tag = null)
 {
-    public bool Matches(string? hash, string? category, string? trackerDomain)
+    /// <summary>Whether this entry names a tag, so the caller knows to look Deluno's own tags up.</summary>
+    public bool NamesATag => !string.IsNullOrWhiteSpace(Tag);
+
+    public bool Matches(
+        string? hash,
+        string? category,
+        string? indexerName,
+        IReadOnlyList<string>? clientTags = null,
+        IReadOnlyList<string>? trackerHosts = null,
+        IReadOnlyList<string>? delunoTags = null)
         => (Hash is { Length: > 0 } wantedHash && string.Equals(wantedHash, hash, StringComparison.OrdinalIgnoreCase)) ||
            (Category is { Length: > 0 } wantedCategory && string.Equals(wantedCategory, category, StringComparison.OrdinalIgnoreCase)) ||
-           (TrackerDomain is { Length: > 0 } wantedDomain && !string.IsNullOrWhiteSpace(trackerDomain) &&
-            trackerDomain.Contains(wantedDomain, StringComparison.OrdinalIgnoreCase));
+           MatchesTracker(indexerName, trackerHosts) ||
+           MatchesTag(clientTags, delunoTags);
+
+    private bool MatchesTracker(string? indexerName, IReadOnlyList<string>? trackerHosts)
+    {
+        if (TrackerDomain is not { Length: > 0 } wanted) return false;
+        var domain = DomainOf(wanted);
+        if (domain.Length > 0 && trackerHosts is not null &&
+            trackerHosts.Any(host => string.Equals(host, domain, StringComparison.OrdinalIgnoreCase) ||
+                                     host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        // Today's match, which stays: the indexer's name containing what was typed.
+        return !string.IsNullOrWhiteSpace(indexerName) && indexerName.Contains(wanted.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesTag(IReadOnlyList<string>? clientTags, IReadOnlyList<string>? delunoTags)
+    {
+        if (Tag is not { Length: > 0 } wanted) return false;
+        var tag = wanted.Trim();
+        return (clientTags ?? []).Concat(delunoTags ?? []).Any(candidate => string.Equals(candidate.Trim(), tag, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>What was typed as a tracker domain, reduced to a bare host: a pasted announce URL, port or path is dropped.</summary>
+    internal static string DomainOf(string typed)
+    {
+        var text = typed.Trim().ToLowerInvariant();
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)) return uri.Host;
+        var slash = text.IndexOf('/');
+        if (slash >= 0) text = text[..slash];
+        var colon = text.IndexOf(':');
+        if (colon >= 0) text = text[..colon];
+        return text.TrimStart('.');
+    }
 }
