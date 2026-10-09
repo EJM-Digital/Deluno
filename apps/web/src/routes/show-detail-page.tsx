@@ -296,6 +296,8 @@ export function ShowDetailPage() {
   >(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
+  /** The episode whose file is waiting on a second click to be moved to the recycle bin (#1188). */
+  const [confirmingEpisodeFileDelete, setConfirmingEpisodeFileDelete] = useState<string | null>(null);
   // Which language's manual search dialog (#841) is open, or null for none.
   const [manualSearchLanguage, setManualSearchLanguage] = useState<string | null>(null);
   // Which of the three types (plain / hearing-impaired / forced, #923) each
@@ -597,6 +599,23 @@ export function ShowDetailPage() {
       revalidator.revalidate();
     } catch {
       toast.error("Those episodes could not be updated.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  // #1188: the file goes to the recycle bin, where it can be restored.
+  async function handleEpisodeFileDelete(episodeId: string) {
+    setBusyAction(`episode-file-delete:${episodeId}`);
+
+    try {
+      const response = await authedFetch(`/api/series/episodes/${episodeId}/file`, { method: "DELETE" });
+      if (!response.ok) throw new Error("episode-file-delete-failed");
+      toast.success("File moved to the recycle bin. This episode now shows as missing. You can restore it from the recycle bin.");
+      setConfirmingEpisodeFileDelete(null);
+      revalidator.revalidate();
+    } catch {
+      toast.error("Could not delete this episode's file.");
     } finally {
       setBusyAction(null);
     }
@@ -2295,6 +2314,41 @@ export function ShowDetailPage() {
                 ]}
               />
             </DrawerSection>
+
+            {openEpisode.hasFile ? (
+              <DrawerSection title="File">
+                <div className="flex flex-wrap items-center gap-(--grid-gap)">
+                  {confirmingEpisodeFileDelete === openEpisode.episodeId ? (
+                    <>
+                      <span className="text-(length:--type-caption) text-muted-foreground">Goes to the recycle bin. You can restore it.</span>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => void handleEpisodeFileDelete(openEpisode.episodeId)}
+                        disabled={busyAction !== null}
+                      >
+                        {busyAction === `episode-file-delete:${openEpisode.episodeId}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : "Confirm delete"}
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => setConfirmingEpisodeFileDelete(null)} disabled={busyAction !== null}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setConfirmingEpisodeFileDelete(openEpisode.episodeId)}
+                      disabled={busyAction !== null}
+                      title="Moves this episode's file to the recycle bin, where it can be restored."
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete file
+                    </Button>
+                  )}
+                </div>
+              </DrawerSection>
+            ) : null}
 
             <DrawerSection title="Search">
               <div className="flex flex-wrap gap-(--grid-gap)">

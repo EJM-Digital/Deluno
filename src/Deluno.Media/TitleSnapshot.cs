@@ -221,6 +221,49 @@ public sealed class TitleSnapshotService(
         }
     }
 
+    /// <summary>
+    /// #1188: a film's or an episode's file came back out of the recycle bin.
+    /// The title never left Deluno, so its folder is read the way an added
+    /// title's is, which takes the file again (quality, size and all), and the
+    /// title is watched again if it was before the file was taken.
+    /// </summary>
+    public async Task<TitleRestoreOutcome> RelinkFileAsync(
+        RecycleBinItem restored,
+        RecycleBinFileOwner owner,
+        CancellationToken cancellationToken)
+    {
+        if (libraryImport is null)
+        {
+            return new TitleRestoreOutcome(false, string.Empty);
+        }
+
+        var found = await libraryImport.ImportTitleFolderAsync(restored.LibraryId, owner.TitleId, owner.Title, owner.Year, cancellationToken);
+        var map = MediaTableMap.For(KindOf(owner.MediaType));
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        if (owner.WasMonitored)
+        {
+            using var watch = connection.CreateCommand();
+            watch.CommandText = owner.EpisodeId is { Length: > 0 }
+                ? "UPDATE episode_entries SET monitored = 1 WHERE id = @id;"
+                : $"UPDATE \"{map.EntryTable}\" SET monitored = 1 WHERE id = @id;";
+            AddParameter(watch, "@id", owner.EpisodeId is { Length: > 0 } ? owner.EpisodeId : owner.TitleId);
+            await watch.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (owner.EpisodeId is not { Length: > 0 } && map.WantedTable == "movie_wanted_state")
+        {
+            using var wanted = connection.CreateCommand();
+            wanted.CommandText = $"UPDATE \"{map.WantedTable}\" SET not_wanted_here = 0, not_wanted_since_utc = NULL WHERE {map.WantedMediaIdColumn} = @id AND library_id = @libraryId AND not_wanted_here = 1;";
+            AddParameter(wanted, "@id", owner.TitleId);
+            AddParameter(wanted, "@libraryId", restored.LibraryId);
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return found.Matched
+            ? new TitleRestoreOutcome(true, $"{owner.Title} has its file again.", owner.TitleId)
+            : new TitleRestoreOutcome(false, $"The file is back, but Deluno could not match it to {owner.Title}. A library check will find it.", owner.TitleId);
+    }
+
     private static MediaKind KindOf(string mediaType)
         => string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase) ? MediaKind.Series : MediaKind.Movie;
 
