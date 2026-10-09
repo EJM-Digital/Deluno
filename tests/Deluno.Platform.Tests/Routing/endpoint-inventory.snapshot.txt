@@ -60,6 +60,7 @@ GET /api/api-keys/
 GET /api/api-keys/scope-templates
 GET /api/attention/held-releases
 GET /api/attention/no-release
+GET /api/attention/summary
 GET /api/auth/bootstrap-status
 GET /api/auto-tag-rules/
 GET /api/automation/summary
