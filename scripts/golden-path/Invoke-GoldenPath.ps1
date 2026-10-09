@@ -293,10 +293,13 @@ try {
         }
         $left, $resets = ($budget -split '\|', 2)
         if ($left -match '^\d+$' -and [int]$left -lt 20) {
-            Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'failed' "Only $left calls left until $resets (VM clock): the picker would fail NZBGet and Weir. Wait for the reset, then run again."
-            throw 'GitHub anonymous API budget is used up.'
+            # Not a reason to stop any more: the picker finds Weir through GitHub's release feed when the limit is used up (#1181),
+            # which is a case the run has to be able to meet. Say so in the record and go on; the picker's own words show what it did.
+            Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'manual' "Only $left calls left until $resets (VM clock). Going on: the picker must still install Weir through the release feed, or say plainly that GitHub's limit is reached, with a time (#1181). Record what it said."
         }
-        Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'passed' "$left calls left (resets $resets)."
+        else {
+            Add-Result 'GitHub anonymous API budget (the picker needs about 6 calls)' 'passed' "$left calls left (resets $resets)."
+        }
         Invoke-InteractiveInstall -SetupName $setupName
     } else {
     # 4. Silent install. Velopack's Setup takes --silent; the component picker is a first-run dialog

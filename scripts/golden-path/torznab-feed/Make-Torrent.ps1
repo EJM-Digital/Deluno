@@ -1,7 +1,7 @@
 # Golden path: makes a single-file .torrent. With -File it hashes the real file (and names no tracker, so the client that finds the
 # file completes at once with no tracker error); with -Dummy -Length N it makes a torrent nobody can ever download (random piece
 # hashes, a tracker that does not exist).
-param([string]$File, [string]$Out, [string]$Name, [switch]$Dummy, [long]$Length = 30MB, [int]$PieceKb = 256)
+param([string]$File, [string]$Out, [string]$Name, [switch]$Dummy, [switch]$DeadTracker, [long]$Length = 30MB, [int]$PieceKb = 256)
 $ErrorActionPreference = 'Stop'
 function BStr([string]$s) { $b = [Text.Encoding]::UTF8.GetBytes($s); [Text.Encoding]::ASCII.GetBytes("$($b.Length):") + $b }
 function BInt([long]$n) { [Text.Encoding]::ASCII.GetBytes("i${n}e") }
@@ -20,9 +20,10 @@ $sha1 = [Security.Cryptography.SHA1]::Create(); $infoHash = ([BitConverter]::ToS
 # A torrent over a real file has no tracker at all. Giving it one that nobody answers (127.0.0.1:9) made Deluge report
 # "Error: No connection could be made because the target machine actively refused it" on a torrent that was 100% done
 # and seeding, and Deluno called that finished download Stalled / "queue failed" and did not hand it off (golden path
-# rc.30.10). A dummy torrent keeps its dead tracker: it is meant to stall.
+# rc.30.10). A dummy torrent keeps its dead tracker: it is meant to stall. -DeadTracker gives a torrent over a real file that same
+# tracker on purpose: since rc.30.12 (#1183) a complete torrent whose tracker does not answer must still be handed off.
 $parts = @([Text.Encoding]::ASCII.GetBytes('d'))
-if ($Dummy) { $parts += (BStr 'announce'); $parts += (BStr 'http://127.0.0.1:9/announce') }
+if ($Dummy -or $DeadTracker) { $parts += (BStr 'announce'); $parts += (BStr 'http://127.0.0.1:9/announce') }
 $parts += (BStr 'info'); $parts += $info; $parts += [Text.Encoding]::ASCII.GetBytes('e')
 $torrent = JoinBytes $parts
 [IO.File]::WriteAllBytes($Out, $torrent)
