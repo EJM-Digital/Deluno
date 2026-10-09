@@ -104,7 +104,12 @@ if (Test-Path $smokeDist) { Remove-Item -Recurse -Force $smokeDist }
 Copy-Item -Recurse -Path (Join-Path $Root "apps\web\dist") -Destination $smokeDist
 
 $running += Start-GateStep "ci:check" $npm "run ci:check"
-$running += Start-GateStep "Web unit tests" $npm "--workspace apps/web run test:unit"
+# The web unit tests finish before the smoke shards start. Beside two smoke hosts and the
+# backend tests their 5-second waits ran out on a starved machine (10 Oct 2026: three passed
+# alone and failed in the gate); CI runs them on their own runner, so the gate does too.
+$unitTests = Start-GateStep "Web unit tests" $npm "--workspace apps/web run test:unit"
+$running += $unitTests
+$unitTests.Process.WaitForExit()
 
 $env:DELUNO_SMOKE_PREBUILT = "1"
 $env:DELUNO_SMOKE_DIST = $smokeDist
