@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, isResendingHandoff, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -1224,5 +1224,18 @@ describe("a refused import on the Transfers drawer", () => {
     const sample = { id: "d", status: "sent", importStatus: "failed", importCompletedUtc: "2026-10-08T05:00:00Z", importFailureCode: "likelySample", importFailureMessage: "Likely a sample." } as never;
     expect(dispatchStageLabel(sample)).not.toBe("Imported");
     expect(dispatchStageLabel({ id: "d", status: "sent", importStatus: "imported", importCompletedUtc: "2026-10-08T05:00:00Z" } as never)).toBe("Imported");
+  });
+});
+
+describe("Try again hides the old failure (#1198)", () => {
+  it("is sending again only for a hand-off just sent again that waits on the processor", () => {
+    const sent = new Set(["h1"]);
+    expect(isResendingHandoff({ id: "h1", status: "waiting" }, sent)).toBe(true);
+    expect(isResendingHandoff({ id: "h1", status: "submitted" }, sent)).toBe(true);
+  });
+
+  it("is not sending again once the answer is a failure, or for a hand-off nobody retried", () => {
+    expect(isResendingHandoff({ id: "h1", status: "failed" }, new Set(["h1"]))).toBe(false);
+    expect(isResendingHandoff({ id: "h2", status: "waiting" }, new Set(["h1"]))).toBe(false);
   });
 });

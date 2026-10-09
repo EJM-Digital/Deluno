@@ -99,11 +99,16 @@ public sealed class SqliteDownloadHealthRepository(
                 : TimeSpan.Zero;
             var counts = DownloadHealthStrikes.Counts(observation.Kind);
             var previousStrikes = continuing ? record!.StrikeCount : 0;
+            var due = counts && continuing && previousStrikes > 0 &&
+                DownloadHealthStrikes.IsDueForStrike(lastStrike, now, window, outageOverlap);
             var strikes = !counts ? 0
                 : !continuing || previousStrikes == 0 ? 1
-                : DownloadHealthStrikes.IsDueForStrike(lastStrike, now, window, outageOverlap) ? previousStrikes + 1
+                : due ? DownloadHealthStrikes.CapAtLimit(previousStrikes + 1, observation.RuleStrikeLimit)
                 : previousStrikes;
-            var struckAt = counts && strikes != previousStrikes || !continuing ? now : lastStrike;
+            // A strike is booked at its scheduled moment, so the spacing stays one "Check every" interval (#1198).
+            var struckAt = due && strikes != previousStrikes
+                ? DownloadHealthStrikes.StrikeLandedAt(lastStrike, now, window, outageOverlap)
+                : counts && strikes != previousStrikes || !continuing ? now : lastStrike;
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),

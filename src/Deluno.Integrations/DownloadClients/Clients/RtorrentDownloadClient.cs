@@ -147,7 +147,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
                 string.Empty, "main",
                 "d.hash=", "d.name=", "d.is_active=", "d.is_hash_checking=", "d.complete=",
                 "d.bytes_done=", "d.size_bytes=", "d.down.rate=", "d.up.rate=", "d.ratio=",
-                "d.message=", "d.directory="
+                "d.message=", "d.directory=", "d.peers_connected="
             ],
             cancellationToken);
 
@@ -200,6 +200,8 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         var ratio = AsLong(Field(row, 9)) is { } scaledRatio ? scaledRatio / 1000d : (double?)null;
         var message = AsString(Field(row, 10));
         var directory = AsString(Field(row, 11));
+        // d.peers_connected counts every connected peer, seeds included (#1198).
+        var peers = (int)Math.Clamp(AsLong(Field(row, 12)) ?? 0, 0, int.MaxValue);
         var progress = sizeBytes <= 0 ? 0 : (bytesDone / (double)sizeBytes * 100);
 
         var nativeStatus = isHashChecking ? "hash_checking"
@@ -213,7 +215,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             DownloadClientHelpers.InferMediaType(client, null),
             DownloadClientHelpers.CleanReleaseTitle(name), name, string.Empty,
             NormalizeStatus(nativeStatus, progress), progress,
-            (downRate / 1_000_000d), 0, sizeBytes, bytesDone, 0, "rTorrent",
+            (downRate / 1_000_000d), 0, sizeBytes, bytesDone, peers, "rTorrent",
             string.IsNullOrWhiteSpace(message) ? null : message,
             capturedUtc, directory,
             Ratio: ratio,
@@ -420,7 +422,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
         if (normalized == "hash_checking") return DownloadQueueStatuses.NotTransferring;
         if (normalized == "error") return DownloadQueueStatuses.Stalled;
-        if ((progress ?? 0) >= 100 || normalized == "complete") return DownloadQueueStatuses.ImportReady;
+        if (Deluno.Platform.Contracts.DownloadHealthStrikes.IsFinishedPercent(progress) || normalized == "complete") return DownloadQueueStatuses.ImportReady;
         if (normalized == "paused") return DownloadQueueStatuses.Paused;
         return DownloadQueueStatuses.Downloading;
     }

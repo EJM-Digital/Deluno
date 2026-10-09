@@ -46,6 +46,23 @@ public sealed class NewConnectionGraceHealthCheckTests
     }
 
     [Fact]
+    public async Task A_usenet_client_with_no_provider_says_so_in_plain_words_not_that_it_is_not_answering()
+    {
+        var client = Client(createdUtc: Now.AddHours(-1), tested: Now.AddMinutes(-1), status: "degraded") with
+        {
+            Name = "SABnzbd",
+            LastHealthMessage = Deluno.Connections.Usenet.UsenetProviderText.NoProvider
+        };
+
+        var outcome = Assert.Single(await RunClientCheckAsync(client));
+
+        Assert.Equal(HealthCheckStatuses.Problem, outcome.Status);
+        Assert.Equal("SABnzbd has no Usenet provider set up.", outcome.Message);
+        Assert.DoesNotContain("not answering", outcome.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Usenet provider", outcome.Fix);
+    }
+
+    [Fact]
     public async Task A_processor_added_seconds_ago_and_not_yet_tested_is_not_reported()
     {
         var connection = new ProcessorConnectionItem("p1", "Weir", "generic-webhook", "http://127.0.0.1:9347/hook", "X-Webhook-Secret", null, true, "unknown", null, null, Now.AddSeconds(-8), Now.AddSeconds(-8));
