@@ -42,7 +42,21 @@ export function dispatchImportEnded(dispatch: DownloadDispatchItem | null | unde
   return Boolean(dispatch) && (dispatchImportFailed(dispatch!) || dispatchWasImported(dispatch!) || Boolean(dispatch!.importCompletedUtc));
 }
 
-export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStanding | null {
+/**
+ * Another copy of the same release for the same title is already in the library: this send was contained (the
+ * processor was handed the other copy, and nothing is owed to this one), so it is not still in progress (#1202).
+ */
+export function dispatchIsExtraCopy(dispatch: DownloadDispatchItem, all: readonly DownloadDispatchItem[]): boolean {
+  if (dispatchWasImported(dispatch) || dispatchImportFailed(dispatch)) return false;
+  const release = lower(dispatch.releaseName);
+  return all.some((other) =>
+    other.id !== dispatch.id
+    && other.entityId === dispatch.entityId
+    && lower(other.releaseName) === release
+    && dispatchWasImported(other));
+}
+
+export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly DownloadDispatchItem[] = []): DispatchStanding | null {
   const status = lower(dispatch.status);
   const grab = lower(dispatch.grabStatus);
   const importStatus = lower(dispatch.importStatus);
@@ -75,6 +89,9 @@ export function dispatchStanding(dispatch: DownloadDispatchItem): DispatchStandi
   }
   if (status === "archived" || status === "removed" || status === "vanished" || status === "cancelled") {
     return { status: "done", pill: { tone: "idle", label: "Removed" }, detail: "Taken out of the download client" };
+  }
+  if (status === "sent" && dispatchIsExtraCopy(dispatch, all)) {
+    return { status: "done", pill: { tone: "idle", label: "Not needed" }, detail: "The same release was already in the library, so this extra copy was not used." };
   }
   if (status === "sent") return { status: "in-progress", pill: { tone: "info", label: "In progress" } };
   if (status === "planned") return { status: "needs-decision", pill: { tone: "warn", label: "Needs a decision" } };

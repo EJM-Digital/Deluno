@@ -236,6 +236,7 @@ public sealed class SqliteProcessorRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+        var before = await GetProcessorConnectionAsync(connection, id, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -257,7 +258,24 @@ public sealed class SqliteProcessorRepository(
             return null;
         }
 
-        return await GetProcessorConnectionAsync(connection, id, cancellationToken);
+        var after = await GetProcessorConnectionAsync(connection, id, cancellationToken);
+        // A processor that starts or stops answering is pushed like any other health change, so the Dashboard, System
+        // and the tray icon move together instead of the tray waiting for the next regular check (#1202).
+        if (realtimeEventPublisher is not null && after is not null
+            && !string.Equals(before?.HealthStatus, after.HealthStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await realtimeEventPublisher.PublishHealthChangedAsync(
+                    $"processor:{after.Id}", after.HealthStatus, after.LastHealthMessage ?? string.Empty, cancellationToken);
+            }
+            catch (Exception)
+            {
+                // The health is saved; the next push or reconnect catches the screens up.
+            }
+        }
+
+        return after;
     }
 
     public async Task<IReadOnlyList<ProcessorPathMappingItem>> ListProcessorPathMappingsAsync(

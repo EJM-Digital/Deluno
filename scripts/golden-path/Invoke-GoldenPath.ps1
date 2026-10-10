@@ -371,11 +371,20 @@ try {
             "$env:APPDATA\qBittorrent\qBittorrent.ini", "$env:LOCALAPPDATA\transmission", "$env:APPDATA\transmission",
             "$env:APPDATA\deluge", "$env:LOCALAPPDATA\sabnzbd", "$env:APPDATA\NZBGet", "$env:ProgramData\NZBGet", "$env:ProgramData\Weir", "$env:LOCALAPPDATA\Weir"
         ) | Where-Object { Test-Path $_ }
+        # Weir's installed version, and the installer the picker ran: the tray logs its hash, since the file is deleted
+        # after the run. Without that line the newest Weir setup left in the temp folder is hashed, if there is one.
+        $weirExe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Weir') -Recurse -Filter 'Weir.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        $weirServer = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Weir') -Recurse -Filter 'WeirServer.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        $weirLog = if (Test-Path $hookLog) { @(Get-Content $hookLog | Where-Object { $_ -match 'Weir: installer .* sha256 [0-9A-Fa-f]{64}' } | Select-Object -Last 1) } else { @() }
+        $weirTemp = Get-ChildItem -Path (Join-Path $env:TEMP 'Deluno-components') -Filter '*Weir*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $weirTempHash = if ($weirTemp) { (Get-FileHash $weirTemp.FullName -Algorithm SHA256).Hash } else { $null }
         $dataTop = if (Test-Path $data) { @(Get-ChildItem $data -Force | Select-Object -ExpandProperty Name) } else { @() }
         [pscustomobject]@{
             Exe = $exe.FullName; FileVersion = $exe.VersionInfo.ProductVersion; Processes = $procs; Http = $http; Body = $body
             Listening = $listen; Hook = $hook; Uninstall = $uninstall; DataRoot = $data; DataTop = $dataTop
             Components = $components; ClientFolders = $clientFolders; ConfigsFound = $configs
+            WeirVersion = $weirExe.VersionInfo.ProductVersion; WeirServerVersion = $weirServer.VersionInfo.ProductVersion
+            WeirInstallerLog = ($weirLog -join ''); WeirTempInstallerHash = $weirTempHash
         }
     } @(7879)
 
@@ -406,6 +415,19 @@ try {
         Add-Result 'Bundled components installed (versions)' 'passed' ($found -join '; ')
     } else {
         Add-Result 'Bundled components installed (versions)' 'manual' 'None installed, as expected after a silent install: Setup.exe and the app take no component choice on the command line, the picker is a first-run dialog. Tick the five clients plus Weir by hand (step 1), then re-run the checks on the VM to read their versions and folders.'
+    }
+    # The run record names Weir: the version the picker installed and the sha256 of the installer it ran (step 1).
+    if ($state.WeirVersion) {
+        $weirHash = if ($state.WeirInstallerLog -match 'sha256 ([0-9A-Fa-f]{64})') { "$($Matches[1].ToUpperInvariant()) (from the tray's install log)" }
+                    elseif ($state.WeirTempInstallerHash) { "$($state.WeirTempInstallerHash) (hashed from the setup left in the VM's temp folder)" }
+                    else { $null }
+        if ($weirHash) {
+            Add-Result 'Weir named in the run record (version and installer sha256)' 'passed' "Weir.exe $($state.WeirVersion), WeirServer.exe $($state.WeirServerVersion); installer sha256 $weirHash."
+        } else {
+            Add-Result 'Weir named in the run record (version and installer sha256)' 'failed' "Weir.exe is $($state.WeirVersion) but neither the install log nor the temp folder names the installer's sha256."
+        }
+    } else {
+        Add-Result 'Weir named in the run record (version and installer sha256)' 'manual' 'Weir is not installed yet (a silent install installs Deluno alone); after the picker has run, re-run the checks to read its version and installer sha256.'
     }
     $firstRun = @($state.Hook | Where-Object { $_ -match 'first run' })
     if ($firstRun.Count -gt 0) {
