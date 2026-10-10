@@ -65,6 +65,10 @@ export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly D
   const refusedByImport = reason.includes("refus") || reason.includes("rejected");
   const removedByImport = reason.includes("removed") || reason.includes("vanished");
   // A failed import wins over a completion time left on the row: only a real, completed import reads Imported (#1179).
+  // A failed send that was dismissed, or settled by something else, is archived: it is closed, not still failed (#1218).
+  if (status === "archived" && (dispatchImportFailed(dispatch) || grab === "failed")) {
+    return { status: "done", pill: { tone: "idle", label: "Closed" }, detail: dispatch.importFailureMessage ?? dispatch.grabMessage ?? "Dismissed after it failed" };
+  }
   if (dispatchImportFailed(dispatch)) {
     if (refusedByImport) {
       return { status: "done", pill: { tone: "warn", label: "Refused" }, detail: dispatch.importFailureMessage ?? "The release was refused" };

@@ -1,4 +1,9 @@
+import { useState } from "react";
 import type { DownloadDispatchItem } from "../../lib/api";
+import { dispatchStanding } from "../../lib/dispatch-final-state";
+import { dismissFailedDispatch } from "../../lib/failed-jobs";
+import { Button } from "../ui/button";
+import { toast } from "../shell/toaster";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../../lib/job-status-constants";
 import { CHOSEN_ON_SEARCH_LABEL, isChosenOnSearch } from "../../lib/dispatch-target";
@@ -18,6 +23,24 @@ export function DownloadDispatchDrawer({
 }) {
   const { preferences } = useDisplayPreferences();
   const nextEligibleUtc = dispatch ? dispatchNextEligibleUtc(dispatch) : null;
+  const [dismissing, setDismissing] = useState(false);
+  // A failed send is counted under Activity's Failed, so its drawer can clear it (#1218). Lifting a block stays apart.
+  const canDismiss = dispatch !== null && dispatchStanding(dispatch)?.status === "failed";
+
+  async function dismissFailed() {
+    if (!dispatch) return;
+    setDismissing(true);
+    try {
+      await dismissFailedDispatch(dispatch.id);
+      toast.success(`${dispatch.releaseName} dismissed`);
+      onClose();
+      onBlocked?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That download could not be dismissed.");
+    } finally {
+      setDismissing(false);
+    }
+  }
 
   return (
     <Drawer
@@ -35,6 +58,11 @@ export function DownloadDispatchDrawer({
           onCancel={onClose}
           extraAction={dispatch ? (
             <>
+              {canDismiss ? (
+                <Button type="button" variant="outline" size="sm" disabled={dismissing} onClick={() => void dismissFailed()} aria-label={`Dismiss the failed download ${dispatch.releaseName}`} title="Stops counting this as failed. Nothing is deleted, and any block on the release stays until you lift it.">
+                  Dismiss
+                </Button>
+              ) : null}
               <RemoveDownloadAction
                 releaseName={dispatch.releaseName}
                 indexerName={dispatch.indexerName}

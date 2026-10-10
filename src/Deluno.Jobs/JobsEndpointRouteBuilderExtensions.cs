@@ -282,6 +282,31 @@ public static class JobsEndpointRouteBuilderExtensions
             return Results.Ok(page);
         });
 
+        // A send that failed is cleared from its drawer (#1218): the same Dismiss a failed job has. The send leaves
+        // Activity's Failed count and its recorded problems stop waiting on anyone. It does not touch the block list:
+        // "Lift the block" is its own action.
+        endpoints.MapPost("/api/download-dispatches/{id}/dismiss", async (
+            string id,
+            IDownloadDispatchesRepository dispatches,
+            Deluno.Jobs.Contracts.IDispatchProblemLog problemLog,
+            CancellationToken cancellationToken) =>
+        {
+            var dispatch = await dispatches.GetDispatchAsync(id, cancellationToken);
+            if (dispatch is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (!DispatchFailure.IsFailed(dispatch))
+            {
+                return Results.Conflict(new { error = "That download has not failed, so there is nothing to dismiss." });
+            }
+
+            await dispatches.ArchiveDispatchAsync(id, "dismissed", cancellationToken);
+            await problemLog.AcknowledgeForDispatchAsync(id, cancellationToken);
+            return Results.Ok(new { id, dismissed = true });
+        });
+
         return endpoints;
     }
 
