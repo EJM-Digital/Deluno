@@ -11,6 +11,7 @@
  * Contracts: GET/POST /api/quality-profiles, PUT/DELETE /api/quality-profiles/{id},
  * POST /api/custom-formats (when a preset needs a format that doesn't exist yet).
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -459,7 +460,7 @@ export function SettingsProfilesPage() {
       const saved = (await response.json().catch(() => null)) as QualityProfileItem | null;
       if (mode.kind === "create" && saved) setMode({ kind: "edit", id: saved.id });
       const settled = saved ? formFrom(saved) : { ...form, name: payload.name };
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitialForm(settled);
       setSaveState("saved");
       setSaveMessage(mode.kind === "create" ? "Profile created" : "Saved just now");

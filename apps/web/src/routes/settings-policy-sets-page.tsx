@@ -8,6 +8,7 @@
  * API contracts are unchanged: POST/PUT/DELETE /api/policy-sets and
  * PUT /api/libraries/{id}/media-plan.
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -405,7 +406,7 @@ export function SettingsPolicySetsPage() {
         qualityProfileId: saved.qualityProfileId ?? form.qualityProfileId,
         customFormatIds: allFormatIds
       };
-      setForm(savedForm);
+      setForm((current) => settleFormAfterSave(current, form, savedForm));
       setInitialForm(savedForm);
       setPreview(null);
       setHistoryReload((current) => current + 1);

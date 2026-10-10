@@ -439,12 +439,20 @@ test.describe("every screen fits three widths", () => {
         await waitForLayoutCalm(page);
         // A title page lays itself out again when its metadata arrives (#1179): measure when two looks agree.
         let previous = "";
-        await expect.poll(async () => {
-          const now = JSON.stringify(await page.evaluate(measure, { checkRepeats: !RECORD_PAGES.has(route), phone: size.width < 768 }));
-          const same = now === previous;
-          previous = now;
-          return same;
-        }, { timeout: 8_000 }).toBe(true);
+        let before = "";
+        try {
+          await expect.poll(async () => {
+            const now = JSON.stringify(await page.evaluate(measure, { checkRepeats: !RECORD_PAGES.has(route), phone: size.width < 768 }));
+            const same = now === previous;
+            before = previous;
+            previous = now;
+            return same;
+          }, { timeout: 8_000 }).toBe(true);
+        } catch (error) {
+          // The page never held still (#1231): say which screen and what kept changing, so a CI log carries it.
+          console.log(`LAYOUT NEVER SETTLED on ${route} at ${size.width}x${size.height}:\n  before: ${before}\n  after:  ${previous}`);
+          throw error;
+        }
         const problems = JSON.parse(previous) as string[];
         // #1211: at a phone width the film's file path and the cast names are read in full, wrapped, never cut with an ellipsis.
         if (size.width < 768 && (route.startsWith("/movies/") || route.startsWith("/tv/"))) {
@@ -468,6 +476,8 @@ test.describe("every screen fits three widths", () => {
         if (problems.length > 0) offenders.push(`${shown}: ${problems.slice(0, 12).join("; ")}`);
       }
 
+      // A CI log carries the offenders even when the job is cancelled before the report uploads (#1231).
+      if (offenders.length > 0) console.log(`LAYOUT OFFENDERS at ${size.width}x${size.height}:\n${offenders.join("\n")}`);
       expect(offenders, offenders.join("\n")).toEqual([]);
     });
   }

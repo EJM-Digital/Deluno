@@ -6,6 +6,7 @@
  * to one reusable title tag. The planner applies these rules before a result
  * can reach a download client.
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { TagPicker, joinTagList, parseTagList } from "../components/app/tag-picker";
@@ -275,7 +276,7 @@ export function SettingsReleaseRulesPage() {
       }
       const saved = await response.json() as ReleaseProfileItem;
       const settled = formFrom(saved);
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitialForm(settled);
       setMode({ kind: "edit", id: saved.id });
       setSaveState("saved");
