@@ -1107,13 +1107,24 @@ public sealed class DownloadClientTelemetryService(
             new DownloadClientActionRequest(clientAction, queueItemId),
             cancellationToken);
 
+        // What the Activity line may claim about the files: only "deleted" when the client (or Deluno) deleted them.
+        var outcome = options.RemoveFromClient
+            ? actionResult.Succeeded && actionResult.FilesNote is null ? RemovalOutcome.Deleted : RemovalOutcome.FilesKept
+            : RemovalOutcome.Deleted;
+
         if (!actionResult.Succeeded)
         {
             // The client answered but no longer holds it (removed by hand, or by an earlier pass): there is
             // nothing left to remove, so the record is closed and the removal carries on instead of failing.
-            if (!actionResult.Refused && dispatch is not null && await ClientAnswersWithoutItemAsync(client, queueItemId, cancellationToken))
+            //
+            // Only while Deluno still has an open record to close. A second removal of an id whose record is
+            // already closed has nothing to do, and says so as a failure instead of "Done" again (#1212).
+            if (!actionResult.Refused && dispatch is not null
+                && (await dispatchesRepository.FindOpenDispatchesByHashAsync(client.Id, queueItemId, cancellationToken)).Count > 0
+                && await ClientAnswersWithoutItemAsync(client, queueItemId, cancellationToken))
             {
                 await NoteRemovedByDelunoAsync(client, queueItemId, cancellationToken);
+                outcome = RemovalOutcome.AlreadyGone;
             }
             else
             {
@@ -1170,8 +1181,12 @@ public sealed class DownloadClientTelemetryService(
         }
 
         var message = fromReason
-            ? BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored)
-            : BuildQueueRemovalMessage(title, client.Name, options.RemoveFromClient, blocklisted, searchStarted);
+            ? BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored, outcome)
+            : BuildQueueRemovalMessage(title, client.Name, options.RemoveFromClient, blocklisted, searchStarted, outcome);
+        if (outcome == RemovalOutcome.FilesKept && actionResult.FilesNote is { Length: > 0 } filesNote)
+        {
+            message = $"{message} {filesNote}";
+        }
         await activityFeedRepository.RecordActivityAsync(
             "download.queue.removed",
             message,
@@ -1210,13 +1225,30 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
+    /// <summary>What a removal did to the download's files, for the Activity line (#1212).</summary>
+    private enum RemovalOutcome
+    {
+        Deleted,
+        FilesKept,
+        AlreadyGone
+    }
+
+    /// <summary>"removed from X and deleted its files", but only as far as that is true.</summary>
+    private static string RemovedFrom(string clientName, RemovalOutcome outcome, string joiner)
+        => outcome switch
+        {
+            RemovalOutcome.AlreadyGone => $"already gone from {clientName}, so nothing was deleted",
+            RemovalOutcome.FilesKept => $"removed from {clientName}{joiner}left its files on disk",
+            _ => $"removed from {clientName}{joiner}deleted its files"
+        };
+
     /// <summary>The Activity line for a removal asked for by flags: it says what was actually done, part by part.</summary>
-    private static string BuildQueueRemovalMessage(string title, string clientName, bool removedFromClient, bool blocklisted, bool searchStarted)
+    private static string BuildQueueRemovalMessage(string title, string clientName, bool removedFromClient, bool blocklisted, bool searchStarted, RemovalOutcome outcome)
     {
         var done = new List<string>
         {
             removedFromClient
-                ? $"removed from {clientName} and deleted its files"
+                ? RemovedFrom(clientName, outcome, " and ")
                 : $"stopped tracking it, and {clientName} still has it, untouched"
         };
         if (blocklisted)
@@ -1232,17 +1264,19 @@ public sealed class DownloadClientTelemetryService(
         return $"An outside program removed \"{title}\" from the Queue: {string.Join(", ", done)}.";
     }
 
-    private static string BuildQueueRemovalMessage(string reason,string title, string clientName, bool blocklisted, bool searchStarted, bool unmonitored)
+    private static string BuildQueueRemovalMessage(string reason, string title, string clientName, bool blocklisted, bool searchStarted, bool unmonitored, RemovalOutcome outcome)
         => reason switch
         {
             QueueRemovalReasons.Failed => searchStarted
-                ? $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, blocklisted the release, and started a new search."
-                : $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, and blocklisted the release.",
+                ? $"You marked \"{title}\" as bad: {RemovedFrom(clientName, outcome, ", ")}, blocklisted the release, and started a new search."
+                : $"You marked \"{title}\" as bad: {RemovedFrom(clientName, outcome, ", ")}, and blocklisted the release.",
             QueueRemovalReasons.Unwanted => unmonitored
-                ? $"You said you don't want \"{title}\" any more: removed from {clientName}, deleted its files, and stopped wanting it."
-                : $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
-            QueueRemovalReasons.GaveUp => $"You gave up on \"{title}\": removed from {clientName} and deleted its files.",
-            QueueRemovalReasons.Reclaim => $"You removed the leftover copy of \"{title}\" from {clientName} and deleted its files. The library file was not touched.",
+                ? $"You said you don't want \"{title}\" any more: {RemovedFrom(clientName, outcome, ", ")}, and stopped wanting it."
+                : $"You said you don't want \"{title}\" any more: {RemovedFrom(clientName, outcome, " and ")}.",
+            QueueRemovalReasons.GaveUp => $"You gave up on \"{title}\": {RemovedFrom(clientName, outcome, " and ")}.",
+            QueueRemovalReasons.Reclaim => outcome == RemovalOutcome.Deleted
+                ? $"You removed the leftover copy of \"{title}\" from {clientName} and deleted its files. The library file was not touched."
+                : $"You removed the leftover copy of \"{title}\": {RemovedFrom(clientName, outcome, " and ")}. The library file was not touched.",
             _ => $"You told Deluno to stop tracking \"{title}\"; {clientName} still has it, untouched."
         };
 
@@ -1370,7 +1404,6 @@ public sealed class DownloadClientTelemetryService(
             // Every open record for this download closes, not only the newest: one release sent twice shares
             // its hash, and the older record left open kept the title "already downloading" (#1190).
             var openDispatches = await dispatchesRepository.FindOpenDispatchesByHashAsync(client.Id, queueItemId, cancellationToken);
-            var dispatch = openDispatches.FirstOrDefault();
             foreach (var open in openDispatches)
             {
                 // Deluno took this download out of the client itself, so its record is closed with it. Left
@@ -1400,22 +1433,27 @@ public sealed class DownloadClientTelemetryService(
                 }
             }
 
-            if (dispatch is not null)
+            // The hand-off for this download closes at the same moment, whatever state it is in (#1216): one
+            // that is still waiting to be sent or with the processor has nothing left to send or wait for, and
+            // one that failed has nothing left to ask. Left open, the waiting-too-long check raised "never picked
+            // up" for a download that was gone, forty minutes later. Found by the download, not by an open send,
+            // so it also closes when an earlier removal already closed the send.
+            var handoff = await processorRepository.FindProcessorHandoffForDownloadAsync(client.Id, queueItemId, cancellationToken);
+            if (handoff is not null
+                && (ProcessorHandoffStatuses.IsWithProcessor(handoff.Status)
+                    || ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage)))
             {
-                var handoff = await processorRepository.FindProcessorHandoffForDownloadAsync(client.Id, queueItemId, cancellationToken);
-                if (handoff is not null && ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
-                {
-                    await processorRepository.UpdateProcessorHandoffAsync(
-                        handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
-                    await activityFeedRepository.RecordActivityAsync(
-                        "processing.dismissed",
-                        $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno removed the download.",
-                        System.Text.Json.JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
-                        null,
-                        "processor-handoff",
-                        handoff.Id,
-                        cancellationToken);
-                }
+                await processorRepository.UpdateProcessorHandoffAsync(
+                    handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null,
+                    ProcessorHandoffStatuses.IsWithProcessor(handoff.Status) ? null : handoff.FailureMessage, cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "processing.dismissed",
+                    $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno removed the download.",
+                    System.Text.Json.JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -317,6 +317,43 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
             }
         }
 
+        // A removal counts only if NZBGet had the job before and no longer has it after (#1212). Its edit commands
+        // answer false for an id they did not match, but that is the client's word again, so its lists are read too.
+        // The first call is the look before, the second the look after. GroupDelete moves a queued job to the
+        // history as "deleted", so after a plain delete the job is checked where it was; a final delete leaves no record.
+        var looks = 0;
+        var wasQueued = false;
+        async Task<ClientHas> Has(bool finalDelete)
+        {
+            try
+            {
+                var queued = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetQueueItem>>>(
+                    http, endpoint, new NzbGetRequest("listgroups", []), cancellationToken);
+                var history = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetHistoryItem>>>(
+                    http, endpoint, new NzbGetRequest("history", []), cancellationToken);
+                if (queued?.Result is null || history?.Result is null)
+                {
+                    return ClientHas.Unknown;
+                }
+
+                var inQueue = queued.Result.Any(item => item.NzbId == id);
+                var inHistory = history.Result.Any(item => item.NzbId == id);
+                looks++;
+                if (looks == 1)
+                {
+                    wasQueued = inQueue;
+                    return inQueue || inHistory ? ClientHas.Yes : ClientHas.No;
+                }
+
+                var stillThere = finalDelete ? inQueue || inHistory : wasQueued ? inQueue : inHistory;
+                return stillThere ? ClientHas.Yes : ClientHas.No;
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                return ClientHas.Unknown;
+            }
+        }
+
         DownloadClientActionResult Done(bool worked, string message, string what)
             => worked
                 ? Sent(client, queueItemId, action, message)
@@ -336,14 +373,20 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
             // NZBGet's history rather than its queue, so when the queue edit
             // removes nothing the history one is tried.
             case DownloadClientActions.Delete:
-                return Done(await Edit("GroupDelete") || await Edit("HistoryDelete"),
-                    "Removed this download from NZBGet, leaving its files.", "remove this download");
+                // GroupDelete moves a queued job to the history as "deleted", so afterwards the job is checked
+                // where it was, not everywhere.
+                return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
+                    () => Has(finalDelete: false),
+                    async () => Done(await Edit("GroupDelete") || await Edit("HistoryDelete"),
+                        "Removed this download from NZBGet, leaving its files.", "remove this download"));
 
             // The same, and the files with it. GroupFinalDelete is the only
             // command that does both; GroupDelete does not.
             case DownloadClientActions.DeleteWithData:
-                return Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
-                    "Removed this download from NZBGet, along with its files.", "remove this download");
+                return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
+                    () => Has(finalDelete: true),
+                    async () => Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
+                        "Removed this download from NZBGet, along with its files.", "remove this download"));
 
             // Two requests, because NZBGet keeps the thing that refuses a
             // release somewhere the first one does not reach. The history entry
