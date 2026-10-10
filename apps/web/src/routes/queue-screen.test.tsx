@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, drawerStatusLabel, isResendingHandoff, itemFailureVisible, QueuePage, resentItemKey, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, drawerStatusLabel, drawerStatusOf, isOldFailureHeld, isOldFindingHidden, isResendingHandoff, oldFailureKey, itemFailureVisible, QueuePage, resentItemKey, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -1241,8 +1241,9 @@ describe("Try again hides the old failure (#1198)", () => {
 
   it("holds the sending-again state until the new status's own data has arrived (#1229)", () => {
     const sent = new Set(["h1", resentItemKey("c1", "q1")]);
-    // The hand-off has moved on but the download still reads the old failure: still sending again.
-    expect(isResendingHandoff({ id: "h1", status: "completed" }, sent, "processingFailed", "c1", "q1")).toBe(true);
+    // The hand-off has moved on but the download still reads the old failure: the header follows the hand-off (#1234), the old failure stays held.
+    expect(isResendingHandoff({ id: "h1", status: "completed" }, sent, "processingFailed", "c1", "q1")).toBe(false);
+    expect(isOldFailureHeld({ id: "h1", status: "completed" }, sent, "processingFailed", "c1", "q1")).toBe(true);
     // The hand-off row is briefly missing from a refresh: still sending again.
     expect(isResendingHandoff(null, sent, "waitingForProcessor", "c1", "q1")).toBe(true);
     expect(isResendingHandoff(null, sent, "processingFailed", "C1", "Q1")).toBe(true);
@@ -1280,5 +1281,50 @@ describe("Health section during a resend (#1204)", () => {
     expect(drawerStatusLabel("processingFailed", true, "Weir")).toBe("Sending to Weir again");
     expect(drawerStatusLabel("processingFailed", true, null)).toBe("Sending to the processor again");
     expect(drawerStatusLabel("processingFailed", false, "Weir")).toMatch(/failed/i);
+  });
+});
+
+describe("Try again, step by step, with the old failure still in the cached data (#1234)", () => {
+  const post = { kind: "post-processing-failed", summary: "Post-processing failed", strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null } as never;
+  const other = { kind: "client-stalled", summary: "Stalled", strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null } as never;
+  // The cached download keeps its old findings for every step: only the hand-off's pushes and the item's status move.
+  const cached = { healthFindings: [post, other] } as unknown as DownloadQueueItem;
+  const sent = new Set(["h1", resentItemKey("c1", "q1"), oldFailureKey("h1", "t0")]);
+
+  function drawer(handoff: { id: string; status: string; updatedUtc: string }, itemStatus: string, tried = true) {
+    const set = tried ? sent : new Set<string>();
+    const sending = isResendingHandoff(handoff, set, itemStatus, "c1", "q1");
+    const held = isOldFailureHeld(handoff, set, itemStatus, "c1", "q1");
+    const shown = drawerStatusOf(itemStatus, held, handoff.status);
+    return {
+      sending,
+      held,
+      header: drawerStatusLabel(shown, sending, "Weir"),
+      findings: visibleFindings(cached, handoff, isOldFindingHidden(handoff, set, itemStatus, "c1", "q1")).map((finding) => finding.kind),
+      failureShown: itemFailureVisible(itemStatus === "processingFailed", held)
+    };
+  }
+
+  it("shows the old failure before Try again", () => {
+    expect(drawer({ id: "h1", status: "failed", updatedUtc: "t0" }, "processingFailed", false)).toMatchObject({ sending: false, held: false, header: "Processing failed", findings: ["post-processing-failed", "client-stalled"] });
+  });
+
+  it("hides it at every step after, and the header follows the hand-off's own state", () => {
+    // Try again pressed: the row in the cache is still the old failed one.
+    expect(drawer({ id: "h1", status: "failed", updatedUtc: "t0" }, "processingFailed")).toMatchObject({ sending: true, held: true, header: "Sending to Weir again", findings: ["client-stalled"], failureShown: false });
+    // Sending again.
+    expect(drawer({ id: "h1", status: "waiting", updatedUtc: "t1" }, "processingFailed")).toMatchObject({ sending: true, held: true, header: "Sending to Weir again", findings: ["client-stalled"] });
+    expect(drawer({ id: "h1", status: "submitted", updatedUtc: "t2" }, "waitingForProcessor")).toMatchObject({ sending: true, header: "Sending to Weir again", findings: ["client-stalled"] });
+    // Waiting for the processor: the header moves on in the same push, and the old finding is still not shown.
+    expect(drawer({ id: "h1", status: "accepted", updatedUtc: "t3" }, "waitingForProcessor")).toMatchObject({ sending: false, held: true, header: "Waiting for processor", findings: ["client-stalled"], failureShown: false });
+    // The cached download still reads the old status while the hand-off is working: the hand-off's state is read.
+    expect(drawer({ id: "h1", status: "accepted", updatedUtc: "t3" }, "processingFailed")).toMatchObject({ sending: false, held: true, header: "Waiting for processor", findings: ["client-stalled"] });
+    expect(drawer({ id: "h1", status: "started", updatedUtc: "t4" }, "processingFailed")).toMatchObject({ sending: false, held: true, header: "Processing", findings: ["client-stalled"] });
+  });
+
+  it("ends with the outcome: a pass shows no old failure, a new failure shows at once", () => {
+    expect(drawer({ id: "h1", status: "completed", updatedUtc: "t5" }, "processingFailed")).toMatchObject({ sending: false, held: true, header: "Processed", findings: ["client-stalled"] });
+    expect(drawer({ id: "h1", status: "completed", updatedUtc: "t5" }, "imported")).toMatchObject({ sending: false, held: false, header: "Imported", findings: ["client-stalled"], failureShown: true });
+    expect(drawer({ id: "h1", status: "failed", updatedUtc: "t6" }, "processingFailed")).toMatchObject({ sending: false, held: false, header: "Processing failed", findings: ["post-processing-failed", "client-stalled"], failureShown: false });
   });
 });
