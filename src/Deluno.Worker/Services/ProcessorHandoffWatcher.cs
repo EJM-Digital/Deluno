@@ -628,6 +628,23 @@ public sealed class ProcessorHandoffWatcher(
                 // (#561). The processor's own "finished at" is the clock:
                 // Deluno's answering streak restarts whenever the processor
                 // does, which would put the limit off every time.
+                // A release sent again after "I don't want it" may reach a processor that never started the first send:
+                // it cleaned the file once, for that older send, and answers this one "completed" with no output to
+                // name (#1232). Its cleaned file is this download's, so it is matched at once rather than after the
+                // limit, and the older send's own late report then finds nothing left to do.
+                if (string.IsNullOrWhiteSpace(answer.OutputPath)
+                    && await processorRepository.ReplacedAnEarlierSendAsync(handoff.LibraryId, handoff.Id, cancellationToken)
+                    && await TryImportOutputAsync(
+                        handoff,
+                        library,
+                        connection,
+                        null,
+                        cancellationToken,
+                        $"{connection.Name} had already finished {handoff.ReleaseName} for the send Deluno replaced when the release was sent again, so Deluno matched that cleaned file to the new send and queued it for import."))
+                {
+                    return;
+                }
+
                 var finishedFor = now - (answer.LastChangedUtc ?? answeringSince ?? handoff.UpdatedUtc);
                 if (finishedFor >= ResolveAfter && await ResolveStuckAsync(handoff, library, connection, answer, now, cancellationToken))
                 {

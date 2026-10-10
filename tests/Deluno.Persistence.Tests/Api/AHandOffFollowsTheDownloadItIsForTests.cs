@@ -325,7 +325,9 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
 
         // The processor, still holding the first id, reports against it, a failure and then a completion.
         var lateFailure = await ReportAsync(app, scene, first.Id, "failed", message: "The download was gone.");
-        var lateCompletion = await ReportAsync(app, scene, first.Id, "completed", outputPath: Path.Combine(scene.Output, Release));
+        // A completion that carries the output is adopted by the live send (#1232); one that names nothing for it to use
+        // changes nothing here either.
+        var lateCompletion = await ReportAsync(app, scene, first.Id, "started");
 
         Assert.Equal(HttpStatusCode.Accepted, lateFailure.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, lateCompletion.StatusCode);
@@ -1302,7 +1304,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
     /// A stand-in for an interface that answers only the calls a test cares
     /// about. Anything else is a mistake in the test and throws.
     /// </summary>
-    private class Stub : DispatchProxy
+    internal class Stub : DispatchProxy
     {
         public Func<string, object?[], object?> Answer { get; set; } = (name, _) => throw new NotSupportedException(name);
 
