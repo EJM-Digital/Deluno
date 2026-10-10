@@ -14,6 +14,13 @@ public interface IDownloadHealthRepository
     /// ends. A download that is not listed at all has left the client, or the
     /// client did not answer, so its records are left alone (#560).</para>
     ///
+    /// <para>When <paramref name="everythingTheClientHolds"/> is given, the client did
+    /// answer and this is the whole of what it holds, queue and history alike (#1223).
+    /// A download it does not hold is gone: removed by Deluno, by a person, or by the
+    /// client's own clean-up. Its records close at once and stop counting. Null means
+    /// the client may not have answered, so a briefly unreachable client never reads
+    /// as every download gone.</para>
+    ///
     /// <para><paramref name="defaultStrikeWindow"/> paces a finding outside the
     /// rule engine (#905); a rule-engine observation uses its own
     /// <see cref="DownloadHealthObservation.RuleTimerMinutes"/> instead.
@@ -28,7 +35,8 @@ public interface IDownloadHealthRepository
         IReadOnlyList<DownloadHealthObservation> observations,
         TimeSpan defaultStrikeWindow,
         TimeSpan strikeInactivityWindow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? everythingTheClientHolds = null);
 
     Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(
         int take,

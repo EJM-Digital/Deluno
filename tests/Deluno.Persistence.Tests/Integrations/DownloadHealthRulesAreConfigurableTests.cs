@@ -93,6 +93,30 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
     }
 
+    /// <summary>#1223: the evidence counted "1 peers".</summary>
+    [Theory]
+    [InlineData(1, "1 peer at this check")]
+    [InlineData(2, "2 peers at this check")]
+    public void The_peers_evidence_uses_the_right_plural(int peers, string expected)
+    {
+        var rules = new[] { LowPeersRule(minPeers: 3, timerMinutes: 30) };
+        var finding = Assert.Single(Evaluate(CreateItem(peers: peers, addedUtc: CapturedUtc.AddMinutes(-31)), rules));
+
+        Assert.StartsWith(expected, finding.Evidence);
+    }
+
+    [Fact]
+    public void The_no_peers_evidence_after_one_minute_says_minute()
+    {
+        var item = CreateItem(peers: 0, addedUtc: CapturedUtc.AddMinutes(-1)) with { Progress = 0 };
+        var findings = Evaluate(item, new[] { NoProgressRule(enabled: true) with { TimerMinutes = 1 } });
+
+        foreach (var finding in findings)
+        {
+            Assert.DoesNotContain("1 minutes", finding.Evidence);
+        }
+    }
+
     [Fact]
     public void Minimum_peers_rule_leaves_a_well_seeded_download_alone()
     {
