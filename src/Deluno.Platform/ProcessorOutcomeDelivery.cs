@@ -315,19 +315,23 @@ public static class ProcessorOutcomeDelivery
                 $"{record.ReleaseName} was sent to {record.ProcessorName} again after this send, so Deluno left the report to the newer send, which is the one that is handled.");
         }
 
-        var said = record.Outcome == ProcessorOutcomeRecord.Imported
+        var imported = record.Outcome == ProcessorOutcomeRecord.Imported;
+        var said = imported
             ? $"Deluno told {record.ProcessorName} it has {record.ReleaseName}"
-                + (string.IsNullOrWhiteSpace(record.Reason) ? "" : $" ({record.Reason})")
-            : $"Deluno told {record.ProcessorName} it will not import {record.ReleaseName}: {record.Reason}";
+                + (string.IsNullOrWhiteSpace(record.Reason) ? "" : $" ({record.Reason.TrimEnd().TrimEnd('.')})")
+            : $"Deluno told {record.ProcessorName} it will not import {record.ReleaseName}: {record.Reason?.TrimEnd().TrimEnd('.')}";
         var tries = record.Attempts > 1 ? $" on attempt {record.Attempts}" : "";
+        // What the processor says back can carry its stored note from another send of the same release (#1232).
+        // One hand-off's line only repeats what agrees with its own outcome.
+        var theirs = OwnWords(record.ProcessorSaid, imported);
         return record.Delivery switch
         {
             ProcessorOutcomeDeliveries.Delivered => (
                 "processing.outcome-reported",
-                $"{said}{tries}. {(record.Released ? "It released its copy." : record.ProcessorSaid ?? "It kept its copy.")}".TrimEnd()),
+                $"{said}{tries}. {(record.Released ? "It released its copy." : theirs ?? "It kept its copy.")}".TrimEnd()),
             ProcessorOutcomeDeliveries.Settled => (
                 "processing.outcome-kept",
-                $"{record.ProcessorName} kept its earlier answer about {record.ReleaseName}, so Deluno stopped telling it. {record.ProcessorSaid}".TrimEnd()),
+                $"{record.ProcessorName} kept its earlier answer about {record.ReleaseName}, so Deluno stopped telling it. {theirs}".TrimEnd()),
             ProcessorOutcomeDeliveries.Pending => (
                 "processing.outcome-delayed",
                 $"Deluno could not tell {record.ProcessorName} what became of {record.ReleaseName} yet, and will keep trying. {record.ProcessorSaid}".TrimEnd()),
@@ -335,5 +339,22 @@ public static class ProcessorOutcomeDelivery
                 "processing.outcome-not-reported",
                 $"Deluno could not tell {record.ProcessorName} what became of {record.ReleaseName}. {record.ProcessorSaid}".TrimEnd())
         };
+    }
+
+    /// <summary>
+    /// The processor's reply with any sentence that contradicts this outcome left out: a reply to "it has" that also
+    /// says "will not import", or a reply to "will not import" that also says it was imported, is the processor
+    /// repeating its note from another send of the release (#1232).
+    /// </summary>
+    internal static string? OwnWords(string? said, bool imported)
+    {
+        if (string.IsNullOrWhiteSpace(said)) return said;
+        var sentences = System.Text.RegularExpressions.Regex.Split(said.Trim(), @"(?<=[.!?])\s+")
+            .Where(sentence => !string.IsNullOrWhiteSpace(sentence))
+            .Where(sentence => imported
+                ? !System.Text.RegularExpressions.Regex.IsMatch(sentence, @"will not (be )?import|not imported|did not import", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : !System.Text.RegularExpressions.Regex.IsMatch(sentence, @"(?<!not )(?<!not be )imported (the|this|it)|has imported", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            .ToArray();
+        return sentences.Length == 0 ? null : string.Join(" ", sentences);
     }
 }
