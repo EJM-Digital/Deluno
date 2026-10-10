@@ -72,6 +72,54 @@ public sealed class ProcessorOutcomeReporter(
     }
 
     /// <summary>
+    /// A file imported from a processor's output settles the hand-off that is waiting for that output (#1226).
+    ///
+    /// <para>The import carries the hand-off id it was queued under, but a release sent again to the same client gives
+    /// its source path a new id while the processor, the report and the output watcher can still name the old one.
+    /// What ties an import to its hand-off is the source path the processor was given, so the hand-off that holds it
+    /// now is found by that: still waiting for a report, or ended without one (never picked up), it is complete,
+    /// with the output and the import that used it. One that already ended another way is left alone.</para>
+    /// </summary>
+    /// <returns>The hand-off now holding this source path, whatever became of it; null when there is none.</returns>
+    public async Task<ProcessorHandoffItem?> SettleFromImportAsync(
+        string libraryId,
+        string? processedFromPath,
+        string outputPath,
+        string jobId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(libraryId) || string.IsNullOrWhiteSpace(processedFromPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var live = await processorRepository.FindProcessorHandoffAsync(libraryId, null, processedFromPath, cancellationToken);
+            if (live is null || !ProcessorHandoffStatuses.AcceptingLateOutput.Contains(live.Status, StringComparer.OrdinalIgnoreCase))
+            {
+                return live;
+            }
+
+            var settled = await processorRepository.UpdateProcessorHandoffAsync(live.Id, ProcessorHandoffStatuses.Completed, outputPath, jobId, null, cancellationToken);
+            await activityFeed.RecordActivityAsync(
+                "processing.handoff.settled-by-import",
+                $"{live.ReleaseName} was imported from {(string.IsNullOrWhiteSpace(live.ProcessorName) ? "the processor" : live.ProcessorName)}'s cleaned copy, so Deluno closed this hand-off as complete.",
+                System.Text.Json.JsonSerializer.Serialize(new { HandoffId = live.Id, live.LibraryId, live.ReleaseName, PreviousStatus = live.Status, OutputPath = outputPath, JobId = jobId }),
+                null,
+                "processor-handoff",
+                live.Id,
+                cancellationToken);
+            return settled ?? live;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not settle the hand-off for an imported file at {OutputPath}.", outputPath);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Says again every outcome still owed whose next attempt is due (#580).
     ///
     /// <para>One failure does not stop the rest: each report is its own

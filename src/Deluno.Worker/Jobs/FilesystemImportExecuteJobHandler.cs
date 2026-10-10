@@ -72,12 +72,19 @@ public sealed class FilesystemImportExecuteJobHandler(
 
         if (payload.HandoffId is { Length: > 0 } imported && processorOutcomes is not null)
         {
-            await processorOutcomes.ReportAsync(
-                imported,
-                ProcessorHandoffOutcome.Imported,
-                result.Response?.Preview.DestinationPath,
-                DescribeSkippedFiles(result.Response?.SkippedFiles),
-                cancellationToken);
+            // The hand-off holding the processor's source path now settles from this import, whichever id the job
+            // was queued under: a release sent again to the same client has a new id, and the processor answers
+            // for it, but the file that was imported is the one both sends were about (#1226).
+            var holder = payload.Preview.LibraryId is { Length: > 0 } libraryId
+                ? await processorOutcomes.SettleFromImportAsync(libraryId, payload.ProcessedFromPath, payload.Preview.SourcePath, job.Id, cancellationToken)
+                : null;
+            var destination = result.Response?.Preview.DestinationPath;
+            var skipped = DescribeSkippedFiles(result.Response?.SkippedFiles);
+            await processorOutcomes.ReportAsync(imported, ProcessorHandoffOutcome.Imported, destination, skipped, cancellationToken);
+            if (holder is { Status: ProcessorHandoffStatuses.Completed } && !string.Equals(holder.Id, imported, StringComparison.OrdinalIgnoreCase))
+            {
+                await processorOutcomes.ReportAsync(holder.Id, ProcessorHandoffOutcome.Imported, destination, skipped, cancellationToken);
+            }
         }
 
         return result.Response?.Message ?? "Import completed.";
