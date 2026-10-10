@@ -466,6 +466,101 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         }
     }
 
+    /// <summary>
+    /// #1240: moves a torrent to a keep-seeding label with the Label plugin's <c>label.set_torrent</c>, and nothing
+    /// else. Deluno never adds the label (a person creates it in Deluge), and with the Label plugin off it says so
+    /// rather than guessing. Deluge copies a label's own "move completed to" onto a torrent when the label is set; a
+    /// keep-seeding label should not have one.
+    /// </summary>
+    public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        var action = DownloadClientActions.SetCategory;
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        var label = category.Trim().ToLowerInvariant();
+        var http = CreateHttp();
+        await LoginAsync(http, baseUri, client, cancellationToken);
+        var json = new Uri(baseUri, "json");
+
+        var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, json, new DelugeRequest("label.get_labels", [], 30), cancellationToken);
+        if (labels?.Error is not null || labels?.Result is null)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                "Deluge's Label plugin is off, so Deluno cannot move this download to a label. Turn on the Label plugin in Deluge, Preferences, Plugins.");
+        }
+
+        if (!labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase))
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                $"Deluge has no label named {label}. Create it in Deluge first; Deluno does not create labels.");
+        }
+
+        return await ClientCategoryMove.RunAsync(
+            client, queueItemId, label, "Deluge",
+            async () =>
+            {
+                var status = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(
+                    http, json, new DelugeRequest("core.get_torrent_status", [queueItemId, new[] { "label" }], 31), cancellationToken);
+                if (status is null || status.Error is not null)
+                {
+                    return new ClientCategoryReading(ClientHas.Unknown, null);
+                }
+
+                var result = status.Result;
+                if (result.ValueKind != JsonValueKind.Object || !result.EnumerateObject().Any())
+                {
+                    return new ClientCategoryReading(ClientHas.No, null);
+                }
+
+                var reported = result.TryGetProperty("label", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                return new ClientCategoryReading(ClientHas.Yes, reported);
+            },
+            async _ =>
+            {
+                var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(
+                    http, json, new DelugeRequest("label.set_torrent", [queueItemId, label], 32), cancellationToken);
+                return response?.Error is { } rejected
+                    ? DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                        string.IsNullOrWhiteSpace(rejected.Message) ? "Deluge refused to set the label." : $"Deluge refused to set the label: {rejected.Message}")
+                    : DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Deluge action sent.");
+            });
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var label = category.Trim().ToLowerInvariant();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (label.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Configuration,
+                label.Length == 0 ? "Enter a category before checking it." : "Add the Deluge address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var http = CreateHttp();
+            await LoginAsync(http, baseUri, client, cancellationToken);
+            var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, new Uri(baseUri, "json"), new DelugeRequest("label.get_labels", [], 33), cancellationToken);
+            if (labels?.Error is not null || labels?.Result is null)
+            {
+                return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Unsupported,
+                    "Deluge's Label plugin is off, so Deluno cannot keep a download seeding under a label. Turn on the Label plugin in Deluge, Preferences, Plugins.", Supported: false, Found: false);
+            }
+
+            return labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase)
+                ? new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Ready, $"Deluge has a label named {label}.", Supported: true, Found: true)
+                : new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Missing,
+                    $"Deluge has no label named {label}. Create it in Deluge first; Deluno does not create labels.", Supported: true, Found: false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException)
+        {
+            return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not read Deluge's labels: {ex.Message}", Supported: true, Found: false);
+        }
+    }
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
         // Deluge's own "Paused" state is a person stopping the torrent by
         // hand, distinct from being held back behind others in the queue

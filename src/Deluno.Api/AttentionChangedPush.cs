@@ -27,6 +27,7 @@ public static class AttentionChangedPush
         (Route(@"^/api/download-clients/orphans/"), "orphans"),
         (Route(@"^/api/download-clients/[^/]+/queue/[^/]+/(remove|health/)"), "client"),
         (Route(@"^/api/download-health/ignore-list"), "client"),
+        (Route(@"^/api/download-health/keep-seeding/problems/"), "health"),
         (Route(@"^/api/connections/[^/]+/[^/]+/version/dismiss$"), "update"),
         (Route(@"^/api/system/health/"), "health"),
         (Route(@"^/api/system/component-recovery/"), "health")

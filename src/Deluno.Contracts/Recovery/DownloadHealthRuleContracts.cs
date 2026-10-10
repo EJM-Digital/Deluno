@@ -227,7 +227,16 @@ public sealed record DownloadHealthRule(
     /// documented before this option existed. Set only when
     /// <see cref="ResetStrikesOnProgress"/> is true; ignored otherwise.
     /// </summary>
-    long? ResetStrikesMinimumProgressBytes = null)
+    long? ResetStrikesMinimumProgressBytes = null,
+    /// <summary>
+    /// #1240: what this rule does to a torrent from a private tracker, or one grouped with a seeding tag, once its
+    /// strikes reach the limit. <see cref="DownloadHealthPrivateActions.Remove"/> (the default, and the value of every
+    /// rule saved before this existed) acts as the rule's action says; <see cref="DownloadHealthPrivateActions.MoveAndReplace"/>
+    /// moves it to the keep-seeding category instead and looks for another copy. A public torrent is never moved.
+    /// </summary>
+    string PrivateAction = DownloadHealthPrivateActions.Remove,
+    /// <summary>#1240: whether a move also blocks that release for the title, so the search does not pick it again. Read only with a move.</summary>
+    bool BlocklistWhenMoved = true)
 {
     public TimeSpan Timer => TimeSpan.FromMinutes(Math.Clamp(TimerMinutes, 1, 1440));
 
@@ -331,6 +340,29 @@ public static class DownloadHealthRuleValidator
         if (candidate.ResetStrikesMinimumProgressBytes is { } resetMinimumBytes && resetMinimumBytes < 0)
         {
             return "The minimum progress amount cannot be negative.";
+        }
+
+        if (!DownloadHealthPrivateActions.IsKnown(candidate.PrivateAction))
+        {
+            return "Choose whether a private tracker's torrent is removed or moved to keep seeding.";
+        }
+
+        if (DownloadHealthPrivateActions.Moves(candidate.PrivateAction))
+        {
+            if (!string.Equals(candidate.ActionPreset, DownloadHealthActionPresets.Replace, StringComparison.OrdinalIgnoreCase))
+            {
+                return "Moving a torrent to keep seeding replaces removing it, so this rule's action must be Replace.";
+            }
+
+            if (string.Equals(candidate.AppliesTo, DownloadHealthAppliesTo.Usenet, StringComparison.OrdinalIgnoreCase))
+            {
+                return "Only torrents can keep seeding, so this rule must cover torrents.";
+            }
+
+            if (string.Equals(candidate.Kind, DownloadHealthRuleKinds.DangerousFile, StringComparison.OrdinalIgnoreCase))
+            {
+                return "A dangerous or junk file is always removed and deleted, so this rule cannot keep it seeding.";
+            }
         }
 
         var conflict = existing.FirstOrDefault(candidate.Overlaps);

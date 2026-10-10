@@ -28,6 +28,8 @@ export const automationNavItems = [
   // #905: what counts as a stuck download and what happens once it does, one
   // rule at a time - replaces the flat toggles that used to sit above.
   { to: "/search-cycles/download-health", label: "Download Health", end: false },
+  // #1240: where a struck private-tracker torrent goes to keep seeding instead of being deleted.
+  { to: "/search-cycles/keep-seeding", label: "Keep Seeding", end: false },
   // Decisions 1 and 2 made refusals permanent, which is only safe because they
   // are visible and reversible. This tab is that.
   { to: "/search-cycles/blocklist", label: "Blocklist", end: false },

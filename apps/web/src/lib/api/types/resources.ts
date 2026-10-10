@@ -1387,6 +1387,72 @@ export interface DownloadHealthRule {
   skipWhileAlternateSpeedLimitOn: boolean;
   /** #951: minimum byte gain, at least, for a gain to reset this rule's strikes. Null/0 means any gain resets, as before this option existed. */
   resetStrikesMinimumProgressBytes: number | null;
+  /** #1240: what the rule does to a private (or tagged) torrent at its count. "remove" is every rule's value until a person changes it. */
+  privateAction: "remove" | "move-and-replace" | string;
+  /** #1240: with a move, whether the release is also blocked for the title so the search does not pick it again. */
+  blocklistWhenMoved: boolean;
+}
+
+/** One download client on the Keep seeding screen (#1240). */
+export interface KeepSeedingClient {
+  clientId: string;
+  name: string;
+  protocol: string;
+  canKeepSeeding: boolean;
+  reason: string | null;
+  category: string | null;
+}
+
+/** One torrent site on the Keep seeding screen (#1240). */
+export interface KeepSeedingIndexer {
+  indexerId: string;
+  name: string;
+  /** What is known about the site: private, semi-private, public or unknown. */
+  privacy: "private" | "semi-private" | "public" | "unknown" | string;
+  /** The person's own answer; null follows what is known. */
+  privateOverride: boolean | null;
+  /** What Deluno treats the site as, after the override. */
+  isPrivate: boolean;
+  tags: string[];
+  category: string | null;
+}
+
+export interface KeepSeedingTagCategory {
+  tag: string;
+  category: string;
+}
+
+/** A struck torrent Deluno meant to keep seeding and could not (#1240). */
+export interface KeepSeedingProblem {
+  key: string;
+  clientId: string;
+  clientName: string;
+  itemId: string;
+  releaseName: string;
+  kind: "refused" | "needs-category" | string;
+  message: string;
+  category: string | null;
+  firstSeenUtc: string;
+  lastTriedUtc: string;
+  attempts: number;
+}
+
+export interface KeepSeedingView {
+  clients: KeepSeedingClient[];
+  indexers: KeepSeedingIndexer[];
+  tagCategories: KeepSeedingTagCategory[];
+  problems: KeepSeedingProblem[];
+}
+
+/** What a client says about a category before it is used (#1240). */
+export interface KeepSeedingCategoryCheck {
+  clientId: string;
+  clientName: string;
+  category: string;
+  status: "ready" | "missing" | "unsupported" | "unreachable" | "configuration" | string;
+  message: string;
+  supported: boolean;
+  found: boolean;
 }
 
 /** One entry exempting a download from every health rule (#817). */
