@@ -175,7 +175,9 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 TooSlowMaxTotalMinutes: request.TooSlowMaxTotalMinutes,
                 IgnoreAboveSizeBytes: request.IgnoreAboveSizeBytes,
                 SkipWhileAlternateSpeedLimitOn: request.SkipWhileAlternateSpeedLimitOn,
-                ResetStrikesMinimumProgressBytes: request.ResetStrikesMinimumProgressBytes);
+                ResetStrikesMinimumProgressBytes: request.ResetStrikesMinimumProgressBytes,
+                PrivateAction: request.PrivateAction ?? DownloadHealthPrivateActions.Remove,
+                BlocklistWhenMoved: request.BlocklistWhenMoved);
 
             var legacy = await settingsRepository.GetAsync(cancellationToken);
             var (rules, error) = await platformRepository.SaveDownloadHealthRuleAsync(candidate, legacy, cancellationToken);
@@ -691,7 +693,10 @@ public sealed record SaveDownloadHealthRuleRequest(
     int? TooSlowMaxTotalMinutes = null,
     long? IgnoreAboveSizeBytes = null,
     bool SkipWhileAlternateSpeedLimitOn = false,
-    long? ResetStrikesMinimumProgressBytes = null);
+    long? ResetStrikesMinimumProgressBytes = null,
+    // #1240: "remove" (the default) or "move-and-replace"; a request that does not send it keeps the old behaviour.
+    string? PrivateAction = null,
+    bool BlocklistWhenMoved = true);
 
 public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Hash,

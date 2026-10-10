@@ -56,6 +56,23 @@ public abstract class DownloadClientBase : IDownloadClient
             Supported: false,
             Found: false));
 
+    /// <summary>#1240: a client that can move a torrent to another category or label overrides this; Usenet clients cannot.</summary>
+    public virtual Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        string category,
+        string? currentCategory,
+        CancellationToken cancellationToken)
+        => Task.FromResult(DownloadClientHelpers.Unsupported(client, queueItemId, DownloadClientActions.SetCategory, client.Name));
+
+    public virtual Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken)
+        => Task.FromResult(new DownloadClientCategoryCheckResult(
+            client.Id, client.Name, category, DownloadClientCategoryStatuses.Unsupported,
+            $"{client.Name} is a Usenet client, and only a torrent can keep seeding.", Supported: false, Found: false));
+
     /// <summary>Not supported by default (#816); a client that can list its files overrides this.</summary>
     public virtual Task<IReadOnlyList<string>?> GetFilesAsync(
         DownloadClientItem client,

@@ -18,6 +18,8 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IUnifiedExclusionRepository, SqliteUnifiedExclusionRepository>();
         services.AddSingleton<IRecycleBinService, RecycleBinService>();
         services.AddSingleton<IDownloadHealthRepository, SqliteDownloadHealthRepository>();
+        // #1240: what a person chose for keeping a struck private torrent seeding, and the moves that did not work.
+        services.AddSingleton<IKeepSeedingStore, SqliteKeepSeedingStore>();
         // #901: shared by every judge that would otherwise strike, blocklist,
         // clean up, escalate a backoff or search again, so an internet outage
         // is never mistaken for a bad release.

@@ -912,6 +912,134 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     internal static int EtaSeconds(long? eta)
         => eta is null or <= 0 or >= NoEstimateSeconds ? 0 : (int)Math.Min(eta.Value, int.MaxValue);
 
+    /// <summary>
+    /// #1240: moves a torrent to the keep-seeding category with <c>setCategory</c>, and nothing else. A torrent that
+    /// is on Automatic Torrent Management is taken off it first, because with it on qBittorrent ties the folder to the
+    /// category and a category change can relocate the data; a torrent already on manual management is not touched.
+    /// qBittorrent refuses a category it does not have (409), and Deluno never creates one.
+    /// </summary>
+    public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        var action = DownloadClientActions.SetCategory;
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        using var handler = this.handlerFactory();
+        using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
+        await AuthenticateAsync(http, client, cancellationToken);
+
+        async Task<(ClientCategoryReading Reading, bool AutoManaged)> ReadAsync()
+        {
+            using var response = await http.GetAsync($"api/v2/torrents/info?hashes={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (new ClientCategoryReading(ClientHas.Unknown, null), false);
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return (new ClientCategoryReading(ClientHas.Unknown, null), false);
+            }
+
+            var torrent = document.RootElement.EnumerateArray().FirstOrDefault();
+            if (torrent.ValueKind != JsonValueKind.Object)
+            {
+                return (new ClientCategoryReading(ClientHas.No, null), false);
+            }
+
+            var reported = torrent.TryGetProperty("category", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            var auto = torrent.TryGetProperty("auto_tmm", out var autoValue) && autoValue.ValueKind == JsonValueKind.True;
+            return (new ClientCategoryReading(ClientHas.Yes, reported), auto);
+        }
+
+        var autoManaged = false;
+        return await ClientCategoryMove.RunAsync(
+            client, queueItemId, category, "qBittorrent",
+            async () =>
+            {
+                var (reading, auto) = await ReadAsync();
+                autoManaged = auto;
+                return reading;
+            },
+            async _ =>
+            {
+                if (autoManaged)
+                {
+                    using var off = await http.PostAsync(
+                        "api/v2/torrents/setAutoManagement",
+                        new FormUrlEncodedContent([new("hashes", queueItemId), new("enable", "false")]),
+                        cancellationToken);
+                    if (!off.IsSuccessStatusCode)
+                    {
+                        return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                            $"qBittorrent would not switch off Automatic Torrent Management ({(int)off.StatusCode}), so Deluno did not change the category: it could have moved the files.",
+                            off.StatusCode);
+                    }
+                }
+
+                using var response = await http.PostAsync(
+                    "api/v2/torrents/setCategory",
+                    new FormUrlEncodedContent([new("hashes", queueItemId), new("category", category)]),
+                    cancellationToken);
+                if (response.StatusCode == HttpStatusCode.Conflict)
+                {
+                    return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                        $"qBittorrent does not have a category named {category}. Create it in qBittorrent first; Deluno does not create categories.",
+                        response.StatusCode);
+                }
+
+                return response.IsSuccessStatusCode
+                    ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
+                    : DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"qBittorrent returned {(int)response.StatusCode} when asked to set the category.", response.StatusCode);
+            });
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the qBittorrent address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            using var handler = this.handlerFactory();
+            using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
+            await AuthenticateAsync(http, client, cancellationToken);
+            using var response = await http.GetAsync("api/v2/torrents/categories", cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unsupported,
+                    "This qBittorrent does not list its categories, so Deluno cannot check this one. It will still try the move.", Supported: false, Found: false);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                    $"qBittorrent returned {(int)response.StatusCode} while checking its categories.", Supported: true, Found: false);
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var found = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.EnumerateObject().Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            return found
+                ? new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                    $"qBittorrent has a category named {name}.", Supported: true, Found: true)
+                : new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Missing,
+                    $"qBittorrent does not have a category named {name}. Create it in qBittorrent first; Deluno does not create categories.", Supported: true, Found: false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach qBittorrent: {exception.Message}", Supported: true, Found: false);
+        }
+    }
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;

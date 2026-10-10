@@ -51,6 +51,13 @@ public static class DownloadClientActions
     /// <summary>qBittorrent only: bypass its own seed/ratio thresholds and force the transfer to start now.</summary>
     public const string ForceStart = "force-start";
 
+    /// <summary>
+    /// #1240: put a torrent in another category or label and change nothing else - it keeps running, keeps its
+    /// files where they are and is never paused or removed. Torrent clients only. Not routed through
+    /// <c>ExecuteActionAsync</c> because it carries a category; see <see cref="IDownloadClient.SetCategoryAsync"/>.
+    /// </summary>
+    public const string SetCategory = "set-category";
+
     private static readonly HashSet<string> QueuePriorityOrForceStartActions = new(StringComparer.Ordinal)
     {
         MoveToTop, MoveUp, MoveDown, MoveToBottom, ForceStart

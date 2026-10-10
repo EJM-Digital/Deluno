@@ -316,6 +316,72 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         }
     }
 
+    /// <summary>
+    /// #1240: sets the torrent's label with the WebUI's <c>setprops</c> (the call Deluno already uses to label a new
+    /// grab), and nothing else. uTorrent has no label list Deluno can read, so a label is simply set; the list is read
+    /// back afterwards to see it took.
+    /// </summary>
+    public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        var action = DownloadClientActions.SetCategory;
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(8));
+        var token = await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
+        var label = category.Trim();
+        return await ClientCategoryMove.RunAsync(
+            client, queueItemId, label, "uTorrent",
+            async () =>
+            {
+                var payload = await http.GetFromJsonAsync<UTorrentListResponse>($"gui/?token={Uri.EscapeDataString(token)}&list=1", cancellationToken);
+                if (payload?.Torrents is null)
+                {
+                    return new ClientCategoryReading(ClientHas.Unknown, null);
+                }
+
+                var row = payload.Torrents.FirstOrDefault(item => item.Count > 0
+                    && string.Equals(AsString(item[0]), queueItemId, StringComparison.OrdinalIgnoreCase));
+                return row is null
+                    ? new ClientCategoryReading(ClientHas.No, null)
+                    : new ClientCategoryReading(ClientHas.Yes, row.Count > 11 ? AsString(row[11]) : null);
+            },
+            async _ =>
+            {
+                using var response = await http.GetAsync(
+                    $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(queueItemId)}&s=label&v={Uri.EscapeDataString(label)}",
+                    cancellationToken);
+                return response.IsSuccessStatusCode
+                    ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "uTorrent action sent.")
+                    : DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"uTorrent returned {(int)response.StatusCode} when asked to set the label.", response.StatusCode);
+            });
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the uTorrent address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(8));
+            await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                $"uTorrent does not list its labels, so Deluno can't check this one. It sets the {name} label when it moves a download.", Supported: true, Found: false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach uTorrent: {exception.Message}", Supported: true, Found: false);
+        }
+    }
+
     private HttpClient CreateHttp(DownloadClientItem client, Uri baseUri, TimeSpan timeout)
         => new(handler(client), disposeHandler: handlerFactory is null) { BaseAddress = baseUri, Timeout = timeout };
 
