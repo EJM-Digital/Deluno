@@ -25,12 +25,23 @@ import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status"
 import { sharedSources } from "../../lib/shared-sources";
 import type { IndexerScoreboardToday } from "./live/indexers";
 
+/** Set by a pushed health change (#1233): the next read of the Live extras skips the server's five-second copy. */
+let nextExtrasFresh = false;
+
+/** Read the Live extras again now, past the server's remembered copy: a health change was pushed. */
+export function refreshLiveExtrasNow() {
+  nextExtrasFresh = true;
+  return queryClient.invalidateQueries({ queryKey: ["src", "dashboard-live-extras"], exact: true });
+}
+
 /** The Live extras for the person's own day; null from an older server that has none. */
 export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
   const midnight = new Date();
   midnight.setHours(0, 0, 0, 0);
+  const fresh = nextExtrasFresh;
+  nextExtrasFresh = false;
   try {
-    const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}`);
+    const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}${fresh ? "&fresh=true" : ""}`);
     return Array.isArray(extras?.arrivals) ? extras : null;
   } catch {
     return null;
