@@ -30,7 +30,9 @@ public sealed class HandledProblemsSettler(
     IActivityFeedRepository activityFeed,
     Deluno.Platform.Data.IProcessorRepository? processors = null,
     IProcessorConnectionService? processorConnections = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+    IHealthCheckRepository? healthChecks = null,
+    IRealtimeEventPublisher? realtime = null)
 {
     private const int DispatchWindow = 500;
 
@@ -61,6 +63,7 @@ public sealed class HandledProblemsSettler(
             + await SettleDispatchFailuresAsync(cancellationToken)
             + await SettleHandoffsAsync(cancellationToken)
             + await SettleCasesOfClosedHandoffsAsync(cancellationToken)
+            + await SettleUnmatchedOutputsOfImportedFilesAsync(cancellationToken)
             + await SettleOutcomesNotNeededAsync(cancellationToken)
             + await TellProcessorsOfImportedHandoffsAsync(cancellationToken);
     }
@@ -115,6 +118,108 @@ public sealed class HandledProblemsSettler(
         }
 
         return settled;
+    }
+
+    private const int ImportJobWindow = 600;
+
+    /// <summary>
+    /// "Processor output did not match anything" is a statement about a file with no hand-off to claim it. When that
+    /// very file has been imported since, by any hand-off, the statement is no longer true (#1242): the case closes at
+    /// once, with its row on System and a line in Activity. Rig: Retthree, Twicefilm and Twicetwo, where the resend's
+    /// hand-off imported the file one second after the scan raised the problem.
+    /// </summary>
+    private async Task<int> SettleUnmatchedOutputsOfImportedFilesAsync(CancellationToken cancellationToken)
+    {
+        var imported = ((await jobs.ListAsync(ImportJobWindow, cancellationToken)) ?? [])
+            .Where(job => job.JobType == "filesystem.import.execute"
+                && string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            .Select(job => (Name: LeafOf(WorkPlanner.TryReadImportSourcePath(job.PayloadJson)), Done: job.CompletedUtc ?? job.CreatedUtc))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .ToArray();
+        if (imported.Length == 0)
+        {
+            return 0;
+        }
+
+        var settled = 0;
+        foreach (var (mediaType, cases) in new[]
+        {
+            ("movie", ((await movies.GetImportRecoverySummaryAsync(cancellationToken))?.RecentCases ?? [])
+                .Select(item => (item.Id, item.Title, item.FailureKind, item.DetailsJson, item.DetectedUtc)).ToArray()),
+            ("series", ((await series.GetImportRecoverySummaryAsync(cancellationToken))?.RecentCases ?? [])
+                .Select(item => (item.Id, item.Title, item.FailureKind, item.DetailsJson, item.DetectedUtc)).ToArray())
+        })
+        {
+            var covered = cases
+                .Where(item => item.FailureKind == "processor-unmatched-output"
+                    && FileNameIn(item.DetailsJson) is { } file
+                    && imported.Any(done => string.Equals(done.Name, file, StringComparison.OrdinalIgnoreCase) && done.Done >= item.DetectedUtc))
+                .ToArray();
+            if (covered.Length == 0)
+            {
+                continue;
+            }
+
+            var reason = "The file was imported, so it no longer needs matching.";
+            var scope = new ImportRecoveryCaseScope([], []) { CaseIds = covered.Select(item => item.Id).ToArray() };
+            if (mediaType == "movie")
+            {
+                await movies.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken);
+            }
+            else
+            {
+                await series.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken);
+            }
+
+            foreach (var item in covered)
+            {
+                settled++;
+                await Deluno.Platform.Data.ProblemTwins.ClearHealthRowAsync(item.Id, healthChecks, realtime, cancellationToken);
+                await activityFeed.RecordActivityAsync(
+                    "recovery.case-settled",
+                    $"{item.Title} was imported, so Deluno closed the problem that said its cleaned file could not be matched.",
+                    JsonSerializer.Serialize(new { CaseId = item.Id, item.FailureKind, MediaType = mediaType }),
+                    null,
+                    mediaType,
+                    item.Id,
+                    cancellationToken);
+            }
+        }
+
+        return settled;
+    }
+
+    private static string? LeafOf(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var trimmed = path.Replace('\\', '/').TrimEnd('/');
+        return trimmed[(trimmed.LastIndexOf('/') + 1)..];
+    }
+
+    private static string? FileNameIn(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? document.RootElement.EnumerateObject()
+                    .FirstOrDefault(property => string.Equals(property.Name, "fileName", StringComparison.OrdinalIgnoreCase)
+                        && property.Value.ValueKind == JsonValueKind.String).Value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task<int> SettleDispatchFailuresAsync(CancellationToken cancellationToken)
