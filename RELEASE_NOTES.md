@@ -9,6 +9,44 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.16
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Strikes
+- "Not enough peers" keeps counting after a starved download stops moving, so
+  it is removed at your count even with No progress switched off. The same goes
+  for the dead-torrent and too-slow rules.
+- A download takes one strike per check, from the rule that fits it best.
+- No progress now means the download gained no bytes since the last check, so a
+  client that reports a tiny speed on a stuck download no longer delays the
+  strike.
+- Each rule's removal says in Activity why that rule removed it, with your own
+  numbers, for example "It had fewer than 2 peers for 3 checks in a row".
+
+### Downloads and Weir
+- Try again on a failed hand-off shows "Sending to Weir again" everywhere in the
+  download's drawer, and the old failure no longer sits beside it.
+- Queue import shows its result the moment you click, and other open screens
+  follow at once.
+- A download whose files have gone is not handed to your processor. It reads
+  "Files are gone", also when the files vanish while it waits for the processor.
+- A release you remove and send again no longer leaves its new hand-off stuck
+  when your processor reports late on the first send.
+
+### On a phone
+- A film's file path and the cast names on films and shows wrap instead of
+  being cut off.
+
 ## 1.0.0-rc.30.15
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
