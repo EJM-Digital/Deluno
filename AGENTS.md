@@ -88,14 +88,12 @@ release comment, every workflow has `permissions` and every job a timeout.
   on HEAD. Then it creates and pushes the annotated tag. Never run `git tag` for a release by hand.
 - **Right the first time** (James, 11 Oct 2026). A fix is done only when a failing test first reproduced it from real evidence (a log, a recorded reply, a screen record); tests of another app use its recorded real replies (`tests/fixtures/recorded/`), never an assumed shape; and the acceptance lines name every variation (each client, each timing, with and without work in flight), each tested.
   The scenario suite on the golden VM proves the candidate before the tag, and every run keeps Deluno's and Weir's logs.
-- **A tag is made only after the golden path has passed on that exact commit**
-  (James, 7 Oct 2026; `docs/golden-path.md`, Deluno issue 1158). The release's
-  `golden-path` job runs `scripts/verify-golden-path-for-release.mjs`: it passes
-  only when the newest commit status with the context `golden-path` on the tagged
-  commit is `success`, and it does not wait. Whoever drove the run records it
-  with `gh api repos/jampat000/Deluno/statuses/<sha> -f state=success -f context=golden-path -f description=... -f target_url=...`.
-  A manual `ci.yml` run builds the Windows installer of any commit
-  (`windows-installer`), which is what the golden path installs.
+- **A tag is made only after the scenario suite has passed on that exact commit** (James, 7 and 11 Oct 2026;
+  `docs/golden-path.md`, issues 1158 and 1238). No waiver, release candidates included. Build the commit's installer with a manual
+  `ci.yml` run (`windows-installer`), then run `./scripts/golden-path/Invoke-ScenarioSuite.ps1 -RigHost <host> -InstallerPath <Deluno-rc-Setup.exe> -Version <x.y.z[-rc.N]> -Commit <sha>`
+  (unattended, about 40 minutes). It keeps Deluno's and Weir's full logs and records the `golden-path` commit status itself: `success` on a
+  full pass, `failure` naming the failed scenarios otherwise. The release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`)
+  passes only when the newest `golden-path` status on the tagged commit is `success`, and does not wait.
 - **One workflow, `release.yml`, publishes, in two independent jobs.** Both need
   `ci-passed`, `golden-path` and `validate`, plus their own build, and neither
   waits for the other. `publish-windows` (needs `windows`) alone has
