@@ -530,6 +530,23 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     }
   }
 
+  async function handleDismissLive(entry: LiveStepEntry) {
+    if (!entry.dismissPath) return;
+    setBusy(true);
+    try {
+      const response = await authedFetch(entry.dismissPath, { method: "POST" });
+      if (!response.ok && response.status !== 404) throw new Error("That could not be dismissed.");
+      toast.success(`${entry.title} dismissed`);
+      setOpenLive(null);
+      await queryClient.invalidateQueries({ queryKey: ["activity-live"] });
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That could not be dismissed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDismissJob(job: JobQueueItem) {
     setBusy(true);
     try {
@@ -680,7 +697,19 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         }}
         title={openLive?.title ?? "Detail"}
         description={openLive ? `${openLive.stepLabel} · ${formatPreferenceDateTime(openLive.whenUtc, preferences)}` : undefined}
-        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenLive(null)} />}
+        footer={
+          <DrawerFooter
+            state="clean"
+            readOnly
+            saveLabel="Close"
+            onCancel={() => setOpenLive(null)}
+            extraAction={openLive?.dismissPath && openLive.status === "failed" ? (
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void handleDismissLive(openLive)} aria-label={`Dismiss the failed hand-off ${openLive.title}`}>
+                Dismiss
+              </Button>
+            ) : null}
+          />
+        }
       >
         {openLive ? (
           <>

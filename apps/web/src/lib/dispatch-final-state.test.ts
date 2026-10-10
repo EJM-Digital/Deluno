@@ -30,6 +30,13 @@ describe("dispatchStanding (#1179)", () => {
     expect(dispatchStanding(sent({ status: "vanished" }))?.pill.label).toBe("Removed");
   });
 
+  it("reads a failed send that was dismissed as closed, not failed (#1218)", () => {
+    expect(dispatchStanding(sent({ importStatus: "failed", importFailureMessage: "The file check failed it." }))?.status).toBe("failed");
+    const closed = dispatchStanding(sent({ status: "archived", importStatus: "failed", importFailureMessage: "The file check failed it." }));
+    expect(closed?.status).toBe("done");
+    expect(closed?.pill.label).toBe("Closed");
+  });
+
   it("still reports a failed send as failed, and a planned one as waiting for a decision", () => {
     expect(dispatchStanding(sent({ status: "failed" }))?.status).toBe("failed");
     expect(dispatchStanding(sent({ importStatus: "failed" }))?.status).toBe("failed");
