@@ -23,18 +23,21 @@ public static class DownloadClientActions
     public const string DeleteWithData = "delete-with-data";
 
     /// <summary>
-    /// Remove the transfer, its files, and the record that stops the same
-    /// release being accepted again.
+    /// Remove a copy Deluno has decided against (a refused download, or the old copy a forced re-download is
+    /// replacing): the transfer, its files, and the record that stops the same release being accepted again.
     ///
-    /// <para>Distinct from <see cref="DeleteWithData"/> on purpose, and the
-    /// distinction is the whole point of a forced re-download. A torrent client
-    /// refuses a release it still holds by infohash, so removing the transfer
-    /// is enough. A usenet client refuses it from <em>history</em>, which
-    /// survives the queue being emptied — so on SABnzbd and NZBGet, delete and
-    /// forget are two different requests, and only one of them lets the release
-    /// back in.</para>
+    /// <para>This is the only verb that removes a download as a clean-up, and it has its own name on purpose.
+    /// It used to be called "forget" and was also what "Just stop tracking it" sent, so a person who asked
+    /// Deluno only to stop tracking a download lost it and its files from the client (#1241). Stopping
+    /// tracking is Deluno-only and sends the client nothing, so it has no verb at all.</para>
+    ///
+    /// <para>Distinct from <see cref="DeleteWithData"/>, and the distinction is the whole point of a forced
+    /// re-download. A torrent client refuses a release it still holds by infohash, so removing the transfer
+    /// is enough. A usenet client refuses it from <em>history</em>, which survives the queue being emptied,
+    /// so on SABnzbd and NZBGet, delete and this are two different requests, and only this one lets the
+    /// release back in.</para>
     /// </summary>
-    public const string Forget = "forget";
+    public const string RemoveRefusedCopy = "remove-refused-copy";
 
     // #810: queue priority/reorder. Each adapter that supports queueing maps
     // these onto its own native call (increasePrio/topPriority for
@@ -89,7 +92,7 @@ public static class QueueRemovalReasons
 
     /// <summary>
     /// "Just stop tracking it": Deluno forgets the download. The client keeps
-    /// it and its files, untouched.
+    /// it and its files, untouched: nothing at all is sent to the client (#1241).
     /// </summary>
     public const string Forget = "forget";
 

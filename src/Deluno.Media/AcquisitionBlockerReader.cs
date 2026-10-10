@@ -112,7 +112,7 @@ public static class AcquisitionBlockerReader
                 $"Deluno fetched {title} through {fetchedFrom}{when}, and the file is no longer here.",
                 $"A download client refuses a release it remembers — a torrent client by its infohash, a usenet client from its history — so the next attempt is accepted and then quietly ignored. Deluno cannot see {fetchedFrom}'s memory without asking it, so this may already be clear.",
                 CanClear: true,
-                ClearEffect: $"Makes {fetchedFrom} forget the release, so it will accept it again."));
+                ClearEffect: $"Removes the old copy of the release, with its files, from {fetchedFrom}, so it will accept it again."));
         }
 
         // The blocklist answering for itself.

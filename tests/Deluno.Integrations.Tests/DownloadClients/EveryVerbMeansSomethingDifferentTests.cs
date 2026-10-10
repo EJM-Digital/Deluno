@@ -54,7 +54,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
     [InlineData(DownloadClientActions.Recheck)]
     [InlineData(DownloadClientActions.Delete)]
     [InlineData(DownloadClientActions.DeleteWithData)]
-    [InlineData(DownloadClientActions.Forget)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy)]
     [InlineData(DownloadClientActions.MoveToTop)]
     [InlineData(DownloadClientActions.MoveUp)]
     [InlineData(DownloadClientActions.MoveDown)]
@@ -236,7 +236,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
     public async Task Forgetting_does_at_least_as_much_as_deleting_with_data(string protocol, bool needsMore)
     {
         var deleted = await CaptureAsync(protocol, DownloadClientActions.DeleteWithData);
-        var forgotten = await CaptureAsync(protocol, DownloadClientActions.Forget);
+        var forgotten = await CaptureAsync(protocol, DownloadClientActions.RemoveRefusedCopy);
 
         Assert.NotEmpty(forgotten);
         if (needsMore)

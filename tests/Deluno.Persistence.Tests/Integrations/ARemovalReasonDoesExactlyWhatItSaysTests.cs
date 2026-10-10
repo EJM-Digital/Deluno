@@ -261,7 +261,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     [Theory]
     [InlineData("qbittorrent")]
     [InlineData("sabnzbd")]
-    public async Task Just_stop_tracking_it_forgets_without_touching_the_clients_payload(string protocol)
+    public async Task Just_stop_tracking_it_forgets_without_calling_the_client_at_all(string protocol)
     {
         using var world = await World.CreateAsync(protocol);
 
@@ -270,7 +270,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(result.Succeeded);
         Assert.False(result.Blocklisted);
         Assert.False(result.SearchStarted);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Null(world.Client.LastAction);
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
 
@@ -288,14 +288,14 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     [Theory]
     [InlineData(true, true, false, DownloadClientActions.DeleteWithData, true, true)]
     [InlineData(true, true, true, DownloadClientActions.DeleteWithData, true, false)]
-    [InlineData(false, true, false, DownloadClientActions.Forget, true, true)]
+    [InlineData(false, true, false, null, true, true)]
     [InlineData(true, false, false, DownloadClientActions.DeleteWithData, false, false)]
-    [InlineData(false, false, false, DownloadClientActions.Forget, false, false)]
+    [InlineData(false, false, false, null, false, false)]
     public async Task The_flags_do_each_part_on_their_own(
         bool removeFromClient,
         bool blocklist,
         bool skipRedownload,
-        string expectedAction,
+        string? expectedAction,
         bool expectBlocklisted,
         bool expectSearch)
     {
@@ -371,11 +371,11 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
 
         Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned);
-        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.Forget);
+        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.RemoveRefusedCopy);
 
         Assert.True(forgotten.Succeeded);
         Assert.False(forgotten.Refused);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Equal(DownloadClientActions.RemoveRefusedCopy, world.Client.LastAction);
         Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
     }
 
@@ -399,7 +399,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         var idLessDispatch = await world.RecordDispatchWithoutIdAsync("Other.Movie.2024.1080p.WEB-DL-GROUP");
         world.Client.Queue.Add(ClientItem("id-the-client-gave-later", "Other.Movie.2024.1080p.WEB-DL-GROUP"));
 
-        var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.Forget, idLessDispatch);
+        var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
 
         Assert.True(own.Refused);
         Assert.Null(world.Client.LastAction);
@@ -415,7 +415,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         world.Client.Queue.Add(ClientItem("hand-added", "Something.Else.Entirely.2020.720p"));
 
         // Names a hand-added item (different release name): refused, and nothing called.
-        var byName = await world.ActForDispatchAsync("hand-added", DownloadClientActions.Forget, idLessDispatch);
+        var byName = await world.ActForDispatchAsync("hand-added", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
         Assert.True(byName.Refused);
         Assert.Null(world.Client.LastAction);
 
@@ -425,7 +425,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Null(world.Client.LastAction);
 
         // An item that is not in the client at all cannot be proven either.
-        var missing = await world.ActForDispatchAsync("not-there", DownloadClientActions.Forget, idLessDispatch);
+        var missing = await world.ActForDispatchAsync("not-there", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
         Assert.True(missing.Refused);
         Assert.False((await world.CheckOwnershipAsync("hand-added")).Owned);
     }
@@ -444,7 +444,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         var kept = await world.RemoveAsync(false, false, false);
         Assert.True(kept.Succeeded);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Null(world.Client.LastAction);
 
         var deleted = await world.RemoveAsync(true, false, false);
         Assert.True(deleted.Succeeded);

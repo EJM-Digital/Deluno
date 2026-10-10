@@ -234,7 +234,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
 
         public Task RemoveFromClientAsync() => _service.ReclaimCompletedAsync(_client.Id, "hash-1", CancellationToken.None);
 
-        public Task ForgetFromClientAsync() => _service.ExecuteActionAsync(_client.Id, new DownloadClientActionRequest(DownloadClientActions.Forget, "hash-1"), CancellationToken.None);
+        public Task ForgetFromClientAsync() => _service.ExecuteActionAsync(_client.Id, new DownloadClientActionRequest(DownloadClientActions.RemoveRefusedCopy, "hash-1"), CancellationToken.None);
 
         public Task PollWithOtherItemInQueueAsync() => PollAsync(queue: [Queued("hash-other")], history: []);
 
