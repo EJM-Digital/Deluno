@@ -372,13 +372,18 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     enabled: liveStep === "download-client"
   });
+  const dismissedClientRows = useQuery({
+    queryKey: ["activity-live", "download-client-dismissed"],
+    queryFn: () => fetchJson<string[]>("/api/download-clients/history/dismissed").catch(() => [] as string[]),
+    enabled: liveStep === "download-client"
+  });
   const liveQuery = liveStep === "processing" ? handoffs : liveStep === "download-health" ? healthRecords : liveStep === "download-client" ? clientTelemetry : null;
   const liveEntries = useMemo<LiveStepEntry[]>(() => {
     if (liveStep === "processing") return processingEntries(handoffs.data ?? []);
     if (liveStep === "download-health") return downloadHealthEntries(healthRecords.data ?? []);
-    if (liveStep === "download-client") return clientTelemetry.data ? downloadClientEntries(clientTelemetry.data) : [];
+    if (liveStep === "download-client") return clientTelemetry.data ? downloadClientEntries(clientTelemetry.data, new Set(Array.isArray(dismissedClientRows.data) ? dismissedClientRows.data : [])) : [];
     return [];
-  }, [liveStep, handoffs.data, healthRecords.data, clientTelemetry.data]);
+  }, [liveStep, handoffs.data, healthRecords.data, clientTelemetry.data, dismissedClientRows.data]);
   const liveRows = useMemo<ActivityRow[]>(() => {
     const since = filterDay(filters.since, "since");
     const until = filterDay(filters.until, "until");
@@ -534,7 +539,9 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     if (!entry.dismissPath) return;
     setBusy(true);
     try {
-      const response = await authedFetch(entry.dismissPath, { method: "POST" });
+      const response = await authedFetch(entry.dismissPath, entry.dismissBody === undefined
+        ? { method: "POST" }
+        : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(entry.dismissBody) });
       if (!response.ok && response.status !== 404) throw new Error("That could not be dismissed.");
       toast.success(`${entry.title} dismissed`);
       setOpenLive(null);
@@ -704,7 +711,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             saveLabel="Close"
             onCancel={() => setOpenLive(null)}
             extraAction={openLive?.dismissPath && openLive.status === "failed" ? (
-              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void handleDismissLive(openLive)} aria-label={`Dismiss the failed hand-off ${openLive.title}`}>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void handleDismissLive(openLive)} aria-label={`Dismiss the failed ${openLive.step === "processing" ? "hand-off" : openLive.step === "download-health" ? "finding" : "client download"} ${openLive.title}`}>
                 Dismiss
               </Button>
             ) : null}

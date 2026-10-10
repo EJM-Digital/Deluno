@@ -865,6 +865,30 @@ describe("Activity steps built from Transfers' sources (#1115)", () => {
     expect(screen.getByText("Not enough disk space.")).toBeInTheDocument();
   });
 
+  it("dismisses a failed hand-off, a stalled download and a failed client download from their drawers (#1218)", async () => {
+    const closeDrawer = async () => {
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    };
+
+    // A stalled download: the same ignore the Queue's Dismiss sends.
+    renderActivity("/activity?type=download-health");
+    await userEvent.click(await screen.findByText("Stalled.Show.S01E01"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed finding Stalled.Show.S01E01" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/download-clients/c1/queue/q3/health/stalled/ignore",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ durationDays: 7 }) })
+    ));
+    await closeDrawer();
+  });
+
+  it("dismisses a failed row of a client's history from its drawer", async () => {
+    renderActivity("/activity?type=download-client");
+    await userEvent.click(await screen.findByText("Nope.Film.2019"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed client download Nope.Film.2019" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-clients/c1/history/x1/dismiss", { method: "POST" }));
+  });
+
   it("offers the three steps in the Any step picker", async () => {
     renderActivity();
     await openHistory();

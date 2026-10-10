@@ -13,6 +13,11 @@ public sealed class AttentionDismissalStore(IDelunoDatabaseConnectionFactory dat
     public const string NoReleasePrefix = "no-release:";
     public const string HeldReleasePrefix = "held-release:";
 
+    public const string ClientHistoryPrefix = "client-history:";
+
+    /// <summary>A failed row in a download client's history (#1218), dismissed so Activity stops counting it.</summary>
+    public static string ClientHistoryKey(string clientId, string itemId) => $"{ClientHistoryPrefix}{clientId}:{itemId}";
+
     public static string NoReleaseKey(string mediaType, string id) => $"{NoReleasePrefix}{mediaType}:{id}";
 
     /// <summary>A held release (#1159) is dismissed by its search-history row, so a later held search is a new item.</summary>
