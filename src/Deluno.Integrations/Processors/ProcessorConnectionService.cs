@@ -771,7 +771,7 @@ public sealed class ProcessorConnectionService(
     /// answer" (final). A processor that says which, in a <c>code</c> field of its JSON answer, is believed:
     /// <c>outcome_already_recorded</c> is final (#1155). Without that code it stays owed, as before, and a
     /// 409 that says the hand-off ended is still not final, since a processor may correct it. Deluno reads the
-    /// code, never a processor's wording.
+    /// code, never a processor's wording. <c>handoff_ended</c> is final too (#1221).
     /// </summary>
     private static async Task<ProcessorOutcomeResult> ReadConflictAsync(
         HttpResponseMessage response,
@@ -779,22 +779,31 @@ public sealed class ProcessorConnectionService(
         CancellationToken cancellationToken)
     {
         var said = await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP 409.";
-        var final = false;
+        string? errorCode = null;
         try
         {
             // The body is read a second time from the buffered content.
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            final = document.RootElement.ValueKind == JsonValueKind.Object
+            if (document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("code", out var code)
-                && code.ValueKind == JsonValueKind.String
-                && code.GetString() == "outcome_already_recorded";
+                && code.ValueKind == JsonValueKind.String)
+            {
+                errorCode = code.GetString();
+            }
         }
         catch (JsonException)
         {
             // No code to read: it stays owed.
         }
 
-        return new ProcessorOutcomeResult(final ? ProcessorAnswer.Settled : ProcessorAnswer.Busy, false, said);
+        // handoff_ended: the hand-off is over on the processor's side and handed back no file, so there is nothing
+        // to release and no repeat will change that (#1221). handoff_not_finished and any other 409 stay owed.
+        return errorCode switch
+        {
+            "outcome_already_recorded" => new ProcessorOutcomeResult(ProcessorAnswer.Settled, false, said),
+            "handoff_ended" => new ProcessorOutcomeResult(ProcessorAnswer.Refused, false, said),
+            _ => new ProcessorOutcomeResult(ProcessorAnswer.Busy, false, said)
+        };
     }
 
     /// <summary>

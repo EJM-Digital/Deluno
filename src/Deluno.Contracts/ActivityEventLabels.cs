@@ -187,6 +187,7 @@ public static class ActivityEventLabels
             ["processing.outcome-reported"] = "Told the processor what happened",
             ["recovery.case-settled"] = "Closed a problem the library had already fixed",
             ["download.import-failure-settled"] = "Closed an import failure the library had already fixed",
+            ["processing.outcome-not-needed"] = "No need to tell the processor, it handed back no file",
             ["processing.outcome-kept"] = "The processor kept its earlier answer",
             ["processing.outcome-delayed"] = "Could not tell the processor yet, will keep trying",
             ["processing.outcome-not-reported"] = "Could not tell the processor what happened",

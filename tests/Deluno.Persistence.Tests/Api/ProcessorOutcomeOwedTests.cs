@@ -81,6 +81,25 @@ public sealed class ProcessorOutcomeOwedTests
         Assert.NotNull(await repository.GetProcessorOutcomeAsync(first.Id, CancellationToken.None));
     }
 
+    // #1221: dismissing a hand-off the processor failed keeps the fact that it failed, since the status itself goes.
+    [Theory]
+    [InlineData(ProcessorHandoffStatuses.Failed, true)]
+    [InlineData(ProcessorHandoffStatuses.Rejected, true)]
+    [InlineData(ProcessorHandoffStatuses.TimedOut, false)]
+    public async Task Dismissing_a_hand_off_the_processor_failed_keeps_that_it_failed(string status, bool expected)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var repository = Repository(app);
+        var handoff = await HandoffAsync(app, "hash-1");
+        await repository.UpdateProcessorHandoffAsync(handoff.Id, status, null, null, "It went wrong.", CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, "It went wrong.", CancellationToken.None);
+
+        var stored = await repository.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored?.Status);
+        Assert.Equal(expected, ProcessorHandoffStatuses.ProcessorReportedItFailed(stored!));
+    }
+
     [Fact]
     public async Task Saying_it_again_needs_something_to_say()
     {
