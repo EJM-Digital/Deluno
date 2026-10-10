@@ -33,7 +33,7 @@ function loaderData(overrides: { stepId: string; completed?: boolean; draft?: Re
     allowedHosts: { enabled: overrides.hostsEnabled ?? false, allowedHosts: [], detectedHosts: [{ host: "192.168.1.10", reason: "This computer" }], currentHost: "localhost" },
     contentBlocklist: {},
     localNetworkAuth: { enabled: overrides.skipSignIn ?? false, additionalLocalNetworks: [], allowList: [], trustedProxies: [], currentAddress: "192.168.1.20", currentAddressIsLocal: true, currentAddressTrusted: true, allowedHostsEnabled: false },
-    updatePreferences: { mode: overrides.autoUpdate ? "automatic" : "notify", channel: "stable", autoCheck: true }
+    updatePreferences: { mode: overrides.autoUpdate ? "download-apply-on-restart" : "notify-only", channel: "stable", autoCheck: true }
   };
 }
 
