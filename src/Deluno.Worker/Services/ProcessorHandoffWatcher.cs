@@ -198,6 +198,13 @@ public sealed class ProcessorHandoffWatcher(
                 continue;
             }
 
+            // It answered. One that was stored as not answering is answering again, and the Dashboard, System and
+            // the tray should hear that now, not at the next regular check (#1213).
+            if (connection.HealthStatus == "unreachable" && connectionsNoticed.Add($"answering:{connection.Id}"))
+            {
+                await processorRepository.RecordProcessorConnectionHealthAsync(connection.Id, "healthy", null, cancellationToken);
+            }
+
             if (!canAsk.CanReportStatus)
             {
                 await JudgeWithoutAskingAsync(handoff, library, processorName, limit, now, cancellationToken);
