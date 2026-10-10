@@ -9,6 +9,34 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.20
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Your processor
+- A release you remove and send again settles once its cleaned file arrives,
+  however far your processor had got with the first send, and it is imported
+  once.
+- Each hand-off's closing line in Activity tells one story, including a
+  hand-off that failed before the processor took it.
+
+### Screens that keep up
+- The Dashboard shows a connection going down or coming back as soon as the
+  tray and System do.
+- Try again never shows the old failure at any step, and its header follows
+  what your processor is actually doing.
+- A download that is not finished never reads 100%.
+- Settings forms keep what you type while a save is finishing.
+
 ## 1.0.0-rc.30.19
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
