@@ -97,6 +97,19 @@ public interface IDownloadHealthRepository
         long minimumGainBytes = 0);
 
     /// <summary>
+    /// The same bookkeeping as <see cref="RecordDownloadProgressAsync"/>, but each item also says whether its
+    /// downloaded bytes grew since the previous check (#1207): by at least <paramref name="minimumGainBytes"/> (one
+    /// byte when 0). Null for an item with no earlier reading. The previous bytes are the ones stored per item, so
+    /// this survives a restart and needs no schema change.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, DownloadProgressObservation>> ObserveDownloadProgressAsync(
+        string clientId,
+        IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
+        CancellationToken cancellationToken,
+        bool allowReset = true,
+        long minimumGainBytes = 0);
+
+    /// <summary>
     /// The configured download-health rules (#905). The first call on an
     /// installation with none stored yet synthesizes and persists the rule
     /// set equivalent to <paramref name="legacySettings"/>'s flat toggles, so

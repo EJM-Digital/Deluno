@@ -1566,7 +1566,7 @@ public sealed class DownloadClientTelemetryService(
         // progress" switch and minimum-gain option decide whether a gain
         // moves the clock; with no enabled rule, every gain still resets it,
         // exactly as before this option existed.
-        var lastIncreaseByQueueItemId = await healthRepository.RecordDownloadProgressAsync(
+        var progressByQueueItemId = await healthRepository.ObserveDownloadProgressAsync(
             snapshot.ClientId,
             snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
             cancellationToken,
@@ -1585,7 +1585,8 @@ public sealed class DownloadClientTelemetryService(
             // no-progress branch - are pushed forward by whatever outage time
             // they overlap before the comparison, then the real AddedUtc is
             // restored so nothing downstream sees a fabricated arrival time.
-            var since = lastIncreaseByQueueItemId.TryGetValue(item.Id, out var lastProgressUtc) ? lastProgressUtc : (DateTimeOffset?)null;
+            var observed = progressByQueueItemId.TryGetValue(item.Id, out var progress) ? progress : null;
+            var since = observed?.LastIncreaseUtc;
             var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, capturedUtc, cancellationToken);
             var effectiveSince = since is { } sinceValue
                 ? sinceValue + await connectivityMonitor.OutageOverlapAsync(sinceValue, capturedUtc, cancellationToken)
@@ -1596,7 +1597,8 @@ public sealed class DownloadClientTelemetryService(
                 capturedUtc,
                 effectiveSince,
                 statusWindow);
-            reconciled.Add(item with { Status = reconciledItem.Status });
+            // #1207: the No progress rule reads the bytes against the previous check, never the reported speed.
+            reconciled.Add(item with { Status = reconciledItem.Status, BytesGrewSinceLastCheck = observed?.BytesGrew });
         }
 
         return snapshot with { Queue = reconciled };
@@ -1722,7 +1724,8 @@ public sealed class DownloadClientTelemetryService(
                         item.SizeBytes,
                         snapshot.AlternateSpeedLimitEnabled == true,
                         item.IsFetchingMetadata,
-                        item.Availability),
+                        item.Availability,
+                        item.BytesGrewSinceLastCheck),
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);
@@ -1999,6 +2002,7 @@ public sealed class DownloadClientTelemetryService(
                 }
 
                 evaluated++;
+                var struckRule = struck.RuleId is null ? null : rules.FirstOrDefault(candidate => string.Equals(candidate.Id, struck.RuleId, StringComparison.OrdinalIgnoreCase));
                 var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, item.Id, cancellationToken);
                 // A dry run never marks a dispatch handled (#814): nothing
                 // really happened, so a later real pass must still be free to
@@ -2083,7 +2087,7 @@ public sealed class DownloadClientTelemetryService(
                                 dispatch.EntityId,
                                 item.Title,
                                 ImportFailurePolicy.DownloadStalled,
-                                StalledReason(struck, client.Name, overview.CapturedUtc),
+                                StalledReason(struck, client.Name, overview.CapturedUtc, struckRule),
                                 dispatch.TorrentHashOrItemId ?? item.Id,
                                 client.Id,
                                 client.Name,
@@ -2185,7 +2189,7 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc)} {PlainRemediation(applied, client.Name)}";
+                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc, struckRule)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
@@ -2280,24 +2284,90 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
-    /// Why the release was refused, for the blocklist row. The strikes say how
-    /// long it went on, because "stalled" on its own reads like a moment.
+    /// Why the release was refused, for the blocklist row and the Activity line. Each strike rule says in its own plain
+    /// words why it removed the download (#1206), using the person's own numbers, so no rule borrows another's
+    /// sentence. Only the platform-wide fallback (no rule) says how long the client showed it stalled, because
+    /// "stalled" on its own reads like a moment.
     /// </summary>
-    internal static string StalledReason(DownloadHealthFinding finding, string clientName, DateTimeOffset? nowUtc = null)
+    internal static string StalledReason(DownloadHealthFinding finding, string clientName, DateTimeOffset? nowUtc = null, DownloadHealthRule? rule = null)
     {
-        // "Nothing arriving" is only a finding once it has gone on for half an
-        // hour, so that half hour came before the first strike.
-        var nothingArriving = string.Equals(finding.Kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase);
+        if (RuleReason(finding, rule) is { } ruleReason)
+        {
+            return $"{ruleReason}, so Deluno stopped waiting for it and will not pick it again.";
+        }
+
         // The spell's real start says how long it has lasted. Counting strikes of the default half hour said "4 hours"
         // for a rule set to strike every minute, which had been going for fifteen.
         var lasted = finding.SpellStartedUtc is { } started && nowUtc is { } now
             ? now - started
-            : DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
+            : DownloadHealthStrikes.DefaultWindow * Math.Max(0, finding.StrikeCount - 1);
         var forHowLong = PlainDuration(lasted) is { Length: > 0 } words ? $" for {words}" : string.Empty;
-        var what = nothingArriving
-            ? $"Nothing arrived in {clientName}{forHowLong}"
-            : $"{clientName} showed it stalled or in error{forHowLong}";
-        return $"{what}, so Deluno stopped waiting for it and will not pick it again.";
+        return $"{clientName} showed it stalled or in error{forHowLong}, so Deluno stopped waiting for it and will not pick it again.";
+    }
+
+    /// <summary>
+    /// One strike rule's own reason for removing a download (#1206): what the person set, and for how many checks.
+    /// Null for a finding outside the rule engine, which has no rule of its own to speak for.
+    /// </summary>
+    internal static string? RuleReason(DownloadHealthFinding finding, DownloadHealthRule? rule)
+    {
+        var count = Math.Max(1, finding.RuleStrikeLimit ?? rule?.StrikeLimit ?? finding.StrikeCount);
+        var checks = count == 1 ? "1 check" : $"{count} checks in a row";
+        var kind = finding.Kind;
+        if (string.Equals(kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"It made no progress for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.LowPeers, StringComparison.OrdinalIgnoreCase))
+        {
+            var floor = rule?.Threshold ?? 0;
+            return floor > 0
+                ? $"It had fewer than {floor:0.#} {(Math.Abs(floor - 1) < 0.001 ? "peer" : "peers")} for {checks}"
+                : $"It had too few peers for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.LowSpeed, StringComparison.OrdinalIgnoreCase))
+        {
+            if (finding.Evidence.Contains("maximum total time", StringComparison.OrdinalIgnoreCase) && rule?.TooSlowMaxTotalMinutes is { } maxMinutes)
+            {
+                return $"It was still downloading after {PlainDuration(TimeSpan.FromMinutes(maxMinutes))} for {checks}";
+            }
+
+            var floor = rule?.Threshold ?? 0;
+            return floor > 0
+                ? $"It stayed under {floor:0.#} KB/s for {checks}"
+                : $"It was too slow for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.DeadTorrent, StringComparison.OrdinalIgnoreCase))
+        {
+            return finding.Evidence.Contains("unregistered", StringComparison.OrdinalIgnoreCase)
+                ? $"Its tracker said it was unregistered or removed for {checks}"
+                : $"It had no seeds or peers left for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.TrackerUnregistered, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Its tracker said it was unregistered or removed";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.MagnetMetadata, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"It was still fetching its magnet metadata for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.ClientFailure, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Its download client reported it as stalled or in error for {checks}";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase))
+        {
+            return "It contained a file that matches your content blocklist";
+        }
+
+        return null;
     }
 
     /// <summary>How long, in everyday words: nothing under a minute, then minutes, an hour, hours, days.</summary>

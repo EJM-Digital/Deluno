@@ -89,7 +89,14 @@ public sealed record RecoveryQueueSnapshot(
     /// when more than one full copy is available). Null where the protocol
     /// has no such reading, which never trips the availability check below.
     /// </summary>
-    double? Availability = null);
+    double? Availability = null,
+    /// <summary>
+    /// #1207: whether this download's downloaded bytes grew since the previous check, read from the bytes Deluno
+    /// stores per item between checks. False is "no progress", whatever speed the client reports (Deluge shows
+    /// 0.000057 MB/s on a stuck torrent). Null when there is no earlier reading yet (first sighting), where the rule
+    /// falls back to the reported speed.
+    /// </summary>
+    bool? BytesGrewSinceLastCheck = null);
 
 public sealed record RecoveryHealthFinding(
     string Severity,
