@@ -46,6 +46,19 @@ public static class IndexerPrivacy
         };
 
     /// <summary>
+    /// A tracker definition's <c>type</c> as a privacy, the way Prowlarr reads a Cardigann definition: "private" is
+    /// private, "public" is public, and anything else is semi-private (#1240).
+    /// </summary>
+    public static string FromDefinitionType(string? type)
+        => type?.Trim().ToLowerInvariant() switch
+        {
+            "private" => Private,
+            "public" => Public,
+            null or "" => Unknown,
+            _ => SemiPrivate
+        };
+
+    /// <summary>
     /// True where the site's operator expects something back. Both private and
     /// semi-private trackers police sharing; an open index does not, and an
     /// unknown one is not something to make assumptions about.

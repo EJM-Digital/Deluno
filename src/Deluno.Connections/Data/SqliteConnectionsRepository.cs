@@ -347,7 +347,13 @@ public sealed class SqliteConnectionsRepository(
             Id: Guid.CreateVersion7().ToString("N"),
             Name: string.Empty,
             Protocol: IndexerProtocols.Normalize(request.Protocol),
-            Privacy: IndexerPrivacy.Normalize(request.Privacy),
+            // What the person said wins; otherwise a site added from a tracker definition keeps what the definition says
+            // about itself (#1240), and a hand-added Newznab or Torznab source stays "not set": nothing in it says.
+            Privacy: IndexerPrivacy.Normalize(request.Privacy) is var said && said != IndexerPrivacy.Unknown
+                ? said
+                : (string.IsNullOrWhiteSpace(request.DefinitionId) ? null : trackerDefinitionNames?.Privacy(request.DefinitionId)) is { } fromDefinition
+                    ? IndexerPrivacy.Normalize(fromDefinition)
+                    : IndexerPrivacy.Unknown,
             BaseUrl: IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? string.Empty,
             ApiKey: NormalizeName(request.ApiKey),
             Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
