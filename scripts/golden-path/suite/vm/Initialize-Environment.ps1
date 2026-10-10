@@ -21,6 +21,34 @@ function Wait-DelunoUp {
     $w.Value
 }
 
+# Weir has its own first-run wizard on its first visit (a Weir-side step the earlier hand-driven runs pressed through: sign in, Finish
+# setup, Continue to Weir). Best effort: it never stops the run, and says in the log what it found.
+function Complete-WeirWizard {
+    try {
+        Start-Edge
+        $page = New-CdpPage 'about:blank'
+        try {
+            Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = $script:S.WeirUrl + '/' } | Out-Null
+            Start-Sleep -Seconds 3
+            $text = Get-PageText -Page $page
+            if ($text -match 'Sign in|Log in') {
+                Set-PageInput -Page $page -Selector 'input[name=username],input[type=text],input:not([type])' -Value 'golden' | Out-Null
+                Set-PageInput -Page $page -Selector 'input[type=password]' -Value (Get-SuiteSecret 'weir-password') | Out-Null
+                Click-PageText -Page $page -Pattern '^(Sign in|Log in)' | Out-Null
+                Start-Sleep -Seconds 3
+            }
+            $steps = @()
+            foreach ($pattern in '^Finish setup', '^Continue to Weir') {
+                if (Click-PageText -Page $page -Pattern $pattern) { $steps += $pattern; Start-Sleep -Seconds 2 }
+            }
+            $now = (Get-PageText -Page $page) -replace '\s+', ' '
+            Write-SuiteLog ("   Weir's first-run wizard: pressed [{0}]; the page now reads: {1}" -f ($steps -join ', '), $now.Substring(0, [math]::Min(120, $now.Length)))
+        }
+        finally { Close-CdpPage -Page $page }
+    }
+    catch { Write-SuiteLog "   Weir's first-run wizard could not be driven: $($_.Exception.Message)" }
+}
+
 function Initialize-SuiteEnvironment {
     param([string] $MoviesRoot = 'C:\Media\Movies', [string] $TvRoot = 'C:\Media\TV', [string] $WeirMovies = 'C:\Weir\Ready\Movies', [string] $WeirTv = 'C:\Weir\Ready\TV')
 
@@ -43,6 +71,8 @@ function Initialize-SuiteEnvironment {
     $weir = Try-Deluno -Method POST -Path '/api/system/bundled-components/weir/connect' -Body @{ username = 'golden'; password = (Get-SuiteSecret 'weir-password') } -TimeoutSec 120
     if ($weir.Status -ne 200 -or -not $weir.Data.healthy) { throw (Hide-Secrets "Connecting Weir answered $($weir.Status). $($weir.Raw)") }
     Write-SuiteLog ("   connect weir: {0}" -f $weir.Data.message)
+
+    Complete-WeirWizard
 
     # 3. Quality profile and the two libraries, with the folders the clients finish in.
     $profile = @(Invoke-Deluno -Path '/api/quality-profiles') | Where-Object { $_.mediaType -eq 'movies' } | Select-Object -First 1

@@ -148,3 +148,11 @@ function Click-PageText {
     }
     $true
 }
+
+# Types a value into the first element that matches the selector, the way a person typing would for a React-style form: the value
+# is set through the element's own setter and the input and change events are sent.
+function Set-PageInput {
+    param($Page, [Parameter(Mandatory)] [string] $Selector, [Parameter(Mandatory)] [string] $Value)
+    $js = "(function(){var e=document.querySelector(" + ($Selector | ConvertTo-Json) + ");if(!e)return false;e.focus();var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value');d.set.call(e," + ($Value | ConvertTo-Json) + ");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"
+    [bool](Invoke-CdpEval -Page $Page -Script $js)
+}

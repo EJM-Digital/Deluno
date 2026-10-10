@@ -221,19 +221,36 @@ function Find-Handoffs {
 
 function Get-DownloadClients { @(Invoke-Deluno -Path '/api/download-clients') }
 
-# Every client's queue and history rows, flattened, each carrying its clientId and protocol.
+# Every client's queue rows, flattened, each carrying its clientId and protocol. With -IncludeHistory the clients' finished
+# (history) rows come too: a finished Usenet job leaves the queue, and a torrent whose files were deleted shows up there. A
+# history row gets the status of its outcome, progress 100 and isHistory = $true.
 function Get-TelemetryRows {
+    param([switch] $IncludeHistory)
     $rows = New-Object System.Collections.ArrayList
-    $overview = Invoke-Deluno -Path "/api/download-clients/telemetry"
+    $overview = Invoke-Deluno -Path '/api/download-clients/telemetry'
     foreach ($snap in @($overview.clients)) {
-        foreach ($q in @($snap.queue)) { if ($q) { $q | Add-Member -NotePropertyName clientId -NotePropertyValue $snap.clientId -Force; $q | Add-Member -NotePropertyName clientProtocol -NotePropertyValue $snap.protocol -Force; [void]$rows.Add($q) } }
+        foreach ($q in @($snap.queue)) {
+            if ($q) { $q | Add-Member -NotePropertyName clientId -NotePropertyValue $snap.clientId -Force; $q | Add-Member -NotePropertyName clientProtocol -NotePropertyValue $snap.protocol -Force; [void]$rows.Add($q) }
+        }
+        if ($IncludeHistory) {
+            foreach ($h in @($snap.history)) {
+                if (-not $h) { continue }
+                $h | Add-Member -NotePropertyName status -NotePropertyValue "$($h.outcome)" -Force
+                $h | Add-Member -NotePropertyName progress -NotePropertyValue 100 -Force
+                $h | Add-Member -NotePropertyName isHistory -NotePropertyValue $true -Force
+                $h | Add-Member -NotePropertyName clientProtocol -NotePropertyValue $snap.protocol -Force
+                [void]$rows.Add($h)
+            }
+        }
     }
     @($rows)
 }
 
 function Find-QueueRow {
-    param([Parameter(Mandatory)] [string] $Name)
-    @(Get-TelemetryRows | Where-Object { $_.releaseName -like "*$Name*" -or $_.title -like "*$Name*" }) | Select-Object -First 1
+    param([Parameter(Mandatory)] [string] $Name, [switch] $IncludeHistory)
+    $all = @(Get-TelemetryRows -IncludeHistory:$IncludeHistory | Where-Object { $_.releaseName -like "*$Name*" -or $_.title -like "*$Name*" })
+    # A live queue row is the better reading when there is both.
+    @($all | Where-Object { -not $_.isHistory }) + @($all | Where-Object { $_.isHistory }) | Select-Object -First 1
 }
 
 # Activity as lines of text (each entry's whole JSON, compact), newest first, following the pages (500 an entry page, up to 6 pages).

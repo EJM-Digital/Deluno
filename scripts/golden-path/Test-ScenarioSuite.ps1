@@ -185,6 +185,14 @@ finally {
     if ($tmp -and (Test-Path $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+Write-Host 'The runner loads every library and group'
+foreach ($lib in 'Tray.Lib.ps1', 'Cdp.Lib.ps1', 'Fixtures.Lib.ps1', 'Initialize-Environment.ps1', 'scenarios\Common.ps1') { . (Join-Path (Join-Path $suite 'vm') $lib) }
+foreach ($f in Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | Sort-Object Name) { . $f.FullName }
+foreach ($g in $plan) { Check "the runner can call $($g.Function)" ($null -ne (Get-Command $g.Function -CommandType Function -ErrorAction SilentlyContinue)) }
+foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', 'New-TorrentFilm', 'New-UsenetFilm', 'Wait-FilmFinished', 'Open-DelunoPage', 'Get-TrayDot', 'Invoke-TrayMenuItem', 'Stop-WeirApp', 'Start-WeirApp', 'Set-WeirPause', 'Get-WeirLogText', 'Test-OneStory') {
+    Check "$fn is defined" ($null -ne (Get-Command $fn -ErrorAction SilentlyContinue))
+}
+
 Write-Host 'The news stub can hang an article and slow another'
 . (Join-Path $root 'usenet-stub\UsenetStub.Lib.ps1')
 $stubRoot = Join-Path ([IO.Path]::GetTempPath()) ('stub-test-' + [guid]::NewGuid().ToString('N'))

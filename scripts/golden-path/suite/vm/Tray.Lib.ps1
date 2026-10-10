@@ -48,7 +48,8 @@ function Close-TrayOverflow { [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
 
 function Find-TrayIcon {
     param([Parameter(Mandatory)] [string] $Icon)
-    @(Get-TrayButtons | Where-Object { $_.Name -match "^$Icon\b" }) | Select-Object -First 1
+    # A taskbar button for a browser tab titled "Deluno - ..." is not the tray icon.
+    @(Get-TrayButtons | Where-Object { $_.Name -match "^$Icon\b" -and $_.Name -notmatch 'Edge|Chrome|Firefox|window' }) | Select-Object -First 1
 }
 
 # Classifies the dot in a tray icon's pixels: the most saturated cluster in the button's rectangle.

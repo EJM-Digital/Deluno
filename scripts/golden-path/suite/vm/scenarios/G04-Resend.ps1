@@ -76,9 +76,17 @@ function Invoke-GroupResend {
                 Start-AgainDownload -Film $f
             }
         }
-        $second = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition {
-            @(Get-AllKinds | Where-Object { $firsts[$_] -and -not (@(Find-Handoffs -Name $films[$_].Release) | Where-Object { $_.id -ne $firsts[$_].id }) }).Count -eq 0
-        }
+        # Every client has its second hand-off before Weir is resumed.
+        Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition {
+            $missing = 0
+            foreach ($k in Get-AllKinds) {
+                if (-not $firsts[$k]) { continue }
+                $firstId = $firsts[$k].id
+                $another = @(Find-Handoffs -Name $films[$k].Release) | Where-Object { $_.id -ne $firstId }
+                if (-not $another) { $missing++ }
+            }
+            $missing -eq 0
+        } | Out-Null
     }
     finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
     foreach ($kind in Get-AllKinds) {

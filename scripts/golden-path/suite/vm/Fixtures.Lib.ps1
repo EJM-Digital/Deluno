@@ -106,6 +106,8 @@ function Initialize-Indexers {
         $feed = Invoke-Deluno -Method POST -Path '/api/indexers' -Body @{
             name = 'Golden feed'; protocol = 'torznab'; privacy = 'public'; baseUrl = $feedUrl; apiKey = 'golden'
             priority = 25; categories = '2000,2040,5000,5040'; mediaScope = 'both'; isEnabled = $true; keepName = $true; routeToLibraries = $true
+            # Nothing automatic (#936): the suite sends each release itself, so the feed must never be grabbed from on its own.
+            rssEnabled = $false; automaticSearchEnabled = $false
         }
     }
     $script:Fx.IndexerIds.torrent = $feed.id
@@ -209,7 +211,7 @@ function New-UsenetFilm {
     $year = 2020
     $release = "$title.$year.1080p.WEB-DL.x264-GOLDEN"
     $dir = Join-Path (Get-SuiteRoot) "films\$release-nzb"
-    & (Get-RepoScript 'usenet-stub\New-UsenetRelease.ps1') -OutDirectory $dir -Name $release -SourceFile $script:Fx.Base[$Size] -MinimumMegabytes 1 | Out-Null
+    & (Get-RepoScript 'usenet-stub\New-UsenetRelease.ps1') -OutDirectory $dir -Name $release -SourceFile $script:Fx.Base[$Size] -MinimumMegabytes 1 -PartSizeKilobytes 1500 | Out-Null
     $articles = Join-Path $dir 'articles'
     Copy-Item -Path (Join-Path $articles '*.art') -Destination (Join-Path $script:Fx.Stub 'release\articles') -Force
     New-Item -ItemType Directory -Force -Path (Join-Path $script:Fx.Feed 'torrents') | Out-Null
@@ -296,7 +298,11 @@ function Invoke-DelugeSettle {
         (Invoke-RestMethod -Uri $base -Method Post -ContentType 'application/json' -WebSession $sess -UseBasicParsing -TimeoutSec 20 -Body (@{ method = $method; params = $params; id = 1 } | ConvertTo-Json -Depth 5 -Compress))
     }
     Call 'auth.login' @('deluge') | Out-Null
-    Call 'web.connected' @() | Out-Null
+    # The web UI must be connected to the daemon before it answers core calls.
+    if (-not (Call 'web.connected' @()).result) {
+        $hosts = (Call 'web.get_hosts' @()).result
+        if ($hosts) { Call 'web.connect' @($hosts[0][0]) | Out-Null; Start-Sleep -Seconds 2 }
+    }
     Call 'core.force_recheck' @(, @($hash)) | Out-Null
     Start-Sleep -Seconds 3
     Call 'core.move_storage' @(@($hash), $Destination) | Out-Null
@@ -308,8 +314,14 @@ function Wait-FilmFinished {
     param([Parameter(Mandatory)] $Film, [int] $TimeoutSec = 180)
     $state = @{ Nudged = 0 }
     $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 2 -Condition {
-        $row = Find-QueueRow -Name $Film.Release
-        if (-not $row) { return $null }
+        $row = Find-QueueRow -Name $Film.Release -IncludeHistory
+        if (-not $row) {
+            # A finished Usenet job is no longer in the queue, but its hand-off proves it finished.
+            $h = Find-Handoffs -Name $Film.Release | Select-Object -First 1
+            if ($h) { return $h }
+            return $null
+        }
+        if ($row.isHistory) { return $row }
         if ($row.status -in 'completed', 'processing', 'processed', 'waitingForProcessor', 'importReady', 'importQueued', 'imported' -or [double]$row.progress -ge 100) { return $row }
         if ($Film.Protocol -eq 'torrent' -and $state.Nudged -lt 3 -and ([DateTime]::UtcNow - $Film.SentUtc).TotalSeconds -gt (10 + 15 * $state.Nudged)) {
             $state.Nudged++
