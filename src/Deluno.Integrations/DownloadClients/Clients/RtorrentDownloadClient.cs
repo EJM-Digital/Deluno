@@ -19,10 +19,10 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 /// <c>d.erase</c> — drop the torrent from rTorrent's session — and nothing
 /// that also removes the files it produced. Radarr/Sonarr do not claim to
 /// delete rTorrent's payload either; it is a genuine gap in rTorrent's own
-/// API, not a shortcut taken here. Delete and Forget call <c>d.erase</c> alone:
+/// API, not a shortcut taken here. Delete and RemoveRefusedCopy call <c>d.erase</c> alone:
 /// the file leaves rTorrent's session either way, and rTorrent keeps no
 /// separate history for a released hash to survive in (unlike SABnzbd/NZBGet),
-/// so there is nothing further "forget" could do.</para>
+/// so there is nothing further "remove the refused copy" could do.</para>
 ///
 /// <para><b>DeleteWithData asks rTorrent where the download actually is</b>
 /// (<c>d.base_path</c>, falling back to <c>d.directory</c> for an older
@@ -270,7 +270,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             return await DeleteWithDataAsync(client, http, baseUri, queueItemId, cancellationToken);
         }
 
-        // Delete and Forget both reach plain d.erase, for the reason this
+        // Delete and RemoveRefusedCopy both reach plain d.erase, for the reason this
         // class's own doc comment gives: rTorrent's RPC has nothing further
         // either could call.
         var method = action switch
@@ -279,7 +279,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             DownloadClientActions.Resume => "d.resume",
             DownloadClientActions.Recheck => "d.check_hash",
             DownloadClientActions.Delete => "d.erase",
-            DownloadClientActions.Forget => "d.erase",
+            DownloadClientActions.RemoveRefusedCopy => "d.erase",
             _ => null
         };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "rTorrent");

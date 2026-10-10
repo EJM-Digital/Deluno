@@ -849,11 +849,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // resume pairs are qBittorrent's own rename across versions, tried in
         // order; everything else is one endpoint.
         //
-        // `forget` is the same request as `delete-with-data`, and saying so
+        // `remove-refused-copy` is the same request as `delete-with-data`, and saying so
         // here is the point: qBittorrent refuses a release because it still
         // holds the infohash, so once the torrent is gone it accepts the
         // release again and there is nothing left to clear. SABnzbd and NZBGet
-        // keep a history that outlives the transfer, and there `forget` is a
+        // keep a history that outlives the transfer, and there `remove-refused-copy` is a
         // second request — the two are not the same verb by accident.
         var (endpoints, deleteFiles) = action switch
         {
@@ -862,7 +862,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             DownloadClientActions.Recheck => (new[] { "api/v2/torrents/recheck" }, null),
             DownloadClientActions.Delete => (new[] { "api/v2/torrents/delete" }, false),
             DownloadClientActions.DeleteWithData => (new[] { "api/v2/torrents/delete" }, true),
-            DownloadClientActions.Forget => (new[] { "api/v2/torrents/delete" }, true),
+            DownloadClientActions.RemoveRefusedCopy => (new[] { "api/v2/torrents/delete" }, true),
             // #810: queue priority/reorder and force-start.
             DownloadClientActions.MoveToTop => (new[] { "api/v2/torrents/topPrio" }, null),
             DownloadClientActions.MoveUp => (new[] { "api/v2/torrents/increasePrio" }, null),

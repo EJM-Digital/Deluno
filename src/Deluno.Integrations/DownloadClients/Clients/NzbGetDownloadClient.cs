@@ -400,12 +400,12 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
             // only command that removes it — HistoryDelete hides it, and a
             // hidden entry still refuses the release. The job is in one place
             // or the other, so either one working is enough.
-            case DownloadClientActions.Forget:
+            case DownloadClientActions.RemoveRefusedCopy:
             {
                 var fromQueue = await Edit("GroupFinalDelete");
                 var fromHistory = await Edit("HistoryFinalDelete");
                 return Done(fromQueue || fromHistory,
-                    "Removed this download and its history entry from NZBGet, so it will accept this release again.", "forget this download");
+                    "Removed this download and its history entry from NZBGet, so it will accept this release again.", "remove this download");
             }
 
             // #810: GroupMoveTop/GroupMoveBottom are NZBGet's own edit-queue
