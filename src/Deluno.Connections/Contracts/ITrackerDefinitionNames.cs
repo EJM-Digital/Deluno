@@ -8,4 +8,11 @@ namespace Deluno.Connections.Contracts;
 public interface ITrackerDefinitionNames
 {
     string? DisplayName(string definitionId);
+
+    /// <summary>
+    /// What a tracker definition says about itself (#1240): <see cref="IndexerPrivacy.Private"/>, <see cref="IndexerPrivacy.Public"/>
+    /// or <see cref="IndexerPrivacy.SemiPrivate"/> (Cardigann's own rule: anything that is neither is semi-private). Null when
+    /// the definition is not known.
+    /// </summary>
+    string? Privacy(string definitionId) => null;
 }

@@ -628,7 +628,11 @@ public sealed record DownloadHealthRemediationReport(
     int PayloadsPurged,
     int Skipped,
     IReadOnlyList<string> Notes,
-    int ReleasesRefused = 0);
+    int ReleasesRefused = 0)
+{
+    /// <summary>#1240: torrents moved to a keep-seeding category instead of being removed.</summary>
+    public int TorrentsMoved { get; init; }
+}
 
 /// <summary>
 /// What one real pass over the download clients found: the overview every screen

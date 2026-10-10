@@ -55,7 +55,12 @@ public sealed class DownloadClientTelemetryService(
     // #1117: where the version a client reports is kept for the Connections screens.
     IConnectionVersionStore? connectionVersions = null,
     // The live verdict is written back to the stored client, so the list and the drawer say what the Dashboard says.
-    IRealtimeEventPublisher? realtimeEventPublisher = null)
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    // #1240: a person's keep-seeding categories and the moves that did not work. Null in a service built by hand, which
+    // then never moves a torrent: nothing is keeping anything seeding until this is wired.
+    IKeepSeedingStore? keepSeedingStore = null,
+    // #1240: a tracker definition's own privacy, for a site added before Deluno stored it.
+    ITrackerDefinitionNames? trackerDefinitionNames = null)
     : IDownloadClientTelemetryService
 {
     private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
@@ -663,6 +668,12 @@ public sealed class DownloadClientTelemetryService(
             => !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right)
                && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
 
+        // Moved to keep seeding and no longer tracked (#1240): the record is history, not proof the download is Deluno's.
+        if (KeptSeedingDispatches.IsReleased(dispatch))
+        {
+            return false;
+        }
+
         if (Same(dispatch.Id, itemId))
         {
             return true;
@@ -801,7 +812,7 @@ public sealed class DownloadClientTelemetryService(
         // as it finishes with it, and the download can still be sitting in the
         // client.
         var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(clientId, queueItemId, cancellationToken);
-        if (dispatch is null)
+        if (dispatch is null || KeptSeedingDispatches.IsReleased(dispatch))
         {
             return new DownloadOwnership(false, NotSentMessage(queueItemId));
         }
@@ -859,7 +870,8 @@ public sealed class DownloadClientTelemetryService(
         DownloadDispatchItem dispatch)
     {
         var notSent = new DownloadOwnership(false, NotSentMessage(queueItemId));
-        if (!string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)
+            || KeptSeedingDispatches.IsReleased(dispatch))
         {
             return notSent;
         }
@@ -1399,7 +1411,12 @@ public sealed class DownloadClientTelemetryService(
     /// having "vanished from the client" (#1167). The vanished notice is
     /// marked as already seen and nobody is waiting on it.
     /// </summary>
-    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, string action, CancellationToken cancellationToken)
+    private async Task NoteRemovedByDelunoAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        string action,
+        CancellationToken cancellationToken,
+        string? movedToCategory = null)
     {
         if (string.IsNullOrWhiteSpace(queueItemId))
         {
@@ -1418,7 +1435,11 @@ public sealed class DownloadClientTelemetryService(
                 // downloading" and the activity row never ended (golden path, rc.30.9). Closed first, so a
                 // later step that fails cannot leave the title looking busy.
                 await dispatchesRepository.ArchiveDispatchAsync(
-                    open.Id, $"Deluno removed this download from {client.Name}.", cancellationToken);
+                    open.Id,
+                    movedToCategory is null
+                        ? $"Deluno removed this download from {client.Name}."
+                        : $"Deluno moved this download to {movedToCategory} on {client.Name} so it keeps seeding.",
+                    cancellationToken);
 
                 try
                 {
@@ -1431,7 +1452,12 @@ public sealed class DownloadClientTelemetryService(
                     // written for it close, and a hand-off that ended badly stops asking for a decision.
                     if (recoveryHandler is not null)
                     {
-                        await recoveryHandler.HandleDispatchSettledAsync(open.Id, $"Deluno removed this download from {client.Name} itself.", cancellationToken);
+                        await recoveryHandler.HandleDispatchSettledAsync(
+                            open.Id,
+                            movedToCategory is null
+                                ? $"Deluno removed this download from {client.Name} itself."
+                                : $"Deluno moved this download to {movedToCategory} on {client.Name} so it keeps seeding.",
+                            cancellationToken);
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1452,14 +1478,16 @@ public sealed class DownloadClientTelemetryService(
             {
                 // The reason stays on the record and is what the processor is told: a person who stopped tracking
                 // the download is not told "the download was gone" (#1220).
-                var reason = string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase)
-                    ? $"You told Deluno to stop tracking {handoff.ReleaseName}, so Deluno will not import it."
-                    : $"Deluno removed {handoff.ReleaseName} from {client.Name}, so it will not import it.";
+                var reason = movedToCategory is not null
+                    ? $"Deluno moved {handoff.ReleaseName} to {movedToCategory} on {client.Name} so it keeps seeding, so it will not import it."
+                    : string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase)
+                        ? $"You told Deluno to stop tracking {handoff.ReleaseName}, so Deluno will not import it."
+                        : $"Deluno removed {handoff.ReleaseName} from {client.Name}, so it will not import it.";
                 await processorRepository.UpdateProcessorHandoffAsync(
                     handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, reason, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "processing.dismissed",
-                    $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno removed the download.",
+                    $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno {(movedToCategory is null ? "removed the download" : "moved the download to keep it seeding")}.",
                     System.Text.Json.JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
                     null,
                     "processor-handoff",
@@ -2012,6 +2040,17 @@ public sealed class DownloadClientTelemetryService(
         var removed = 0;
         var purged = 0;
         var skipped = 0;
+        var moved = 0;
+
+        // #1240: read only when a rule asks to move a private torrent, so with the feature off (a new install, an
+        // upgraded one) a pass costs nothing more than it did.
+        var movesAnything = keepSeedingStore is not null && rules.Any(rule => rule.Enabled && DownloadHealthPrivateActions.Moves(rule.PrivateAction));
+        var keepSeeding = movesAnything ? await keepSeedingStore!.GetAsync(cancellationToken) : KeepSeedingSettings.Empty;
+        var knownProblems = keepSeedingStore is null
+            ? new Dictionary<string, KeepSeedingProblem>(StringComparer.OrdinalIgnoreCase)
+            : (await keepSeedingStore.ListProblemsAsync(cancellationToken)).ToDictionary(problem => problem.Key, StringComparer.OrdinalIgnoreCase);
+        var sites = movesAnything ? await connectionsRepository.ListIndexersAsync(cancellationToken) : [];
+        var openProblems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var snapshot in overview.Clients)
         {
@@ -2116,6 +2155,89 @@ public sealed class DownloadClientTelemetryService(
                     notes.Add($"{item.ReleaseName}: left alone, because the same release is {(otherSend.ImportStatus == "imported" ? "already imported" : "still downloading")} from {otherSend.DownloadClientName}.");
                 }
 
+                // #1240: a rule set to keep a private (or tagged) torrent seeding moves it instead of removing it. It
+                // takes the place of the removal: nothing is deleted on this path, and a public torrent is removed as before.
+                KeepSeedingDecision? keep = null;
+                IndexerItem? site = null;
+                if (movesAnything
+                    && (wantRemove || wantReplacement)
+                    && struckRule is { Enabled: true } movingRule
+                    && DownloadHealthPrivateActions.Moves(movingRule.PrivateAction)
+                    && string.Equals(movingRule.ActionPreset, DownloadHealthActionPresets.Replace, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(struck.Kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase)
+                    && !DownloadClientHelpers.IsUsenetProtocol(client.Protocol))
+                {
+                    site = SiteOf(sites, dispatch, item);
+                    var decided = KeepSeedingResolver.Decide(
+                        keepSeeding, client.Id, site?.Id, item.IsPrivate,
+                        site is not null && IndexerPrivacy.ExpectsSharing(EffectivePrivacy(site)));
+                    if (decided.KeepsSeeding)
+                    {
+                        keep = decided;
+                        wantRemove = false;
+                        wantPurge = false;
+                        wantReplacement = true;
+                        wantBlock = movingRule.BlocklistWhenMoved;
+                    }
+                }
+
+                var problemKey = KeepSeedingProblem.KeyFor(client.Id, item.Id);
+                string? movedTo = null;
+                if (keep is not null)
+                {
+                    var wanted = keep.Category;
+                    var alreadyThere = !string.IsNullOrWhiteSpace(wanted) && ClientCategoryMove.SameCategory(item.Category, wanted);
+                    if (!categoryOwned && !alreadyThere)
+                    {
+                        notes.Add($"{item.ReleaseName}: left alone, because its Deluno category could not be proven.");
+                        skipped++;
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(wanted) || IsDelunoCategory(client, wanted, dispatch.MediaType, routeCategory))
+                    {
+                        // A private torrent with nowhere to go is left exactly as it is: no removal, no block, no search.
+                        var reason = string.IsNullOrWhiteSpace(wanted)
+                            ? $"{item.ReleaseName} is from a private tracker and its rule moves it to keep seeding, but no keep-seeding category is set for it. Set one on its tag, its site or {client.Name}. Until then it is left alone."
+                            : $"{item.ReleaseName} is from a private tracker and its rule moves it to keep seeding, but {wanted} is the category Deluno uses for downloads on {client.Name}. Choose a different keep-seeding category. Until then it is left alone.";
+                        if (!dryRun)
+                        {
+                            await NoteKeepSeedingProblemAsync(knownProblems, openProblems, client, item, KeepSeedingProblemKinds.NeedsCategory, reason, wanted, cancellationToken);
+                        }
+                        else
+                        {
+                            applied.Add("would leave it alone, because no keep-seeding category is set for it");
+                        }
+
+                        notes.Add(reason);
+                        skipped++;
+                        continue;
+                    }
+
+                    if (dryRun)
+                    {
+                        applied.Add($"would move it to {wanted} on {client.Name}");
+                    }
+                    else
+                    {
+                        var moveResult = await MoveToKeepSeedingAsync(client, item.Id, wanted, item.Category, cancellationToken);
+                        if (!moveResult.Succeeded)
+                        {
+                            // Refused: nothing else happens. No block, no search, no handled stamp, nothing deleted; the
+                            // next check tries again and the reason is on System, Health until it works.
+                            var reason = $"Deluno could not move {item.ReleaseName} to {wanted} in {client.Name}: {moveResult.Message} It left the download alone and will try again at the next check.";
+                            await NoteKeepSeedingProblemAsync(knownProblems, openProblems, client, item, KeepSeedingProblemKinds.Refused, reason, wanted, cancellationToken);
+                            notes.Add(reason);
+                            skipped++;
+                            continue;
+                        }
+
+                        movedTo = wanted;
+                        moved++;
+                        applied.Add($"moved to {wanted}");
+                    }
+                }
+
                 var canRefuse = wantBlock && blockedReleases is not null;
 
                 // "Do not select the same failed release again": on the one
@@ -2161,6 +2283,19 @@ public sealed class DownloadClientTelemetryService(
                 else if (wantReplacement)
                 {
                     notes.Add($"{item.ReleaseName}: replacement was not queued because this dispatch is not a movie, series or episode library search.");
+                }
+
+                // The move worked, the release is blocked if the rule says so and the search is queued: only now does
+                // Deluno stop tracking the torrent. It stays in the client, seeding, outside Deluno's view; its record
+                // and its hand-off close with a plain reason, and the processor is told through the same outcome path.
+                if (movedTo is not null)
+                {
+                    await NoteRemovedByDelunoAsync(client, item.Id, DownloadClientActions.SetCategory, cancellationToken, movedTo);
+                    openProblems.Remove(problemKey);
+                    if (keepSeedingStore is not null)
+                    {
+                        await keepSeedingStore.ClearProblemAsync(problemKey, cancellationToken);
+                    }
                 }
 
                 if (wantRemove)
@@ -2230,7 +2365,9 @@ public sealed class DownloadClientTelemetryService(
                     actions = applied,
                     categoryOwned,
                     payloadOwned,
-                    dryRun
+                    dryRun,
+                    movedTo,
+                    keepSeedingSource = keep?.CategorySource
                 });
                 // #905: name the rule that caused this, in plain words, so
                 // Activity never just says "something happened" - a person
@@ -2240,7 +2377,9 @@ public sealed class DownloadClientTelemetryService(
                     : string.Empty;
                 var activityMessage = dryRun
                     ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
-                    : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc, struckRule)} {PlainRemediation(applied, client.Name)}";
+                    : movedTo is not null
+                        ? KeepSeedingActivity(item, client, movedTo, site, applied, struck, struckRule)
+                        : $"{item.ReleaseName}{ruleReason}: {StalledReason(struck, client.Name, overview.CapturedUtc, struckRule)} {PlainRemediation(applied, client.Name)}";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave
@@ -2261,10 +2400,18 @@ public sealed class DownloadClientTelemetryService(
                 // go, no replacement search was possible), the reason is the failure
                 // and it stays on Needs action with that reason (#1167).
                 var unfinished = notes.Skip(notesBefore).Where(IsUnfinishedNote).ToList();
-                var outcomeCode = unfinished.Count == 0 ? "health-remediation-applied" : HealthRemediationIncomplete;
+                // A moved torrent is Deluno's no more whatever else could not finish (no replacement search, say): it is
+                // closed as handled, and the record says what could not be done.
+                var outcomeCode = unfinished.Count == 0 || movedTo is not null ? "health-remediation-applied" : HealthRemediationIncomplete;
                 var outcomeMessage = unfinished.Count == 0
                     ? string.Join("; ", applied)
                     : string.Join("; ", applied.Concat(unfinished));
+                if (movedTo is not null)
+                {
+                    outcomeMessage = KeptSeedingDispatches.Message(
+                        dispatch.ReleaseName, movedTo, client.Name,
+                        unfinished.Count == 0 ? string.Join("; ", applied.Skip(1)) : string.Join("; ", applied.Skip(1).Concat(unfinished)));
+                }
                 if (unfinished.Count > 0)
                 {
                     activityMessage += $" It could not finish: {string.Join(" ", unfinished)}";
@@ -2307,7 +2454,24 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes, refused);
+        // #1240: a problem ends on its own when its torrent recovered, left the client or was moved. Only a client that
+        // answered can say so; one that did not keeps its problems.
+        if (keepSeedingStore is not null && !dryRun)
+        {
+            var answered = overview.Clients
+                .Where(snapshot => string.Equals(snapshot.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
+                .Select(snapshot => snapshot.ClientId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var problem in knownProblems.Values)
+            {
+                if (answered.Contains(problem.ClientId) && !openProblems.Contains(problem.Key))
+                {
+                    await keepSeedingStore.ClearProblemAsync(problem.Key, cancellationToken);
+                }
+            }
+        }
+
+        return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes, refused) { TorrentsMoved = moved };
     }
 
     internal const string HealthRemediationIncomplete = "health-remediation-incomplete";
@@ -3224,6 +3388,130 @@ public sealed class DownloadClientTelemetryService(
     /// <summary>Whether <see cref="QueueReplacementSearchAsync"/> can act on this dispatch's entity type. See <see cref="ReplacementSearchQueuer.Supports"/>.</summary>
     private static bool SupportsReplacementSearch(string entityType)
         => ReplacementSearchQueuer.Supports(entityType);
+
+    private static IndexerItem? SiteOf(IReadOnlyList<IndexerItem> sites, DownloadDispatchItem dispatch, DownloadQueueItem item)
+    {
+        static bool Same(string? left, string? right)
+            => !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right)
+               && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        return sites.FirstOrDefault(site => Same(site.Id, dispatch.IndexerId))
+            ?? sites.FirstOrDefault(site => Same(site.Name, dispatch.IndexerName))
+            ?? sites.FirstOrDefault(site => Same(site.Name, item.IndexerName));
+    }
+
+    /// <summary>
+    /// What a site is, for keeping a torrent seeding (#1240): what was stored for it, or, when nothing was (a site added
+    /// before Deluno kept it), what its tracker definition says. The person's own override is applied on top, by the resolver.
+    /// </summary>
+    private string EffectivePrivacy(IndexerItem site)
+    {
+        var stored = IndexerPrivacy.Normalize(site.Privacy);
+        if (stored != IndexerPrivacy.Unknown || string.IsNullOrWhiteSpace(site.DefinitionId))
+        {
+            return stored;
+        }
+
+        return IndexerPrivacy.Normalize(trackerDefinitionNames?.Privacy(site.DefinitionId));
+    }
+
+    /// <summary>Asks the client to move one torrent to the keep-seeding category; a failure of any kind comes back as a plain refusal.</summary>
+    private async Task<DownloadClientActionResult> MoveToKeepSeedingAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        string category,
+        string? currentCategory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return downloadClientRegistry.TryGet(client.Protocol, out var implementation)
+                ? await implementation.SetCategoryAsync(client, queueItemId, category, currentCategory, cancellationToken)
+                : DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.SetCategory, $"'{client.Protocol}' is not a supported download client protocol.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException or JsonException
+                                          && !cancellationToken.IsCancellationRequested)
+        {
+            return DownloadClientHelpers.ActionFailure(
+                client, queueItemId, DownloadClientActions.SetCategory,
+                DownloadClientHelpers.PlainConnectionFailure(exception.Message, client.Name) ?? exception.Message,
+                category: "unreachable");
+        }
+    }
+
+    /// <summary>
+    /// Records a torrent Deluno meant to keep seeding and could not (#1240), and says so in Activity the first time and
+    /// whenever the reason changes, not on every retry. The row stays on System, Health until a retry works.
+    /// </summary>
+    private async Task NoteKeepSeedingProblemAsync(
+        Dictionary<string, KeepSeedingProblem> known,
+        HashSet<string> open,
+        DownloadClientItem client,
+        DownloadQueueItem item,
+        string kind,
+        string message,
+        string? category,
+        CancellationToken cancellationToken)
+    {
+        if (keepSeedingStore is null)
+        {
+            return;
+        }
+
+        var key = KeepSeedingProblem.KeyFor(client.Id, item.Id);
+        open.Add(key);
+        var now = timeProvider.GetUtcNow();
+        known.TryGetValue(key, out var before);
+        var problem = new KeepSeedingProblem(
+            key, client.Id, client.Name, item.Id, item.ReleaseName, kind, message, category,
+            before?.FirstSeenUtc ?? now, now, (before?.Attempts ?? 0) + 1);
+        await keepSeedingStore.SaveProblemAsync(problem, cancellationToken);
+        known[key] = problem;
+        if (before is null || !string.Equals(before.Message, message, StringComparison.Ordinal) || !string.Equals(before.Kind, kind, StringComparison.Ordinal))
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "download.health.keep-seeding-problem",
+                message,
+                JsonSerializer.Serialize(new { clientId = client.Id, queueItemId = item.Id, kind, category }),
+                null,
+                "download_client",
+                client.Id,
+                cancellationToken);
+        }
+    }
+
+    /// <summary>"Moved X to Y on Z so it keeps seeding on T, and is looking for another copy", with the rule's own reason (#1240).</summary>
+    internal static string KeepSeedingActivity(
+        DownloadQueueItem item,
+        DownloadClientItem client,
+        string category,
+        IndexerItem? site,
+        IReadOnlyList<string> applied,
+        DownloadHealthFinding struck,
+        DownloadHealthRule? rule)
+    {
+        var tracker = !string.IsNullOrWhiteSpace(site?.Name)
+            ? site!.Name
+            : !string.IsNullOrWhiteSpace(item.IndexerName)
+                ? item.IndexerName
+                : item.TrackerHosts?.FirstOrDefault() ?? "its tracker";
+        var searching = applied.Any(step => step.Contains("replacement", StringComparison.OrdinalIgnoreCase));
+        var blocked = applied.Any(step => step.Contains("refused", StringComparison.OrdinalIgnoreCase));
+        var message = new StringBuilder($"Moved {item.ReleaseName} to {category} on {client.Name} so it keeps seeding on {tracker}");
+        message.Append(searching ? ", and is looking for another copy." : ".");
+        if (blocked)
+        {
+            message.Append(" Deluno blocked this release.");
+        }
+
+        var reason = RuleReason(struck, rule) ?? struck.Summary;
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            message.Append(' ').Append(reason.TrimEnd('.')).Append('.');
+        }
+
+        return message.ToString();
+    }
 
     /// <summary>#905 decision 2: what each action preset means for the four legacy switches this executor already knew how to apply.</summary>
     private static (bool Block, bool Replacement, bool Remove, bool Purge) ActionsFor(string preset) => preset switch
