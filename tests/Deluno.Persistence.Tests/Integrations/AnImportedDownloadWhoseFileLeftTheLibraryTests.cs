@@ -148,6 +148,23 @@ public sealed class AnImportedDownloadWhoseFileLeftTheLibraryTests
         Assert.False(string.IsNullOrWhiteSpace(item.ErrorMessage));
     }
 
+    // #1210: a download waiting for the processor is judged by the same check, in one pass.
+    [Theory]
+    [InlineData(DownloadQueueStatuses.WaitingForProcessor)]
+    [InlineData(DownloadQueueStatuses.NotHandedOver)]
+    public void A_download_waiting_for_the_processor_whose_files_vanish_is_flagged_as_gone_in_one_check(string status)
+    {
+        var result = DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+            Snapshot(status), path => path.Replace((char)92, (char)47) == "/downloads");
+
+        var item = Assert.Single(result.Queue);
+        Assert.Equal(DownloadQueueStatuses.FilesGone, item.Status);
+        Assert.Equal(DownloadFilesGone.Message, item.ErrorMessage);
+        Assert.Equal(DownloadQueueStatuses.WaitingForProcessor,
+            Assert.Single(DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(
+                Snapshot(DownloadQueueStatuses.WaitingForProcessor), _ => true).Queue).Status);
+    }
+
     [Fact]
     public void A_download_whose_files_are_there_or_whose_folder_cannot_be_seen_is_left_alone()
     {

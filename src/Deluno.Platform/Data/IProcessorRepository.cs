@@ -17,6 +17,24 @@ public interface IProcessorRepository
     Task<ProcessorHandoffItem?> GetProcessorHandoffAsync(string id, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The older hand-off an id belonged to before a release sent again gave its source path a new id (#1208), or
+    /// null when the id was never replaced. A processor's late report for such an id is settled against this, never
+    /// against the hand-off that replaced it.
+    /// </summary>
+    Task<SupersededProcessorHandoff?> FindSupersededProcessorHandoffAsync(
+        string libraryId,
+        string handoffId,
+        CancellationToken cancellationToken)
+        => Task.FromResult<SupersededProcessorHandoff?>(null);
+
+    /// <summary>Marks a replaced hand-off as settled by the processor's report. True the first time only.</summary>
+    Task<bool> SettleSupersededProcessorHandoffAsync(
+        string handoffId,
+        string reportStatus,
+        CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
+    /// <summary>
     /// The newest hand-off made for a download, found by the client and the
     /// client's own id for the item (its hash or id), not by where its files
     /// are. A download the client moves changes its path, and a path match then

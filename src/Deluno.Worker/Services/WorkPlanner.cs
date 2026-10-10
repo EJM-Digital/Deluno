@@ -1253,6 +1253,15 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            // Files that are not there are not handed to a processor (#1210). The download reads "Files are
+            // gone" from the same check Transfers uses (#1200), with the same row and actions, instead of
+            // waiting for the processor to say so many minutes later.
+            if (!released && ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
+                DownloadFilesGone.AreGoneOnDisk(item.SourcePath))
+            {
+                continue;
+            }
+
             if (!released && ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
                 var handoff = await processorRepository.EnsureProcessorHandoffAsync(
