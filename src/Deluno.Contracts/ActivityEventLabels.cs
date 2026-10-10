@@ -176,6 +176,7 @@ public static class ActivityEventLabels
             ["processing.source-gone"] = "Download gone before the processor could clean it",
             ["processing.source-gone.settled"] = "Closed a hand-off whose download was gone",
             ["processing.superseded"] = "Hand-off closed, title imported another way",
+            ["processing.superseded-settled"] = "Closed an earlier send of a release sent again",
             ["processing.output.matched.import-queued"] = "Found the processed file, import queued",
             ["processing.output.scan-failed"] = "Could not look through the processor's output",
             ["processing.output.unmatched"] = "Processor output did not match anything",
