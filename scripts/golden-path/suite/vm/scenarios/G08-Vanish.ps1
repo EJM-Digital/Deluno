@@ -27,7 +27,7 @@ function Invoke-GroupVanish {
         $seen = @{}
         $deadline = [DateTime]::UtcNow.AddSeconds(90)
         while ([DateTime]::UtcNow -lt $deadline -and $seen.Count -lt 5) {
-            foreach ($row in @(Get-TelemetryRows)) {
+            foreach ($row in @(Get-TelemetryRows -IncludeHistory)) {
                 foreach ($kind in Get-AllKinds) {
                     if (-not $seen.ContainsKey($kind) -and ($row.releaseName -like "*$($films[$kind].Release)*" -or $row.title -like "*$($films[$kind].Title)*") -and $row.status -eq 'filesGone') {
                         $seen[$kind] = [math]::Round(([DateTime]::UtcNow - $removedAt[$kind]).TotalSeconds, 1)
