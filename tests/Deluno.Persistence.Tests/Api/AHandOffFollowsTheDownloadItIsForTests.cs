@@ -267,6 +267,127 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         Assert.Single(all);
     }
 
+    // ---- #1210: files that are not there are not handed over --------------------------------------
+
+    [Fact]
+    public async Task A_download_whose_files_are_gone_is_not_handed_to_the_processor()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        Directory.Delete(scene.DownloadFolder, recursive: true);
+        var submitted = new List<ProcessorHandoffItem>();
+
+        await PlanAsync(app, scene, Item(scene, scene.DownloadFolder), submitted);
+
+        Assert.Empty(submitted);
+        Assert.Empty(await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 50, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_download_whose_files_are_there_is_still_handed_to_the_processor()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var submitted = new List<ProcessorHandoffItem>();
+
+        await PlanAsync(app, scene, Item(scene, scene.DownloadFolder), submitted);
+
+        Assert.Single(submitted);
+    }
+
+    // ---- #1208: a late report for an older send of the same path -----------------------------------
+
+    private static Task<HttpResponseMessage> ReportAsync(ApplicationTestHost app, Scene scene, string handoffId, string status, string? message = null, string? outputPath = null)
+        => app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId,
+            status,
+            message,
+            outputPath
+        });
+
+    [Fact]
+    public async Task A_late_report_for_an_older_send_of_the_same_path_settles_that_send_and_never_the_live_one()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var repository = Repository(app);
+
+        // Send, remove ("I don't want it"), send the same release to the same path again.
+        var first = await HandoffAsync(app, scene);
+        await repository.UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Cancelled, null, null, "stopped", CancellationToken.None);
+        var second = await HandoffAsync(app, scene, addedUtc: DateTimeOffset.UtcNow.AddMinutes(5));
+        Assert.NotEqual(first.Id, second.Id);
+        await repository.UpdateProcessorHandoffAsync(second.Id, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
+        Assert.Null(await repository.GetProcessorHandoffAsync(first.Id, CancellationToken.None));
+
+        // The processor, still holding the first id, reports against it, a failure and then a completion.
+        var lateFailure = await ReportAsync(app, scene, first.Id, "failed", message: "The download was gone.");
+        var lateCompletion = await ReportAsync(app, scene, first.Id, "completed", outputPath: Path.Combine(scene.Output, Release));
+
+        Assert.Equal(HttpStatusCode.Accepted, lateFailure.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, lateCompletion.StatusCode);
+        var said = await lateFailure.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(first.Id, said.GetProperty("handoffId").GetString());
+        Assert.True(said.GetProperty("alreadyHandled").GetBoolean());
+
+        // The live one is untouched: not failed, not completed, nothing imported for it.
+        var live = await repository.GetProcessorHandoffAsync(second.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, live?.Status);
+        Assert.Null(live?.FailureMessage);
+        Assert.Equal(0, await ImportJobCountAsync(app));
+
+        // The older send is settled once, in plain words, under the live hand-off's record.
+        var settled = (await app.Services.GetRequiredService<IActivityFeedRepository>()
+                .ListActivityAsync(20, "processor-handoff", second.Id, CancellationToken.None))
+            .Where(item => item.Category == "processing.superseded-settled")
+            .ToArray();
+        Assert.Single(settled);
+        Assert.Contains("earlier send", settled[0].Message);
+        var older = await repository.FindSupersededProcessorHandoffAsync(scene.LibraryId, first.Id, CancellationToken.None);
+        Assert.NotNull(older?.SettledUtc);
+        Assert.Equal(second.Id, older!.SupersededById);
+
+        // The live one settles from its own report.
+        var own = await ReportAsync(app, scene, second.Id, "started");
+        Assert.Equal(HttpStatusCode.Accepted, own.StatusCode);
+        Assert.Equal(ProcessorHandoffStatuses.Started, (await repository.GetProcessorHandoffAsync(second.Id, CancellationToken.None))?.Status);
+        var ownFailure = await ReportAsync(app, scene, second.Id, "failed", message: "Weir skipped it.");
+        Assert.Equal(HttpStatusCode.Accepted, ownFailure.StatusCode);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, (await repository.GetProcessorHandoffAsync(second.Id, CancellationToken.None))?.Status);
+    }
+
+    [Fact]
+    public async Task An_id_that_was_never_a_hand_off_of_this_library_is_still_a_409()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+
+        var response = await ReportAsync(app, scene, "never-existed", "started");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_path_sent_three_times_answers_the_reports_of_both_older_sends()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var repository = Repository(app);
+        var first = await HandoffAsync(app, scene);
+        await repository.UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Cancelled, null, null, "stopped", CancellationToken.None);
+        var second = await HandoffAsync(app, scene, addedUtc: DateTimeOffset.UtcNow.AddMinutes(5));
+        await repository.UpdateProcessorHandoffAsync(second.Id, ProcessorHandoffStatuses.Cancelled, null, null, "stopped", CancellationToken.None);
+        var third = await HandoffAsync(app, scene, addedUtc: DateTimeOffset.UtcNow.AddMinutes(10));
+
+        Assert.Equal(HttpStatusCode.Accepted, (await ReportAsync(app, scene, first.Id, "started")).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await ReportAsync(app, scene, second.Id, "started")).StatusCode);
+        Assert.Equal(ProcessorHandoffStatuses.Waiting, (await repository.GetProcessorHandoffAsync(third.Id, CancellationToken.None))?.Status);
+        Assert.Equal(third.Id, (await repository.FindSupersededProcessorHandoffAsync(scene.LibraryId, first.Id, CancellationToken.None))?.SupersededById);
+    }
+
     // ---- #1155: a limit on waiting for the processor ----------------------------------------------
 
     [Fact]

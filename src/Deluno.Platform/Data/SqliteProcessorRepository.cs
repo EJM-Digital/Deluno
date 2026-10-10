@@ -450,6 +450,25 @@ public sealed class SqliteProcessorRepository(
         // waited for an output that was never coming (seen on the rig with a
         // re-grabbed film, #526). A person's Retry keeps the id on purpose;
         // that is the same cycle, tried again.
+        // The id the row had before it may be replaced below. The processor holds that id and will report against it.
+        string? previousId = null;
+        string? previousStatus = null;
+        string? previousRelease = null;
+        using (var before = connection.CreateCommand())
+        {
+            before.CommandText = "SELECT id, status, release_name FROM processor_handoffs WHERE library_id = @libraryId AND source_key = @sourceKey;";
+            AddParameter(before, "@libraryId", request.LibraryId.Trim());
+            AddParameter(before, "@sourceKey", sourceKey);
+            using var read = await before.ExecuteReaderAsync(cancellationToken);
+            if (await read.ReadAsync(cancellationToken))
+            {
+                previousId = read.GetString(0);
+                previousStatus = read.GetString(1);
+                previousRelease = read.GetString(2);
+            }
+        }
+
+        var restarted = false;
         using (var restart = connection.CreateCommand())
         {
             restart.CommandText =
@@ -539,7 +558,36 @@ public sealed class SqliteProcessorRepository(
             AddParameter(restart, "@processorConnectionId", processorConnectionId);
             AddParameter(restart, "@createdUtc", now.ToString("O"));
             AddParameter(restart, "@updatedUtc", now.ToString("O"));
-            created |= await restart.ExecuteNonQueryAsync(cancellationToken) > 0;
+            restarted = await restart.ExecuteNonQueryAsync(cancellationToken) > 0;
+            created |= restarted;
+        }
+
+        if (restarted && previousId is not null)
+        {
+            using var keep = connection.CreateCommand();
+            keep.CommandText =
+                """
+                INSERT INTO processor_handoff_superseded (id, library_id, source_key, release_name, last_status, superseded_by_id, superseded_utc)
+                SELECT @oldId, @libraryId, @sourceKey, @releaseName, @lastStatus, id, @nowUtc
+                FROM processor_handoffs
+                WHERE library_id = @libraryId AND source_key = @sourceKey AND id <> @oldId
+                ON CONFLICT(id) DO NOTHING;
+                """;
+            AddParameter(keep, "@oldId", previousId);
+            AddParameter(keep, "@libraryId", request.LibraryId.Trim());
+            AddParameter(keep, "@sourceKey", sourceKey);
+            AddParameter(keep, "@releaseName", previousRelease ?? request.ReleaseName.Trim());
+            AddParameter(keep, "@lastStatus", previousStatus ?? string.Empty);
+            AddParameter(keep, "@nowUtc", now.ToString("O"));
+            await keep.ExecuteNonQueryAsync(cancellationToken);
+
+            // An id replaced earlier now points at the newest one.
+            using var repoint = connection.CreateCommand();
+            repoint.CommandText =
+                "UPDATE processor_handoff_superseded SET superseded_by_id = (SELECT id FROM processor_handoffs WHERE library_id = @libraryId AND source_key = @sourceKey) WHERE library_id = @libraryId AND source_key = @sourceKey;";
+            AddParameter(repoint, "@libraryId", request.LibraryId.Trim());
+            AddParameter(repoint, "@sourceKey", sourceKey);
+            await repoint.ExecuteNonQueryAsync(cancellationToken);
         }
 
         var ensured = (await FindProcessorHandoffAsync(request.LibraryId, null, sourcePath, cancellationToken))
@@ -575,6 +623,54 @@ public sealed class SqliteProcessorRepository(
         else AddParameter(command, "@sourceKey", BuildProcessorSourceKey(sourcePath!));
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
+    }
+
+    public async Task<SupersededProcessorHandoff?> FindSupersededProcessorHandoffAsync(
+        string libraryId,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(libraryId) || string.IsNullOrWhiteSpace(handoffId))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT id, library_id, release_name, last_status, superseded_by_id, superseded_utc, settled_utc FROM processor_handoff_superseded WHERE id = @id AND library_id = @libraryId LIMIT 1;";
+        AddParameter(command, "@id", handoffId.Trim());
+        AddParameter(command, "@libraryId", libraryId.Trim());
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new SupersededProcessorHandoff(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                DateTimeOffset.Parse(reader.GetString(5), System.Globalization.CultureInfo.InvariantCulture),
+                reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6), System.Globalization.CultureInfo.InvariantCulture))
+            : null;
+    }
+
+    public async Task<bool> SettleSupersededProcessorHandoffAsync(
+        string handoffId,
+        string reportStatus,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE processor_handoff_superseded SET settled_utc = @nowUtc, settled_report_status = @status WHERE id = @id AND settled_utc IS NULL;";
+        AddParameter(command, "@id", handoffId.Trim());
+        AddParameter(command, "@status", reportStatus);
+        AddParameter(command, "@nowUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task<ProcessorHandoffItem?> GetProcessorHandoffAsync(

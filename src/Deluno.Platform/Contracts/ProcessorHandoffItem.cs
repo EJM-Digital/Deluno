@@ -46,3 +46,16 @@ public sealed record CreateProcessorHandoffRequest(
     string? ProcessorName,
     DateTimeOffset? DownloadAddedUtc = null,
     string? ProcessorConnectionId = null);
+
+/// <summary>
+/// An older hand-off of a source path whose id was replaced when the release was sent again (#1208). The processor
+/// keeps the id it was given and reports against it, so Deluno keeps it to answer that report.
+/// </summary>
+public sealed record SupersededProcessorHandoff(
+    string Id,
+    string LibraryId,
+    string ReleaseName,
+    string LastStatus,
+    string SupersededById,
+    DateTimeOffset SupersededUtc,
+    DateTimeOffset? SettledUtc);

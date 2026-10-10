@@ -1083,6 +1083,30 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 request.SourcePath,
                 cancellationToken);
 
+            // A release sent again gives its source path a new hand-off id, while the processor still holds
+            // the old one and reports against it (#1208). That report belongs to the older send: it is settled
+            // there, answered as already handled, and never touches the hand-off that replaced it, which settles
+            // from its own report. It is not a 409: nothing is wrong with the report.
+            if (handoff is null && !string.IsNullOrWhiteSpace(request.HandoffId) &&
+                await repository.FindSupersededProcessorHandoffAsync(library.Id, request.HandoffId, cancellationToken) is { } older)
+            {
+                if (await repository.SettleSupersededProcessorHandoffAsync(older.Id, status, cancellationToken))
+                {
+                    await activityFeed.RecordActivityAsync(
+                        "processing.superseded-settled",
+                        $"{processorName} reported on an earlier send of {older.ReleaseName} ({status}). That send was replaced when the release was sent again, so nothing changed: the new send settles from its own report.",
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = older.Id, SupersededById = older.SupersededById, ReportStatus = status, ProcessorName = processorName }),
+                        null,
+                        "processor-handoff",
+                        older.SupersededById,
+                        cancellationToken);
+                }
+
+                return Results.Json(
+                    new { status = "superseded", handoffId = older.Id, alreadyHandled = true },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             if (importsOutput && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))
             {
                 if (handoff is not null)
