@@ -99,6 +99,19 @@ public sealed class LiveEventsAtTheirChangePointsTests : IDisposable
         Assert.Equal("Checked Films.", changes[2].Message);
     }
 
+    // #1209: Queue import showed "Ready to import" for seconds because nothing said the import job had been queued.
+    [Fact]
+    public async Task An_import_job_pushes_that_it_was_queued_and_started_so_every_screen_moves_its_row()
+    {
+        var queued = await _jobs.EnqueueAsync(
+            new EnqueueJobRequest("filesystem.import.execute", "filesystem", "{}", "movie", null),
+            CancellationToken.None);
+        var leased = await _jobs.LeaseNextAsync("worker-1", TimeSpan.FromMinutes(5), null, CancellationToken.None);
+        Assert.NotNull(leased);
+
+        Assert.Equal(["queued", "running"], _realtime.ImportStates.Where(change => change.JobId == queued.Id).Select(change => change.State).ToArray());
+    }
+
     // #1180: a search handed back to wait its turn went from running to waiting without a word, so a screen kept "running".
     [Fact]
     public async Task A_job_handed_back_to_wait_pushes_that_it_is_waiting()
