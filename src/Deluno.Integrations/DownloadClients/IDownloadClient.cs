@@ -60,6 +60,35 @@ public interface IDownloadClient
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// #1240: moves one torrent to a keep-seeding category (qBittorrent) or label (Deluge, Transmission, rTorrent,
+    /// uTorrent) and changes nothing else about it: it is never paused, never removed, and its files stay where they
+    /// are. The client is asked before and after, so "done" means it now reports the torrent in that category.
+    /// A refusal comes back as a failed result with the reason in plain words; nothing is deleted on any path.
+    /// A client that cannot do this (Usenet) answers "not supported". <paramref name="currentCategory"/> is the
+    /// category or label Deluno knew it by, which Transmission replaces within the torrent's label set.
+    /// </summary>
+    Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        string category,
+        string? currentCategory,
+        CancellationToken cancellationToken)
+        => Task.FromResult(DownloadClientHelpers.Unsupported(client, queueItemId, DownloadClientActions.SetCategory, client.Protocol));
+
+    /// <summary>
+    /// #1240: whether a keep-seeding category can be used on this client: ready, missing (the person has to create
+    /// it in the client first), or unsupported with the reason (Deluge's Label plugin is off, a Transmission too old
+    /// for labels, a Usenet client). Never creates anything.
+    /// </summary>
+    Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken)
+        => Task.FromResult(new DownloadClientCategoryCheckResult(
+            client.Id, client.Name, category, DownloadClientCategoryStatuses.Unsupported,
+            $"{client.Name} is a Usenet client, and only a torrent can keep seeding.", Supported: false, Found: false));
+
+    /// <summary>
     /// The files actually inside one download, as the client's own file
     /// listing reports them (#816) - a relative path per file, not the
     /// release name. Null when this client does not expose a file listing, or

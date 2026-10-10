@@ -10,4 +10,8 @@ public sealed class TrackerDefinitionNames(ITrackerDefinitionCatalog catalog) : 
         var name = catalog.Find(definitionId)?.Name;
         return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
     }
+
+    /// <summary>#1240: the definition's own type, read the way Prowlarr reads a Cardigann one.</summary>
+    public string? Privacy(string definitionId)
+        => catalog.Find(definitionId) is { } definition ? IndexerPrivacy.FromDefinitionType(definition.Type) : null;
 }

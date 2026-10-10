@@ -392,6 +392,78 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         return DownloadQueueStatuses.Downloading;
     }
 
+    /// <summary>
+    /// #1240: sets the torrent's label with <c>d.custom1.set</c> (the field ruTorrent and Radarr call the label) and
+    /// nothing else. rTorrent has no category list to check against, so a label is simply set.
+    /// </summary>
+    public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        var action = DownloadClientActions.SetCategory;
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        var http = CreateHttp(client);
+        var label = category.Trim();
+        return await ClientCategoryMove.RunAsync(
+            client, queueItemId, label, "rTorrent",
+            async () =>
+            {
+                try
+                {
+                    return new ClientCategoryReading(ClientHas.Yes, AsString(await SendAsync(http, baseUri, "d.custom1", [queueItemId], cancellationToken)));
+                }
+                catch (RtorrentFaultException)
+                {
+                    // rTorrent answers a hash it does not hold with a fault.
+                    return new ClientCategoryReading(ClientHas.No, null);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                {
+                    return new ClientCategoryReading(ClientHas.Unknown, null);
+                }
+            },
+            async _ =>
+            {
+                try
+                {
+                    await SendAsync(http, baseUri, "d.custom1.set", [queueItemId, label], cancellationToken);
+                    return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "rTorrent action sent.");
+                }
+                catch (RtorrentFaultException fault)
+                {
+                    return DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"rTorrent refused to set the label: {fault.FaultMessage}.");
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                {
+                    return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
+                }
+            });
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the rTorrent address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            await SendAsync(CreateHttp(client), baseUri, "system.client_version", [], cancellationToken);
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                $"rTorrent does not list its labels, so Deluno can't check this one. It sets the {name} label when it moves a download.", Supported: true, Found: false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or RtorrentFaultException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach rTorrent: {exception.Message}", Supported: true, Found: false);
+        }
+    }
+
     private HttpClient CreateHttp(DownloadClientItem client)
     {
         var http = httpClientFactory.CreateClient("download-clients");

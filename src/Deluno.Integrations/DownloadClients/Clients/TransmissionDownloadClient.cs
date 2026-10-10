@@ -361,6 +361,101 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         return leftover is null ? done : done with { FilesNote = leftover };
     }
 
+    /// <summary>
+    /// #1240: puts a torrent under a keep-seeding label with <c>torrent-set</c>. The torrent's label set is rewritten:
+    /// the keep-seeding label goes first, the label Deluno knew it by is dropped, and every other label stays. Its
+    /// download folder is not touched. Labels need RPC 16 (Transmission 2.40); an older daemon says so.
+    /// </summary>
+    public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        var action = DownloadClientActions.SetCategory;
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        if (RpcId(queueItemId) is not { } torrentId)
+        {
+            return DownloadClientHelpers.UnreadableId(client, queueItemId, action, "Transmission");
+        }
+
+        var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "rpc-version" } }), cancellationToken);
+        if (session.Arguments?.RpcVersion is null or < MinimumLabelRpcVersion)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                "This Transmission is too old for labels (they need Transmission 2.40 or later), so it cannot keep a download seeding under one.");
+        }
+
+        var label = category.Trim();
+        return await ClientCategoryMove.RunAsync(
+            client, queueItemId, label, "Transmission",
+            async () =>
+            {
+                var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
+                {
+                    ["ids"] = new[] { torrentId },
+                    ["fields"] = new[] { "labels" }
+                }), cancellationToken);
+                var torrent = response.Arguments?.Torrents?.FirstOrDefault();
+                return torrent is null
+                    ? new ClientCategoryReading(ClientHas.No, null)
+                    : new ClientCategoryReading(ClientHas.Yes, torrent.Labels?.FirstOrDefault());
+            },
+            async _ =>
+            {
+                // The labels as they are now, so the others survive the rewrite.
+                var current = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
+                {
+                    ["ids"] = new[] { torrentId },
+                    ["fields"] = new[] { "labels" }
+                }), cancellationToken);
+                var existing = current.Arguments?.Torrents?.FirstOrDefault()?.Labels ?? [];
+                var labels = new List<string> { label };
+                labels.AddRange(existing.Where(item =>
+                    !string.IsNullOrWhiteSpace(item)
+                    && !ClientCategoryMove.SameCategory(item, label)
+                    && !ClientCategoryMove.SameCategory(item, currentCategory)));
+                var set = await SendAsync(client, baseUri, new TransmissionRequest("torrent-set", new()
+                {
+                    ["ids"] = new[] { torrentId },
+                    ["labels"] = labels.ToArray()
+                }), cancellationToken);
+                var result = set.Result is { ValueKind: System.Text.Json.JsonValueKind.String } text ? text.GetString() : null;
+                return string.Equals(result, "success", StringComparison.OrdinalIgnoreCase) || result is null
+                    ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.")
+                    : DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"Transmission refused to set the label: {result}.");
+            });
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckKeepSeedingCategoryAsync(
+        DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the Transmission address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "rpc-version" } }), cancellationToken);
+            var rpcVersion = session.Arguments?.RpcVersion;
+            if (rpcVersion is null or < MinimumLabelRpcVersion)
+            {
+                return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unsupported,
+                    "This Transmission is too old for labels (they need Transmission 2.40 or later), so it cannot keep a download seeding under one.", Supported: false, Found: false);
+            }
+
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                $"Transmission makes the {name} label when Deluno first uses it, so there is nothing to create.", Supported: true, Found: false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach Transmission: {exception.Message}", Supported: true, Found: false);
+        }
+    }
+
     private async Task<(string? Name, string? Folder)> ReadNameAndFolderAsync(DownloadClientItem client, Uri baseUri, object torrentId, CancellationToken cancellationToken)
     {
         try
