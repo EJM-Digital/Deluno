@@ -88,7 +88,10 @@ public sealed class SqliteHealthCheckRepository(
                     ? HealthCheckTransition.Cleared
                     : HealthCheckTransition.Unchanged;
 
-            results.Add(new HealthCheckTransitionResult(updatedItem, transition));
+            var screenChanged = existing is null
+                || !string.Equals(existing.Status, outcome.Status, StringComparison.Ordinal)
+                || !string.Equals(existing.Message, outcome.Message, StringComparison.Ordinal);
+            results.Add(new HealthCheckTransitionResult(updatedItem, transition, screenChanged));
         }
 
         await transaction.CommitAsync(cancellationToken);

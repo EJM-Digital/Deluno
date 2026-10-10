@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, drawerStatusLabel, isResendingHandoff, itemFailureVisible, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, drawerStatusLabel, isResendingHandoff, itemFailureVisible, QueuePage, resentItemKey, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -1237,6 +1237,22 @@ describe("Try again hides the old failure (#1198)", () => {
   it("is not sending again once the answer is a failure, or for a hand-off nobody retried", () => {
     expect(isResendingHandoff({ id: "h1", status: "failed" }, new Set(["h1"]))).toBe(false);
     expect(isResendingHandoff({ id: "h2", status: "waiting" }, new Set(["h1"]))).toBe(false);
+  });
+
+  it("holds the sending-again state until the new status's own data has arrived (#1229)", () => {
+    const sent = new Set(["h1", resentItemKey("c1", "q1")]);
+    // The hand-off has moved on but the download still reads the old failure: still sending again.
+    expect(isResendingHandoff({ id: "h1", status: "completed" }, sent, "processingFailed", "c1", "q1")).toBe(true);
+    // The hand-off row is briefly missing from a refresh: still sending again.
+    expect(isResendingHandoff(null, sent, "waitingForProcessor", "c1", "q1")).toBe(true);
+    expect(isResendingHandoff(null, sent, "processingFailed", "C1", "Q1")).toBe(true);
+    // The download has moved on and nothing is with the processor: done.
+    expect(isResendingHandoff({ id: "h1", status: "completed" }, sent, "completed", "c1", "q1")).toBe(false);
+    expect(isResendingHandoff(null, sent, "imported", "c1", "q1")).toBe(false);
+    // A real new failure shows at once.
+    expect(isResendingHandoff({ id: "h1", status: "failed" }, sent, "processingFailed", "c1", "q1")).toBe(false);
+    // Not sent again by this person.
+    expect(isResendingHandoff(null, new Set(), "waitingForProcessor", "c1", "q1")).toBe(false);
   });
 });
 

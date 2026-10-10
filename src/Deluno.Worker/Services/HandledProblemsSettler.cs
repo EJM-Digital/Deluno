@@ -60,8 +60,61 @@ public sealed class HandledProblemsSettler(
         return settled
             + await SettleDispatchFailuresAsync(cancellationToken)
             + await SettleHandoffsAsync(cancellationToken)
+            + await SettleCasesOfClosedHandoffsAsync(cancellationToken)
             + await SettleOutcomesNotNeededAsync(cancellationToken)
             + await TellProcessorsOfImportedHandoffsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// An import issue about a hand-off that is already dismissed is the same problem, counted twice (#1228): the hand-off
+    /// was closed (by a person, or by Deluno because the title was in the library) and its issue stayed in Activity, the
+    /// bell and System. It closes now, and its System row with it.
+    /// </summary>
+    private async Task<int> SettleCasesOfClosedHandoffsAsync(CancellationToken cancellationToken)
+    {
+        if (processors is null)
+        {
+            return 0;
+        }
+
+        var closed = (await processors.ListProcessorHandoffsWithStatusAsync([ProcessorHandoffStatuses.Dismissed], cancellationToken) ?? [])
+            .ToDictionary(handoff => handoff.Id, StringComparer.OrdinalIgnoreCase);
+        if (closed.Count == 0)
+        {
+            return 0;
+        }
+
+        var settled = 0;
+        foreach (var (mediaType, cases) in new[]
+        {
+            ("movie", ((await movies.GetImportRecoverySummaryAsync(cancellationToken))?.RecentCases ?? []).Select(item => (item.Id, item.Title, item.DetailsJson)).ToArray()),
+            ("series", ((await series.GetImportRecoverySummaryAsync(cancellationToken))?.RecentCases ?? []).Select(item => (item.Id, item.Title, item.DetailsJson)).ToArray())
+        })
+        {
+            var aboutClosed = cases
+                .Select(item => (item, HandoffId: Deluno.Platform.Data.ProblemTwins.HandoffIdIn(item.DetailsJson)))
+                .Where(pair => pair.HandoffId is not null && closed.ContainsKey(pair.HandoffId))
+                .ToArray();
+            foreach (var handoffId in aboutClosed.Select(pair => pair.HandoffId!).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await processors.TellHandoffClosedAsync(handoffId, cancellationToken);
+            }
+
+            foreach (var (item, handoffId) in aboutClosed)
+            {
+                settled++;
+                await activityFeed.RecordActivityAsync(
+                    "recovery.case-settled",
+                    $"{item.Title}'s hand-off to {closed[handoffId!].ProcessorName ?? "the processor"} was already dismissed, so Deluno closed the import issue that was open for it.",
+                    JsonSerializer.Serialize(new { CaseId = item.Id, HandoffId = handoffId, MediaType = mediaType }),
+                    null,
+                    mediaType,
+                    item.Id,
+                    cancellationToken);
+            }
+        }
+
+        return settled;
     }
 
     private async Task<int> SettleDispatchFailuresAsync(CancellationToken cancellationToken)
