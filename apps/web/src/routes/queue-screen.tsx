@@ -24,7 +24,7 @@ import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, held
 import { plainSearchResult } from "../lib/release-candidate-status";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { defineSources, queryClient, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Loader2, Pause, Play, RotateCw, Trash2, Upload, Zap } from "lucide-react";
@@ -90,7 +90,7 @@ import { Switch } from "../components/ui/switch";
 import { ColumnPicker } from "../components/ui/column-picker";
 import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
-import { useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
+import { applyImportOutcome, TRANSFERS_JOBS_KEY, useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
@@ -153,7 +153,7 @@ export const queueSources = defineSources({
   seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary },
   libraries: { ...sharedSources.libraries, fallback: [] as LibraryItem[] },
   settings: { ...sharedSources.settings, fallback: emptyPlatformSettingsSnapshot },
-  jobs: { key: ["src", "jobs-80"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80&includePayload=true"), fallback: [] as JobQueueItem[] },
+  jobs: { key: [...TRANSFERS_JOBS_KEY], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80&includePayload=true"), fallback: [] as JobQueueItem[] },
   failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
   healthRecords: { key: ["src", "download-health-30"], label: "Download health", fetch: () => fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"), fallback: [] as DownloadHealthRecord[] },
   processorConnections: {
@@ -612,6 +612,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           })
         });
         setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
+        // The row shows the import's outcome as soon as the click returns, with no wait for the next read (#1209).
+        applyImportOutcome(queryClient, item.id, result.job);
       },
       `${item.title} queued for import`
     );
@@ -1692,7 +1694,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           if (!open) setDrawer(null);
         }}
         title={openQueueItem?.title || openQueueItem?.releaseName || "Download"}
-        description={openQueueItem ? `${openQueueItem.clientName} · ${queueStatusLabel(openQueueItem.status)}` : undefined}
+        description={openQueueItem ? `${openQueueItem.clientName} · ${drawerStatusLabel(openQueueItem.status, resendingHandoff, openQueueHandoff?.processorName)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openQueueItem ? (
@@ -1791,7 +1793,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
             <DrawerSection
               title="Import"
-              aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
+              aside={resendingHandoff ? drawerStatusLabel(openQueueItem.status, true, openQueueHandoff?.processorName) : isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
             >
               {/* After Try again the answer is still to come: say so, never "failed" (#1193). */}
               {openQueueHandoff && resendingHandoff ? (
@@ -2544,6 +2546,14 @@ export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<Processo
     && !(goneAlready && finding.kind === "post-processing-failed")
     // While the hand-off is being sent again the old failure is not shown anywhere in the drawer (#1204).
     && !(resending && finding.kind === "post-processing-failed"));
+}
+
+/**
+ * The status the drawer's header and Import box read. While a hand-off is being sent again it is the in-progress
+ * state, never the old "Processing failed" (#1204): the same rule as the failure card and the Health section.
+ */
+export function drawerStatusLabel(status: string, resending: boolean, processorName?: string | null) {
+  return resending ? `Sending to ${processorName ?? "the processor"} again` : queueStatusLabel(status);
 }
 
 /**
