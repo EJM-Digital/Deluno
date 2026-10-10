@@ -37,6 +37,9 @@
 .PARAMETER SourceFile
     A video to use as it is. Must be at least -MinimumMegabytes, or Weir would skip it.
 
+.PARAMETER ExtraKilobytes
+    When above 0 the release is a folder job: a small .nfo of about this many kilobytes is posted beside the film, in the same .nzb.
+
 .PARAMETER MinimumMegabytes
     The smallest the video may be. Defaults to 1550, above Deluno's 1.5 GB film minimum for WEB 1080p at the 2-hour default runtime (1536 MB) and Weir's 50 MB floor.
 
@@ -56,7 +59,8 @@ param(
     [double] $VideoMegabitsPerSecond = 22.5,
     [int] $DurationSeconds = 600,
     [int] $PartSizeKilobytes = 700,
-    [string] $Group = 'alt.binaries.golden'
+    [string] $Group = 'alt.binaries.golden',
+    [int] $ExtraKilobytes = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,57 +110,81 @@ else {
     if ((Get-Item $video).Length -lt $minBytes) { throw "The generated video is under $MinimumMegabytes MB. Raise -DurationSeconds." }
 }
 
-$size = (Get-Item $video).Length
 $partSize = $PartSizeKilobytes * 1KB
-$total = [int][math]::Ceiling($size / $partSize)
 $sha1 = New-Object Security.Cryptography.SHA1Managed
 $releaseHash = [BitConverter]::ToString($sha1.ComputeHash([Text.Encoding]::UTF8.GetBytes($Name))).Replace('-', '').Substring(0, 10).ToLowerInvariant()
-
-# Whole-file CRC first, for the last part's =yend line.
-$crc = [uint32]0
-$fs = [IO.File]::OpenRead($video)
-try {
-    $buf = New-Object byte[] (1MB)
-    while (($n = $fs.Read($buf, 0, $buf.Length)) -gt 0) { $crc = [Golden.Crc32]::Update($crc, $buf, 0, $n) }
-}
-finally { $fs.Dispose() }
-
 $posted = [DateTimeOffset]::UtcNow.AddDays(-2)
-$segments = New-Object System.Collections.Generic.List[object]
-$fs = [IO.File]::OpenRead($video)
-try {
-    $chunk = New-Object byte[] $partSize
-    for ($part = 1; $part -le $total; $part++) {
-        $read = 0
-        while ($read -lt $partSize) { $n = $fs.Read($chunk, $read, $partSize - $read); if ($n -le 0) { break }; $read += $n }
-        $begin = [long]($part - 1) * $partSize + 1
-        $body = [Golden.Yenc]::EncodePart($chunk, 0, $read, $begin, $part, $total, $size, $fileName, $crc, ($part -eq $total))
-        $id = "golden.$releaseHash.$part@golden.test"
-        $subject = "[1/1] - `"$fileName`" yEnc ($part/$total) $size"
-        $head = "Message-ID: <$id>`r`nNewsgroups: $Group`r`nSubject: $subject`r`nFrom: golden <golden@golden.test>`r`nDate: $($posted.ToString('r'))`r`nLines: $([math]::Ceiling($body.Length / 130))`r`nBytes: $($body.Length)`r`n`r`n"
-        $headBytes = [Text.Encoding]::ASCII.GetBytes($head)
-        $out = New-Object byte[] ($headBytes.Length + $body.Length)
-        [Array]::Copy($headBytes, 0, $out, 0, $headBytes.Length)
-        [Array]::Copy($body, 0, $out, $headBytes.Length, $body.Length)
-        [IO.File]::WriteAllBytes((Join-Path $articles "$id.art"), $out)
-        $segments.Add([pscustomobject]@{ Number = $part; Bytes = $body.Length; Id = $id })
-    }
-}
-finally { $fs.Dispose() }
 
-# The .nzb: one file, one segment per part.
+# Posts one file: yEnc articles into <OutDirectory>\articles, and returns what the .nzb needs to list it.
+function Add-PostedFile([string] $path, [string] $postedName, [int] $index) {
+    $size = (Get-Item $path).Length
+    $total = [int][math]::Ceiling($size / $partSize)
+    # Whole-file CRC first, for the last part's =yend line.
+    $crc = [uint32]0
+    $fs = [IO.File]::OpenRead($path)
+    try {
+        $buf = New-Object byte[] (1MB)
+        while (($n = $fs.Read($buf, 0, $buf.Length)) -gt 0) { $crc = [Golden.Crc32]::Update($crc, $buf, 0, $n) }
+    }
+    finally { $fs.Dispose() }
+    $segments = New-Object System.Collections.Generic.List[object]
+    $fs = [IO.File]::OpenRead($path)
+    try {
+        $chunk = New-Object byte[] $partSize
+        for ($part = 1; $part -le $total; $part++) {
+            $read = 0
+            while ($read -lt $partSize) { $n = $fs.Read($chunk, $read, $partSize - $read); if ($n -le 0) { break }; $read += $n }
+            $begin = [long]($part - 1) * $partSize + 1
+            $body = [Golden.Yenc]::EncodePart($chunk, 0, $read, $begin, $part, $total, $size, $postedName, $crc, ($part -eq $total))
+            $id = "golden.$releaseHash.$index.$part@golden.test"
+            $subject = "[$index/$fileCount] - `"$postedName`" yEnc ($part/$total) $size"
+            $head = "Message-ID: <$id>`r`nNewsgroups: $Group`r`nSubject: $subject`r`nFrom: golden <golden@golden.test>`r`nDate: $($posted.ToString('r'))`r`nLines: $([math]::Ceiling($body.Length / 130))`r`nBytes: $($body.Length)`r`n`r`n"
+            $headBytes = [Text.Encoding]::ASCII.GetBytes($head)
+            $out = New-Object byte[] ($headBytes.Length + $body.Length)
+            [Array]::Copy($headBytes, 0, $out, 0, $headBytes.Length)
+            [Array]::Copy($body, 0, $out, $headBytes.Length, $body.Length)
+            [IO.File]::WriteAllBytes((Join-Path $articles "$id.art"), $out)
+            $segments.Add([pscustomobject]@{ Number = $part; Bytes = $body.Length; Id = $id })
+        }
+    }
+    finally { $fs.Dispose() }
+    [pscustomobject]@{ Name = $postedName; Size = $size; Total = $total; Crc = $crc; Segments = $segments }
+}
+
+# A release is one file, or (with -ExtraKilobytes) a folder job: the film plus a small extra file beside it (a .nfo),
+# which SABnzbd and NZBGet keep together in a folder named for the job (the #1199 case).
+$extra = $null
+if ($ExtraKilobytes -gt 0) {
+    $extra = Join-Path $OutDirectory "$Name.nfo"
+    $rng = New-Object Random 1199
+    $text = New-Object System.Text.StringBuilder
+    while ($text.Length -lt $ExtraKilobytes * 1KB) { [void]$text.AppendLine(('Golden stub extra file {0:x8} {1:x8}' -f $rng.Next(), $rng.Next())) }
+    [IO.File]::WriteAllText($extra, $text.ToString(), (New-Object Text.UTF8Encoding($false)))
+}
+$fileCount = if ($extra) { 2 } else { 1 }
+$postedFiles = @(Add-PostedFile $video $fileName 1)
+if ($extra) { $postedFiles += Add-PostedFile $extra "$Name.nfo" 2 }
+$size = (Get-Item $video).Length
+$total = $postedFiles[0].Total
+$crc = $postedFiles[0].Crc
+
+# The .nzb: one <file> per posted file, one segment per part.
 $xml = New-Object System.Text.StringBuilder
 [void]$xml.AppendLine('<?xml version="1.0" encoding="UTF-8"?>')
 [void]$xml.AppendLine('<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">')
 [void]$xml.AppendLine('<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">')
 [void]$xml.AppendLine('  <head><meta type="name">' + [Security.SecurityElement]::Escape($Name) + '</meta></head>')
-$subjectAttr = [Security.SecurityElement]::Escape("[1/1] - `"$fileName`" yEnc (1/$total) $size")
-[void]$xml.AppendLine("  <file poster=`"golden &lt;golden@golden.test&gt;`" date=`"$($posted.ToUnixTimeSeconds())`" subject=`"$subjectAttr`">")
-[void]$xml.AppendLine("    <groups><group>$Group</group></groups>")
-[void]$xml.AppendLine('    <segments>')
-foreach ($s in $segments) { [void]$xml.AppendLine("      <segment bytes=`"$($s.Bytes)`" number=`"$($s.Number)`">$($s.Id)</segment>") }
-[void]$xml.AppendLine('    </segments>')
-[void]$xml.AppendLine('  </file>')
+$fileIndex = 0
+foreach ($f in $postedFiles) {
+    $fileIndex++
+    $subjectAttr = [Security.SecurityElement]::Escape("[$fileIndex/$fileCount] - `"$($f.Name)`" yEnc (1/$($f.Total)) $($f.Size)")
+    [void]$xml.AppendLine("  <file poster=`"golden &lt;golden@golden.test&gt;`" date=`"$($posted.ToUnixTimeSeconds())`" subject=`"$subjectAttr`">")
+    [void]$xml.AppendLine("    <groups><group>$Group</group></groups>")
+    [void]$xml.AppendLine('    <segments>')
+    foreach ($s in $f.Segments) { [void]$xml.AppendLine("      <segment bytes=`"$($s.Bytes)`" number=`"$($s.Number)`">$($s.Id)</segment>") }
+    [void]$xml.AppendLine('    </segments>')
+    [void]$xml.AppendLine('  </file>')
+}
 [void]$xml.AppendLine('</nzb>')
 $nzbName = "$Name.nzb"
 [IO.File]::WriteAllText((Join-Path $OutDirectory $nzbName), $xml.ToString(), (New-Object Text.UTF8Encoding($false)))
@@ -164,7 +192,8 @@ $nzbName = "$Name.nzb"
 $meta = [ordered]@{
     name = $Name; id = "golden$releaseHash"; file = $fileName; nzb = $nzbName; group = $Group
     sizeBytes = $size; parts = $total; crc32 = $crc.ToString('x8'); sha256 = (Get-FileHash $video -Algorithm SHA256).Hash
+    files = @($postedFiles | ForEach-Object { [ordered]@{ name = $_.Name; sizeBytes = $_.Size; parts = $_.Total; lastArticleId = $_.Segments[$_.Segments.Count - 1].Id } })
 }
-Set-Content -Path (Join-Path $OutDirectory 'release.json') -Value ($meta | ConvertTo-Json) -Encoding ascii
+Set-Content -Path (Join-Path $OutDirectory 'release.json') -Value ($meta | ConvertTo-Json -Depth 5) -Encoding ascii
 Write-Host ("Release {0}: {1:N1} MB in {2} parts. NZB: {3}" -f $Name, ($size / 1MB), $total, (Join-Path $OutDirectory $nzbName))
 [pscustomobject]$meta

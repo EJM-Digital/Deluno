@@ -16,8 +16,10 @@
     Everything is passed through scrub.mjs before it is written (API keys, passwords, cookies, LAN addresses, machine and
     user names removed). States the VM cannot produce are listed in tests/fixtures/recorded/MISSING.md with what is needed.
 
-    The apps' logins are never printed or stored. The installer keeps each client's own shipped login except
-    qBittorrent's generated one (build-rules.md), so only qBittorrent's must be passed. Throwaway values only.
+    No login is ever a parameter, printed or sent back. Inside the VM the script reads qBittorrent's generated login
+    (and Transmission's, if Deluno saved one) from Deluno's component-credentials file, Weir's webhook secret from Deluno's
+    connection to Weir, and SABnzbd's API key from sabnzbd.ini; NZBGet and Deluge keep their shipped logins. Every value
+    read is also removed from the recordings by exact match, behind scrub.mjs (Record.Secrets.ps1).
 
     Weir: records as "weir" (and keeps its log files beside the recordings). Use a Deluno-linked workflow, or a Weir-only
     one with "remove original after success" OFF, on the VM's own folders: hand-offs name copies of the film, never an original.
@@ -27,9 +29,8 @@
 .PARAMETER RigHost         The Hyper-V host that holds the VM. Never committed; pass it on the command line.
 .PARAMETER VmMediaFile     A real public film inside the VM (the golden path's Big Buck Bunny, for example).
 .PARAMETER Apps            Which to record. Default: all of sabnzbd, nzbget, qbittorrent, transmission, deluge, weir.
-.PARAMETER WeirSecret      The webhook secret Weir shares with Deluno. Without it Weir is skipped and listed as missing.
 .EXAMPLE
-    ./scripts/recorded-replies/Invoke-RecordReplies.ps1 -RigHost <host> -VmMediaFile C:\golden\media\bunny.mkv -QbittorrentPassword <throwaway> -WeirSecret <secret>
+    ./scripts/recorded-replies/Invoke-RecordReplies.ps1 -RigHost <host> -VmMediaFile C:\golden\media\bunny.mkv
 #>
 [CmdletBinding()]
 param(
@@ -41,12 +42,13 @@ param(
     [ValidateSet('sabnzbd', 'nzbget', 'qbittorrent', 'transmission', 'deluge', 'weir')] [string[]] $Apps = @('sabnzbd', 'nzbget', 'qbittorrent', 'transmission', 'deluge', 'weir'),
     [string] $VmMediaFile = 'C:\golden\media\film.mkv',
     [int] $NewznabPort = 1180,
-    [int] $SabnzbdPort = 8080, [string] $SabnzbdApiKey, [string] $SabnzbdConfigPath,
-    [int] $NzbgetPort = 6789, [string] $NzbgetUser = 'nzbget', [string] $NzbgetPassword = 'tegbzn6789',
-    [int] $QbittorrentPort = 8081, [string] $QbittorrentUser = 'admin', [string] $QbittorrentPassword,
-    [int] $TransmissionPort = 9091, [string] $TransmissionUser, [string] $TransmissionPassword,
-    [int] $DelugePort = 8112, [string] $DelugePassword = 'deluge',
-    [string] $WeirUrl = 'http://127.0.0.1:9347', [string] $WeirSecret, [string] $WeirVersion = 'rc.13', [string] $WeirSource = 'deluno',
+    [int] $NntpPort = 1119,
+    [int] $SabnzbdPort = 8080, [string] $SabnzbdConfigPath,
+    [int] $NzbgetPort = 6789,
+    [int] $QbittorrentPort = 8081,
+    [int] $TransmissionPort = 9091,
+    [int] $DelugePort = 8112,
+    [string] $WeirUrl = 'http://127.0.0.1:9347', [string] $WeirVersion = 'rc.13', [string] $WeirSource = 'deluno',
     [switch] $DelunoSide, [string] $DelunoVersion = 'current', [int] $PerState = 3
 )
 
@@ -56,25 +58,29 @@ if (-not $OutDirectory) { $OutDirectory = Join-Path $repoRoot 'tests\fixtures\re
 $here = $PSScriptRoot
 
 $vmParams = [ordered]@{
-    VmMediaFile = $VmMediaFile; NewznabPort = $NewznabPort
-    SabnzbdPort = $SabnzbdPort; SabnzbdApiKey = $SabnzbdApiKey; SabnzbdConfigPath = $SabnzbdConfigPath
-    NzbgetPort = $NzbgetPort; NzbgetUser = $NzbgetUser; NzbgetPassword = $NzbgetPassword
-    QbittorrentPort = $QbittorrentPort; QbittorrentUser = $QbittorrentUser; QbittorrentPassword = $QbittorrentPassword
-    TransmissionPort = $TransmissionPort; TransmissionUser = $TransmissionUser; TransmissionPassword = $TransmissionPassword
-    DelugePort = $DelugePort; DelugePassword = $DelugePassword
-    WeirUrl = $WeirUrl; WeirSecret = $WeirSecret; WeirVersion = $WeirVersion; WeirSource = $WeirSource
+    VmMediaFile = $VmMediaFile; NewznabPort = $NewznabPort; NntpPort = $NntpPort
+    SabnzbdPort = $SabnzbdPort; SabnzbdConfigPath = $SabnzbdConfigPath
+    NzbgetPort = $NzbgetPort; QbittorrentPort = $QbittorrentPort; TransmissionPort = $TransmissionPort; DelugePort = $DelugePort
+    WeirUrl = $WeirUrl; WeirVersion = $WeirVersion; WeirSource = $WeirSource
+    # The Usenet stub as it is in this repository (hang file, folder jobs); the VM's copy is brought up to it.
+    TrackerScript = (Get-Content -Raw -LiteralPath (Join-Path $here 'Start-LocalTracker.ps1'))
+    StubFiles = @('UsenetStub.Lib.ps1', 'New-UsenetRelease.ps1', 'Start-NntpStub.ps1', 'Start-NewznabStub.ps1') | ForEach-Object { [ordered]@{ name = $_; text = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "scripts\golden-path\usenet-stub\$_")) } }
     DelunoVersion = $DelunoVersion; PerState = $PerState
 }
 
 # The in-VM program: the helper library, the recorders, then the calls. It prints a JSON document on its last line.
-$libs = 'Record.Lib.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Collect-DelunoSide.ps1' |
+$libs = 'Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Collect-DelunoSide.ps1' |
     ForEach-Object { Get-Content -Raw -LiteralPath (Join-Path $here $_) }
 $calls = [System.Text.StringBuilder]::new()
-$map = [ordered]@{ sabnzbd = 'Invoke-RecordSabnzbd'; nzbget = 'Invoke-RecordNzbget'; qbittorrent = 'Invoke-RecordQbittorrent'; transmission = 'Invoke-RecordTransmission'; deluge = 'Invoke-RecordDeluge'; weir = 'Invoke-RecordWeir' }
+$map = [ordered]@{ sabnzbd = 'Invoke-RecordSabnzbd'; nzbget = 'Invoke-RecordNzbget'; weir = 'Invoke-RecordWeir' }
 foreach ($app in $map.Keys) {
     if ($Apps -contains $app) {
         $null = $calls.AppendLine("try { $($map[$app]) `$p } catch { Add-Missing ('$app stopped: ' + `$_.Exception.Message) }")
     }
+}
+$torrentApps = @($Apps | Where-Object { $_ -in 'qbittorrent', 'transmission', 'deluge' })
+if ($torrentApps.Count -gt 0) {
+    $null = $calls.AppendLine("try { Invoke-RecordTorrentClients `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent clients stopped: ' + `$_.Exception.Message) }")
 }
 if ($DelunoSide) { $null = $calls.AppendLine('try { Invoke-CollectDelunoSide $p } catch { Add-Missing (''deluno side stopped: '' + $_.Exception.Message) }') }
 # A script block body cannot start with param() after other statements, so the parameters arrive as one JSON argument.
@@ -126,6 +132,13 @@ if ($LASTEXITCODE -ne 0) { throw 'A recording still carries something private af
 $missingFile = Join-Path $OutDirectory 'MISSING.md'
 $lines = @('# Recordings the golden VM could not produce', '', "Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on $((Get-Date).ToString('yyyy-MM-dd')). Each line says what is needed to record it.", '')
 $lines += @($result.missing | Sort-Object -Unique | ForEach-Object { "- $_" })
+# Apps the golden VM does not have, listed every run until they are installed there.
+$lines += @(
+    '- rtorrent: not installed in the VM; install it there (or on a machine the script can reach) and add a recorder',
+    '- utorrent: not installed in the VM; same',
+    '- emby, jellyfin, plex: not installed in the VM; their library, item and playback replies need a server with real media',
+    '- torznab and newznab feeds: only the golden path stubs exist in the VM, and a stub is not a real indexer; a real indexer''s caps and search replies need its API key'
+)
 $lines | Set-Content -LiteralPath $missingFile -Encoding utf8
 
 Write-Host "Wrote $written recordings to $OutDirectory; $(@($result.missing).Count) states are missing (see MISSING.md)."

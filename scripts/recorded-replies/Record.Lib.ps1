@@ -93,9 +93,13 @@ function Save-State {
     param([string] $App, [string] $Version, [string] $State, [string] $Note, [object[]] $Exchanges)
     if (-not $Exchanges -or $Exchanges.Count -eq 0) { Add-Missing "$App $Version $State (nothing was recorded)"; return }
     $safeVersion = ($Version -replace '[^0-9A-Za-z.\-+]', '_')
-    $script:Recordings.Add([pscustomobject]@{
+    $recording = [pscustomobject]@{
         app = $App; version = $safeVersion; state = $State; recordedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); note = $Note; exchanges = @($Exchanges)
-    })
+    }
+    # A second line behind scrub.mjs: any login read in the VM (Record.Secrets.ps1) is removed before it leaves the VM.
+    $json = ConvertTo-Json -InputObject $recording -Depth 30 -Compress
+    if (Get-Command Remove-KnownSecrets -ErrorAction SilentlyContinue) { $json = Remove-KnownSecrets $json }
+    $script:Recordings.Add(($json | ConvertFrom-Json))
     Write-Host ("recorded {0} {1} {2} ({3} exchange(s))" -f $App, $safeVersion, $State, @($Exchanges).Count)
 }
 
@@ -129,11 +133,12 @@ function Get-FeedTorrent {
 }
 
 function Add-FeedRelease {
-    param([string] $Title, [string] $File, [int] $DummyMb = 0, [switch] $DeadTracker, [string] $FeedRoot = 'C:\golden\feed')
+    param([string] $Title, [string] $File, [string] $Folder, [string] $Tracker, [int] $DummyMb = 0, [switch] $DeadTracker, [string] $FeedRoot = 'C:\golden\feed')
     $adder = Join-Path $FeedRoot 'Add-Release.ps1'
     if (-not (Test-Path $adder)) { throw "The golden feed is not in the VM ($adder). Run the golden path with the Torznab feed first." }
     $arguments = @{ Title = $Title; Root = $FeedRoot }
-    if ($File) { $arguments.File = $File } else { $arguments.DummyMb = $DummyMb }
+    if ($Folder) { $arguments.Folder = $Folder } elseif ($File) { $arguments.File = $File } else { $arguments.DummyMb = $DummyMb }
+    if ($Tracker) { $arguments.Tracker = $Tracker }
     if ($DeadTracker) { $arguments.DeadTracker = $true }
     $null = & $adder @arguments
     Get-FeedTorrent -FeedRoot $FeedRoot -Title $Title
