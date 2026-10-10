@@ -86,10 +86,11 @@ public sealed class HealthCheckRunner(
         // Health for ever (#914, #921, #930). Pruned here, once, for every
         // category this pass actually ran -- never for a category nothing here
         // was asked about.
-        await PruneStaleRowsAsync(checksThisPass, outcomes, cancellationToken);
+        var pruned = await PruneStaleRowsAsync(checksThisPass, outcomes, cancellationToken);
 
         if (outcomes.Count == 0)
         {
+            await PublishPrunedAsync(pruned, cancellationToken);
             return;
         }
 
@@ -100,6 +101,19 @@ public sealed class HealthCheckRunner(
             .ToArray();
         if (changed.Length == 0)
         {
+            // No problem started or cleared, but a row may still have moved (an unknown one turning fine): say so (#1229).
+            var moved = transitions.Count(item => item.ScreenChanged);
+            if (moved > 0 && pruned == 0)
+            {
+                await realtimeEventPublisher.PublishHealthChangedAsync(
+                    "system.health",
+                    "healthy",
+                    $"{moved} check(s) changed.",
+                    cancellationToken);
+                return;
+            }
+
+            await PublishPrunedAsync(pruned, cancellationToken);
             return;
         }
 
@@ -113,11 +127,24 @@ public sealed class HealthCheckRunner(
         await realtimeEventPublisher.PublishHealthChangedAsync(
             "system.health",
             changed.Any(item => item.Transition == HealthCheckTransition.Started) ? "degraded" : "healthy",
-            $"{changed.Count(item => item.Transition == HealthCheckTransition.Started)} problem(s) started, {changed.Count(item => item.Transition == HealthCheckTransition.Cleared)} cleared.",
+            $"{changed.Count(item => item.Transition == HealthCheckTransition.Started)} problem(s) started, {changed.Count(item => item.Transition == HealthCheckTransition.Cleared) + pruned} cleared.",
             cancellationToken);
     }
 
-    private async Task PruneStaleRowsAsync(
+    /// <summary>
+    /// A row the check stopped reporting is removed without a transition, and the open System page only follows a push (#1229):
+    /// say so, so it drops the row within a second or two and not at the next unrelated change.
+    /// </summary>
+    private Task PublishPrunedAsync(int pruned, CancellationToken cancellationToken) =>
+        pruned == 0
+            ? Task.CompletedTask
+            : realtimeEventPublisher.PublishHealthChangedAsync(
+                "system.health",
+                "healthy",
+                $"0 problem(s) started, {pruned} cleared.",
+                cancellationToken);
+
+    private async Task<int> PruneStaleRowsAsync(
         IReadOnlyCollection<IHealthCheck> checksThisPass,
         IReadOnlyList<HealthCheckOutcome> outcomes,
         CancellationToken cancellationToken)
@@ -125,9 +152,10 @@ public sealed class HealthCheckRunner(
         var categoriesThisPass = checksThisPass.Select(check => check.Category).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (categoriesThisPass.Count == 0)
         {
-            return;
+            return 0;
         }
 
+        var pruned = 0;
         var reportedIds = outcomes.Select(outcome => outcome.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var existing = await repository.ListAsync(cancellationToken) ?? [];
         foreach (var row in existing)
@@ -135,8 +163,11 @@ public sealed class HealthCheckRunner(
             if (categoriesThisPass.Contains(row.Category) && !reportedIds.Contains(row.Id))
             {
                 await repository.RemoveAsync(row.Id, cancellationToken);
+                pruned++;
             }
         }
+
+        return pruned;
     }
 
     private async Task AnnounceAsync(HealthCheckTransitionResult transition, CancellationToken cancellationToken)

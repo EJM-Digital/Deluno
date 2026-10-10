@@ -15,7 +15,8 @@ public sealed class SqliteProcessorRepository(
     ISecretProtector secretProtector,
     IRealtimeEventPublisher? realtimeEventPublisher = null,
     IConnectionUseReporter? connectionUses = null,
-    IHealthCheckRepository? healthChecks = null)
+    IHealthCheckRepository? healthChecks = null,
+    IEnumerable<IHandoffClosedListener>? handoffClosedListeners = null)
     : IProcessorRepository
 {
     public async Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken)
@@ -862,9 +863,43 @@ public sealed class SqliteProcessorRepository(
         if (updated is not null)
         {
             await AnnounceHandoffAsync(updated, updated.Status, updated.FailureMessage, cancellationToken);
+            await TellHandoffClosedAsync(updated, cancellationToken);
         }
 
         return updated;
+    }
+
+    public async Task TellHandoffClosedAsync(string handoffId, CancellationToken cancellationToken)
+    {
+        if (await GetProcessorHandoffAsync(handoffId, cancellationToken) is { } handoff)
+        {
+            await TellHandoffClosedAsync(handoff, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// A dismissed hand-off is closed for good, so the import issue and System row that mirror it close with it (#1228),
+    /// whoever dismissed it. The listeners own those records; one failing never undoes the dismissal.
+    /// </summary>
+    private async Task TellHandoffClosedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        if (handoffClosedListeners is null
+            || !string.Equals(handoff.Status, ProcessorHandoffStatuses.Dismissed, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        foreach (var listener in handoffClosedListeners)
+        {
+            try
+            {
+                await listener.HandoffClosedAsync(handoff.Id, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The hand-off is saved; the planner's settler closes any issue this missed.
+            }
+        }
     }
 
     public async Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsAsync(

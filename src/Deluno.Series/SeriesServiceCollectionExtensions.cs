@@ -44,6 +44,7 @@ public static class SeriesServiceCollectionExtensions
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.TryAddSingleton<IMediaSubtitleOverrideRepository, SqliteMediaSubtitleOverrideRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Deluno.Platform.Contracts.IHandoffClosedListener, SeriesHandoffClosedListener>());
         // The quality ladder has to reach this catalogue's own database for a
         // shelf to be sortable by quality; the model service pushes it here on
         // save. Resolved from the repository so there is one connection, one

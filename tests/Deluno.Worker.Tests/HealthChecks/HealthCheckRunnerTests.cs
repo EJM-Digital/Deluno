@@ -188,6 +188,62 @@ public sealed class HealthCheckRunnerTests
         repository.Verify(repo => repo.RemoveAsync("download-client:1", It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// A "did not answer" row is Unknown, not a problem, so it turning Ok started and cleared nothing and used to push
+    /// nothing: the open System page kept it until something else changed (#1229).
+    /// </summary>
+    [Fact]
+    public async Task An_unknown_row_turning_fine_pushes_a_health_change_to_open_screens()
+    {
+        var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
+        repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, null, null),
+                    HealthCheckTransition.Unchanged,
+                    ScreenChanged: true))
+                .ToArray());
+        var realtime = new Mock<IRealtimeEventPublisher>();
+        var check = FakeCheck(HealthCheckCategories.Processor, [HealthCheckOutcome.Ok("processor:1:watching:2", HealthCheckCategories.Processor, "Watches", "Fine.")]);
+
+        var runner = new HealthCheckRunner([check], repository.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IOutboundNotificationService>(), realtime.Object, NullLogger<HealthCheckRunner>.Instance);
+        await runner.RunAllAsync(CancellationToken.None);
+
+        realtime.Verify(publisher => publisher.PublishHealthChangedAsync("system.health", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_row_that_is_only_removed_pushes_a_health_change_and_an_untouched_pass_pushes_none()
+    {
+        var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            new HealthCheckResultItem("processor:1:watching:2", HealthCheckCategories.Processor, "Gone", HealthCheckStatuses.Unknown, "No answer.", null, null, null, DateTimeOffset.UtcNow.AddMinutes(-5), null, null)
+        ]);
+        var realtime = new Mock<IRealtimeEventPublisher>();
+        var check = FakeCheck(HealthCheckCategories.Processor, []);
+
+        var runner = new HealthCheckRunner([check], repository.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IOutboundNotificationService>(), realtime.Object, NullLogger<HealthCheckRunner>.Instance);
+        await runner.RunAllAsync(CancellationToken.None);
+
+        repository.Verify(repo => repo.RemoveAsync("processor:1:watching:2", It.IsAny<CancellationToken>()), Times.Once);
+        realtime.Verify(publisher => publisher.PublishHealthChangedAsync("system.health", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        var quietRepository = new Mock<IHealthCheckRepository>();
+        quietRepository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
+        quietRepository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, null, null),
+                    HealthCheckTransition.Unchanged))
+                .ToArray());
+        var quietRealtime = new Mock<IRealtimeEventPublisher>();
+        var quietRunner = new HealthCheckRunner([FakeCheck(HealthCheckCategories.Processor, [HealthCheckOutcome.Ok("a", HealthCheckCategories.Processor, "A", "Fine.")])], quietRepository.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IOutboundNotificationService>(), quietRealtime.Object, NullLogger<HealthCheckRunner>.Instance);
+        await quietRunner.RunAllAsync(CancellationToken.None);
+        quietRealtime.Verify(publisher => publisher.PublishHealthChangedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static Deluno.Worker.HealthChecks.IHealthCheck FakeCheck(string category, IReadOnlyList<HealthCheckOutcome> outcomes)
     {
         var check = new Mock<Deluno.Worker.HealthChecks.IHealthCheck>();

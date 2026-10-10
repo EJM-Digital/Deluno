@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { queryClient } from "../lib/route-cache";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
-import { SystemPage } from "./system-screen";
+import { outputIssueOf, SystemPage } from "./system-screen";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -34,6 +35,21 @@ const loaderData = {
   systemInfo: null,
   systemTasks: []
 };
+
+const pushHandlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
+vi.mock("../lib/use-signalr", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../lib/use-signalr")>();
+  return {
+    ...original,
+    useSignalREvent: (event: string, subjects: never, handler: (payload: unknown) => void) => {
+      const set = pushHandlers.get(event) ?? new Set();
+      set.add(handler);
+      pushHandlers.set(event, set);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (original.useSignalREvent as any)(event, subjects, handler);
+    }
+  };
+});
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -424,5 +440,83 @@ describe("System installation credits (#1108)", () => {
     expect(credits).toHaveTextContent("TV metadata provided by TheTVDB");
     expect(screen.getByRole("link", { name: "TMDb" })).toHaveAttribute("href", "https://www.themoviedb.org");
     expect(screen.getByRole("link", { name: "TheTVDB" })).toHaveAttribute("href", "https://thetvdb.com");
+  });
+});
+
+/** #1229: the server's health push reaches an open System page and reads the health rows again, with no reload. */
+describe("System follows the server's health push (#1229)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    pushHandlers.clear();
+    authedFetchMock.mockReset();
+  });
+
+  it("reads the health checks, the providers and the processors again when HealthChanged arrives", async () => {
+    vi.useFakeTimers();
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    const handlers = [...(pushHandlers.get("HealthChanged") ?? [])];
+    expect(handlers.length).toBeGreaterThan(0);
+    for (const handler of handlers) handler({ source: "system.health", status: "healthy", message: "0 problem(s) started, 2 cleared." });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const keys = invalidate.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey: unknown }).queryKey));
+    expect(keys).toContain(JSON.stringify(["src", "system-health"]));
+    expect(keys).toContain(JSON.stringify(["src", "processor-connections-system"]));
+    invalidate.mockRestore();
+  });
+});
+
+/** #1228: the processor-output rows are the same problem as an import issue and its hand-off, so they are dismissed, not only snoozed. */
+describe("Processor-output rows are dismissed with their issue (#1228)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    toastMock.success.mockReset();
+    loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
+    loaderData.monitoring = null;
+  });
+
+  const row = (id: string, name: string, details: object | null) => ({
+    id, category: "processor", name, status: "problem", message: "Weir named a file Deluno cannot find.", cause: null, fix: null,
+    detailsJson: details ? JSON.stringify(details) : null, lastRunUtc: "2026-10-10T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null
+  });
+
+  it("reads which issue a row mirrors, and nothing for any other row", () => {
+    expect(outputIssueOf(row("processor-output-issue:c1", "x", { recoveryCaseId: "c1", recoveryMediaType: "movie" }))?.path).toBe("/api/movies/import-recovery/c1/dismiss");
+    expect(outputIssueOf(row("processor-output-issue:c2", "x", { recoveryCaseId: "c2", recoveryMediaType: "series" }))?.path).toBe("/api/series/import-recovery/c2/dismiss");
+    expect(outputIssueOf(row("processor-output-issue:c3", "x", null))).toBeNull();
+    expect(outputIssueOf(row("indexer:1", "x", { recoveryCaseId: "c1" }))).toBeNull();
+  });
+
+  it("a Dismiss on the row dismisses the issue, and an ordinary problem keeps only Snooze", async () => {
+    loaderData.healthChecks = {
+      checks: [
+        row("processor-output-issue:c1", "Retwice: missing from a processor's output", { recoveryCaseId: "c1", recoveryMediaType: "movie" }),
+        row("indexer:1", "An indexer", null)
+      ],
+      summary: { problemCount: 2 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
+
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: /^Dismiss:/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss: Retwice: missing from a processor's output" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/c1/dismiss", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+    expect(toastMock.success).toHaveBeenCalledWith("Dismissed. Nothing was deleted.");
   });
 });
