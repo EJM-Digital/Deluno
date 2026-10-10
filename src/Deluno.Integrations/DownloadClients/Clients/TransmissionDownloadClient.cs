@@ -345,10 +345,38 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             return DownloadClientHelpers.UnreadableId(client, queueItemId, action, "Transmission");
         }
 
+        // #1224: removing with its data leaves empty `<name>__xxxxxx` folders beside the download. Note where it
+        // was before the call, as Transmission forgets it after.
+        (string? Name, string? Folder) removed = (null, null);
+        if (deleteLocalData == true && ClientSaveFolders.IsSameMachine(client))
+        {
+            removed = await ReadNameAndFolderAsync(client, baseUri, torrentId, cancellationToken);
+        }
+
         var arguments = new Dictionary<string, object> { ["ids"] = new[] { torrentId } };
         if (deleteLocalData is { } wipe) arguments["delete-local-data"] = wipe;
         await SendAsync(client, baseUri, new TransmissionRequest(method, arguments), cancellationToken);
-        return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
+        var done = DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
+        var leftover = DownloadFolderRemoval.RemoveEmptyLeftovers(removed.Folder, removed.Name);
+        return leftover is null ? done : done with { FilesNote = leftover };
+    }
+
+    private async Task<(string? Name, string? Folder)> ReadNameAndFolderAsync(DownloadClientItem client, Uri baseUri, object torrentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
+            {
+                ["ids"] = new[] { torrentId },
+                ["fields"] = new[] { "name", "downloadDir" }
+            }), cancellationToken);
+            var torrent = response.Arguments?.Torrents?.FirstOrDefault();
+            return (torrent?.Name, torrent?.DownloadDir);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return (null, null);
+        }
     }
 
     /// <summary>

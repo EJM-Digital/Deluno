@@ -57,7 +57,8 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
             .ExecuteActionAsync(Client(), action, Hash.ToUpperInvariant(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        using var document = JsonDocument.Parse(Assert.Single(sent));
+        // A removal with its data first reads the torrent's name and folder (#1224), so the action is the last request.
+        using var document = JsonDocument.Parse(sent[^1]);
         Assert.Equal(method, document.RootElement.GetProperty("method").GetString());
         Assert.Equal(Hash, document.RootElement.GetProperty("arguments").GetProperty("ids")[0].GetString());
     }

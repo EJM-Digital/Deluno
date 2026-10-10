@@ -140,14 +140,20 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         var payload = await response.Content.ReadFromJsonAsync<SabQueueResponse>(cancellationToken);
         var queue = (payload?.Queue?.Slots ?? []).Select(item =>
         {
-            var sizeBytes = ParseSize(item.Mb) * 1_000_000L;
-            var remainingBytes = ParseSize(item.Mbleft) * 1_000_000L;
+            // #1225: bytes come from the decimal megabytes, never from a rounded number, so 0.14 MB left is still
+            // 140,000 bytes and a job with anything left never reads 100%.
+            var sizeBytes = MegabytesToBytes(ParseMegabytes(item.Mb));
+            var remainingBytes = MegabytesToBytes(ParseMegabytes(item.Mbleft));
             var downloadedBytes = Math.Max(0, sizeBytes - remainingBytes);
             var progress = sizeBytes <= 0 ? 0 : (downloadedBytes / (double)sizeBytes * 100);
+            if (remainingBytes > 0 && progress >= 100d)
+            {
+                progress = 99.99d;
+            }
             return new DownloadQueueItem(item.NzoId ?? item.Filename ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Filename ?? "Unknown SABnzbd item"),
                 item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress,
-                ((double)ParseSize(payload?.Queue?.Speed)), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
+                ParseMegabytes(payload?.Queue?.Speed), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
                 QueueError(item.Status), capturedUtc);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, apiKey, capturedUtc, cancellationToken);
@@ -815,7 +821,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
 
     /// <summary>
     /// SABnzbd's disk-space fields, a bare decimal number of GB with no unit
-    /// suffix — unlike <see cref="ParseSize"/>, which reads MB-with-suffix
+    /// suffix — unlike <see cref="ParseMegabytes"/>, which reads MB-with-suffix
     /// strings such as "512.3 MB" and would misread this by a factor of 1000.
     /// </summary>
     private static long? ParseGbString(string? value)
@@ -871,7 +877,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         }).ToArray();
     }
 
-    private static long ParseSize(string? value)
+    internal static long MegabytesToBytes(double megabytes)
+        => megabytes <= 0 ? 0 : (long)Math.Round(megabytes * 1_000_000d, MidpointRounding.AwayFromZero);
+
+    /// <summary>A SABnzbd size or speed as decimal megabytes, fractions kept (#1225).</summary>
+    internal static double ParseMegabytes(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return 0;
         var cleaned = value.Trim().Replace("/s", "", StringComparison.OrdinalIgnoreCase).Replace(" ", "", StringComparison.OrdinalIgnoreCase);
@@ -879,7 +889,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             : cleaned.EndsWith("KB", StringComparison.OrdinalIgnoreCase) || cleaned.EndsWith("K", StringComparison.OrdinalIgnoreCase) ? .001d
             : cleaned.EndsWith("B", StringComparison.OrdinalIgnoreCase) && !cleaned.EndsWith("MB", StringComparison.OrdinalIgnoreCase) && !cleaned.EndsWith("GB", StringComparison.OrdinalIgnoreCase) && !cleaned.EndsWith("KB", StringComparison.OrdinalIgnoreCase) ? .000001d : 1d;
         cleaned = cleaned.Replace("GB", "", StringComparison.OrdinalIgnoreCase).Replace("MB", "", StringComparison.OrdinalIgnoreCase).Replace("KB", "", StringComparison.OrdinalIgnoreCase).Replace("G", "", StringComparison.OrdinalIgnoreCase).Replace("M", "", StringComparison.OrdinalIgnoreCase).Replace("K", "", StringComparison.OrdinalIgnoreCase).Replace("B", "", StringComparison.OrdinalIgnoreCase);
-        return double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? Convert.ToInt64(parsed * multiplier) : 0;
+        return double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed > 0 ? parsed * multiplier : 0;
     }
 
     private static int ParseEta(string? value)
