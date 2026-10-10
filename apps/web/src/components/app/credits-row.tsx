@@ -119,9 +119,9 @@ function CreditCard({ person }: { person: CreditedPerson }) {
 
   const caption = (
     <figcaption className="mt-2 leading-tight">
-      <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
+      <span className="block truncate text-xs font-semibold text-foreground max-md:whitespace-normal max-md:[overflow-wrap:anywhere]" title={person.name}>{person.name}</span>
       {person.role
-        ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground" title={person.role}>{person.role}</span>
+        ? <span className="mt-0.5 block truncate text-(length:--type-caption) text-muted-foreground max-md:whitespace-normal max-md:[overflow-wrap:anywhere]" title={person.role}>{person.role}</span>
         : null}
     </figcaption>
   );
