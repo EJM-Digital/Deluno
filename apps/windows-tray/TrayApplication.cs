@@ -15,6 +15,7 @@ namespace Deluno.Tray;
 public sealed class TrayApplication : ApplicationContext
 {
     private readonly NotifyIcon _notify;
+    private readonly TrayIconTip _tip;
     private readonly ContextMenuStrip _menu;
     private readonly Control _ui = new();
     private readonly List<(TrayMenuId Id, ToolStripItem Item)> _items = [];
@@ -57,6 +58,7 @@ public sealed class TrayApplication : ApplicationContext
         BuildMenu(TrayMenuState.Build(_status));
 
         _notify = new NotifyIcon { ContextMenuStrip = _menu, Visible = false };
+        _tip = new TrayIconTip(new NotifyIconShell(_notify));
         // Shown at once, in the Starting state: never only after the server is up.
         ApplyStatus();
         _notify.Visible = true;
@@ -151,7 +153,7 @@ public sealed class TrayApplication : ApplicationContext
         if (!string.Equals(hover, _hover, StringComparison.Ordinal))
         {
             _hover = hover;
-            _notify.Text = hover;
+            _tip.Publish(hover);
         }
 
         ApplyMenu(TrayMenuState.Build(_status));

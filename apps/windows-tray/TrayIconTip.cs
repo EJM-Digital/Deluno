@@ -28,7 +28,33 @@ public sealed class TrayIconTip(ITrayShellIcon icon)
             return;
         }
 
+        var shown = icon.Visible && _published is not null;
         _published = hover;
+        if (!shown)
+        {
+            icon.Text = hover;
+            return;
+        }
+
+        // An icon already in the notification area keeps the tip it was added with, so the new text goes on a new add.
+        icon.Visible = false;
         icon.Text = hover;
+        icon.Visible = true;
+    }
+}
+
+/// <summary>The real tray icon, as the tip sees it.</summary>
+internal sealed class NotifyIconShell(NotifyIcon icon) : ITrayShellIcon
+{
+    public bool Visible
+    {
+        get => icon.Visible;
+        set => icon.Visible = value;
+    }
+
+    public string Text
+    {
+        get => icon.Text;
+        set => icon.Text = value;
     }
 }
