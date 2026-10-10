@@ -360,7 +360,10 @@ try {
         $listen = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 7879, 8081, 9091, 8112, 8080, 6789, 9347 } |
             ForEach-Object { "$($_.LocalAddress):$($_.LocalPort) pid $($_.OwningProcess) $((Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName)" })
         $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
-        $hook = if (Test-Path $hookLog) { @(Get-Content $hookLog -Tail 20) } else { @() }
+        # The whole log is searched for the first-run line (#1219): a long first run pushes it out of the last 20 lines.
+        $hookAll = if (Test-Path $hookLog) { @(Get-Content $hookLog) } else { @() }
+        $hook = @($hookAll | Select-Object -Last 20)
+        $hookFirstRun = @($hookAll | Where-Object { $_ -match 'first run' })
         $uninstall = @(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -match 'Deluno|qBittorrent|Transmission|Deluge|SABnzbd|NZBGet|Weir' } |
             ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)" })
@@ -381,7 +384,7 @@ try {
         $dataTop = if (Test-Path $data) { @(Get-ChildItem $data -Force | Select-Object -ExpandProperty Name) } else { @() }
         [pscustomobject]@{
             Exe = $exe.FullName; FileVersion = $exe.VersionInfo.ProductVersion; Processes = $procs; Http = $http; Body = $body
-            Listening = $listen; Hook = $hook; Uninstall = $uninstall; DataRoot = $data; DataTop = $dataTop
+            Listening = $listen; Hook = $hook; HookFirstRun = $hookFirstRun; Uninstall = $uninstall; DataRoot = $data; DataTop = $dataTop
             Components = $components; ClientFolders = $clientFolders; ConfigsFound = $configs
             WeirVersion = $weirExe.VersionInfo.ProductVersion; WeirServerVersion = $weirServer.VersionInfo.ProductVersion
             WeirInstallerLog = ($weirLog -join ''); WeirTempInstallerHash = $weirTempHash
@@ -429,7 +432,7 @@ try {
     } else {
         Add-Result 'Weir named in the run record (version and installer sha256)' 'manual' 'Weir is not installed yet (a silent install installs Deluno alone); after the picker has run, re-run the checks to read its version and installer sha256.'
     }
-    $firstRun = @($state.Hook | Where-Object { $_ -match 'first run' })
+    $firstRun = @($state.HookFirstRun)
     if ($firstRun.Count -gt 0) {
         Add-Result 'First-run hook ran (firewall step, picker)' 'passed' ($firstRun -join ' | ')
     } else {
