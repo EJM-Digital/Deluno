@@ -1090,21 +1090,47 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (handoff is null && !string.IsNullOrWhiteSpace(request.HandoffId) &&
                 await repository.FindSupersededProcessorHandoffAsync(library.Id, request.HandoffId, cancellationToken) is { } older)
             {
-                if (await repository.SettleSupersededProcessorHandoffAsync(older.Id, status, cancellationToken))
+                // A completed report that carries the output, for a send that was replaced while the processor had
+                // not started it, is the processor's answer for this very file (#1232): the live send for the same
+                // source path is still waiting for it, so the live send takes it. One import, and both sends are
+                // settled: the older one here, the live one by the import it queues below.
+                var live = status == "completed" && !string.IsNullOrWhiteSpace(request.OutputPath)
+                    ? await repository.GetProcessorHandoffAsync(older.SupersededById, cancellationToken)
+                    : null;
+                if (live is not null &&
+                    string.Equals(live.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase) &&
+                    ProcessorHandoffStatuses.IsWithProcessor(live.Status))
                 {
+                    await repository.SettleSupersededProcessorHandoffAsync(older.Id, status, cancellationToken);
                     await activityFeed.RecordActivityAsync(
-                        "processing.superseded-settled",
-                        $"{processorName} reported on an earlier send of {older.ReleaseName} ({status}). That send was replaced when the release was sent again, so nothing changed: the new send settles from its own report.",
-                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = older.Id, SupersededById = older.SupersededById, ReportStatus = status, ProcessorName = processorName }),
+                        "processing.superseded-adopted",
+                        $"{processorName} finished {live.ReleaseName} for the send Deluno had replaced when the release was sent again. It is the same file, so Deluno used it for the new send.",
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = live.Id, ReplacedHandoffId = older.Id, request.OutputPath, ProcessorName = processorName }),
                         null,
                         "processor-handoff",
-                        older.SupersededById,
+                        live.Id,
                         cancellationToken);
+                    request = request with { HandoffId = live.Id };
+                    handoff = live;
                 }
+                else
+                {
+                    if (await repository.SettleSupersededProcessorHandoffAsync(older.Id, status, cancellationToken))
+                    {
+                        await activityFeed.RecordActivityAsync(
+                            "processing.superseded-settled",
+                            $"{processorName} reported on an earlier send of {older.ReleaseName} ({status}). That send was replaced when the release was sent again, so nothing changed: the new send settles from its own report.",
+                            JsonSerializer.Serialize(new { request.LibraryId, HandoffId = older.Id, SupersededById = older.SupersededById, ReportStatus = status, ProcessorName = processorName }),
+                            null,
+                            "processor-handoff",
+                            older.SupersededById,
+                            cancellationToken);
+                    }
 
-                return Results.Json(
-                    new { status = "superseded", handoffId = older.Id, alreadyHandled = true },
-                    statusCode: StatusCodes.Status202Accepted);
+                    return Results.Json(
+                        new { status = "superseded", handoffId = older.Id, alreadyHandled = true },
+                        statusCode: StatusCodes.Status202Accepted);
+                }
             }
 
             if (importsOutput && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))

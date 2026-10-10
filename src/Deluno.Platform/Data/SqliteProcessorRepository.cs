@@ -693,6 +693,27 @@ public sealed class SqliteProcessorRepository(
             : null;
     }
 
+    public async Task<bool> ReplacedAnEarlierSendAsync(
+        string libraryId,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(libraryId) || string.IsNullOrWhiteSpace(handoffId))
+        {
+            return false;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT 1 FROM processor_handoff_superseded WHERE superseded_by_id = @id AND library_id = @libraryId LIMIT 1;";
+        AddParameter(command, "@id", handoffId.Trim());
+        AddParameter(command, "@libraryId", libraryId.Trim());
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
     public async Task<bool> SettleSupersededProcessorHandoffAsync(
         string handoffId,
         string reportStatus,

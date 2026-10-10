@@ -120,26 +120,24 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
     }
 
     [Fact]
-    public async Task The_new_send_settles_from_its_own_report_and_the_output_is_imported_once()
+    public async Task The_new_send_settles_whichever_report_comes_first_and_the_output_is_imported_once()
     {
         await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
         var scene = await SceneAsync(app);
         var (first, second) = await SentRemovedAndSentAgainAsync(app, scene);
         var output = await WriteOutputAsync(scene);
 
-        // The first send's late report settles quietly and imports nothing.
+        // The first send's late report carries the output the live send is waiting for, so the live send takes it (#1232):
+        // one import, and the new send's own report after it is answered as already handled.
         var late = await ReportAsync(app, scene, first.Id, "completed", output);
         Assert.Equal(HttpStatusCode.Accepted, late.StatusCode);
-        Assert.Empty(await ImportJobsAsync(app));
-        Assert.Equal(ProcessorHandoffStatuses.Submitted, (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))?.Status);
-
-        // The new send's own report settles it and queues the one import.
-        var own = await ReportAsync(app, scene, second.Id, "completed", output);
-        Assert.Equal(HttpStatusCode.Accepted, own.StatusCode);
         var settled = (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))!;
         Assert.Equal(ProcessorHandoffStatuses.Completed, settled.Status);
         var job = Assert.Single(await ImportJobsAsync(app));
         Assert.Equal(job.Id, settled.ImportJobId);
+        var own = await ReportAsync(app, scene, second.Id, "completed", output);
+        Assert.Equal(HttpStatusCode.Accepted, own.StatusCode);
+        Assert.Single(await ImportJobsAsync(app));
 
         // The import runs and finishes; the processor's report again, or its output found again, imports nothing more.
         await CompleteAsync(app, job.Id);
@@ -228,6 +226,122 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
         Assert.DoesNotContain("could not tell", said.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(lines, line => line.Category is "processing.outcome-reported" or "processing.outcome-not-reported" or "processing.outcome-delayed");
         Assert.Equal(ProcessorHandoffStatuses.Submitted, (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))?.Status);
+    }
+
+    // ---- #1232: the processor had not started the first send when it was removed --------------------
+
+    [Fact]
+    public async Task The_first_sends_late_completed_report_with_its_output_is_applied_to_the_waiting_resend_and_imports_once()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
+        var scene = await SceneAsync(app);
+        var (first, second) = await SentRemovedAndSentAgainAsync(app, scene);
+        var output = await WriteOutputAsync(scene);
+
+        // The sequence the golden run logged: the processor finishes the first send and reports it with its output.
+        var late = await ReportAsync(app, scene, first.Id, "completed", output);
+        Assert.Equal(HttpStatusCode.Accepted, late.StatusCode);
+
+        var settled = (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))!;
+        Assert.Equal(ProcessorHandoffStatuses.Completed, settled.Status);
+        Assert.Equal(output, settled.OutputPath);
+        var job = Assert.Single(await ImportJobsAsync(app));
+        Assert.Equal(job.Id, settled.ImportJobId);
+        Assert.NotNull((await Repository(app).FindSupersededProcessorHandoffAsync(scene.LibraryId, first.Id, CancellationToken.None))?.SettledUtc);
+
+        // The story of the resend says what happened to it, and does not say nothing changed.
+        var lines = await ActivityAsync(app, second.Id);
+        Assert.Contains(lines, line => line.Category == "processing.superseded-adopted");
+        Assert.DoesNotContain(lines, line => line.Category == "processing.superseded-settled");
+
+        // The resend's own report, and the first send's again, import nothing more.
+        Assert.Equal(HttpStatusCode.Accepted, (await ReportAsync(app, scene, second.Id, "completed", output)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await ReportAsync(app, scene, first.Id, "completed", output)).StatusCode);
+        Assert.Single(await ImportJobsAsync(app));
+    }
+
+    [Fact]
+    public async Task A_completed_answer_with_no_output_for_a_source_already_cleaned_is_matched_to_that_output_and_never_strands_the_resend()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
+        var scene = await SceneAsync(app);
+        var (first, second) = await SentRemovedAndSentAgainAsync(app, scene);
+        var output = await WriteOutputAsync(scene);
+
+        // The processor answers the resend "completed" with no output path, because it cleaned the source for the first send.
+        await WatchAsync(app, new ProcessorHandoffStatusResult(ProcessorAnswer.Answered, ProcessorHandoffStates.Completed, LastChangedUtc: DateTimeOffset.UtcNow));
+
+        var settled = (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))!;
+        Assert.Equal(ProcessorHandoffStatuses.Completed, settled.Status);
+        Assert.Equal(output, settled.OutputPath);
+        var job = Assert.Single(await ImportJobsAsync(app));
+        Assert.Equal(job.Id, settled.ImportJobId);
+
+        // The first send's report, arriving after, finds the resend done: nothing is imported again.
+        Assert.Equal(HttpStatusCode.Accepted, (await ReportAsync(app, scene, first.Id, "completed", output)).StatusCode);
+        Assert.Single(await ImportJobsAsync(app));
+        Assert.Equal(job.Id, (await Repository(app).GetProcessorHandoffAsync(second.Id, CancellationToken.None))?.ImportJobId);
+    }
+
+    [Fact]
+    public async Task A_completed_answer_with_no_output_is_left_alone_when_the_send_replaced_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IMediaProbeService, ReadableVideoProbe>()));
+        var scene = await SceneAsync(app);
+        await RecordSendAsync(app, scene);
+        var only = await HandoffAsync(app, scene);
+        await Repository(app).UpdateProcessorHandoffAsync(only.Id, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
+        await WriteOutputAsync(scene);
+
+        await WatchAsync(app, new ProcessorHandoffStatusResult(ProcessorAnswer.Answered, ProcessorHandoffStates.Completed, LastChangedUtc: DateTimeOffset.UtcNow));
+
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, (await Repository(app).GetProcessorHandoffAsync(only.Id, CancellationToken.None))?.Status);
+        Assert.Empty(await ImportJobsAsync(app));
+    }
+
+    private static async Task WatchAsync(ApplicationTestHost app, ProcessorHandoffStatusResult status)
+    {
+        var processors = AHandOffFollowsTheDownloadItIsForTests.Stub.Create<IProcessorConnectionService>((name, _) => name switch
+        {
+            "GetStatusSupportAsync" => new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null),
+            "GetHandoffStatusAsync" => status,
+            _ => throw new NotSupportedException(name)
+        });
+        var libraries = await app.Services.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None);
+        await new Deluno.Worker.Services.ProcessorHandoffWatcher(
+                Repository(app),
+                processors,
+                app.Services.GetRequiredService<IActivityFeedRepository>(),
+                app.Services.GetRequiredService<Deluno.Movies.Data.IMovieCatalogRepository>(),
+                app.Services.GetRequiredService<Deluno.Series.Data.ISeriesCatalogRepository>(),
+                app.Services.GetRequiredService<IProcessorOutputImportQueue>())
+            .WatchAsync(libraries, DateTimeOffset.UtcNow, CancellationToken.None, libraries);
+    }
+
+    [Fact]
+    public void An_imported_line_never_repeats_the_processors_note_from_another_send_and_never_ends_in_two_full_stops()
+    {
+        // The line the golden run read: the processor's reply to "it has" carried its stored note from the first send.
+        var record = new ProcessorOutcomeRecord(
+            "h-2", "Weir", "lib", "Retthree.mkv", ProcessorOutcomeRecord.Imported, "/ready/Retthree.mkv", null,
+            DateTimeOffset.UtcNow, ProcessorOutcomeDeliveries.Delivered, 1, null, null, false,
+            "Weir recorded that Deluno imported the file. Deluno will not import this file: Deluno removed Retthree.mkv, so it will not import it. Weir kept its copy in the hand-back folder.",
+            DateTimeOffset.UtcNow, null);
+        var imported = ProcessorOutcomeDelivery.Describe(record).Message;
+        Assert.Contains("Weir recorded that Deluno imported the file.", imported);
+        Assert.DoesNotContain("will not import", imported);
+
+        var removed = record with
+        {
+            Outcome = ProcessorOutcomeRecord.NotImported,
+            ImportedPath = null,
+            Reason = "Deluno removed Retthree.mkv, so it will not import it.",
+            ProcessorSaid = "Weir recorded that the file will not be imported, and kept its copy."
+        };
+        var notImported = ProcessorOutcomeDelivery.Describe(removed).Message;
+        Assert.DoesNotContain("..", notImported);
+        Assert.Contains("will not import", notImported);
+        Assert.DoesNotContain("has Retthree", notImported);
     }
 
     /// <summary>Every file reads as a two-hour 1080p H.264 film, so the test is about the hand-off, not the installed ffprobe.</summary>
