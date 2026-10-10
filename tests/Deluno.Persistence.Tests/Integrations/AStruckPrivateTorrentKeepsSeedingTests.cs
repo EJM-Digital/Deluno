@@ -460,12 +460,17 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
     public async Task After_the_move_the_torrent_is_out_of_Delunos_view_for_good_but_its_files_are_still_claimed()
     {
         using var world = await World.CreateAsync(rule: Rule(DownloadHealthRuleKinds.NoProgress, move: true), siteIsPrivate: true, clientCategory: "keep-seeding");
-        world.ClientListsTheTorrentIn("deluno-movies");
+        // The torrent's own folder inside Deluno's download folder, named after the release as a client names it.
+        var downloads = Path.GetDirectoryName(world.PayloadPath)!;
+        var folder = Path.Combine(downloads, Release);
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Example.Movie.2026.mkv"), "payload");
+        world.ClientListsTheTorrentIn("deluno-movies", folder);
         Assert.Single((await world.Service.GetOverviewAsync(CancellationToken.None)).Clients.Single().Queue);
 
         await world.RemediateAsync();
         // The client now lists it in the keep-seeding category, as the move left it.
-        world.ClientListsTheTorrentIn("keep-seeding");
+        world.ClientListsTheTorrentIn("keep-seeding", folder);
 
         for (var poll = 0; poll < 3; poll++)
         {
@@ -480,8 +485,20 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         // Its files are still held by the client as far as the leftover, orphan and refused-payload cleaners can tell:
         // they read the client's outside items, which is where this torrent now is, so they are never offered or swept.
         var scan = Assert.Single(await world.Service.GetSnapshotsForLeftoverScanAsync(CancellationToken.None));
-        Assert.Contains(world.PayloadPath, scan.OutsideSourcePaths);
-        Assert.True(File.Exists(world.PayloadPath));
+        Assert.Contains(folder, scan.OutsideSourcePaths);
+        Assert.True(Directory.Exists(folder));
+        // The orphan scan, given what the client holds, finds nothing to offer, even for a release Deluno sent and
+        // even long after the grace period: the parked torrent's files sit inside Deluno's own download folder.
+        var entry = new DownloadFolderEntry(folder, true, 15, DateTimeOffset.UtcNow.AddDays(-30));
+        var orphans = OrphanedDownloads.Find(
+            [new DownloadFolderScan("lib", "Movies", downloads, [entry])],
+            scan.OutsideSourcePaths,
+            [Release],
+            [],
+            DateTimeOffset.UtcNow);
+        Assert.Empty(orphans);
+        // Control: with nothing claiming it, the same file would have been offered, so the claim is what protects it.
+        Assert.Single(OrphanedDownloads.Find([new DownloadFolderScan("lib", "Movies", downloads, [entry])], [], [Release], [], DateTimeOffset.UtcNow));
         // And Deluno will not act on it from a screen or a rule either.
         var action = await world.Service.ExecuteActionAsync(world.ClientId, new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, "queue-movie"), CancellationToken.None);
         Assert.False(action.Succeeded);
@@ -913,11 +930,11 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         }
 
         /// <summary>Makes the client list the torrent, in this category, when Deluno polls it.</summary>
-        public void ClientListsTheTorrentIn(string category)
+        public void ClientListsTheTorrentIn(string category, string? sourcePath = null)
             => Client.Listed = new DownloadQueueItem(
                 "queue-movie", _client.Id, _client.Name, _client.Protocol, "movies", "Example Movie", Release,
                 category, DownloadQueueStatuses.Downloading, 40, 0, 60, 4_000_000_000, 1_600_000_000, 0, "Example Tracker", null,
-                _time.GetUtcNow(), PayloadPath, IsPrivate: ClientSaysPrivate);
+                _time.GetUtcNow(), sourcePath ?? PayloadPath, IsPrivate: ClientSaysPrivate);
 
         public void Dispose() => _storage.Dispose();
     }
