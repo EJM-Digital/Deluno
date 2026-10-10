@@ -90,6 +90,26 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
     }
 
     [Fact]
+    public async Task A_title_whose_library_file_came_from_the_release_is_not_sent_it_again()
+    {
+        using var world = await World.CreateAsync();
+        var id = await world.Store.RecordDownloadDispatchAsync(
+            "movies", "movies", "movie", MovieId, Release, "Golden Newznab stub", "sab", "SABnzbd", "sent", null,
+            grabResponseCode: 200, cancellationToken: CancellationToken.None);
+        await world.Dispatches.RecordImportOutcomeAsync(id, "imported", "/media/Movies/Big Buck Bunny (2008).mkv", null, null, CancellationToken.None);
+
+        // Nothing is in flight any more: the import finished. The title still holds the file (removed and restored).
+        Assert.Empty(await world.Store.ListDownloadsInFlightAsync(100, CancellationToken.None));
+        var held = await DispatchCoverage.AlreadyInLibraryAsync(world.Store, Release.ToUpperInvariant(), MovieId, titleHasFile: true, CancellationToken.None);
+        Assert.Equal($"Not sent again: {Release.ToUpperInvariant()} is already in the library.", held);
+
+        // Without a file there is a reason to fetch it again, and another release or title is never held.
+        Assert.Null(await DispatchCoverage.AlreadyInLibraryAsync(world.Store, Release, MovieId, titleHasFile: false, CancellationToken.None));
+        Assert.Null(await DispatchCoverage.AlreadyInLibraryAsync(world.Store, "Big.Buck.Bunny.2008.2160p.WEB-DL-OTHER", MovieId, titleHasFile: true, CancellationToken.None));
+        Assert.Null(await DispatchCoverage.AlreadyInLibraryAsync(world.Store, Release, "movie-other", titleHasFile: true, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Another_title_is_never_held_up_by_the_gate()
     {
         using var first = await DispatchSendGate.EnterAsync(Release, ["movie-a"], CancellationToken.None);
@@ -149,13 +169,16 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
     {
         private readonly TestStorage _storage;
 
-        private World(TestStorage storage, SqliteJobStore store)
+        private World(TestStorage storage, SqliteJobStore store, SqliteDownloadDispatchesRepository dispatches)
         {
             _storage = storage;
             Store = store;
+            Dispatches = dispatches;
         }
 
         public SqliteJobStore Store { get; }
+
+        public SqliteDownloadDispatchesRepository Dispatches { get; }
 
         public static async Task<World> CreateAsync()
         {
@@ -164,7 +187,7 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
             var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
             await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
             var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
-            return new World(storage, new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches));
+            return new World(storage, new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches), dispatches);
         }
 
         public void Dispose() => _storage.Dispose();

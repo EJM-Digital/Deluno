@@ -215,6 +215,45 @@ public sealed class TrayStandardTests
     }
 
     [Fact]
+    public void A_processor_whose_stored_health_is_newer_than_its_last_check_reads_as_down_at_once()
+    {
+        // Weir quit: a hand-off failed and the pass that follows Weir wrote "unreachable" after the last real check said ok.
+        var processor = Processor("p1", "Weir", "unreachable") with { LastHealthTestUtc = Now };
+        var staleCheck = new ConnectionCheckItem("processor", "p1", "Weir", true, false, "Answered.", Now.AddMinutes(-9));
+
+        Assert.Equal(["Weir isn't answering"], TrayPlatformHealth.Down([staleCheck], [], [], [processor], [], Now));
+    }
+
+    [Fact]
+    public void A_real_check_newer_than_the_stored_health_still_wins()
+    {
+        var processor = Processor("p1", "Weir", "unreachable") with { LastHealthTestUtc = Now.AddMinutes(-9) };
+        var check = new ConnectionCheckItem("processor", "p1", "Weir", true, false, "Answered.", Now);
+
+        Assert.Empty(TrayPlatformHealth.Down([check], [], [], [processor], [], Now));
+    }
+
+    [Fact]
+    public void Deluno_itself_is_not_called_down_while_it_starts()
+    {
+        // The metadata service is Deluno's own broker, named "deluno". The failed check taken while it started stays on
+        // record; for ten minutes after the host starts it is not a reading of this run.
+        var failed = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now.AddMinutes(-1));
+
+        Assert.Empty(TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(-3)));
+        Assert.Empty(TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(30)));
+    }
+
+    [Fact]
+    public void The_metadata_service_is_named_plainly_once_it_has_really_failed_after_the_start_up()
+    {
+        var failed = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now);
+
+        Assert.Equal(["The metadata service isn't answering"],
+            TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddHours(-1)));
+    }
+
+    [Fact]
     public void A_connection_that_is_switched_off_is_not_a_problem()
         => Assert.Empty(TrayPlatformHealth.Down([], [Client("c1", "SABnzbd", "unreachable", enabled: false)], [], [], [], Now));
 

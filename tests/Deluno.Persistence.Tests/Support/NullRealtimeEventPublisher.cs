@@ -4,7 +4,7 @@ namespace Deluno.Persistence.Tests.Support;
 
 internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
 {
-    public Task PublishHealthChangedAsync(
+    public virtual Task PublishHealthChangedAsync(
         string source,
         string status,
         string message,
