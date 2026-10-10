@@ -237,10 +237,18 @@ public sealed class HandledProblemsSettler(
     /// <summary>How far back a finished hand-off is looked at for an outcome its processor was never told.</summary>
     private static readonly TimeSpan OutcomeWindow = TimeSpan.FromDays(60);
 
+    /// <summary>What a processor hears when a hand-off was closed with no reason on it.</summary>
+    internal const string DefaultNotImportedReason = "The hand-off was closed, so Deluno will not import this file.";
+
     /// <summary>
-    /// A hand-off whose import ran to its end has told its processor so (#578). One that was settled as dismissed
-    /// before that report went out (a partial result, #1182) never did, and the processor kept waiting for its media
-    /// manager. Written down and sent now, once: a hand-off with an outcome record is left alone.
+    /// Every hand-off Deluno closes tells its processor what became of the file (#578, #1220), whichever way it closed:
+    /// a person stopped tracking the download, dismissed the hand-off or removed the title, Deluno stopped waiting, the
+    /// download was gone, or another copy took over. All of them end as dismissed, and this is the one place that says
+    /// so: one whose import ran to its end is reported as imported (a partial result settled before that report went
+    /// out, #1182); every other is reported as final, not imported, with the reason it carries. It is written down and
+    /// sent once, through the delivery every other outcome uses, so a processor that does not ask to be told is left
+    /// alone and one that is down is told again later. A hand-off with an outcome record is never reported twice, and
+    /// closed hand-offs that never had one (older than this rule) are told the first time this runs.
     /// </summary>
     private async Task<int> TellProcessorsOfImportedHandoffsAsync(CancellationToken cancellationToken)
     {
@@ -251,24 +259,32 @@ public sealed class HandledProblemsSettler(
 
         var now = (clock ?? TimeProvider.System).GetUtcNow();
         var told = 0;
-        var finished = await processors.ListProcessorHandoffsWithStatusAsync(
-            [ProcessorHandoffStatuses.Dismissed], cancellationToken) ?? [];
-        foreach (var handoff in finished.Where(item => !string.IsNullOrWhiteSpace(item.ImportJobId) && now - item.UpdatedUtc < OutcomeWindow))
+        var finished = (await processors.ListProcessorHandoffsWithStatusAsync(
+                [ProcessorHandoffStatuses.Dismissed], cancellationToken) ?? [])
+            .Where(item => now - item.UpdatedUtc < OutcomeWindow)
+            .ToList();
+        if (finished.Count == 0)
         {
-            if (await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is not { Status: "completed" }
-                || await processors.GetProcessorOutcomeAsync(handoff.Id, cancellationToken) is not null)
+            return 0;
+        }
+
+        foreach (var handoff in finished)
+        {
+            if (await processors.GetProcessorOutcomeAsync(handoff.Id, cancellationToken) is not null)
             {
                 continue;
             }
 
+            var imported = !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                && await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is { Status: "completed" };
             var sent = await Deluno.Platform.ProcessorOutcomeDelivery.RecordAndSendAsync(
                 processors,
                 processorConnections,
                 activityFeed,
                 handoff,
-                ProcessorHandoffOutcome.Imported,
-                handoff.OutputPath,
-                null,
+                imported ? ProcessorHandoffOutcome.Imported : ProcessorHandoffOutcome.NotImported,
+                imported ? handoff.OutputPath : null,
+                imported ? null : string.IsNullOrWhiteSpace(handoff.FailureMessage) ? DefaultNotImportedReason : handoff.FailureMessage,
                 now,
                 cancellationToken);
             if (sent is not null)

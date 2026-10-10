@@ -705,6 +705,35 @@ public sealed class SqliteDownloadDispatchesRepository(
         await AnnounceStageAsync(dispatchId, "archived", reason, cancellationToken);
     }
 
+    public async Task<int> CloseContainedDispatchesAsync(string clientId, string hash, string reason, CancellationToken cancellationToken)
+    {
+        var closed = 0;
+        foreach (var open in await FindOpenDispatchesByHashAsync(clientId, hash, cancellationToken))
+        {
+            if (string.Equals(open.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            await ArchiveDispatchAsync(open.Id, reason, cancellationToken);
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                UPDATE download_dispatches
+                SET import_failure_code = @code, import_failure_message = @message
+                WHERE id = @id
+                """;
+            AddParameter(command, "@id", open.Id);
+            AddParameter(command, "@code", IDownloadDispatchesRepository.ContainedFailureCode);
+            AddParameter(command, "@message", reason);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            closed++;
+        }
+
+        return closed;
+    }
+
     /// <summary>Timeline entries that are bookkeeping, not a move on the journey.</summary>
     private static readonly HashSet<string> NotAStageChange = new(StringComparer.Ordinal)
     {

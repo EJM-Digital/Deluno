@@ -10,6 +10,7 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Recovery.Services;
 using Deluno.Series.Contracts;
@@ -503,6 +504,92 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.NotEqual("archived", dispatch!.Status);
     }
 
+    /// <summary>#1212: a client that removed the download but left its files says so; Activity never claims they were deleted.</summary>
+    [Fact]
+    public async Task A_removal_that_left_the_files_on_disk_says_so_instead_of_claiming_they_were_deleted()
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+        world.Client.FilesNote = "Deluno could not delete the finished folder: it is in use.";
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Unwanted);
+
+        Assert.True(result.Succeeded);
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+        Assert.DoesNotContain("deleted its files", activity.Message, StringComparison.Ordinal);
+        Assert.Contains("left its files on disk", activity.Message, StringComparison.Ordinal);
+        Assert.Contains("it is in use", activity.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>#1212 (b): the second removal of the same download did nothing and still read Done, with a second Activity row.</summary>
+    [Fact]
+    public async Task A_second_removal_of_a_download_the_client_no_longer_has_fails_and_writes_no_second_done_row()
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+        var first = await world.RemoveAsync(QueueRemovalReasons.Reclaim);
+        Assert.True(first.Succeeded);
+
+        world.Client.FailActions = true;
+        var second = await world.RemoveAsync(QueueRemovalReasons.Reclaim);
+
+        Assert.False(second.Succeeded);
+        var rows = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Where(entry => entry.Category == "download.queue.removed");
+        Assert.Single(rows);
+    }
+
+    /// <summary>
+    /// #1216: Retryfilm's download was removed by Deluno, and its hand-off, put back to waiting by a retry, came back
+    /// forty minutes later as "never picked up". Removing the download closes the hand-off in whatever state it is in.
+    /// </summary>
+    [Theory]
+    [InlineData(ProcessorHandoffStatuses.Waiting)]
+    [InlineData(ProcessorHandoffStatuses.Submitted)]
+    [InlineData(ProcessorHandoffStatuses.Failed)]
+    [InlineData(ProcessorHandoffStatuses.Started)]
+    public async Task Removing_a_download_closes_its_open_or_failed_hand_off_at_once(string status)
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var handoff = await world.HandoffAsync(status);
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Failed);
+
+        Assert.True(result.Succeeded);
+        var stored = await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored!.Status);
+        Assert.False(ProcessorHandoffStatuses.NeedsPerson(stored.Status, stored.FailureMessage));
+        Assert.False(ProcessorHandoffStatuses.IsWithProcessor(stored.Status));
+        var activity = await world.Activity.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(activity, entry => entry.Category == "processing.dismissed" && entry.Message.Contains("because Deluno removed the download", StringComparison.Ordinal));
+        Assert.DoesNotContain(activity, entry => entry.Category == "processing.waiting-too-long");
+    }
+
+    /// <summary>#1220: a hand-off closed because a person stopped tracking says so, not that the download was gone.</summary>
+    [Fact]
+    public async Task A_hand_off_closed_because_a_person_stopped_tracking_the_download_says_so()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var handoff = await world.HandoffAsync(ProcessorHandoffStatuses.Failed);
+
+        await world.RemoveAsync(QueueRemovalReasons.Forget);
+
+        var stored = await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored!.Status);
+        Assert.Contains("stop tracking", stored.FailureMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("was gone", stored.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_hand_off_that_already_finished_is_left_as_it_was_when_its_download_is_removed()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var handoff = await world.HandoffAsync(ProcessorHandoffStatuses.Completed);
+
+        await world.RemoveAsync(QueueRemovalReasons.GaveUp);
+
+        Assert.Equal(ProcessorHandoffStatuses.Completed, (await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+    }
+
     private sealed class FakeClient(string protocol) : IDownloadClient
     {
         public string Protocol => protocol;
@@ -513,6 +600,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         /// <summary>The client refuses every action (a hung or half-gone download).</summary>
         public bool FailActions { get; set; }
+
+        /// <summary>The client removed the download but could not remove its files, and says why (#1212).</summary>
+        public string? FilesNote { get; set; }
 
         public DownloadClientTelemetryCapabilities Capabilities { get; } =
             new(true, true, true, true, true, true, protocol);
@@ -533,7 +623,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         {
             LastAction = action;
             LastQueueItemId = queueItemId;
-            return Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, !FailActions, FailActions ? "The client would not do that." : $"{action} sent to {client.Name}"));
+            return Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, !FailActions, FailActions ? "The client would not do that." : $"{action} sent to {client.Name}")
+            {
+                FilesNote = FilesNote
+            });
         }
 
         public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -596,8 +689,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             string? seriesId,
             SqliteDownloadDispatchesRepository dispatches,
             string dispatchId,
-            string libraryId)
+            string libraryId,
+            SqliteProcessorRepository processors)
         {
+            Processors = processors;
             Dispatches = dispatches;
             DispatchId = dispatchId;
             LibraryId = libraryId;
@@ -616,6 +711,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         }
 
         public SqliteDownloadDispatchesRepository Dispatches { get; }
+
+        public SqliteProcessorRepository Processors { get; }
 
         public string DispatchId { get; }
 
@@ -720,6 +817,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             await dispatches.RecordDetectionAsync(dispatchId, QueueItemId, null, completed: false, CancellationToken.None);
 
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
+            var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var fakeClient = new FakeClient(protocol);
             var registry = new DownloadClientRegistry([fakeClient]);
             var titleUnmonitorService = unmonitorComponent is null
@@ -738,12 +836,24 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 dispatches,
                 jobs,
                 new Deluno.Recovery.Policies.DownloadHealthEvaluator(),
-                null!,
+                processors,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
                 blocklist,
                 titleUnmonitorService: titleUnmonitorService);
 
-            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId, library.Id);
+            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId, library.Id, processors);
+        }
+
+        public async Task<ProcessorHandoffItem> HandoffAsync(string status)
+        {
+            var handoff = await Processors.EnsureProcessorHandoffAsync(
+                new CreateProcessorHandoffRequest(LibraryId, MediaType, ClientId, QueueItemId, Release, Path.Combine(Path.GetTempPath(), Release), "Weir"),
+                CancellationToken.None);
+            await Processors.UpdateProcessorHandoffAsync(
+                handoff.Id, status, null, null,
+                status == ProcessorHandoffStatuses.Failed ? "Deluno could not submit the hand-off." : null,
+                CancellationToken.None);
+            return (await Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
         }
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)

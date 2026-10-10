@@ -1074,7 +1074,8 @@ public sealed class WorkPlanner(
                 activityFeedRepository,
                 movieCatalogRepository,
                 seriesCatalogRepository,
-                processorOutputImports)
+                processorOutputImports,
+                downloadIntegrityDispatches)
             .WatchAsync(libraries, now, cancellationToken, allLibraries);
 
         var recentWaitingKeys = recentWaiting
@@ -1085,6 +1086,7 @@ public sealed class WorkPlanner(
 
         var telemetry = await downloadClientTelemetryService.GetFreshOverviewAsync(DownloadTelemetryFreshness.Acting, cancellationToken);
         await downloadClientTelemetryService.RunConfiguredHealthRemediationAsync(telemetry, cancellationToken);
+        await CloseContainedSendsAsync(telemetry, downloadIntegrityDispatches, cancellationToken);
         foreach (var item in GetImportCandidates(telemetry))
         {
             // `waitingForProcessor` belongs here too, and leaving it out deadlocked the
@@ -1763,7 +1765,9 @@ public sealed class WorkPlanner(
         var notDone = new List<string>();
         if (removedFromClient)
         {
-            done.Add("removed it");
+            done.Add(string.IsNullOrWhiteSpace(removalProblem)
+                ? "removed it"
+                : $"removed it, but its files are still on disk ({removalProblem.TrimEnd('.')})");
         }
         else
         {
@@ -1852,6 +1856,41 @@ public sealed class WorkPlanner(
         return true;
     }
 
+    /// <summary>The plain reason a contained send carries, on Activity and in the drawer.</summary>
+    public const string ContainedSendReason = "Not needed: another copy was handed over";
+
+    /// <summary>
+    /// A send Deluno contains (its client entry reads "another copy was handed over", #1215) is closed for good the
+    /// moment that is decided, with its reason on the record. Read from the live entry alone it fell back to "In
+    /// progress" once the copy left the client. Sends already in that state are closed the next time this runs.
+    /// </summary>
+    public static async Task<int> CloseContainedSendsAsync(
+        DownloadTelemetryOverview telemetry,
+        IDownloadDispatchesRepository? dispatches,
+        CancellationToken cancellationToken)
+    {
+        if (dispatches is null)
+        {
+            return 0;
+        }
+
+        var closed = 0;
+        foreach (var item in telemetry.Clients.SelectMany(client => client.Queue)
+                     .Where(item => item.Status == DownloadQueueStatuses.HandedOverElsewhere))
+        {
+            try
+            {
+                closed += await dispatches.CloseContainedDispatchesAsync(item.ClientId, item.Id, ContainedSendReason, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Closed again on the next pass.
+            }
+        }
+
+        return closed;
+    }
+
     private static async Task<(bool Removed, string? Problem)> TryRemoveFromClientAsync(
         DownloadQueueItem item,
         IDownloadClientTelemetryService downloadClientTelemetryService,
@@ -1863,7 +1902,8 @@ public sealed class WorkPlanner(
                 item.ClientId,
                 new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
                 cancellationToken);
-            return (actionResult.Succeeded, actionResult.Succeeded ? null : actionResult.Message);
+            // A removal that left the files on disk says so in the second part, so "removed it" never claims more (#1212).
+            return (actionResult.Succeeded, actionResult.Succeeded ? actionResult.FilesNote : actionResult.Message);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

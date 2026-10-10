@@ -365,16 +365,42 @@ public sealed class EveryVerbMeansSomethingDifferentTests
     /// </summary>
     private sealed class RecordingHandler(List<string> sent) : HttpMessageHandler
     {
+        private bool _removed;
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            // Sign-in traffic is not the verb under test.
+            // Sign-in traffic is not the verb under test, and neither is a usenet client's list of jobs, which
+            // Deluno reads to check that a removal happened (#1212).
             var path = request.RequestUri?.PathAndQuery ?? string.Empty;
+            var isSabList = path.Contains("api?mode=queue", StringComparison.OrdinalIgnoreCase) && !path.Contains("name=", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("api?mode=history", StringComparison.OrdinalIgnoreCase) && !path.Contains("name=", StringComparison.OrdinalIgnoreCase);
+            var isNzbGetList = body.Contains("\"listgroups\"", StringComparison.Ordinal) || body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase);
             if (!path.Contains("auth/login", StringComparison.OrdinalIgnoreCase) && !body.Contains("auth.login", StringComparison.OrdinalIgnoreCase)
-                && !path.Contains("token.html", StringComparison.OrdinalIgnoreCase))
+                && !path.Contains("token.html", StringComparison.OrdinalIgnoreCase) && !isSabList && !isNzbGetList)
             {
                 sent.Add($"{path} {body}".Trim());
+            }
+
+            // The job is there until the first delete or edit is sent, and gone after it.
+            if (isSabList || isNzbGetList)
+            {
+                var listed = !_removed;
+                var nzbList = body.Contains("\"listgroups\"", StringComparison.Ordinal);
+                var content = isSabList
+                    ? path.Contains("mode=queue", StringComparison.OrdinalIgnoreCase)
+                        ? listed ? "{\"queue\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"filename\":\"x\"}]}}" : "{\"queue\":{\"slots\":[]}}"
+                        : "{\"history\":{\"slots\":[]}}"
+                    : nzbList
+                        ? listed ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"x\"}]}" : "{\"result\":[]}"
+                        : "{\"result\":[]}";
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
+            }
+
+            if (path.Contains("name=", StringComparison.OrdinalIgnoreCase) || body.Contains("editqueue", StringComparison.OrdinalIgnoreCase))
+            {
+                _removed = true;
             }
 
             // Each client's sign-in wants its own shape back, and none of them

@@ -603,6 +603,12 @@ public sealed record DownloadClientActionResult(
 
     /// <summary>True when Deluno refused because it did not send this download (#1062, #933); the API answers 409.</summary>
     public bool Refused { get; init; }
+
+    /// <summary>
+    /// Set when the download was removed from the client but its files are still on disk, and why (#1212). A removal
+    /// that carries this must never be reported as having deleted the files.
+    /// </summary>
+    public string? FilesNote { get; init; }
 }
 
 /// <summary>Whether Deluno itself sent a download; <see cref="Message"/> says so in plain words when it did not.</summary>
