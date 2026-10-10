@@ -453,6 +453,9 @@ test.describe("every screen fits three widths", () => {
             const cut = await page.evaluate((value) => {
               const el = Array.from(document.querySelectorAll<HTMLElement>("dd, figcaption span")).find((item) => item.textContent?.trim() === value);
               if (!el) return "not on the page";
+              // The cast row scrolls sideways by design (its arrows page it), so a later card starts off screen: bring it
+              // into view the way the arrows would, then judge whether its words fit.
+              el.scrollIntoView({ block: "nearest", inline: "nearest" });
               const box = el.getBoundingClientRect();
               if (el.scrollWidth > el.clientWidth + 1) return `cut: ${el.scrollWidth}px of text in ${el.clientWidth}px`;
               if (box.right > document.documentElement.clientWidth + 1) return "runs past the screen";
