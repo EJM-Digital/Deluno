@@ -44,7 +44,8 @@ public sealed class ProcessorHandoffWatcher(
     IActivityFeedRepository activityFeed,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
-    IProcessorOutputImportQueue? outputImports = null)
+    IProcessorOutputImportQueue? outputImports = null,
+    IDownloadDispatchesRepository? dispatches = null)
 {
     /// <summary>
     /// A processor that has just accepted a hand-off may not have written it
@@ -130,6 +131,16 @@ public sealed class ProcessorHandoffWatcher(
             if (string.Equals(handoff.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase) &&
                 now - handoff.UpdatedUtc >= WaitingToBeSentLimit)
             {
+                // The download is gone (Deluno removed it, or it was taken out of the client): nothing is owed a
+                // send, so this raises nothing. It closes quietly, as the removal itself would have (#1216).
+                if (await DownloadIsGoneAsync(handoff, cancellationToken))
+                {
+                    await processorRepository.UpdateProcessorHandoffAsync(
+                        handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null,
+                        $"The download of {handoff.ReleaseName} is gone, so Deluno will not import it.", cancellationToken);
+                    continue;
+                }
+
                 // The processor may well have done the work already, and its output
                 // be sitting in the ready folder: take that before giving up (#1155).
                 if (libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase)) is { } waitingLibrary
@@ -352,6 +363,26 @@ public sealed class ProcessorHandoffWatcher(
     /// A hand-off that went wrong needs nobody once the same film or episode has been imported through another download
     /// (#1155): it is dismissed, its Needs action entry closes, and Activity says so once.
     /// </summary>
+    /// <summary>
+    /// Whether the download this hand-off was made for is gone: Deluno has a record of sending it and none of those
+    /// records is open any more, because the download was removed (#1216). A download Deluno never sent has no
+    /// record and is not judged gone here.
+    /// </summary>
+    private async Task<bool> DownloadIsGoneAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        if (dispatches is null || string.IsNullOrWhiteSpace(handoff.ClientId) || string.IsNullOrWhiteSpace(handoff.QueueItemId))
+        {
+            return false;
+        }
+
+        if ((await dispatches.FindOpenDispatchesByHashAsync(handoff.ClientId, handoff.QueueItemId, cancellationToken)).Count > 0)
+        {
+            return false;
+        }
+
+        return await dispatches.FindAnyDispatchByHashAsync(handoff.ClientId, handoff.QueueItemId, cancellationToken) is not null;
+    }
+
     private async Task SettleSupersededAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (outputImports is null)
@@ -369,7 +400,7 @@ public sealed class ProcessorHandoffWatcher(
             }
 
             var message = $"{handoff.ReleaseName} did not go through the processor, but the title was imported from another download, so Deluno closed this one.";
-            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, message, cancellationToken);
             var scope = new Deluno.Contracts.ImportRecoveryCaseScope([], []) { HandoffIds = [handoff.Id] };
             if (DelunoValueNormalizers.NormalizeMediaType(library.MediaType) == "tv")
             {

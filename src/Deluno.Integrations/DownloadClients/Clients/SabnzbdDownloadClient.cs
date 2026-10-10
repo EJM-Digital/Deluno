@@ -535,25 +535,51 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         // queue delete finds nothing there (#1201). Try the queue first and, when
         // it removed nothing, the history, which is where the job and its folder
         // live once it is done.
+        //
+        // SABnzbd answers {"status":true} to a history delete for ANY id, so its yes
+        // proves nothing (#1212): the job must be in the queue or history before the
+        // call and out of both after it, or the removal did not happen.
         if (action is DownloadClientActions.Delete or DownloadClientActions.DeleteWithData)
         {
             var withFiles = action == DownloadClientActions.DeleteWithData;
-            var fromQueue = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}&apikey={key}&output=json", cancellationToken);
-            if (fromQueue.Removed)
-            {
-                return DownloadClientHelpers.ActionSuccess(client, queueItemId, action,
-                    withFiles ? "Removed this download from SABnzbd's queue, along with its files." : "Removed this download from SABnzbd's queue.");
-            }
+            SabHistorySlot? finished = null;
+            return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "SABnzbd",
+                has: async () =>
+                {
+                    var probe = await ProbeAsync(http, baseUri, key, queueItemId, cancellationToken);
+                    finished ??= probe.History;
+                    return probe.State;
+                },
+                remove: async () =>
+                {
+                    var fromQueue = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}&apikey={key}&output=json", cancellationToken);
+                    if (fromQueue.Removed)
+                    {
+                        return DownloadClientHelpers.ActionSuccess(client, queueItemId, action,
+                            withFiles ? "Removed this download from SABnzbd's queue, along with its files." : "Removed this download from SABnzbd's queue.");
+                    }
 
-            var fromHistory = await SendAsync(http, baseUri,
-                $"api?mode=history&name=delete&value={itemId}&del_files={(withFiles ? 1 : 0)}&apikey={key}&output=json", cancellationToken);
-            if (fromHistory.Removed)
-            {
-                return DownloadClientHelpers.ActionSuccess(client, queueItemId, action,
-                    withFiles ? "Removed this finished download from SABnzbd's history, along with its files." : "Removed this finished download from SABnzbd's history.");
-            }
+                    var fromHistory = await SendAsync(http, baseUri,
+                        $"api?mode=history&name=delete&value={itemId}&del_files={(withFiles ? 1 : 0)}&apikey={key}&output=json", cancellationToken);
+                    if (!fromHistory.Removed)
+                    {
+                        return DidNotWork(client, queueItemId, action, fromHistory.Reached ? fromHistory : fromQueue, "had no download with that id to remove");
+                    }
 
-            return DidNotWork(client, queueItemId, action, fromHistory.Reached ? fromHistory : fromQueue, "had no download with that id to remove");
+                    // SABnzbd 5.1.3 removes the history entry but, for a finished job, not the folder: its record's
+                    // `path` is the old incomplete folder and the finished files are under `storage`. So the folder
+                    // goes here, or Deluno says plainly that it is still there.
+                    var problem = withFiles && finished is not null
+                        ? DownloadFolderRemoval.Remove(finished.Storage, finished.Name, ClientSaveFolders.IsSameMachine(client))
+                        : null;
+                    var message = withFiles
+                        ? problem is null
+                            ? "Removed this finished download from SABnzbd's history, along with its files."
+                            : "Removed this finished download from SABnzbd's history, but its files are still on disk."
+                        : "Removed this finished download from SABnzbd's history.";
+                    var done = DownloadClientHelpers.ActionSuccess(client, queueItemId, action, message);
+                    return problem is null ? done : done with { FilesNote = problem };
+                });
         }
 
         var sent = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}{priorityValue}&apikey={key}&output=json", cancellationToken);
@@ -687,6 +713,37 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
         {
             return new SabActionOutcome(Reached: false, Accepted: false, null);
+        }
+    }
+
+    /// <summary>
+    /// Whether SABnzbd's queue or history holds this job right now (#1212), and the history record when it is a
+    /// finished one. Asked of the lists themselves, because SABnzbd's delete calls answer yes for any id.
+    /// </summary>
+    private static async Task<(ClientHas State, SabHistorySlot? History)> ProbeAsync(
+        HttpClient http, Uri baseUri, string key, string nzoId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var queueResponse = await http.GetAsync(new Uri(baseUri, $"api?mode=queue&output=json&apikey={key}"), cancellationToken);
+            if (!queueResponse.IsSuccessStatusCode) return (ClientHas.Unknown, null);
+            var queue = (await queueResponse.Content.ReadFromJsonAsync<SabQueueResponse>(cancellationToken))?.Queue;
+            if (queue is null) return (ClientHas.Unknown, null);
+            if ((queue.Slots ?? []).Any(slot => string.Equals(slot.NzoId, nzoId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return (ClientHas.Yes, null);
+            }
+
+            using var historyResponse = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={key}"), cancellationToken);
+            if (!historyResponse.IsSuccessStatusCode) return (ClientHas.Unknown, null);
+            var history = (await historyResponse.Content.ReadFromJsonAsync<SabHistoryResponse>(cancellationToken))?.History;
+            if (history is null) return (ClientHas.Unknown, null);
+            var found = (history.Slots ?? []).FirstOrDefault(slot => string.Equals(slot.NzoId, nzoId, StringComparison.OrdinalIgnoreCase));
+            return found is null ? (ClientHas.No, null) : (ClientHas.Yes, found);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or JsonException)
+        {
+            return (ClientHas.Unknown, null);
         }
     }
 

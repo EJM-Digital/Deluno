@@ -56,6 +56,9 @@ export function dispatchIsExtraCopy(dispatch: DownloadDispatchItem, all: readonl
     && dispatchWasImported(other));
 }
 
+/** Deluno contained this send (another copy was handed over) and closed it for good, with its reason on the record (#1215). */
+export const CONTAINED_SEND_CODE = "handed-over-elsewhere";
+
 export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly DownloadDispatchItem[] = []): DispatchStanding | null {
   const status = lower(dispatch.status);
   const grab = lower(dispatch.grabStatus);
@@ -90,6 +93,9 @@ export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly D
   }
   if (grab === "refused" || grab === "blocked" || grab === "rejected" || status === "refused" || status === "blocked") {
     return { status: "done", pill: { tone: "warn", label: "Refused" }, detail: dispatch.grabMessage ?? "The download client turned it down" };
+  }
+  if (lower(dispatch.importFailureCode) === CONTAINED_SEND_CODE) {
+    return { status: "done", pill: { tone: "idle", label: "Not needed" }, detail: dispatch.importFailureMessage ?? "Not needed: another copy was handed over" };
   }
   if (status === "archived" || status === "removed" || status === "vanished" || status === "cancelled") {
     return { status: "done", pill: { tone: "idle", label: "Removed" }, detail: "Taken out of the download client" };

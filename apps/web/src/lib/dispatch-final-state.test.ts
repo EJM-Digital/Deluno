@@ -91,3 +91,18 @@ describe("an extra copy of a release already in the library (#1202)", () => {
     expect(dispatchStanding(sent({ id: "d2", entityId: "m1", releaseName: "Sintel.2010.2160p" }), [held])?.status).toBe("in-progress");
   });
 });
+
+describe("a contained send leaves In progress (#1215)", () => {
+  const contained = sent({ status: "archived", importFailureCode: "handed-over-elsewhere", importFailureMessage: "Not needed: another copy was handed over" });
+
+  it("reads Not needed, with its stored reason, whatever its client entry does afterwards", () => {
+    const standing = dispatchStanding(contained);
+    expect(standing?.status).toBe("done");
+    expect(standing?.pill.label).toBe("Not needed");
+    expect(standing?.detail).toBe("Not needed: another copy was handed over");
+  });
+
+  it("keeps a moving send in progress", () => {
+    expect(dispatchStanding(sent({ status: "sent" }))?.status).toBe("in-progress");
+  });
+});

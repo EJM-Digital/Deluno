@@ -594,6 +594,62 @@ public sealed class ProcessorHandoffWatcherTests
         Assert.Empty(_updates);
     }
 
+    /// <summary>
+    /// #1216. Retryfilm's download was removed by Deluno; its hand-off had been put back to waiting by a retry, and
+    /// forty minutes later the waiting-too-long check raised "never picked up" for a download that no longer existed.
+    /// </summary>
+    [Fact]
+    public async Task A_waiting_hand_off_whose_download_was_removed_raises_nothing_when_the_wait_runs_out()
+    {
+        GivenWaitingHandoff(updated: Now.AddMinutes(-41));
+        var dispatches = new Mock<IDownloadDispatchesRepository>();
+        dispatches.Setup(repo => repo.FindOpenDispatchesByHashAsync("qbittorrent", "hash-1", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("qbittorrent", "hash-1", It.IsAny<CancellationToken>())).ReturnsAsync(ArchivedDispatch());
+
+        await new ProcessorHandoffWatcher(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object, null, dispatches.Object)
+            .WatchAsync([Library(_mode, _stallMinutes)], Now, CancellationToken.None);
+
+        Assert.DoesNotContain(_updates, update => update.Status == ProcessorHandoffStatuses.Failed);
+        var closed = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, closed.Status);
+        Assert.Contains("is gone", closed.Message);
+        _activity.Verify(feed => feed.RecordActivityAsync("processing.waiting-too-long", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_waiting_hand_off_whose_download_is_still_there_is_still_reported_when_the_wait_runs_out()
+    {
+        GivenWaitingHandoff(updated: Now.AddMinutes(-41));
+        var dispatches = new Mock<IDownloadDispatchesRepository>();
+        dispatches.Setup(repo => repo.FindOpenDispatchesByHashAsync("qbittorrent", "hash-1", It.IsAny<CancellationToken>())).ReturnsAsync([ArchivedDispatch()]);
+
+        await new ProcessorHandoffWatcher(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object, null, dispatches.Object)
+            .WatchAsync([Library(_mode, _stallMinutes)], Now, CancellationToken.None);
+
+        var failed = Assert.Single(_updates, update => update.Status == ProcessorHandoffStatuses.Failed);
+        Assert.Contains("never picked up", failed.Message);
+    }
+
+    private void GivenWaitingHandoff(DateTimeOffset updated)
+    {
+        _mode = "block";
+        _repository.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new ProcessorHandoffItem(
+                    "handoff-1", "library-1", "movies", "qbittorrent", "hash-1", "Retryfilm.2017.1080p",
+                    @"D:\Downloads\Retryfilm.2017.1080p", "Weir", ProcessorHandoffStatuses.Waiting, null, null, null,
+                    updated.AddHours(-1), updated)
+            ]);
+    }
+
+    private static Deluno.Jobs.Contracts.DownloadDispatchItem ArchivedDispatch()
+        => new("dispatch-1", "library-1", "movies", "movie", "movie-1", "Retryfilm.2017.1080p", "Indexer",
+            "qbittorrent", "qBittorrent", "archived", null, Now.AddHours(-2),
+            "succeeded", null, null, null, null, null,
+            null, "hash-1", null,
+            null, null, null, null, null, null,
+            null);
+
     private ProcessorHandoffWatcher Watcher()
         => new(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object);
 
