@@ -60,6 +60,9 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         Assert.True(File.Exists(world.PayloadPath));
         // The release is blocked for the title and a replacement search is queued.
         Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        // And the blocked release is not left waiting for the refused-download cleanup, which would otherwise ask the
+        // client to forget it with its files: a parked torrent is not a refused copy to clear.
+        Assert.Empty(await world.Blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
         Assert.Equal(1, report.ReplacementSearchesQueued);
         Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
         // Deluno stopped tracking it.
