@@ -509,13 +509,22 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     if (!request) return;
     setDecisionBusy(action.id);
     try {
-      const result = await send(request.path, request.failure, { method: request.method, body: request.body });
+      let result: { message?: string } | null = null;
+      if (action.id.startsWith("recovery-dismiss:")) {
+        // A dismissal of an issue the server has already closed (with its hand-off, on another screen) is done, not an error (#1228).
+        const response = await authedFetch(request.path, { method: request.method });
+        if (!response.ok && response.status !== 404) throw new Error(request.failure);
+      } else {
+        result = await send(request.path, request.failure, { method: request.method, body: request.body });
+      }
       toast.success(result?.message ?? request.done);
       setConfirmingDecision(null);
       setOpenImportCaseId(null);
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : request.failure);
+      // Whatever the server says now is what the row should say.
+      revalidator.revalidate();
     } finally {
       setDecisionBusy(null);
     }

@@ -64,6 +64,12 @@ public interface IProcessorRepository
         string sourcePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Tells the records that mirror a dismissed hand-off (its import issues and their System rows) that it is closed, again.
+    /// For a hand-off dismissed before they followed it (#1228); a hand-off that is not dismissed is left alone.
+    /// </summary>
+    Task TellHandoffClosedAsync(string handoffId, CancellationToken cancellationToken) => Task.CompletedTask;
+
     Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
         string id,
         string status,

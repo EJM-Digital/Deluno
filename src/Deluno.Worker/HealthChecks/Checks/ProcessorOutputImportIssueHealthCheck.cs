@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Deluno.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Series.Data;
@@ -37,24 +39,24 @@ public sealed class ProcessorOutputImportIssueHealthCheck(
         var movieSummary = await movies.GetImportRecoverySummaryAsync(cancellationToken);
         foreach (var item in movieSummary.RecentCases.Where(item => FailureKinds.Contains(item.FailureKind)))
         {
-            outcomes.Add(BuildOutcome(item.Id, item.Title, item.FailureKind, item.Summary, item.RecommendedAction, item.DetailsJson));
+            outcomes.Add(BuildOutcome(item.Id, "movie", item.Title, item.FailureKind, item.Summary, item.RecommendedAction, item.DetailsJson));
         }
 
         var seriesSummary = await series.GetImportRecoverySummaryAsync(cancellationToken);
         foreach (var item in seriesSummary.RecentCases.Where(item => FailureKinds.Contains(item.FailureKind)))
         {
-            outcomes.Add(BuildOutcome(item.Id, item.Title, item.FailureKind, item.Summary, item.RecommendedAction, item.DetailsJson));
+            outcomes.Add(BuildOutcome(item.Id, "series", item.Title, item.FailureKind, item.Summary, item.RecommendedAction, item.DetailsJson));
         }
 
         return outcomes;
     }
 
-    private HealthCheckOutcome BuildOutcome(string caseId, string title, string failureKind, string summary, string recommendedAction, string? detailsJson)
+    private HealthCheckOutcome BuildOutcome(string caseId, string mediaType, string title, string failureKind, string summary, string recommendedAction, string? detailsJson)
     {
         var isProcessorFault = failureKind == "processedFileIsLess";
         var isUnmatched = failureKind == "processor-unmatched-output";
         return HealthCheckOutcome.Problem(
-            $"processor-output-issue:{caseId}",
+            Deluno.Platform.Data.ProblemTwins.OutputIssueRowId(caseId),
             Category,
             isProcessorFault ? $"{title}: held, the processor lost something"
                 : isUnmatched ? $"{title}: unmatched in a processor's output"
@@ -66,6 +68,27 @@ public sealed class ProcessorOutputImportIssueHealthCheck(
                     ? "A season-pack file did not resolve to a canonical episode, matched one but was not imported, or a processor's cleaned output could not be matched to a download hand-off."
                     : "A processor named a file it made that Deluno cannot find.",
             fix: recommendedAction,
-            detailsJson: detailsJson);
+            detailsJson: WithIssue(detailsJson, caseId, mediaType));
+    }
+
+    /// <summary>
+    /// The row says which import issue it mirrors, so System can dismiss that issue (and with it the hand-off) from the
+    /// row (#1228) instead of only snoozing a problem that stays true.
+    /// </summary>
+    private static string WithIssue(string? detailsJson, string caseId, string mediaType)
+    {
+        JsonObject details;
+        try
+        {
+            details = JsonNode.Parse(string.IsNullOrWhiteSpace(detailsJson) ? "{}" : detailsJson) as JsonObject ?? new JsonObject();
+        }
+        catch (JsonException)
+        {
+            details = new JsonObject();
+        }
+
+        details["recoveryCaseId"] = caseId;
+        details["recoveryMediaType"] = mediaType;
+        return details.ToJsonString();
     }
 }

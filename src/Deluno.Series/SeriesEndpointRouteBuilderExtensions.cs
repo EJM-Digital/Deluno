@@ -350,6 +350,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
+            Deluno.Platform.Data.IProcessorRepository processors,
+            Deluno.Jobs.Data.IActivityFeedRepository activityFeed,
+            IHealthCheckRepository healthChecks,
+            IRealtimeEventPublisher realtime,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -368,6 +372,9 @@ public static class SeriesEndpointRouteBuilderExtensions
             await RecoveryCaseProblems.AcknowledgeAsync(updated.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
 
             await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
+
+            // Its twins go with it (#1228): the hand-off it is about, and its row on System.
+            await Deluno.Platform.Data.ProblemTwins.AfterIssueDismissedAsync(id, updated.DetailsJson, processors, activityFeed, healthChecks, realtime, cancellationToken);
             return Results.Ok(updated);
         });
 
@@ -555,6 +562,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
+            Deluno.Platform.Data.IProcessorRepository processors,
+            Deluno.Jobs.Data.IActivityFeedRepository activityFeed,
+            IHealthCheckRepository healthChecks,
+            IRealtimeEventPublisher realtime,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -567,6 +578,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             if (await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken) is { } dismissed)
             {
                 await RecoveryCaseProblems.AcknowledgeAsync(dismissed.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
+                await Deluno.Platform.Data.ProblemTwins.AfterIssueDismissedAsync(id, dismissed.DetailsJson, processors, activityFeed, healthChecks, realtime, cancellationToken);
             }
 
             var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);
