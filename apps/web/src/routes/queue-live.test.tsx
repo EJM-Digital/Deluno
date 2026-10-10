@@ -6,7 +6,7 @@ import type { DownloadTelemetryOverview } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { queryClient } from "../lib/route-cache";
 import { sharedSources } from "../lib/shared-sources";
-import { applyClientStateToTelemetry, applyDownloadProgress, etaSecondsOf } from "./queue-live";
+import { applyClientStateToTelemetry, applyDownloadProgress, applyImportOutcome, etaSecondsOf, importOutcomeStatus, TRANSFERS_JOBS_KEY } from "./queue-live";
 import { QueuePage } from "./queue-screen";
 
 /** #1179: Transfers follows what the server pushes, with no reload and no Refresh button. */
@@ -100,6 +100,31 @@ describe("patching Transfers from events", () => {
     expect(client.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key)!.clients[0].healthStatus).toBe("unreachable");
     expect(applyClientStateToTelemetry(client, { clientId: "c1", clientName: "Deluge", reachable: true, paused: null, message: null, at: "x" })).toBe(true);
     expect(client.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key)!.clients[0].healthStatus).toBe("healthy");
+  });
+});
+
+describe("Queue import shows its outcome as the click returns (#1209)", () => {
+  const job = (over: Record<string, unknown> = {}) => ({ id: "j1", jobType: "filesystem.import.execute", status: "queued", attempts: 0, maxAttempts: 3, nextAttemptUtc: null, lastError: null, ...over }) as never;
+
+  it("reads Import queued, Imported or Import failed from the job the click returned", () => {
+    expect(importOutcomeStatus(job())).toBe("importQueued");
+    expect(importOutcomeStatus(job({ status: "running" }))).toBe("importQueued");
+    expect(importOutcomeStatus(job({ status: "completed" }))).toBe("imported");
+    expect(importOutcomeStatus(job({ status: "dead-letter", attempts: 3 }))).toBe("importFailed");
+    // A failed attempt with another coming is still on its way, not a failure.
+    expect(importOutcomeStatus(job({ status: "failed", attempts: 1, nextAttemptUtc: "2026-10-10T10:00:00Z" }))).toBe("importQueued");
+  });
+
+  it("moves the row off Ready to import and adds the job, with no wait for the next read", () => {
+    const client = new QueryClient();
+    client.setQueryData(sharedSources.telemetry.key, { ...overview(), clients: [{ ...overview().clients[0], queue: [item({ status: "importReady" })] }] });
+    client.setQueryData(TRANSFERS_JOBS_KEY, []);
+    applyImportOutcome(client, "q1", job());
+    expect(client.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key)!.clients[0].queue[0].status).toBe("importQueued");
+    expect(client.getQueryData<unknown[]>(TRANSFERS_JOBS_KEY)).toHaveLength(1);
+    applyImportOutcome(client, "q1", job({ status: "completed" }));
+    expect(client.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key)!.clients[0].queue[0].status).toBe("imported");
+    expect(client.getQueryData<unknown[]>(TRANSFERS_JOBS_KEY)).toHaveLength(1);
   });
 });
 

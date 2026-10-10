@@ -59,7 +59,7 @@ internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishImportStateChangedAsync(
+    public virtual Task PublishImportStateChangedAsync(
         string jobId,
         string state,
         string? entityType,
