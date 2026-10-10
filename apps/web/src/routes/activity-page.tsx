@@ -90,7 +90,7 @@ import {
   type LiveStepEntry
 } from "../lib/activity-live-steps";
 import { isBackgroundJob } from "../lib/background-jobs";
-import { dispatchStanding } from "../lib/dispatch-final-state";
+import { containedSendKeys, dispatchStanding } from "../lib/dispatch-final-state";
 import { describeEpisodeSearchGroup, groupEpisodeSearches, type EpisodeSearchGroup } from "../lib/episode-search-groups";
 import { failureKindWords } from "../lib/failure-reasons";
 import {
@@ -109,6 +109,8 @@ import {
 export const activitySources = defineSources({
   jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true") },
   failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
+  // Only read to tell which sends Deluno contained (#1215); without it every send reads as it did before.
+  telemetry: { ...sharedSources.telemetry, fallback: null as DownloadTelemetryOverview | null },
   dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[] },
   movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
   seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary }
@@ -219,7 +221,10 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   }, 1_000);
   const readProcessing = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "processing"] }), 1_000);
   const readDownloadHealth = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "download-health"] }), 1_000);
-  const readClients = useCoalescedRevalidate(() => void queryClient.invalidateQueries({ queryKey: ["activity-live", "download-client"] }), 1_500);
+  const readClients = useCoalescedRevalidate(() => {
+    void queryClient.invalidateQueries({ queryKey: ["activity-live", "download-client"] });
+    void queryClient.invalidateQueries({ queryKey: activitySources.telemetry.key });
+  }, 1_500);
 
   // Open while this screen is, so the server knows someone is watching and sends these (#1179).
   useLiveEvent("JobChanged", readJobs);
@@ -239,6 +244,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, readDispatches);
 
   const { dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
+  const containedSends = useMemo(() => containedSendKeys(loaderData.telemetry?.clients), [loaderData.telemetry]);
   // A job with another attempt coming belongs with the work in flight, not
   // with the ones that stopped and need a person (#562).
   const jobs = loaderData.jobs;
@@ -320,7 +326,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     for (const dispatch of dispatches) {
-      const standing = dispatchStanding(dispatch, dispatches);
+      const standing = dispatchStanding(dispatch, dispatches, containedSends);
       if (!standing) continue;
       const dispatchStatus = standing.status;
       rows.push({
@@ -342,7 +348,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     return rows;
-  }, [jobs, stopped, dispatches, importCases, openJobId, openGroupId, openDispatchId, openImportCaseId]);
+  }, [jobs, stopped, dispatches, containedSends, importCases, openJobId, openGroupId, openDispatchId, openImportCaseId]);
 
   // The show-wide search opened, rebuilt from the same job reads so it follows each JobChanged push (#1180).
   const openGroup = useMemo<EpisodeSearchGroup | null>(() => {

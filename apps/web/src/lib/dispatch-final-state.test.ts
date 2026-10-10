@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem } from "./api";
-import { dispatchImportEnded, dispatchStanding, dispatchWasImported } from "./dispatch-final-state";
+import { containedSendKeys, dispatchImportEnded, dispatchStanding, dispatchWasImported } from "./dispatch-final-state";
 
 const sent = (over: Partial<DownloadDispatchItem> = {}) => ({ id: "d", status: "sent", ...over }) as DownloadDispatchItem;
 
@@ -82,5 +82,22 @@ describe("an extra copy of a release already in the library (#1202)", () => {
   it("stays in progress for another title or another release", () => {
     expect(dispatchStanding(sent({ id: "c", entityId: "m2", releaseName: "Sintel.2010.1080p" }), [held])?.status).toBe("in-progress");
     expect(dispatchStanding(sent({ id: "d2", entityId: "m1", releaseName: "Sintel.2010.2160p" }), [held])?.status).toBe("in-progress");
+  });
+});
+
+describe("a contained send leaves In progress (#1215)", () => {
+  const second = sent({ downloadClientId: "qb", torrentHashOrItemId: "ABC123" });
+  const telemetry = [{ queue: [{ id: "abc123", clientId: "QB", status: "handedOverElsewhere" }, { id: "other", clientId: "qb", status: "downloading" }] }];
+
+  it("reads Not needed, with its reason, once the client entry says another copy was handed over", () => {
+    const standing = dispatchStanding(second, [second], containedSendKeys(telemetry));
+    expect(standing?.status).toBe("done");
+    expect(standing?.pill.label).toBe("Not needed");
+    expect(standing?.detail).toBe("Not needed: another copy was handed over");
+  });
+
+  it("keeps a send in progress when its client entry is still moving, and when nothing is known", () => {
+    expect(dispatchStanding(sent({ downloadClientId: "qb", torrentHashOrItemId: "other" }), [], containedSendKeys(telemetry))?.status).toBe("in-progress");
+    expect(dispatchStanding(second, [second], containedSendKeys(null))?.status).toBe("in-progress");
   });
 });
