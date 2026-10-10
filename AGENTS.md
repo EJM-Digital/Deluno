@@ -86,12 +86,8 @@ release comment, every workflow has `permissions` and every job a timeout.
   refuses unless the working tree is clean, HEAD is `origin/main`, `Directory.Build.props` and
   `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed
   on HEAD. Then it creates and pushes the annotated tag. Never run `git tag` for a release by hand.
-- **Right the first time** (James, 11 Oct 2026, after nine rounds of release, prove, find, re-release). A fix is done only when:
-  - a failing test reproduced the defect from real evidence (a log, a recorded reply, a screen record) before the fix;
-  - every test of another app's behaviour uses that app's recorded real reply under `tests/fixtures/recorded/`, never an assumed shape;
-  - the acceptance lines name every variation (each client, each timing, with and without work in flight), and each is tested.
-
-  The automated scenario suite on the golden VM proves the release candidate before the tag; proof never waits for after the release. Every run keeps Deluno's and Weir's logs. Builders' rules: `artifacts/build-rules.md`, "Right the first time".
+- **Right the first time** (James, 11 Oct 2026). A fix is done only when a failing test first reproduced it from real evidence (a log, a recorded reply, a screen record); tests of another app use its recorded real replies (`tests/fixtures/recorded/`), never an assumed shape; and the acceptance lines name every variation (each client, each timing, with and without work in flight), each tested.
+  The scenario suite on the golden VM proves the candidate before the tag, and every run keeps Deluno's and Weir's logs.
 - **A tag is made only after the golden path has passed on that exact commit**
   (James, 7 Oct 2026; `docs/golden-path.md`, Deluno issue 1158). The release's
   `golden-path` job runs `scripts/verify-golden-path-for-release.mjs`: it passes
