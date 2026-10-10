@@ -135,7 +135,9 @@ public sealed class ProcessorHandoffWatcher(
                 // send, so this raises nothing. It closes quietly, as the removal itself would have (#1216).
                 if (await DownloadIsGoneAsync(handoff, cancellationToken))
                 {
-                    await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, null, cancellationToken);
+                    await processorRepository.UpdateProcessorHandoffAsync(
+                        handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null,
+                        $"The download of {handoff.ReleaseName} is gone, so Deluno will not import it.", cancellationToken);
                     continue;
                 }
 
@@ -398,7 +400,7 @@ public sealed class ProcessorHandoffWatcher(
             }
 
             var message = $"{handoff.ReleaseName} did not go through the processor, but the title was imported from another download, so Deluno closed this one.";
-            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, message, cancellationToken);
             var scope = new Deluno.Contracts.ImportRecoveryCaseScope([], []) { HandoffIds = [handoff.Id] };
             if (DelunoValueNormalizers.NormalizeMediaType(library.MediaType) == "tv")
             {

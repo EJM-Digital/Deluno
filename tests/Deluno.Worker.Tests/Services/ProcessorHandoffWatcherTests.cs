@@ -610,7 +610,9 @@ public sealed class ProcessorHandoffWatcherTests
             .WatchAsync([Library(_mode, _stallMinutes)], Now, CancellationToken.None);
 
         Assert.DoesNotContain(_updates, update => update.Status == ProcessorHandoffStatuses.Failed);
-        Assert.All(_updates, update => Assert.Null(update.Message));
+        var closed = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, closed.Status);
+        Assert.Contains("is gone", closed.Message);
         _activity.Verify(feed => feed.RecordActivityAsync("processing.waiting-too-long", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
