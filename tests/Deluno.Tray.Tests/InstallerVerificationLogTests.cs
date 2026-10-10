@@ -49,6 +49,9 @@ public sealed partial class ComponentSetupTests
         await service.InstallAsync(spec, CancellationToken.None);
 
         Assert.Contains(log.Lines, line => line == $"{spec.DisplayName}: SHA-256 matches the checksum pinned in Deluno's list of components");
+        // The run record names the installer that ran by its hash, since the file is deleted afterwards (#1202).
+        Assert.Contains(log.Lines, line => line.StartsWith($"{spec.DisplayName}: installer ", StringComparison.Ordinal)
+            && line.EndsWith($" sha256 {hash}", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

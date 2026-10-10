@@ -68,3 +68,19 @@ describe("one rule for imported (golden path rc.30.8)", () => {
     expect(dispatchImportEnded(sent())).toBe(false);
   });
 });
+
+describe("an extra copy of a release already in the library (#1202)", () => {
+  const held = sent({ id: "a", entityId: "m1", releaseName: "Sintel.2010.1080p", importStatus: "imported" });
+
+  it("is not left in progress when the same release is imported for the same title", () => {
+    const extra = sent({ id: "b", entityId: "m1", releaseName: "sintel.2010.1080P" });
+    const standing = dispatchStanding(extra, [extra, held]);
+    expect(standing?.status).toBe("done");
+    expect(standing?.pill.label).toBe("Not needed");
+  });
+
+  it("stays in progress for another title or another release", () => {
+    expect(dispatchStanding(sent({ id: "c", entityId: "m2", releaseName: "Sintel.2010.1080p" }), [held])?.status).toBe("in-progress");
+    expect(dispatchStanding(sent({ id: "d2", entityId: "m1", releaseName: "Sintel.2010.2160p" }), [held])?.status).toBe("in-progress");
+  });
+});

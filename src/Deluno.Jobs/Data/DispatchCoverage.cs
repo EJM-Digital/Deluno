@@ -48,4 +48,37 @@ public static class DispatchCoverage
                 ? $"Not sent again: {releaseName} is already on its way."
                 : $"Not sent: {same.ReleaseName} is already on its way for this.";
     }
+
+    /// <summary>
+    /// Why a release the search chose is not sent, when the library already holds this exact release for the title:
+    /// one of its earlier sends was imported and the title still has a file. Nothing in flight shows this, since an
+    /// imported send is finished, so a title removed and restored from the recycle bin was sent its own release a
+    /// second time (#1202). Null when the title has no file, or none of its imports came from this release.
+    /// </summary>
+    public static async Task<string?> AlreadyInLibraryAsync(
+        IJobQueueRepository jobQueueRepository,
+        string releaseName,
+        string entityId,
+        bool titleHasFile,
+        CancellationToken cancellationToken)
+    {
+        if (!titleHasFile || string.IsNullOrWhiteSpace(releaseName) || string.IsNullOrWhiteSpace(entityId))
+        {
+            return null;
+        }
+
+        var page = await jobQueueRepository.ListDownloadDispatchesPageAsync(
+            new Deluno.Contracts.PageRequest(Deluno.Contracts.PageRequest.MaximumPageSize),
+            null,
+            cancellationToken,
+            includeArchived: true,
+            entityId: entityId);
+        var imported = (page?.Items ?? []).Any(dispatch =>
+            string.Equals(dispatch.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(dispatch.EntityId, entityId, StringComparison.Ordinal)
+            && (string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(dispatch.ImportStatus, "completed", StringComparison.OrdinalIgnoreCase)));
+
+        return imported ? $"Not sent again: {releaseName} is already in the library." : null;
+    }
 }

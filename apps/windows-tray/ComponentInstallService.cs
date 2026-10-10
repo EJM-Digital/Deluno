@@ -377,6 +377,9 @@ public sealed class ComponentInstallService(
             ? $"{spec.DisplayName}: SHA-256 matches the checksum given with the local build"
             : $"{spec.DisplayName}: {DescribeVerification(spec, expectedSha256, checksumFromVendor: !string.IsNullOrWhiteSpace(expectedSha256) && string.IsNullOrWhiteSpace(spec.Sha256))}");
 
+        // The installer is deleted once it has run, so this line is the only record of exactly which file was run (#1202).
+        _log.Write($"{spec.DisplayName}: installer {Path.GetFileName(url ?? spec.FileName)} sha256 {verifiedSha256}");
+
         if (spec.Prerequisite is not null)
         {
             var prerequisiteFailure = await EnsurePrerequisiteAsync(spec, cancellationToken);
