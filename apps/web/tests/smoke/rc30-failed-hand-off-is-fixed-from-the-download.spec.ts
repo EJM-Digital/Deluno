@@ -115,3 +115,51 @@ test("a download the processor already cleaned offers no second send (#1155)", a
   await expect(drawer.getByText(/already made the processed file/)).toBeVisible();
   expect(posted).toEqual([]);
 });
+
+// #1204. After "Send to Weir again" the Import box said "Sending it to Weir again" but the Health
+// section still showed the old red failure beside it, and it came back on every refetch. While the
+// resend is in flight no part of the drawer may show the old failure.
+test("while a hand-off is being sent again no old failure shows beside it (#1204)", async ({ page, isMobile }) => {
+  test.skip(isMobile, "The drawer is the same on a phone; the desktop run proves the behaviour.");
+  await authenticateAndNavigate(page, "/");
+  const posted: string[] = [];
+  await serve(page, posted);
+  const oldFinding = "The old post-processing failure";
+  const oldError = "The old client error message";
+  await page.route(/\/api\/download-clients\/telemetry/, (route) => route.fulfill(json({
+    summary: { activeCount: 0, queuedCount: 0, completedCount: 1, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
+    clients: [{
+      clientId: "c1", clientName: "Deluge", protocol: "torrent", endpointUrl: null, healthStatus: "healthy", lastHealthMessage: null,
+      capabilities: { supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true, supportsRecheck: true, supportsImportPath: true, authMode: "form" },
+      summary: { seedingCount: 0 }, history: [], historyTruncated: false, capturedUtc: new Date(now).toISOString(),
+      queue: [{
+        ...download,
+        errorMessage: oldError,
+        healthFindings: [{ kind: "post-processing-failed", summary: oldFinding, strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null, ruleId: null, ruleActionPreset: null, ruleStrikeLimit: null, nextStrikeUtc: null }]
+      }]
+    }],
+    capturedUtc: new Date(now).toISOString()
+  })));
+  await page.route("**/api/integrations/processors/handoffs/*/retry", (route) => {
+    posted.push(new URL(route.request().url()).pathname);
+    return route.fulfill(json({ message: "Sent again." }));
+  });
+  // Once sent again, the processor is still working on it.
+  await page.route("**/api/integrations/processors/handoffs?**", (route) => route.fulfill(json([
+    posted.length ? { ...handoff, status: "waiting", failureMessage: null, updatedUtc: new Date().toISOString() } : handoff
+  ])));
+  await page.goto("/queue");
+  await page.getByRole("row").filter({ hasText: releaseName }).first().click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+
+  await drawer.getByRole("button", { name: "Send to Weir again" }).click();
+  await expect(drawer.getByText(/Sending it to Weir again/)).toBeVisible();
+  for (const old of [oldFinding, oldError, reason]) {
+    await expect(drawer.getByText(old)).toHaveCount(0);
+  }
+  // Still gone after the page asks again.
+  await page.waitForTimeout(1500);
+  await expect(drawer.getByText(oldFinding)).toHaveCount(0);
+  await expect(drawer.getByText(oldError)).toHaveCount(0);
+});
