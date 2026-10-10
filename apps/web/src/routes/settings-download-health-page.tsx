@@ -474,6 +474,10 @@ interface RuleForm {
   skipWhileAlternateSpeedLimitOn: boolean;
   /** #951, in MB for the field - converted to bytes on save. Empty string means "any amount". */
   resetStrikesMinimumProgressMb: string;
+  /** #1240: "remove" (every rule's value until changed) or "move-and-replace". */
+  privateAction: string;
+  /** #1240: with a move, whether the release is also blocked for the title. */
+  blocklistWhenMoved: boolean;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -495,7 +499,9 @@ function emptyForm(kind: string): RuleForm {
     tooSlowMaxTotalMinutes: "",
     ignoreAboveSizeMb: "",
     skipWhileAlternateSpeedLimitOn: false,
-    resetStrikesMinimumProgressMb: ""
+    resetStrikesMinimumProgressMb: "",
+    privateAction: "remove",
+    blocklistWhenMoved: true
   };
 }
 
@@ -515,7 +521,9 @@ function formFrom(rule: DownloadHealthRule): RuleForm {
     tooSlowMaxTotalMinutes: rule.tooSlowMaxTotalMinutes ? String(rule.tooSlowMaxTotalMinutes) : "",
     ignoreAboveSizeMb: rule.ignoreAboveSizeBytes ? String(Math.round(rule.ignoreAboveSizeBytes / 1_000_000)) : "",
     skipWhileAlternateSpeedLimitOn: rule.skipWhileAlternateSpeedLimitOn,
-    resetStrikesMinimumProgressMb: rule.resetStrikesMinimumProgressBytes ? String(Math.round(rule.resetStrikesMinimumProgressBytes / 1_000_000)) : ""
+    resetStrikesMinimumProgressMb: rule.resetStrikesMinimumProgressBytes ? String(Math.round(rule.resetStrikesMinimumProgressBytes / 1_000_000)) : "",
+    privateAction: rule.privateAction ?? "remove",
+    blocklistWhenMoved: rule.blocklistWhenMoved ?? true
   };
 }
 
@@ -531,6 +539,16 @@ function thresholdToSave(form: RuleForm) {
   const value = Number(form.threshold || 0);
   return form.kind === "too-slow" && form.thresholdUnit === "mb" ? value * 1000 : value;
 }
+
+/** #1240: moving a torrent to keep seeding replaces removing it, so it only makes sense on a rule that removes torrents. */
+function canKeepSeeding(form: Pick<RuleForm, "kind" | "actionPreset" | "appliesTo">) {
+  return form.actionPreset === "replace" && form.appliesTo !== "usenet" && form.kind !== "dangerous-file";
+}
+
+const PRIVATE_ACTION_OPTIONS = [
+  { value: "remove", label: "Remove it like any other" },
+  { value: "move-and-replace", label: "Move it to the keep-seeding category and look for another copy" }
+];
 
 function kindLabel(kind: string) {
   return RULE_KIND_COPY[kind]?.label ?? kind;
@@ -620,7 +638,9 @@ export function SettingsDownloadHealthPage() {
         tooSlowMaxTotalMinutes: form.tooSlowMaxTotalMinutes.trim() ? Number(form.tooSlowMaxTotalMinutes) : null,
         ignoreAboveSizeBytes: form.ignoreAboveSizeMb.trim() ? Math.round(Number(form.ignoreAboveSizeMb) * 1_000_000) : null,
         skipWhileAlternateSpeedLimitOn: form.skipWhileAlternateSpeedLimitOn,
-        resetStrikesMinimumProgressBytes: form.resetStrikesMinimumProgressMb.trim() ? Math.round(Number(form.resetStrikesMinimumProgressMb) * 1_000_000) : null
+        resetStrikesMinimumProgressBytes: form.resetStrikesMinimumProgressMb.trim() ? Math.round(Number(form.resetStrikesMinimumProgressMb) * 1_000_000) : null,
+        privateAction: canKeepSeeding(form) ? form.privateAction : "remove",
+        blocklistWhenMoved: form.blocklistWhenMoved
       });
       const response = await authedFetch(
         `/api/download-health/rules/${mode.kind === "edit" ? mode.id : "new"}`,
@@ -750,7 +770,10 @@ export function SettingsDownloadHealthPage() {
                 <ListNameCell name={kindLabel(rule.kind)} sub={rule.enabled ? "On" : "Off"} />
                 <ListCell primary={scopeLabel(rule)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
                 <ListCell primary={`${rule.strikeLimit} strike${rule.strikeLimit === 1 ? "" : "s"}`} secondary={`Checked every ${settings.downloadHealthDefaultStrikeWindowMinutes} min`} />
-                <ListCell primary={actionLabel(rule.actionPreset)} />
+                <ListCell
+                  primary={actionLabel(rule.actionPreset)}
+                  secondary={rule.privateAction === "move-and-replace" ? "Private torrents keep seeding instead" : undefined}
+                />
               </ListRow>
             ))}
           </ListTable>
@@ -832,7 +855,7 @@ export function SettingsDownloadHealthPage() {
           <Field label="Kind" help="What this rule watches for.">
             <Select
               value={form.kind}
-              onChange={(event) => setForm((current) => ({ ...current, kind: event.target.value }))}
+              onChange={(event) => setForm((current) => keepSeedingStillFits({ ...current, kind: event.target.value }))}
               options={Object.entries(RULE_KIND_COPY).map(([value, copy]) => ({ value, label: copy.label }))}
             />
           </Field>
@@ -914,7 +937,7 @@ export function SettingsDownloadHealthPage() {
 
         <DrawerSection title="Scope">
           <Field label="Applies to">
-            <Select value={form.appliesTo} onChange={(event) => setForm((current) => ({ ...current, appliesTo: event.target.value }))} options={APPLIES_TO_OPTIONS} />
+            <Select value={form.appliesTo} onChange={(event) => setForm((current) => keepSeedingStillFits({ ...current, appliesTo: event.target.value }))} options={APPLIES_TO_OPTIONS} />
           </Field>
           <Field label="Tracker privacy" help="A private-tracker account can be banned for early removal or a hit-and-run. Scope this rule away from private trackers to protect it, or away from public ones to leave those alone.">
             <Select value={form.privacyScope} onChange={(event) => setForm((current) => ({ ...current, privacyScope: event.target.value }))} options={PRIVACY_SCOPE_OPTIONS} />
@@ -936,13 +959,40 @@ export function SettingsDownloadHealthPage() {
           <Field label="When it strikes">
             <Select
               value={form.actionPreset}
-              onChange={(event) => setForm((current) => ({ ...current, actionPreset: event.target.value }))}
+              onChange={(event) => setForm((current) => keepSeedingStillFits({ ...current, actionPreset: event.target.value }))}
               options={Object.entries(ACTION_COPY).map(([value, copy]) => ({ value, label: copy.label }))}
             />
           </Field>
           <p className="text-(length:--type-caption) text-muted-foreground">
             {ACTION_COPY[form.actionPreset]?.description}
           </p>
+          {canKeepSeeding(form) ? (
+            <>
+              <Field
+                label="If it is from a private tracker"
+                help="A private tracker can ban an account for deleting a torrent early. A moved torrent keeps running in your download client, Deluno stops tracking it and never deletes its files. A torrent Deluno cannot tell is private is treated as a public one."
+              >
+                <Select
+                  value={form.privateAction}
+                  onChange={(event) => setForm((current) => ({ ...current, privateAction: event.target.value }))}
+                  options={PRIVATE_ACTION_OPTIONS}
+                />
+              </Field>
+              {form.privateAction === "move-and-replace" ? (
+                <>
+                  <SwitchRow
+                    label="Also block this release"
+                    description="So the new search does not pick the same release again. Off: the search may find it again."
+                    checked={form.blocklistWhenMoved}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, blocklistWhenMoved: checked }))}
+                  />
+                  <p className="text-(length:--type-caption) text-muted-foreground">
+                    A private torrent with no keep-seeding category is left alone, and Deluno says so on System, Health. Choose the categories on <PageLink page="keepSeeding" />.
+                  </p>
+                </>
+              ) : null}
+            </>
+          ) : null}
         </DrawerSection>
 
         {editing ? (
@@ -987,6 +1037,11 @@ export function SettingsDownloadHealthPage() {
   );
 }
 
+/** A move to keep seeding is dropped the moment the rule can no longer do it, so a saved rule is never left refused. */
+function keepSeedingStillFits(form: RuleForm): RuleForm {
+  return canKeepSeeding(form) || form.privateAction === "remove" ? form : { ...form, privateAction: "remove" };
+}
+
 function sameForm(left: RuleForm, right: RuleForm) {
   return left.kind === right.kind &&
     left.enabled === right.enabled &&
@@ -1003,7 +1058,9 @@ function sameForm(left: RuleForm, right: RuleForm) {
     left.tooSlowMaxTotalMinutes === right.tooSlowMaxTotalMinutes &&
     left.ignoreAboveSizeMb === right.ignoreAboveSizeMb &&
     left.skipWhileAlternateSpeedLimitOn === right.skipWhileAlternateSpeedLimitOn &&
-    left.resetStrikesMinimumProgressMb === right.resetStrikesMinimumProgressMb;
+    left.resetStrikesMinimumProgressMb === right.resetStrikesMinimumProgressMb &&
+    left.privateAction === right.privateAction &&
+    left.blocklistWhenMoved === right.blocklistWhenMoved;
 }
 
 function validate(form: RuleForm): Record<string, string> {

@@ -16,7 +16,7 @@ const SCREENS = [
   "/indexers/indexers", "/indexers/proxies", "/indexers/scoreboard", "/indexers/history", "/indexers/download-clients", "/indexers/path-mappings",
   "/indexers/library-routing", "/indexers/subtitle-providers", "/indexers/media-servers", "/indexers/companion-tools",
   "/search-cycles", "/search-cycles/missing", "/search-cycles/upgrades", "/search-cycles/failed-downloads", "/search-cycles/retention",
-  "/search-cycles/download-health", "/search-cycles/blocklist",
+  "/search-cycles/download-health", "/search-cycles/keep-seeding", "/search-cycles/blocklist",
   "/system", "/system/audit", "/system/api", "/system/docs", "/system/backups", "/system/recycle-bin", "/system/updates", "/system/security"
 ];
 
