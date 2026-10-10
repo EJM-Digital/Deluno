@@ -24,6 +24,14 @@ owner, not a private raising of the bar — inventing extra criteria and then
 failing the issue against your own invention is the specific mistake this file
 exists to stop.
 
+**Whoever writes an issue lists every variation in its acceptance lines** (owner, 11 Oct 2026). Because the list is the whole contract, a case it leaves out is a case nobody builds. Name:
+- each download client, indexer or processor the code path serves;
+- each timing: before, during and after the other side acts;
+- with and without work in flight;
+- each place the result shows: the screen, Activity, the tray and the push.
+
+A fix also needs a failing test that reproduced the defect from real evidence, and tests that use recorded real replies (`tests/fixtures/recorded/`). "Couldn't reproduce" is not a fix.
+
 **The burden is on leaving an issue open**, not on closing it. To leave one open
 you must name the unmet line and the evidence that would close it. *Broad
 issue*, *epic*, *only a slice* and *more work exists* are not reasons.
