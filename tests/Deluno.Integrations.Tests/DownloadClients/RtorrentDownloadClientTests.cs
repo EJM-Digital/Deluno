@@ -126,7 +126,7 @@ public sealed class RtorrentDownloadClientTests
     [InlineData(DownloadClientActions.Resume, "d.resume")]
     [InlineData(DownloadClientActions.Recheck, "d.check_hash")]
     [InlineData(DownloadClientActions.Delete, "d.erase")]
-    [InlineData(DownloadClientActions.Forget, "d.erase")]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy, "d.erase")]
     public async Task Every_verb_maps_to_its_own_rtorrent_method(string action, string expectedMethod)
     {
         var handler = new RtorrentHandler(downloadListBefore: "[]", downloadListAfter: "[]");

@@ -1105,21 +1105,26 @@ public sealed class DownloadClientTelemetryService(
         var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
         var title = dispatch?.ReleaseName ?? queueItemId;
 
-        var clientAction = options.RemoveFromClient
-            ? DownloadClientActions.DeleteWithData
-            : DownloadClientActions.Forget;
-
-        var actionResult = await ExecuteActionAsync(
-            client.Id,
-            new DownloadClientActionRequest(clientAction, queueItemId),
-            cancellationToken);
+        // "Stop tracking" is Deluno's own: the client is sent nothing, not even a remove that keeps the files,
+        // because the promise is that the client keeps the download untouched (#1241). Deluno only closes its
+        // own records of it.
+        var actionResult = options.RemoveFromClient
+            ? await ExecuteActionAsync(
+                client.Id,
+                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, queueItemId),
+                cancellationToken)
+            : null;
+        if (actionResult is null)
+        {
+            await NoteRemovedByDelunoAsync(client, queueItemId, stoppedTracking: true, cancellationToken);
+        }
 
         // What the Activity line may claim about the files: only "deleted" when the client (or Deluno) deleted them.
-        var outcome = options.RemoveFromClient
-            ? actionResult.Succeeded && actionResult.FilesNote is null ? RemovalOutcome.Deleted : RemovalOutcome.FilesKept
-            : RemovalOutcome.Deleted;
+        var outcome = actionResult is null
+            ? RemovalOutcome.NotTouched
+            : actionResult.Succeeded && actionResult.FilesNote is null ? RemovalOutcome.Deleted : RemovalOutcome.FilesKept;
 
-        if (!actionResult.Succeeded)
+        if (actionResult is { Succeeded: false })
         {
             // The client answered but no longer holds it (removed by hand, or by an earlier pass): there is
             // nothing left to remove, so the record is closed and the removal carries on instead of failing.
@@ -1130,7 +1135,7 @@ public sealed class DownloadClientTelemetryService(
                 && (await dispatchesRepository.FindOpenDispatchesByHashAsync(client.Id, queueItemId, cancellationToken)).Count > 0
                 && await ClientAnswersWithoutItemAsync(client, queueItemId, cancellationToken))
             {
-                await NoteRemovedByDelunoAsync(client, queueItemId, clientAction, cancellationToken);
+                await NoteRemovedByDelunoAsync(client, queueItemId, stoppedTracking: false, cancellationToken);
                 outcome = RemovalOutcome.AlreadyGone;
             }
             else
@@ -1190,7 +1195,7 @@ public sealed class DownloadClientTelemetryService(
         var message = fromReason
             ? BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored, outcome)
             : BuildQueueRemovalMessage(title, client.Name, options.RemoveFromClient, blocklisted, searchStarted, outcome);
-        if (outcome == RemovalOutcome.FilesKept && actionResult.FilesNote is { Length: > 0 } filesNote)
+        if (outcome == RemovalOutcome.FilesKept && actionResult?.FilesNote is { Length: > 0 } filesNote)
         {
             message = $"{message} {filesNote}";
         }
@@ -1237,7 +1242,10 @@ public sealed class DownloadClientTelemetryService(
     {
         Deleted,
         FilesKept,
-        AlreadyGone
+        AlreadyGone,
+
+        /// <summary>Stopped tracking: Deluno sent the client nothing, so it still has the download and its files.</summary>
+        NotTouched
     }
 
     /// <summary>"removed from X and deleted its files", but only as far as that is true.</summary>
@@ -1245,6 +1253,7 @@ public sealed class DownloadClientTelemetryService(
         => outcome switch
         {
             RemovalOutcome.AlreadyGone => $"already gone from {clientName}, so nothing was deleted",
+            RemovalOutcome.NotTouched => $"left in {clientName}, untouched",
             RemovalOutcome.FilesKept => $"removed from {clientName}{joiner}left its files on disk",
             _ => $"removed from {clientName}{joiner}deleted its files"
         };
@@ -1381,7 +1390,7 @@ public sealed class DownloadClientTelemetryService(
         var outcome = await RunActionCoreAsync(client, action, queueItemId, cancellationToken);
         if (outcome.Succeeded && IsRemovalAction(action))
         {
-            await NoteRemovedByDelunoAsync(client, queueItemId, action, cancellationToken);
+            await NoteRemovedByDelunoAsync(client, queueItemId, stoppedTracking: false, cancellationToken);
         }
 
         return outcome;
@@ -1390,8 +1399,8 @@ public sealed class DownloadClientTelemetryService(
     private static bool IsRemovalAction(string action)
         => action.StartsWith("delete", StringComparison.OrdinalIgnoreCase)
            || action.StartsWith("remove", StringComparison.OrdinalIgnoreCase)
-           // "Forget" is how the refused-download cleanup removes a refused copy (#1167).
-           || string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase);
+           // How the refused-download cleanup and a forced re-download remove a copy (#1167).
+           || string.Equals(action, DownloadClientActions.RemoveRefusedCopy, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A removal Deluno made itself (the stall rules, Remove failed, a person
@@ -1399,7 +1408,7 @@ public sealed class DownloadClientTelemetryService(
     /// having "vanished from the client" (#1167). The vanished notice is
     /// marked as already seen and nobody is waiting on it.
     /// </summary>
-    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, string action, CancellationToken cancellationToken)
+    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, bool stoppedTracking, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(queueItemId))
         {
@@ -1452,7 +1461,7 @@ public sealed class DownloadClientTelemetryService(
             {
                 // The reason stays on the record and is what the processor is told: a person who stopped tracking
                 // the download is not told "the download was gone" (#1220).
-                var reason = string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase)
+                var reason = stoppedTracking
                     ? $"You told Deluno to stop tracking {handoff.ReleaseName}, so Deluno will not import it."
                     : $"Deluno removed {handoff.ReleaseName} from {client.Name}, so it will not import it.";
                 await processorRepository.UpdateProcessorHandoffAsync(
@@ -4498,7 +4507,7 @@ public sealed class DownloadClientTelemetryService(
             "resume" => DownloadClientActions.Resume,
             "remove" or "delete" => DownloadClientActions.Delete,
             "delete-with-data" => DownloadClientActions.DeleteWithData,
-            "forget" => DownloadClientActions.Forget,
+            "remove-refused-copy" => DownloadClientActions.RemoveRefusedCopy,
             "recheck" or "force-recheck" => DownloadClientActions.Recheck,
             // #810: queue priority/reorder and force-start.
             "move-to-top" or "movetotop" or "top" => DownloadClientActions.MoveToTop,

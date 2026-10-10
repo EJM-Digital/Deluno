@@ -39,7 +39,7 @@ public sealed class ClearingRefusedDownloadsTests
         clients.Verify(
             service => service.ExecuteActionAsync(
                 "qbittorrent-main",
-                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.Forget),
+                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.RemoveRefusedCopy),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
@@ -232,7 +232,7 @@ public sealed class ClearingRefusedDownloadsTests
         clients.Verify(
             service => service.ExecuteActionAsync(
                 "sabnzbd-main",
-                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.Forget),
+                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.RemoveRefusedCopy),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
