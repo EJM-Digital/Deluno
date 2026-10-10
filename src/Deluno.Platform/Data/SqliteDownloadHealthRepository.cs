@@ -38,9 +38,10 @@ public sealed class SqliteDownloadHealthRepository(
         IReadOnlyList<DownloadHealthObservation> observations,
         TimeSpan defaultStrikeWindow,
         TimeSpan strikeInactivityWindow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? everythingTheClientHolds = null)
     {
-        if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0))
+        if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0 && everythingTheClientHolds is null))
         {
             return [];
         }
@@ -61,6 +62,19 @@ public sealed class SqliteDownloadHealthRepository(
             string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
             listed.Contains(record.QueueItemId) &&
             !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+
+        // #1223: the client answered and does not list it, so it has left every client. Whoever removed it
+        // (Deluno, a person, the client's own clean-up), its strikes and findings are over. This also closes
+        // the ones already orphaned, on the next pass.
+        if (everythingTheClientHolds is not null)
+        {
+            var held = everythingTheClientHolds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            ended += records.RemoveAll(record =>
+                string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
+                !listed.Contains(record.QueueItemId) &&
+                !held.Contains(record.QueueItemId) &&
+                !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+        }
 
         foreach (var observation in observations)
         {
