@@ -86,6 +86,7 @@ GET /api/destination-rules/
 GET /api/discover/
 GET /api/diskspace
 GET /api/download-clients/
+GET /api/download-clients/history/dismissed
 GET /api/download-clients/orphans
 GET /api/download-clients/path-mappings
 GET /api/download-clients/telemetry
@@ -317,6 +318,7 @@ POST /api/download-clients/orphans/remove
 POST /api/download-clients/test
 POST /api/download-clients/usenet-provider
 POST /api/download-clients/{clientId}/categories/check
+POST /api/download-clients/{clientId}/history/{itemId}/dismiss
 POST /api/download-clients/{clientId}/queue/actions
 POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore
 POST /api/download-clients/{clientId}/queue/{queueItemId}/remove
@@ -326,6 +328,7 @@ POST /api/download-clients/{clientId}/webhook
 POST /api/download-clients/{id}/path-mappings
 POST /api/download-clients/{id}/path-mappings/{mappingId}/test
 POST /api/download-clients/{id}/test
+POST /api/download-dispatches/{id}/dismiss
 POST /api/download-health/ignore-list
 POST /api/download-health/purge-strikes
 POST /api/filesystem/file-check
@@ -489,6 +492,7 @@ POST /api/system/bundled-components/{kind}/connect
 POST /api/system/component-recovery/{kind}/dismiss
 POST /api/system/component-recovery/{kind}/readd
 POST /api/system/health/background-problems/{key}/retry
+POST /api/system/health/run
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
