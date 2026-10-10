@@ -1231,7 +1231,8 @@ describe("Try again hides the old failure (#1198)", () => {
   it("is sending again only for a hand-off just sent again that waits on the processor", () => {
     const sent = new Set(["h1"]);
     expect(isResendingHandoff({ id: "h1", status: "waiting" }, sent)).toBe(true);
-    expect(isResendingHandoff({ id: "h1", status: "submitted" }, sent)).toBe(true);
+    // Submitted is no longer the sending: the header says Waiting for processor (#1243).
+    expect(isResendingHandoff({ id: "h1", status: "submitted" }, sent)).toBe(false);
   });
 
   it("is not sending again once the answer is a failure, or for a hand-off nobody retried", () => {
@@ -1314,7 +1315,7 @@ describe("Try again, step by step, with the old failure still in the cached data
     expect(drawer({ id: "h1", status: "failed", updatedUtc: "t0" }, "processingFailed")).toMatchObject({ sending: true, held: true, header: "Sending to Weir again", findings: ["client-stalled"], failureShown: false });
     // Sending again.
     expect(drawer({ id: "h1", status: "waiting", updatedUtc: "t1" }, "processingFailed")).toMatchObject({ sending: true, held: true, header: "Sending to Weir again", findings: ["client-stalled"] });
-    expect(drawer({ id: "h1", status: "submitted", updatedUtc: "t2" }, "waitingForProcessor")).toMatchObject({ sending: true, header: "Sending to Weir again", findings: ["client-stalled"] });
+    expect(drawer({ id: "h1", status: "submitted", updatedUtc: "t2" }, "waitingForProcessor")).toMatchObject({ sending: false, held: true, header: "Waiting for processor", findings: ["client-stalled"] });
     // Waiting for the processor: the header moves on in the same push, and the old finding is still not shown.
     expect(drawer({ id: "h1", status: "accepted", updatedUtc: "t3" }, "waitingForProcessor")).toMatchObject({ sending: false, held: true, header: "Waiting for processor", findings: ["client-stalled"], failureShown: false });
     // The cached download still reads the old status while the hand-off is working: the hand-off's state is read.
