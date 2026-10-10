@@ -29,7 +29,7 @@ function main() {
   const refusals = [...checkVersionFormat(version)];
   if (refusals.length) fail(refusals);
 
-  refusals.push(...checkWorkingTree(git("status", "--porcelain")));
+  refusals.push(...checkWorkingTree(git("status", "--porcelain", "--untracked-files=no")));
   const head = git("rev-parse", "HEAD^{commit}");
   let originMain = "";
   try { originMain = git("rev-parse", "origin/main^{commit}"); } catch { /* reported by checkPushed */ }
