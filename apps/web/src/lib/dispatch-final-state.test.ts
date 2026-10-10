@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem } from "./api";
-import { containedSendKeys, dispatchImportEnded, dispatchStanding, dispatchWasImported } from "./dispatch-final-state";
+import { dispatchImportEnded, dispatchStanding, dispatchWasImported } from "./dispatch-final-state";
 
 const sent = (over: Partial<DownloadDispatchItem> = {}) => ({ id: "d", status: "sent", ...over }) as DownloadDispatchItem;
 
@@ -86,18 +86,16 @@ describe("an extra copy of a release already in the library (#1202)", () => {
 });
 
 describe("a contained send leaves In progress (#1215)", () => {
-  const second = sent({ downloadClientId: "qb", torrentHashOrItemId: "ABC123" });
-  const telemetry = [{ queue: [{ id: "abc123", clientId: "QB", status: "handedOverElsewhere" }, { id: "other", clientId: "qb", status: "downloading" }] }];
+  const contained = sent({ status: "archived", importFailureCode: "handed-over-elsewhere", importFailureMessage: "Not needed: another copy was handed over" });
 
-  it("reads Not needed, with its reason, once the client entry says another copy was handed over", () => {
-    const standing = dispatchStanding(second, [second], containedSendKeys(telemetry));
+  it("reads Not needed, with its stored reason, whatever its client entry does afterwards", () => {
+    const standing = dispatchStanding(contained);
     expect(standing?.status).toBe("done");
     expect(standing?.pill.label).toBe("Not needed");
     expect(standing?.detail).toBe("Not needed: another copy was handed over");
   });
 
-  it("keeps a send in progress when its client entry is still moving, and when nothing is known", () => {
-    expect(dispatchStanding(sent({ downloadClientId: "qb", torrentHashOrItemId: "other" }), [], containedSendKeys(telemetry))?.status).toBe("in-progress");
-    expect(dispatchStanding(second, [second], containedSendKeys(null))?.status).toBe("in-progress");
+  it("keeps a moving send in progress", () => {
+    expect(dispatchStanding(sent({ status: "sent" }))?.status).toBe("in-progress");
   });
 });
