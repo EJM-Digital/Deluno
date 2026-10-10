@@ -3,7 +3,7 @@
 # multi-file torrent named after the folder (a release that downloads into its own folder); with -Dummy -Length N it makes
 # a torrent nobody can ever download (random piece hashes, a tracker that does not exist). The "stuck just short of the end"
 # test hashes the good file and puts a copy with its last piece damaged where the client looks (see suitemFixtures.Lib.ps1).
-param([string]$File, [string]$Folder, [string]$Out, [string]$Name, [switch]$Dummy, [switch]$DeadTracker, [long]$Length = 30MB, [int]$PieceKb = 256)
+param([string]$File, [string]$Folder, [string]$Tracker, [string]$Out, [string]$Name, [switch]$Dummy, [switch]$DeadTracker, [long]$Length = 30MB, [int]$PieceKb = 256)
 $ErrorActionPreference = 'Stop'
 function BStr([string]$s) { $b = [Text.Encoding]::UTF8.GetBytes($s); [Text.Encoding]::ASCII.GetBytes("$($b.Length):") + $b }
 function BInt([long]$n) { [Text.Encoding]::ASCII.GetBytes("i${n}e") }
@@ -50,7 +50,9 @@ $sha1 = [Security.Cryptography.SHA1]::Create(); $infoHash = ([BitConverter]::ToS
 # rc.30.10). A dummy torrent keeps its dead tracker: it is meant to stall. -DeadTracker gives a torrent over a real file that same
 # tracker on purpose: since rc.30.12 (#1183) a complete torrent whose tracker does not answer must still be handed off.
 $parts = @([Text.Encoding]::ASCII.GetBytes('d'))
-if ($Dummy -or $DeadTracker) { $parts += (BStr 'announce'); $parts += (BStr 'http://127.0.0.1:9/announce') }
+# -Tracker names a tracker (the local one of scripts/recorded-replies, so two clients on one machine can find each other).
+if ($Tracker) { $parts += (BStr 'announce'); $parts += (BStr $Tracker) }
+elseif ($Dummy -or $DeadTracker) { $parts += (BStr 'announce'); $parts += (BStr 'http://127.0.0.1:9/announce') }
 $parts += (BStr 'info'); $parts += $info; $parts += [Text.Encoding]::ASCII.GetBytes('e')
 $torrent = JoinBytes $parts
 [IO.File]::WriteAllBytes($Out, $torrent)

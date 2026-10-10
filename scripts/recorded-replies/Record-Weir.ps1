@@ -11,8 +11,10 @@
 $script:Logs = @{}
 
 function Invoke-RecordWeir($p) {
-    if (-not $p.WeirSecret) { Add-Missing 'weir: pass -WeirSecret (the webhook secret Weir shares with Deluno); nothing of Weir was recorded'; return }
-    $headers = @{ 'X-Webhook-Secret' = $p.WeirSecret }
+    # The secret Weir shares with Deluno is read from Deluno's own connection to Weir, inside the VM (Record.Secrets.ps1).
+    $secret = Get-WeirWebhookSecret
+    if (-not $secret) { Add-Missing 'weir: Deluno''s connection to Weir, and so its webhook secret, was not found in the VM (connect Weir in Deluno first)'; return }
+    $headers = @{ 'X-Webhook-Secret' = $secret }
     $w = New-RecordedClient -BaseUrl $p.WeirUrl -KeepHeaders @('content-type')
     $source = $p.WeirSource
     function Get($path, $h = $headers) { Send-Recorded -Client $w -Path $path -Headers $h }
@@ -100,7 +102,21 @@ function Invoke-RecordWeir($p) {
     Save-State weir $ver 'handoff-refused-missing-file' 'A hand-off naming a file that is not there.' @((Submit $missing))
     $unknownId = [guid]::NewGuid().ToString()
     Save-State weir $ver 'no-record' 'A status poll and an outcome report for a hand-off id Weir never had.' @((Status $unknownId), (Outcome $unknownId 'imported' 'C:\x.mkv' $null))
-    Add-Missing 'weir completed-without-output-path: needs a film Weir leaves exactly as it was (check completed-with-output-path above; if it shows an output path, record one more hand-off with such a film)'
+
+    # Completed without an output path (#1232): the same source sent again after Weir has already cleaned it once. Weir
+    # says it already cleaned this file and skips it, so it finishes with no second output.
+    $idR = [guid]::NewGuid().ToString()
+    $payloadR = [ordered]@{} + $payloadA
+    $payloadR.handoffId = $idR
+    $payloadR.queueItemId = [guid]::NewGuid().ToString()
+    $resent = Submit $payloadR
+    Save-State weir $ver 'handoff-resend-accepted' 'The same source sent again after Weir had already cleaned it once: Weir accepts the hand-off.' @($resent)
+    $seenR = Wait-Handoff $idR 'resend'
+    foreach ($name in $seenR.Keys) { Save-State weir $ver "resend-status-$($name.ToLowerInvariant() -replace '[^a-z0-9]+', '-')" "The status poll of the resent hand-off while it was $name." @($seenR[$name]) }
+    $lastR = Status $idR
+    Save-State weir $ver 'completed-without-output-path' 'The status of the resent hand-off once finished: Weir already cleaned this file, so there is no output path.' @($lastR)
+    $deliveredR = Outcome $idR 'imported' $payloadA.sourcePath $null
+    Save-State weir $ver 'outcome-delivered-without-output-path' 'The outcome reported for the resent hand-off, which handed back no new file.' @($deliveredR)
 
     # Weir's own logs, kept beside the recordings.
     $logDir = 'C:\ProgramData\Weir\logs'
