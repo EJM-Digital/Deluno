@@ -143,7 +143,10 @@ describe("the words under a poster", () => {
 });
 
 describe("the shelf's captions", () => {
-  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: null, upgraded: false, sizeBytes: 2.5 * 1024 ** 3, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, qualityMet: true, libraryId: "hd", libraryName: "Movies HD", ...extra }) as never;
+  // The shelf lists the newest arrival first, so each film arrived a minute before the one before it: the order is fixed, not left to
+  // whether the clock ticked between two calls to new Date().
+  const arrived = Date.now();
+  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: null, upgraded: false, sizeBytes: 2.5 * 1024 ** 3, at: new Date(arrived - Number(key) * 60_000).toISOString(), requestedBy: null, to: `/movies/${key}`, qualityMet: true, libraryId: "hd", libraryName: "Movies HD", ...extra }) as never;
   const show = (extra: object = {}) => render(<MemoryRouter><Shelf items={[item("1"), item("2", { upgraded: true, previousQuality: "WEB 720p", qualityMet: false })]} titles={NO_TITLES} newest={new Set()} heading="2 arrived today" {...extra} /></MemoryRouter>);
 
   it("is four level slots in the full tier: the title, the status, the detail and when, each present on every poster", () => {
