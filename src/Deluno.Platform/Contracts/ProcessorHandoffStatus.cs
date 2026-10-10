@@ -349,6 +349,18 @@ public static class ProcessorHandoffStatuses
     /// </summary>
     public static readonly IReadOnlyList<string> WentWrong = [Failed, Rejected, TimedOut, Stalled, Lost, SourceGone];
 
+    /// <summary>
+    /// The processor itself reported this hand-off failed, rejected or gone, so it handed back no file (#1221). Read from
+    /// what it said, which survives a dismissal: its state (a dismissal from failed or rejected keeps that as the
+    /// state), or the sentence kept for a download that was gone. A file that was handed back, or an import that ran,
+    /// is never this: that file is owed an outcome whatever else the processor said.
+    /// </summary>
+    public static bool ProcessorReportedItFailed(ProcessorHandoffItem handoff)
+        => string.IsNullOrWhiteSpace(handoff.OutputPath)
+           && (handoff.Status is Failed or Rejected or SourceGone
+               || handoff.Processor?.State is ProcessorHandoffStates.Failed or ProcessorHandoffStates.Rejected
+               || ProcessorFailureClasses.IsSourceGoneMessage(handoff.FailureMessage));
+
     /// <summary>Where a person can choose to import the original instead.</summary>
     public static bool CanReleaseOriginal(string? status)
         => status is Failed or TimedOut or Stalled or Lost or Cancelled;

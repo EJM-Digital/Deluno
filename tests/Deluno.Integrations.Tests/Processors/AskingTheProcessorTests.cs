@@ -214,7 +214,7 @@ public sealed class AskingTheProcessorTests
     [Theory]
     [InlineData("{ \"detail\": \"Deluno already said it will not import this file, so Weir kept that answer.\", \"code\": \"outcome_already_recorded\" }", ProcessorAnswer.Settled)]
     [InlineData("{ \"detail\": \"Weir has not finished this hand-off yet.\", \"code\": \"handoff_not_finished\" }", ProcessorAnswer.Busy)]
-    [InlineData("{ \"detail\": \"This hand-off ended failed, so Weir handed back no file to import.\", \"code\": \"handoff_ended\" }", ProcessorAnswer.Busy)]
+    [InlineData("{ \"detail\": \"This hand-off ended failed, so Weir handed back no file to import.\", \"code\": \"handoff_ended\" }", ProcessorAnswer.Refused)]
     [InlineData("{ \"detail\": \"Deluno already said it will not import this file, so Weir kept that answer.\" }", ProcessorAnswer.Busy)]
     [InlineData("not json", ProcessorAnswer.Busy)]
     public async Task A_409_is_final_only_when_its_code_says_so(string body, ProcessorAnswer expected)

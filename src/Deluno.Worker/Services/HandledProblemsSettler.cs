@@ -60,6 +60,7 @@ public sealed class HandledProblemsSettler(
         return settled
             + await SettleDispatchFailuresAsync(cancellationToken)
             + await SettleHandoffsAsync(cancellationToken)
+            + await SettleOutcomesNotNeededAsync(cancellationToken)
             + await TellProcessorsOfImportedHandoffsAsync(cancellationToken);
     }
 
@@ -234,6 +235,58 @@ public sealed class HandledProblemsSettler(
         return settled;
     }
 
+    /// <summary>
+    /// An outcome already owed for a hand-off the processor itself ended as failed or gone (#1221) is not needed: that
+    /// processor handed back no file to release, so repeating it for a week is noise on both sides. It is closed
+    /// here, once, with an Activity line, and not sent again.
+    /// </summary>
+    private async Task<int> SettleOutcomesNotNeededAsync(CancellationToken cancellationToken)
+    {
+        if (processors is null)
+        {
+            return 0;
+        }
+
+        var now = (clock ?? TimeProvider.System).GetUtcNow();
+        var settled = 0;
+        foreach (var owed in await processors.ListDueProcessorOutcomesAsync(now.AddYears(1), cancellationToken) ?? [])
+        {
+            if (owed.Delivery != ProcessorOutcomeDeliveries.Pending
+                || await processors.GetProcessorHandoffAsync(owed.HandoffId, cancellationToken) is not { } handoff)
+            {
+                continue;
+            }
+
+            var imported = !string.IsNullOrWhiteSpace(handoff.ImportJobId)
+                && await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is { Status: "completed" };
+            if (imported || !ProcessorHandoffStatuses.ProcessorReportedItFailed(handoff))
+            {
+                continue;
+            }
+
+            var said = $"{owed.ProcessorName} ended this hand-off as failed and handed back no file, so there is nothing for it to release.";
+            await processors.SaveProcessorOutcomeAsync(
+                owed with
+                {
+                    Delivery = ProcessorOutcomeDeliveries.GivenUp,
+                    NextAttemptUtc = null,
+                    ProcessorSaid = said
+                },
+                cancellationToken);
+            settled++;
+            await activityFeed.RecordActivityAsync(
+                "processing.outcome-not-needed",
+                $"Deluno stopped telling {owed.ProcessorName} what became of {owed.ReleaseName}: {said}",
+                JsonSerializer.Serialize(new { owed.HandoffId, owed.LibraryId, owed.ReleaseName }),
+                null,
+                "processor-handoff",
+                owed.HandoffId,
+                cancellationToken);
+        }
+
+        return settled;
+    }
+
     /// <summary>How far back a finished hand-off is looked at for an outcome its processor was never told.</summary>
     private static readonly TimeSpan OutcomeWindow = TimeSpan.FromDays(60);
 
@@ -277,6 +330,14 @@ public sealed class HandledProblemsSettler(
 
             var imported = !string.IsNullOrWhiteSpace(handoff.ImportJobId)
                 && await jobs.GetAsync(handoff.ImportJobId!, cancellationToken) is { Status: "completed" };
+
+            // The processor itself said it failed or the download was gone, so it handed back no file and there is
+            // nothing for it to let go of (#1221). Nothing is written and nothing is sent.
+            if (!imported && ProcessorHandoffStatuses.ProcessorReportedItFailed(handoff))
+            {
+                continue;
+            }
+
             var sent = await Deluno.Platform.ProcessorOutcomeDelivery.RecordAndSendAsync(
                 processors,
                 processorConnections,
