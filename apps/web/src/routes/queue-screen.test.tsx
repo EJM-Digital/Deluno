@@ -1328,3 +1328,44 @@ describe("Try again, step by step, with the old failure still in the cached data
     expect(drawer({ id: "h1", status: "failed", updatedUtc: "t6" }, "processingFailed")).toMatchObject({ sending: false, held: false, header: "Processing failed", findings: ["post-processing-failed", "client-stalled"], failureShown: false });
   });
 });
+
+describe("Try again's header follows the hand-off's own state, pushed at real intervals (#1243)", () => {
+  // The golden run's timeline (rc.30.20, Failone): click 0 s, waiting 0.2 s, submitted 40.6 s after, completed 73.6 s, imported 75 s.
+  // While submitted, the processor itself goes queued -> working. The cached download keeps its old failure until its own read.
+  const clients = ["qBittorrent", "Transmission", "Deluge", "uTorrent", "SABnzbd", "NZBGet", "Aria2"];
+  type Step = { at: number; handoff: string; processor: string | null; item: string; header: string; held: boolean };
+  const steps: Step[] = [
+    { at: 0, handoff: "failed", processor: null, item: "processingFailed", header: "Sending to Weir again", held: true },
+    { at: 0.2, handoff: "waiting", processor: null, item: "processingFailed", header: "Sending to Weir again", held: true },
+    { at: 40.6, handoff: "submitted", processor: "queued", item: "processingFailed", header: "Waiting for processor", held: true },
+    { at: 41.5, handoff: "submitted", processor: "working", item: "waitingForProcessor", header: "Processing", held: true },
+    { at: 73.6, handoff: "completed", processor: null, item: "waitingForProcessor", header: "Processed", held: true },
+    { at: 75, handoff: "completed", processor: null, item: "imported", header: "Imported", held: false }
+  ];
+
+  function header(clientId: string, step: Step) {
+    const queueItemId = "q1";
+    const set = new Set(["h1", resentItemKey(clientId, queueItemId), oldFailureKey("h1", "t0")]);
+    // The first step is the cached row as it stood at the click: still the old failure, same updatedUtc.
+    const handoff = { id: "h1", status: step.handoff, updatedUtc: step.at === 0 ? "t0" : `t${step.at}` };
+    const sending = isResendingHandoff(handoff, set, step.item, clientId, queueItemId);
+    const held = isOldFailureHeld(handoff, set, step.item, clientId, queueItemId);
+    return { held, header: drawerStatusLabel(drawerStatusOf(step.item, held, step.handoff, step.processor), sending, "Weir") };
+  }
+
+  it.each(clients)("%s: every step shows its own state in the push that brings it", (client) => {
+    for (const step of steps) {
+      expect(header(client, step), `${client} at ${step.at}s`).toEqual({ held: step.held, header: step.header });
+    }
+  });
+
+  it("a retry that fails again shows the new failure at once, from any step", () => {
+    for (const processor of [null, "queued", "working"]) {
+      const set = new Set(["h1", resentItemKey("c1", "q1"), oldFailureKey("h1", "t0")]);
+      const handoff = { id: "h1", status: "failed", updatedUtc: "t9" };
+      const held = isOldFailureHeld(handoff, set, "processingFailed", "c1", "q1");
+      expect(held).toBe(false);
+      expect(drawerStatusLabel(drawerStatusOf("processingFailed", held, "failed", processor), isResendingHandoff(handoff, set, "processingFailed", "c1", "q1"), "Weir")).toBe("Processing failed");
+    }
+  });
+});
