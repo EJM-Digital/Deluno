@@ -440,7 +440,13 @@ public sealed record DownloadQueueItem(
     /// Never sent to a screen.
     /// </summary>
     [property: System.Text.Json.Serialization.JsonIgnore]
-    IReadOnlyList<string>? TrackerHosts = null);
+    IReadOnlyList<string>? TrackerHosts = null,
+    /// <summary>
+    /// Whether the downloaded bytes grew since the previous check (#1207), from the bytes stored per item between
+    /// checks. Null when there is no earlier reading. Feeds the No progress rule; never sent to a screen.
+    /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    bool? BytesGrewSinceLastCheck = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

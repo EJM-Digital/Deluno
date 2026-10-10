@@ -99,8 +99,8 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
     [InlineData(DownloadHealthStrikes.ClientStalled, 2, "qBittorrent showed it stalled or in error for 30 minutes, so Deluno")]
     [InlineData(DownloadHealthStrikes.ClientStalled, 3, "qBittorrent showed it stalled or in error for an hour, so Deluno")]
     [InlineData(DownloadHealthStrikes.ClientStalled, 5, "qBittorrent showed it stalled or in error for 2 hours, so Deluno")]
-    // "Nothing arriving" is a finding only after half an hour of it.
-    [InlineData(DownloadHealthStrikes.NoThroughput, 3, "Nothing arrived in qBittorrent for 1.5 hours, so Deluno")]
+    // A rule's removal speaks for that rule, in checks (#1206), never the client's stall sentence.
+    [InlineData(DownloadHealthStrikes.NoThroughput, 3, "It made no progress for 3 checks in a row, so Deluno")]
     public void The_reason_says_how_long_it_went_on(string kind, int strikes, string says)
         => Assert.StartsWith(says, DownloadClientTelemetryService.StalledReason(Finding(kind, strikes), "qBittorrent"), StringComparison.Ordinal);
 
