@@ -93,6 +93,7 @@ import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { applyImportOutcome, TRANSFERS_JOBS_KEY, useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
+import { formatProgressPercent } from "../lib/progress-format";
 
 /**
  * The queue table's optional columns (#796): quality, custom-format score,
@@ -1299,7 +1300,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                       <>
                         <ProgressBar value={item.progress} />
                         <span className="mt-1 block truncate text-(length:--type-caption) tabular-nums text-muted-foreground">
-                          {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
+                          {formatProgressPercent(item.progress)} of {formatBytes(item.sizeBytes)}
                         </span>
                       </>
                     ) : (
@@ -1704,7 +1705,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             <DrawerSection title="Progress">
               <ProgressBar value={openQueueItem.progress} />
               <div className="grid gap-1.5">
-                <Fact label="Done" value={`${Math.round(openQueueItem.progress)}% — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
+                <Fact label="Done" value={`${formatProgressPercent(openQueueItem.progress)} — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
                 <Fact label="Speed" value={openQueueItem.speedMbps > 0 ? `${openQueueItem.speedMbps.toFixed(1)} MB/s` : "Not moving"} />
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
