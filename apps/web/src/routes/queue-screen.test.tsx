@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, isResendingHandoff, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, isResendingHandoff, itemFailureVisible, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -651,7 +651,7 @@ describe("dismissing a health finding", () => {
   it("drops the post-processing finding for a hand-off whose download was gone", () => {
     const post = { ...findingAt(null), kind: "post-processing-failed" };
     const other = { ...findingAt(null), kind: "import-failed" };
-    const item = { healthFindings: [post, other] } as DownloadQueueItem;
+    const item = { healthFindings: [post, other] } as unknown as DownloadQueueItem;
 
     expect(visibleFindings(item, { status: "source-gone" }).map((finding) => finding.kind)).toEqual(["import-failed"]);
     expect(visibleFindings(item, { status: "failed" })).toHaveLength(2);
@@ -1237,5 +1237,26 @@ describe("Try again hides the old failure (#1198)", () => {
   it("is not sending again once the answer is a failure, or for a hand-off nobody retried", () => {
     expect(isResendingHandoff({ id: "h1", status: "failed" }, new Set(["h1"]))).toBe(false);
     expect(isResendingHandoff({ id: "h2", status: "waiting" }, new Set(["h1"]))).toBe(false);
+  });
+});
+
+describe("Health section during a resend (#1204)", () => {
+  const post = { kind: "post-processing-failed", summary: "Post-processing failed", strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null } as never;
+  const other = { kind: "client-stalled", summary: "Stalled", strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null } as never;
+  const item = { healthFindings: [post, other] } as unknown as DownloadQueueItem;
+
+  it("hides the old post-processing failure while sending again, but keeps unrelated findings", () => {
+    expect(visibleFindings(item, { status: "waiting" }, true).map((finding) => finding.kind)).toEqual(["client-stalled"]);
+  });
+
+  it("shows the finding again once the answer is a failure", () => {
+    expect(visibleFindings(item, { status: "failed" }, false)).toHaveLength(2);
+  });
+
+  it("hides the client's failure details and error message while sending again", () => {
+    expect(itemFailureVisible(true, true)).toBe(false);
+    expect(itemFailureVisible(false, true)).toBe(false);
+    expect(itemFailureVisible(true, false)).toBe(false);
+    expect(itemFailureVisible(false, false)).toBe(true);
   });
 });

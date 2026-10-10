@@ -379,6 +379,10 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     : null;
   /** The processor's own reason is said once, in the Import box with its fixes, not again as the client's health (#1151). */
   const processorOwnsFailure = Boolean(openQueueHandoff) && openQueueItem?.status === downloadQueueStatuses.processingFailed;
+  /** One rule for the whole drawer: while a hand-off is being sent again, no section shows the old failure (#1204). */
+  const resendingHandoff = Boolean(openQueueHandoff) && isResendingHandoff(openQueueHandoff!, resentHandoffIds);
+  const showItemFailure = itemFailureVisible(processorOwnsFailure, resendingHandoff);
+  const drawerFindings = openQueueItem ? visibleFindings(openQueueItem, openQueueHandoff, resendingHandoff) : [];
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
   const openImportJob = openActivity?.id.startsWith("import:") ? jobs.find((job) => `import:${job.id}` === openActivity.id) ?? null : null;
   const openImportInfo = openImportJob ? parseImportJobPayload(openImportJob.payloadJson) : null;
@@ -1734,11 +1738,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               </div>
             </DrawerSection>
 
-            {(!processorOwnsFailure && (openQueueItem.errorMessage || openQueueItem.failure)) || visibleFindings(openQueueItem, openQueueHandoff).length ? (
+            {(showItemFailure && (openQueueItem.errorMessage || openQueueItem.failure)) || drawerFindings.length ? (
               <DrawerSection title="Health">
-                {!processorOwnsFailure && openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
-                {!processorOwnsFailure && openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
-                {visibleFindings(openQueueItem, openQueueHandoff).map((finding, index) => (
+                {showItemFailure && openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
+                {showItemFailure && openQueueItem.errorMessage ? <p className="text-(length:--type-body-sm) text-destructive">{openQueueItem.errorMessage}</p> : null}
+                {drawerFindings.map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-(length:--type-body-sm) text-foreground">{finding.summary}</span>
@@ -1790,7 +1794,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
             >
               {/* After Try again the answer is still to come: say so, never "failed" (#1193). */}
-              {openQueueHandoff && isResendingHandoff(openQueueHandoff, resentHandoffIds) ? (
+              {openQueueHandoff && resendingHandoff ? (
                 <p className="flex items-center gap-2 text-(length:--type-body-sm) text-foreground" role="status">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Sending it to {openQueueHandoff.processorName ?? "the processor"} again. The result shows here when it answers.
@@ -1800,7 +1804,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   is shown (#616): the hand-off drawer had both, this one had
                   neither, and Queue import is closed to a failed hand-off. */}
               {/* While "Sending it again" shows, the old failure is hidden, not shown beside it (#1198). */}
-              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed && !isResendingHandoff(openQueueHandoff, resentHandoffIds) ? (
+              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed && !resendingHandoff ? (
                 <div className="grid gap-3 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
                   <p className="text-(length:--type-body-sm) text-foreground">
                     {plainFailure(openQueueHandoff.failureMessage, `Sending it to ${openQueueHandoff.processorName ?? "the processor"}`)}
@@ -2529,7 +2533,7 @@ export function MediaInfoDetail({ probe }: { probe: MediaProbeInfo }) {
  * week is up) but drops out of the drawer the moment it is dismissed, rather
  * than sitting there after a person has already acted on it.
  */
-export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<ProcessorHandoffItem, "status"> | null): DownloadHealthFinding[] {
+export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<ProcessorHandoffItem, "status"> | null, resending = false): DownloadHealthFinding[] {
   const now = Date.now();
   // A download the processor found gone has its one plain row ("The download was gone before ... could clean it");
   // the generic "post-processing step failed, review it before retrying" would say it a second time, with a Dismiss
@@ -2537,7 +2541,17 @@ export function visibleFindings(item: DownloadQueueItem, handoff?: Pick<Processo
   const goneAlready = handoff?.status === "source-gone";
   return (item.healthFindings ?? []).filter((finding) =>
     (!finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now)
-    && !(goneAlready && finding.kind === "post-processing-failed"));
+    && !(goneAlready && finding.kind === "post-processing-failed")
+    // While the hand-off is being sent again the old failure is not shown anywhere in the drawer (#1204).
+    && !(resending && finding.kind === "post-processing-failed"));
+}
+
+/**
+ * Whether the client's own failure details and error message may show in the Health section: not when the processor
+ * owns the failure (it is said once, in Import), and not while the hand-off is being sent again (#1204).
+ */
+export function itemFailureVisible(processorOwnsFailure: boolean, resending: boolean) {
+  return !processorOwnsFailure && !resending;
 }
 
 /**
