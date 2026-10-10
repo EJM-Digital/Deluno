@@ -233,9 +233,14 @@ public sealed class DashboardLiveExtrasApiTests
         await using var app = await ApplicationTestHost.StartAsync();
         var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
         var recorder = app.Services.GetRequiredService<Deluno.Jobs.Data.ITurnedDownReleaseRecorder>();
-        // Turned down for size two hours ago, then for fake this search.
+        // Turned down for size earlier today, then for fake this search. "Today" starts at local midnight, so
+        // in the first ninety minutes after it, ninety minutes ago was yesterday: the earlier row goes halfway
+        // between midnight and now instead (CI runs on UTC and once failed at 00:34).
+        var now = DateTimeOffset.Now;
+        var localMidnight = new DateTimeOffset(now.Date, now.Offset);
+        var earlier = now.AddMinutes(-90) > localMidnight ? now.AddMinutes(-90) : localMidnight + (now - localMidnight) / 2;
         await ExecuteAsync(databases, DelunoDatabaseNames.Jobs,
-            $"INSERT INTO turned_down_releases (id, searched_utc, release_name, reason_group, raw_reason, indexer_name) VALUES ('a', '{DateTimeOffset.UtcNow.AddMinutes(-90):O}', 'Moving.Release', 'tooBig', 'size', 'Idx');");
+            $"INSERT INTO turned_down_releases (id, searched_utc, release_name, reason_group, raw_reason, indexer_name) VALUES ('a', '{earlier.ToUniversalTime():O}', 'Moving.Release', 'tooBig', 'size', 'Idx');");
         var isNew = await recorder.RecordAsync("Sintel", "movie", "m1",
             [new Deluno.Jobs.Data.TurnedDownRelease("moving.release", "fake", "CAM", "Idx")], CancellationToken.None);
 
