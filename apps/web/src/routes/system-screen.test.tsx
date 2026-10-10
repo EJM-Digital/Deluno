@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { queryClient } from "../lib/route-cache";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { SystemPage } from "./system-screen";
 
@@ -34,6 +35,21 @@ const loaderData = {
   systemInfo: null,
   systemTasks: []
 };
+
+const pushHandlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
+vi.mock("../lib/use-signalr", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../lib/use-signalr")>();
+  return {
+    ...original,
+    useSignalREvent: (event: string, subjects: never, handler: (payload: unknown) => void) => {
+      const set = pushHandlers.get(event) ?? new Set();
+      set.add(handler);
+      pushHandlers.set(event, set);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (original.useSignalREvent as any)(event, subjects, handler);
+    }
+  };
+});
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -424,5 +440,35 @@ describe("System installation credits (#1108)", () => {
     expect(credits).toHaveTextContent("TV metadata provided by TheTVDB");
     expect(screen.getByRole("link", { name: "TMDb" })).toHaveAttribute("href", "https://www.themoviedb.org");
     expect(screen.getByRole("link", { name: "TheTVDB" })).toHaveAttribute("href", "https://thetvdb.com");
+  });
+});
+
+/** #1229: the server's health push reaches an open System page and reads the health rows again, with no reload. */
+describe("System follows the server's health push (#1229)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    pushHandlers.clear();
+    authedFetchMock.mockReset();
+  });
+
+  it("reads the health checks, the providers and the processors again when HealthChanged arrives", async () => {
+    vi.useFakeTimers();
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    const handlers = [...(pushHandlers.get("HealthChanged") ?? [])];
+    expect(handlers.length).toBeGreaterThan(0);
+    for (const handler of handlers) handler({ source: "system.health", status: "healthy", message: "0 problem(s) started, 2 cleared." });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const keys = invalidate.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey: unknown }).queryKey));
+    expect(keys).toContain(JSON.stringify(["src", "system-health"]));
+    expect(keys).toContain(JSON.stringify(["src", "processor-connections-system"]));
+    invalidate.mockRestore();
   });
 });

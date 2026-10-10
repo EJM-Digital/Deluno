@@ -13,7 +13,11 @@ public enum HealthCheckTransition
     Cleared
 }
 
-public sealed record HealthCheckTransitionResult(HealthCheckResultItem Result, HealthCheckTransition Transition);
+/// <summary>
+/// What one check row did. <paramref name="ScreenChanged"/> is true when what a screen shows moved even though no problem
+/// started or cleared (an unknown row turning fine, a message changing, a new row), so a screen reads it again (#1229).
+/// </summary>
+public sealed record HealthCheckTransitionResult(HealthCheckResultItem Result, HealthCheckTransition Transition, bool ScreenChanged = false);
 
 /// <summary>
 /// The one store every health-check surface reads (#909): System &#8594;
