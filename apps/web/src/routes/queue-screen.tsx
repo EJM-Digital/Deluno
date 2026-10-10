@@ -388,7 +388,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const oldFailureHeld = openQueueItem
     ? isOldFailureHeld(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id)
     : false;
-  const drawerStatus = openQueueItem ? drawerStatusOf(openQueueItem.status, oldFailureHeld, openQueueHandoff?.status) : "";
+  const drawerStatus = openQueueItem ? drawerStatusOf(openQueueItem.status, oldFailureHeld, openQueueHandoff?.status, openQueueHandoff?.processor?.state) : "";
   const showItemFailure = itemFailureVisible(processorOwnsFailure, oldFailureHeld);
   const drawerFindings = openQueueItem
     ? visibleFindings(openQueueItem, openQueueHandoff, isOldFindingHidden(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id))
@@ -2604,8 +2604,8 @@ function isStillTheOldFailure(handoff: ResendHandoff | null, resentHandoffIds: R
 
 /**
  * Whether a hand-off the person has just sent again is still being sent (#1193, #1198, #1229, #1234). Only the
- * hand-off's own state decides: "waiting to submit" and "submitted" are the sending; once the processor has accepted it
- * or is working on it, the header says that instead. A hand-off row briefly missing from a refresh holds it while the
+ * hand-off's own state decides: only "waiting to submit" is the sending; once it is submitted the header says
+ * Waiting for processor, then Processing, then the outcome (#1243). A hand-off row briefly missing from a refresh holds it while the
  * download still reads failed or waiting, and the row as it stood before Try again holds it until the push arrives.
  * Nothing here is a timer.
  */
@@ -2619,7 +2619,8 @@ export function isResendingHandoff(
   if (!wasResent(handoff, resentHandoffIds, clientId, queueItemId)) return false;
   if (!handoff) return itemStatus === downloadQueueStatuses.processingFailed || itemStatus === downloadQueueStatuses.waitingForProcessor;
   if (isStillTheOldFailure(handoff, resentHandoffIds)) return true;
-  return ["waiting", "submitted"].includes(handoff.status.toLowerCase());
+  // Only "waiting" is the sending. Once it is submitted the header says Waiting for processor, and Processing when the processor says it is working (#1243).
+  return handoff.status.toLowerCase() === "waiting";
 }
 
 /**
@@ -2662,8 +2663,10 @@ export function isOldFindingHidden(
  * The download's status as the drawer reads it: while the old failure is held and the cached download still says
  * "Processing failed", the hand-off's own state says where it really is.
  */
-export function drawerStatusOf(itemStatus: string, oldFailureHeld: boolean, handoffStatus?: string | null) {
-  if (!oldFailureHeld || itemStatus !== downloadQueueStatuses.processingFailed) return itemStatus;
+export function drawerStatusOf(itemStatus: string, oldFailureHeld: boolean, handoffStatus?: string | null, processorState?: string | null) {
+  if (!oldFailureHeld || (itemStatus !== downloadQueueStatuses.processingFailed && itemStatus !== downloadQueueStatuses.waitingForProcessor)) return itemStatus;
+  // The processor's own word while the hand-off reads "submitted": it is working on the file even though Deluno's row has not moved (#1243).
+  if (["working", "started", "running", "processing"].includes((processorState ?? "").toLowerCase()) && ["submitted", "accepted"].includes((handoffStatus ?? "").toLowerCase())) return downloadQueueStatuses.processing;
   switch ((handoffStatus ?? "waiting").toLowerCase()) {
     case "started": return downloadQueueStatuses.processing;
     case "completed":
