@@ -79,10 +79,16 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
         var status = await GetStatusAsync(http, baseUri, cancellationToken);
         var queue = (response?.Result ?? []).Select(item =>
         {
-            var size = item.FileSizeHi * 1_000_000L;
-            var remaining = item.RemainingSizeHi * 1_000_000L;
+            // #1225: NZBGet splits a size into 32-bit halves (Hi, Lo) and also gives whole MiB; read the halves so
+            // nothing is rounded, and never let a job with data left read 100%.
+            var size = SizeBytes(item.FileSizeHi, item.FileSizeLo, item.FileSizeMb);
+            var remaining = SizeBytes(item.RemainingSizeHi, item.RemainingSizeLo, item.RemainingSizeMb);
             var downloaded = Math.Max(0, size - remaining);
             var progress = size <= 0 ? 0 : (downloaded / (double)size * 100);
+            if (remaining > 0 && progress >= 100d)
+            {
+                progress = 99.99d;
+            }
             return new DownloadQueueItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? "Unknown NZBGet item"), item.NzbName ?? "Unknown NZBGet item",
                 item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
@@ -516,7 +522,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
                 : QueueError(item.Status);
             return new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
-                item.Category ?? string.Empty, outcome, "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), errorMessage, JobFolder(item.DestDir),
+                item.Category ?? string.Empty, outcome, "NZBGet", SizeBytes(item.FileSizeHi, item.FileSizeLo, item.FileSizeMb), DownloadClientHelpers.FromUnix(item.HistoryTime), errorMessage, JobFolder(item.DestDir),
                 HistorySource: "native",
                 ExternalId: item.NzbId.ToString(CultureInfo.InvariantCulture));
         }).ToArray();
@@ -561,6 +567,15 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
             return null;
         }
     }
+
+    /// <summary>
+    /// A size from NZBGet's 32-bit halves. When no low half came (an older answer), whole MiB is the next best, and
+    /// the high half alone is only ever whole 4 GiB steps.
+    /// </summary>
+    internal static long SizeBytes(long high, long? low, long? megabytes)
+        => low is { } lo
+            ? (high << 32) + (lo & 0xFFFFFFFFL)
+            : megabytes is { } mb ? mb * 1_048_576L : high << 32;
 
     private static int CalculateEta(long remainingBytes, long? bytesPerSecond) => remainingBytes <= 0 || bytesPerSecond is null or <= 0 ? 0 : Convert.ToInt32(Math.Clamp(remainingBytes / (double)bytesPerSecond.Value, 0, int.MaxValue));
     // #880/#881: like SABnzbd, NZBGet has no per-item setup-problem signal
@@ -739,8 +754,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
-    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir);
-    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses);
+    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null);
+    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses);
 
     /// <summary>One post-processing script's own outcome, from NZBGet's history <c>ScriptStatuses</c> (#910) — SUCCESS, FAILURE or a script-specific warning wording.</summary>
     internal sealed record NzbGetScriptStatus([property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Status")] string? Status);
