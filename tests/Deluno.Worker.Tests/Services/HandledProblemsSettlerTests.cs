@@ -294,7 +294,58 @@ public sealed class HandledProblemsSettlerTests
         await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
 
         connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
+            Deluno.Platform.Contracts.ProcessorHandoffOutcome.Imported, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // #1220: every way a hand-off closes without an import tells its processor, with the reason it carries.
+    [Theory]
+    [InlineData("You told Deluno to stop tracking Nosferatu, so Deluno will not import it.")]
+    [InlineData("The hand-off was dismissed by a person.")]
+    [InlineData("Nosferatu was removed from Deluno, so Deluno stopped waiting.")]
+    [InlineData("The download of Nosferatu is gone, so Deluno will not import it.")]
+    [InlineData("Nosferatu did not go through the processor, but the title was imported from another download, so Deluno closed this one.")]
+    public async Task A_hand_off_closed_without_an_import_tells_its_processor_it_will_not_be_imported_with_its_reason(string reason)
+    {
+        var processors = Processors(Handoff("dismissed", reason));
+        Listed();
+        var connections = Connections();
+
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+
+        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(
+            It.Is<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(record => record.HandoffId == "h-1" && record.Outcome == "not-imported" && record.Reason == reason), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), "h-1",
+            Deluno.Platform.Contracts.ProcessorHandoffOutcome.NotImported, null, reason, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_hand_off_closed_with_no_reason_is_still_reported_with_a_plain_one()
+    {
+        var processors = Processors(Handoff("dismissed", null));
+        Listed();
+        var connections = Connections();
+
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+
+        connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), "h-1",
+            Deluno.Platform.Contracts.ProcessorHandoffOutcome.NotImported, null, "The hand-off was closed, so Deluno will not import this file.", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_closed_hand_off_is_told_only_once_and_a_processor_that_does_not_ask_is_not_called()
+    {
+        var processors = Processors(Handoff("dismissed", "Closed."));
+        Listed();
+        var connections = Connections();
+        connections.Setup(service => service.GetStatusSupportAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Deluno.Platform.Contracts.ProcessorStatusSupport(Deluno.Platform.Contracts.ProcessorAnswer.Answered, true, true, null) { CanBeToldTheOutcome = false });
+
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+
+        connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
             It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(
+            It.Is<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(record => record.Delivery == "given-up"), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
     [Fact]

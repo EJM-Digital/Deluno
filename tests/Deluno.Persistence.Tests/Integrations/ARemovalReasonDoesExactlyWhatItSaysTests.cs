@@ -564,6 +564,21 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.DoesNotContain(activity, entry => entry.Category == "processing.waiting-too-long");
     }
 
+    /// <summary>#1220: a hand-off closed because a person stopped tracking says so, not that the download was gone.</summary>
+    [Fact]
+    public async Task A_hand_off_closed_because_a_person_stopped_tracking_the_download_says_so()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var handoff = await world.HandoffAsync(ProcessorHandoffStatuses.Failed);
+
+        await world.RemoveAsync(QueueRemovalReasons.Forget);
+
+        var stored = await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored!.Status);
+        Assert.Contains("stop tracking", stored.FailureMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("was gone", stored.FailureMessage, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_hand_off_that_already_finished_is_left_as_it_was_when_its_download_is_removed()
     {

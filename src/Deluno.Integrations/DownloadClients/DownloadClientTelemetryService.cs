@@ -1123,7 +1123,7 @@ public sealed class DownloadClientTelemetryService(
                 && (await dispatchesRepository.FindOpenDispatchesByHashAsync(client.Id, queueItemId, cancellationToken)).Count > 0
                 && await ClientAnswersWithoutItemAsync(client, queueItemId, cancellationToken))
             {
-                await NoteRemovedByDelunoAsync(client, queueItemId, cancellationToken);
+                await NoteRemovedByDelunoAsync(client, queueItemId, clientAction, cancellationToken);
                 outcome = RemovalOutcome.AlreadyGone;
             }
             else
@@ -1374,7 +1374,7 @@ public sealed class DownloadClientTelemetryService(
         var outcome = await RunActionCoreAsync(client, action, queueItemId, cancellationToken);
         if (outcome.Succeeded && IsRemovalAction(action))
         {
-            await NoteRemovedByDelunoAsync(client, queueItemId, cancellationToken);
+            await NoteRemovedByDelunoAsync(client, queueItemId, action, cancellationToken);
         }
 
         return outcome;
@@ -1392,7 +1392,7 @@ public sealed class DownloadClientTelemetryService(
     /// having "vanished from the client" (#1167). The vanished notice is
     /// marked as already seen and nobody is waiting on it.
     /// </summary>
-    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    private async Task NoteRemovedByDelunoAsync(DownloadClientItem client, string queueItemId, string action, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(queueItemId))
         {
@@ -1443,9 +1443,13 @@ public sealed class DownloadClientTelemetryService(
                 && (ProcessorHandoffStatuses.IsWithProcessor(handoff.Status)
                     || ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage)))
             {
+                // The reason stays on the record and is what the processor is told: a person who stopped tracking
+                // the download is not told "the download was gone" (#1220).
+                var reason = string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase)
+                    ? $"You told Deluno to stop tracking {handoff.ReleaseName}, so Deluno will not import it."
+                    : $"Deluno removed {handoff.ReleaseName} from {client.Name}, so it will not import it.";
                 await processorRepository.UpdateProcessorHandoffAsync(
-                    handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null,
-                    ProcessorHandoffStatuses.IsWithProcessor(handoff.Status) ? null : handoff.FailureMessage, cancellationToken);
+                    handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, reason, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "processing.dismissed",
                     $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno removed the download.",
