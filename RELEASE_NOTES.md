@@ -9,6 +9,38 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.18
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Choosing a download client
+- A client is judged only on its own recent results: the last 20 downloads
+  from the past 30 days that it finished or failed itself. Downloads still
+  running, ones you removed and ones a strike rule removed no longer count
+  against it.
+- A client passed over for failures gets a trial download again after 12
+  hours, so it can show it has recovered, and the reason names the numbers,
+  for example "2 of its last 10 downloads imported".
+
+### Downloads and your processor
+- Deluno no longer keeps telling your processor about hand-offs the processor
+  itself already ended as failed, and stops at once when the processor says
+  the hand-off is over.
+
+### Strikes
+- Strike and health records for a download that has left its client close at
+  once, so they no longer count under Activity's Failed.
+- Counts read properly: "1 peer", "1 check", "1 seed".
+
 ## 1.0.0-rc.30.17
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
