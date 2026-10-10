@@ -303,6 +303,8 @@ public sealed class HandledProblemsSettlerTests
     [InlineData("The hand-off was dismissed by a person.")]
     [InlineData("Nosferatu was removed from Deluno, so Deluno stopped waiting.")]
     [InlineData("The download of Nosferatu is gone, so Deluno will not import it.")]
+    // #1240: a struck private torrent moved to keep seeding is no longer Deluno's to import.
+    [InlineData("Deluno moved Nosferatu to keep-seeding on My qBittorrent so it keeps seeding, so it will not import it.")]
     [InlineData("Nosferatu did not go through the processor, but the title was imported from another download, so Deluno closed this one.")]
     public async Task A_hand_off_closed_without_an_import_tells_its_processor_it_will_not_be_imported_with_its_reason(string reason)
     {

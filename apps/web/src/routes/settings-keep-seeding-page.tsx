@@ -135,6 +135,9 @@ export function SettingsKeepSeedingPage() {
     setCheck(null);
     setSaveState(undefined);
     setSaveMessage(null);
+    // A category already chosen is checked as the drawer opens, so a Label plugin turned off, a Transmission too old
+    // for labels or a category deleted in the client is said on screen without a click.
+    if (item.category) void runCheck(item.clientId, item.category);
   }
 
   function openSite(item: KeepSeedingIndexer) {
@@ -190,8 +193,8 @@ export function SettingsKeepSeedingPage() {
     }
   }
 
-  async function runCheck(clientId: string) {
-    const name = category.trim();
+  async function runCheck(clientId: string, typed?: string) {
+    const name = (typed ?? category).trim();
     if (!name) {
       setCheck(null);
       setSaveMessage("Enter a category first.");
@@ -423,7 +426,7 @@ export function SettingsKeepSeedingPage() {
               {check ? (
                 <>
                   <Chip tone={check.status === "ready" ? "ok" : check.status === "missing" || check.status === "unreachable" ? "bad" : "warn"}>
-                    {check.status === "ready" ? "Ready" : check.status === "missing" ? "Not in the client" : check.status === "unreachable" ? "Could not check" : "Cannot check"}
+                    {check.status === "ready" ? "Ready" : check.status === "missing" ? "Not in the client" : check.status === "unreachable" ? "Could not check" : check.status === "unsupported" ? "Not available" : "Needs a name"}
                   </Chip>
                   <span className="text-(length:--type-caption) text-muted-foreground">{check.message}</span>
                 </>
