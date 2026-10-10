@@ -318,6 +318,12 @@ describe("what a journey card says", () => {
     expect(stuck).toEqual({ text: "Stuck at 43% · not moving", tone: "warn", pulse: true });
     expect(statusOf(card({ stuck: true, progress: 0 }), 5).text).toBe("Stuck · not moving");
   });
+
+  it("never reads 100% for a download that is not complete (#1236)", () => {
+    expect(statusOf(card({ progress: 99.9916 }), 5)).toMatchObject({ text: "99.9% · 6.2 MB/s · qBittorrent", lead: "99.9%" });
+    expect(statusOf(card({ stuck: true, progress: 99.9916 }), 5).text).toBe("Stuck at 99.9% · not moving");
+    expect(statusOf(card({ progress: 100 }), 5).lead).toBe("100%");
+  });
 });
 
 describe("when everything should be in", () => {

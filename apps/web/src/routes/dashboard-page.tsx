@@ -23,7 +23,7 @@ import { cn } from "../lib/utils";
 import { LiveTab } from "./dashboard/live-tab";
 import { SystemTab } from "./dashboard/system-tab";
 import type { DashboardSummary } from "../lib/api";
-import { liveSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
+import { liveSources, refreshLiveExtrasNow, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
 import "./dashboard/phone-wrap.css";
 
 export const DASHBOARD_TABS = ["live", "system"] as const;
@@ -149,6 +149,14 @@ export function DashboardPage() {
   useSignalREvent("PolicySetChanged", RealtimeGroups.Dashboard, refreshSetup);
   useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, refreshSetup);
   useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, refreshSetup);
+  // The connections follow the same health push System and the tray follow (#1233). The processors come from the
+  // Live extras (past the server's five-second copy), the indexers and clients from their lists; none waits on a timer.
+  const readConnectionsAgain = useCoalescedRevalidate(() => {
+    void refreshLiveExtrasNow();
+    void queryClient.invalidateQueries({ queryKey: liveSources.indexers.key, exact: true });
+    void queryClient.invalidateQueries({ queryKey: liveSources.clients.key, exact: true });
+  }, 150);
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, readConnectionsAgain);
   useSignalRResync(() => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void queryClient.invalidateQueries({ queryKey: ["src"] }); });
 
   const select = useCallback((next: DashboardTab) => {

@@ -86,6 +86,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { healthChecksNeedingAttention, isHealthCheckSnoozed } from "../lib/health-snooze";
+import { formatProgressPercent } from "../lib/progress-format";
 
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
 interface SystemInstallationInfo {
@@ -1574,7 +1575,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         <HealthRow label="State" status={updateStateLabel(current.state)} />
         <p className="text-sm leading-relaxed text-muted-foreground">{localizeResetTimes(current.message)}</p>
         {current.progressPercent !== null ? (
-          <p className="text-xs text-muted-foreground">Download progress: {current.progressPercent}%</p>
+          <p className="text-xs text-muted-foreground">Download progress: {formatProgressPercent(current.progressPercent)}</p>
         ) : null}
         {controlsDisabledReason ? (
           <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs leading-relaxed text-muted-foreground">

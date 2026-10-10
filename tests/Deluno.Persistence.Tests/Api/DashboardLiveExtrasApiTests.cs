@@ -381,6 +381,28 @@ public sealed class DashboardLiveExtrasApiTests
             connections.Select(item => item.GetProperty("kind").GetString()!).ToArray());
     }
 
+    [Fact]
+    public async Task A_read_after_a_health_push_skips_the_remembered_copy_so_an_outage_shows_at_once()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        await ExecuteAsync(databases, DelunoDatabaseNames.Platform,
+            $$"""
+            INSERT INTO processor_connections (id, name, provider, submission_url, is_enabled, health_status, created_utc, updated_utc)
+            VALUES ('p1', 'Weir', 'generic', 'http://w', 1, 'healthy', '{{now}}', '{{now}}');
+            """);
+        static bool Healthy(JsonElement live) => live.GetProperty("connections").EnumerateArray().Single(item => item.GetProperty("id").GetString() == "p1").GetProperty("healthy").GetBoolean();
+        Assert.True(Healthy(await GetAsync(app)));
+
+        await ExecuteAsync(databases, DelunoDatabaseNames.Platform, "UPDATE processor_connections SET health_status = 'unreachable' WHERE id = 'p1';");
+
+        // The ordinary read is remembered for five seconds; the one after a HealthChanged push asks for fresh.
+        Assert.True(Healthy(await GetAsync(app)));
+        var response = await app.Client.GetAsync($"/api/dashboard/live-extras?sinceUtc={Midnight()}&fresh=true");
+        Assert.False(Healthy(JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement));
+    }
+
     private static async Task ExecuteAsync(IDelunoDatabaseConnectionFactory databases, string database, string sql)
     {
         await using var connection = await databases.OpenConnectionAsync(database);

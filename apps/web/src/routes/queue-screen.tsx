@@ -93,6 +93,7 @@ import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { applyImportOutcome, TRANSFERS_JOBS_KEY, useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
+import { formatProgressPercent } from "../lib/progress-format";
 
 /**
  * The queue table's optional columns (#796): quality, custom-format score,
@@ -383,8 +384,15 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const resendingHandoff = openQueueItem
     ? isResendingHandoff(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id)
     : false;
-  const showItemFailure = itemFailureVisible(processorOwnsFailure, resendingHandoff);
-  const drawerFindings = openQueueItem ? visibleFindings(openQueueItem, openQueueHandoff, resendingHandoff) : [];
+  /** The old failure is still in the cached data and must not show anywhere, until the hand-off answers with a new failure (#1234). */
+  const oldFailureHeld = openQueueItem
+    ? isOldFailureHeld(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id)
+    : false;
+  const drawerStatus = openQueueItem ? drawerStatusOf(openQueueItem.status, oldFailureHeld, openQueueHandoff?.status) : "";
+  const showItemFailure = itemFailureVisible(processorOwnsFailure, oldFailureHeld);
+  const drawerFindings = openQueueItem
+    ? visibleFindings(openQueueItem, openQueueHandoff, isOldFindingHidden(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id))
+    : [];
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
   const openImportJob = openActivity?.id.startsWith("import:") ? jobs.find((job) => `import:${job.id}` === openActivity.id) ?? null : null;
   const openImportInfo = openImportJob ? parseImportJobPayload(openImportJob.payloadJson) : null;
@@ -966,7 +974,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       },
       `Sent to ${handoff.processorName ?? "the processor"} again.`
     ).then((sent) => {
-      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id).add(resentItemKey(handoff.clientId, handoff.queueItemId)));
+      // The failed row as it is now is remembered too: until the hand-off's own state moves on, that row is the old failure, not a new one (#1234).
+      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id).add(resentItemKey(handoff.clientId, handoff.queueItemId)).add(oldFailureKey(handoff.id, handoff.updatedUtc)));
     });
   }
 
@@ -1299,7 +1308,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                       <>
                         <ProgressBar value={item.progress} />
                         <span className="mt-1 block truncate text-(length:--type-caption) tabular-nums text-muted-foreground">
-                          {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
+                          {formatProgressPercent(item.progress)} of {formatBytes(item.sizeBytes)}
                         </span>
                       </>
                     ) : (
@@ -1696,7 +1705,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           if (!open) setDrawer(null);
         }}
         title={openQueueItem?.title || openQueueItem?.releaseName || "Download"}
-        description={openQueueItem ? `${openQueueItem.clientName} · ${drawerStatusLabel(openQueueItem.status, resendingHandoff, openQueueHandoff?.processorName)}` : undefined}
+        description={openQueueItem ? `${openQueueItem.clientName} · ${drawerStatusLabel(drawerStatus, resendingHandoff, openQueueHandoff?.processorName)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openQueueItem ? (
@@ -1704,7 +1713,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             <DrawerSection title="Progress">
               <ProgressBar value={openQueueItem.progress} />
               <div className="grid gap-1.5">
-                <Fact label="Done" value={`${Math.round(openQueueItem.progress)}% — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
+                <Fact label="Done" value={`${formatProgressPercent(openQueueItem.progress)} — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
                 <Fact label="Speed" value={openQueueItem.speedMbps > 0 ? `${openQueueItem.speedMbps.toFixed(1)} MB/s` : "Not moving"} />
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
@@ -1795,7 +1804,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
             <DrawerSection
               title="Import"
-              aside={resendingHandoff ? drawerStatusLabel(openQueueItem.status, true, openQueueHandoff?.processorName) : isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
+              aside={resendingHandoff ? drawerStatusLabel(drawerStatus, true, openQueueHandoff?.processorName) : isImportReadyStatus(drawerStatus) ? "ready" : queueStatusLabel(drawerStatus)}
             >
               {/* After Try again the answer is still to come: say so, never "failed" (#1193). */}
               {openQueueHandoff && resendingHandoff ? (
@@ -1808,7 +1817,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   is shown (#616): the hand-off drawer had both, this one had
                   neither, and Queue import is closed to a failed hand-off. */}
               {/* While "Sending it again" shows, the old failure is hidden, not shown beside it (#1198). */}
-              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed && !resendingHandoff ? (
+              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed && !oldFailureHeld ? (
                 <div className="grid gap-3 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
                   <p className="text-(length:--type-body-sm) text-foreground">
                     {plainFailure(openQueueHandoff.failureMessage, `Sending it to ${openQueueHandoff.processorName ?? "the processor"}`)}
@@ -2573,30 +2582,94 @@ export function resentItemKey(clientId: string, queueItemId: string) {
 
 /** Hand-off answers that are a real failure (the old one being shown, or a new one), as opposed to still working or done. */
 function isHandoffFailure(status: string) {
-  return ["failed", "rejected", "timed-out", "stalled", "lost", "cancelled", "source-gone"].includes(status.toLowerCase());
+  return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled", "source-gone"].includes(status.toLowerCase());
+}
+
+/** The failed row as it stood when Try again was pressed: while the hand-off still reads like this, no new answer has arrived (#1234). */
+export function oldFailureKey(handoffId: string, updatedUtc: string) {
+  return `old:${handoffId}:${updatedUtc}`;
+}
+
+type ResendHandoff = Pick<ProcessorHandoffItem, "id" | "status"> & { updatedUtc?: string };
+
+function wasResent(handoff: ResendHandoff | null, resentHandoffIds: ReadonlySet<string>, clientId?: string, queueItemId?: string) {
+  return (handoff ? resentHandoffIds.has(handoff.id) : false)
+    || (clientId && queueItemId ? resentHandoffIds.has(resentItemKey(clientId, queueItemId)) : false);
+}
+
+/** The hand-off row still says what it said before Try again: the push that moves it on has not arrived. */
+function isStillTheOldFailure(handoff: ResendHandoff | null, resentHandoffIds: ReadonlySet<string>) {
+  return Boolean(handoff?.updatedUtc) && isHandoffFailure(handoff!.status) && resentHandoffIds.has(oldFailureKey(handoff!.id, handoff!.updatedUtc!));
 }
 
 /**
- * Whether a hand-off the person has just sent again is still waiting for its new answer (#1193, #1198, #1229). While it
- * is, the drawer says "Sending it again" and hides the old failure, so the two never sit side by side. It is held until
- * the new status's own data has arrived: the hand-off with the processor, a hand-off row briefly missing from a
- * refresh, or the download itself still reading "Processing failed" while the hand-off has already moved on. Only a
- * hand-off that answers with a failure again, or a download that has left "Processing failed", ends it.
+ * Whether a hand-off the person has just sent again is still being sent (#1193, #1198, #1229, #1234). Only the
+ * hand-off's own state decides: "waiting to submit" and "submitted" are the sending; once the processor has accepted it
+ * or is working on it, the header says that instead. A hand-off row briefly missing from a refresh holds it while the
+ * download still reads failed or waiting, and the row as it stood before Try again holds it until the push arrives.
+ * Nothing here is a timer.
  */
 export function isResendingHandoff(
-  handoff: Pick<ProcessorHandoffItem, "id" | "status"> | null,
+  handoff: ResendHandoff | null,
   resentHandoffIds: ReadonlySet<string>,
   itemStatus?: string,
   clientId?: string,
   queueItemId?: string
 ) {
-  const marked = (handoff ? resentHandoffIds.has(handoff.id) : false)
-    || (clientId && queueItemId ? resentHandoffIds.has(resentItemKey(clientId, queueItemId)) : false);
-  if (!marked) return false;
+  if (!wasResent(handoff, resentHandoffIds, clientId, queueItemId)) return false;
   if (!handoff) return itemStatus === downloadQueueStatuses.processingFailed || itemStatus === downloadQueueStatuses.waitingForProcessor;
-  if (isWithProcessor(handoff.status)) return true;
-  if (isHandoffFailure(handoff.status)) return false;
-  return itemStatus === downloadQueueStatuses.processingFailed;
+  if (isStillTheOldFailure(handoff, resentHandoffIds)) return true;
+  return ["waiting", "submitted"].includes(handoff.status.toLowerCase());
+}
+
+/**
+ * Whether the old failure is still in the cached data and must not show anywhere in the drawer: not the header, the
+ * Import box, the Health block's failure details or its findings (#1234). It holds from Try again until the hand-off
+ * answers with a new failure; the cached download and its findings catch up on their own read and the hold ends with
+ * them, so "Waiting for processor" never shows the old "Rejected" for a moment.
+ */
+export function isOldFailureHeld(
+  handoff: ResendHandoff | null,
+  resentHandoffIds: ReadonlySet<string>,
+  itemStatus?: string,
+  clientId?: string,
+  queueItemId?: string
+) {
+  if (!wasResent(handoff, resentHandoffIds, clientId, queueItemId)) return false;
+  if (isResendingHandoff(handoff, resentHandoffIds, itemStatus, clientId, queueItemId)) return true;
+  // A new failure from the hand-off itself shows at once.
+  if (handoff && isHandoffFailure(handoff.status)) return false;
+  return itemStatus === downloadQueueStatuses.processingFailed || itemStatus === downloadQueueStatuses.waitingForProcessor;
+}
+
+/**
+ * Whether the old "post-processing failed" finding stays out of the Health block: all the while the old failure is held,
+ * and after that for as long as the hand-off has not failed again, because the finding outlives the download's status
+ * in the cached data until the next read (#1234).
+ */
+export function isOldFindingHidden(
+  handoff: ResendHandoff | null,
+  resentHandoffIds: ReadonlySet<string>,
+  itemStatus?: string,
+  clientId?: string,
+  queueItemId?: string
+) {
+  if (isOldFailureHeld(handoff, resentHandoffIds, itemStatus, clientId, queueItemId)) return true;
+  return wasResent(handoff, resentHandoffIds, clientId, queueItemId) && handoff !== null && !isHandoffFailure(handoff.status);
+}
+
+/**
+ * The download's status as the drawer reads it: while the old failure is held and the cached download still says
+ * "Processing failed", the hand-off's own state says where it really is.
+ */
+export function drawerStatusOf(itemStatus: string, oldFailureHeld: boolean, handoffStatus?: string | null) {
+  if (!oldFailureHeld || itemStatus !== downloadQueueStatuses.processingFailed) return itemStatus;
+  switch ((handoffStatus ?? "waiting").toLowerCase()) {
+    case "started": return downloadQueueStatuses.processing;
+    case "completed":
+    case "released": return downloadQueueStatuses.processed;
+    default: return downloadQueueStatuses.waitingForProcessor;
+  }
 }
 
 /**

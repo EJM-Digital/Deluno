@@ -24,6 +24,7 @@ import { LANES } from "./lanes";
 import { startedLabel } from "./provenance";
 import { detailLines, type Part } from "./detail";
 import { faceOf, type TitleLookup } from "./titles";
+import { floorProgress, formatProgressPercent } from "../../../lib/progress-format";
 
 export interface CardContext {
   titles: TitleLookup;
@@ -78,7 +79,7 @@ export interface CardStatus {
 }
 
 export function statusOf(card: JourneyCard, indexers: number): CardStatus {
-  const percent = Math.floor(card.progress ?? 0);
+  const percent = formatProgressPercent(card.progress);
   if (card.stage === "requested") {
     const asked = card.startedBy === "seerr" ? "Asked for in Seerr · looking" : indexers > 0 ? `Looking on ${indexers.toLocaleString("en-AU")} ${indexers === 1 ? "indexer" : "indexers"}` : "Looking for it";
     return { text: asked, tone: "info", pulse: true };
@@ -86,15 +87,15 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   // Only what is known: the download has stopped moving. Why is in its tooltip; Deluno is not claimed to be doing anything it may not be.
   // The import has finished: full and green for a moment, before the poster flies to the library.
   if (card.landed) return { text: "✓ Imported · in your library", tone: "ok", pulse: false, lead: "✓ Imported" };
-  if (card.stuck) return { text: percent > 0 ? `Stuck at ${percent}% · not moving` : "Stuck · not moving", tone: "warn", pulse: true };
+  if (card.stuck) return { text: floorProgress(card.progress) > 0 ? `Stuck at ${percent} · not moving` : "Stuck · not moving", tone: "warn", pulse: true };
   if (card.stage === "grabbed") {
     const parts = [card.quality, card.indexer ? `from ${card.indexer}` : null].filter(Boolean);
     return { text: parts.length > 0 ? parts.join(" · ") : card.state.label, tone: card.state.tone, pulse: false };
   }
   if (card.stage === "downloading") {
     if (card.state.label !== "Downloading") return { text: card.state.label, tone: card.state.tone, pulse: false };
-    const parts = [`${percent}%`, (card.speedMbps ?? 0) > 0 ? formatSpeed(card.speedMbps) : null, card.client].filter(Boolean);
-    return { text: parts.join(" · "), tone: "info", pulse: false, lead: `${percent}%` };
+    const parts = [percent, (card.speedMbps ?? 0) > 0 ? formatSpeed(card.speedMbps) : null, card.client].filter(Boolean);
+    return { text: parts.join(" · "), tone: "info", pulse: false, lead: percent };
   }
   if (card.stage === "processor") {
     if (card.state.tone === "bad") return { text: card.state.label, tone: "bad", pulse: false };
@@ -111,7 +112,7 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
  * moving) that fills to 100% when the import finishes. Nothing for a card that is only waiting.
  */
 function barOf(card: JourneyCard): { width: number; waiting: boolean } | null {
-  if (card.stage === "downloading") return { width: Math.round(card.progress ?? 0), waiting: false };
+  if (card.stage === "downloading") return { width: floorProgress(card.progress), waiting: false };
   if (card.stage === "importing" && card.landed) return { width: 100, waiting: false };
   if (card.stage === "importing" && card.state.label === IMPORTING_NOW) return { width: 35, waiting: true };
   return null;

@@ -9,6 +9,7 @@ import type {
 import { downloadQueueStatuses } from "./download-telemetry";
 import { wantedStatusPresentation } from "./status-tones";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "./media-types";
+import { floorProgress } from "./progress-format";
 
 function hashValue(value: string) {
   let hash = 0;
@@ -422,7 +423,7 @@ export function adaptTelemetryDownloads(telemetry: DownloadTelemetryOverview): A
         title: item.title || item.releaseName,
         poster: null,
         quality: item.category || item.protocol,
-        progress: Math.round(item.progress),
+        progress: floorProgress(item.progress),
         speedMbps: item.speedMbps,
         etaMinutes: Math.max(0, Math.ceil(item.etaSeconds / 60)),
         peers: item.peers,
