@@ -20,11 +20,11 @@ const SINGLE_QUESTIONS = [
 
 function loaderData(overrides: { stepId: string; completed?: boolean; draft?: Record<string, unknown>; hostsEnabled?: boolean; skipSignIn?: boolean; autoUpdate?: boolean }) {
   return {
-    settings: { movieRootPath: "D:\Media\Movies", seriesRootPath: "D:\Media\TV", timezone: "UTC" },
+    settings: { movieRootPath: "D:/Media/Movies", seriesRootPath: "D:/Media/TV", timezone: "UTC" },
     libraries: [], qualityProfiles: [], customFormats: [], indexers: [], clients: [], metadataStatus: null,
     progress: { lastCompletedStep: STEPS.findIndex((step) => step.id === overrides.stepId), isSkipped: false, isCompleted: overrides.completed ?? false, updatedUtc: "2026-10-11T00:00:00Z" },
     draft: {
-      mode: "simple", mediaIntent: "both", movieRootPath: "D:\Media\Movies", seriesRootPath: "D:\Media\TV", downloadsPath: "",
+      mode: "simple", mediaIntent: "both", movieRootPath: "D:/Media/Movies", seriesRootPath: "D:/Media/TV", downloadsPath: "",
       qualityPreset: "balanced1080p", formatGoal: "balanced", indexerName: "", indexerProtocol: "torznab", indexerUrl: "",
       clientName: "", clientProtocol: "qbittorrent", clientHost: "", clientPort: "8080", metadataProviderMode: "direct", metadataBrokerUrl: "",
       backupEnabled: true, firstTitleType: "movies", firstTitle: "", firstTitleYear: "", firstTitleMonitored: true, ...overrides.draft
