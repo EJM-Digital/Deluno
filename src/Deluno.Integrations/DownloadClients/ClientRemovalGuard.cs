@@ -131,31 +131,131 @@ internal static class DownloadFolderRemoval
                 : $"The client is on another machine, so Deluno cannot see {path} to check it was removed.";
         }
 
-        var folderName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var stem = Directory.Exists(fullPath) ? folderName : Path.GetFileNameWithoutExtension(folderName);
-        if (!string.IsNullOrWhiteSpace(jobName)
-            && !stem.StartsWith(jobName.Trim(), StringComparison.OrdinalIgnoreCase)
-            && !jobName.Trim().StartsWith(stem, StringComparison.OrdinalIgnoreCase))
+        var trimmedFull = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var folderName = Path.GetFileName(trimmedFull);
+        var isFolder = Directory.Exists(fullPath);
+
+        // #1224: SABnzbd 5.1.3 names the finished FILE, not the job's folder. When that file sits in a folder
+        // named after the job, the job's folder is what the job left, extras and all (.nfo, poster, Sample). It is
+        // never a filesystem root, and never a shared folder such as the category: it must carry the job's name.
+        var jobFolder = isFolder ? null : JobOwnFolder(trimmedFull, jobName);
+        var target = jobFolder ?? fullPath;
+
+        if (jobFolder is null)
         {
-            return $"{fullPath} is not named after this download, so Deluno left it alone.";
+            var stem = isFolder ? folderName : Path.GetFileNameWithoutExtension(folderName);
+            if (!string.IsNullOrWhiteSpace(jobName)
+                && !stem.StartsWith(jobName.Trim(), StringComparison.OrdinalIgnoreCase)
+                && !jobName.Trim().StartsWith(stem, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{fullPath} is not named after this download, so Deluno left it alone.";
+            }
         }
 
         try
         {
-            if (Directory.Exists(fullPath))
+            if (Directory.Exists(target))
             {
-                Directory.Delete(fullPath, recursive: true);
+                Directory.Delete(target, recursive: true);
             }
             else
             {
-                File.Delete(fullPath);
+                File.Delete(target);
             }
 
-            return null;
+            // Say "gone" only when nothing of the job is left.
+            return File.Exists(target) || Directory.Exists(target)
+                ? $"{target} is still on disk after Deluno tried to delete it."
+                : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return $"Deluno could not delete {fullPath}: {exception.Message}";
+            return $"Deluno could not delete {target}: {exception.Message}";
         }
+    }
+
+    /// <summary>
+    /// The folder directly holding <paramref name="filePath"/> when it is the job's own: named after the job, and not
+    /// a filesystem root or a top-level folder (a category or completed folder).
+    /// </summary>
+    internal static string? JobOwnFolder(string filePath, string? jobName)
+    {
+        var name = jobName?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return null;
+        }
+
+        var parent = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(parent))
+        {
+            return null;
+        }
+
+        var parentTrimmed = parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parentName = Path.GetFileName(parentTrimmed);
+        var grandparent = Path.GetDirectoryName(parentTrimmed);
+        if (string.IsNullOrEmpty(parentName) || string.IsNullOrEmpty(grandparent))
+        {
+            return null;
+        }
+
+        // The completed area itself sits at least one level below a root, so the job folder has two parents' worth of path.
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(grandparent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))))
+        {
+            return null;
+        }
+
+        return string.Equals(parentName, name, StringComparison.OrdinalIgnoreCase)
+            || parentName.StartsWith(name, StringComparison.OrdinalIgnoreCase)
+            ? parentTrimmed
+            : null;
+    }
+
+    /// <summary>
+    /// Removes the empty temporary folders a client leaves beside a removed download, such as Transmission's
+    /// <c>Name.mkv__ccMBKa</c> (#1224): inside <paramref name="downloadFolder"/>, named after the torrent plus
+    /// <c>__</c> and six letters or digits, and holding no file at all.
+    /// </summary>
+    /// <returns>Null when nothing is left over, else why a leftover could not go.</returns>
+    public static string? RemoveEmptyLeftovers(string? downloadFolder, string? torrentName)
+    {
+        if (string.IsNullOrWhiteSpace(downloadFolder) || string.IsNullOrWhiteSpace(torrentName)
+            || !IsSafeToDelete(downloadFolder, out var folder) || !Directory.Exists(folder))
+        {
+            return null;
+        }
+
+        var prefix = torrentName.Trim() + "__";
+        string? problem = null;
+        try
+        {
+            foreach (var candidate in Directory.EnumerateDirectories(folder))
+            {
+                var leaf = Path.GetFileName(candidate);
+                if (leaf.Length != prefix.Length + 6
+                    || !leaf.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    || !leaf[prefix.Length..].All(char.IsAsciiLetterOrDigit)
+                    || Directory.EnumerateFiles(candidate, "*", SearchOption.AllDirectories).Any())
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Directory.Delete(candidate, recursive: true);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    problem = $"Deluno could not remove the empty folder {candidate}: {exception.Message}";
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return $"Deluno could not look for leftover folders in {folder}: {exception.Message}";
+        }
+
+        return problem;
     }
 }
