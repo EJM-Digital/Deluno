@@ -158,6 +158,18 @@ public sealed class ProcessorHealthCheckTests
         Assert.DoesNotContain(outcomes, item => item.Id.Contains(":writing:"));
     }
 
+    [Fact]
+    public async Task A_processor_that_did_not_answer_reads_unknown_then_ok_once_it_answers_again()
+    {
+        // #1217: the capabilities are re-read on every run, so the row follows the processor.
+        var library = Library(downloadsPath: "D:/Refined");
+        var silent = await RunAsync(Connection(), [library], new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, "no answer"), mappings: []);
+        Assert.Equal(HealthCheckStatuses.Unknown, Assert.Single(silent, item => item.Id.Contains(":watching:")).Status);
+
+        var back = await RunAsync(Connection(), [library], new ProcessorStatusSupport(ProcessorAnswer.Answered, true, true, null) { WatchedPath = "D:/Refined" }, mappings: []);
+        Assert.Equal(HealthCheckStatuses.Ok, Assert.Single(back, item => item.Id.Contains(":watching:")).Status);
+    }
+
     private static async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(
         ProcessorConnectionItem connection,
         IReadOnlyList<LibraryItem> libraries,

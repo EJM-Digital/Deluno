@@ -1766,6 +1766,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
   const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmGone, setConfirmGone] = useState<HealthCheckResultItem | null>(null);
+  const [runningChecks, setRunningChecks] = useState(false);
   // A suggestion (#1060) is a setting that starts off and is worth turning on.
   // It is not a problem: it never counts toward "need attention".
   const suggestions = checks.filter((check) => check.status === "suggestion");
@@ -1891,6 +1892,21 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     }
   }
 
+  // "Check now" for the health checks (#1217): the server runs every check again within seconds and pushes the
+  // result, so the rows move on their own; nothing here reloads the screen.
+  async function runChecksNow() {
+    setRunningChecks(true);
+    try {
+      const response = await authedFetch("/api/system/health/run", { method: "POST" });
+      if (response.ok) toast.success("Checking everything again. Rows that now pass will clear in a moment.");
+      else toast.error("Deluno could not start the checks. Try again.");
+    } catch {
+      toast.error("Deluno could not start the checks. Try again.");
+    } finally {
+      setRunningChecks(false);
+    }
+  }
+
   async function unsnooze(check: HealthCheckResultItem) {
     setBusyId(check.id);
     try {
@@ -1908,6 +1924,12 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     <ListCard
       title={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "Everything checked out" : "All clear") : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
       titleCase={false}
+      actions={
+        <Button type="button" variant="outline" size="sm" aria-label="Run all the health checks now" disabled={runningChecks} onClick={() => void runChecksNow()}>
+          {runningChecks ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+          Check now
+        </Button>
+      }
     >
       {sorted.length === 0 && suggestions.length > 0 ? (
         <ListEmpty title="All clear" description="Nothing needs a look. The suggestions below are optional." />

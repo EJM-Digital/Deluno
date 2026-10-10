@@ -404,6 +404,36 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return Results.Ok(overview);
         });
 
+        // A failed row in a client's history is read from the client, so Deluno cannot delete it there. Dismissing it
+        // (#1218) is remembered here, and Activity stops counting it as failed. Nothing is changed at the client.
+        endpoints.MapPost("/api/download-clients/{clientId}/history/{itemId}/dismiss", async (
+            string clientId,
+            string itemId,
+            HttpContext httpContext,
+            Deluno.Jobs.Data.AttentionDismissalStore dismissals,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            await dismissals.DismissAsync(Deluno.Jobs.Data.AttentionDismissalStore.ClientHistoryKey(clientId, itemId), cancellationToken);
+            return Results.Ok(new { clientId, itemId, dismissed = true });
+        });
+
+        endpoints.MapGet("/api/download-clients/history/dismissed", async (
+            HttpContext httpContext,
+            Deluno.Jobs.Data.AttentionDismissalStore dismissals,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var keys = (await dismissals.ListAsync(cancellationToken))
+                .Where(key => key.StartsWith(Deluno.Jobs.Data.AttentionDismissalStore.ClientHistoryPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            return Results.Ok(keys);
+        });
+
         // The stored counterpart to the live telemetry above: what the speed
         // has been, rather than what it is this second. Kept separate because
         // the two answer different questions and have very different costs.
