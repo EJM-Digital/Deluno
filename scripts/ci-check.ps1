@@ -283,6 +283,17 @@ if ($portability.ExitCode -eq 0) {
     Write-Fail "scripts run on Windows PowerShell too"
 }
 
+# The golden-path scenario suite (#1238) runs on a VM only a release uses, so its own code is checked here: every script parses,
+# the plan and the groups agree, the host judges results and builds the status right, and the Deluno/Weir/DevTools/news-stub code
+# works against local mocks.
+$scenarioSuite = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/golden-path/Test-ScenarioSuite.ps1")
+if ($scenarioSuite.ExitCode -eq 0) {
+    Write-Ok "golden-path scenario suite code"
+} else {
+    if ($scenarioSuite.Output) { Write-Host $scenarioSuite.Output }
+    Write-Fail "golden-path scenario suite code"
+}
+
 # The HEAD commit message is what gets squashed onto main, and GitHub reads a
 # closing verb next to an issue reference as an instruction - without reading
 # negation, and without caring that you are quoting. Three issues were closed

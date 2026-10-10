@@ -118,6 +118,12 @@ namespace Golden
         private long connections;
         public string Root { get; set; }
         public int Port { get; set; }
+        // A file of message-ids (one a line) that are never answered: the connection just waits, as a news server
+        // that stalls on its last article does. The file is read on every request, so an id can be added mid-run.
+        public string HangFile { get; set; }
+        // A pause before each article listed in SlowFile (same format as HangFile), in milliseconds: a slow news server.
+        public int ArticleDelayMs { get; set; }
+        public string SlowFile { get; set; }
         public long ArticlesServed { get { return Interlocked.Read(ref served); } }
         public long ArticlesMissed { get { return Interlocked.Read(ref missed); } }
         public long Connections { get { return Interlocked.Read(ref connections); } }
@@ -192,6 +198,8 @@ namespace Golden
                         else if (cmd == "STAT" || cmd == "ARTICLE" || cmd == "BODY" || cmd == "HEAD")
                         {
                             string id = SafeId(arg);
+                            if (id != null && IsListed(HangFile, id)) { Thread.Sleep(Timeout.Infinite); }
+                            if (ArticleDelayMs > 0 && id != null && cmd != "STAT" && IsListed(SlowFile, id)) { Thread.Sleep(ArticleDelayMs); }
                             string file = id == null ? null : Path.Combine(Path.Combine(Root, "articles"), id + ".art");
                             if (file == null || !File.Exists(file))
                             {
@@ -221,6 +229,17 @@ namespace Golden
                 }
             }
             catch (Exception) { }
+        }
+
+        private static bool IsListed(string path, string id)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) { return false; }
+            try
+            {
+                foreach (string line in File.ReadAllLines(path)) { if (line.Trim().Trim('<', '>') == id) { return true; } }
+            }
+            catch (IOException) { }
+            return false;
         }
 
         private static int IndexOfBlankLine(byte[] b)
