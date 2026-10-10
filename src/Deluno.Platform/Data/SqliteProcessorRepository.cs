@@ -14,7 +14,8 @@ public sealed class SqliteProcessorRepository(
     TimeProvider timeProvider,
     ISecretProtector secretProtector,
     IRealtimeEventPublisher? realtimeEventPublisher = null,
-    IConnectionUseReporter? connectionUses = null)
+    IConnectionUseReporter? connectionUses = null,
+    IHealthCheckRepository? healthChecks = null)
     : IProcessorRepository
 {
     public async Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken)
@@ -275,7 +276,42 @@ public sealed class SqliteProcessorRepository(
             }
         }
 
+        await AskForProcessorChecksAfterAnswerAsync(before, after, cancellationToken);
         return after;
+    }
+
+    /// <summary>
+    /// A processor that answers again has its capabilities re-read at once (#1217): the watched-folder rows that said
+    /// "did not answer Deluno's capabilities check" were only re-run on the fifteen-minute pass, so they outlived the
+    /// outage by many minutes, through a Test and a hand-off. Any healthy answer (a check, a Test, a hand-off) now asks
+    /// for the processor checks when the health just came back or a row for this processor is still not fine.
+    /// </summary>
+    private async Task AskForProcessorChecksAfterAnswerAsync(ProcessorConnectionItem? before, ProcessorConnectionItem? after, CancellationToken cancellationToken)
+    {
+        if (healthChecks is null || after is null
+            || !string.Equals(after.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var cameBack = !string.Equals(before?.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+            var prefix = $"processor:{after.Id}";
+            var stillShowing = cameBack || (await healthChecks.ListAsync(cancellationToken)).Any(row =>
+                row.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(row.Status, HealthCheckStatuses.Ok, StringComparison.OrdinalIgnoreCase)
+                // A row a check wrote moments ago is the answer to this very reading; only an older one is stale.
+                && timeProvider.GetUtcNow() - row.LastRunUtc > TimeSpan.FromSeconds(30));
+            if (stillShowing)
+            {
+                await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Processor, cancellationToken);
+            }
+        }
+        catch (Exception)
+        {
+            // The health is saved; the regular pass still re-reads the processor.
+        }
     }
 
     public async Task<IReadOnlyList<ProcessorPathMappingItem>> ListProcessorPathMappingsAsync(

@@ -38,6 +38,27 @@ public static class HealthCheckEndpointRouteBuilderExtensions
         var write = group.MapGroup(string.Empty)
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
+        // "Check now" (#1217): every check runs again within seconds, and the rows that no longer hold clear
+        // through the usual health push.
+        write.MapPost("/run", async (
+            HttpContext httpContext,
+            IHealthCheckRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            foreach (var category in HealthCheckCategories.AllChecked)
+            {
+                await repository.RequestImmediateRunAsync(category, cancellationToken);
+            }
+
+            return Results.Accepted();
+        });
+
         write.MapPost("/{id}/snooze", async (
             string id,
             [FromBody] SnoozeHealthCheckRequest? request,

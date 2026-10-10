@@ -42,6 +42,13 @@ public static class HealthCheckCategories
     /// <summary>The computer Deluno runs on: sleep settings, drive health, a pending restart, processor heat (#1098).</summary>
     public const string Machine = "machine";
 
+    /// <summary>Every category a check runs for, so "check now" can ask for all of them (#1217).</summary>
+    public static readonly string[] AllChecked =
+    [
+        DownloadClient, Indexer, Library, Processor, MediaServer, Metadata, SubtitleProvider, Seerr,
+        System, Grab, Machine, Tags, Proxy, RemotePathMapping
+    ];
+
     /// <summary>A one-time note (an upgrade changed something), never re-run by a check and cleared by hand.</summary>
     public const string Notice = "notice";
 
