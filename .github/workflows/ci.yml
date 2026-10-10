@@ -192,7 +192,14 @@ jobs:
 
       - name: Run backend tests
         shell: pwsh
-        run: ./scripts/test-dotnet-serial.ps1
+        # The Timing tests hold an endpoint to a time budget; beside the rest of the suite a
+        # busy runner made a 12 ms call take 633 ms (10 Oct 2026). They run on their own next,
+        # exactly as scripts/gate.ps1 runs them.
+        run: ./scripts/test-dotnet-serial.ps1 -Filter "Category!=Timing"
+
+      - name: Run timing tests alone
+        shell: pwsh
+        run: dotnet test tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj --configuration Release --no-build --no-restore --filter "Category=Timing" --logger "trx;LogFileName=timing-tests.trx"
 
       - name: Summarize backend test results
         if: always()
