@@ -56,7 +56,32 @@ export function dispatchIsExtraCopy(dispatch: DownloadDispatchItem, all: readonl
     && dispatchWasImported(other));
 }
 
-export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly DownloadDispatchItem[] = []): DispatchStanding | null {
+/** The key a send and its client entry share: the client, and the id the client knows the download by. */
+export function containedSendKey(clientId: string | null | undefined, itemId: string | null | undefined): string {
+  return `${lower(clientId)}|${lower(itemId)}`;
+}
+
+/**
+ * The sends Deluno contained: the download client's entry reads "another copy was handed over", so the processor
+ * has the other copy and nothing is owed to this one (#1215). Read from what Transfers reads.
+ */
+export function containedSendKeys(
+  clients: ReadonlyArray<{ queue?: ReadonlyArray<{ id: string; clientId: string; status: string }> | null }> | null | undefined
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const client of clients ?? []) {
+    for (const item of client.queue ?? []) {
+      if (item.status === "handedOverElsewhere") keys.add(containedSendKey(item.clientId, item.id));
+    }
+  }
+  return keys;
+}
+
+export function dispatchStanding(
+  dispatch: DownloadDispatchItem,
+  all: readonly DownloadDispatchItem[] = [],
+  contained: ReadonlySet<string> = new Set()
+): DispatchStanding | null {
   const status = lower(dispatch.status);
   const grab = lower(dispatch.grabStatus);
   const importStatus = lower(dispatch.importStatus);
@@ -92,6 +117,9 @@ export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly D
   }
   if (status === "sent" && dispatchIsExtraCopy(dispatch, all)) {
     return { status: "done", pill: { tone: "idle", label: "Not needed" }, detail: "The same release was already in the library, so this extra copy was not used." };
+  }
+  if (status === "sent" && contained.has(containedSendKey(dispatch.downloadClientId, dispatch.torrentHashOrItemId))) {
+    return { status: "done", pill: { tone: "idle", label: "Not needed" }, detail: "Not needed: another copy was handed over" };
   }
   if (status === "sent") return { status: "in-progress", pill: { tone: "info", label: "In progress" } };
   if (status === "planned") return { status: "needs-decision", pill: { tone: "warn", label: "Needs a decision" } };
