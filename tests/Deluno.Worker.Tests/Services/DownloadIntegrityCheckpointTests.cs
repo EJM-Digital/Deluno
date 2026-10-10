@@ -251,6 +251,9 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
 processorRepository
+            .Setup(repository => repository.ListDueProcessorOutcomesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorOutcomeRecord>());
+processorRepository
             .Setup(repository => repository.FindProcessorHandoffForDownloadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ProcessorHandoffItem?)null);
         processorRepository

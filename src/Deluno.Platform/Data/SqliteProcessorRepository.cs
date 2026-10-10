@@ -825,12 +825,22 @@ public sealed class SqliteProcessorRepository(
                     updated_utc = @updatedUtc,
                     -- Back to waiting starts a new conversation with the
                     -- processor; the last one's answers do not carry over.
-                    processor_state = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_state END,
+                    -- A processor-reported failure keeps saying so after a dismissal (#1221): the status
+                    -- goes, the state stays, and it is what tells Deluno no file was handed back.
+                    processor_state = CASE
+                        WHEN @status = 'waiting' THEN NULL
+                        WHEN @status = 'dismissed' AND status IN ('failed', 'rejected')
+                            AND COALESCE(processor_state, '') NOT IN ('failed', 'rejected') THEN status
+                        ELSE processor_state END,
                     processor_message = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_message END,
                     processor_queue_position = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_queue_position END,
                     processor_scheduled_for_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_scheduled_for_utc END,
                     processor_last_changed_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_last_changed_utc END,
-                    processor_checked_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_checked_utc END,
+                    processor_checked_utc = CASE
+                        WHEN @status = 'waiting' THEN NULL
+                        -- The observation is only read back when it has a check time, so the state above needs one.
+                        WHEN @status = 'dismissed' AND status IN ('failed', 'rejected') THEN COALESCE(processor_checked_utc, @updatedUtc)
+                        ELSE processor_checked_utc END,
                     processor_unreachable_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_unreachable_since_utc END,
                     processor_answering_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_answering_since_utc END
                 WHERE id = @id;
