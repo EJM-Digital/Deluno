@@ -201,6 +201,8 @@ public sealed class SqliteJobStore(
             cancellationToken);
         // A screen listing jobs (Activity) reads again when one is added, not only once it starts (#1180).
         await PublishJobChangedAsync(job, "queued", null, now, cancellationToken);
+        // Every open Transfers screen moves the download's row off "Ready to import" at once, not only the tab that clicked (#1209).
+        await PublishImportStateAsync(job, "queued", now, cancellationToken);
         DelunoObservability.JobsQueued.Add(1, new("job.type", job.JobType), new("source", job.Source));
 
         // Only jobs runnable right now should wake a lane. LeaseBatchAsync
@@ -1127,6 +1129,7 @@ public sealed class SqliteJobStore(
         foreach (var started in leasedJobs)
         {
             await PublishJobChangedAsync(started, "started", null, now, cancellationToken);
+            await PublishImportStateAsync(started, "running", now, cancellationToken);
         }
         return leasedJobs;
     }
@@ -1273,6 +1276,13 @@ public sealed class SqliteJobStore(
         await PublishJobChangedAsync(job, "finished", completionMessage, now, cancellationToken);
         DelunoObservability.JobsCompleted.Add(1, new("job.type", job.JobType), new("source", job.Source));
     }
+
+    /// <summary>An import job queued or started is said on the queue group like one that finished or failed, so no screen waits for its next read (#1209).</summary>
+    private Task PublishImportStateAsync(JobQueueItem job, string state, DateTimeOffset at, CancellationToken cancellationToken)
+        => job.JobType == "filesystem.import.execute"
+            ? realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishImportStateChangedAsync(
+                job.Id, state, job.RelatedEntityType, job.RelatedEntityId, null, null, at.ToString("O"), cancellationToken))
+            : Task.CompletedTask;
 
     /// <summary>Says on Live, at the moment it happens, that a job started, finished or failed (#1097).</summary>
     private Task PublishJobChangedAsync(JobQueueItem job, string state, string? message, DateTimeOffset at, CancellationToken cancellationToken)

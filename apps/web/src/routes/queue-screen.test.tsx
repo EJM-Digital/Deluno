@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MovieImportRecoverySummary, DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, isResendingHandoff, itemFailureVisible, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, dispatchStageLabel, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, drawerStatusLabel, isResendingHandoff, itemFailureVisible, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
@@ -1258,5 +1258,11 @@ describe("Health section during a resend (#1204)", () => {
     expect(itemFailureVisible(false, true)).toBe(false);
     expect(itemFailureVisible(true, false)).toBe(false);
     expect(itemFailureVisible(false, false)).toBe(true);
+  });
+
+  it("reads the in-progress state in the header, never the old failure, while sending again", () => {
+    expect(drawerStatusLabel("processingFailed", true, "Weir")).toBe("Sending to Weir again");
+    expect(drawerStatusLabel("processingFailed", true, null)).toBe("Sending to the processor again");
+    expect(drawerStatusLabel("processingFailed", false, "Weir")).toMatch(/failed/i);
   });
 });

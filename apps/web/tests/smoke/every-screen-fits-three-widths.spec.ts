@@ -67,9 +67,17 @@ function removedIndexerRow(now: string) {
 const LONG_SYNOPSIS = "A documentary crew follows a small town through one long winter, and the longer they stay the less sure they are of what they came to film. Neighbours trade stories, old rivalries thaw, and by the spring nobody can say whose film it has become.".slice(0, 355);
 const FIT_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='288' height='48'><rect width='288' height='48' fill='#888'/></svg>")}`;
 
+/** Real-world values the narrow walk must read in full (#1211): a deep file path with no spaces in its folders, and long cast names with their roles. */
+const LONG_FILE_PATH = "D:\Media\Films\Lawrence of Arabia (1962)\Lawrence.of.Arabia.1962.Restored.Director's.Cut.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1.HEVC-LONGGROUPNAME.mkv";
+const LONG_CAST = [
+  { name: "Christopher Montgomery Featherstonehaugh-Cholmondeley", character: "Lieutenant Commander Bartholomew Winterbottom-Smythe" },
+  { name: "Wolfeschlegelsteinhausenbergerdorff Jr.", character: "The Honourable Gentleman" },
+  { name: "Arabella Guinevere Pennington-Whitcombe", character: "Dowager Countess of Little Wittering-on-the-Marsh" }
+].map((person, index) => ({ ...person, personId: `fit-person-${index}`, profileUrl: null, imdbUrl: null }));
+
 /** What a show from the rig brings to its header: a logo, alternate titles, genres, a long synopsis and every fact. */
 function richShow(body: Record<string, unknown>) {
-  const meta = { logoUrl: FIT_LOGO, alternateTitles: ["La Dimension Desconocida", "Das Unheimliche Zwielicht", "Al Di La Del Possibile"], Network: "A Very Long Network Name", Studio: "Cayuga Productions And Partners", OriginalLanguage: "English", Collection: "A Collection With A Rather Long Name", Director: "Rod Serling And Others", Status: "Ended", Certification: "TV-14" };
+  const meta = { cast: LONG_CAST, logoUrl: FIT_LOGO, alternateTitles: ["La Dimension Desconocida", "Das Unheimliche Zwielicht", "Al Di La Del Possibile"], Network: "A Very Long Network Name", Studio: "Cayuga Productions And Partners", OriginalLanguage: "English", Collection: "A Collection With A Rather Long Name", Director: "Rod Serling And Others", Status: "Ended", Certification: "TV-14" };
   return { overview: LONG_SYNOPSIS, genres: "Drama, Fantasy, Science Fiction, Mystery", metadataJson: JSON.stringify(meta) };
 }
 
@@ -81,7 +89,7 @@ const json = (body: unknown) => ({ contentType: "application/json", body: JSON.s
  * client with a warning. Real rows where an API takes them (indexers, clients, titles) and the answers the screens
  * read for the rest, so the layout under test is the real one.
  */
-async function seedLongData(page: Page, seriesId: string) {
+async function seedLongData(page: Page, seriesId: string, movieId: string) {
   const headers = await authHeaders(page);
   const indexers: { id: string; name: string }[] = [];
   for (let index = 1; index <= 5; index += 1) {
@@ -125,6 +133,13 @@ async function seedLongData(page: Page, seriesId: string) {
     const response = await route.fetch();
     const body = await response.json() as Record<string, unknown>;
     return route.fulfill({ response, json: { ...body, ...richShow(body) } });
+  });
+  // A film page as the rig has them: a deep file path and long cast names (#1211).
+  await page.route(new RegExp(`/api/movies/${movieId}$`), async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    const body = await response.json() as Record<string, unknown>;
+    return route.fulfill({ response, json: { ...body, filePath: LONG_FILE_PATH, metadataJson: JSON.stringify({ cast: LONG_CAST }) } });
   });
   await page.route(/\/api\/activity\?.*pageSize=80/, (route) => route.fulfill(json({
     items: Array.from({ length: 12 }, (_, index) => ({
@@ -200,7 +215,7 @@ async function seedTitles(page: Page) {
     data: { title: `Fit check show ${stamp}`, startYear: 2024, monitored: true }
   })).json() as { id: string };
   seeded.push({ movieId: movie.id, seriesId: series.id });
-  return { routes: [`/movies/${movie.id}`, `/tv/${series.id}`], seriesId: series.id };
+  return { routes: [`/movies/${movie.id}`, `/tv/${series.id}`], seriesId: series.id, movieId: movie.id };
 }
 
 // Pages that list records (the audit trail, trusted addresses): the same reason on two records is data, not a repeated help line.
@@ -409,8 +424,8 @@ test.describe("every screen fits three widths", () => {
       await page.setViewportSize(size);
       await authenticateAndNavigate(page, "/movies");
       await removeLeftoverLibraries(page);
-      const { routes: titles, seriesId } = await seedTitles(page);
-      await seedLongData(page, seriesId);
+      const { routes: titles, seriesId, movieId } = await seedTitles(page);
+      await seedLongData(page, seriesId, movieId);
       const data = trackDataRequests(page);
 
       const offenders: string[] = [];
@@ -431,6 +446,21 @@ test.describe("every screen fits three widths", () => {
           return same;
         }, { timeout: 8_000 }).toBe(true);
         const problems = JSON.parse(previous) as string[];
+        // #1211: at a phone width the film's file path and the cast names are read in full, wrapped, never cut with an ellipsis.
+        if (size.width < 768 && (route.startsWith("/movies/") || route.startsWith("/tv/"))) {
+          const wanted = route.startsWith("/movies/") ? [LONG_FILE_PATH, LONG_CAST[0].name, LONG_CAST[2].character] : [LONG_CAST[0].name, LONG_CAST[1].name, LONG_CAST[2].character];
+          for (const text of wanted) {
+            const cut = await page.evaluate((value) => {
+              const el = Array.from(document.querySelectorAll<HTMLElement>("dd, figcaption span")).find((item) => item.textContent?.trim() === value);
+              if (!el) return "not on the page";
+              const box = el.getBoundingClientRect();
+              if (el.scrollWidth > el.clientWidth + 1) return `cut: ${el.scrollWidth}px of text in ${el.clientWidth}px`;
+              if (box.right > document.documentElement.clientWidth + 1) return "runs past the screen";
+              return null;
+            }, text);
+            if (cut) problems.push(`"${text.slice(0, 30)}" ${cut}`);
+          }
+        }
         const shown = route.startsWith("/movies/") ? "a film page" : route.startsWith("/tv/") ? "a show page" : route;
         if (problems.length > 0) offenders.push(`${shown}: ${problems.slice(0, 12).join("; ")}`);
       }

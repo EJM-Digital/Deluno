@@ -155,6 +155,9 @@ test("while a hand-off is being sent again no old failure shows beside it (#1204
 
   await drawer.getByRole("button", { name: "Send to Weir again" }).click();
   await expect(drawer.getByText(/Sending it to Weir again/)).toBeVisible();
+  // The header and the Import box's aside read the in-progress state too, never "Processing failed" (#1204).
+  await expect(drawer.getByText(/Sending to Weir again/).first()).toBeVisible();
+  await expect(drawer.getByText("Processing failed")).toHaveCount(0);
   for (const old of [oldFinding, oldError, reason]) {
     await expect(drawer.getByText(old)).toHaveCount(0);
   }
@@ -162,4 +165,5 @@ test("while a hand-off is being sent again no old failure shows beside it (#1204
   await page.waitForTimeout(1500);
   await expect(drawer.getByText(oldFinding)).toHaveCount(0);
   await expect(drawer.getByText(oldError)).toHaveCount(0);
+  await expect(drawer.getByText("Processing failed")).toHaveCount(0);
 });

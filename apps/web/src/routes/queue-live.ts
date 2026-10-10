@@ -8,7 +8,9 @@
  */
 import type { QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
-import type { ClientStateChangedEvent, DownloadTelemetryOverview } from "../lib/api";
+import type { ClientStateChangedEvent, DownloadTelemetryOverview, JobQueueItem } from "../lib/api";
+import { downloadQueueStatuses } from "../lib/download-telemetry";
+import { isJobFailed, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { queryClient } from "../lib/route-cache";
 import { sharedSources } from "../lib/shared-sources";
 import { useLiveEvent, useLiveWatching, type DownloadProgressEvent } from "../lib/use-signalr";
@@ -80,6 +82,36 @@ export function applyClientStateToTelemetry(client: Cache, event: ClientStateCha
     clients: overview.clients.map((entry) => (entry.clientId === event.clientId ? { ...entry, healthStatus, clientPaused, lastHealthMessage: event.reachable ? null : event.message ?? entry.lastHealthMessage } : entry))
   });
   return true;
+}
+
+/**
+ * What a download's row says once its import job has answered: Imported, Import failed, or Import queued while the
+ * job is waiting, running or has another attempt coming (#1209). Judged from the job the click returned, so the row
+ * leaves "Ready to import" at once instead of at the next read.
+ */
+export function importOutcomeStatus(job: Pick<JobQueueItem, "status" | "attempts" | "maxAttempts" | "nextAttemptUtc">): string {
+  if (isJobSuccessful(job.status as JobStatus)) return downloadQueueStatuses.imported;
+  if (isJobFailed(job.status as JobStatus) && !isJobRetrying(job)) return downloadQueueStatuses.importFailed;
+  return downloadQueueStatuses.importQueued;
+}
+
+/** The jobs list Transfers reads (its own source in queue-screen). */
+export const TRANSFERS_JOBS_KEY = ["src", "jobs-80"] as const;
+
+/** The import job a click just made joins the jobs list the screen reads, so "Importing" counts it with no wait. */
+export function applyImportJob(client: Cache, job: JobQueueItem): boolean {
+  const jobs = client.getQueryData<JobQueueItem[]>(TRANSFERS_JOBS_KEY);
+  if (!jobs) return false;
+  client.setQueryData<JobQueueItem[]>(TRANSFERS_JOBS_KEY, jobs.some((entry) => entry.id === job.id)
+    ? jobs.map((entry) => (entry.id === job.id ? job : entry))
+    : [job, ...jobs]);
+  return true;
+}
+
+/** Shows the outcome of "Queue import" on its row the moment the click returns (#1209). */
+export function applyImportOutcome(client: Cache, queueItemId: string, job: JobQueueItem): void {
+  applyImportJob(client, job);
+  applyQueueStatus(client, { id: queueItemId, status: importOutcomeStatus(job), errorMessage: isJobFailed(job.status as JobStatus) ? job.lastError ?? null : null });
 }
 
 /**
