@@ -9,6 +9,43 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.17
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### The tray
+- The tray stays amber while a connection is down, even when a hand-off fails
+  in the meantime, and turns green as soon as the connection answers again.
+- The tray and the Dashboard use the same rule for a connection that is down.
+- On a fresh install the tray shows a blinking "Deluno - setting up" icon from
+  the start, with Open Deluno and Quit, while first-run setup runs.
+
+### Downloads and your processor
+- Removing a finished SABnzbd download removes its folder too, extras included.
+  A removal only reads Done when the client really had the download and no
+  longer has it.
+- Removing a download closes its hand-off at the same moment, so it never comes
+  back later as a problem.
+- Whenever Deluno closes a hand-off without importing it, it tells your
+  processor, so the processor can let go of its copy. Hand-offs closed earlier
+  without that message get it once after this update.
+- A second copy Deluno stopped because another copy was handed over reads "Not
+  needed" and leaves In progress.
+
+### Everything you can see, you can clear
+- Every row counted under Activity's Failed has a Dismiss in its drawer.
+- System has a Check now for its health checks, and a processor's capability
+  rows clear as soon as it answers again.
+
 ## 1.0.0-rc.30.16
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
