@@ -1,3 +1,4 @@
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -250,7 +251,7 @@ export function MediaServersPage() {
       }
       const saved = (await response.json()) as MediaServerConnection;
       const settled = formFrom(saved);
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitial(settled);
       setDrawer({ open: true, id: saved.id });
       setSaveState("saved");

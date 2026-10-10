@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -179,6 +180,7 @@ export function SettingsLibrariesPage() {
 
     setBusy(true);
     setSaveState("saving");
+    const submitted = form;
     try {
       let library: LibraryItem;
       if (creating) {
@@ -231,7 +233,8 @@ export function SettingsLibrariesPage() {
       // Re-read so server-side normalisation shows in the drawer.
       const fresh = (await fetchJson<LibraryItem[]>("/api/libraries")).find((item) => item.id === library.id) ?? library;
       const settled = formFromLibrary(fresh);
-      setForm(settled);
+      // A field the person kept typing in while this save ran keeps what they typed; it stays a change to save.
+      setForm((current) => settleFormAfterSave(current, submitted, settled));
       setInitialForm(settled);
       if (creating) {
         toast.success(`${settled.name} library created`);

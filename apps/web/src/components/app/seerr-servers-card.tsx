@@ -1,3 +1,4 @@
+import { settleFormAfterSave } from "../../lib/settle-form-after-save";
 import { SecretUnreadableNotice } from "./secret-unreadable-notice";
 import { useEffect, useState, type FormEvent } from "react";
 import { Copy, Loader2, Wifi } from "lucide-react";
@@ -231,7 +232,7 @@ export function SeerrServersCard({
       if (!response.ok) throw new Error((await fieldErrors(response)) ? "Check the highlighted fields." : "The server could not be saved.");
       const saved = (await response.json()) as SeerrServer;
       const settled = formFrom(saved);
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitial(settled);
       setDrawer({ open: true, id: saved.id });
       setSaveState("saved");
