@@ -234,23 +234,29 @@ public sealed class TrayStandardTests
     }
 
     [Fact]
-    public void Deluno_itself_is_not_called_down_while_it_starts()
+    public void A_metadata_failure_from_before_the_host_started_is_not_a_reading_of_this_run()
     {
-        // The metadata service is Deluno's own broker, named "deluno". The failed check taken while it started stays on
-        // record; for ten minutes after the host starts it is not a reading of this run.
-        var failed = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now.AddMinutes(-1));
+        // Deluno's own broker, named "deluno", was still starting when this was recorded.
+        var stale = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now.AddMinutes(-5));
 
-        Assert.Empty(TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(-3)));
-        Assert.Empty(TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(30)));
+        Assert.Empty(TrayPlatformHealth.Down([stale], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(-3)));
     }
 
     [Fact]
-    public void The_metadata_service_is_named_plainly_once_it_has_really_failed_after_the_start_up()
+    public void A_fresh_metadata_failure_after_the_start_is_named_plainly()
     {
-        var failed = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now);
+        var failed = new ConnectionCheckItem("metadata", "metadata", "deluno", false, false, "Did not answer.", Now.AddMinutes(-1));
 
         Assert.Equal(["The metadata service isn't answering"],
-            TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddHours(-1)));
+            TrayPlatformHealth.Down([failed], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(-3)));
+    }
+
+    [Fact]
+    public void A_fresh_good_metadata_check_after_the_start_reports_nothing()
+    {
+        var ok = new ConnectionCheckItem("metadata", "metadata", "deluno", true, false, "Answered.", Now.AddMinutes(-1));
+
+        Assert.Empty(TrayPlatformHealth.Down([ok], [], [], [], [], Now, hostStartedUtc: Now.AddMinutes(-3)));
     }
 
     [Fact]

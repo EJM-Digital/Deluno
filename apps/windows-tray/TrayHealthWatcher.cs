@@ -45,6 +45,7 @@ public sealed class TrayHealthWatcher : IDisposable
     private bool _scheduled;
     private bool _disposed;
     private bool _everRead;
+    private bool _startChecked;
 
     public TrayHealthWatcher(IServiceProvider services, Action<TrayServerSignals> changed)
     {
@@ -92,6 +93,12 @@ public sealed class TrayHealthWatcher : IDisposable
 
             try
             {
+                if (!_startChecked)
+                {
+                    await CheckMetadataAfterStartAsync().ConfigureAwait(false);
+                    _startChecked = true;
+                }
+
                 var signals = await ReadAsync().ConfigureAwait(false);
                 _everRead = true;
                 _changed(signals);
@@ -106,6 +113,45 @@ public sealed class TrayHealthWatcher : IDisposable
                 }
             }
         });
+    }
+
+    /// <summary>How many times, and how far apart, the first metadata check is tried while the broker comes up.</summary>
+    public static readonly (int Attempts, TimeSpan Gap) StartCheck = (4, TimeSpan.FromSeconds(5));
+
+    /// <summary>
+    /// Checks the metadata service once the host has started, again a few seconds on while it fails (the broker may
+    /// still be coming up), and records each result like any check, which pushes ConnectionChecked. The tray keeps
+    /// blinking until this is done, then shows what the fresh result says, so an outage right after a start still shows.
+    /// </summary>
+    private async Task CheckMetadataAfterStartAsync()
+    {
+        for (var attempt = 1; attempt <= StartCheck.Attempts && !_disposed; attempt++)
+        {
+            try
+            {
+                using var scope = _services.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                var tester = scope.ServiceProvider.GetService<IConnectionHealthTester>();
+                if (tester is null)
+                {
+                    return;
+                }
+
+                var result = await tester.TestAsync(ConnectionKinds.Metadata, "metadata", CancellationToken.None).ConfigureAwait(false);
+                if (result is null || result.Ok)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // A check that could not run leaves the old record; the reading below ignores a pre-start one.
+            }
+
+            if (attempt < StartCheck.Attempts)
+            {
+                await Task.Delay(StartCheck.Gap).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>The connections and folders that do not answer, and the Automation switch, read in-process.</summary>
@@ -152,13 +198,8 @@ public static class TrayPlatformHealth
     public static bool IsDownStatus(string? status)
         => status is not null && status.ToLowerInvariant() is "unreachable" or "unhealthy" or "failed" or "error";
 
-    /// <summary>
-    /// After a restart the metadata service (Deluno's own broker, named "deluno") is still starting, and the check taken
-    /// while it started stays on record until the next regular check. For this long after the host starts that check is
-    /// not a reading of the new run, so the tray blinks until a good reading instead of calling Deluno itself down (#1202).
-    /// </summary>
-    public static readonly TimeSpan MetadataStartupGrace = TimeSpan.FromMinutes(10);
-
+    // After a restart the check taken before the host started is stale: Deluno's own broker (named "deluno") was still
+    // starting. The watcher runs one fresh check straight after the start and that replaces it (#1202).
     public const string MetadataNotAnswering = "The metadata service isn't answering";
 
     public static string NotAnswering(string name) => $"{name} isn't answering";
@@ -203,7 +244,7 @@ public static class TrayPlatformHealth
         down.AddRange(processors.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Processor, item.Id, item.HealthStatus, item.LastHealthTestUtc)).Select(item => NotAnswering(item.Name)));
 
         var metadata = checks.FirstOrDefault(check => check.Kind == ConnectionKinds.Metadata);
-        var starting = hostStartedUtc is { } started && (now - started < MetadataStartupGrace || (metadata is not null && metadata.CheckedUtc < started));
+        var starting = hostStartedUtc is { } started && metadata is not null && metadata.CheckedUtc < started;
         if (metadata is { Ok: false } && !starting)
         {
             // Deluno's own broker is named "deluno", which says nothing to a person: use the plain phrase for it.
