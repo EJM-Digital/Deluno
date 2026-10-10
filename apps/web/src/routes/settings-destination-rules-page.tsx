@@ -8,6 +8,7 @@
  * Contracts: GET/POST /api/destination-rules, PUT/DELETE /api/destination-rules/{id},
  * POST /api/filesystem/import/preview.
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { TagPicker } from "../components/app/tag-picker";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -222,7 +223,7 @@ export function SettingsDestinationRulesPage() {
         setSaveMessage("Saved just now");
       }
       const settled = { ...form, name: payload.name, matchValue: payload.matchValue, rootPath: payload.rootPath, priority: String(payload.priority), libraryId: payload.libraryId ?? "" };
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitialForm(settled);
       setSaveState("saved");
       revalidator.revalidate();

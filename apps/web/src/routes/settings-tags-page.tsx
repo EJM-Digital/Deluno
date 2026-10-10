@@ -1,6 +1,7 @@
 /**
  * Tags — list → drawer. Contracts: GET/POST /api/tags, PUT/DELETE /api/tags/{id}.
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -120,7 +121,7 @@ export function SettingsTagsPage() {
       } else {
         setSaveMessage("Saved just now");
       }
-      setForm(payload);
+      setForm((current) => settleFormAfterSave(current, form, payload));
       setInitialForm(payload);
       setSaveState("saved");
       revalidator.revalidate();

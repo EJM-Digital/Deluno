@@ -9,6 +9,7 @@
  * POST …/sync, …/preview, …/approve-preview, …/exclude-preview,
  * DELETE …/exclusions/{exclusionId}.
  */
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -320,7 +321,7 @@ export function SettingsListsPage() {
         setSaveMessage("Saved just now");
       }
       const settled = formFrom(saved);
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitialForm(settled);
       setSaveState("saved");
       revalidator.revalidate();

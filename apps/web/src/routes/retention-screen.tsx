@@ -1,3 +1,4 @@
+import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -359,7 +360,7 @@ export function RetentionPage() {
       }
       const saved = (await response.json()) as RetentionRule;
       const settled = formFrom(saved);
-      setForm(settled);
+      setForm((current) => settleFormAfterSave(current, form, settled));
       setInitial(settled);
       setDrawer({ open: true, id: saved.id });
       setSaveState("saved");

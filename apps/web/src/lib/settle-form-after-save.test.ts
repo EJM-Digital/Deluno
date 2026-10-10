@@ -14,4 +14,13 @@ describe("settleFormAfterSave", () => {
     const typed = { ...submitted, name: "Films-b" };
     expect(settleFormAfterSave(typed, submitted, settled)).toEqual({ name: "Films-b", rootPath: "/media/films", downloadsPath: "/downloads" });
   });
+
+  it("keeps a list edited while the save was running, as the profile, release-rule and tag forms hold lists", () => {
+    const sent = { name: "Plan", indexerIds: ["a"], specifications: [{ value: "x" }] };
+    const settled = { name: "Plan", indexerIds: ["a"], specifications: [{ value: "x" }] };
+    const edited = { ...sent, indexerIds: ["a", "b"] };
+    const result = settleFormAfterSave(edited, sent, settled);
+    expect(result.indexerIds).toEqual(["a", "b"]);
+    expect(result.specifications).toBe(settled.specifications);
+  });
 });
