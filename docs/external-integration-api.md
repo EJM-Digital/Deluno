@@ -838,13 +838,16 @@ POST …/intake/handoffs/{source}/{handoffId}/outcome
 { "outcome": "imported | not-imported", "occurredUtc": "…", "importedPath": "…", "reason": "…" }
 ```
 
+**Which hand-offs get an outcome.** Every hand-off whose file the processor handed back and that Deluno then closed: imported, or closed without an import (a person dismissed it or stopped tracking the download, the title was removed, Deluno stopped waiting, or another copy took over). A hand-off the processor itself ended as failed, rejected or `source_gone` handed back no file, so it gets no outcome, and an outcome already owed for one is closed as not needed and not sent again. A file that was handed back is always owed one, whatever else the processor said.
+
 `not-imported` is final and is sent only when Deluno will not try the import again. `occurredUtc` is when the import finished, so every repeat of a report is the same report. `reason` is why, on `not-imported`; on `imported` it is set only for a season pack that left some of its files alone - an extra, featurette, sample or a special the catalogue does not list - and names them, in plain words, so the processor is told the whole story about what it gets to release.
 
 Deluno keeps an outcome until the processor hears it:
 
 - `2xx` is acknowledged. `released: true` in the body means the processor let go of its copy.
 - `404`, and any other `4xx` except those below, are final. Repeating the same report would get the same answer.
-- `409`, `401`, `403`, `408`, `429`, `5xx` and a processor that cannot be reached are all tried again. The first retry comes after a minute, and the wait doubles each time up to an hour.
+- `409` is read by the `code` field of its JSON body. `handoff_ended` (the hand-off is over on the processor's side and handed back no file) and `outcome_already_recorded` (the processor keeps the answer it already has) are final. Any other `409`, including `handoff_not_finished` ("not finished yet, try later"), is tried again.
+- `401`, `403`, `408`, `429`, `5xx` and a processor that cannot be reached are all tried again. The first retry comes after a minute, and the wait doubles each time up to an hour.
 - Deluno gives up after seven days without an acknowledgement, or when the processor connection is removed.
 - A processor that answers but does not list `handoff-outcome` is not told, and keeps its copy until its own retention reclaims it.
 
