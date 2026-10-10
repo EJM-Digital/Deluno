@@ -56,6 +56,16 @@ describe("processorOutcomeSummary (#580)", () => {
     expect(summary.canSendAgain).toBe(true);
   });
 
+  it.each([
+    ["never-received", "It never received this hand-off, so there was nothing to tell it"],
+    ["replaced", "A newer send of this release took over, so this one was not told"]
+  ])("has nothing to say again for a %s report", (delivery, heard) => {
+    const summary = processorOutcomeSummary({ ...owed, delivery }, when);
+
+    expect(summary.heard).toBe(heard);
+    expect(summary.canSendAgain).toBe(false);
+  });
+
   it("says what Deluno told it in either direction", () => {
     expect(processorOutcomeSummary(owed, when).said).toBe("It has the file");
     expect(processorOutcomeSummary({ ...owed, outcome: "not-imported" }, when).said).toBe("It will not import the file");
