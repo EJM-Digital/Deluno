@@ -84,6 +84,22 @@ public sealed class IntelligentRoutingService(
             : null;
     }
 
+    public async Task<DownloadClientRecord?> GetDownloadClientRecordAsync(
+        string? downloadClientId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(downloadClientId))
+        {
+            return null;
+        }
+
+        var snapshot = await GetSnapshotAsync(cancellationToken);
+        return snapshot.DownloadClientRecords is not null
+            && snapshot.DownloadClientRecords.TryGetValue(downloadClientId, out var record)
+                ? record
+                : null;
+    }
+
     private async Task<IntelligentRoutingSnapshot> ComputeSnapshotAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -94,10 +110,26 @@ public sealed class IntelligentRoutingService(
         var preferences = await QueryPreferencesAsync(connection, cancellationToken);
         // By the indexer's id, so a renamed indexer keeps its success rate (#1077); a
         // dispatch whose source matched no indexer is keyed by its name.
-        var indexers = await QuerySuccessRatesAsync(connection, "COALESCE(indexer_id, indexer_name)", cancellationToken);
-        var clients = await QuerySuccessRatesAsync(connection, "download_client_id", cancellationToken);
+        var indexers = await QuerySuccessRatesAsync(connection, "COALESCE(indexer_id, indexer_name)", now, cancellationToken);
+        var clients = await QuerySuccessRatesAsync(connection, "download_client_id", now, cancellationToken);
+        var lastSends = await QueryLastSendsAsync(connection, cancellationToken);
+        var records = new Dictionary<string, DownloadClientRecord>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (clientId, counts) in clients)
+        {
+            records[clientId] = new DownloadClientRecord(
+                counts.Counted,
+                counts.Imported,
+                counts.Rate,
+                DispatchRateCounting.RecentWindowDays,
+                lastSends.TryGetValue(clientId, out var last) ? last : null);
+        }
 
-        return new IntelligentRoutingSnapshot(now, preferences, indexers, clients);
+        return new IntelligentRoutingSnapshot(
+            now,
+            preferences,
+            indexers.ToDictionary(pair => pair.Key, pair => pair.Value.Rate, StringComparer.OrdinalIgnoreCase),
+            clients.ToDictionary(pair => pair.Key, pair => pair.Value.Rate, StringComparer.OrdinalIgnoreCase),
+            records);
     }
 
     private static async Task<IntelligentRoutingPreferences> QueryPreferencesAsync(
@@ -154,36 +186,82 @@ public sealed class IntelligentRoutingService(
             PreferredReleaseGroups: groups);
     }
 
-    private static async Task<IReadOnlyDictionary<string, double>> QuerySuccessRatesAsync(
+    /// <summary>
+    /// The share of imports among the source's most recent counted sends (#1222): the last
+    /// <see cref="DispatchRateCounting.RecentSendLimit"/> sends with a final outcome that is the source's doing
+    /// (<see cref="DispatchRateCounting.CountsTowardRateSql"/>), no older than
+    /// <see cref="DispatchRateCounting.RecentWindowDays"/> days. The indexer rate follows the same rule.
+    /// </summary>
+    private static async Task<Dictionary<string, (int Counted, int Imported, double Rate)>> QuerySuccessRatesAsync(
         DbConnection connection,
         string columnName,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var rates = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var rates = new Dictionary<string, (int Counted, int Imported, double Rate)>(StringComparer.OrdinalIgnoreCase);
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
-            SELECT
-                {columnName},
-                COUNT(*) AS total_count,
-                SUM(CASE WHEN import_status = 'imported' THEN 1 ELSE 0 END) AS success_count
-            FROM download_dispatches
-            WHERE {columnName} IS NOT NULL
-              AND decision_score IS NOT NULL
-            GROUP BY {columnName}
-            HAVING total_count >= 3;
+            WITH counted AS (
+                SELECT
+                    {columnName} AS source_key,
+                    CASE WHEN {DispatchRateCounting.ImportedSql} THEN 1 ELSE 0 END AS succeeded,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY {columnName}
+                        ORDER BY {DispatchRateCounting.OutcomeTimeSql} DESC) AS recency
+                FROM download_dispatches
+                WHERE {columnName} IS NOT NULL
+                  AND decision_score IS NOT NULL
+                  AND {DispatchRateCounting.CountsTowardRateSql}
+                  AND {DispatchRateCounting.OutcomeTimeSql} >= @sinceUtc
+            )
+            SELECT source_key, COUNT(*) AS total_count, SUM(succeeded) AS success_count
+            FROM counted
+            WHERE recency <= @limit
+            GROUP BY source_key
+            HAVING total_count >= @minimum;
             """;
+        AddParameter(command, "@sinceUtc", now.AddDays(-DispatchRateCounting.RecentWindowDays).ToString("O"));
+        AddParameter(command, "@limit", DispatchRateCounting.RecentSendLimit);
+        AddParameter(command, "@minimum", DispatchRateCounting.MinimumCountedSends);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             var key = reader.GetString(0);
-            var total = reader.GetInt64(1);
-            var success = reader.IsDBNull(2) ? 0L : reader.GetInt64(2);
-            rates[key] = total == 0 ? 0 : Math.Round((double)success / total, 4);
+            var total = Convert.ToInt32(reader.GetInt64(1), CultureInfo.InvariantCulture);
+            var success = reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetInt64(2), CultureInfo.InvariantCulture);
+            rates[key] = (total, success, total == 0 ? 0 : Math.Round((double)success / total, 4));
         }
 
         return rates;
+    }
+
+    /// <summary>When each client last had any send at all, in flight or not: the cool-off counts from here.</summary>
+    private static async Task<Dictionary<string, DateTimeOffset>> QueryLastSendsAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var last = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT download_client_id, MAX(COALESCE(grab_attempted_utc, created_utc))
+            FROM download_dispatches
+            WHERE download_client_id IS NOT NULL
+            GROUP BY download_client_id;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(1)
+                && DateTimeOffset.TryParse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+            {
+                last[reader.GetString(0)] = at;
+            }
+        }
+
+        return last;
     }
 
     private async Task<(int Total, double FailureRate)> QueryFailureRateAsync(

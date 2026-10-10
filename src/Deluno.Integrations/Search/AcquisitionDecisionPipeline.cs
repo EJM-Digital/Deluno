@@ -930,20 +930,47 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         var pool = clients;
         var passedOver = new List<string>();
+        var recordsByName = new Dictionary<string, DownloadClientRecord?>(StringComparer.Ordinal);
         if (intelligentRoutingService is not null)
         {
             var healthy = new List<LibraryDownloadClientLinkItem>();
+            var due = new List<(LibraryDownloadClientLinkItem Client, DownloadClientRecord Record)>();
+            var now = timeProvider.GetUtcNow();
             foreach (var client in clients)
             {
-                var rate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(client.DownloadClientId, cancellationToken);
+                var record = await intelligentRoutingService.GetDownloadClientRecordAsync(client.DownloadClientId, cancellationToken);
+                var rate = record?.Rate
+                    ?? await intelligentRoutingService.GetDownloadClientSuccessRateAsync(client.DownloadClientId, cancellationToken);
                 if (rate is { } known && known < FailingClientSuccessRate)
                 {
+                    // A passed-over client is given a trial send again once it has had none for the cool-off, so
+                    // it can show it has recovered (#1222). Without that its record could never change.
+                    if (record is { } failing
+                        && (failing.LastSendUtc is null || now - failing.LastSendUtc.Value >= DispatchRateCounting.ClientCoolOff))
+                    {
+                        due.Add((client, failing));
+                    }
+
                     passedOver.Add(client.DownloadClientName);
+                    recordsByName[client.DownloadClientName] = record;
                 }
                 else
                 {
                     healthy.Add(client);
                 }
+            }
+
+            if (due.Count > 0)
+            {
+                var trial = due.OrderBy(entry => priorityOf(entry.Client)).ThenBy(entry => entry.Client.DownloadClientId, StringComparer.Ordinal).First();
+                var others = passedOver.Where(name => !string.Equals(name, trial.Client.DownloadClientName, StringComparison.Ordinal)).ToArray();
+                var trialReason = $"{trial.Client.DownloadClientName} is being given a trial send: only {DescribeRecord(trial.Record)}, but it has had no send for at least {(int)DispatchRateCounting.ClientCoolOff.TotalHours} hours, so this one shows whether it has recovered.";
+                foreach (var name in others)
+                {
+                    trialReason += $" {DescribePassedOver(name, recordsByName.GetValueOrDefault(name))}.";
+                }
+
+                return (trial.Client, trialReason);
             }
 
             if (healthy.Count > 0)
@@ -980,11 +1007,23 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         if (passedOver.Count > 0)
         {
-            reason += $" {string.Join(", ", passedOver)} {(passedOver.Count == 1 ? "was" : "were")} passed over because most of {(passedOver.Count == 1 ? "its" : "their")} recent downloads failed.";
+            foreach (var name in passedOver)
+            {
+                reason += $" {DescribePassedOver(name, recordsByName.GetValueOrDefault(name))}.";
+            }
         }
 
         return (chosen, reason);
     }
+
+    /// <summary>"2 of its last 10 downloads imported (counting the last 30 days)": what the rate is made of and over what window (#1222).</summary>
+    internal static string DescribeRecord(DownloadClientRecord record)
+        => $"{record.Imported} of its last {record.Counted} download{(record.Counted == 1 ? "" : "s")} imported (counting the last {record.WindowDays} days)";
+
+    private static string DescribePassedOver(string name, DownloadClientRecord? record)
+        => record is null
+            ? $"{name} was passed over because most of its recent downloads failed"
+            : $"{name} was passed over: {DescribeRecord(record)}";
 
     private async Task<ReadyConnections> ResolveReadyConnectionsAsync(
         AcquisitionDecisionRequest request,
