@@ -438,7 +438,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                     id,
                     reader.GetString(1),
                     reader.GetInt32(2) != 0,
-                    IsHealthy(reader.IsDBNull(3) ? null : reader.GetString(3)),
+                    !ConnectionHealthRules.IsDown(reader.IsDBNull(3) ? null : reader.GetString(3)),
                     day.Count,
                     day.Busy));
             }
@@ -476,9 +476,6 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
     }
 
     /// <summary>Last contact worked, or it has never failed: anything that is not a recorded failure.</summary>
-    private static bool IsHealthy(string? status)
-        => status is null || status.ToLowerInvariant() is "healthy" or "untested" or "unknown";
-
     private static void Add(DbCommand command, string name, object value)
     {
         var parameter = command.CreateParameter();

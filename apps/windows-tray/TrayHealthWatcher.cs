@@ -194,9 +194,9 @@ public sealed class TrayHealthWatcher : IDisposable
 /// </summary>
 public static class TrayPlatformHealth
 {
-    /// <summary>A stored connection health that means it does not answer.</summary>
+    /// <summary>A stored connection health that means it is down or not working: the rule the Dashboard uses too.</summary>
     public static bool IsDownStatus(string? status)
-        => status is not null && status.ToLowerInvariant() is "unreachable" or "unhealthy" or "failed" or "error";
+        => ConnectionHealthRules.IsDown(status);
 
     // After a restart the check taken before the host started is stale: Deluno's own broker (named "deluno") was still
     // starting. The watcher runs one fresh check straight after the start and that replaces it (#1202).

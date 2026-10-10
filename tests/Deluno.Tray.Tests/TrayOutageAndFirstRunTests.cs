@@ -44,8 +44,26 @@ public sealed class TrayOutageAndFirstRunTests
         => Assert.Empty(Down(Check(true, T0.AddMinutes(1)), "degraded", T0));
 
     [Fact]
-    public void A_degraded_write_after_a_successful_check_does_not_make_it_down()
-        => Assert.Empty(Down(Check(true, T0), "degraded", T0.AddSeconds(2)));
+    public void A_degraded_write_after_a_successful_check_is_amber_like_the_dashboard()
+        => Assert.Equal(["Weir isn't answering"], Down(Check(true, T0), "degraded", T0.AddSeconds(2)));
+
+    [Theory]
+    [InlineData("healthy")]
+    [InlineData("degraded")]
+    [InlineData("unreachable")]
+    [InlineData("unhealthy")]
+    [InlineData("failed")]
+    [InlineData("error")]
+    [InlineData("unknown")]
+    [InlineData("untested")]
+    public void The_tray_and_the_dashboard_give_the_same_answer_for_every_stored_status(string status)
+    {
+        // Both read ConnectionHealthRules.IsDown; with no check yet the tray's answer is that rule alone.
+        var tray = Down(null, status, null).Count > 0;
+        Assert.Equal(ConnectionHealthRules.IsDown(status), tray);
+        Assert.Equal(TrayPlatformHealth.IsDownStatus(status), tray);
+        Assert.Equal(status is not ("healthy" or "unknown" or "untested"), tray);
+    }
 
     [Fact]
     public void Recovery_a_healthy_answer_after_the_failed_check_goes_green_at_once()
@@ -60,7 +78,7 @@ public sealed class TrayOutageAndFirstRunTests
     {
         Assert.Equal(["Weir isn't answering"], Down(Check(true, T0), "unreachable", T0.AddSeconds(3)));
         Assert.Equal(["Weir isn't answering"], Down(null, "unreachable", null));
-        Assert.Empty(Down(null, "degraded", T0));
+        Assert.Equal(["Weir isn't answering"], Down(null, "degraded", T0));
     }
 
     [Fact]
