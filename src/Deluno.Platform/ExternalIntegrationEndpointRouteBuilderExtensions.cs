@@ -1226,13 +1226,14 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // its own scan -- is answered like any report already acted on, and
             // its copy is deleted. Nothing is blocklisted, removed from the
             // client or searched for.
-            if (importsOutput && await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+            var known = handoff;
+            async Task<IResult> AnswerAlreadyImportedAsync()
             {
-                var deletedCopy = ProcessorOutputPathPolicy.DeleteSecondCopy(request.OutputPath, library.ProcessorOutputPath, handoff.SourcePath);
-                var closing = !string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase);
+                var deletedCopy = ProcessorOutputPathPolicy.DeleteSecondCopy(request.OutputPath, library.ProcessorOutputPath, known.SourcePath);
+                var closing = !string.Equals(known.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase);
                 if (closing)
                 {
-                    await repository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, request.OutputPath, null, null, cancellationToken);
+                    await repository.UpdateProcessorHandoffAsync(known.Id, ProcessorHandoffStatuses.Completed, request.OutputPath, null, null, cancellationToken);
                 }
 
                 if (closing || deletedCopy)
@@ -1240,18 +1241,23 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     await activityFeed.RecordActivityAsync(
                         "processing.output.already-imported",
                         deletedCopy
-                            ? $"{processorName} sent a second copy of {handoff.ReleaseName}, which Deluno had already imported. Deluno deleted the second copy."
-                            : $"{processorName} reported {handoff.ReleaseName}, which Deluno had already imported. There was nothing to import.",
-                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, request.OutputPath, Deleted = deletedCopy }),
+                            ? $"{processorName} sent a second copy of {known.ReleaseName}, which Deluno had already imported. Deluno deleted the second copy."
+                            : $"{processorName} reported {known.ReleaseName}, which Deluno had already imported. There was nothing to import.",
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = known.Id, request.OutputPath, Deleted = deletedCopy }),
                         null,
                         "processor-handoff",
-                        handoff.Id,
+                        known.Id,
                         cancellationToken);
                 }
 
                 return Results.Json(
-                    new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, alreadyImported = true },
+                    new { status = "completed", handoffId = known.Id, alreadyHandled = true, alreadyImported = true },
                     statusCode: StatusCodes.Status202Accepted);
+            }
+
+            if (importsOutput && await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+            {
+                return await AnswerAlreadyImportedAsync();
             }
 
             // An ending is an ending. Deluno stopped waiting for this file, or a
@@ -1416,6 +1422,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
                 importJob = await outputImports.QueueAsync(library, handoff, outputPath, "processor", cancellationToken);
+                if (importJob.AlreadyImported)
+                {
+                    // This very file was imported by an earlier request (a resent release whose output the first send
+                    // already had imported): answered like any report already acted on, never imported twice (#1226).
+                    return await AnswerAlreadyImportedAsync();
+                }
+
                 // Every file the processor says it made has to be there to be
                 // imported; one that is not is said, not passed over (#619).
                 var missing = (request.OutputFiles ?? []).Where(file => !string.IsNullOrWhiteSpace(file) && !File.Exists(file.Trim())).Select(file => file.Trim()).ToArray();

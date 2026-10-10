@@ -116,6 +116,29 @@ public static class ProcessorOutcomeDelivery
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
+        // "It will not import this" about a send that a newer send of the same release replaced, while that newer send
+        // is being handled or is done, would contradict the report the newer send makes about the one file both
+        // refer to (#1226). It is not told: the newer send tells the processor what became of the file.
+        if (record.Outcome == ProcessorOutcomeRecord.NotImported
+            && record.Delivery == ProcessorOutcomeDeliveries.Pending
+            && await repository.FindSupersededProcessorHandoffAsync(record.LibraryId, record.HandoffId, cancellationToken) is { } older
+            && await repository.GetProcessorHandoffAsync(older.SupersededById, cancellationToken) is { } successor
+            && (ProcessorHandoffStatuses.IsWithProcessor(successor.Status) || successor.Status == ProcessorHandoffStatuses.Completed))
+        {
+            return await SettleAsync(
+                repository,
+                activityFeed,
+                record with
+                {
+                    Delivery = ProcessorOutcomeDeliveries.Replaced,
+                    NextAttemptUtc = null,
+                    LastAttemptUtc = nowUtc,
+                    ProcessorSaid = $"{record.ReleaseName} was sent again after this send, and the newer send is the one that is handled."
+                },
+                announce: true,
+                cancellationToken);
+        }
+
         var connection = await repository.FindProcessorConnectionAsync(record.ProcessorConnectionId, record.ProcessorName, cancellationToken);
         if (connection is null)
         {
@@ -277,6 +300,21 @@ public static class ProcessorOutcomeDelivery
     /// <summary>What a person reads in Activity, in one sentence per ending.</summary>
     public static (string Kind, string Message) Describe(ProcessorOutcomeRecord record)
     {
+        // Nothing was refused and nothing failed in these two: no "could not tell" and no stop-trying wording (#1226, #1230).
+        if (record.Delivery == ProcessorOutcomeDeliveries.NeverReceived)
+        {
+            return (
+                "processing.outcome-never-received",
+                $"{record.ProcessorName} never received this hand-off of {record.ReleaseName}, so there was nothing to tell it.");
+        }
+
+        if (record.Delivery == ProcessorOutcomeDeliveries.Replaced)
+        {
+            return (
+                "processing.outcome-superseded",
+                $"{record.ReleaseName} was sent to {record.ProcessorName} again after this send, so Deluno left the report to the newer send, which is the one that is handled.");
+        }
+
         var said = record.Outcome == ProcessorOutcomeRecord.Imported
             ? $"Deluno told {record.ProcessorName} it has {record.ReleaseName}"
                 + (string.IsNullOrWhiteSpace(record.Reason) ? "" : $" ({record.Reason})")

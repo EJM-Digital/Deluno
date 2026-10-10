@@ -516,7 +516,7 @@ public sealed class ProcessorHandoffWatcher(
         }
 
         var name = connection?.Name ?? handoff.ProcessorName ?? "The processor";
-        if (await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+        async Task<bool> CloseAsAlreadyImportedAsync()
         {
             var deleted = ProcessorOutputPathPolicy.DeleteSecondCopy(output, library.ProcessorOutputPath, handoff.SourcePath);
             await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, null, null, cancellationToken);
@@ -533,7 +533,18 @@ public sealed class ProcessorHandoffWatcher(
             return true;
         }
 
+        if (await outputImports.WasAlreadyImportedAsync(handoff, cancellationToken))
+        {
+            return await CloseAsAlreadyImportedAsync();
+        }
+
         var import = await outputImports.QueueAsync(library, handoff, output, "processor-watch", cancellationToken, retriedBecause);
+        if (import.AlreadyImported)
+        {
+            // This very file was imported by an earlier request: never a second time (#1226).
+            return await CloseAsAlreadyImportedAsync();
+        }
+
         var notImported = import.NotImportedBecause is { } removed
             ? $"{name} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {output}."
             : null;
