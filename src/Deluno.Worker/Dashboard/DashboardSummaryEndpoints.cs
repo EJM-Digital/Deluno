@@ -30,6 +30,7 @@ public static class DashboardSummaryEndpoints
         // retention will give back. Stored rows only, remembered for five seconds.
         endpoints.MapGet("/api/dashboard/live-extras", async (
             string? sinceUtc,
+            bool? fresh,
             DashboardLiveService live,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
@@ -42,7 +43,7 @@ public static class DashboardSummaryEndpoints
             if (since < now.AddHours(-48)) since = now.AddHours(-48);
             // Seconds only, so the same day is one cache entry however the caller spells it.
             since = new DateTimeOffset(since.UtcTicks - (since.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero);
-            return Results.Ok(await live.GetAsync(since, cancellationToken));
+            return Results.Ok(await live.GetAsync(since, cancellationToken, fresh == true));
         }).WithName("Get Dashboard Live Extras");
 
         return endpoints;
