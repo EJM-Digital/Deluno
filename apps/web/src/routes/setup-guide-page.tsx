@@ -255,8 +255,8 @@ interface GuideForm {
   /** Where Weir leaves the cleaned files for each library; only asked, and only used, when the answer above is Yes. */
   movieProcessedPath: string;
   seriesProcessedPath: string;
-  /** #939: "Only answer on the addresses you use?" Off leaves today's behaviour (#936). */
-  restrictAllowedHosts: boolean;
+  /** #939: "Only answer on the addresses you use?" Unanswered by default (#936, #1245); only a Yes is written. */
+  restrictAllowedHosts: boolean | null;
   allowedHostsSelection: string[];
   /** #993: "Skip sign-in for devices on your home network?" Unanswered by default (#936), same as Automation. */
   skipSignInLocalNetwork: boolean | null;
@@ -270,6 +270,21 @@ interface GuideForm {
   timezone: string;
   /** #1034 Stage 1 "Updates": unanswered by default (#936). Reuses /api/updates/preferences. */
   updateAutomatically: boolean | null;
+  /**
+   * #1245: on a re-run, the answers as they stood when the guide opened, so each question can say "Current setting".
+   * Never edited; null on a fresh install, where nothing is decided for the person.
+   */
+  savedAnswers: SavedAnswers | null;
+}
+
+/** The Yes/No answers as they stood when a finished guide was opened again (#1245). */
+export interface SavedAnswers {
+  restrictAllowedHosts: boolean;
+  skipSignInLocalNetwork: boolean;
+  updateAutomatically: boolean;
+  automation: AutomationChoices;
+  refineMovies: boolean | null;
+  refineTv: boolean | null;
 }
 
 type ServiceTestState = {
@@ -294,6 +309,18 @@ type SetupCompletion = {
   firstTitle: string | null;
   firstTitlePath: string | null;
 };
+
+/** Whether the step's Yes/No questions each have an answer. Continue stays disabled until they do (#1245). */
+export function stepIsAnswered(stepId: string, form: GuideForm, weirConnected = false): boolean {
+  switch (stepId) {
+    case "signIn": return form.skipSignInLocalNetwork !== null;
+    case "addresses": return form.restrictAllowedHosts !== null;
+    case "updates": return form.updateAutomatically !== null;
+    case "connectApps": return missingWeirAnswers(form, weirConnected).length === 0;
+    case "automation": return hasAnsweredAllAutomationQuestions(form.automation);
+    default: return true;
+  }
+}
 
 /** Start stays disabled until every Automation question has an explicit Yes or No (#936). */
 export function hasAnsweredAllAutomationQuestions(automation: AutomationChoices): boolean {
@@ -383,8 +410,10 @@ export function suggestedProcessedFolder(rootPath: string, label: "Movies" | "TV
 }
 
 /** The refine-with-Weir answers that have an explicit Yes or No, saved beside the Automation answers so a reload restores them. */
-export function answeredRefine(form: Pick<GuideForm, "refineMovies" | "refineTv">): Record<string, boolean> {
+export function answeredRefine(form: Pick<GuideForm, "refineMovies" | "refineTv"> & { restrictAllowedHosts?: boolean | null }): Record<string, boolean> {
   const answered: Record<string, boolean> = {};
+  // The addresses answer rides in the same saved map, so a reload restores it too (#1245).
+  if (typeof form.restrictAllowedHosts === "boolean") answered.restrictAllowedHosts = form.restrictAllowedHosts;
   if (typeof form.refineMovies === "boolean") answered.refineMovies = form.refineMovies;
   if (typeof form.refineTv === "boolean") answered.refineTv = form.refineTv;
   return answered;
@@ -406,6 +435,7 @@ export function describeMissingForFinish(form: GuideForm, weirConnected = false)
   if (!form.qualityPreset) missing.push("a picture quality");
   if (!form.formatGoal) missing.push("a release preference");
   if (form.skipSignInLocalNetwork === null) missing.push("an answer to \"Skip sign-in for devices on your home network?\"");
+  if (form.restrictAllowedHosts === null) missing.push("an answer to \"Only answer on the addresses you use?\"");
   if (form.updateAutomatically === null) missing.push("an answer to \"Update automatically, or ask you first?\"");
   if (!hasAnsweredAllAutomationQuestions(form.automation)) missing.push("an answer to every automation question");
   missing.push(...missingWeirAnswers(form, weirConnected));
@@ -651,6 +681,8 @@ export function SetupGuidePage() {
     indexerMessage: null,
     clientMessage: null
   });
+  // #1245: a finished guide opened again shows what is set now; a first run decides nothing for the person.
+  const rerun = data.progress.isCompleted;
   const [form, setForm] = useState<GuideForm>(() => ({
     mode: data.draft.mode as GuideForm["mode"],
     mediaIntent: data.draft.mediaIntent as GuideForm["mediaIntent"],
@@ -680,13 +712,14 @@ export function SetupGuidePage() {
     ...restoreDraftRefine(data.draft.automation),
     movieProcessedPath: suggestedProcessedFolder(data.draft.movieRootPath || data.settings.movieRootPath || "", "Movies"),
     seriesProcessedPath: suggestedProcessedFolder(data.draft.seriesRootPath || data.settings.seriesRootPath || "", "TV"),
-    restrictAllowedHosts: data.allowedHosts.enabled,
+    // #1245: nothing is decided for the person. A fresh install starts unanswered; a re-run shows the live setting.
+    restrictAllowedHosts: rerun ? data.allowedHosts.enabled : typeof data.draft.automation?.restrictAllowedHosts === "boolean" ? data.draft.automation.restrictAllowedHosts : null,
     allowedHostsSelection: data.allowedHosts.allowedHosts.length
       ? data.allowedHosts.allowedHosts
       : [data.allowedHosts.currentHost],
     // #993: unanswered by default (#936) -- Start stays disabled until this
     // has an explicit Yes or No, same as every Automation question.
-    skipSignInLocalNetwork: typeof data.draft.skipSignInLocalNetwork === "boolean" ? data.draft.skipSignInLocalNetwork : null,
+    skipSignInLocalNetwork: rerun ? data.localNetworkAuth.enabled : typeof data.draft.skipSignInLocalNetwork === "boolean" ? data.draft.skipSignInLocalNetwork : null,
     localNetworkAllowList: data.localNetworkAuth.allowList,
     // #1034 Stage 1 "Time and region": the browser/OS already knows a
     // sensible default (same fields Settings -> Interface edits) -- this is
@@ -700,7 +733,16 @@ export function SetupGuidePage() {
     timezone: data.settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     // #1034 Stage 1 "Updates": unanswered by default (#936) -- Start stays
     // disabled until this has an explicit Yes or No.
-    updateAutomatically: typeof data.draft.updateAutomatically === "boolean" ? data.draft.updateAutomatically : null
+    updateAutomatically: rerun ? data.updatePreferences.mode === "download-apply-on-restart" : typeof data.draft.updateAutomatically === "boolean" ? data.draft.updateAutomatically : null,
+    savedAnswers: rerun
+      ? {
+          restrictAllowedHosts: data.allowedHosts.enabled,
+          skipSignInLocalNetwork: data.localNetworkAuth.enabled,
+          updateAutomatically: data.updatePreferences.mode === "download-apply-on-restart",
+          automation: restoreDraftAutomation(data.draft.automation),
+          ...restoreDraftRefine(data.draft.automation)
+        }
+      : null
   }));
 
   const current = STEPS[stepIndex];
@@ -731,9 +773,10 @@ export function SetupGuidePage() {
   // #1034: same rule -- Start stays disabled until "Update automatically, or
   // ask you first?" has an explicit Yes or No.
   const hasUpdateAnswer = form.updateAutomatically !== null;
+  const hasAddressesAnswer = form.restrictAllowedHosts !== null;
   const weirConnected = installedApps.some((app) => app.kind === "weir" && app.installed && app.connected);
   const hasWeirAnswers = missingWeirAnswers(form, weirConnected).length === 0;
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer && hasUpdateAnswer && hasWeirAnswers;
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer && hasAddressesAnswer && hasUpdateAnswer && hasWeirAnswers;
   // A connection typed in but never proven is different from one never
   // attempted: warn about it rather than silently baking in something broken.
   const connectionsUnproven =
@@ -1124,7 +1167,7 @@ export function SetupGuidePage() {
                   </Link>
                 </Button>
               ) : stepIndex < STEPS.length - 1 ? (
-                <Button key="continue" type="button" onClick={() => moveToStep(stepIndex + 1)}>
+                <Button key="continue" type="button" onClick={() => moveToStep(stepIndex + 1)} disabled={busy || !stepIsAnswered(current.id, form, weirConnected)}>
                   Continue
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -1537,7 +1580,10 @@ function RefineWithWeirQuestions({ form, patch }: { form: GuideForm; patch: (pat
         {types.map((type) => (
           <div key={type.label} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="font-medium text-foreground">{type.label}</p>
+              <div>
+                <p className="font-medium text-foreground">{type.label}</p>
+                <CurrentSettingNote value={form.savedAnswers?.[type.answerKey]} />
+              </div>
               <div className="flex shrink-0 gap-2" role="radiogroup" aria-label={question(type.label)}>
                 <Button type="button" size="sm" variant={type.answer === true ? "default" : "outline"} role="radio" aria-checked={type.answer === true} aria-label={`${question(type.label)} Yes`} onClick={() => patch({ [type.answerKey]: true })}>Yes</Button>
                 <Button type="button" size="sm" variant={type.answer === false ? "default" : "outline"} role="radio" aria-checked={type.answer === false} aria-label={`${question(type.label)} No`} onClick={() => patch({ [type.answerKey]: false })}>No</Button>
@@ -1627,6 +1673,7 @@ function AutomationStep({
               <div className="max-w-xl">
                 <p className="font-medium text-foreground">{item.question}</p>
                 <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">{item.help}</p>
+                <CurrentSettingNote value={form.savedAnswers?.automation[item.key]} />
               </div>
               {/* Unique accessible names per row: plain "Yes"/"No" would repeat
                   across eight rows and break assistive tech and the smoke tests. */}
@@ -1777,6 +1824,12 @@ function TimeRegionStep({ form, patch }: { form: GuideForm; patch: (patchValue: 
  * No here (or leaving the guide before this step) leaves Deluno exactly as
  * it has always behaved -- it is only turned on if this is answered Yes.
  */
+/** On a re-run: what the question is set to now, so the person sees the saved answer for what it is (#1245). */
+function CurrentSettingNote({ value }: { value: boolean | null | undefined }) {
+  if (typeof value !== "boolean") return null;
+  return <p className="mt-1 text-(length:--type-caption) text-muted-foreground">Current setting: {value ? "Yes" : "No"}</p>;
+}
+
 function AddressesStep({
   form,
   patch,
@@ -1828,6 +1881,8 @@ function AddressesStep({
           No
         </Button>
       </div>
+
+      <CurrentSettingNote value={form.savedAnswers?.restrictAllowedHosts} />
 
       {form.restrictAllowedHosts ? (
         <div className="space-y-1">
@@ -1913,6 +1968,7 @@ function UpdatesStep({ form, patch, channel }: { form: GuideForm; patch: (patchV
           No
         </Button>
       </div>
+      <CurrentSettingNote value={form.savedAnswers?.updateAutomatically} />
     </FieldShell>
   );
 }
@@ -1983,6 +2039,8 @@ function LocalNetworkAuthQuestion({
           No
         </Button>
       </div>
+
+      <CurrentSettingNote value={form.savedAnswers?.skipSignInLocalNetwork} />
 
       {form.skipSignInLocalNetwork ? (
         <div className="space-y-2">
