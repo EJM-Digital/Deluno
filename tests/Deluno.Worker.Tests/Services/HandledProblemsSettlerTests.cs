@@ -320,7 +320,7 @@ public sealed class HandledProblemsSettlerTests
 
     // #1221: a hand-off the processor itself ended as failed or gone handed back no file, so it is owed no outcome.
     [Fact]
-    public async Task A_hand_off_the_processor_reported_failed_gets_no_outcome()
+    public async Task A_hand_off_the_processor_reported_failed_is_told_nothing_but_says_what_became_of_it()
     {
         var failed = Handoff("dismissed", "It could not process this file.") with
         {
@@ -332,7 +332,10 @@ public sealed class HandledProblemsSettlerTests
 
         await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Nothing is sent, but what became of it is written down and said once (#1235).
+        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(
+            It.Is<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(record => record.Delivery == "given-up"), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Single(_said, line => line.Category == "processing.outcome-not-needed");
         connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
             It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -346,7 +349,37 @@ public sealed class HandledProblemsSettlerTests
 
         await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Nothing is sent to the processor, but the closing is written down once and said in Activity (#1235).
+        connections.Verify(service => service.ReportOutcomeAsync(It.IsAny<Deluno.Platform.Contracts.ProcessorConnectionItem>(), It.IsAny<string>(),
+            It.IsAny<Deluno.Platform.Contracts.ProcessorHandoffOutcome>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(
+            It.Is<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(record => record.HandoffId == "h-1" && record.Delivery == "given-up"), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Single(_said, line => line.Category == "processing.outcome-not-needed");
+    }
+
+    [Fact]
+    public async Task A_hand_off_that_failed_at_the_submit_and_was_then_removed_says_what_became_of_it()
+    {
+        var removed = Handoff("dismissed", "Deluno could not submit the hand-off. Check the processor connection before retrying.") with
+        {
+            Processor = new Deluno.Platform.Contracts.ProcessorHandoffObservation("failed", null, null, null, null, Created, null, null)
+        };
+        var processors = Processors(removed);
+        Listed();
+        var connections = Connections();
+
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+
+        var line = Assert.Single(_said, said => said.Category == "processing.outcome-not-needed");
+        Assert.Contains("no file was handed back", line.Message);
+        processors.Verify(repo => repo.SaveProcessorOutcomeAsync(
+            It.Is<Deluno.Platform.Contracts.ProcessorOutcomeRecord>(record => record.HandoffId == "h-1" && record.Outcome == "not-imported"), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Once the record is there, the next pass says nothing more.
+        processors.Setup(repo => repo.GetProcessorOutcomeAsync("h-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Owed("h-1"));
+        await SettlerTelling(processors, connections).SettleAsync(CancellationToken.None);
+        Assert.Single(_said, said => said.Category == "processing.outcome-not-needed");
     }
 
     [Fact]
@@ -378,6 +411,7 @@ public sealed class HandledProblemsSettlerTests
             Processor = new Deluno.Platform.Contracts.ProcessorHandoffObservation("failed", null, null, null, null, Created, null, null)
         };
         var processors = Processors(failed);
+        processors.Setup(repo => repo.GetProcessorOutcomeAsync("h-1", It.IsAny<CancellationToken>())).ReturnsAsync(Owed("h-1"));
         processors.Setup(repo => repo.ListDueProcessorOutcomesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Owed("h-1"), Owed("h-2")]);
         processors.Setup(repo => repo.GetProcessorHandoffAsync("h-1", It.IsAny<CancellationToken>())).ReturnsAsync(failed);

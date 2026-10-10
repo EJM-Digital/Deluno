@@ -386,8 +386,11 @@ public sealed class HandledProblemsSettler(
 
             // The processor itself said it failed or the download was gone, so it handed back no file and there is
             // nothing for it to let go of (#1221). Nothing is written and nothing is sent.
+            // Nothing is sent, but the hand-off is not closed in silence (#1235): it says once what became of it, and
+            // the record written is what stops it being said on the next pass.
             if (!imported && ProcessorHandoffStatuses.ProcessorReportedItFailed(handoff))
             {
+                await SayNothingWasOwedAsync(handoff, now, cancellationToken);
                 continue;
             }
 
@@ -408,6 +411,48 @@ public sealed class HandledProblemsSettler(
         }
 
         return told;
+    }
+
+    /// <summary>
+    /// A closed hand-off that handed back no file (it failed at the submit, or the processor ended it as failed or
+    /// gone) owes its processor nothing, and says so in Activity once (#1235).
+    /// </summary>
+    private async Task SayNothingWasOwedAsync(ProcessorHandoffItem handoff, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (processors is null)
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "The processor" : handoff.ProcessorName;
+        var said = $"{handoff.ReleaseName}'s hand-off to {name} ended as failed and no file was handed back, so there was nothing to tell it and nothing for it to release.";
+        await processors.SaveProcessorOutcomeAsync(
+            new ProcessorOutcomeRecord(
+                handoff.Id,
+                name,
+                handoff.LibraryId,
+                handoff.ReleaseName,
+                ProcessorOutcomeRecord.Word(ProcessorHandoffOutcome.NotImported),
+                null,
+                string.IsNullOrWhiteSpace(handoff.FailureMessage) ? DefaultNotImportedReason : handoff.FailureMessage,
+                now,
+                ProcessorOutcomeDeliveries.GivenUp,
+                0,
+                null,
+                null,
+                false,
+                said,
+                now,
+                handoff.ProcessorConnectionId),
+            cancellationToken);
+        await activityFeed.RecordActivityAsync(
+            "processing.outcome-not-needed",
+            said,
+            JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName }),
+            null,
+            "processor-handoff",
+            handoff.Id,
+            cancellationToken);
     }
 
     private static string[] IdsOf(IEnumerable<DownloadDispatchItem> items, string entityType)
