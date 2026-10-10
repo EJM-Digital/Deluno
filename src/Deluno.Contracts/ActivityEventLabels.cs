@@ -122,6 +122,7 @@ public static class ActivityEventLabels
             ["download.client.script-warning"] = "Download client script gave a warning",
             ["download.health.connectivity-check-skipped"] = "Download health check skipped while offline",
             ["download.health.remediated"] = "Fixed a stuck download",
+            ["download.health.keep-seeding-problem"] = "A struck download could not be kept seeding",
             ["download.health.remediation-previewed"] = "Showed how a stuck download would be fixed",
             ["download.health.strikes-purged"] = "Cleared download health strikes",
             ["download.queue.removed"] = "Removed from the download queue",
