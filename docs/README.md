@@ -55,7 +55,7 @@ Current note:
 
 - `apps/web/`: the web app (React and TypeScript). `apps/windows-tray/`: the Windows tray app.
 - `src/`: the .NET backend, one project per module (host, API, worker, platform, movies, series, media, jobs, integrations, security, companions, shared contracts and the rest).
-- `tests/`: the backend test projects, one per module, plus shared test support.
+- `tests/`: the backend test projects, one per module, plus shared test support. `tests/fixtures/recorded/` holds the recorded real replies of the download clients, Weir and Deluno's side of that talk (#1237; format in its README); `scripts/recorded-replies/` records them on the golden VM.
 - `docs/`: product, architecture and API documents (this index); plans are in `docs/exec-plans/`.
 - `scripts/`: the push gate, the guard checks, packaging and release scripts; `scripts/lab/` provisions and checks the real-client test rig.
 - `services/`: the metadata gateway, a small separate service the metadata broker talks to.
