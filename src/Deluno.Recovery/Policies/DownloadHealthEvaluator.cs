@@ -43,12 +43,9 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         else if (!DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent)
             && (item.Status == "stalled" || (!string.IsNullOrWhiteSpace(item.ErrorMessage) && !IsTransferring(item))))
         {
-            // One rule owns a stall (#1194): when a "No progress" or "Client-reported failure" rule covers this
-            // download, that rule's strikes, check interval and action decide, and the platform-wide fallback below
-            // (with its own threshold) does not also strike or act on it.
-            var stallOwnedByRule = (MatchRule(rules, DownloadHealthRuleKinds.NoProgress, item) is not null && item.SpeedMbps <= 0) ||
-                MatchRule(rules, DownloadHealthRuleKinds.ClientFailure, item) is not null;
-            if (!stallOwnedByRule)
+            // Whether this platform-wide fallback stays is decided once every rule has spoken (end of Evaluate):
+            // when a person's own strike rule is already striking this download, that rule's strikes, check
+            // interval and action decide, and the fallback neither duplicates it nor takes it over (#1194, #1205).
             findings.Add(new(
                 Severity: "critical",
                 Kind: DownloadHealthStrikes.ClientStalled,
@@ -119,17 +116,17 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // Still counted once the no-progress window has flipped the status to stalled (#1193): the person's rule
         // keeps its own strikes through the flip instead of handing them to the platform-wide fallback.
         // A strike per check: nothing arriving at this check is one strike, however old the download is.
-        if (noProgress is not null &&
-            item.Status is "downloading" or "stalled" &&
-            !DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent) &&
-            item.SpeedMbps <= 0)
+        var noProgressFires = noProgress is not null &&
+            ReadsAsDownloading(item) &&
+            NoBytesArrived(item);
+        if (noProgressFires)
         {
             findings.Add(RuleFinding(
-                noProgress,
+                noProgress!,
                 "warning",
                 DownloadHealthStrikes.NoThroughput,
                 "This download has no observed throughput.",
-                string.IsNullOrWhiteSpace(item.ErrorMessage) ? "Nothing was arriving (0 MB/s) at this check." : item.ErrorMessage,
+                string.IsNullOrWhiteSpace(item.ErrorMessage) ? "No new data had arrived since the previous check." : item.ErrorMessage,
                 "Check peers, the indexer/client connection, and then Resume or Recheck if appropriate."));
         }
 
@@ -147,14 +144,14 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // throttled download is not unhealthy).
         var tooSlow = MatchRule(rules, DownloadHealthRuleKinds.TooSlow, item);
         if (tooSlow is not null &&
-            item.Status == "downloading" &&
+            ReadsAsDownloading(item) &&
             !(tooSlow.SkipWhileAlternateSpeedLimitOn && item.AlternateSpeedLimitOn) &&
             !(tooSlow.IgnoreAboveSizeBytes is { } ignoreAboveSize && ignoreAboveSize > 0 && item.SizeBytes > ignoreAboveSize))
         {
             var elapsed = capturedUtc - item.AddedUtc;
             // A download moving nothing at all belongs to the "No progress" rule, never counted by both (#1194).
-            var underFloorTooLong = item.SpeedMbps > 0 && item.SpeedMbps * 1000 < tooSlow.Threshold;
-            var overMaxTotalTime = tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
+            var underFloorTooLong = item.SpeedMbps > 0 && item.SpeedMbps * 1000 < tooSlow.Threshold && !noProgressFires;
+            var overMaxTotalTime = !noProgressFires && tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
                 maxTotalMinutes > 0 &&
                 elapsed >= TimeSpan.FromMinutes(maxTotalMinutes);
 
@@ -193,9 +190,11 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // download with plenty of speed today can still be one seeder from
         // never finishing. Usenet has no peers, so this never applies there.
         var lowPeers = MatchRule(rules, DownloadHealthRuleKinds.LowPeers, item);
+        // Stalled counts too (#1205): the stall flip turns a starved download into "stalled" after one check
+        // interval, and that must not end the peers rule's strikes.
         if (lowPeers is not null &&
             !item.IsUsenetProtocol &&
-            item.Status == "downloading" &&
+            ReadsAsDownloading(item) &&
             item.Peers < lowPeers.Threshold)
         {
             findings.Add(RuleFinding(
@@ -219,7 +218,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         var trackerUnregistered = item.TrackerStatus == DownloadTrackerStatuses.Unregistered;
         if (deadTorrent is not null &&
             !item.IsUsenetProtocol &&
-            item.Status == "downloading" &&
+            ReadsAsDownloading(item) &&
             (item.Peers <= 0 || trackerUnregistered) &&
             capturedUtc - item.AddedUtc >= TimeSpan.FromMinutes(deadTorrent.Threshold))
         {
@@ -264,7 +263,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // because a person should never have to guess why nothing has
         // arrived. DefaultWindow (30 minutes) is the same grace a freshly
         // added download already gets elsewhere before anything is said.
-        if (item.Status == "downloading" &&
+        if (ReadsAsDownloading(item) &&
             item.ProgressPercent <= 0 &&
             capturedUtc - item.AddedUtc >= DownloadHealthStrikes.DefaultWindow)
         {
@@ -300,7 +299,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // availability says nothing about whether it finished), and only
         // when the client actually reports it - Usenet and clients that do
         // not read this field stay null, which never trips it.
-        if (item.Status == "downloading" && item.Availability is { } availability && availability < 1)
+        if (ReadsAsDownloading(item) && item.Availability is { } availability && availability < 1)
         {
             findings.Add(new(
                 Severity: "warning",
@@ -353,7 +352,62 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
             }
         }
 
-        return findings;
+        return OneStrikePerDownload(findings);
+    }
+
+    /// <summary>
+    /// A download that is still being fetched: downloading, or stalled (#1205). The stall flip turns a download that
+    /// gained no bytes for a check interval into "stalled", and a rule about getting the bytes (peers, speed, a dead
+    /// swarm) must keep judging it through that flip, not lose it.
+    /// </summary>
+    private static bool ReadsAsDownloading(RecoveryQueueSnapshot item)
+        => item.Status is "downloading" or "stalled" &&
+           !DownloadHealthStrikes.IsFinishedOrHandedOff(item.Status, item.ProgressPercent);
+
+    /// <summary>
+    /// Nothing arrived since the previous check (#1207): the downloaded bytes did not grow, whatever speed the client
+    /// reports (Deluge shows 0.000057 MB/s on a stuck torrent). With no earlier reading to compare to (first sighting,
+    /// or a caller that keeps no history) it falls back to the reported speed.
+    /// </summary>
+    private static bool NoBytesArrived(RecoveryQueueSnapshot item)
+        => item.BytesGrewSinceLastCheck is { } grew ? !grew : item.SpeedMbps <= 0;
+
+    /// <summary>
+    /// The rules that strike a download for not getting its bytes, most specific first. One download is struck by
+    /// one of them per check (#1205): when several match, the first here keeps the strike and the rest stand down,
+    /// so the removal can name the one rule that reached its count. If it recovers, its strikes reset and the next
+    /// rule that matches starts its own.
+    /// </summary>
+    private static readonly string[] TransferRulePriority =
+    [
+        DownloadHealthStrikes.DeadTorrent,
+        DownloadHealthStrikes.MagnetMetadata,
+        DownloadHealthStrikes.LowPeers,
+        DownloadHealthStrikes.LowSpeed,
+        DownloadHealthStrikes.ClientFailure,
+        DownloadHealthStrikes.NoThroughput
+    ];
+
+    private static bool IsTransferRuleFinding(RecoveryHealthFinding finding)
+        => finding.RuleId is not null && TransferRulePriority.Contains(finding.Kind, StringComparer.OrdinalIgnoreCase);
+
+    private static List<RecoveryHealthFinding> OneStrikePerDownload(List<RecoveryHealthFinding> findings)
+    {
+        var owner = TransferRulePriority
+            .Select(kind => findings.FirstOrDefault(finding => IsTransferRuleFinding(finding) && string.Equals(finding.Kind, kind, StringComparison.OrdinalIgnoreCase)))
+            .FirstOrDefault(finding => finding is not null);
+        if (owner is null)
+        {
+            return findings;
+        }
+
+        // The platform-wide "client stalled" fallback yields to the rule that owns this download: it neither
+        // duplicates the strike nor takes the download from a rule that is already counting it.
+        return findings
+            .Where(finding => ReferenceEquals(finding, owner)
+                || (!IsTransferRuleFinding(finding)
+                    && !string.Equals(finding.Kind, DownloadHealthStrikes.ClientStalled, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
     }
 
     /// <summary>
