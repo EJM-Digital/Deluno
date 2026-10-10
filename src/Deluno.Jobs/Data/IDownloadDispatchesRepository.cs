@@ -215,6 +215,18 @@ public interface IDownloadDispatchesRepository
     Task<bool> MarkNeverDetectedAsync(string dispatchId, string message, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Closes the sends of this download that Deluno contained (#1215): another copy of the same release holds the
+    /// hand-off, so nothing is owed to this one. Each is archived with a final state and a plain reason on its own
+    /// failure fields (no import status, so no import problem is counted), and stays closed whatever the client does
+    /// with its entry afterwards. A send already imported is left alone. Returns how many it closed.
+    /// </summary>
+    Task<int> CloseContainedDispatchesAsync(string clientId, string hash, string reason, CancellationToken cancellationToken)
+        => Task.FromResult(0);
+
+    /// <summary>The failure code a contained send carries.</summary>
+    public const string ContainedFailureCode = "handed-over-elsewhere";
+
+    /// <summary>
     /// Archive/delete a dispatch (soft delete).
     /// </summary>
     Task ArchiveDispatchAsync(
