@@ -1004,7 +1004,7 @@ export function MovieDetailPage() {
                 ].filter((f) => f.value).map((f) => (
                   <div key={f.label} className="min-w-0">
                     <dt className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{f.label}</dt>
-                    <dd className={cn("truncate text-sm text-foreground", f.mono && "font-mono text-xs")} title={String(f.value)}>{f.value}</dd>
+                    <dd className={cn("truncate text-sm text-foreground max-md:whitespace-normal max-md:[overflow-wrap:anywhere]", f.mono && "font-mono text-xs")} title={String(f.value)}>{f.value}</dd>
                   </div>
                 ))}
               </dl>
