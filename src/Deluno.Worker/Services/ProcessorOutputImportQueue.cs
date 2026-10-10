@@ -59,6 +59,15 @@ public sealed class ProcessorOutputImportQueue(
             return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, AlreadyImported: true);
         }
 
+        // The same output is never imported twice (#1226). An import of this exact file that already ran to its end,
+        // and a file the processor has not written since, is a second request for the same import: a resent release
+        // whose report and whose output watcher both found the one file. A title that came back, or a person's retry,
+        // wants the file again on purpose and is not this.
+        if (cameBack is null && retriedBecause is null && await ThisOutputWasImportedAsync(library, outputPath, cancellationToken))
+        {
+            return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, AlreadyImported: true);
+        }
+
         if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
         {
             // The title was removed and added again since the grab (#1155): the download
@@ -118,10 +127,51 @@ public sealed class ProcessorOutputImportQueue(
                 PayloadJson: JsonSerializer.Serialize(importRequest, PayloadJsonOptions),
                 RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
                 RelatedEntityId: catalogue.SeriesId ?? dispatch?.EntityId,
-                IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
+                IdempotencyKey: OutputKey(library, outputPath)),
             cancellationToken);
 
         return new ProcessorOutputImport(job.Id, (string.IsNullOrEmpty(dispatch?.DispatchId) ? null : dispatch.DispatchId), dispatch?.EntityId);
+    }
+
+    private static string OutputKey(LibraryItem library, string outputPath)
+        => $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}";
+
+    /// <summary>
+    /// Whether an import of this very output already completed and the processor has not written the file since.
+    /// A new file at the same path (the processor cleaned the release again) is newer than that import and is not this.
+    /// </summary>
+    private async Task<bool> ThisOutputWasImportedAsync(LibraryItem library, string outputPath, CancellationToken cancellationToken)
+    {
+        var key = OutputKey(library, outputPath);
+        var done = ((await jobQueueRepository.ListAsync(500, cancellationToken)) ?? [])
+            .Where(job => job.JobType == "filesystem.import.execute"
+                && string.Equals(job.IdempotencyKey, key, StringComparison.Ordinal)
+                && string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase)
+                && job.CompletedUtc is not null)
+            .OrderByDescending(job => job.CompletedUtc)
+            .FirstOrDefault();
+        if (done?.CompletedUtc is not { } completed)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!File.Exists(outputPath) && !Directory.Exists(outputPath))
+            {
+                // Gone: the import took it. Nothing is left to import a second time.
+                return true;
+            }
+
+            var written = File.Exists(outputPath)
+                ? File.GetLastWriteTimeUtc(outputPath)
+                : Directory.EnumerateFiles(outputPath, "*", SearchOption.AllDirectories).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+            return written <= completed.UtcDateTime;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)

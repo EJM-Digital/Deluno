@@ -175,9 +175,11 @@ public static class SystemTasks
         new(DispatchCleanup, "Housekeeping",
             "Clears finished download records and year-old completed jobs that nothing needs any more.",
             TimeSpan.FromHours(6)),
+        // A minute, whether or not a hand-off is waiting (#1227): with none in flight this pass is the only thing that
+        // hears a processor stop, and five minutes left the Dashboard, System and the tray green for two to four.
         new(ProcessorHealth, "Check the processor",
-            "Asks each processor whether it is answering, so one that stops is noticed before a file is stuck behind it.",
-            TimeSpan.FromMinutes(5)),
+            "Asks each processor whether it is answering, so one that stops is noticed within a minute, before a file is stuck behind it.",
+            TimeSpan.FromMinutes(1)),
         // A minute, because each report carries its own next attempt and the
         // pass sends only what is due. A settled install sends nothing, so the
         // pass costs a query (#580).

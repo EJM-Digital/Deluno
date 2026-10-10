@@ -81,6 +81,17 @@ public sealed class TrayOutageAndFirstRunTests
         Assert.Equal(["Weir isn't answering"], Down(null, "degraded", T0));
     }
 
+    /// <summary>#1227: a quiet outage, no hand-off anywhere. The last regular check was good; the next processor health pass, one interval on, stores unreachable and the tray reads down.</summary>
+    [Fact]
+    public void A_quiet_outage_with_no_hand_off_reads_down_one_pass_interval_after_the_last_good_check()
+    {
+        var interval = SystemTasks.IntervalFor(SystemTasks.ProcessorHealth);
+        Assert.True(interval <= TimeSpan.FromMinutes(1), "the pass that hears a quiet outage runs about every minute");
+
+        Assert.Empty(Down(Check(true, T0), "healthy", T0));
+        Assert.Equal(["Weir isn't answering"], Down(Check(true, T0), "unreachable", T0 + interval));
+    }
+
     [Fact]
     public void A_failed_hand_off_stores_unreachable_when_nothing_answered_and_nothing_when_the_processor_refused()
     {

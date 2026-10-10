@@ -12,7 +12,7 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// watching the folder Deluno hands files to (#909).
 ///
 /// <para>Reachability is read from <c>SystemTasks.ProcessorHealth</c>'s own
-/// five-minute pass (<see cref="WorkPlanner.RunProcessorHealthPassAsync"/>),
+/// one-minute pass (<see cref="WorkPlanner.RunProcessorHealthPassAsync"/>),
 /// the same "don't duplicate a test" rule every other check here follows.
 /// The watched-folder comparison is new: it asks the processor's
 /// capabilities endpoint directly, because nothing else asks it.</para>
