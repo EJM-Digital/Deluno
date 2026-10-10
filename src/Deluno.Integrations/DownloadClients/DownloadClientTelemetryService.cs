@@ -245,6 +245,9 @@ public sealed class DownloadClientTelemetryService(
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
         var liveAnswered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var listedQueueItemIdsByClientId = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
+        // #1223: only a client that answered is in here, with everything it holds (queue and history). A
+        // client that did not answer is absent, so its downloads are never read as gone.
+        var heldItemIdsByClientId = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
         var outsideByClientId = new Dictionary<string, (IReadOnlyList<DownloadQueueItem> Queue, IReadOnlyList<DownloadClientHistoryItem> History)>(StringComparer.OrdinalIgnoreCase);
         var orderedClients = clients
             .OrderBy(item => item.Priority)
@@ -332,6 +335,9 @@ public sealed class DownloadClientTelemetryService(
                 // finding reads as "seen and clean", which is what lets a strike
                 // recorded for an outside download before #1062 finally clear.
                 listedQueueItemIdsByClientId[client.Id] = split.WholeAnswer.Queue.Select(item => item.Id).ToArray();
+                heldItemIdsByClientId[client.Id] = split.WholeAnswer.Queue.Select(item => item.Id)
+                    .Concat(split.WholeAnswer.History.Select(item => item.Id))
+                    .ToArray();
                 if (includeOutsideItems && (split.OutsideQueue.Count > 0 || split.OutsideHistory.Count > 0))
                 {
                     outsideByClientId[client.Id] = (split.OutsideQueue, split.OutsideHistory);
@@ -422,6 +428,7 @@ public sealed class DownloadClientTelemetryService(
             connectivityCheckOk,
             contentBlocklist,
             listedQueueItemIdsByClientId.GetValueOrDefault(client.Id, Array.Empty<string>()),
+            heldItemIdsByClientId.GetValueOrDefault(client.Id),
             cancellationToken)));
 
         // Counts are of Deluno's own downloads only (#1062).
@@ -1682,6 +1689,7 @@ public sealed class DownloadClientTelemetryService(
         bool connectivityCheckOk,
         ContentBlocklistSettings contentBlocklist,
         IReadOnlyCollection<string> listedQueueItemIds,
+        IReadOnlyCollection<string>? everythingTheClientHolds,
         CancellationToken cancellationToken)
     {
         // #816: off by default, and only fetched for a download Deluno owns
@@ -1800,7 +1808,8 @@ public sealed class DownloadClientTelemetryService(
                 observations,
                 defaultStrikeWindow,
                 strikeInactivityWindow,
-                cancellationToken)).ToArray();
+                cancellationToken,
+                everythingTheClientHolds)).ToArray();
         }
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
@@ -2354,7 +2363,7 @@ public sealed class DownloadClientTelemetryService(
     internal static string? RuleReason(DownloadHealthFinding finding, DownloadHealthRule? rule)
     {
         var count = Math.Max(1, finding.RuleStrikeLimit ?? rule?.StrikeLimit ?? finding.StrikeCount);
-        var checks = count == 1 ? "1 check" : $"{count} checks in a row";
+        var checks = count == 1 ? PluralWords.Count(1, "check") : $"{PluralWords.Count(count, "check")} in a row";
         var kind = finding.Kind;
         if (string.Equals(kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase))
         {
@@ -2418,7 +2427,7 @@ public sealed class DownloadClientTelemetryService(
         {
             < 1 => string.Empty,
             < 1.5 => "a minute",
-            < 59.5 => $"{Math.Round(lasted.TotalMinutes):0} minutes",
+            < 59.5 => PluralWords.Minutes(lasted.TotalMinutes),
             < 90 => "an hour",
             < 48 * 60 => $"{lasted.TotalHours:0.#} hours",
             _ => $"{Math.Round(lasted.TotalDays):0} days"

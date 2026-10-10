@@ -747,7 +747,7 @@ public static partial class ReleaseDecisionEngine
         }
 
         var score = Math.Min(220, seeders.Value * 6);
-        reasons.Add($"{seeders.Value.ToString(CultureInfo.InvariantCulture)} seeders reported.");
+        reasons.Add($"{PluralWords.Count(seeders.Value, "seeder")} reported.");
         return score;
     }
 
@@ -1046,7 +1046,7 @@ public static partial class ReleaseDecisionEngine
         };
 
         if (customFormatScore != 0) pieces.Add($"Custom formats {customFormatScore:+#;-#;0}.");
-        if (seeders is not null) pieces.Add($"{seeders.Value} seeders.");
+        if (seeders is not null) pieces.Add($"{PluralWords.Count(seeders.Value, "seeder")}.");
         if (riskCount > 0 && downgradeBlock is null) pieces.Add($"{riskCount} risk flag{(riskCount == 1 ? "" : "s")}.");
         return string.Join(" ", pieces);
     }

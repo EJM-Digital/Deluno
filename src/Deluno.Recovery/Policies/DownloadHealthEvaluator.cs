@@ -164,7 +164,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     "This download is slower than the configured floor.",
                     underFloorTooLong
                         ? $"{item.SpeedMbps * 1000:0.#} KB/s at this check, under the limit of {tooSlow.Threshold:0} KB/s."
-                        : $"Still downloading after {elapsed.TotalMinutes:0} minutes, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
+                        : $"Still downloading after {PluralWords.Minutes(elapsed.TotalMinutes)}, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
                     "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
             }
         }
@@ -202,7 +202,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 "warning",
                 DownloadHealthStrikes.LowPeers,
                 "This download has fewer peers or seeders than the configured floor.",
-                $"{item.Peers} peers at this check, under the floor of {lowPeers.Threshold:0}.",
+                $"{PluralWords.Count(item.Peers, "peer")} at this check, under the floor of {lowPeers.Threshold:0}.",
                 "Check whether the release still has a healthy swarm; a replacement may do better."));
         }
 
@@ -231,7 +231,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     : "This torrent has no seeds or peers left.",
                 trackerUnregistered
                     ? $"Tracker reports this torrent unregistered, past its {deadTorrent.Threshold:0}-minute grace period."
-                    : $"0 peers at this check, past its {deadTorrent.Threshold:0}-minute grace period.",
+                    : $"{PluralWords.Count(0, "peer")} at this check, past its {deadTorrent.Threshold:0}-minute grace period.",
                 "This release may no longer be available anywhere. A replacement search may find a healthier one."));
         }
 
@@ -424,15 +424,15 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         var minutes = (capturedUtc - item.AddedUtc).TotalMinutes;
         if (item.IsFetchingMetadata)
         {
-            return $"Still fetching the torrent's own metadata after {minutes:0} minutes; no data can arrive until that finishes.";
+            return $"Still fetching the torrent's own metadata after {PluralWords.Minutes(minutes)}; no data can arrive until that finishes.";
         }
 
         if (!item.IsUsenetProtocol && item.Peers <= 0)
         {
-            return $"No peers connected after {minutes:0} minutes.";
+            return $"No peers connected after {PluralWords.Minutes(minutes)}.";
         }
 
-        return $"No bytes have arrived after {minutes:0} minutes.";
+        return $"No bytes have arrived after {PluralWords.Minutes(minutes)}.";
     }
 
     /// <summary>
