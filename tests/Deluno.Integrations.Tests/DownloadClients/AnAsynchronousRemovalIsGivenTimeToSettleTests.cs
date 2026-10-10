@@ -20,7 +20,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
 {
     /// <summary>A stand-in NZBGet whose edit answers true and whose lists keep the job for a few looks.</summary>
-    private sealed class SlowNzbGet(int lookingLeftAfterDelete, bool queued = true)
+    private sealed class SlowNzbGet(int lookingLeftAfterDelete, bool queued = true, int historyLooksLeft = 0)
     {
         private bool _inQueue = queued;
         private bool _inHistory = !queued;
@@ -55,6 +55,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
 
             if (body.Contains("\"history\"", StringComparison.Ordinal))
             {
+                if (_deleteSeen && _inHistory && historyLooksLeft-- <= 0) _inHistory = false;
                 return Json(_inHistory ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Stuckfilm\",\"Status\":\"SUCCESS/ALL\",\"FileSizeHi\":0}]}" : "{\"result\":[]}");
             }
 
@@ -75,6 +76,30 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         Assert.True(result.Succeeded, result.Message);
         Assert.DoesNotContain("still has this download", result.Message);
         Assert.True(nzb.ListLooksAfterDelete >= 3, "NZBGet was asked again until it let the job go");
+    }
+
+    [Fact]
+    public async Task A_removal_that_does_not_settle_within_the_window_is_reported_as_not_removed_with_the_wait_said()
+    {
+        var nzb = new SlowNzbGet(lookingLeftAfterDelete: int.MaxValue);
+
+        var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)), removalSettle: TimeSpan.FromMilliseconds(400), removalPoll: TimeSpan.FromMilliseconds(50))
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "42", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("still has this download", result.Message);
+        Assert.True(nzb.ListLooksAfterDelete > 2, "it was looked at more than once while waiting");
+    }
+
+    [Fact]
+    public async Task A_finished_nzbget_job_leaving_the_history_a_moment_after_the_delete_is_removed()
+    {
+        var nzb = new SlowNzbGet(lookingLeftAfterDelete: 0, queued: false, historyLooksLeft: 2);
+
+        var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)))
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "42", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
     }
 
     [Fact]

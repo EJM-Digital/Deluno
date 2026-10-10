@@ -18,16 +18,27 @@ internal enum ClientHas
 /// client's "yes" says nothing about what it did. So the client is looked at, not believed: asked before the call
 /// (a download it does not have is a plain failure, never "Done") and asked again after (a download it still has is
 /// a failure, whatever the call said).</para>
+///
+/// <para>A client that removes a download asynchronously (#1244) still lists it for a while after it has said yes: NZBGet's
+/// <c>GroupDelete</c> answers true at once and drops a job that still has a connection waiting on an article only when
+/// that connection gives up. For such a client the look after is repeated, with a growing pause, until the client no
+/// longer has the download or the client's settle window ends. A client that says no, or that errors, is a failure at once
+/// and is never waited for; the window only ever applies to a client that said yes.</para>
 /// </summary>
 internal static class ClientRemovalGuard
 {
+    private static readonly TimeSpan MaxPause = TimeSpan.FromSeconds(5);
+
     public static async Task<DownloadClientActionResult> RunAsync(
         Deluno.Connections.Contracts.DownloadClientItem client,
         string queueItemId,
         string action,
         string clientName,
         Func<Task<ClientHas>> has,
-        Func<Task<DownloadClientActionResult>> remove)
+        Func<Task<DownloadClientActionResult>> remove,
+        TimeSpan settleWindow = default,
+        TimeSpan settlePoll = default,
+        CancellationToken cancellationToken = default)
     {
         switch (await has())
         {
@@ -45,11 +56,25 @@ internal static class ClientRemovalGuard
             return result;
         }
 
-        return await has() switch
+        var after = await has();
+        var waited = TimeSpan.Zero;
+        var pause = settlePoll > TimeSpan.Zero ? settlePoll : TimeSpan.FromMilliseconds(250);
+        while (after == ClientHas.Yes && waited < settleWindow)
+        {
+            var step = pause < settleWindow - waited ? pause : settleWindow - waited;
+            await Task.Delay(step, cancellationToken);
+            waited += step;
+            pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, MaxPause.Ticks));
+            after = await has();
+        }
+
+        return after switch
         {
             ClientHas.No => result,
             ClientHas.Yes => DownloadClientHelpers.ActionFailure(client, queueItemId, action,
-                $"{clientName} still has this download after being told to remove it, so it was not removed."),
+                waited > TimeSpan.Zero
+                    ? $"{clientName} still has this download {Math.Round(waited.TotalSeconds):0} seconds after being told to remove it, so it was not removed."
+                    : $"{clientName} still has this download after being told to remove it, so it was not removed."),
             _ => DownloadClientHelpers.ActionFailure(client, queueItemId, action,
                 $"{clientName} did not confirm that the download is gone, so Deluno cannot say it was removed.", category: "unreachable")
         };
