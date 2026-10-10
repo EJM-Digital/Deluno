@@ -2292,9 +2292,9 @@ public sealed class DownloadClientTelemetryService(
                 {
                     await NoteRemovedByDelunoAsync(client, item.Id, DownloadClientActions.SetCategory, cancellationToken, movedTo);
                     openProblems.Remove(problemKey);
-                    if (keepSeedingStore is not null)
+                    if (keepSeedingStore is not null && await keepSeedingStore.ClearProblemAsync(problemKey, cancellationToken))
                     {
-                        await keepSeedingStore.ClearProblemAsync(problemKey, cancellationToken);
+                        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishDownloadHealthChangedAsync(client.Id, cancellationToken));
                     }
                 }
 
@@ -2464,9 +2464,10 @@ public sealed class DownloadClientTelemetryService(
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var problem in knownProblems.Values)
             {
-                if (answered.Contains(problem.ClientId) && !openProblems.Contains(problem.Key))
+                if (answered.Contains(problem.ClientId) && !openProblems.Contains(problem.Key)
+                    && await keepSeedingStore.ClearProblemAsync(problem.Key, cancellationToken))
                 {
-                    await keepSeedingStore.ClearProblemAsync(problem.Key, cancellationToken);
+                    await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishDownloadHealthChangedAsync(problem.ClientId, cancellationToken));
                 }
             }
         }
@@ -3467,6 +3468,7 @@ public sealed class DownloadClientTelemetryService(
             before?.FirstSeenUtc ?? now, now, (before?.Attempts ?? 0) + 1);
         await keepSeedingStore.SaveProblemAsync(problem, cancellationToken);
         known[key] = problem;
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishDownloadHealthChangedAsync(client.Id, cancellationToken));
         if (before is null || !string.Equals(before.Message, message, StringComparison.Ordinal) || !string.Equals(before.Kind, kind, StringComparison.Ordinal))
         {
             await activityFeedRepository.RecordActivityAsync(
