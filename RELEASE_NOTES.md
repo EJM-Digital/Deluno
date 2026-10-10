@@ -9,6 +9,43 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.19
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Usenet and download clients
+- Removing a finished SABnzbd download removes its whole folder, extras
+  included, and says plainly if anything had to stay.
+- SABnzbd sizes keep their fractions, so a download stuck just short of the
+  end no longer reads 100% and can be struck.
+- NZBGet download sizes are read correctly; downloads under 4 GB no longer
+  read 0 bytes.
+- Removing a Transmission download with its data also removes its empty
+  leftover folders.
+
+### Your processor
+- A release removed and sent again settles its new hand-off once its file is
+  imported, and a processed file is never imported twice.
+- Deluno checks your processor every minute, so a quiet outage shows within
+  about a minute, on the tray as well.
+- A hand-off the processor never received says so plainly, and is not counted
+  as a failure.
+
+### Everything you can see, you can clear
+- One problem shown in several places clears everywhere when you dismiss it
+  in any of them. System's processor-output rows have their own Dismiss.
+- System's health rows follow the server at once, and Try again no longer
+  flashes the old failure as it moves on.
+
 ## 1.0.0-rc.30.18
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
