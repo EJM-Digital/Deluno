@@ -34,7 +34,7 @@ public sealed class ForgettingAReleaseTests
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Forget, "SABnzbd_nzo_abc123", CancellationToken.None);
+            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.RemoveRefusedCopy, "SABnzbd_nzo_abc123", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Contains(asked, query => query.Contains("mode=queue", StringComparison.OrdinalIgnoreCase)
@@ -58,7 +58,7 @@ public sealed class ForgettingAReleaseTests
                 : JsonResponse("{\"status\":false}"));
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Forget, "SABnzbd_nzo_abc123", CancellationToken.None);
+            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.RemoveRefusedCopy, "SABnzbd_nzo_abc123", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Contains("history", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -74,7 +74,7 @@ public sealed class ForgettingAReleaseTests
         var handler = new ThrowingHandler();
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Forget, "SABnzbd_nzo_abc123", CancellationToken.None);
+            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.RemoveRefusedCopy, "SABnzbd_nzo_abc123", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("could not be reached", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -129,7 +129,7 @@ public sealed class ForgettingAReleaseTests
         });
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Forget, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.RemoveRefusedCopy, "42", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         // GroupFinalDelete rather than GroupDelete: forgetting takes the files
@@ -161,7 +161,7 @@ public sealed class ForgettingAReleaseTests
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Forget, selector, CancellationToken.None);
+            .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.RemoveRefusedCopy, selector, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Equal(0, sent);
@@ -185,7 +185,7 @@ public sealed class ForgettingAReleaseTests
         });
 
         var result = await new QbittorrentDownloadClient(() => handler)
-            .ExecuteActionAsync(Qbittorrent(), DownloadClientActions.Forget, "hash-1", CancellationToken.None);
+            .ExecuteActionAsync(Qbittorrent(), DownloadClientActions.RemoveRefusedCopy, "hash-1", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Contains(bodies, body => body.Contains("deleteFiles=true", StringComparison.OrdinalIgnoreCase));

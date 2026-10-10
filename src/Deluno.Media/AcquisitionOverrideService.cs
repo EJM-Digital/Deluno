@@ -216,52 +216,55 @@ public sealed class AcquisitionOverrideService(
             // what made the override report "there was nothing to clear" about
             // the very obstacle it had just been offered for.
             couldNotClear.Add(
-                $"{request.DownloadClientName ?? "The download client"} is holding this release, but Deluno could not work out which item to ask it to forget. Remove it there and try again.");
+                $"{request.DownloadClientName ?? "The download client"} is holding this release, but Deluno could not work out which item to ask it to remove. Remove it there and try again.");
             return;
         }
 
         try
         {
-            // Forget, not delete-with-data.
+            // Remove the old copy so the client accepts the release again, not
+            // delete-with-data.
             //
             // The difference is the whole point of the override on a usenet
             // client. Deleting removes the transfer; SABnzbd and NZBGet refuse a
             // release from their *history*, which outlives the transfer, so a
             // delete would report success and change nothing. On a torrent
-            // client the two are the same request, and saying "forget" is still
-            // the honest name for what is being asked.
+            // client the two are the same request. Either way the old copy and
+            // its files go, which is what a forced re-download of the same
+            // release asks for, and it is said so below (#1241). This is the
+            // refused-copy removal, never "stop tracking", which sends nothing.
             // The dispatch is looked up here from Deluno's own records; the
             // download client service only trusts it when it is for this
             // client and matches this very item (#1062).
             var ownDispatch = dispatches is not null && request.DispatchId is { Length: > 0 } requestedDispatchId
                 ? await dispatches.GetDispatchIncludingArchivedAsync(requestedDispatchId, cancellationToken)
                 : null;
-            var forgetRequest = new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId);
+            var removeRequest = new DownloadClientActionRequest(DownloadClientActions.RemoveRefusedCopy, queueItemId);
             var result = ownDispatch is not null
-                ? await downloadClients.ExecuteActionForDispatchAsync(clientId, forgetRequest, ownDispatch, cancellationToken)
-                : await downloadClients.ExecuteActionAsync(clientId, forgetRequest, cancellationToken);
+                ? await downloadClients.ExecuteActionForDispatchAsync(clientId, removeRequest, ownDispatch, cancellationToken)
+                : await downloadClients.ExecuteActionAsync(clientId, removeRequest, cancellationToken);
 
             if (result.Succeeded)
             {
-                cleared.Add($"Made {request.DownloadClientName ?? "the download client"} forget the release, so it will accept it again.");
+                cleared.Add($"Removed the old copy of the release, with its files, from {request.DownloadClientName ?? "the download client"}, so it will accept it again.");
                 // The open dispatch is what says a client is holding this. Left
                 // open, "already has a download" stayed on the title after the
                 // client had forgotten it (seen on the rig).
                 if (dispatches is not null && request.DispatchId is { Length: > 0 } dispatchId)
                 {
-                    await dispatches.ArchiveDispatchAsync(dispatchId, "Forgotten at the download client by a forced re-download.", cancellationToken);
+                    await dispatches.ArchiveDispatchAsync(dispatchId, "Old copy removed from the download client by a forced re-download.", cancellationToken);
                 }
 
                 return;
             }
 
             couldNotClear.Add(
-                $"{request.DownloadClientName ?? "The download client"} would not forget the release: {result.Message}");
+                $"{request.DownloadClientName ?? "The download client"} would not remove the old copy of the release: {result.Message}");
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Could not make the client forget queue item {QueueItemId} during an acquisition override.", queueItemId);
-            couldNotClear.Add($"{request.DownloadClientName ?? "The download client"} could not be reached to forget the release.");
+            logger.LogWarning(exception, "Could not remove the old copy of queue item {QueueItemId} during an acquisition override.", queueItemId);
+            couldNotClear.Add($"{request.DownloadClientName ?? "The download client"} could not be reached to remove the old copy of the release.");
         }
     }
 

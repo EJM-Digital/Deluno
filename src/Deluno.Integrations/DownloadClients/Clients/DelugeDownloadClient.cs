@@ -239,7 +239,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // core.remove_torrent and is the only thing separating two of these, so
         // it is set by the arm rather than recomputed from the action name.
         //
-        // `forget` is deliberately the same request as `delete-with-data` here,
+        // `remove-refused-copy` is deliberately the same request as `delete-with-data` here,
         // and that is a statement rather than a fall-through: Deluge keeps no
         // record of a torrent it no longer holds, so it refuses a release only
         // while the transfer is still there. Once it is gone the client accepts
@@ -252,7 +252,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             DownloadClientActions.Recheck => ("core.force_recheck", null),
             DownloadClientActions.Delete => ("core.remove_torrent", false),
             DownloadClientActions.DeleteWithData => ("core.remove_torrent", true),
-            DownloadClientActions.Forget => ("core.remove_torrent", true),
+            DownloadClientActions.RemoveRefusedCopy => ("core.remove_torrent", true),
             // #810: Deluge's own core.queue_* methods.
             DownloadClientActions.MoveToTop => ("core.queue_top", null),
             DownloadClientActions.MoveUp => ("core.queue_up", null),

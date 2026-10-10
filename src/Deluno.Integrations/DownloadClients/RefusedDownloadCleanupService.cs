@@ -58,8 +58,8 @@ public interface IRefusedDownloadCleanupService
 /// and the client kept remembering it, so the day you un-refused it the client
 /// would silently decline to fetch it again.</para>
 ///
-/// <para><b>It asks the client to forget, not to delete.</b> On a torrent
-/// client those are one request; on SABnzbd and NZBGet, forgetting also clears
+/// <para><b>It asks the client to remove the refused copy, not just to delete.</b> On a torrent
+/// client those are one request; on SABnzbd and NZBGet, removing the refused copy also clears
 /// the history that outlives the transfer, which is the half that lets the
 /// release back in.</para>
 ///
@@ -412,8 +412,8 @@ public sealed class RefusedDownloadCleanupService(
 
         try
         {
-            var forget = new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId);
-            var result = await downloadClients.ExecuteActionAsync(clientId, forget, cancellationToken);
+            var removeCopy = new DownloadClientActionRequest(DownloadClientActions.RemoveRefusedCopy, queueItemId);
+            var result = await downloadClients.ExecuteActionAsync(clientId, removeCopy, cancellationToken);
 
             if (result.Refused)
             {

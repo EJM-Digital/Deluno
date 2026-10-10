@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -259,7 +261,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     [Theory]
     [InlineData("qbittorrent")]
     [InlineData("sabnzbd")]
-    public async Task Just_stop_tracking_it_forgets_without_touching_the_clients_payload(string protocol)
+    public async Task Just_stop_tracking_it_forgets_without_calling_the_client_at_all(string protocol)
     {
         using var world = await World.CreateAsync(protocol);
 
@@ -268,7 +270,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(result.Succeeded);
         Assert.False(result.Blocklisted);
         Assert.False(result.SearchStarted);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Null(world.Client.LastAction);
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
 
@@ -286,14 +288,14 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     [Theory]
     [InlineData(true, true, false, DownloadClientActions.DeleteWithData, true, true)]
     [InlineData(true, true, true, DownloadClientActions.DeleteWithData, true, false)]
-    [InlineData(false, true, false, DownloadClientActions.Forget, true, true)]
+    [InlineData(false, true, false, null, true, true)]
     [InlineData(true, false, false, DownloadClientActions.DeleteWithData, false, false)]
-    [InlineData(false, false, false, DownloadClientActions.Forget, false, false)]
+    [InlineData(false, false, false, null, false, false)]
     public async Task The_flags_do_each_part_on_their_own(
         bool removeFromClient,
         bool blocklist,
         bool skipRedownload,
-        string expectedAction,
+        string? expectedAction,
         bool expectBlocklisted,
         bool expectSearch)
     {
@@ -369,11 +371,11 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
 
         Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned);
-        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.Forget);
+        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.RemoveRefusedCopy);
 
         Assert.True(forgotten.Succeeded);
         Assert.False(forgotten.Refused);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Equal(DownloadClientActions.RemoveRefusedCopy, world.Client.LastAction);
         Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
     }
 
@@ -397,7 +399,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         var idLessDispatch = await world.RecordDispatchWithoutIdAsync("Other.Movie.2024.1080p.WEB-DL-GROUP");
         world.Client.Queue.Add(ClientItem("id-the-client-gave-later", "Other.Movie.2024.1080p.WEB-DL-GROUP"));
 
-        var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.Forget, idLessDispatch);
+        var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
 
         Assert.True(own.Refused);
         Assert.Null(world.Client.LastAction);
@@ -413,7 +415,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         world.Client.Queue.Add(ClientItem("hand-added", "Something.Else.Entirely.2020.720p"));
 
         // Names a hand-added item (different release name): refused, and nothing called.
-        var byName = await world.ActForDispatchAsync("hand-added", DownloadClientActions.Forget, idLessDispatch);
+        var byName = await world.ActForDispatchAsync("hand-added", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
         Assert.True(byName.Refused);
         Assert.Null(world.Client.LastAction);
 
@@ -423,7 +425,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Null(world.Client.LastAction);
 
         // An item that is not in the client at all cannot be proven either.
-        var missing = await world.ActForDispatchAsync("not-there", DownloadClientActions.Forget, idLessDispatch);
+        var missing = await world.ActForDispatchAsync("not-there", DownloadClientActions.RemoveRefusedCopy, idLessDispatch);
         Assert.True(missing.Refused);
         Assert.False((await world.CheckOwnershipAsync("hand-added")).Owned);
     }
@@ -442,7 +444,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         var kept = await world.RemoveAsync(false, false, false);
         Assert.True(kept.Succeeded);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.Null(world.Client.LastAction);
 
         var deleted = await world.RemoveAsync(true, false, false);
         Assert.True(deleted.Succeeded);
@@ -590,6 +592,204 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(ProcessorHandoffStatuses.Completed, (await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
     }
 
+    // ------------------------------------------------------------------ #1241: stop tracking is Deluno-only
+
+    public static TheoryData<string, bool> EveryClientAndEveryWayToStopTracking()
+    {
+        var data = new TheoryData<string, bool>();
+        foreach (var protocol in new[] { "qbittorrent", "deluge", "transmission", "rtorrent", "utorrent", "sabnzbd", "nzbget" })
+        {
+            data.Add(protocol, true);
+            data.Add(protocol, false);
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// #1241: "Just stop tracking it" promises the client keeps the download and its files. Every way in
+    /// (the Queue dialog's reason, and the API's removeFromClient=false) must send the client nothing at
+    /// all, on every client: a remove call, even one that keeps files, is not "untouched".
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(EveryClientAndEveryWayToStopTracking))]
+    public async Task Stopping_tracking_sends_no_remove_or_delete_to_any_client(string protocol, bool throughTheDialogsReason)
+    {
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = throughTheDialogsReason
+            ? await world.RemoveAsync(QueueRemovalReasons.Forget)
+            : await world.RemoveAsync(removeFromClient: false, blocklist: false, skipRedownload: false);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Empty(traffic.Requests);
+    }
+
+    /// <summary>The same promise when the API also blocklists: the release is blocklisted, the client is still not touched.</summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("deluge")]
+    [InlineData("transmission")]
+    [InlineData("rtorrent")]
+    [InlineData("utorrent")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task Stopping_tracking_while_blocklisting_still_leaves_the_client_alone(string protocol)
+    {
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(removeFromClient: false, blocklist: true, skipRedownload: true);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Blocklisted);
+        Assert.Empty(traffic.Requests);
+    }
+
+    public static TheoryData<string, string> EveryClientAndEveryRemovalReason()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var protocol in new[] { "qbittorrent", "deluge", "transmission", "rtorrent", "utorrent", "sabnzbd", "nzbget" })
+        {
+            foreach (var reason in new[]
+                     {
+                         QueueRemovalReasons.Failed, QueueRemovalReasons.Unwanted, QueueRemovalReasons.Forget,
+                         QueueRemovalReasons.Reclaim, QueueRemovalReasons.GaveUp
+                     })
+            {
+                data.Add(protocol, reason);
+            }
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// #1241: every Activity sentence about files matches what was sent to the client. A sentence that says
+    /// the files were deleted needs a request that removes them; a sentence that says the client still has
+    /// it, untouched, needs no request at all.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(EveryClientAndEveryRemovalReason))]
+    public async Task Each_removal_reasons_sentence_matches_the_call_made_to_the_client(string protocol, string reason)
+    {
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(reason);
+
+        Assert.True(result.Succeeded, result.Message);
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+
+        var claimsUntouched = activity.Message.Contains("untouched", StringComparison.OrdinalIgnoreCase);
+        if (reason == QueueRemovalReasons.Forget)
+        {
+            Assert.True(claimsUntouched, activity.Message);
+            Assert.Empty(traffic.Requests);
+        }
+        else
+        {
+            Assert.False(claimsUntouched, activity.Message);
+            Assert.NotEmpty(traffic.Requests);
+        }
+    }
+
+    /// <summary>
+    /// #1241: the old "forget" verb meant removal with data on a torrent client, so it is no longer a verb
+    /// the gateway passes on. A caller that still sends it is refused and the client is not touched.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("sabnzbd")]
+    public async Task The_old_forget_verb_is_refused_and_sends_nothing(string protocol)
+    {
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.ActAsync(QueueItemId, "forget");
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(traffic.Requests);
+    }
+
+    /// <summary>Hands every adapter the one handler that writes down what it is asked (sign-in traffic aside) and answers shaped like the client would.</summary>
+    private sealed class TrafficFactory(ClientTraffic traffic) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(traffic, disposeHandler: false);
+    }
+
+    private sealed class ClientTraffic : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var path = request.RequestUri?.PathAndQuery ?? string.Empty;
+
+            var isSignIn = path.Contains("auth/login", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("auth.login", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("token.html", StringComparison.OrdinalIgnoreCase);
+            var isList = (path.Contains("mode=queue", StringComparison.OrdinalIgnoreCase) || path.Contains("mode=history", StringComparison.OrdinalIgnoreCase))
+                    && !path.Contains("name=", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("\"listgroups\"", StringComparison.Ordinal)
+                || body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase);
+            if (!isSignIn && !isList)
+            {
+                Requests.Add($"{path} {body}".Trim());
+            }
+
+            if (path.Contains("token.html", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<div id='token'>test-token</div>", Encoding.UTF8, "text/html") };
+            }
+
+            if (path.Contains("api/v2/", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+            }
+
+            if (body.Contains("<methodCall>", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "<?xml version=\"1.0\"?><methodResponse><params><param><value><i4>0</i4></value></param></params></methodResponse>",
+                        Encoding.UTF8, "text/xml")
+                };
+            }
+
+            // A Usenet client's list of jobs is read back to check a removal happened; once a delete went out it is empty.
+            var removed = Requests.Count > 0;
+            if (path.Contains("mode=queue", StringComparison.OrdinalIgnoreCase) && isList)
+            {
+                return Json(removed ? "{\"queue\":{\"slots\":[]}}" : "{\"queue\":{\"slots\":[{\"nzo_id\":\"queue-item-1\",\"filename\":\"x\"}]}}");
+            }
+
+            if (path.Contains("mode=history", StringComparison.OrdinalIgnoreCase) && isList)
+            {
+                return Json("{\"history\":{\"slots\":[]}}");
+            }
+
+            if (body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase))
+            {
+                return Json("{\"result\":[]}");
+            }
+
+            if (body.Contains("\"listgroups\"", StringComparison.Ordinal))
+            {
+                return Json(removed ? "{\"result\":[]}" : "{\"result\":[{\"NZBID\":42,\"NZBName\":\"x\"}]}");
+            }
+
+            return Json("{\"status\":true,\"result\":true}");
+        }
+
+        private static HttpResponseMessage Json(string content)
+            => new(HttpStatusCode.OK) { Content = new StringContent(content, Encoding.UTF8, "application/json") };
+    }
+
     private sealed class FakeClient(string protocol) : IDownloadClient
     {
         public string Protocol => protocol;
@@ -716,6 +916,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public string DispatchId { get; }
 
+        /// <summary>The id the client holds the dispatched download under.</summary>
+        public string ItemId { get; private init; } = QueueItemId;
+
         public string LibraryId { get; }
 
         public FakeClient Client { get; }
@@ -743,7 +946,27 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public static Task<World> CreateAsync(string protocol) => CreateAsync(protocol, TitleKind.None);
 
-        public static async Task<World> CreateAsync(string protocol, TitleKind titleKind)
+        /// <summary>The real adapter for <paramref name="protocol"/>, talking to a handler that writes down every request it is sent.</summary>
+        public static async Task<(World World, ClientTraffic Traffic)> CreateWithRealClientAsync(string protocol, TitleKind titleKind = TitleKind.Movie)
+        {
+            var traffic = new ClientTraffic();
+            IDownloadClient real = protocol switch
+            {
+                "qbittorrent" => new Deluno.Integrations.DownloadClients.Clients.QbittorrentDownloadClient(() => traffic),
+                "deluge" => new Deluno.Integrations.DownloadClients.Clients.DelugeDownloadClient(new TrafficFactory(traffic)),
+                "transmission" => new Deluno.Integrations.DownloadClients.Clients.TransmissionDownloadClient(new TrafficFactory(traffic)),
+                "utorrent" => new Deluno.Integrations.DownloadClients.Clients.UTorrentDownloadClient(() => traffic),
+                "rtorrent" => new Deluno.Integrations.DownloadClients.Clients.RtorrentDownloadClient(new TrafficFactory(traffic)),
+                "sabnzbd" => new Deluno.Integrations.DownloadClients.Clients.SabnzbdDownloadClient(new TrafficFactory(traffic)),
+                "nzbget" => new Deluno.Integrations.DownloadClients.Clients.NzbGetDownloadClient(new TrafficFactory(traffic)),
+                _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null)
+            };
+            return (await CreateAsync(protocol, titleKind, real), traffic);
+        }
+
+        public static Task<World> CreateAsync(string protocol, TitleKind titleKind) => CreateAsync(protocol, titleKind, null);
+
+        private static async Task<World> CreateAsync(string protocol, TitleKind titleKind, IDownloadClient? realClient)
         {
             var storage = TestStorage.Create();
             var now = DateTimeOffset.Parse("2026-09-27T09:00:00Z");
@@ -759,7 +982,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 "Library", mediaType, "library", Path.Combine(storage.DataRoot, "media"), Path.Combine(storage.DataRoot, "downloads"), null,
                 "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
             var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
-                protocol, protocol, "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+                protocol, protocol, "localhost", 8080, realClient is null ? null : "user", realClient is null ? null : "secret", null, "movies", "tv", null, 1, true), CancellationToken.None);
             var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
             var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
             var entityType = mediaType == "tv" ? "series" : "movie";
@@ -814,12 +1037,14 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             var dispatchId = await jobs.RecordDownloadDispatchAsync(
                 library.Id, mediaType, entityType, entityId, Release, Indexer, client.Id, client.Name, "sent", null,
                 cancellationToken: CancellationToken.None);
-            await dispatches.RecordDetectionAsync(dispatchId, QueueItemId, null, completed: false, CancellationToken.None);
+            // Transmission and NZBGet number their downloads, so a real adapter for either is given a number.
+            var itemId = realClient is null ? QueueItemId : protocol switch { "nzbget" => "42", "transmission" => "7", _ => QueueItemId };
+            await dispatches.RecordDetectionAsync(dispatchId, itemId, null, completed: false, CancellationToken.None);
 
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var fakeClient = new FakeClient(protocol);
-            var registry = new DownloadClientRegistry([fakeClient]);
+            var registry = new DownloadClientRegistry([realClient ?? fakeClient]);
             var titleUnmonitorService = unmonitorComponent is null
                 ? null
                 : new CompositeDispatchTitleUnmonitorService([unmonitorComponent]);
@@ -841,13 +1066,13 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 blocklist,
                 titleUnmonitorService: titleUnmonitorService);
 
-            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId, library.Id, processors);
+            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId, library.Id, processors) { ItemId = itemId };
         }
 
         public async Task<ProcessorHandoffItem> HandoffAsync(string status)
         {
             var handoff = await Processors.EnsureProcessorHandoffAsync(
-                new CreateProcessorHandoffRequest(LibraryId, MediaType, ClientId, QueueItemId, Release, Path.Combine(Path.GetTempPath(), Release), "Weir"),
+                new CreateProcessorHandoffRequest(LibraryId, MediaType, ClientId, ItemId, Release, Path.Combine(Path.GetTempPath(), Release), "Weir"),
                 CancellationToken.None);
             await Processors.UpdateProcessorHandoffAsync(
                 handoff.Id, status, null, null,
@@ -857,10 +1082,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         }
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)
-            => _service.RemoveWithReasonAsync(ClientId, QueueItemId, reason, CancellationToken.None);
+            => _service.RemoveWithReasonAsync(ClientId, ItemId, reason, CancellationToken.None);
 
         public Task<QueueRemovalResult> RemoveAsync(bool removeFromClient, bool blocklist, bool skipRedownload)
-            => _service.RemoveWithOptionsAsync(ClientId, QueueItemId, removeFromClient, blocklist, skipRedownload, CancellationToken.None);
+            => _service.RemoveWithOptionsAsync(ClientId, ItemId, removeFromClient, blocklist, skipRedownload, CancellationToken.None);
 
         public Task<QueueRemovalResult> RemoveForeignAsync(string queueItemId, string reason)
             => _service.RemoveWithReasonAsync(ClientId, queueItemId, reason, CancellationToken.None);

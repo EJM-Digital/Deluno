@@ -490,7 +490,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
 
-        if (string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(action, DownloadClientActions.RemoveRefusedCopy, StringComparison.OrdinalIgnoreCase))
         {
             return await ForgetAsync(http, client, baseUri, client.Secret, queueItemId, cancellationToken);
         }
@@ -501,7 +501,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         // to do nothing while reporting success: the override asked for it, and
         // SABnzbd answered "does not support this action".
         //
-        // `forget` is handled above rather than here, because on SABnzbd it is
+        // `remove-refused-copy` is handled above rather than here, because on SABnzbd it is
         // genuinely a different request and not a flag on this one — its
         // duplicate detection reads the history, which outlives the queue.
         var mode = action switch
@@ -651,7 +651,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             return DownloadClientHelpers.ActionFailure(
                 client,
                 queueItemId,
-                DownloadClientActions.Forget,
+                DownloadClientActions.RemoveRefusedCopy,
                 $"\"{queueItemId}\" is not a download id — to SABnzbd it means the whole history, so Deluno will not send it.",
                 upstreamDetail: "Refused before the request was made.",
                 category: "configuration");
@@ -673,14 +673,14 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                 _ => "SABnzbd had no record of this release to remove."
             };
 
-            return DownloadClientHelpers.ActionSuccess(client, queueItemId, DownloadClientActions.Forget, what);
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, DownloadClientActions.RemoveRefusedCopy, what);
         }
 
         return DownloadClientHelpers.ActionFailure(
             client,
             queueItemId,
-            DownloadClientActions.Forget,
-            "SABnzbd could not be reached to forget this release.",
+            DownloadClientActions.RemoveRefusedCopy,
+            "SABnzbd could not be reached to remove this release.",
             historyRemoved.StatusCode ?? queueRemoved.StatusCode);
     }
 

@@ -207,7 +207,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         // "removedata" is uTorrent's remove-the-file-too verb; "remove" forgets
         // the torrent and leaves the payload where it is (#287).
         //
-        // `forget` takes the same verb as `delete-with-data`, stated rather than
+        // `remove-refused-copy` takes the same verb as `delete-with-data`, stated rather than
         // shared by accident: uTorrent holds no record of a torrent it has
         // removed, so there is nothing left to clear afterwards.
         var verb = action switch
@@ -217,7 +217,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             DownloadClientActions.Recheck => "recheck",
             DownloadClientActions.Delete => "remove",
             DownloadClientActions.DeleteWithData => "removedata",
-            DownloadClientActions.Forget => "removedata",
+            DownloadClientActions.RemoveRefusedCopy => "removedata",
             _ => null
         };
         if (verb is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "uTorrent");

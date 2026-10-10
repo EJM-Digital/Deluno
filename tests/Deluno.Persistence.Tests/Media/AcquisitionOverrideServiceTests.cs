@@ -62,17 +62,18 @@ public sealed class AcquisitionOverrideServiceTests
     }
 
     /// <summary>
-    /// Forget, not delete.
+    /// Remove the old copy, not just delete it.
     ///
     /// <para>The distinction is the whole point of the override on a usenet
     /// client. Deleting removes the transfer; SABnzbd and NZBGet refuse a
     /// release from their <em>history</em>, which outlives the transfer — so a
     /// delete would report success and change nothing. On a torrent client the
-    /// two resolve to the same request, and "forget" is still the honest name
-    /// for what is being asked for.</para>
+    /// two resolve to the same request. The old copy and its files go (a forced
+    /// re-download of the same release asks for that), and the line says so
+    /// (#1241). This is the refused-copy removal, never "stop tracking".</para>
     /// </summary>
     [Fact]
-    public async Task Clearing_a_download_asks_the_client_to_forget_the_release()
+    public async Task Clearing_a_download_removes_the_old_copy_and_says_so()
     {
         var service = Build(out _, out var clients);
 
@@ -85,9 +86,9 @@ public sealed class AcquisitionOverrideServiceTests
                 QueueItemId: "hash-1"),
             CancellationToken.None);
 
-        Assert.Equal(DownloadClientActions.Forget, clients.RequestedAction);
+        Assert.Equal(DownloadClientActions.RemoveRefusedCopy, clients.RequestedAction);
         Assert.Equal("hash-1", clients.RequestedQueueItemId);
-        Assert.Contains(result.Cleared, entry => entry.Contains("forget", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Cleared, entry => entry.Contains("Removed the old copy", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -267,9 +268,9 @@ public sealed class AcquisitionOverrideServiceTests
                 DownloadClientName: "qBittorrent"),
             CancellationToken.None);
 
-        Assert.Equal(DownloadClientActions.Forget, clients.RequestedAction);
+        Assert.Equal(DownloadClientActions.RemoveRefusedCopy, clients.RequestedAction);
         Assert.Equal("held-1", clients.RequestedQueueItemId);
-        Assert.Contains(result.Cleared, entry => entry.Contains("forget", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Cleared, entry => entry.Contains("Removed the old copy", StringComparison.Ordinal));
     }
 
     /// <summary>

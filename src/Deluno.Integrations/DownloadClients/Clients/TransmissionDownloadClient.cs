@@ -319,7 +319,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         // recomputed, because that flag is the whole of the difference between
         // two of them. Deluno never deletes a shared file itself (#287).
         //
-        // `forget` is the same request as `delete-with-data`, said rather than
+        // `remove-refused-copy` is the same request as `delete-with-data`, said rather than
         // implied: Transmission keeps no record of a torrent it no longer has,
         // so removing it is the whole of forgetting it.
         var (method, deleteLocalData) = action switch
@@ -329,7 +329,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             DownloadClientActions.Recheck => ("torrent-verify", null),
             DownloadClientActions.Delete => ("torrent-remove", false),
             DownloadClientActions.DeleteWithData => ("torrent-remove", true),
-            DownloadClientActions.Forget => ("torrent-remove", true),
+            DownloadClientActions.RemoveRefusedCopy => ("torrent-remove", true),
             // #810: Transmission's own queue-move-* RPC methods.
             DownloadClientActions.MoveToTop => ("queue-move-top", null),
             DownloadClientActions.MoveUp => ("queue-move-up", null),
