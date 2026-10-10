@@ -27,6 +27,16 @@ public interface IProcessorRepository
         CancellationToken cancellationToken)
         => Task.FromResult<SupersededProcessorHandoff?>(null);
 
+    /// <summary>
+    /// Whether a hand-off replaced an older send of the same source path (#1232). The processor may have cleaned the
+    /// file for that older send, and then has no output to report for this one.
+    /// </summary>
+    Task<bool> ReplacedAnEarlierSendAsync(
+        string libraryId,
+        string handoffId,
+        CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
     /// <summary>Marks a replaced hand-off as settled by the processor's report. True the first time only.</summary>
     Task<bool> SettleSupersededProcessorHandoffAsync(
         string handoffId,
