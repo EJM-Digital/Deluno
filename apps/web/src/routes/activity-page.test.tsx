@@ -738,6 +738,23 @@ describe("Activity is one list with status chips (#1114)", () => {
     expect(screen.getByRole("radio", { name: chip })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("dismisses a failed send from its drawer, and a send still going has no Dismiss (#1218)", async () => {
+    revalidateMock.mockReset();
+    renderActivity("/activity?status=failed");
+
+    await userEvent.click(screen.getByText("Sintel.2010.720p"));
+    const dismiss = within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed download Sintel.2010.720p" });
+    await userEvent.click(dismiss);
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-dispatches/dispatch-refused/dismiss", { method: "POST" }));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+
+    // A send still on its way is not failed: nothing to dismiss.
+    await userEvent.click(screen.getByRole("radio", { name: "In progress 2" }));
+    await userEvent.click(screen.getByText("Arrival.2016.1080p"));
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: /Dismiss the failed download/ })).not.toBeInTheDocument();
+  });
+
   it("opens the job, the send to the client, the history event and the import issue each in its own drawer", async () => {
     renderActivity();
     await openHistory();

@@ -33,3 +33,13 @@ export async function retryFailedJob(jobId: string): Promise<void> {
   const response = await authedFetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
   if (!response.ok) throw new Error("That job could not be tried again.");
 }
+
+/**
+ * A person has seen this failed send and does not need it listed as failed (#1218). The send leaves Activity's Failed
+ * count; the block list is untouched ("Lift the block" is its own action).
+ */
+export async function dismissFailedDispatch(dispatchId: string): Promise<void> {
+  const response = await authedFetch(`/api/download-dispatches/${encodeURIComponent(dispatchId)}/dismiss`, { method: "POST" });
+  // 404 or 409: it is gone, or no longer a failed send, so there is nothing left to clear.
+  if (!response.ok && response.status !== 404 && response.status !== 409) throw new Error("That download could not be dismissed.");
+}

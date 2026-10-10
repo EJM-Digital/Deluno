@@ -34,6 +34,8 @@ export interface LiveStepEntry {
   detail: string;
   detailSub?: string;
   facts: { label: string; value: string; mono?: boolean }[];
+  /** Set on a failed row that a person can clear from its drawer (#1218): the POST that dismisses it. */
+  dismissPath?: string;
 }
 
 function handoffDetail(handoff: ProcessorHandoffItem): string {
@@ -53,6 +55,7 @@ export function processingEntries(handoffs: ProcessorHandoffItem[]): LiveStepEnt
     stepLabel: handoff.processorName ?? "Processor",
     detail: handoffDetail(handoff),
     detailSub: handoff.outputPath ?? handoff.sourcePath,
+    dismissPath: handoffNeedsPerson(handoff) ? `/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss` : undefined,
     facts: [
       { label: "Processor", value: handoff.processorName ?? "Processor" },
       { label: "Sent", value: handoff.sourcePath, mono: true },
