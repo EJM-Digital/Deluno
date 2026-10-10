@@ -380,7 +380,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   /** The processor's own reason is said once, in the Import box with its fixes, not again as the client's health (#1151). */
   const processorOwnsFailure = Boolean(openQueueHandoff) && openQueueItem?.status === downloadQueueStatuses.processingFailed;
   /** One rule for the whole drawer: while a hand-off is being sent again, no section shows the old failure (#1204). */
-  const resendingHandoff = Boolean(openQueueHandoff) && isResendingHandoff(openQueueHandoff!, resentHandoffIds);
+  const resendingHandoff = openQueueItem
+    ? isResendingHandoff(openQueueHandoff, resentHandoffIds, openQueueItem.status, openQueueItem.clientId, openQueueItem.id)
+    : false;
   const showItemFailure = itemFailureVisible(processorOwnsFailure, resendingHandoff);
   const drawerFindings = openQueueItem ? visibleFindings(openQueueItem, openQueueHandoff, resendingHandoff) : [];
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
@@ -964,7 +966,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       },
       `Sent to ${handoff.processorName ?? "the processor"} again.`
     ).then((sent) => {
-      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id));
+      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id).add(resentItemKey(handoff.clientId, handoff.queueItemId)));
     });
   }
 
@@ -2564,12 +2566,37 @@ export function itemFailureVisible(processorOwnsFailure: boolean, resending: boo
   return !processorOwnsFailure && !resending;
 }
 
+/** The key a download goes under in the "sent again" set, so the state outlives the hand-off row vanishing for a refresh. */
+export function resentItemKey(clientId: string, queueItemId: string) {
+  return `item:${clientId.toLowerCase()}:${queueItemId.toLowerCase()}`;
+}
+
+/** Hand-off answers that are a real failure (the old one being shown, or a new one), as opposed to still working or done. */
+function isHandoffFailure(status: string) {
+  return ["failed", "rejected", "timed-out", "stalled", "lost", "cancelled", "source-gone"].includes(status.toLowerCase());
+}
+
 /**
- * Whether a hand-off the person has just sent again is still waiting for the processor's answer (#1193, #1198). While it
- * is, the drawer says "Sending it again" and hides the old failure, so the two never sit side by side.
+ * Whether a hand-off the person has just sent again is still waiting for its new answer (#1193, #1198, #1229). While it
+ * is, the drawer says "Sending it again" and hides the old failure, so the two never sit side by side. It is held until
+ * the new status's own data has arrived: the hand-off with the processor, a hand-off row briefly missing from a
+ * refresh, or the download itself still reading "Processing failed" while the hand-off has already moved on. Only a
+ * hand-off that answers with a failure again, or a download that has left "Processing failed", ends it.
  */
-export function isResendingHandoff(handoff: Pick<ProcessorHandoffItem, "id" | "status">, resentHandoffIds: ReadonlySet<string>) {
-  return resentHandoffIds.has(handoff.id) && isWithProcessor(handoff.status);
+export function isResendingHandoff(
+  handoff: Pick<ProcessorHandoffItem, "id" | "status"> | null,
+  resentHandoffIds: ReadonlySet<string>,
+  itemStatus?: string,
+  clientId?: string,
+  queueItemId?: string
+) {
+  const marked = (handoff ? resentHandoffIds.has(handoff.id) : false)
+    || (clientId && queueItemId ? resentHandoffIds.has(resentItemKey(clientId, queueItemId)) : false);
+  if (!marked) return false;
+  if (!handoff) return itemStatus === downloadQueueStatuses.processingFailed || itemStatus === downloadQueueStatuses.waitingForProcessor;
+  if (isWithProcessor(handoff.status)) return true;
+  if (isHandoffFailure(handoff.status)) return false;
+  return itemStatus === downloadQueueStatuses.processingFailed;
 }
 
 /**
