@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 
 namespace Deluno.Recovery.Policies;
@@ -136,15 +137,15 @@ public static class SharingPolicyEvaluator
             {
                 SharingPolicy.StuckKeepWaiting => new(
                     SharingAction.Wait,
-                    $"Still sharing after {policy.StuckAfterDays} days and {shortfall}. Deluno is set to keep waiting.",
-                    $"{policy.StuckAfterDays} days in, {shortfall} — set to keep waiting"),
+                    $"Still sharing after {PluralWords.Count(policy.StuckAfterDays, "day")} and {shortfall}. Deluno is set to keep waiting.",
+                    $"{PluralWords.Count(policy.StuckAfterDays, "day")} in, {shortfall} — set to keep waiting"),
                 SharingPolicy.StuckAsk => new(
                     SharingAction.Ask,
-                    $"Shared for {policy.StuckAfterDays} days and {shortfall}. Deluno is waiting for you to decide.",
-                    $"{policy.StuckAfterDays} days in, {shortfall} — waiting for you to decide"),
+                    $"Shared for {PluralWords.Count(policy.StuckAfterDays, "day")} and {shortfall}. Deluno is waiting for you to decide.",
+                    $"{PluralWords.Count(policy.StuckAfterDays, "day")} in, {shortfall} — waiting for you to decide"),
                 _ => CheckGuards(guards) ?? new(
                     completionAction,
-                    $"Gave up after {policy.StuckAfterDays} days: {shortfall}.")
+                    $"Gave up after {PluralWords.Count(policy.StuckAfterDays, "day")}: {shortfall}.")
             };
         }
 
@@ -181,7 +182,7 @@ public static class SharingPolicyEvaluator
             var seeders = guards.CurrentSeeders ?? 0;
             return new(
                 SharingAction.Wait,
-                $"Still sharing — only {seeders} {(seeders == 1 ? "seeder" : "seeders")}, below the {guards.MinSeeders} this rule holds out for.",
+                $"Still sharing — only {PluralWords.Count(seeders, "seeder")}, below the {guards.MinSeeders} this rule holds out for.",
                 $"only {seeders} of {guards.MinSeeders} seeders");
         }
 
@@ -189,8 +190,8 @@ public static class SharingPolicyEvaluator
         {
             return new(
                 SharingAction.Wait,
-                $"Still sharing — inactive for {guards.InactiveDays} days, and this rule holds an inactive download rather than removing it.",
-                $"inactive {guards.InactiveDays} days");
+                $"Still sharing — inactive for {PluralWords.Count(guards.InactiveDays.Value, "day")}, and this rule holds an inactive download rather than removing it.",
+                $"inactive {PluralWords.Count(guards.InactiveDays.Value, "day")}");
         }
 
         return null;
@@ -244,6 +245,6 @@ public static class SharingPolicyEvaluator
         if (safe >= 1440) return "1 day";
         if (safe >= 120) return $"{safe / 60} hours";
         if (safe >= 60) return "1 hour";
-        return $"{safe} minutes";
+        return PluralWords.Count(safe, "minute");
     }
 }
