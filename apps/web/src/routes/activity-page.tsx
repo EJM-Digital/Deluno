@@ -320,7 +320,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       });
     }
     for (const dispatch of dispatches) {
-      const standing = dispatchStanding(dispatch);
+      const standing = dispatchStanding(dispatch, dispatches);
       if (!standing) continue;
       const dispatchStatus = standing.status;
       rows.push({

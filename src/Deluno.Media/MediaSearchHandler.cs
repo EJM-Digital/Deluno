@@ -171,6 +171,9 @@ public static class MediaSearchHandler
             : null;
         var alreadyOnItsWay = sendGate is not null
             ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate!.ReleaseName, [item.Id], cancellationToken)
+              // Nor a release the library already holds: a title removed and restored has nothing in flight, yet its
+              // file came from this very release (#1202).
+              ?? await DispatchCoverage.AlreadyInLibraryAsync(jobQueueRepository, bestCandidate.ReleaseName, item.Id, wantedItem.HasFile, cancellationToken)
             : null;
         if (alreadyOnItsWay is not null)
         {

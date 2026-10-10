@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -31,6 +32,9 @@ public sealed class TrayHealthWatcher : IDisposable
         or "AutomationStateChanged"
         or "DownloadClientChanged"
         or "IndexerChanged";
+
+    /// <summary>When this host process started; a metadata check from before it, or soon after it, is not a reading of the new run.</summary>
+    private static readonly DateTimeOffset HostStartedUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime();
 
     public static readonly TimeSpan Coalesce = TimeSpan.FromMilliseconds(500);
 
@@ -117,7 +121,8 @@ public sealed class TrayHealthWatcher : IDisposable
             await connections.ListIndexersAsync(CancellationToken.None).ConfigureAwait(false),
             await processors.ListProcessorConnectionsAsync(CancellationToken.None).ConfigureAwait(false),
             await sp.GetRequiredService<IHealthCheckRepository>().ListAsync(CancellationToken.None).ConfigureAwait(false),
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            HostStartedUtc);
         var settings = await sp.GetRequiredService<IPlatformSettingsRepository>().GetAsync(CancellationToken.None).ConfigureAwait(false);
         return new TrayServerSignals(down, !settings.AutoStartJobs);
     }
@@ -147,6 +152,15 @@ public static class TrayPlatformHealth
     public static bool IsDownStatus(string? status)
         => status is not null && status.ToLowerInvariant() is "unreachable" or "unhealthy" or "failed" or "error";
 
+    /// <summary>
+    /// After a restart the metadata service (Deluno's own broker, named "deluno") is still starting, and the check taken
+    /// while it started stays on record until the next regular check. For this long after the host starts that check is
+    /// not a reading of the new run, so the tray blinks until a good reading instead of calling Deluno itself down (#1202).
+    /// </summary>
+    public static readonly TimeSpan MetadataStartupGrace = TimeSpan.FromMinutes(10);
+
+    public const string MetadataNotAnswering = "The metadata service isn't answering";
+
     public static string NotAnswering(string name) => $"{name} isn't answering";
 
     /// <summary>A Usenet client that answers but has no news server is a setup problem, not a client that is down (#1198).</summary>
@@ -162,14 +176,20 @@ public static class TrayPlatformHealth
         IReadOnlyList<IndexerItem> indexers,
         IReadOnlyList<ProcessorConnectionItem> processors,
         IReadOnlyList<HealthCheckResultItem> health,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        DateTimeOffset? hostStartedUtc = null)
     {
         var latest = checks.ToDictionary(check => $"{check.Kind}:{check.Id}", StringComparer.OrdinalIgnoreCase);
         var down = new List<string>();
 
         // The latest real check wins; a connection nothing has checked yet is judged by its stored health.
-        bool Answers(string kind, string id, string? status)
-            => latest.TryGetValue($"{kind}:{id}", out var check) ? check.Ok : !IsDownStatus(status);
+        // A stored health written after that check (a hand-off that failed, a pass that found the connection silent) is
+        // newer than it, and wins; otherwise a quit Weir stayed green until the next regular check, minutes behind the
+        // Dashboard and System that read the stored health (#1202).
+        bool Answers(string kind, string id, string? status, DateTimeOffset? statusUtc)
+            => latest.TryGetValue($"{kind}:{id}", out var check) && !(statusUtc is { } stored && stored > check.CheckedUtc)
+                ? check.Ok
+                : !IsDownStatus(status);
 
         // A Usenet client that signs in but has no news server yet says so in plain words, whether the latest real
         // check or the stored health carries the reason. It still counts as a problem, so the dot stays amber.
@@ -178,14 +198,16 @@ public static class TrayPlatformHealth
                 ? NoUsenetProvider(item.Name)
                 : NotAnswering(item.Name);
 
-        down.AddRange(clients.Where(item => item.IsEnabled && !Answers(ConnectionKinds.DownloadClient, item.Id, item.HealthStatus)).Select(ClientProblem));
-        down.AddRange(indexers.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Indexer, item.Id, item.HealthStatus)).Select(item => NotAnswering(item.Name)));
-        down.AddRange(processors.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Processor, item.Id, item.HealthStatus)).Select(item => NotAnswering(item.Name)));
+        down.AddRange(clients.Where(item => item.IsEnabled && !Answers(ConnectionKinds.DownloadClient, item.Id, item.HealthStatus, item.LastHealthTestUtc)).Select(ClientProblem));
+        down.AddRange(indexers.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Indexer, item.Id, item.HealthStatus, item.LastHealthTestUtc)).Select(item => NotAnswering(item.Name)));
+        down.AddRange(processors.Where(item => item.IsEnabled && !Answers(ConnectionKinds.Processor, item.Id, item.HealthStatus, item.LastHealthTestUtc)).Select(item => NotAnswering(item.Name)));
 
         var metadata = checks.FirstOrDefault(check => check.Kind == ConnectionKinds.Metadata);
-        if (metadata is { Ok: false })
+        var starting = hostStartedUtc is { } started && (now - started < MetadataStartupGrace || (metadata is not null && metadata.CheckedUtc < started));
+        if (metadata is { Ok: false } && !starting)
         {
-            down.Add(NotAnswering(metadata.Name));
+            // Deluno's own broker is named "deluno", which says nothing to a person: use the plain phrase for it.
+            down.Add(string.Equals(metadata.Name, "deluno", StringComparison.OrdinalIgnoreCase) ? MetadataNotAnswering : NotAnswering(metadata.Name));
         }
 
         foreach (var problem in health.Where(item =>
@@ -204,7 +226,7 @@ public static class TrayPlatformHealth
             }
             else if (problem.Id == "metadata:provider" && metadata is null)
             {
-                down.Add("The metadata service isn't answering");
+                down.Add(MetadataNotAnswering);
             }
         }
 
