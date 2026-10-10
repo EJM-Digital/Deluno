@@ -365,8 +365,17 @@ public sealed class SqliteDownloadHealthRepository(
         CancellationToken cancellationToken,
         bool allowReset = true,
         long minimumGainBytes = 0)
+        => (await ObserveDownloadProgressAsync(clientId, observations, cancellationToken, allowReset, minimumGainBytes))
+            .ToDictionary(pair => pair.Key, pair => pair.Value.LastIncreaseUtc, StringComparer.OrdinalIgnoreCase);
+
+    public async Task<IReadOnlyDictionary<string, DownloadProgressObservation>> ObserveDownloadProgressAsync(
+        string clientId,
+        IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
+        CancellationToken cancellationToken,
+        bool allowReset = true,
+        long minimumGainBytes = 0)
     {
-        var result = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, DownloadProgressObservation>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(clientId) || observations.Count == 0)
         {
             return result;
@@ -411,7 +420,10 @@ public sealed class SqliteDownloadHealthRepository(
             var lastIncreaseUtc = isRealProgress ? now : existing!.LastIncreaseUtc;
             var updated = new DownloadProgressRecord(clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now);
             if (index >= 0) records[index] = updated; else records.Add(updated);
-            result[trimmedId] = lastIncreaseUtc;
+            // #1207: "grew" is bytes against the previous check, whatever the reported speed was.
+            result[trimmedId] = new DownloadProgressObservation(
+                lastIncreaseUtc,
+                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes));
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);

@@ -85,6 +85,11 @@ public sealed record DownloadProgressRecord(
     DateTimeOffset LastIncreaseUtc,
     DateTimeOffset LastObservedUtc);
 
+/// <summary>What one check saw of an item's downloaded bytes (#1207).</summary>
+/// <param name="LastIncreaseUtc">When the bytes were last seen to grow, as the progress clock counts it.</param>
+/// <param name="BytesGrew">Whether the bytes grew since the previous check; null when there was no earlier reading.</param>
+public sealed record DownloadProgressObservation(DateTimeOffset LastIncreaseUtc, bool? BytesGrew);
+
 /// <summary>
 /// What a strike is (#560).
 ///
