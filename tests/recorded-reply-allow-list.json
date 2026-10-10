@@ -1,0 +1,205 @@
+{
+  "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237).",
+  "entries": [
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClientCategoryCheckTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/AddPausedGrabTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ADelugeHealthyStatusIsNotAnErrorTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ADelugeTorrentIsReadyOnlyInItsFinalFolderTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ClientFoldersAreReadTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ClientIncompleteFoldersAreReadTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/CompleteTorrentWithTrackerErrorTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeFinishedButMovingTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeMetadataStallTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeSharingAndTrackerTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/EveryClientAgreesOnFinishedAndPeersTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/EveryVerbMeansSomethingDifferentTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/FinishedFilesAndSmallSizesAreReadTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ForgettingAReleaseTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/GrabAppearanceLookupPerClientTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/IndexerTorrentFetcherTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/LibraryDownloadFolderPerGrabTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentAdapterGapsTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentKeepsItsSessionTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentMetadataStallTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentStateMappingTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentTrackerStatusTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/RemovingAUsenetDownloadTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/SabnzbdNzbNameTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TheIgnoreListMatchesTagsAndTrackerDomainsTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TorrentFileGrabsOnEveryClientTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionAndDelugeQueueAndSeedLimitTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionGrabDuplicateTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionIsKeyedOnTheTorrentHashTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionMetadataStallTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionSharingAndStallTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionTrackerStatusTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/UsenetClientParityTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Processors/AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Processors/AskingTheProcessorTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Processors/ProcessorLibraryFoldersTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Processors/ProcessorVersionTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Versions/ConnectionVersionParserTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Jobs/DownloadDispatchRepositoryTests.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    },
+    {
+      "file": "tests/Deluno.Tray.Tests/ComponentSetupTests.ClientSetup.cs",
+      "kind": "pending",
+      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+    }
+  ]
+}
