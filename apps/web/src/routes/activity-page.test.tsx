@@ -488,6 +488,23 @@ describe("An import case is decided from its drawer (#1114)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/dismiss-1/dismiss", expect.objectContaining({ method: "POST" })));
     await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
   });
+
+  it("reads the server's 'already closed' answer as dismissed and reads the list again", async () => {
+    addCase("closed-1", "Retwice", "processor-lost");
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/movies/import-recovery/closed-1/dismiss"
+        ? ({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+        : answerActivityApi(path));
+    renderActivity("/activity?status=needs-decision");
+
+    await userEvent.click(screen.getByText("Retwice"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss: Retwice" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Dismiss Retwice?" })).getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/closed-1/dismiss", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
 });
 
 describe("A routine job's queued/started/completed fold into one row (#916)", () => {

@@ -1710,6 +1710,23 @@ export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolea
   return check.id.startsWith("notice:");
 }
 
+/**
+ * The import issue a "missing from / unmatched in a processor's output" row mirrors (#1228), or null for any other row.
+ * The row is the same problem as that issue (and its hand-off): it is dismissed, not only snoozed, and the dismissal
+ * is the issue's own, so Activity, Transfers and the bell stop counting it too.
+ */
+export function outputIssueOf(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): { caseId: string; path: string } | null {
+  if (!check.id.startsWith("processor-output-issue:") || !check.detailsJson) return null;
+  try {
+    const details = JSON.parse(check.detailsJson) as { recoveryCaseId?: unknown; recoveryMediaType?: unknown };
+    if (typeof details.recoveryCaseId !== "string" || !details.recoveryCaseId) return null;
+    const collection = details.recoveryMediaType === "series" ? "series" : "movies";
+    return { caseId: details.recoveryCaseId, path: `/api/${collection}/import-recovery/${encodeURIComponent(details.recoveryCaseId)}/dismiss` };
+  } catch {
+    return null;
+  }
+}
+
 /** A start-up step that did not finish (#1080): its problem key, or null for any other row. These can be run again or cleared, not only snoozed. */
 export function startupProblemKey(check: Pick<HealthCheckResultItem, "id">): string | null {
   const prefix = "system:background-problem:";
@@ -1824,6 +1841,26 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
       }
     } catch {
       // The note simply stays; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function dismissOutputIssue(check: HealthCheckResultItem) {
+    const issue = outputIssueOf(check);
+    if (!issue) return;
+    setBusyId(check.id);
+    try {
+      const response = await authedFetch(issue.path, { method: "POST" });
+      // 404: the issue was already closed somewhere else; the row goes on the push all the same.
+      if (response.ok || response.status === 404) {
+        toast.success("Dismissed. Nothing was deleted.");
+        onChanged();
+      } else {
+        toast.error("That could not be dismissed.");
+      }
+    } catch {
+      toast.error("That could not be dismissed.");
     } finally {
       setBusyId(null);
     }
@@ -2089,6 +2126,22 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                       </div>
                     ) : check.status !== "ok" ? (
                       <div className="flex gap-1.5">
+                        {outputIssueOf(check) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-(length:--type-caption)"
+                            aria-label={`Dismiss: ${check.name}`}
+                            title="Closes this problem everywhere it is counted. Nothing is deleted."
+                            disabled={busyId === check.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void dismissOutputIssue(check);
+                            }}
+                          >
+                            Dismiss
+                          </Button>
+                        ) : null}
                         {tagLink ? (
                           <Button
                             variant="ghost"

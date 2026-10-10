@@ -50,6 +50,7 @@ public static class MoviesServiceCollectionExtensions
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.TryAddSingleton<IMediaSubtitleOverrideRepository, SqliteMediaSubtitleOverrideRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Deluno.Platform.Contracts.IHandoffClosedListener, MovieHandoffClosedListener>());
         services.AddSingleton<IMovieCollectionsRepository, SqliteMovieCollectionsRepository>();
         // The quality ladder has to reach this catalogue's own database for a
         // shelf to be sortable by quality; the model service pushes it here on
