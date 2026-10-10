@@ -1301,11 +1301,14 @@ public sealed class WorkPlanner(
                         null,
                         submission.IsAccepted ? null : submission.Message,
                         cancellationToken) ?? handoff;
-                    await processorRepository.RecordProcessorConnectionHealthAsync(
-                        connection.Id,
-                        submission.IsAccepted ? "healthy" : "degraded",
-                        submission.Message,
-                        cancellationToken);
+                    if (ProcessorHealthRules.HealthAfterSubmission(submission) is { } submittedHealth)
+                    {
+                        await processorRepository.RecordProcessorConnectionHealthAsync(
+                            connection.Id,
+                            submittedHealth,
+                            submission.Message,
+                            cancellationToken);
+                    }
                     await activityFeedRepository.RecordActivityAsync(
                         submission.IsAccepted ? "processing.submitted" : "processing.submission-failed",
                         submission.IsAccepted
