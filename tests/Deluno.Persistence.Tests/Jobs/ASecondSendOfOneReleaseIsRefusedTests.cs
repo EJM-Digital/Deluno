@@ -165,6 +165,30 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
         Assert.DoesNotContain("on schedule", queued.Message);
     }
 
+    [Fact]
+    public async Task A_library_check_queued_without_a_library_name_never_leaves_a_blank_in_Activity()
+    {
+        using var world = await World.CreateAsync();
+
+        // #1203: the damaged-download path once queued its check with no libraryName.
+        await world.Store.EnqueueAsync(
+            new EnqueueJobRequest(
+                "library.search.movies", "download-integrity-failed",
+                JsonSerializer.Serialize(new
+                {
+                    libraryId = "movies", mediaType = "movies",
+                    checkMissing = true, checkUpgrades = true, maxItems = 1,
+                    triggeredBy = "download-integrity-failed", targetEntityId = MovieId
+                }),
+                "movie", MovieId),
+            CancellationToken.None);
+
+        var queued = (await world.Store.ListActivityAsync(20, null, null, CancellationToken.None))
+            .Single(item => item.Category == "job.queued");
+        Assert.DoesNotContain("for  ", queued.Message);
+        Assert.Equal("Queued a library check.", queued.Message);
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;

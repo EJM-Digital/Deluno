@@ -1723,6 +1723,7 @@ public sealed class WorkPlanner(
                         JsonSerializer.Serialize(new
                         {
                             libraryId = library.Id,
+                            libraryName = library.Name,
                             mediaType = library.MediaType,
                             checkMissing = true,
                             checkUpgrades = true,

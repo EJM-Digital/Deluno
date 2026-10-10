@@ -5047,7 +5047,9 @@ public sealed class SqliteJobStore(
 
         try
         {
-            return JsonSerializer.Deserialize<LibrarySearchPayload>(payloadJson, PayloadJsonOptions);
+            // A payload with no library name reads as "a library", never as a blank in the sentence (#1203).
+            var payload = JsonSerializer.Deserialize<LibrarySearchPayload>(payloadJson, PayloadJsonOptions);
+            return string.IsNullOrWhiteSpace(payload?.LibraryName) ? null : payload;
         }
         catch
         {
