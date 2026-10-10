@@ -2601,7 +2601,7 @@ export async function saveStallStrikeRules(form: GuideForm) {
       id: "new", kind, enabled: false, strikeLimit: STALL_STRIKE_COUNT, timerMinutes: STALL_CHECK_EVERY_MINUTES, appliesTo: "both",
       minCompletionPercent: 0, maxCompletionPercent: 100, resetStrikesOnProgress: true, actionPreset: "replace", threshold: 0,
       privacyScope: "both", tooSlowMaxTotalMinutes: null, ignoreAboveSizeBytes: null, skipWhileAlternateSpeedLimitOn: false,
-      resetStrikesMinimumProgressBytes: null
+      resetStrikesMinimumProgressBytes: null, privateAction: "remove", blocklistWhenMoved: true
     };
     await fetchJson(`/api/download-health/rules/${existing?.id ?? "new"}`, {
       method: "PUT",

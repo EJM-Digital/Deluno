@@ -419,6 +419,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "search-cycles/keep-seeding",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/settings-keep-seeding-page");
+          return { loader: module.settingsKeepSeedingLoader, Component: module.SettingsKeepSeedingPage };
+        })
+      },
+      {
         path: "search-cycles/blocklist",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");
