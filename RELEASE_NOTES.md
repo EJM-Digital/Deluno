@@ -9,6 +9,52 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.15
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Strikes that follow your rules exactly
+- A strike lands once per "Check every" interval, never early, and a download
+  is removed at exactly your strike count.
+- No download client treats 99.9% as finished any more, so a download stuck
+  just short of the end is struck like any other.
+- Seeds count as peers, so a download fed by one seed is not "Not enough peers".
+
+### Updates
+- System › Updates has three actions: Check now, Download update and Restart
+  and apply.
+- Before any update installs, including the automatic install when Deluno quits
+  or starts, Deluno backs up its data. If the backup fails, the update waits and
+  Deluno says why.
+
+### Weir and your downloads
+- Small extras below Weir's own minimum size are left out of the hand-off and
+  stay untouched in the download folder, so seeding is unaffected.
+- Removing a finished SABnzbd download now removes it from SABnzbd's history,
+  folder and extras included. SABnzbd and NZBGet actions only count as done
+  when the client says so.
+- A download whose files are gone says so, and never comes back as ready to
+  import.
+- Weir's version updates by itself after Weir upgrades.
+
+### The tray
+- The tray changes colour as soon as something it relies on stops answering,
+  and no longer calls Deluno unreachable for a few minutes after a restart.
+- A Usenet client with no provider set up says so, instead of "isn't answering".
+
+### Everywhere
+- Search no longer sends a release your library already holds.
+- When an update check cannot run, the page says it could not check.
+
 ## 1.0.0-rc.30.14
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
