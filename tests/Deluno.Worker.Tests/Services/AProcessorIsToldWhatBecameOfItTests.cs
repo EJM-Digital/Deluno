@@ -184,7 +184,7 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
 
     [Theory]
     [InlineData(ProcessorAnswer.Answered, ProcessorOutcomeDeliveries.Delivered)]
-    [InlineData(ProcessorAnswer.NotFound, ProcessorOutcomeDeliveries.Refused)]
+    [InlineData(ProcessorAnswer.NotFound, ProcessorOutcomeDeliveries.NeverReceived)]
     [InlineData(ProcessorAnswer.Refused, ProcessorOutcomeDeliveries.Refused)]
     [InlineData(ProcessorAnswer.Unsupported, ProcessorOutcomeDeliveries.Refused)]
     [InlineData(ProcessorAnswer.Settled, ProcessorOutcomeDeliveries.Settled)]
@@ -332,6 +332,25 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
     }
 
     /// <summary>
+    /// #1230: a hand-off the processor never received had nothing to tell it. Activity says so plainly, in a kind that
+    /// is not a failure to report.
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_the_processor_never_received_says_so_and_is_not_a_failure_to_report()
+    {
+        Answers(new ProcessorOutcomeResult(ProcessorAnswer.NotFound, false, "Weir on the server has no record of this hand-off."));
+
+        await Reporter().ReportAsync("handoff-1", ProcessorHandoffOutcome.NotImported, null, "Deluno removed it.", CancellationToken.None);
+
+        var (kind, message) = Assert.Single(_said);
+        Assert.Equal("processing.outcome-never-received", kind);
+        Assert.Equal("Weir never received this hand-off of Tears.of.Steel.2012.1080p-DELUNO, so there was nothing to tell it.", message);
+        Assert.DoesNotContain("could not tell", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Deluno.Contracts.ActivityHistory.Outcomes.Good, Deluno.Contracts.ActivityHistory.OutcomeOf(kind));
+        Assert.Null(Owed().NextAttemptUtc);
+    }
+
+    /// <summary>
     /// A person can say it again once they have fixed what stopped it — and
     /// the week begins again.
     /// </summary>
@@ -340,7 +359,7 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
     {
         Answers(new ProcessorOutcomeResult(ProcessorAnswer.NotFound, false, "Weir has no record of this hand-off."));
         await Reporter().ReportAsync("handoff-1", ProcessorHandoffOutcome.Imported, null, null, CancellationToken.None);
-        Assert.Equal(ProcessorOutcomeDeliveries.Refused, Owed().Delivery);
+        Assert.Equal(ProcessorOutcomeDeliveries.NeverReceived, Owed().Delivery);
 
         Answers(new ProcessorOutcomeResult(ProcessorAnswer.Answered, false, "Nothing for Weir to remove."));
         _clock.Advance(TimeSpan.FromDays(10));

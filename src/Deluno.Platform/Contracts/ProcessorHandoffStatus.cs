@@ -168,6 +168,18 @@ public static class ProcessorOutcomeDeliveries
     public const string Refused = "refused";
 
     /// <summary>
+    /// The processor says it has no record of the hand-off: it never received it. There was nothing to tell it,
+    /// so this is no failure to report (#1230).
+    /// </summary>
+    public const string NeverReceived = "never-received";
+
+    /// <summary>
+    /// The hand-off was replaced by a newer send of the same release that is being handled, so a report that the
+    /// earlier send was not imported would contradict the later one. Not told, and not a failure (#1226).
+    /// </summary>
+    public const string Replaced = "replaced";
+
+    /// <summary>
     /// The processor keeps the answer it was first given, and said so by code. Deluno stops telling it; there
     /// is nothing left to fix on either side (#1155).
     /// </summary>
@@ -204,7 +216,8 @@ public static class ProcessorOutcomeDeliveries
         => answer switch
         {
             ProcessorAnswer.Answered => Delivered,
-            ProcessorAnswer.NotFound or ProcessorAnswer.Refused or ProcessorAnswer.Unsupported => Refused,
+            ProcessorAnswer.NotFound => NeverReceived,
+            ProcessorAnswer.Refused or ProcessorAnswer.Unsupported => Refused,
             ProcessorAnswer.Settled => Settled,
             _ => Pending
         };
