@@ -108,6 +108,21 @@ describe("Keep seeding screen (#1240)", () => {
     expect(lastPutBody().indexers).toEqual({});
   });
 
+  it("checks a category already chosen as the drawer opens, and says a client that cannot keep seeding says why", async () => {
+    loaderData = { ...freshInstall(), clients: [{ ...freshInstall().clients[0], name: "My Deluge", protocol: "deluge", category: "keep-seeding" }, freshInstall().clients[1]] };
+    authedFetchMock.mockImplementation(() => json({
+      clientId: "q1", clientName: "My Deluge", category: "keep-seeding", status: "unsupported", supported: false, found: false,
+      message: "Deluge's Label plugin is off, so Deluno cannot keep a download seeding under a label. Turn on the Label plugin in Deluge, Preferences, Plugins."
+    }));
+    renderPage();
+
+    fireEvent.click(screen.getByText("My Deluge"));
+
+    expect(await screen.findByText(/Label plugin is off/i)).toBeInTheDocument();
+    expect(screen.getByText("Not available")).toBeInTheDocument();
+    expect(authedFetchMock).toHaveBeenCalledWith("/api/download-health/keep-seeding/check", expect.objectContaining({ body: JSON.stringify({ clientId: "q1", category: "keep-seeding" }) }));
+  });
+
   it("saves a site's own answer, tags and category", async () => {
     authedFetchMock.mockImplementation(() => json(freshInstall()));
     renderPage();
