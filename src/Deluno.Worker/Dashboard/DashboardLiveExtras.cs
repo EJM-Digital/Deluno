@@ -491,7 +491,8 @@ public sealed class DashboardLiveService(DashboardLiveStore store, TimeProvider 
     private static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(5);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<DateTimeOffset, AsyncValueCache<DashboardLiveExtras>> _byDay = new();
 
-    public Task<DashboardLiveExtras> GetAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    /// <param name="fresh">True when a health change was just pushed (#1233): the remembered copy is dropped so the connections are read as they are now.</param>
+    public Task<DashboardLiveExtras> GetAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken, bool fresh = false)
     {
         // Only the person's own midnight is ever asked for; a handful of days at most are held.
         if (_byDay.Count > 4)
@@ -500,6 +501,11 @@ public sealed class DashboardLiveService(DashboardLiveStore store, TimeProvider 
         }
 
         var cache = _byDay.GetOrAdd(sinceUtc, _ => new AsyncValueCache<DashboardLiveExtras>(Lifetime, timeProvider));
+        if (fresh)
+        {
+            cache.Invalidate();
+        }
+
         return cache.GetAsync(token => store.GetAsync(timeProvider.GetUtcNow(), sinceUtc, token), cancellationToken);
     }
 }
