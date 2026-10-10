@@ -3570,23 +3570,16 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         Func<string, bool> pathExists)
     {
-        if (!snapshot.Queue.Any(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed))
+        if (!snapshot.Queue.Any(item => DownloadFilesGone.ExpectsItsFiles(item.Status)))
         {
             return snapshot;
         }
 
         var queue = snapshot.Queue.Select(item =>
         {
-            if (item.Status is not (DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed)
-                || string.IsNullOrWhiteSpace(item.SourcePath)
-                || !Path.IsPathRooted(item.SourcePath)
-                || pathExists(item.SourcePath))
-            {
-                return item;
-            }
-
-            var parent = Path.GetDirectoryName(item.SourcePath.TrimEnd('\\', '/'));
-            if (string.IsNullOrWhiteSpace(parent) || !pathExists(parent))
+            // Waiting for a processor is included (#1210): its files vanishing is flagged within one check, the
+            // same as ready to import and done, instead of reading "Waiting for processor" until the processor says.
+            if (!DownloadFilesGone.ExpectsItsFiles(item.Status) || !DownloadFilesGone.AreGone(item.SourcePath, pathExists))
             {
                 return item;
             }
@@ -3594,7 +3587,7 @@ public sealed class DownloadClientTelemetryService(
             return item with
             {
                 Status = DownloadQueueStatuses.FilesGone,
-                ErrorMessage = "The download client lists this as done, but its files are no longer on disk. Remove it from the client, or search for another copy.",
+                ErrorMessage = DownloadFilesGone.Message,
                 IsSetupProblem = true
             };
         }).ToArray();

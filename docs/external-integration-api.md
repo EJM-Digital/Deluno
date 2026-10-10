@@ -651,6 +651,7 @@ against this table gets exactly these; each row is held by a test
 | `403` | The key lacks the `imports` scope. | `{ "message": "This API key does not include the required scope: imports." }` |
 | `409` | The library is set to standard import, so it accepts no processor events. | `{ "message" }` |
 | `409` | No waiting hand-off matches `handoffId` (or the exact `sourcePath` Deluno recorded). Deluno never creates a hand-off from a callback. | `{ "message" }` |
+| `202` | `handoffId` is an older hand-off of a source path that Deluno has since sent again (a release removed and sent again gets a new `handoffId` for the same path). The report is settled against that older hand-off and nothing else changes; the new hand-off settles from its own report. The shape is the repeat-report one above. | `{ "status": "superseded", "handoffId", "alreadyHandled": true }` |
 | `409` | The hand-off is already closed: a second, different completion for one already completed (a hand-off is completed once, naming every output), or a report after Deluno or a person stopped waiting. | `{ "message", "handoffId", "status" }` |
 | `409` | A `rejected` failure Deluno could not act on (it could not identify the release or record the refusal). Nothing was done, so the processor should keep the original. | `{ "message", "handoffId" }` |
 | `429` | Over the API rate limit (see Rate Limits). | `{ "error", "retryAfterSeconds" }` |
