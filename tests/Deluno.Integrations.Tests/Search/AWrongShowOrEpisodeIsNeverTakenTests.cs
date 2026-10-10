@@ -314,6 +314,63 @@ public sealed class AWrongShowOrEpisodeIsNeverTakenTests
         Assert.Equal(failing, all.SelectedDownloadClient!.DownloadClientId);
     }
 
+    // ── #1222: the decision text names the rate and its window; a passed-over client gets a trial send after the cool-off ──
+
+    private static readonly DateTimeOffset Noon = DateTimeOffset.Parse("2026-10-10T12:00:00Z");
+
+    private sealed class ClockAt(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private static Mock<IIntelligentRoutingService> Routing(string id, DownloadClientRecord? record)
+    {
+        var routing = new Mock<IIntelligentRoutingService>();
+        routing.Setup(service => service.GetDownloadClientRecordAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        routing.Setup(service => service.GetDownloadClientSuccessRateAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(record?.Rate);
+        return routing;
+    }
+
+    [Fact]
+    public async Task A_passed_over_client_is_named_with_its_rate_and_the_window_it_was_worked_out_over()
+    {
+        var failing = "failing-" + Guid.NewGuid().ToString("n");
+        var fresh = "fresh-" + Guid.NewGuid().ToString("n");
+        var routing = Routing(failing, new DownloadClientRecord(10, 2, 0.2, 30, Noon.AddHours(-1)));
+        routing.Setup(service => service.GetDownloadClientRecordAsync(fresh, It.IsAny<CancellationToken>())).ReturnsAsync((DownloadClientRecord?)null);
+        routing.Setup(service => service.GetDownloadClientSuccessRateAsync(fresh, It.IsAny<CancellationToken>())).ReturnsAsync((double?)null);
+        var pipeline = new AcquisitionDecisionPipeline(new FixedPlanner(OnePreferred()), intelligentRoutingService: routing.Object, timeProvider: new ClockAt(Noon));
+
+        var plan = await pipeline.PlanAsync(Request(Clients((failing, 10), (fresh, 30))));
+
+        Assert.Equal(fresh, plan.SelectedDownloadClient!.DownloadClientId);
+        Assert.Contains($"{failing} was passed over: 2 of its last 10 downloads imported (counting the last 30 days)", plan.ClientChoiceReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_passed_over_client_gets_a_trial_send_once_the_cool_off_has_passed_and_not_before()
+    {
+        var failing = "failing-" + Guid.NewGuid().ToString("n");
+        var fresh = "fresh-" + Guid.NewGuid().ToString("n");
+
+        async Task<AcquisitionDecisionPlan> PlanWithLastSend(TimeSpan sinceLastSend)
+        {
+            var routing = Routing(failing, new DownloadClientRecord(10, 2, 0.2, 30, Noon - sinceLastSend));
+            routing.Setup(service => service.GetDownloadClientRecordAsync(fresh, It.IsAny<CancellationToken>())).ReturnsAsync((DownloadClientRecord?)null);
+            routing.Setup(service => service.GetDownloadClientSuccessRateAsync(fresh, It.IsAny<CancellationToken>())).ReturnsAsync((double?)null);
+            var pipeline = new AcquisitionDecisionPipeline(new FixedPlanner(OnePreferred()), intelligentRoutingService: routing.Object, timeProvider: new ClockAt(Noon));
+            return await pipeline.PlanAsync(Request(Clients((failing, 10), (fresh, 30))));
+        }
+
+        var tooSoon = await PlanWithLastSend(DispatchRateCounting.ClientCoolOff - TimeSpan.FromMinutes(1));
+        Assert.Equal(fresh, tooSoon.SelectedDownloadClient!.DownloadClientId);
+
+        var due = await PlanWithLastSend(DispatchRateCounting.ClientCoolOff);
+        Assert.Equal(failing, due.SelectedDownloadClient!.DownloadClientId);
+        Assert.Contains("trial send", due.ClientChoiceReason, StringComparison.Ordinal);
+        Assert.Contains("2 of its last 10 downloads imported (counting the last 30 days)", due.ClientChoiceReason, StringComparison.Ordinal);
+    }
+
     // ── helpers ──
 
     private static MediaSearchPlan OnePreferred()
