@@ -52,6 +52,11 @@ internal static class Program
 
         LogColdStart();
 
+        // The first run after an install does its work (firewall question, Start with Windows, the app picker) inside
+        // the Velopack first-run hook below, which can take minutes. The tray icon is up before that begins and blinks
+        // until the real one takes over (#1214).
+        _firstRunTray = FirstRunTray.StartIfFirstRun(args);
+
         // Setup.exe and Update.exe run these per user, without administrator
         // rights, and kill them after 30 seconds (15 on uninstall). So the
         // firewall rule (#623) is only added here when the rights are already
@@ -93,7 +98,14 @@ internal static class Program
             TryLogStartupFailure(ex);
             throw;
         }
+        finally
+        {
+            _firstRunTray?.Dispose();
+        }
     }
+
+    /// <summary>The icon shown while a clean install sets itself up; taken down once the real tray icon is up.</summary>
+    private static FirstRunTray? _firstRunTray;
 
     private static async Task RunAsync(string[] args)
     {
@@ -139,7 +151,11 @@ internal static class Program
             }
 
             EnsureWinFormsBootstrap();
-            Application.Run(new TrayApplication());
+            var tray = new TrayApplication();
+            // The real icon is up (it is shown in its constructor), so the first-run one can go without a gap.
+            _firstRunTray?.Dispose();
+            _firstRunTray = null;
+            Application.Run(tray);
         }
     }
 

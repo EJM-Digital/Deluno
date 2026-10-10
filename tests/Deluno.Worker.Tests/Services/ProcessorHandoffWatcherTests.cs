@@ -289,6 +289,34 @@ public sealed class ProcessorHandoffWatcherTests
     }
 
     [Fact]
+    public async Task A_processor_stored_as_not_answering_that_answers_again_is_stored_healthy_at_once()
+    {
+        _repository.Setup(repo => repo.FindProcessorConnectionAsync(It.IsAny<string?>(), "Weir", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorConnectionItem(
+                "connection-1", "Weir", "generic-webhook", "http://weir:8788/api/v1/intake/webhook/deluno",
+                "X-Webhook-Secret", "secret", true, "unreachable", null, null, Now, Now));
+        var previous = new ProcessorHandoffObservation(ProcessorHandoffStates.Queued, null, 2, null, Now.AddDays(-3), Now.AddMinutes(-5), Now.AddDays(-2), null);
+        GivenHandoff(updated: Now.AddDays(-4), previous: previous);
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddDays(-3), queuePosition: 2);
+
+        await Watch();
+
+        _repository.Verify(repo => repo.RecordProcessorConnectionHealthAsync("connection-1", "healthy", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_processor_already_stored_healthy_is_not_written_again_when_it_answers()
+    {
+        var previous = new ProcessorHandoffObservation(ProcessorHandoffStates.Queued, null, 2, null, Now.AddDays(-3), Now.AddMinutes(-5), Now.AddDays(-2), null);
+        GivenHandoff(updated: Now.AddDays(-4), previous: previous);
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddDays(-3), queuePosition: 2);
+
+        await Watch();
+
+        _repository.Verify(repo => repo.RecordProcessorConnectionHealthAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task A_refused_question_says_to_set_a_webhook_secret_and_gives_up_on_nothing()
     {
         GivenHandoff(updated: Now.AddDays(-9), previous: null);

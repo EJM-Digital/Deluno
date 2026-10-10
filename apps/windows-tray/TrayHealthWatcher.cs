@@ -194,9 +194,9 @@ public sealed class TrayHealthWatcher : IDisposable
 /// </summary>
 public static class TrayPlatformHealth
 {
-    /// <summary>A stored connection health that means it does not answer.</summary>
+    /// <summary>A stored connection health that means it is down or not working: the rule the Dashboard uses too.</summary>
     public static bool IsDownStatus(string? status)
-        => status is not null && status.ToLowerInvariant() is "unreachable" or "unhealthy" or "failed" or "error";
+        => ConnectionHealthRules.IsDown(status);
 
     // After a restart the check taken before the host started is stale: Deluno's own broker (named "deluno") was still
     // starting. The watcher runs one fresh check straight after the start and that replaces it (#1202).
@@ -209,6 +209,27 @@ public static class TrayPlatformHealth
 
     private static bool HasNoProvider(string? message)
         => string.Equals(message?.Trim(), Deluno.Connections.Usenet.UsenetProviderText.NoProvider, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether one dependency answers, from its latest real check (null when nothing has checked it) and its stored
+    /// health with the time it was written. See <see cref="Down"/> for why a later non-check write cannot hide an outage.
+    /// </summary>
+    public static bool Judge(ConnectionCheckItem? check, string? status, DateTimeOffset? statusUtc)
+    {
+        if (check is null)
+        {
+            return !IsDownStatus(status);
+        }
+
+        if (statusUtc is not { } stored || stored <= check.CheckedUtc)
+        {
+            return check.Ok;
+        }
+
+        return check.Ok
+            ? !IsDownStatus(status)
+            : string.Equals(status?.Trim(), "healthy", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>One plain phrase for each thing that is down: download clients, then indexers, the processor, then the rest.</summary>
     public static IReadOnlyList<string> Down(
@@ -224,13 +245,12 @@ public static class TrayPlatformHealth
         var down = new List<string>();
 
         // The latest real check wins; a connection nothing has checked yet is judged by its stored health.
-        // A stored health written after that check (a hand-off that failed, a pass that found the connection silent) is
-        // newer than it, and wins; otherwise a quit Weir stayed green until the next regular check, minutes behind the
-        // Dashboard and System that read the stored health (#1202).
+        // A stored health written after a check wins only where it can be trusted: one that says "down" always, and one
+        // that says "healthy" (an answer: an accepted hand-off, a pass that heard from it). Any other later write (a
+        // hand-off that failed stores "degraded") is not an answer, so it never turns a dependency the latest check
+        // found not answering back to answering (#1213). Only a successful check or answer does that.
         bool Answers(string kind, string id, string? status, DateTimeOffset? statusUtc)
-            => latest.TryGetValue($"{kind}:{id}", out var check) && !(statusUtc is { } stored && stored > check.CheckedUtc)
-                ? check.Ok
-                : !IsDownStatus(status);
+            => Judge(latest.TryGetValue($"{kind}:{id}", out var check) ? check : null, status, statusUtc);
 
         // A Usenet client that signs in but has no news server yet says so in plain words, whether the latest real
         // check or the stored health carries the reason. It still counts as a problem, so the dot stays amber.
