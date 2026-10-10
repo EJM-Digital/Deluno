@@ -9,7 +9,19 @@ public sealed record IntelligentRoutingSnapshot(
     DateTimeOffset ComputedUtc,
     IntelligentRoutingPreferences Preferences,
     IReadOnlyDictionary<string, double> IndexerSuccessRates,
-    IReadOnlyDictionary<string, double> DownloadClientSuccessRates);
+    IReadOnlyDictionary<string, double> DownloadClientSuccessRates,
+    IReadOnlyDictionary<string, DownloadClientRecord>? DownloadClientRecords = null);
+
+/// <summary>
+/// What a download client's recent record is made of (#1222): how many of its last counted sends were imported,
+/// the share that is, the window that was looked at, and when it last had any send (for the cool-off).
+/// </summary>
+public sealed record DownloadClientRecord(
+    int Counted,
+    int Imported,
+    double Rate,
+    int WindowDays,
+    DateTimeOffset? LastSendUtc);
 
 public sealed record IntelligentRoutingAnomaly(
     string Code,
@@ -44,4 +56,7 @@ public interface IIntelligentRoutingService
     Task<IntelligentRoutingSnapshot> GetSnapshotAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<IntelligentRoutingAnomaly>> DetectAnomaliesAsync(CancellationToken cancellationToken);
     Task<double?> GetDownloadClientSuccessRateAsync(string? downloadClientId, CancellationToken cancellationToken);
+
+    /// <summary>The client's recent record, or null when it has too few counted sends to judge (#1222).</summary>
+    Task<DownloadClientRecord?> GetDownloadClientRecordAsync(string? downloadClientId, CancellationToken cancellationToken);
 }

@@ -486,6 +486,9 @@ public sealed class AcquisitionDecisionPipelineTests
         public Task<IReadOnlyList<IntelligentRoutingAnomaly>> DetectAnomaliesAsync(CancellationToken cancellationToken)
             => Task.FromResult((IReadOnlyList<IntelligentRoutingAnomaly>)[]);
 
+        public Task<DownloadClientRecord?> GetDownloadClientRecordAsync(string? downloadClientId, CancellationToken cancellationToken)
+            => Task.FromResult<DownloadClientRecord?>(null);
+
         public Task<double?> GetDownloadClientSuccessRateAsync(string? downloadClientId, CancellationToken cancellationToken)
         {
             if (downloadClientId is null)
