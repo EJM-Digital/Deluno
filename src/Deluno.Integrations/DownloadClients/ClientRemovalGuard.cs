@@ -1,0 +1,161 @@
+namespace Deluno.Integrations.DownloadClients;
+
+/// <summary>Whether a download client has a download, as far as Deluno could tell.</summary>
+internal enum ClientHas
+{
+    Yes,
+    No,
+
+    /// <summary>The client did not answer, or answered in a way that could not be read.</summary>
+    Unknown
+}
+
+/// <summary>
+/// One rule for every client that removes a download (#1212, #1201): a removal counts as done only when the
+/// client had the download before the call and no longer has it after.
+///
+/// <para>SABnzbd answers <c>{"status":true}</c> to a history delete for an id it has never heard of, and a
+/// client's "yes" says nothing about what it did. So the client is looked at, not believed: asked before the call
+/// (a download it does not have is a plain failure, never "Done") and asked again after (a download it still has is
+/// a failure, whatever the call said).</para>
+/// </summary>
+internal static class ClientRemovalGuard
+{
+    public static async Task<DownloadClientActionResult> RunAsync(
+        Deluno.Connections.Contracts.DownloadClientItem client,
+        string queueItemId,
+        string action,
+        string clientName,
+        Func<Task<ClientHas>> has,
+        Func<Task<DownloadClientActionResult>> remove)
+    {
+        switch (await has())
+        {
+            case ClientHas.No:
+                return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                    $"{clientName} has no download with that id, so nothing was removed. It may already have been removed there.");
+            case ClientHas.Unknown:
+                return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                    $"{clientName} could not be asked whether it has this download, so nothing was changed.", category: "unreachable");
+        }
+
+        var result = await remove();
+        if (!result.Succeeded)
+        {
+            return result;
+        }
+
+        return await has() switch
+        {
+            ClientHas.No => result,
+            ClientHas.Yes => DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                $"{clientName} still has this download after being told to remove it, so it was not removed."),
+            _ => DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                $"{clientName} did not confirm that the download is gone, so Deluno cannot say it was removed.", category: "unreachable")
+        };
+    }
+}
+
+/// <summary>
+/// Removing the folder a finished download left on disk, for a client whose own delete does not (#1212). Deluno's
+/// own delete, the same one it uses for every other download's files (an orphaned or refused payload, an rTorrent
+/// download): the folder goes, extras and all, and anything that cannot go is said plainly.
+/// </summary>
+internal static class DownloadFolderRemoval
+{
+    /// <summary>
+    /// Whether <paramref name="path"/> is one Deluno can safely delete on a download's behalf: named, resolvable, not
+    /// a filesystem root, and present on this machine.
+    /// </summary>
+    public static bool IsSafeToDelete(string? path, out string fullPath)
+    {
+        fullPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        string resolved;
+        try
+        {
+            resolved = Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        var root = Path.GetPathRoot(resolved);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        var trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var trimmedResolved = resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (trimmedResolved.Length == 0 || string.Equals(trimmedResolved, trimmedRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!Directory.Exists(resolved) && !File.Exists(resolved))
+        {
+            return false;
+        }
+
+        fullPath = resolved;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes the folder (or file) a finished job left behind.
+    /// </summary>
+    /// <param name="path">Where the client says the finished files are.</param>
+    /// <param name="jobName">
+    /// The job's name. The folder is the job's own only when it carries that name; a client that points at a shared
+    /// folder (a category folder, say) must never have it wiped on one job's behalf.
+    /// </param>
+    /// <param name="onThisMachine">Whether the client runs here, so a folder that is not found really is gone.</param>
+    /// <returns>Null when the files are gone (removed now, or never there), else why they are still on disk.</returns>
+    public static string? Remove(string? path, string? jobName, bool onThisMachine)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return onThisMachine ? null : "The client did not say where its files are, so Deluno could not look for them.";
+        }
+
+        if (!IsSafeToDelete(path, out var fullPath))
+        {
+            return onThisMachine
+                ? null
+                : $"The client is on another machine, so Deluno cannot see {path} to check it was removed.";
+        }
+
+        var folderName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var stem = Directory.Exists(fullPath) ? folderName : Path.GetFileNameWithoutExtension(folderName);
+        if (!string.IsNullOrWhiteSpace(jobName)
+            && !stem.StartsWith(jobName.Trim(), StringComparison.OrdinalIgnoreCase)
+            && !jobName.Trim().StartsWith(stem, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{fullPath} is not named after this download, so Deluno left it alone.";
+        }
+
+        try
+        {
+            if (Directory.Exists(fullPath))
+            {
+                Directory.Delete(fullPath, recursive: true);
+            }
+            else
+            {
+                File.Delete(fullPath);
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return $"Deluno could not delete {fullPath}: {exception.Message}";
+        }
+    }
+}

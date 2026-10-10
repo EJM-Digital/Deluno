@@ -1074,7 +1074,8 @@ public sealed class WorkPlanner(
                 activityFeedRepository,
                 movieCatalogRepository,
                 seriesCatalogRepository,
-                processorOutputImports)
+                processorOutputImports,
+                downloadIntegrityDispatches)
             .WatchAsync(libraries, now, cancellationToken, allLibraries);
 
         var recentWaitingKeys = recentWaiting
@@ -1763,7 +1764,9 @@ public sealed class WorkPlanner(
         var notDone = new List<string>();
         if (removedFromClient)
         {
-            done.Add("removed it");
+            done.Add(string.IsNullOrWhiteSpace(removalProblem)
+                ? "removed it"
+                : $"removed it, but its files are still on disk ({removalProblem.TrimEnd('.')})");
         }
         else
         {
@@ -1863,7 +1866,8 @@ public sealed class WorkPlanner(
                 item.ClientId,
                 new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
                 cancellationToken);
-            return (actionResult.Succeeded, actionResult.Succeeded ? null : actionResult.Message);
+            // A removal that left the files on disk says so in the second part, so "removed it" never claims more (#1212).
+            return (actionResult.Succeeded, actionResult.Succeeded ? actionResult.FilesNote : actionResult.Message);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

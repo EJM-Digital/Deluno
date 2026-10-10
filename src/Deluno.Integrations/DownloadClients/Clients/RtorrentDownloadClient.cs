@@ -339,7 +339,8 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
                 client,
                 queueItemId,
                 DownloadClientActions.DeleteWithData,
-                "rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not safely find its files on this machine, so they were left on disk -- remove them by hand.");
+                "rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not safely find its files on this machine, so they were left on disk -- remove them by hand.")
+                with { FilesNote = "Deluno could not safely find its files on this machine." };
         }
 
         try
@@ -365,7 +366,8 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
                 client,
                 queueItemId,
                 DownloadClientActions.DeleteWithData,
-                $"rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not delete its files at {fullPath}: {exception.Message}");
+                $"rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not delete its files at {fullPath}: {exception.Message}")
+                with { FilesNote = $"Deluno could not delete {fullPath}: {exception.Message}" };
         }
     }
 
@@ -378,44 +380,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
     /// exist here, which is exactly the case this must not guess through.
     /// </summary>
     private static bool IsSafeToDeleteRtorrentPath(string? path, out string fullPath)
-    {
-        fullPath = string.Empty;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return false;
-        }
-
-        string resolved;
-        try
-        {
-            resolved = Path.GetFullPath(path);
-        }
-        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
-
-        var root = Path.GetPathRoot(resolved);
-        if (string.IsNullOrEmpty(root))
-        {
-            return false;
-        }
-
-        var trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var trimmedResolved = resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (trimmedResolved.Length == 0 || string.Equals(trimmedResolved, trimmedRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!Directory.Exists(resolved) && !File.Exists(resolved))
-        {
-            return false;
-        }
-
-        fullPath = resolved;
-        return true;
-    }
+        => DownloadFolderRemoval.IsSafeToDelete(path, out fullPath);
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {

@@ -89,10 +89,21 @@ public sealed class ForgettingAReleaseTests
     public async Task Deleting_with_data_is_no_longer_unsupported_on_sabnzbd()
     {
         string? asked = null;
+        var removed = false;
         var handler = new StubHandler(request =>
         {
-            asked = request.RequestUri?.Query;
-            return JsonResponse("{\"status\":true}");
+            var query = request.RequestUri?.Query ?? string.Empty;
+            if (query.Contains("name=delete", StringComparison.Ordinal))
+            {
+                asked = query;
+                removed = true;
+                return JsonResponse("{\"status\":true,\"nzo_ids\":[\"SABnzbd_nzo_abc123\"]}");
+            }
+
+            // The job is in the queue until it is deleted: Deluno checks before and after (#1212).
+            return JsonResponse(query.Contains("mode=history", StringComparison.Ordinal) || removed
+                ? "{\"history\":{\"slots\":[]},\"queue\":{\"slots\":[]}}"
+                : "{\"queue\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"filename\":\"x\"}]}}");
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
