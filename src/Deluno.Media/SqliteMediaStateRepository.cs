@@ -1156,6 +1156,11 @@ public sealed class SqliteMediaStateRepository(
                 matches.Add($"json_extract(details_json, '$.HandoffId') IN ({names})");
             }
 
+            if (scope.CaseIds.Count > 0)
+            {
+                matches.Add($"id IN ({Placeholders(update, "caseid", scope.CaseIds)})");
+            }
+
             // Details that are not JSON simply match nothing, rather than
             // failing the whole pass.
             update.CommandText = $"""

@@ -32,6 +32,12 @@ public sealed record ImportRecoveryCaseScope(
     /// </summary>
     public IReadOnlyCollection<string> HandoffIds { get; init; } = [];
 
+    /// <summary>
+    /// Cases by their own id, for a case that names nothing else Deluno can follow: an unmatched processor output
+    /// names only a file (#1242), and the file was imported.
+    /// </summary>
+    public IReadOnlyCollection<string> CaseIds { get; init; } = [];
+
     /// <summary>One download, by the dispatch that sent it.</summary>
     public static ImportRecoveryCaseScope ForDispatch(string dispatchId) => new([dispatchId], []);
 
@@ -54,7 +60,7 @@ public sealed record ImportRecoveryCaseScope(
         => new(dispatchIds, releaseNames, IncludingFailedImports: true) { HandoffIds = handoffIds };
 
     /// <summary>Nothing to settle, so nothing is asked of the database.</summary>
-    public bool IsEmpty => DispatchIds.Count == 0 && ReleaseNames.Count == 0 && HandoffIds.Count == 0;
+    public bool IsEmpty => DispatchIds.Count == 0 && ReleaseNames.Count == 0 && HandoffIds.Count == 0 && CaseIds.Count == 0;
 }
 
 /// <summary>An open recovery case Deluno closed because its film or episode now holds its file (#1167).</summary>

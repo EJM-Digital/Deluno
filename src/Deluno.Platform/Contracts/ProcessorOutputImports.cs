@@ -59,4 +59,11 @@ public interface IProcessorOutputImportQueue
     /// and the hand-off.
     /// </summary>
     Task<bool> OwesItsTitleItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this release was sent to the same client again after this hand-off was made, and that newer send has
+    /// not been imported (#1242): a person said "I do not want it" and sent it again. The newer send's own hand-off may
+    /// not exist yet, and whatever the processor reports about this older one belongs to the newer send.
+    /// </summary>
+    Task<bool> WasSentAgainAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }

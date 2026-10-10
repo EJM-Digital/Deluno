@@ -160,6 +160,12 @@ public sealed class AnUnmatchedOutputProblemClosesWhenItsFileIsImportedTests
         // The scan finds the file with nothing to claim it, as it did at 22:18:43Z.
         await PlanAsync(app);
         var raised = Assert.Single(await OpenUnmatchedAsync(app));
+        {
+            using var before = app.Services.CreateScope();
+            var listed = before.ServiceProvider.GetServices<Deluno.Worker.HealthChecks.IHealthCheck>()
+                .OfType<Deluno.Worker.HealthChecks.Checks.ProcessorOutputImportIssueHealthCheck>().Single();
+            Assert.Contains(await listed.RunAsync(CancellationToken.None), outcome => outcome.Id == ProblemTwins.OutputIssueRowId(raised));
+        }
 
         // One second later the resend is sent and its hand-off imports the very same file.
         await RecordSendAsync(app, scene);
@@ -171,12 +177,14 @@ public sealed class AnUnmatchedOutputProblemClosesWhenItsFileIsImportedTests
         await CompleteAsync(app, queued.JobId!);
         File.Delete(output);
 
-        await PlanAsync(app);
+        await SettleAsync(app);
 
         Assert.Empty(await OpenUnmatchedAsync(app));
-        // ...and its row on System goes with it, not at the next health pass.
-        var health = app.Services.GetRequiredService<IHealthCheckRepository>();
-        Assert.Null(await health.GetAsync(ProblemTwins.OutputIssueRowId(raised), CancellationToken.None));
+        // ...and so is its row on System (and with it Transfers, Activity and the bell, which read the same case).
+        using var scope = app.Services.CreateScope();
+        var check = scope.ServiceProvider.GetServices<Deluno.Worker.HealthChecks.IHealthCheck>()
+            .OfType<Deluno.Worker.HealthChecks.Checks.ProcessorOutputImportIssueHealthCheck>().Single();
+        Assert.DoesNotContain(await check.RunAsync(CancellationToken.None), outcome => outcome.Id == ProblemTwins.OutputIssueRowId(raised));
     }
 
     [Fact]
@@ -189,10 +197,21 @@ public sealed class AnUnmatchedOutputProblemClosesWhenItsFileIsImportedTests
         await PlanAsync(app);
         Assert.Single(await OpenUnmatchedAsync(app));
 
-        await PlanAsync(app);
+        await SettleAsync(app);
 
         Assert.Single(await OpenUnmatchedAsync(app));
     }
+
+    /// <summary>The pass that closes problems which have been answered, run on its own (the planner runs it each pass).</summary>
+    private static Task SettleAsync(ApplicationTestHost app)
+        => new HandledProblemsSettler(
+                app.Services.GetRequiredService<IMovieCatalogRepository>(),
+                app.Services.GetRequiredService<ISeriesCatalogRepository>(),
+                app.Services.GetRequiredService<IJobQueueRepository>(),
+                app.Services.GetRequiredService<IDownloadDispatchesRepository>(),
+                app.Services.GetRequiredService<IActivityFeedRepository>(),
+                app.Services.GetRequiredService<IProcessorRepository>())
+            .SettleAsync(CancellationToken.None);
 
     private static async Task PlanAsync(ApplicationTestHost app)
     {
