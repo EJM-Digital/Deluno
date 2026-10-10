@@ -297,7 +297,8 @@ public sealed class RemovingAUsenetDownloadTests
             return body.Contains("editqueue", StringComparison.Ordinal) ? Json("{\"result\":true}") : nzb.Answer(request);
         });
 
-        var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
+        // Given its settle window (#1244) and still listing the job at the end of it, the removal did not happen.
+        var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler), removalSettle: TimeSpan.FromMilliseconds(300), removalPoll: TimeSpan.FromMilliseconds(50))
             .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "42", CancellationToken.None);
 
         Assert.False(result.Succeeded);
