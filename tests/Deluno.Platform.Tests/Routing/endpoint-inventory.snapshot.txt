@@ -99,6 +99,7 @@ GET /api/download-health
 GET /api/download-health/content-blocklist
 GET /api/download-health/content-blocklist/qbittorrent-sync-status
 GET /api/download-health/ignore-list
+GET /api/download-health/keep-seeding
 GET /api/download-health/rules
 GET /api/exclusions
 GET /api/failure-rules
@@ -330,6 +331,8 @@ POST /api/download-clients/{id}/path-mappings/{mappingId}/test
 POST /api/download-clients/{id}/test
 POST /api/download-dispatches/{id}/dismiss
 POST /api/download-health/ignore-list
+POST /api/download-health/keep-seeding/check
+POST /api/download-health/keep-seeding/problems/{key}/clear
 POST /api/download-health/purge-strikes
 POST /api/filesystem/file-check
 POST /api/filesystem/import/execute-batch
@@ -526,6 +529,7 @@ PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
 PUT /api/download-health/content-blocklist
+PUT /api/download-health/keep-seeding
 PUT /api/download-health/rules/{id}
 PUT /api/failure-rules/{reasonCode}
 PUT /api/indexer-proxies/{id}
