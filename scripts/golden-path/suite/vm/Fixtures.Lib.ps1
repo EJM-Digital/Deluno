@@ -131,12 +131,17 @@ function Add-SuiteTorrentRelease {
 }
 
 # Damages the last piece of a copy of a file (it is zeroed), so a torrent hashed over the good file is one piece short here.
+# -Truncate cuts those bytes off instead: Transmission takes a file of the right size as complete without hashing it (rc.30.24:
+# its "short" film read 100% and was imported), so for Transmission the file must be visibly short.
 function Copy-FileMissingLastPiece {
-    param([string] $From, [string] $To, [int] $Bytes = 300KB)
+    param([string] $From, [string] $To, [int] $Bytes = 300KB, [switch] $Truncate)
     New-Item -ItemType Directory -Force -Path (Split-Path $To) | Out-Null
     Copy-Item -LiteralPath $From -Destination $To -Force
     $fs = [IO.File]::Open($To, 'Open', 'ReadWrite')
-    try { $fs.Seek(-$Bytes, 'End') | Out-Null; $fs.Write((New-Object byte[] $Bytes), 0, $Bytes) } finally { $fs.Dispose() }
+    try {
+        if ($Truncate) { $fs.SetLength($fs.Length - $Bytes) }
+        else { $fs.Seek(-$Bytes, 'End') | Out-Null; $fs.Write((New-Object byte[] $Bytes), 0, $Bytes) }
+    } finally { $fs.Dispose() }
 }
 
 # Makes a torrent film and puts its data where the client will find it.
@@ -171,7 +176,7 @@ function New-TorrentFilm {
             $rel = Add-SuiteTorrentRelease -Title $release -File $good
             $placeAt = $script:Fx.Incomplete[$Client]
             New-Item -ItemType Directory -Force -Path $placeAt | Out-Null
-            if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $good -To (Join-Path $placeAt "$release.mkv") }
+            if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $good -To (Join-Path $placeAt "$release.mkv") -Truncate:($Client -eq 'transmission') }
             else { New-Item -ItemType HardLink -Path (Join-Path $placeAt "$release.mkv") -Target $base | Out-Null }
         }
         else {
@@ -192,7 +197,7 @@ function New-TorrentFilm {
                 $to = Join-Path $dest $rp
                 New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
                 if ($_.Name -eq "$release.mkv") {
-                    if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $_.FullName -To $to } else { New-Item -ItemType HardLink -Path $to -Target $base | Out-Null }
+                    if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $_.FullName -To $to -Truncate:($Client -eq 'transmission') } else { New-Item -ItemType HardLink -Path $to -Target $base | Out-Null }
                 } else { Copy-Item -LiteralPath $_.FullName -Destination $to }
             }
         }
