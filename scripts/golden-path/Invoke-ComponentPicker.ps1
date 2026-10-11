@@ -90,7 +90,11 @@ $rows = Rows $window
 Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
 if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
 Step 'tick every row'
-foreach ($row in $rows) {
+foreach ($rowName in @($rows | ForEach-Object { $_.Current.Name })) {
+    # Look the row up again: ticking a row can lay the window out again (the Usenet logins appear), which leaves an
+    # element read before it stale, and a stale element answers "Unsupported Pattern" (rc.30.21's first runs).
+    $row = @(Rows $window) | Where-Object { $_.Current.Name -eq $rowName } | Select-Object -First 1
+    if (-not $row) { Log "FAILED: row '$rowName' is gone from the picker"; exit 1 }
     $done = $false
     try {
         $toggle = $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
@@ -98,11 +102,14 @@ foreach ($row in $rows) {
         $done = $true
     } catch { }
     if (-not $done) {
-        $row.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        # As a person would: focus the row and press Space, which ticks a checked list row.
+        try { $row.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch { }
         $row.SetFocus()
         [System.Windows.Forms.SendKeys]::SendWait(' ')
+        Log "ticked '$rowName' with Space (no toggle on that row)"
+    } else {
+        Log "ticked '$rowName'"
     }
-    Log "ticked '$($row.Current.Name)'"
     Start-Sleep -Milliseconds 300
 }
 Start-Sleep -Seconds 1
