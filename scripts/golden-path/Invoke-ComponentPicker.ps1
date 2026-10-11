@@ -176,11 +176,19 @@ Step 'follow the progress'
 
 $deadline = (Get-Date).AddMinutes($InstallMinutes)
 $last = ''
+$missingSince = $null
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
     Clear-ServerManager
     $now = ByName $AE::RootElement 'Set up download clients and Weir'
-    if (-not $now) { Log "the picker window closed by itself"; break }
+    if (-not $now) {
+        # One missed look is not a closed picker: a client's own installer takes the screen while it runs, and the picker
+        # went on installing after the driver gave up on rc.30.21. Only a minute with no picker counts as closed.
+        if (-not $missingSince) { $missingSince = Get-Date; Log "the picker window is not visible; waiting to see whether it comes back" }
+        if (((Get-Date) - $missingSince).TotalSeconds -ge 60) { Log "the picker window closed by itself"; break }
+        continue
+    }
+    if ($missingSince) { Log "the picker window is back"; $missingSince = $null }
     $texts = (Texts $now) -join ' | '
     $rowsNow = (@(AllOfType $now $CT::ListItem) | ForEach-Object { $_.Current.Name }) -join ' | '
     $snapshot = "$texts || $rowsNow"
