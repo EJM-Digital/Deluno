@@ -37,6 +37,12 @@ function Invoke-GroupVanish {
             Start-Sleep -Milliseconds 500
         }
         Start-Sleep -Seconds 5
+        # A client that was never seen saying "Files are gone": keep the row Deluno held for it (its status and the sourcePath the
+        # check judges), which the rc.30.22 run did not keep for SABnzbd and NZBGet.
+        foreach ($kind in Get-AllKinds) {
+            if ($seen.ContainsKey($kind)) { continue }
+            try { Save-Evidence -Name "vanish-before-$kind-row.json" -Text (Find-QueueRow -Name $films[$kind].Release -IncludeHistory | ConvertTo-Json -Depth 4) } catch { }
+        }
     }
     finally { Stop-AutomationPause }
     Start-Sleep -Seconds 45

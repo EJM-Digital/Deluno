@@ -20,7 +20,11 @@ $script:Fx = @{
     NewznabPort = 1180
     Hang     = 'C:\golden\suite\hang.txt'
     Slow     = 'C:\golden\suite\slow.txt'
-    Incomplete = @{ qbittorrent = 'C:\Downloads\Incomplete\qBittorrent'; transmission = 'C:\Downloads\Incomplete\Transmission'; deluge = 'C:\Downloads\Incomplete\Deluge' }
+    # Where each client looks for a torrent's data while it is still "incomplete". qBittorrent, with automatic management on and
+    # an incomplete folder, keeps a torrent of a category in a folder named for the category inside it (rc.30.22: the queue row's
+    # sourcePath read ...\qBittorrent\deluno-movies\<release>, and data put one level up was never found, so no qBittorrent film
+    # ever finished). The others use the folder itself.
+    Incomplete = @{ qbittorrent = 'C:\Downloads\Incomplete\qBittorrent\deluno-movies'; transmission = 'C:\Downloads\Incomplete\Transmission'; deluge = 'C:\Downloads\Incomplete\Deluge' }
     Base     = @{}
     IndexerIds = @{}
     Counter  = 0
@@ -166,6 +170,7 @@ function New-TorrentFilm {
             New-Item -ItemType HardLink -Path $good -Target $base | Out-Null
             $rel = Add-SuiteTorrentRelease -Title $release -File $good
             $placeAt = $script:Fx.Incomplete[$Client]
+            New-Item -ItemType Directory -Force -Path $placeAt | Out-Null
             if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $good -To (Join-Path $placeAt "$release.mkv") }
             else { New-Item -ItemType HardLink -Path (Join-Path $placeAt "$release.mkv") -Target $base | Out-Null }
         }
@@ -295,10 +300,33 @@ function Invoke-FilmSettle {
         if (-not $w.Ok) { Write-SuiteLog ("   {0}: no queue row to re-check after {1} s" -f $Film.Release, $WaitForRowSec); return $false }
     }
     $ok = $false
+    try { Move-FilmDataToClientPath -Film $Film | Out-Null } catch { Write-SuiteLog ("   {0}: could not move the data to where the client looks: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
     try { $ok = if ($Film.ClientKind -eq 'deluge') { [bool](Invoke-DelugeSettle -Film $Film) } else { [bool](Invoke-Recheck -Film $Film) } }
     catch { Write-SuiteLog ("   {0}: the settle step failed: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
     Write-SuiteLog ("   {0}: {1} sent={2}" -f $Film.Release, $(if ($Film.ClientKind -eq 'deluge') { 'force_recheck + move_storage' } else { 'Re-check' }), $ok)
     $ok
+}
+
+# The client says where it looks for the film's data (its queue row's sourcePath). When that is not the folder the suite put the
+# data in, the data is moved there, and the log says so, so a wrong guess about a client's layout never again looks like a film that
+# "never finishes". Returns $true when something was moved.
+function Move-FilmDataToClientPath {
+    param([Parameter(Mandatory)] $Film)
+    if ($Film.Protocol -ne 'torrent' -or -not $script:Fx.Incomplete.ContainsKey($Film.ClientKind)) { return $false }
+    $row = Find-QueueRow -Name $Film.Release
+    if (-not $row -or -not $row.sourcePath) { return $false }
+    $name = if ($Film.Layout -eq 'file') { "$($Film.Release).mkv" } else { $Film.Release }
+    $placedIn = $script:Fx.Incomplete[$Film.ClientKind].TrimEnd([char]92)
+    $lookIn = (Split-Path -Path ([string]$row.sourcePath).TrimEnd([char]92) -Parent).TrimEnd([char]92)
+    if ($lookIn -ieq $placedIn) { return $false }
+    $placed = Join-Path $placedIn $name
+    if (-not (Test-Path -LiteralPath $placed)) { return $false }
+    New-Item -ItemType Directory -Force -Path $lookIn | Out-Null
+    $to = Join-Path $lookIn $name
+    if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force }
+    Move-Item -LiteralPath $placed -Destination $to
+    Write-SuiteLog ("   {0}: the client looks in {1}, not {2}; the data was moved there." -f $Film.Release, $lookIn, $placedIn)
+    $true
 }
 
 # What a failed film needs in its evidence: the client's queue row and what is in the client's folders.
