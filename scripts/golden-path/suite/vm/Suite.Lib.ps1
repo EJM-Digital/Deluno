@@ -290,7 +290,7 @@ function Connect-Weir {
     $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     $origin = $script:S.WeirUrl
     $csrf = (Invoke-RestMethod -Uri "$origin/api/v1/auth/csrf" -WebSession $sess -UseBasicParsing -TimeoutSec 20).csrf_token
-    $body = @{ username = 'golden'; password = (Get-SuiteSecret 'weir-password'); csrf_token = $csrf } | ConvertTo-Json
+    $body = @{ username = (Get-SuiteSecret 'weir-username'); password = (Get-SuiteSecret 'weir-password'); csrf_token = $csrf } | ConvertTo-Json
     Invoke-RestMethod -Uri "$origin/api/v1/auth/login" -Method Post -ContentType 'application/json' -Body $body -WebSession $sess -Headers @{ Origin = $origin } -UseBasicParsing -TimeoutSec 20 | Out-Null
     $script:S.WeirSession = $sess
 }

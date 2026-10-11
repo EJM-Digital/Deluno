@@ -32,7 +32,7 @@ function Complete-WeirWizard {
             Start-Sleep -Seconds 3
             $text = Get-PageText -Page $page
             if ($text -match 'Sign in|Log in') {
-                Set-PageInput -Page $page -Selector 'input[name=username],input[type=text],input:not([type])' -Value 'golden' | Out-Null
+                Set-PageInput -Page $page -Selector 'input[name=username],input[type=text],input:not([type])' -Value (Get-SuiteSecret 'weir-username') | Out-Null
                 Set-PageInput -Page $page -Selector 'input[type=password]' -Value (Get-SuiteSecret 'weir-password') | Out-Null
                 Click-PageText -Page $page -Pattern '^(Sign in|Log in)' -TimeoutSec 10 | Out-Null
                 Start-Sleep -Seconds 3
@@ -55,6 +55,8 @@ function Initialize-SuiteEnvironment {
     $status = Wait-DelunoUp
     New-SuiteSecret 'deluno-password' | Out-Null
     New-SuiteSecret 'weir-password' | Out-Null
+    # Weir's account is the run's own throwaway: a made-up name too, so masking it never hides an ordinary word in a log.
+    New-SuiteSecret 'weir-username' | Out-Null
     foreach ($f in $MoviesRoot, $TvRoot, $WeirMovies, $WeirTv) { New-Item -ItemType Directory -Force -Path $f | Out-Null }
 
     # 1. The first account.
@@ -68,9 +70,11 @@ function Initialize-SuiteEnvironment {
     # 2. The clients, then Weir with an account of its own.
     $all = Invoke-Deluno -Method POST -Path '/api/system/bundled-components/connect-all' -TimeoutSec 240
     foreach ($row in @($all.results)) { Write-SuiteLog ("   connect {0}: healthy={1} {2}" -f $row.kind, $row.healthy, $row.message) }
-    $weir = Try-Deluno -Method POST -Path '/api/system/bundled-components/weir/connect' -Body @{ username = 'golden'; password = (Get-SuiteSecret 'weir-password') } -TimeoutSec 120
+    $weir = Try-Deluno -Method POST -Path '/api/system/bundled-components/weir/connect' -Body @{ username = (Get-SuiteSecret 'weir-username'); password = (Get-SuiteSecret 'weir-password') } -TimeoutSec 120
     if ($weir.Status -ne 200 -or -not $weir.Data.healthy) { throw (Hide-Secrets "Connecting Weir answered $($weir.Status). $($weir.Raw)") }
     Write-SuiteLog ("   connect weir: {0}" -f $weir.Data.message)
+    # Remembered for the end of the run: the login below is only real if Connect Weir made it.
+    Set-Content -Path (Join-Path (Get-SuiteRoot) 'weir-connected.flag') -Value 'connected' -Encoding ascii
 
     Complete-WeirWizard
 
@@ -180,4 +184,23 @@ function Publish-WeirScenarioKey {
     ($script:S.Secrets | ConvertTo-Json) | Set-Content -Path $script:S.SecretFile -Encoding ascii
     [IO.File]::WriteAllText($Path, $key + "`n", (New-Object Text.UTF8Encoding($false)))
     Write-SuiteLog "A Deluno API key with scopes read,imports was written to $Path for Weir's suite (not shown)."
+}
+
+# Beside the key: the login Connect Weir made in Weir (the run's own throwaway, generated in this VM), for Weir's own scenario suite,
+# which reads the file and deletes it. Two lines: the username, then the password. Both are secrets already (registered when they were
+# made), so every log, result and evidence file masks them, and nothing prints or copies them out of the VM. If Connect Weir never
+# ran, there is no such account and the run fails with that reason. It also fails if no film Deluno handed to Weir is left in place,
+# because Weir's With-Deluno scenarios follow those downloads.
+function Publish-WeirScenarioLogin {
+    param([string] $Path = 'C:\golden\weir-scenario-login.txt')
+    if (-not (Test-Path (Join-Path (Get-SuiteRoot) 'weir-connected.flag'))) { throw 'Connect Weir did not run in this VM, so there is no Weir login to hand over.' }
+    $user = Get-SuiteSecret 'weir-username'
+    $pass = Get-SuiteSecret 'weir-password'
+    # The login must really work, or Weir's suite would fail on it for no reason it could explain.
+    $script:S.WeirSession = $null
+    try { Connect-Weir } catch { throw 'The Weir login Connect Weir made does not sign in to Weir.' }
+    $left = @(Get-Handoffs | Where-Object { $_.status -eq 'completed' -and $_.sourcePath -and (Test-Path -LiteralPath $_.sourcePath) })
+    if ($left.Count -eq 0) { throw 'No film that Deluno handed to Weir is left in place for Weir''s scenarios to follow.' }
+    [IO.File]::WriteAllText($Path, $user + "`n" + $pass + "`n", (New-Object Text.UTF8Encoding($false)))
+    Write-SuiteLog "The Weir login Connect Weir made was written to $Path for Weir's suite (not shown); $($left.Count) handed-off films are in place."
 }
