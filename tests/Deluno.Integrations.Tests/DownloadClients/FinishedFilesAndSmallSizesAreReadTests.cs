@@ -3,6 +3,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -13,8 +14,16 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class FinishedFilesAndSmallSizesAreReadTests
 {
-    private const string EmptyQueue = "{\"queue\":{\"status\":\"Idle\",\"slots\":[]}}";
-    private const string EmptyHistory = "{\"history\":{\"slots\":[]}}";
+    // The empty lists are SABnzbd's own replies when it holds nothing (recorded, #1237).
+    private static string EmptyQueue => RecordedReplies.Sabnzbd("removed-without-data").Body("mode=queue&output", ("queue.slots", new System.Text.Json.Nodes.JsonArray()));
+    private static string EmptyHistory => RecordedReplies.Sabnzbd("removed-with-data").Body("mode=history&output", ("history.slots", new System.Text.Json.Nodes.JsonArray()));
+
+    /// <summary>SABnzbd's own queue reply with one job in it; the sizes and speed are the test's.</summary>
+    private static string Queue(string filename, string mb, string mbLeft, string? speed = null)
+        => RecordedReplies.Sabnzbd("downloading").Body(
+            "mode=queue&output",
+            ("^queue.slots", 1), ("queue.slots.0.nzo_id", "nzo1"), ("queue.slots.0.filename", filename), ("queue.slots.0.status", "Downloading"),
+            ("queue.slots.0.mb", mb), ("queue.slots.0.mbleft", mbLeft), ("queue.speed", speed ?? "0 "));
 
     // ---- #1224 ----
 
@@ -142,7 +151,7 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     [InlineData("12.75", 12_750_000L)]
     public async Task A_sabnzbd_job_with_a_fraction_of_a_megabyte_left_keeps_that_fraction_and_never_reads_100(string mbLeft, long leftBytes)
     {
-        var queue = "{\"queue\":{\"speed\":\"0 \",\"slots\":[{\"nzo_id\":\"nzo1\",\"filename\":\"Some.Film\",\"status\":\"Downloading\",\"mb\":\"1500.00\",\"mbleft\":\"" + mbLeft + "\"}]}}";
+        var queue = Queue("Some.Film", "1500.00", mbLeft);
 
         var item = Assert.Single((await Snapshot(queue)).Queue);
 
@@ -155,7 +164,7 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     [Fact]
     public async Task A_sabnzbd_job_with_data_left_never_reads_100_even_when_the_job_is_tiny()
     {
-        var queue = "{\"queue\":{\"slots\":[{\"nzo_id\":\"nzo1\",\"filename\":\"Tiny\",\"status\":\"Downloading\",\"mb\":\"1000.0\",\"mbleft\":\"0.000002\"}]}}";
+        var queue = Queue("Tiny", "1000.0", "0.000002");
 
         var item = Assert.Single((await Snapshot(queue)).Queue);
 
@@ -169,7 +178,7 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     [InlineData("1.5 M", 1.5)]
     public async Task A_sabnzbd_speed_under_one_megabyte_a_second_is_not_rounded_away(string speed, double expectedMbps)
     {
-        var queue = "{\"queue\":{\"speed\":\"" + speed + "\",\"slots\":[{\"nzo_id\":\"nzo1\",\"filename\":\"Some.Film\",\"status\":\"Downloading\",\"mb\":\"100\",\"mbleft\":\"50\"}]}}";
+        var queue = Queue("Some.Film", "100", "50", speed);
 
         var item = Assert.Single((await Snapshot(queue)).Queue);
 
@@ -180,11 +189,17 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     public async Task An_nzbget_job_is_sized_from_its_32_bit_halves_with_nothing_rounded()
     {
         // 5,000,000,000 bytes is 1 * 2^32 + 705,032,704; 100 bytes are left.
-        var list = "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Some.Film\",\"Status\":\"DOWNLOADING\",\"FileSizeHi\":1,\"FileSizeLo\":705032704,\"FileSizeMB\":4768,\"RemainingSizeHi\":0,\"RemainingSizeLo\":100,\"RemainingSizeMB\":0}]}";
+        // NZBGet's own queue listing, with the sizes set to the halves under test.
+        var list = RecordedReplies.Nzbget("downloading").Body(
+            "listgroups",
+            ("^result", 1), ("result.0.NZBID", 42), ("result.0.NZBName", "Some.Film"), ("result.0.FileSizeHi", 1), ("result.0.FileSizeLo", 705032704L), ("result.0.FileSizeMB", 4768),
+            ("result.0.RemainingSizeHi", 0), ("result.0.RemainingSizeLo", 100), ("result.0.RemainingSizeMB", 0));
         var handler = new Handler(request =>
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
-            return Json(body.Contains("\"listgroups\"", StringComparison.Ordinal) ? list : body.Contains("\"history\"", StringComparison.Ordinal) ? "{\"result\":[]}" : "{\"result\":{\"DownloadRate\":0}}");
+            return body.Contains("\"listgroups\"", StringComparison.Ordinal) ? Json(list)
+                : body.Contains("\"history\"", StringComparison.Ordinal) ? RecordedReplies.Nzbget("removed-with-data").Response("\"history\"", ("result", new System.Text.Json.Nodes.JsonArray()))
+                : RecordedReplies.Nzbget("settings").Response("\"status\"");
         });
 
         var snapshot = await new NzbGetDownloadClient(new Factory(handler))
@@ -214,8 +229,9 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     }
 
     private static string History(string name, string storage)
-        => "{\"history\":{\"slots\":[{\"nzo_id\":\"nzo1\",\"name\":\"" + name + "\",\"status\":\"Completed\",\"storage\":"
-            + System.Text.Json.JsonSerializer.Serialize(storage) + ",\"path\":\"/downloads/incomplete/" + name + "\"}]}}";
+        => RecordedReplies.Sabnzbd("finished-single-file").Body(
+            "mode=history&output",
+            ("^history.slots", 1), ("history.slots.0.nzo_id", "nzo1"), ("history.slots.0.name", name), ("history.slots.0.storage", storage), ("history.slots.0.path", "/downloads/incomplete/" + name));
 
     private sealed class FakeSab(string history)
     {
@@ -226,9 +242,9 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
             var query = request.RequestUri!.Query;
             if (query.Contains("name=delete", StringComparison.Ordinal))
             {
-                if (query.Contains("mode=queue", StringComparison.Ordinal)) return Json("{\"status\":false,\"nzo_ids\":[]}");
+                if (query.Contains("mode=queue", StringComparison.Ordinal)) return RecordedReplies.Sabnzbd("unknown-id").Response("mode=queue&name=delete");
                 _history = EmptyHistory;
-                return Json("{\"status\":true}");
+                return RecordedReplies.Sabnzbd("removed-with-data").Response("mode=history&name=delete");
             }
 
             return Json(query.Contains("mode=history", StringComparison.Ordinal) ? _history : EmptyQueue);
@@ -244,11 +260,16 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             if (body.Contains("\"torrent-remove\"", StringComparison.Ordinal)) _removed = true;
-            var reply = body.Contains("\"torrent-get\"", StringComparison.Ordinal) && !_removed
-                ? "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":" + System.Text.Json.JsonSerializer.Serialize(name)
-                    + ",\"downloadDir\":" + System.Text.Json.JsonSerializer.Serialize(downloadDir) + "}]}}"
-                : "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+            // Transmission's own replies: the torrent list with one torrent (only its id, name and folder are the test's), the list
+            // once it is gone, and its answer to a removal.
+            if (body.Contains("\"torrent-remove\"", StringComparison.Ordinal))
+            {
+                return RecordedReplies.Transmission("removed-with-data").Response("torrent-remove");
+            }
+
+            return body.Contains("\"torrent-get\"", StringComparison.Ordinal) && !_removed
+                ? RecordedReplies.Transmission("finished-single-file").Response("torrent-get", ("arguments.torrents.0.id", 7), ("arguments.torrents.0.name", name), ("arguments.torrents.0.downloadDir", downloadDir))
+                : RecordedReplies.Transmission("removed-with-data").Response("torrent-get");
         }
     }
 

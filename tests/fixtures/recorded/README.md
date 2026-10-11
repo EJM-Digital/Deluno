@@ -38,13 +38,25 @@ in `bodyText`. Requests carry `body` or `bodyText` the same way, with secrets re
 C# tests link `tests/fixtures/RecordedReplies.cs` (the three test projects already do):
 
 ```csharp
-var recording = RecordedReplies.LoadLatest("sabnzbd", "finished-single-file");
-var client = new HttpClient(recording.ReplayHandler());          // answers by method and path
-var body = recording.Find("mode=history").Reply.Body;             // or the raw reply text
+// Answer each call with the recorded reply to the same KIND of call (SABnzbd's mode and name, a JSON-RPC method, qBittorrent's path).
+// The ids in the call are the test's own; the reply is what the real app said.
+var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("removed-without-data"), RecordedReplies.Sabnzbd("removed-with-data")]);
+
+// One recorded reply as an HTTP response, or as text.
+var response = RecordedReplies.Qbittorrent("finished-single-file").Response("torrents/info");
+var body = RecordedReplies.Deluge("finished-single-file").Body("web.update_ui");
+
+// The recorded reply with only the values the test is about changed. A state the VM cannot be put in (a qBittorrent torrent
+// in "metaDL", a ratio) is the nearest recorded state with that one value set; everything else stays as the app sent it.
+var info = RecordedReplies.Qbittorrent("finished-single-file").Body("torrents/info", ("0.state", "metaDL"), ("0.progress", 0.4));
 ```
 
-A state that was never recorded fails with how to record it. Do not write the reply by hand to get
-past that: say it is missing, and record it.
+A path in `Body`/`Response` is dot-separated names and array positions; `*` is the first property of an object (a
+Deluge torrent is keyed by its hash); a null value removes the property. A state that was never recorded fails with how to
+record it. Do not write the reply by hand to get past that: say it is missing, and record it.
+
+Replies are the newest version recorded of each app (`MISSING.md` lists what the VM could not produce). rTorrent, uTorrent and the
+media servers are not recorded; a test of those keeps its own shape and says so in `tests/recorded-reply-allow-list.json`.
 
 ## Recording
 

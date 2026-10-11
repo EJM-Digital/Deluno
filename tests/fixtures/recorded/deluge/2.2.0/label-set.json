@@ -1,0 +1,318 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "label-set",
+  "recordedAt": "2026-10-11T02:05:14Z",
+  "note": "A label created and put on a finished torrent (Deluge's way of a category).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.add",
+          "params": [
+            "recorded-movies"
+          ],
+          "id": 38
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Failure: [Failure instance: Traceback (failure with no frames): <class 'deluge.error.WrappedException'>: Label already exists\nTraceback (most recent call last):\n  File \"deluge\\core\\rpcserver.py\", line 342, in dispatch\n  File \"c:\\program files\\deluge\\_internal\\deluge\\plugins\\label-0.3-py3.9.egg\\deluge_label\\core.py\", line 186, in add\n    check_input(label_id not in self.labels, _('Label already exists'))\n  File \"c:\\program files\\deluge\\_internal\\deluge\\plugins\\label-0.3-py3.9.egg\\deluge_label\\core.py\", line 66, in check_input\n    raise Exception(message)\nException: Label already exists\n\n]",
+            "code": 4
+          },
+          "id": 38
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.set_torrent",
+          "params": [
+            "d8185091144732e990e3595f7db0e4410b1d9424",
+            "recorded-movies"
+          ],
+          "id": 39
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": null,
+          "id": 39
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.get_labels",
+          "params": [],
+          "id": 40
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": [
+            "<scrubbed>-movies",
+            "<scrubbed>-tv",
+            "recorded-movies"
+          ],
+          "error": null,
+          "id": 40
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.get_options",
+          "params": [
+            "recorded-movies"
+          ],
+          "id": 41
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "apply_max": false,
+            "max_download_speed": -1,
+            "max_upload_speed": -1,
+            "max_connections": -1,
+            "max_upload_slots": -1,
+            "prioritize_first_last": false,
+            "apply_queue": false,
+            "is_auto_managed": false,
+            "stop_at_ratio": false,
+            "stop_ratio": 2,
+            "remove_at_ratio": false,
+            "apply_move_completed": false,
+            "move_completed": false,
+            "move_completed_path": "",
+            "auto_add": false,
+            "auto_add_trackers": []
+          },
+          "error": null,
+          "id": 41
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "d8185091144732e990e3595f7db0e4410b1d9424"
+              ]
+            }
+          ],
+          "id": 42
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {
+              "d8185091144732e990e3595f7db0e4410b1d9424": {
+                "state": "Seeding",
+                "seeding_time": 2,
+                "download_payload_rate": 0,
+                "message": "OK",
+                "move_completed_path": "C:\\Downloads\\Completed",
+                "move_completed": false,
+                "num_peers": 0,
+                "num_seeds": 0,
+                "progress": 100,
+                "remove_at_ratio": false,
+                "save_path": "C:\\golden\\recorded\\deluge",
+                "stop_at_ratio": false,
+                "stop_ratio": 2,
+                "time_added": 1791684312,
+                "total_done": 576677428,
+                "trackers": [],
+                "tracker_status": "",
+                "upload_payload_rate": 0,
+                "private": false,
+                "total_size": 576677428,
+                "eta": 0,
+                "queue": -1,
+                "ratio": 0,
+                "name": "Recorded.deluge.A.mkv",
+                "label": "recorded-movies"
+              }
+            },
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Active",
+                  1
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  0
+                ],
+                [
+                  "Seeding",
+                  2
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "opentrackr.org",
+                  1
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ],
+                [
+                  "localclient",
+                  2
+                ]
+              ],
+              "label": [
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "<scrubbed>-movies",
+                  0
+                ],
+                [
+                  "<scrubbed>-tv",
+                  1
+                ],
+                [
+                  "recorded-movies",
+                  1
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "external_ip": null,
+              "num_connections": 1,
+              "upload_rate": 49152,
+              "download_rate": 0,
+              "download_protocol_rate": 197.5,
+              "upload_protocol_rate": 73,
+              "dht_nodes": 366,
+              "has_incoming_connections": 1,
+              "free_space": 20316094464
+            }
+          },
+          "error": null,
+          "id": 42
+        }
+      }
+    }
+  ]
+}

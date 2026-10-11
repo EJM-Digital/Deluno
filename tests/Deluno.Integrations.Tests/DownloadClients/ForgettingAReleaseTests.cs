@@ -2,6 +2,7 @@ using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -27,10 +28,11 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_on_sabnzbd_clears_the_history_and_not_only_the_queue()
     {
         var asked = new List<string>();
-        var handler = new StubHandler(request =>
+        // SABnzbd's own replies to removing a job from the queue and from the history (#1237).
+        var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("removed-without-data"), RecordedReplies.Sabnzbd("removed-with-data")], (request, _) =>
         {
             asked.Add(request.RequestUri?.Query ?? string.Empty);
-            return JsonResponse("{\"status\":true}");
+            return null;
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
@@ -52,10 +54,8 @@ public sealed class ForgettingAReleaseTests
     [Fact]
     public async Task Forgetting_succeeds_when_only_the_history_had_it()
     {
-        var handler = new StubHandler(request =>
-            request.RequestUri!.Query.Contains("mode=history", StringComparison.OrdinalIgnoreCase)
-                ? JsonResponse("{\"status\":true}")
-                : JsonResponse("{\"status\":false}"));
+        // The queue does not know the id (SABnzbd says status false); the history does (status true).
+        var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("unknown-id"), RecordedReplies.Sabnzbd("removed-with-data")]);
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
             .ExecuteActionAsync(Sabnzbd(), DownloadClientActions.RemoveRefusedCopy, "SABnzbd_nzo_abc123", CancellationToken.None);
@@ -90,20 +90,22 @@ public sealed class ForgettingAReleaseTests
     {
         string? asked = null;
         var removed = false;
-        var handler = new StubHandler(request =>
+        var queued = RecordedReplies.Sabnzbd("queued");
+        var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("removed-without-data"), RecordedReplies.Sabnzbd("removed-with-data")], (request, _) =>
         {
             var query = request.RequestUri?.Query ?? string.Empty;
             if (query.Contains("name=delete", StringComparison.Ordinal))
             {
                 asked = query;
                 removed = true;
-                return JsonResponse("{\"status\":true,\"nzo_ids\":[\"SABnzbd_nzo_abc123\"]}");
+                return null;
             }
 
-            // The job is in the queue until it is deleted: Deluno checks before and after (#1212).
-            return JsonResponse(query.Contains("mode=history", StringComparison.Ordinal) || removed
-                ? "{\"history\":{\"slots\":[]},\"queue\":{\"slots\":[]}}"
-                : "{\"queue\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"filename\":\"x\"}]}}");
+            // The job is in the queue until it is deleted: Deluno checks before and after (#1212). The queue is SABnzbd's own
+            // reply with a job in it; only the job's id is the test's.
+            return query.Contains("mode=queue", StringComparison.Ordinal) && !removed
+                ? queued.Response("mode=queue&output", ("queue.slots.0.nzo_id", "SABnzbd_nzo_abc123"))
+                : null;
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
@@ -122,10 +124,10 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_on_nzbget_finally_deletes_the_history_entry()
     {
         var bodies = new List<string>();
-        var handler = new StubHandler(request =>
+        var handler = RecordedReplies.Handler("nzbget", [RecordedReplies.Nzbget("removed-without-data"), RecordedReplies.Nzbget("removed-with-data")], (_, body) =>
         {
-            bodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
-            return JsonResponse("{\"result\":true}");
+            bodies.Add(body);
+            return null;
         });
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
@@ -154,10 +156,10 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_refuses_a_value_sabnzbd_would_read_as_the_whole_history(string selector)
     {
         var sent = 0;
-        var handler = new StubHandler(_ =>
+        var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("removed-with-data")], (_, _) =>
         {
             sent++;
-            return JsonResponse("{\"status\":true}");
+            return null;
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
@@ -178,10 +180,10 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_on_qbittorrent_removes_the_transfer_with_its_files()
     {
         var bodies = new List<string>();
-        var handler = new StubHandler(request =>
+        var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("removed-with-data")], (_, body) =>
         {
-            bodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+            bodies.Add(body);
+            return null;
         });
 
         var result = await new QbittorrentDownloadClient(() => handler)
@@ -224,21 +226,9 @@ public sealed class ForgettingAReleaseTests
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow);
 
-    private static HttpResponseMessage JsonResponse(string body)
-        => new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
-        };
-
     private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(send(request));
     }
 
     private sealed class ThrowingHandler : HttpMessageHandler

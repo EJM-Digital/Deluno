@@ -2,6 +2,7 @@ using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -388,13 +389,18 @@ public sealed class EveryVerbMeansSomethingDifferentTests
             {
                 var listed = !_removed;
                 var nzbList = body.Contains("\"listgroups\"", StringComparison.Ordinal);
+                // The usenet clients' own listings (recorded, #1237): with the job in them, or empty once it is removed.
                 var content = isSabList
                     ? path.Contains("mode=queue", StringComparison.OrdinalIgnoreCase)
-                        ? listed ? "{\"queue\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"filename\":\"x\"}]}}" : "{\"queue\":{\"slots\":[]}}"
-                        : "{\"history\":{\"slots\":[]}}"
+                        ? listed
+                            ? RecordedReplies.Sabnzbd("downloading").Body("mode=queue&output", ("^queue.slots", 1), ("queue.slots.0.nzo_id", "SABnzbd_nzo_abc123"))
+                            : RecordedReplies.Sabnzbd("removed-without-data").Body("mode=queue&output", ("queue.slots", new System.Text.Json.Nodes.JsonArray()))
+                        : RecordedReplies.Sabnzbd("removed-with-data").Body("mode=history&output", ("history.slots", new System.Text.Json.Nodes.JsonArray()))
                     : nzbList
-                        ? listed ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"x\"}]}" : "{\"result\":[]}"
-                        : "{\"result\":[]}";
+                        ? listed
+                            ? RecordedReplies.Nzbget("queued").Body("listgroups", ("^result", 1), ("result.0.NZBID", 42))
+                            : RecordedReplies.Nzbget("removed-without-data").Body("listgroups", ("result", new System.Text.Json.Nodes.JsonArray()))
+                        : RecordedReplies.Nzbget("removed-with-data").Body("\"history\"", ("result", new System.Text.Json.Nodes.JsonArray()));
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
             }
 
@@ -415,13 +421,13 @@ public sealed class EveryVerbMeansSomethingDifferentTests
 
             if (path.Contains("auth/login", StringComparison.OrdinalIgnoreCase))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+                return RecordedReplies.Qbittorrent("sign-in").Response("auth/login");
             }
 
-            // qBittorrent answers its action endpoints in plain text, not JSON.
+            // qBittorrent answers its action endpoints in plain text, not JSON (an empty 200 for a delete).
             if (path.Contains("api/v2/", StringComparison.OrdinalIgnoreCase))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+                return RecordedReplies.Qbittorrent("removed-with-data").Response("torrents/delete");
             }
 
             return new HttpResponseMessage(HttpStatusCode.OK)

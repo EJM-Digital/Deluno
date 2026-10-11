@@ -1,0 +1,31 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "login-refused",
+  "recordedAt": "2026-10-11T01:56:04Z",
+  "note": "A call made with a wrong login.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "version",
+          "params": [],
+          "id": 1
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 1,
+          "result": "26.3"
+        }
+      }
+    }
+  ]
+}

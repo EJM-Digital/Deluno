@@ -2,6 +2,7 @@ using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests;
 
@@ -13,7 +14,7 @@ public sealed class DownloadClientCategoryCheckTests
         var handler = new StubHandler(request =>
         {
             Assert.Contains("mode=addurl", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
-            return JsonResponse("{\"status\":true,\"nzo_ids\":[\"native-sab-id-42\"]}");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl", ("nzo_ids.0", "native-sab-id-42"));
         });
         var request = new DownloadClientGrabRequest(
             "Example.Show.S01E01",
@@ -48,7 +49,8 @@ public sealed class DownloadClientCategoryCheckTests
             // The whole config: a category's folder is relative to the
             // completed folder, which lives under misc (#616).
             Assert.Contains("mode=get_config", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
-            return JsonResponse("{\"config\":{\"misc\":{\"complete_dir\":\"C:\\\\Downloads\\\\Completed\"},\"categories\":[{\"name\":\"movies\",\"dir\":\"films\"},{\"name\":\"anime\",\"dir\":\"anime-in\"}]}}");
+            // SABnzbd's own config reply (recorded, #1237) with one more category: a folder relative to the completed folder.
+            return RecordedReplies.Sabnzbd("settings").Response("mode=get_config", ("config.categories.4.name", "anime"), ("config.categories.4.dir", "anime-in"));
         });
         var client = CreateClient("sabnzbd");
 
@@ -58,8 +60,11 @@ public sealed class DownloadClientCategoryCheckTests
         Assert.True(result.Supported);
         Assert.True(result.Found);
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
-        Assert.Equal(@"C:\Downloads\Completed\anime-in", result.SavePath);
-        Assert.Contains(@"C:\Downloads\Completed\anime-in", result.Message);
+        // The completed folder is whatever the recorded SABnzbd says it is.
+        var completed = (string)System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Sabnzbd("settings").Body("mode=get_config"))!["config"]!["misc"]!["complete_dir"]!;
+        var expected = completed.TrimEnd((char)92) + (char)92 + "anime-in";
+        Assert.Equal(expected, result.SavePath);
+        Assert.Contains(expected, result.Message);
     }
 
     /// <summary>
@@ -69,15 +74,16 @@ public sealed class DownloadClientCategoryCheckTests
     [Fact]
     public async Task Sabnzbd_category_check_refuses_to_call_a_category_with_no_folder_ready()
     {
-        var handler = new StubHandler(_ =>
-            JsonResponse("{\"config\":{\"categories\":[{\"name\":\"anime\",\"dir\":\"\"}]}}"));
+        // A category with no folder: the recorded config's "audio" category has none (dir is empty).
+        var handler = new StubHandler(_ => RecordedReplies.Sabnzbd("settings").Response("mode=get_config"));
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .CheckCategoryAsync(CreateClient("sabnzbd"), "anime", CancellationToken.None);
+            .CheckCategoryAsync(CreateClient("sabnzbd"), "audio", CancellationToken.None);
 
         Assert.True(result.Found);
         Assert.NotEqual(DownloadClientCategoryStatuses.Ready, result.Status);
-        Assert.Null(result.SavePath);
+        // With no folder of its own the downloads land in SABnzbd's completed folder, which the recorded config names.
+        Assert.Equal((string)System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Sabnzbd("settings").Body("mode=get_config"))!["config"]!["misc"]!["complete_dir"]!, result.SavePath);
         Assert.Contains("no folder", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 

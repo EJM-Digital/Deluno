@@ -1,0 +1,278 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "magnet-no-metadata",
+  "recordedAt": "2026-10-11T02:05:10Z",
+  "note": "A magnet link for a torrent nobody has: the client cannot fetch its metadata and waits.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.add_torrent_magnet",
+          "params": [
+            "magnet:?xt=urn:btih:5422d19ec8580f2821a8ffa67236cf7ed86fc07d&dn=Recorded.Magnet",
+            {
+              "download_location": "C:\\golden\\recorded\\deluge\\save",
+              "add_paused": false
+            }
+          ],
+          "id": 23
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": "5422d19ec8580f2821a8ffa67236cf7ed86fc07d",
+          "error": null,
+          "id": 23
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "5422d19ec8580f2821a8ffa67236cf7ed86fc07d"
+              ]
+            }
+          ],
+          "id": 24
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {
+              "5422d19ec8580f2821a8ffa67236cf7ed86fc07d": {
+                "state": "Downloading",
+                "seeding_time": 0,
+                "download_payload_rate": 0,
+                "message": "OK",
+                "move_completed_path": "C:\\Downloads\\Completed",
+                "move_completed": true,
+                "num_peers": 0,
+                "num_seeds": 0,
+                "progress": 0,
+                "remove_at_ratio": false,
+                "save_path": "C:\\golden\\recorded\\deluge\\save",
+                "stop_at_ratio": false,
+                "stop_ratio": 2,
+                "time_added": 1791684302,
+                "total_done": 0,
+                "trackers": [],
+                "tracker_status": "",
+                "upload_payload_rate": 0,
+                "private": false,
+                "total_size": 0,
+                "eta": 0,
+                "queue": 0,
+                "ratio": -1,
+                "name": "Recorded.Magnet",
+                "label": ""
+              }
+            },
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Active",
+                  1
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  1
+                ],
+                [
+                  "Seeding",
+                  1
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "opentrackr.org",
+                  1
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ],
+                [
+                  "localclient",
+                  2
+                ]
+              ],
+              "label": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "<scrubbed>-movies",
+                  0
+                ],
+                [
+                  "<scrubbed>-tv",
+                  1
+                ],
+                [
+                  "recorded-movies",
+                  0
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "num_connections": 1,
+              "upload_rate": 0,
+              "download_rate": 0,
+              "download_protocol_rate": 4.5,
+              "upload_protocol_rate": 0,
+              "dht_nodes": 366,
+              "has_incoming_connections": 1,
+              "free_space": 20892864512,
+              "external_ip": null
+            }
+          },
+          "error": null,
+          "id": 24
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {}
+          ],
+          "id": 25
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "{\"result\":{\"connected\":true,\"torrents\":{\"9353dfdad43e6f267e9d495a6838679c1ec15d8b\":{\"state\":\"Seeding\",\"seeding_time\":13935,\"download_payload_rate\":0,\"message\":\"OK\",\"move_completed_path\":\"C:\\\\Downloads\\\\Completed\\\\TV\",\"move_completed\":false,\"num_peers\":1,\"num_seeds\":0,\"progress\":100,\"remove_at_ratio\":false,\"save_path\":\"C:\\\\Downloads\\\\Completed\\\\TV\",\"stop_at_ratio\":false,\"stop_ratio\":2,\"time_added\":1791669720,\"total_done\":2609557292,\"trackers\":[{\"url\":\"udp://tracker.opentrackr.org:1337/announce\",\"trackerid\":\"\",\"tier\":0,\"fail_limit\":0,\"source\":4,\"verified\":false,\"message\":\"\",\"last_error\":{\"value\":0,\"category\":\"\"},\"next_announce\":null,\"min_announce\":null,\"scrape_incomplete\":0,\"scrape_complete\":0,\"scrape_downloaded\":0,\"fails\":0,\"updating\":false,\"start_sent\":false,\"complete_sent\":false,\"endpoints\":[],\"send_stats\":false},{\"url\":\"udp://open.demonii.com:1337/announce\",\"trackerid\":\"\",\"tier\":0,\"fail_limit\":0,\"source\":4,\"verified\":false,\"message\":\"\",\"last_error\":{\"value\":0,\"category\":\"\"},\"next_announce\":null,\"min_announce\":null,\"scrape_incomplete\":0,\"scrape_complete\":0,\"scrape_downloaded\":0,\"fails\":0,\"updating\":false,\"start_sent\":false,\"complete_sent\":false,\"endpoints\":[],\"send_stats\":false},{\"url\":\"udp://tracker.torrent.eu.org:451/announce\",\"trackerid\":\"\",\"tier\":0,\"fail_limit\":0,\"source\":4,\"verified\":false,\"message\":\"\",\"last_error\":{\"value\":0,\"category\":\"\"},\"next_announce\":null,\"min_announce\":null,\"scrape_incomplete\":0,\"scrape_complete\":0,\"scrape_downloaded\":0,\"fails\":0,\"updating\":false,\"start_sent\":false,\"complete_sent\":false,\"endpoints\":[],\"send_stats\":false},{\"url\":\"udp://exodus.desync.com:6969/announce\",\"trackerid\":\"\",\"tier\":0,\"fail_limit\":0,\"source\":4,\"verified\":false,\"message\":\"\",\"last_error\":{\"value\":0,\"category\":\"\"},\"next_announce\":null,\"min_announce\":null,\"scrape_incomplete\":0,\"scrape_complete\":0,\"scrape_downloaded\":0,\"fails\":0,\"updating\":false,\"start_sent\":false,\"complete_sent\":false,\"endpoints\":[],\"send_stats\":false},{\"url\":\"udp://open.stealth.si:80/announce\",\"trackerid\":\"\",\"tier\":0,\"fail_limit\":0,\"source\":4,\"verified\":false,\"message\":\"\",\"last_error\":{\"value\":0,\"category\":\"\"},\"next_announce\":null,\"min_announce\":null,\"scrape_incomplete\":0,\"scrape_complete\":0,\"scrape_downloaded\":0,\"fails\":0,\"updating\":false,\"start_sent\":false,\"complete_sent\":false,\"endpoints\":[],\"send_stats\":false}],\"tracker_status\":\"Announce OK\",\"upload_payload_rate\":11207,\"private\":false,\"total_size\":2609557292,\"eta\":0,\"queue\":-1,\"ratio\":0.029089361429214478,\"name\":\"www.Torrenting.com - Severance S01E01 Good News About Hell 1080p BluRay 10Bit DDP5 1 H265-d3g\",\"label\":\"<scrubbed>-tv\"},\"5422d19ec8580f2821a8ffa67236cf7ed86fc07d\":{\"state\":\"Downloading\",\"seeding_time\":0,\"download_payload_rate\":0,\"message\":\"OK\",\"move_completed_path\":\"C:\\\\Downloads\\\\Completed\",\"move_completed\":true,\"num_peers\":0,\"num_seeds\":0,\"progress\":0,\"remove_at_ratio\":false,\"save_path\":\"C:\\\\golden\\\\recorded\\\\deluge\\\\save\",\"stop_at_ratio\":false,\"stop_ratio\":2,\"time_added\":1791684302,\"total_done\":0,\"trackers\":[],\"tracker_status\":\"\",\"upload_payload_rate\":0,\"private\":false,\"total_size\":0,\"eta\":0,\"queue\":0,\"ratio\":-1,\"name\":\"Recorded.Magnet\",\"label\":\"\"}},\"filters\":{\"state\":[[\"All\",2],[\"Active\",1],[\"Allocating\",0],[\"Checking\",0],[\"Downloading\",1],[\"Seeding\",1],[\"Paused\",0],[\"Error\",0],[\"Queued\",0],[\"Moving\",0]],\"tracker_host\":[[\"\",1],[\"All\",2],[\"Error\",0],[\"opentrackr.org\",1]],\"owner\":[[\"\",0],[\"localclient\",2]],\"label\":[[\"\",1],[\"All\",2],[\"<scrubbed>-movies\",0],[\"<scrubbed>-tv\",1],[\"recorded-movies\",0]]},\"stats\":{\"max_download\":-1,\"max_upload\":-1,\"max_num_connections\":200,\"num_connections\":1,\"upload_rate\":0,\"download_rate\":0,\"download_protocol_rate\":4.5,\"upload_protocol_rate\":0,\"dht_nodes\":366,\"has_incoming_connections\":1,\"free_space\":20892864512,\"external_ip\":null}},\"error\":null,\"id\":25}"
+      }
+    }
+  ]
+}

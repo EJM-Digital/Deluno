@@ -1,0 +1,36 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "removed-without-data",
+  "recordedAt": "2026-10-11T02:02:57Z",
+  "note": "The torrent removed, its data kept.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/delete",
+        "bodyText": "hashes=8d878a21c3d4180ae08b4e044904667d9f30bec5&deleteFiles=false"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=8d878a21c3d4180ae08b4e044904667d9f30bec5"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": []
+      }
+    }
+  ]
+}

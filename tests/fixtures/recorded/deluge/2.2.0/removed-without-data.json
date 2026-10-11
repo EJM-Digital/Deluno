@@ -1,0 +1,92 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "removed-without-data",
+  "recordedAt": "2026-10-11T02:05:02Z",
+  "note": "The torrent removed, its data kept.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.remove_torrent",
+          "params": [
+            "b7b95339b09b0e7249d2b51ecc500b1650a18592",
+            false
+          ],
+          "id": 16
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": true,
+          "error": null,
+          "id": 16
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "b7b95339b09b0e7249d2b51ecc500b1650a18592"
+              ]
+            }
+          ],
+          "id": 17
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "KeyError: 'b7b95339b09b0e7249d2b51ecc500b1650a18592'",
+            "code": 3
+          },
+          "id": 17
+        }
+      }
+    }
+  ]
+}

@@ -33,12 +33,14 @@ export const extraPatterns = [
   // 10.x, 172.16-31.x, 192.168.x (192.168.1.10 is the placeholder and stays).
   { name: 'a private LAN address', regex: /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/g, replacement: '192.168.1.10', keep: (m) => m === '192.168.1.10' },
   // \\machine\share, as text (one backslash each) or as JSON text (two each).
-  { name: 'a share on a network machine', regex: /(?<![\\A-Za-z0-9:.])(\\{2,4})(?![?<])[A-Za-z0-9._-]+(?=\\)/g, replacement: '$1<nas>' },
+  { name: 'a share on a network machine', regex: /(?<=^|[\s"'=,(\[])(\\{2,4})(?![?<])[A-Za-z0-9._-]+(?=\\)/g, replacement: '$1<nas>' },
   { name: "a user's profile folder", regex: /([A-Za-z]:\\{1,2}Users\\{1,2})(?!<|Public\b|Default\b|All Users\b)[^\\/"'\s]+/gi, replacement: '$1<user>' },
   { name: 'a home folder of a person', regex: /(\/home\/)(?!<)[A-Za-z0-9._-]+/g, replacement: '$1<user>' }
 ];
 
 const secretKeys = /^(api[-_]?key|apikey|password|passwd|pass|token|access[-_]?token|refresh[-_]?token|secret|webhook[-_]?secret|sid|session[-_]?id|cookie|set-cookie|authorization|proxy-authorization|x-api-key|x-webhook-secret|x-transmission-session-id|username|user|_session_id|auth|key|nzbkey|nzb_key|rpc[-_]?password|rpc[-_]?username|controlpassword|controlusername|restrictedpassword|restrictedusername|webui_password|webui_username)$/i;
+// Any key that names a login, a key or a secret, wherever it sits and however it is spelled (web_ui_username, ControlPassword, api_key...).
+const sensitiveKeyPart = /(password|passwd|passphrase|secret|api[-_]?key|apikey|token|cookie|username|user_name|passkey|session[-_]?id|credential|machine[-_]?name|computer[-_]?name|host[-_]?name)/i;
 export const scrubbedValue = '<scrubbed>';
 
 function patternsFor(extraNames) {
@@ -70,13 +72,15 @@ export function scrubText(text, extraNames = []) {
 
 export function scrubValue(value, extraNames = [], key = null) {
   if (typeof value === 'string') {
-    if (key !== null && secretKeys.test(key) && value !== '') return scrubbedValue;
+    if (key !== null && (secretKeys.test(key) || sensitiveKeyPart.test(key)) && value !== '') return scrubbedValue;
     return scrubText(value, extraNames);
   }
   if (Array.isArray(value)) return value.map((v) => scrubValue(v, extraNames, key));
   if (value && typeof value === 'object') {
     const out = {};
-    for (const [k, v] of Object.entries(value)) out[scrubText(k, extraNames)] = scrubValue(v, extraNames, k);
+    // A setting listed as { Name: 'ControlPassword', Value: '...' } (NZBGet's config): the name says what the value is.
+    const named = typeof value.Name === 'string' && typeof value.Value === 'string' && sensitiveKeyPart.test(value.Name);
+    for (const [k, v] of Object.entries(value)) out[scrubText(k, extraNames)] = named && k === 'Value' && v !== '' ? scrubbedValue : scrubValue(v, extraNames, k);
     return out;
   }
   return value;
@@ -151,7 +155,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let bad = 0;
   for (const target of targets) {
     for (const file of jsonFiles(target)) {
-      const text = readFileSync(file, 'utf8');
+      const text = readFileSync(file, 'utf8').replace(/^﻿/, '');
       if (check) {
         const leaks = findLeaks(text, names);
         if (leaks.length) { bad++; console.error(`${file}\n  ${leaks.join('\n  ')}`); }

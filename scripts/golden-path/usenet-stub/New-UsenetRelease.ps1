@@ -89,8 +89,8 @@ Get-ChildItem -Path $OutDirectory -File | Where-Object { $_.Extension -in '.nzb'
 $fileName = "$Name.mkv"
 $video = Join-Path $OutDirectory $fileName
 if ($SourceFile) {
-    if (-not (Test-Path $SourceFile)) { throw "Source file not found: $SourceFile" }
-    if ((Get-Item $SourceFile).Length -lt $minBytes) { throw "$SourceFile is under $MinimumMegabytes MB, below the size this stub promises (Deluno's film minimum for its quality, and Weir's 50 MB floor)." }
+    if (-not (Test-Path -LiteralPath $SourceFile)) { throw "Source file not found: $SourceFile" }
+    if ((Get-Item -LiteralPath $SourceFile).Length -lt $minBytes) { throw "$SourceFile is under $MinimumMegabytes MB, below the size this stub promises (Deluno's film minimum for its quality, and Weir's 50 MB floor)." }
     Copy-Item -LiteralPath $SourceFile -Destination $video -Force
 }
 else {
@@ -158,7 +158,9 @@ if ($ExtraKilobytes -gt 0) {
     $extra = Join-Path $OutDirectory "$Name.nfo"
     $rng = New-Object Random 1199
     $text = New-Object System.Text.StringBuilder
-    while ($text.Length -lt $ExtraKilobytes * 1KB) { [void]$text.AppendLine(('Golden stub extra file {0:x8} {1:x8}' -f $rng.Next(), $rng.Next())) }
+    # Plain sentences: a line that ends in eight hex digits reads as an SFV checksum line, and SABnzbd then "verifies" the film against it and fails the job.
+    $line = 0
+    while ($text.Length -lt $ExtraKilobytes * 1KB) { $line++; [void]$text.AppendLine(('Line {0} of the note that travels beside the film in this stub release, here so the release holds more than one file.' -f $line)) }
     [IO.File]::WriteAllText($extra, $text.ToString(), (New-Object Text.UTF8Encoding($false)))
 }
 $fileCount = if ($extra) { 2 } else { 1 }

@@ -132,6 +132,82 @@ public sealed class RecordedRepliesTests : IDisposable
         Assert.Throws<FileNotFoundException>(() => RecordedReplies.LatestVersion("nothing", root));
     }
 
+    private const string Rpc = """
+        { "app": "demo", "version": "1.0", "state": "listing",
+          "exchanges": [
+            { "request": { "method": "POST", "path": "/rpc", "body": { "method": "list", "params": [] } },
+              "reply": { "status": 200, "headers": {}, "body": { "result": { "torrents": { "abc123": { "name": "Film", "state": "Seeding", "progress": 100 }, "def456": { "name": "Other" } } }, "list": [1, 2, 3] } } },
+            { "request": { "method": "POST", "path": "/rpc", "body": { "method": "remove", "params": ["abc123", true] } },
+              "reply": { "status": 200, "headers": {}, "body": { "result": true } } }
+          ] }
+        """;
+
+    [Fact]
+    public void A_recorded_body_is_changed_only_where_the_test_says()
+    {
+        Write("demo", "1.0", "listing", Rpc);
+        var reply = RecordedReplies.Load("demo", "1.0", "listing", root).Find("\"list\"").Reply;
+
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(reply.BodyWith(
+            ("result.torrents.*.state", "Downloading"),   // * is the first property: a torrent keyed by its hash
+            ("result.torrents.def456", null),               // null removes
+            ("^list", 2),                                   // ^ keeps the first elements of a list
+            ("result.extra", new System.Text.Json.Nodes.JsonArray(1))))!;
+
+        Assert.Equal("Downloading", (string)edited["result"]!["torrents"]!["abc123"]!["state"]!);
+        Assert.Equal("Film", (string)edited["result"]!["torrents"]!["abc123"]!["name"]!);
+        Assert.Null(edited["result"]!["torrents"]!["def456"]);
+        Assert.Equal(2, edited["list"]!.AsArray().Count);
+        Assert.Single(edited["result"]!["extra"]!.AsArray());
+        Assert.Throws<KeyNotFoundException>(() => reply.BodyWith(("result.nothing.here", 1)));
+    }
+
+    [Fact]
+    public async Task The_operation_handler_answers_a_call_with_the_reply_to_the_same_kind_of_call_whatever_its_ids()
+    {
+        Write("demo", "1.0", "listing", Rpc);
+        var recording = RecordedReplies.Load("demo", "1.0", "listing", root);
+        var seen = new List<string>();
+        using var client = new HttpClient(RecordedReplies.Handler("transmission", [recording], (request, body) =>
+        {
+            seen.Add(body);
+            return null;
+        })) { BaseAddress = new Uri("http://localhost/") };
+
+        using var removed = await client.PostAsync("/rpc", new StringContent("""{"method":"remove","params":["some-other-id", false]}"""));
+        using var listed = await client.PostAsync("/rpc", new StringContent("""{"method":"list","params":[1]}"""));
+
+        Assert.True((bool)System.Text.Json.Nodes.JsonNode.Parse(await removed.Content.ReadAsStringAsync())!["result"]!);
+        Assert.Contains("\"torrents\"", await listed.Content.ReadAsStringAsync());
+        Assert.Equal(2, seen.Count);
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => client.PostAsync("/rpc", new StringContent("""{"method":"never-recorded"}""")));
+        Assert.Contains("never-recorded", failure.Message);
+    }
+
+    [Theory]
+    [InlineData("sabnzbd", "GET", "/api?mode=queue&name=delete&value=abc&del_files=1&output=json&apikey=k", null, "GET mode=queue name=delete")]
+    [InlineData("qbittorrent", "POST", "/api/v2/torrents/delete?x=1", "hashes=a", "POST /api/v2/torrents/delete")]
+    [InlineData("nzbget", "POST", "/jsonrpc", """{"method":"editqueue","params":["GroupFinalDelete","",[5]],"id":3}""", "POST /jsonrpc editqueue:GroupFinalDelete")]
+    [InlineData("deluge", "POST", "/json", """{"method":"core.remove_torrent","params":["h",true],"id":9}""", "POST /json core.remove_torrent")]
+    public void A_call_is_known_by_what_it_asks_not_by_its_ids(string app, string method, string pathAndQuery, string? body, string expected)
+        => Assert.Equal(expected, RecordedReplies.OperationOf(app, method, pathAndQuery, body));
+
+    [Fact]
+    public void The_recorded_folder_can_be_pointed_somewhere_else_to_try_a_fresh_capture()
+    {
+        Write("demo", "9.9", "listing", Rpc.Replace("\"version\": \"1.0\"", "\"version\": \"9.9\""));
+        var before = Environment.GetEnvironmentVariable("DELUNO_RECORDED_ROOT");
+        try
+        {
+            Environment.SetEnvironmentVariable("DELUNO_RECORDED_ROOT", root);
+            Assert.Equal(root, RecordedReplies.FindRoot());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DELUNO_RECORDED_ROOT", before);
+        }
+    }
+
     // The library itself: whatever is committed under tests/fixtures/recorded must be loadable, sit where its
     // own header says, and carry nothing private (the same list as scripts/check-public-exposure.ps1).
     private static readonly (string Name, Regex Pattern)[] Private =

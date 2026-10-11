@@ -1,0 +1,155 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "paused",
+  "recordedAt": "2026-10-11T02:04:04Z",
+  "note": "The first torrent paused by its hash.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-stop",
+          "arguments": {
+            "ids": [
+              "ff7447384425ba526a3efb9efb792f7ba67a77dd"
+            ]
+          },
+          "tag": 12
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 12
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-get",
+          "arguments": {
+            "fields": [
+              "id",
+              "hashString",
+              "name",
+              "status",
+              "percentDone",
+              "rateDownload",
+              "rateUpload",
+              "error",
+              "errorString",
+              "downloadDir",
+              "totalSize",
+              "leftUntilDone",
+              "peersConnected",
+              "peersSendingToUs",
+              "isStalled",
+              "isFinished",
+              "trackerStats",
+              "files",
+              "addedDate",
+              "downloadedEver",
+              "uploadedEver",
+              "eta",
+              "queuePosition",
+              "labels"
+            ],
+            "ids": [
+              "ff7447384425ba526a3efb9efb792f7ba67a77dd"
+            ]
+          },
+          "tag": 13
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": [
+              {
+                "addedDate": 1791684233,
+                "downloadDir": "C:\\golden\\recorded\\transmission\\save",
+                "downloadedEver": 0,
+                "error": 0,
+                "errorString": "",
+                "eta": -1,
+                "files": [
+                  {
+                    "begin_piece": 0,
+                    "bytesCompleted": 0,
+                    "end_piece": 2800,
+                    "length": 734003200,
+                    "name": "Recorded.Stalled.One.transmission"
+                  }
+                ],
+                "hashString": "ff7447384425ba526a3efb9efb792f7ba67a77dd",
+                "id": 48,
+                "isFinished": false,
+                "isStalled": false,
+                "labels": [],
+                "leftUntilDone": 734003200,
+                "name": "Recorded.Stalled.One.transmission",
+                "peersConnected": 0,
+                "peersSendingToUs": 0,
+                "percentDone": 0,
+                "queuePosition": 9,
+                "rateDownload": 0,
+                "rateUpload": 0,
+                "status": 0,
+                "totalSize": 734003200,
+                "trackerStats": [
+                  {
+                    "announce": "http://127.0.0.1:9/announce",
+                    "announceState": 3,
+                    "downloadCount": -1,
+                    "downloader_count": -1,
+                    "hasAnnounced": true,
+                    "hasScraped": true,
+                    "host": "127.0.0.1:9",
+                    "id": 48,
+                    "isBackup": false,
+                    "lastAnnouncePeerCount": 0,
+                    "lastAnnounceResult": "Could not connect to tracker",
+                    "lastAnnounceStartTime": 1791684242,
+                    "lastAnnounceSucceeded": false,
+                    "lastAnnounceTime": 1791684235,
+                    "lastAnnounceTimedOut": false,
+                    "lastScrapeResult": "Could not connect to tracker",
+                    "lastScrapeStartTime": 0,
+                    "lastScrapeSucceeded": false,
+                    "lastScrapeTime": 1791684242,
+                    "lastScrapeTimedOut": false,
+                    "leecherCount": -1,
+                    "nextAnnounceTime": 0,
+                    "nextScrapeTime": 1791684560,
+                    "scrape": "http://127.0.0.1:9/scrape",
+                    "scrapeState": 1,
+                    "seederCount": -1,
+                    "sitename": "127.0.0.1",
+                    "tier": 0
+                  }
+                ],
+                "uploadedEver": 0
+              }
+            ]
+          },
+          "result": "success",
+          "tag": 13
+        }
+      }
+    }
+  ]
+}

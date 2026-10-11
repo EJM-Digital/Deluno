@@ -1,0 +1,170 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "removed-with-data",
+  "recordedAt": "2026-10-11T01:56:51Z",
+  "note": "The finished job removed from the history together with its files (HistoryFinalDelete).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "HistoryFinalDelete",
+            "",
+            [
+              26
+            ]
+          ],
+          "id": 36
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 36,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "history",
+          "params": [
+            false
+          ],
+          "id": 37
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 37,
+          "result": [
+            {
+              "ID": 23,
+              "Name": "Recorded.Failed",
+              "RemainingFileCount": 0,
+              "RetryData": false,
+              "HistoryTime": 1791683270,
+              "Status": "DELETED/DUPE",
+              "Log": [],
+              "NZBID": 23,
+              "NZBName": "Recorded.Failed",
+              "NZBNicename": "Recorded.Failed",
+              "Kind": "URL",
+              "URL": "http://127.0.0.1:1/missing.nzb",
+              "NZBFilename": "Recorded.Failed.nzb",
+              "DestDir": "",
+              "FinalDir": "",
+              "Category": "",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "DUPE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "NONE",
+              "FileSizeLo": 0,
+              "FileSizeHi": 0,
+              "FileSizeMB": 0,
+              "FileCount": 0,
+              "MinPostTime": 0,
+              "MaxPostTime": 0,
+              "TotalArticles": 0,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": true,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 1,
+              "ExtraParBlocks": 0,
+              "Parameters": [],
+              "ScriptStatuses": [],
+              "ServerStats": []
+            },
+            {
+              "ID": 16,
+              "Name": "Recorded.Failed",
+              "RemainingFileCount": 0,
+              "RetryData": false,
+              "HistoryTime": 1791681430,
+              "Status": "DELETED/DUPE",
+              "Log": [],
+              "NZBID": 16,
+              "NZBName": "Recorded.Failed",
+              "NZBNicename": "Recorded.Failed",
+              "Kind": "URL",
+              "URL": "http://127.0.0.1:1/missing.nzb",
+              "NZBFilename": "Recorded.Failed.nzb",
+              "DestDir": "",
+              "FinalDir": "",
+              "Category": "",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "DUPE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "NONE",
+              "FileSizeLo": 0,
+              "FileSizeHi": 0,
+              "FileSizeMB": 0,
+              "FileCount": 0,
+              "MinPostTime": 0,
+              "MaxPostTime": 0,
+              "TotalArticles": 0,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": true,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 1,
+              "ExtraParBlocks": 0,
+              "Parameters": [],
+              "ScriptStatuses": [],
+              "ServerStats": []
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "sign-in",
+  "recordedAt": "2026-10-11T02:02:46Z",
+  "note": "POST /api/v2/auth/login: the reply sets a session cookie (removed from the recording).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "password=<scrubbed>&username=<scrubbed>"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

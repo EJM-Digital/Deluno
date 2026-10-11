@@ -1,0 +1,40 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "add-refused",
+  "recordedAt": "2026-10-11T02:05:14Z",
+  "note": "A file that is not a torrent sent to the client to add: it refuses it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.add_torrent_file",
+          "params": [
+            "broken.torrent",
+            "dGhpcyBpcyBub3QgYSB0b3JyZW50",
+            {
+              "download_location": "C:\\golden\\recorded\\deluge"
+            }
+          ],
+          "id": 33
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Failure: [Failure instance: Traceback (failure with no frames): <class 'deluge.error.AddTorrentError'>: Unable to add torrent, decoding filedump failed: expected value (list, dict, int or string) in bencoded string [bdecode:4]\n]",
+            "code": 4
+          },
+          "id": 33
+        }
+      }
+    }
+  ]
+}

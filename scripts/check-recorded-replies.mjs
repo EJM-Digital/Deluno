@@ -28,7 +28,15 @@ export const signatures = [
   { app: 'Weir', any: ['watched_folder', 'manager_library_key', 'folders_from_manager', 'queuePosition', 'watchedPath', 'handoff_ended', 'handoff_not_finished', 'outcome_already_recorded', 'handoff-status', 'handoff-outcome', 'library-folders'] }
 ];
 
-const keyPattern = (key) => new RegExp(`["\\\\]{1,2}${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["\\\\]{1,2}\\s*:|\\b${key.replace(/[-]/g, '\\-')}\\b`);
+// A key is a JSON property ("key": ...). A name with a dash is a Weir capability, which sits as a value in an array ("handoff-status", ...).
+// A bare mention of the name, such as a recorded reply's BodyWith(("percentDone", 1)), is not a reply and is not flagged.
+const keyPattern = (key) => {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+  const quote = '["\\\\]{1,2}';
+  // Weir's capability names and error codes are values ("code": "handoff_ended"), not keys.
+  const isValue = key.includes('-') || /^(handoff|outcome)_/.test(key);
+  return isValue ? new RegExp(`${quote}${escaped}${quote}`) : new RegExp(`${quote}${escaped}${quote}\\s*:`);
+};
 
 // Every string literal in a C# source: raw ("""), verbatim (@"), interpolated ($"), and regular. Comments and char literals are skipped.
 export function* literals(source) {

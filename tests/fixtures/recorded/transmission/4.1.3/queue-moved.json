@@ -1,0 +1,126 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "queue-moved",
+  "recordedAt": "2026-10-11T02:04:14Z",
+  "note": "A torrent moved to the top of the queue.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "queue-move-top",
+          "arguments": {
+            "ids": [
+              "04d6d32adaa36ddd9877f0734a7027a4a0055042"
+            ]
+          },
+          "tag": 35
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 35
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-get",
+          "arguments": {
+            "fields": [
+              "id",
+              "hashString",
+              "name",
+              "status",
+              "percentDone",
+              "rateDownload",
+              "rateUpload",
+              "error",
+              "errorString",
+              "downloadDir",
+              "totalSize",
+              "leftUntilDone",
+              "peersConnected",
+              "peersSendingToUs",
+              "isStalled",
+              "isFinished",
+              "trackerStats",
+              "files",
+              "addedDate",
+              "downloadedEver",
+              "uploadedEver",
+              "eta",
+              "queuePosition",
+              "labels"
+            ],
+            "ids": [
+              "04d6d32adaa36ddd9877f0734a7027a4a0055042"
+            ]
+          },
+          "tag": 36
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": [
+              {
+                "addedDate": 1791684254,
+                "downloadDir": "C:\\golden\\recorded\\transmission",
+                "downloadedEver": 0,
+                "error": 0,
+                "errorString": "",
+                "eta": -1,
+                "files": [
+                  {
+                    "begin_piece": 0,
+                    "bytesCompleted": 576677428,
+                    "end_piece": 2200,
+                    "length": 576677428,
+                    "name": "Recorded.transmission.A.mkv"
+                  }
+                ],
+                "hashString": "04d6d32adaa36ddd9877f0734a7027a4a0055042",
+                "id": 51,
+                "isFinished": false,
+                "isStalled": false,
+                "labels": [
+                  "recorded-movies"
+                ],
+                "leftUntilDone": 0,
+                "name": "Recorded.transmission.A.mkv",
+                "peersConnected": 0,
+                "peersSendingToUs": 0,
+                "percentDone": 1,
+                "queuePosition": 0,
+                "rateDownload": 0,
+                "rateUpload": 0,
+                "status": 6,
+                "totalSize": 576677428,
+                "trackerStats": [],
+                "uploadedEver": 0
+              }
+            ]
+          },
+          "result": "success",
+          "tag": 36
+        }
+      }
+    }
+  ]
+}
