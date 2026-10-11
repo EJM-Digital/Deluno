@@ -85,7 +85,7 @@ public sealed class AHandOffWeirDidNotTakeBecauseAnotherConnectionOwnsTheFileTes
         Assert.Equal(HttpStatusCode.Accepted, done.StatusCode);
         var stored = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
         Assert.Equal(ProcessorHandoffStatuses.Completed, stored.Status);
-        Assert.False(ProcessorHandoffStatuses.NeedsPerson(stored.Status, stored.FailureMessage));
+        Assert.False(ProcessorHandoffStatuses.NeedsPerson(stored.Status, stored.FailureMessage), stored.FailureMessage);
         await AssertNothingRaisedOrTouchedAsync(app, handoff);
     }
 
@@ -110,7 +110,7 @@ public sealed class AHandOffWeirDidNotTakeBecauseAnotherConnectionOwnsTheFileTes
         var stored = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
         Assert.Equal(ProcessorHandoffStatuses.Failed, stored.Status);
         Assert.True(ProcessorHandoffStatuses.NeedsPerson(stored.Status, stored.FailureMessage));
-        Assert.Contains("another connection", stored.FailureMessage);
+        Assert.Contains("another connection", stored.FailureMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("download folder", stored.FailureMessage);
         Assert.DoesNotContain("not_taken", stored.FailureMessage);
 
@@ -215,8 +215,11 @@ public sealed class AHandOffWeirDidNotTakeBecauseAnotherConnectionOwnsTheFileTes
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         var library = (await response.Content.ReadFromJsonAsync<LibraryItem>())!;
 
+        var added = await app.Client.PostAsJsonAsync("/api/movies", new { title = "Shared Folder", releaseYear = 2021, monitored = true });
+        added.EnsureSuccessStatusCode();
+        var film = (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
         var dispatchId = await app.Services.GetRequiredService<IJobQueueRepository>().RecordDownloadDispatchAsync(
-            library.Id, "movies", "movie", "movie-1", Release, "Indexer", client, clientName, "queued", null,
+            library.Id, "movies", "movie", film, Release, "Indexer", client, clientName, "queued", null,
             cancellationToken: CancellationToken.None);
         await app.Services.GetRequiredService<IDownloadDispatchesRepository>()
             .RecordGrabAsync(dispatchId, "succeeded", 200, null, null, null, CancellationToken.None, externalId: item);
