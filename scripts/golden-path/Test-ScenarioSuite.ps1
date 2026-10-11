@@ -125,6 +125,7 @@ $mockScript = {
         elseif ($path -eq '/stop') { $body = 'bye'; $l.Stop() }
         elseif ($auth -ne ('Bearer tok-' + $logins) -and $path -ne '/api/auth/bootstrap-status') { $code = 401; $body = '{"message":"sign in"}' }
         elseif ($path -eq '/api/integrations/processors/handoffs') { $body = '[{"id":"h1","releaseName":"Gpfilm.2020.1080p","status":"completed","importJobId":"j1","createdUtc":"2026-10-11T10:00:00Z"},{"id":"h2","releaseName":"Gpfilm.2020.1080p","status":"failed","createdUtc":"2026-10-11T11:00:00Z"}]' }
+        elseif ($path -eq '/api/api-keys') { $sr = New-Object IO.StreamReader($req.InputStream); $posted = $sr.ReadToEnd(); $body = '{"item":{},"apiKey":"key-ABCDEF123456","posted":' + ($posted | ConvertTo-Json) + '}' }
         elseif ($path -eq '/api/boom') { $code = 500; $body = '{"message":"it broke"}' }
         elseif ($path -eq '/api/echo') { $sr = New-Object IO.StreamReader($req.InputStream); $body = $sr.ReadToEnd() }
         elseif ($path -eq '/api/expire') { $code = 401; $body = '{}' }
@@ -176,6 +177,15 @@ try {
     $logText = Get-Content -Raw (Join-Path $tmp 'logs\suite.log')
     Check 'the log never holds a login' ($logText -notmatch [regex]::Escape($pw))
 
+    . (Join-Path $suite 'vm\Initialize-Environment.ps1')
+    function Test-WeirAnswering { $true }
+    $keyFile = Join-Path $tmp 'weir-key.txt'
+    Publish-WeirScenarioKey -Path $keyFile
+    $keyText = [IO.File]::ReadAllText($keyFile)
+    Check 'the key file holds one line, the key and nothing else' ($keyText -eq "key-ABCDEF123456`n")
+    Check 'the key is masked in the suite log' ((Get-Content -Raw (Join-Path $tmp 'logs\suite.log')) -notmatch 'key-ABCDEF123456')
+    Check 'the key is masked in any text the suite writes' ((Hide-Secrets 'x key-ABCDEF123456 y') -notmatch 'key-ABCDEF123456')
+    Check 'the key is registered so the collected logs are masked too' ((Get-Content -Raw (Join-Path $tmp 'secrets.json')) -match 'weir-scenario-key')
     . (Join-Path $suite 'vm\scenarios\G09-Problems.ps1')
     Check 'the story rules are defined' ($null -ne (Get-Command Get-StoryProblems -ErrorAction SilentlyContinue))
 }

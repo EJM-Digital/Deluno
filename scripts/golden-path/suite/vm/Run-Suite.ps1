@@ -63,6 +63,11 @@ try {
 catch { $final = Hide-Secrets $_.Exception.Message; Write-SuiteLog "SUITE ERROR $final" }
 finally {
     Save-Results
+    # After the last scenario: the key Weir's scenario suite needs (Weir #954). A failure here is the run's failure.
+    if ($Groups.Count -eq 0 -or $Groups -contains 'problems') {
+        try { Publish-WeirScenarioKey }
+        catch { $final = 'Could not make the key for Weir''s suite: ' + (Hide-Secrets $_.Exception.Message); Write-SuiteLog $final }
+    }
     Set-Content -Path $flag -Value $final -Encoding utf8
     Write-SuiteLog "Scenario suite finished: $final"
 }
