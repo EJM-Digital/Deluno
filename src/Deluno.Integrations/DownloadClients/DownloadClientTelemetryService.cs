@@ -400,7 +400,9 @@ public sealed class DownloadClientTelemetryService(
         var mappedSnapshots = snapshots
             .Select(snapshot => MarkDownloadsWhoseFilesAreGone(
                 ApplyPathMappings(snapshot, pathMappings, clientHostsById.GetValueOrDefault(snapshot.ClientId)),
-                path => File.Exists(path) || Directory.Exists(path)))
+                path => File.Exists(path) || Directory.Exists(path),
+                handoffs,
+                settledDispatchesByClientId.GetValueOrDefault(snapshot.ClientId, Array.Empty<DownloadDispatchItem>())))
             .ToArray();
 
         // Ownership is decided once, here, and carried into everything below
@@ -3922,7 +3924,8 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<ProcessorHandoffItem>? handoffs = null,
         IReadOnlyList<DownloadDispatchItem>? settledDispatches = null)
     {
-        if (!snapshot.Queue.Any(item => DownloadFilesGone.ExpectsItsFiles(item.Status)))
+        var finishedInHistory = FinishedJobsListedOnlyInHistory(snapshot, handoffs, settledDispatches);
+        if (finishedInHistory.Count == 0 && !snapshot.Queue.Any(item => DownloadFilesGone.ExpectsItsFiles(item.Status)))
         {
             return snapshot;
         }
@@ -3942,9 +3945,89 @@ public sealed class DownloadClientTelemetryService(
                 ErrorMessage = DownloadFilesGone.Message,
                 IsSetupProblem = true
             };
-        }).ToArray();
+        }).ToList();
+
+        // SABnzbd and NZBGet list a finished job in their history only, never in the queue, so a job whose files are
+        // gone from disk has no queue row to flag. It gets one, with the same status and actions (#1210, rc.30.22).
+        foreach (var item in finishedInHistory)
+        {
+            if (queue.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+                || !DownloadFilesGone.AreGone(item.SourcePath, pathExists))
+            {
+                continue;
+            }
+
+            queue.Add(item with
+            {
+                Status = DownloadQueueStatuses.FilesGone,
+                ErrorMessage = DownloadFilesGone.Message,
+                IsSetupProblem = true
+            });
+        }
 
         return snapshot with { Queue = queue };
+    }
+
+    /// <summary>
+    /// The finished jobs a client lists in its history only (the client's own record, not Deluno's), as the queue rows the
+    /// import planner reads them as, except those whose hand-off or import already ran to its end: their files are
+    /// expected to be gone, and they are history, not a problem.
+    /// </summary>
+    private static List<DownloadQueueItem> FinishedJobsListedOnlyInHistory(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<ProcessorHandoffItem>? handoffs,
+        IReadOnlyList<DownloadDispatchItem>? settledDispatches)
+    {
+        var rows = new List<DownloadQueueItem>();
+        foreach (var history in snapshot.History)
+        {
+            if (!string.Equals(history.HistorySource, "native", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(history.Outcome, DownloadQueueStatuses.Completed, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(history.SourcePath))
+            {
+                continue;
+            }
+
+            var row = new DownloadQueueItem(
+                history.ExternalId ?? history.Id,
+                history.ClientId,
+                history.ClientName,
+                history.Protocol,
+                history.MediaType,
+                history.Title,
+                history.ReleaseName,
+                history.Category,
+                DownloadQueueStatuses.Completed,
+                Progress: 100,
+                SpeedMbps: 0,
+                EtaSeconds: 0,
+                history.SizeBytes,
+                DownloadedBytes: history.SizeBytes,
+                Peers: 0,
+                history.IndexerName,
+                history.ErrorMessage,
+                AddedUtc: history.CompletedUtc,
+                history.SourcePath);
+
+            var handoff = handoffs?
+                .Where(candidate =>
+                    string.Equals(candidate.ClientId, row.ClientId, StringComparison.OrdinalIgnoreCase)
+                    && (string.Equals(candidate.QueueItemId, row.Id, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(candidate.ReleaseName, row.ReleaseName, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(candidate => candidate.UpdatedUtc)
+                .FirstOrDefault();
+            var ranToItsEnd = handoff is not null
+                && (handoff.Status is ProcessorHandoffStatuses.Completed or ProcessorHandoffStatuses.Released
+                    || !string.IsNullOrWhiteSpace(handoff.ImportJobId));
+            if (ranToItsEnd || WasAlreadyImported(row, settledDispatches ?? []))
+            {
+                continue;
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
     }
 
     private static bool ImportEndedAndTheFileLeft(
