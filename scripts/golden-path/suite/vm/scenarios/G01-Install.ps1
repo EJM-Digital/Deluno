@@ -15,6 +15,7 @@ function Invoke-GroupInstall {
         if ($setting.Count -ge 5) {
             $blink = Get-BlinkSummary -Readings ($setting | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $_.deluno.brightness; Colour = $_.deluno.colour } })
             Add-Check 'The dot blinks (its brightness alternates, its colour never changes)' ($blink.Blinks -and $blink.Colours.Count -le 1) ("samples {0}, flips {1}, levels {2}, colours [{3}]" -f $blink.Samples, $blink.Flips, $blink.BrightnessLevels, ($blink.Colours -join ','))
+            Add-Check 'The dot is grey while Deluno sets itself up' (@($blink.Colours).Count -eq 0 -or @($blink.Colours)[0] -eq 'grey') ("colours [{0}]" -f ($blink.Colours -join ','))
             $span = ([DateTime]::Parse($setting[-1].t) - [DateTime]::Parse($setting[0].t)).TotalSeconds
             Add-Note ("The icon said 'setting up' for {0:N0} s." -f $span)
         }
