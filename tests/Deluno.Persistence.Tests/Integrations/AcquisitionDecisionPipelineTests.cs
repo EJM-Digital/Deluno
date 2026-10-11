@@ -336,7 +336,7 @@ public sealed class AcquisitionDecisionPipelineTests
 
         var matched = await pipeline.ExplainIndexerRoutingAsync(anime.Id, ["kids", "anime"], CancellationToken.None);
         Assert.NotNull(matched);
-        Assert.Contains("anime.invalid", matched);
+        Assert.Contains("Anime indexer", matched);
 
         var unmatched = await pipeline.ExplainIndexerRoutingAsync(anime.Id, ["kids"], CancellationToken.None);
         Assert.Null(unmatched);

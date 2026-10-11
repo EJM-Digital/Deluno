@@ -68,10 +68,7 @@ public sealed record CreateIndexerRequest(
     // indexer (#1134), kept with it so the list shows it straight away.
     IndexerTestedHealth? TestedHealth = null,
     // #1135: switch the new indexer on for the libraries of its media types. The drawer opt-out sends false.
-    bool RouteToLibraries = true,
-    // A name a person typed in the drawer, kept as it is. A name sent without this is still worked out from the address
-    // (#1076): an API client's made-up name is not refused and does not name the indexer.
-    bool KeepName = false);
+    bool RouteToLibraries = true);
 
 /// <summary>A test result carried in with a new indexer (#1134).</summary>
 public sealed record IndexerTestedHealth(string? HealthStatus, string? Message, string? FailureCategory, int? LatencyMs);

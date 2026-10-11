@@ -44,7 +44,7 @@ public sealed class IndexerPersistenceTests
 
         var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
 
-        Assert.Equal("indexer.example.test", created.Name);
+        Assert.Equal("Test Indexer", created.Name);
         Assert.Equal("torznab", created.Protocol);
         Assert.Equal("private", created.Privacy);
         Assert.Equal("https://indexer.example.test", created.BaseUrl);
@@ -341,7 +341,7 @@ public sealed class IndexerPersistenceTests
             CancellationToken.None);
 
         Assert.NotNull(updated);
-        Assert.Equal("indexer.example.test", updated.Name);
+        Assert.Equal("Renamed", updated.Name);
         Assert.Equal("movies", updated.MediaScope);  // must be unchanged
     }
 

@@ -22,9 +22,11 @@ public sealed class SqliteConnectionsRepository(
     ITrackerDefinitionNames? trackerDefinitionNames = null)
     : IConnectionsRepository
 {
-    private string IndexerBaseName(string? definitionId, string? baseUrl, string? discoveredName = null)
-        => (string.IsNullOrWhiteSpace(definitionId) ? null : trackerDefinitionNames?.DisplayName(definitionId))
-           ?? (string.IsNullOrWhiteSpace(discoveredName) ? null : discoveredName)
+    // A name the person gave (or Prowlarr or Jackett gave the tracker) comes first, then the built-in tracker's own
+    // name, and only an indexer with neither is named after its address's host (#1076, #1248).
+    private string IndexerBaseName(string? definitionId, string? baseUrl, string? givenName = null)
+        => (string.IsNullOrWhiteSpace(givenName) ? null : givenName.Trim())
+           ?? (string.IsNullOrWhiteSpace(definitionId) ? null : trackerDefinitionNames?.DisplayName(definitionId))
            ?? ConnectionNames.SiteName(baseUrl);
 
     /// <summary>The name Prowlarr or Jackett gave this indexer, when it was given for the address the indexer has now.</summary>
@@ -36,6 +38,16 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@url", baseUrl ?? string.Empty);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? null : Convert.ToString(value);
+    }
+
+    /// <summary>Whether the indexer's name is one it was given (or its aggregator gave it), not one worked out from its address.</summary>
+    private static async Task<bool> IsGivenNameAsync(System.Data.Common.DbConnection connection, string id, string name, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM indexer_sources WHERE id = @id AND discovered_name = @name COLLATE NOCASE;";
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", name);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     private static async Task StoreTypedIndexerNameAsync(System.Data.Common.DbConnection connection, string id, string name, string? baseUrl, CancellationToken cancellationToken)
@@ -412,9 +424,9 @@ public sealed class SqliteConnectionsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
-        // A name typed in the add drawer is kept (a built-in tracker names itself after its site). It is stored where a
-        // name Prowlarr or Jackett gave an indexer is, so every later rename pass keeps it while the address stays.
-        var typedName = request.KeepName && string.IsNullOrWhiteSpace(item.DefinitionId) ? NormalizeBlankToNull(request.Name)?.Trim() : null;
+        // A name given is kept, whatever the kind and whoever gave it: the screen, the API or an import (#1248). It is stored
+        // where a name Prowlarr or Jackett gave an indexer is, so every later rename pass keeps it while the address stays.
+        var typedName = NormalizeBlankToNull(request.Name)?.Trim();
         item = item with
         {
             Name = ConnectionNames.Unique(
@@ -536,11 +548,11 @@ public sealed class SqliteConnectionsRepository(
         var newProtocol = request.Protocol is not null ? IndexerProtocols.Normalize(request.Protocol) : existing.Protocol;
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? existing.BaseUrl;
-        // A name that differs from the one it has is a rename; the form sends the current name back on every save, which is not.
-        var typedName = request.KeepName
-            && string.IsNullOrWhiteSpace(existing.DefinitionId)
-            && !string.IsNullOrWhiteSpace(request.Name)
-            && !string.Equals(request.Name.Trim(), existing.Name, StringComparison.OrdinalIgnoreCase)
+        // A name that differs from the one it has is a rename. The form sends the current name back on every save: that is
+        // a rename only when the name was a given one, which then goes with the indexer to its new address (#1248).
+        var typedName = !string.IsNullOrWhiteSpace(request.Name)
+            && (!string.Equals(request.Name.Trim(), existing.Name, StringComparison.OrdinalIgnoreCase)
+                || await IsGivenNameAsync(connection, id, existing.Name, cancellationToken))
             ? request.Name.Trim()
             : null;
         var newName     = ConnectionNames.Unique(

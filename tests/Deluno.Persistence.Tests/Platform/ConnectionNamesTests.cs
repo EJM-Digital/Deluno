@@ -119,14 +119,14 @@ public sealed class ConnectionNamesTests
         var again = await repository.CreateIndexerAsync(Indexer(null, "https://api.nzbgeek.info"), CancellationToken.None);
         var tracker = await repository.CreateIndexerAsync(Indexer(null, "https://1337x.to", "1337x"), CancellationToken.None);
 
-        Assert.Equal("nzbgeek.info", geek.Name);
-        Assert.NotEqual(geek.Name, again.Name);
-        Assert.StartsWith("nzbgeek.info (", again.Name);
+        // A name given is kept (#1248); one not given is the site, and a second of the same site tells itself apart.
+        Assert.Equal("Anything typed", geek.Name);
+        Assert.Equal("nzbgeek.info", again.Name);
         Assert.Equal("1337x", tracker.Name);
 
         var renamedByApi = await repository.UpdateIndexerAsync(
             geek.Id, new UpdateIndexerRequest("Nope", null, null, null, null, null, null, null, null, null), CancellationToken.None);
-        Assert.Equal("nzbgeek.info", renamedByApi!.Name);
+        Assert.Equal("Nope", renamedByApi!.Name);
     }
 
     [Fact]
@@ -272,22 +272,22 @@ public sealed class ConnectionNamesTests
         using var _ = storage;
         var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
 
-        var typed = await repository.CreateIndexerAsync(Indexer("My private tracker", "https://tracker.example.test/api") with { KeepName = true }, CancellationToken.None);
-        var blank = await repository.CreateIndexerAsync(Indexer("  ", "https://www.other.example.test/api") with { KeepName = true }, CancellationToken.None);
-        // A name sent without saying it was typed is still ignored (#1076).
-        var ignored = await repository.CreateIndexerAsync(Indexer("Made up", "https://third.example.test/api"), CancellationToken.None);
-        Assert.Equal("third.example.test", ignored.Name);
+        var typed = await repository.CreateIndexerAsync(Indexer("My private tracker", "https://tracker.example.test/api"), CancellationToken.None);
+        var blank = await repository.CreateIndexerAsync(Indexer("  ", "https://www.other.example.test/api"), CancellationToken.None);
+        // A name sent through the API is kept just the same (#1248).
+        var given = await repository.CreateIndexerAsync(Indexer("Given by a client", "https://third.example.test/api"), CancellationToken.None);
+        Assert.Equal("Given by a client", given.Name);
         Assert.Equal("My private tracker", typed.Name);
         Assert.Equal("other.example.test", blank.Name);
 
         // A save that sends the current name back (the form does, every time) changes nothing; another save keeps it.
-        var resaved = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("My private tracker", null, null, null, null, 20, null, null, null, null) with { KeepName = true }, CancellationToken.None);
+        var resaved = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("My private tracker", null, null, null, null, 20, null, null, null, null), CancellationToken.None);
         Assert.Equal("My private tracker", resaved!.Name);
         var listed = (await repository.ListIndexersAsync(CancellationToken.None)).Single(item => item.Id == typed.Id);
         Assert.Equal("My private tracker", listed.Name);
 
         // Typing another name renames it, and that one is kept too.
-        var renamed = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("Renamed tracker", null, null, null, null, null, null, null, null, null) with { KeepName = true }, CancellationToken.None);
+        var renamed = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest("Renamed tracker", null, null, null, null, null, null, null, null, null), CancellationToken.None);
         Assert.Equal("Renamed tracker", renamed!.Name);
         var again = await repository.UpdateIndexerAsync(typed.Id, new UpdateIndexerRequest(null, null, null, null, null, 30, null, null, null, null), CancellationToken.None);
         Assert.Equal("Renamed tracker", again!.Name);

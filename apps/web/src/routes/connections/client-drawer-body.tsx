@@ -1,4 +1,5 @@
 import { SecretUnreadableNotice, repeatsSecretNotice } from "../../components/app/secret-unreadable-notice";
+import { removeUnavailableReason } from "./busy-reason";
 import { ConnectionUpdatePanel } from "../../components/app/connection-update-panel";
 import { useEffect, useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
@@ -366,7 +367,7 @@ export function ClientDrawerBody({
 
       {editing ? (
         <DrawerSection>
-          <DrawerDanger title="Remove this client" description="Downloads already in the client are left alone." action={<Button type="button" variant="destructive" size="sm" onClick={onRemove} disabled={busy !== null}>Remove…</Button>} />
+          <DrawerDanger unavailableReason={removeUnavailableReason(busy)} title="Remove this client" description="Downloads already in the client are left alone." action={<Button type="button" variant="destructive" size="sm" onClick={onRemove} disabled={busy !== null}>Remove…</Button>} />
         </DrawerSection>
       ) : null}
     </>
