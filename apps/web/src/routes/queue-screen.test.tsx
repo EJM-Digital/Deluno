@@ -823,6 +823,65 @@ describe("download drawer: a failed processor hand-off (#1151)", () => {
       expect(authedFetchMock).toHaveBeenCalledWith("/api/integrations/processors/handoffs/h1/retry", { method: "POST" });
     });
   });
+
+  // The golden run (rc.30.23) sampled the drawer every 200 ms from the press: qBittorrent, SABnzbd and NZBGet each showed the
+  // old failure in the first frame. The hold was set only after the retry request had answered and the page had been re-read,
+  // so a read that landed first drew the old failure beside a moved header (#1234). The hold is set on the press itself.
+  it("holds the old failure back the moment Try again is pressed, before the retry request answers (#1234)", async () => {
+    authedFetchMock.mockReturnValue(new Promise(() => undefined));
+    openFailedHandoffDrawer();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(reason).length).toBeGreaterThan(0);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send to Weir again" }));
+
+    expect(within(dialog).getAllByText(/Sending to Weir again/).length).toBeGreaterThan(0);
+    expect(within(dialog).queryByText(reason)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Review the provider response/)).not.toBeInTheDocument();
+  });
+
+  it("shows the old failure again when the retry request is refused", async () => {
+    authedFetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ message: "No." }) });
+    openFailedHandoffDrawer();
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send to Weir again" }));
+
+    await waitFor(() => expect(within(dialog).getAllByText(reason).length).toBeGreaterThan(0));
+    expect(within(dialog).queryByText(/Sending to Weir again/)).not.toBeInTheDocument();
+  });
+});
+
+/** The rc.30.23 golden run: a Usenet job leaves the client when it finishes, so its failed hand-off opens the hand-off's own drawer (#1234, #1243). */
+describe("hand-off drawer: Try again for a download that has left the client (#1234)", () => {
+  const reason = "Deluno could not submit the hand-off. Check the processor connection before retrying.";
+  afterEach(() => {
+    queueLoaderData.processorHandoffs = [] as unknown as typeof queueLoaderData.processorHandoffs;
+    authedFetchMock.mockReset();
+  });
+
+  function openHandoffDrawer() {
+    queueLoaderData.processorHandoffs = [{
+      id: "h9", libraryId: "library-1", mediaType: "movies", clientId: "sab-client", queueItemId: "sab-1", releaseName: "Retry.Film.2020.1080p.WEB-DL.x264-GOLDEN",
+      sourcePath: "/downloads/retry-film", processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: reason,
+      createdUtc: new Date().toISOString(), updatedUtc: new Date().toISOString()
+    }] as unknown as typeof queueLoaderData.processorHandoffs;
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getAllByText("Retry.Film.2020.1080p.WEB-DL.x264-GOLDEN")[0]);
+  }
+
+  it("says Sending to Weir again on the press, with the old failure out of the drawer", async () => {
+    authedFetchMock.mockReturnValue(new Promise(() => undefined));
+    openHandoffDrawer();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(reason).length).toBeGreaterThan(0);
+
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Send to Weir again" }));
+
+    expect(within(dialog).getAllByText(/Sending to Weir again/).length).toBeGreaterThan(0);
+    expect(within(dialog).queryByText(reason)).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Send to Weir again" })).not.toBeInTheDocument();
+  });
 });
 
 /** #811/#970: qBittorrent's availability, last-activity and completion telemetry, shown in the download drawer. */

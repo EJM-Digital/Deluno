@@ -24,12 +24,18 @@ function Send-FilmAgain {
     $r
 }
 
-# After a torrent is added again to a client that deleted its data, the client needs its data checked.
+# After a torrent is added again to a client that deleted its data, the client needs its data checked. The removal is waited for
+# first: a queue row still there is the removed download, and a client that kept it (rc.30.23: Deluge, which has the same id for
+# the same torrent) made "finished" true at once, so the second send was never watched.
 function Start-AgainDownload {
     param([Parameter(Mandatory)] $Film)
+    if ($Film.Protocol -eq 'torrent') { Wait-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition { -not (Find-QueueRow -Name $Film.Release) } | Out-Null }
     $r = Send-FilmAgain -Film $Film
     if ($r.Status -lt 200 -or $r.Status -ge 300) { throw (Hide-Secrets "Sending $($Film.Release) again answered $($r.Status). $($r.Raw)") }
-    Wait-FilmFinished -Film $Film -TimeoutSec 180 | Out-Null
+    # The client must be told to look at the data again as soon as its row is there, as the first send was.
+    if (Test-ClientNeedsSettle -Kind $Film.ClientKind) { Invoke-FilmSettle -Film $Film -WaitForRowSec 60 | Out-Null }
+    $w = Wait-FilmFinished -Film $Film -TimeoutSec 180
+    if (-not $w.Ok) { throw "$($Film.Release) did not finish in $($Film.ClientKind) after being sent again (its client row and folders are in the evidence)." }
 }
 
 # What must be true once a resend has settled.
@@ -47,8 +53,10 @@ function Assert-ResendSettled {
     Add-Check "$What : exactly one copy is in the library" ($files.Count -eq 1) "$($files.Count) files"
     $leftInWeir = @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($Film.Title) })
     Add-Check "$What : nothing of it waits in Weir's output" ($leftInWeir.Count -eq 0) (($leftInWeir | ForEach-Object { $_.FullName }) -join '; ')
+    # A resend reuses the film's hand-off row under a new id, so the first send's id is no longer listed once the new send exists:
+    # that is the first send closed (it is kept as a replaced send and has its own closing line). Left open means it is still listed in an open state.
     $firstNow = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -eq $First.id } | Select-Object -First 1
-    Add-Check "$What : the first send is closed, not left open" ($firstNow -and $firstNow.status -notin 'submitted', 'waiting', 'accepted', 'started') $(if ($firstNow) { $firstNow.status } else { 'gone' })
+    Add-Check "$What : the first send is closed, not left open" (-not $firstNow -or $firstNow.status -notin 'submitted', 'waiting', 'accepted', 'started') $(if ($firstNow) { $firstNow.status } else { 'replaced by the new send' })
     $unmatched = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) -and $_ -match 'Unmatched in processor output' })
     Add-Check "$What : no 'unmatched in processor output' problem was raised" ($unmatched.Count -eq 0) "$($unmatched.Count) rows"
     $import = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) -and $_ -match 'Imported into the library' })
@@ -77,7 +85,7 @@ function Invoke-GroupResend {
             if ($firsts[$kind]) {
                 Remove-FilmDownload -Film $f -Reason 'unwanted' | Out-Null
                 Start-Sleep -Seconds 1
-                Start-AgainDownload -Film $f
+                try { Start-AgainDownload -Film $f } catch { Write-SuiteLog "   $($f.Release): $(Hide-Secrets $_.Exception.Message)" }
             }
         }
         # Every client has its second hand-off before Weir is resumed.
@@ -100,28 +108,35 @@ function Invoke-GroupResend {
         }
     }
 
-    # ---- during and after: one client at a time.
+    # ---- during and after: one client at a time. The first send is held at Weir (paused) until Weir is let go, so the moment is
+    # made, not waited for: a film is cleaned in about a second and Deluno hears of it at once (rc.30.23: five clients, three tries
+    # each, the hand-off was already imported when the check first looked, 60 s after the send).
     foreach ($timing in 'during', 'after') {
         foreach ($kind in Get-AllKinds) {
             Invoke-Scenario -Id "resend.$timing.$kind" -Title "I don't want it, then a resend to $kind, while Weir is $(if ($timing -eq 'during') { 'working on' } else { 'done with' }) the first send" -Body {
-                $reached = $null; $film = $null; $first = $null
+                $reached = $null; $film = $null; $first = $null; $what = ''
                 for ($try = 1; $try -le 3 -and -not $reached; $try++) {
-                    $film = New-FilmFor -Kind $kind -Layout 'file' -Label "re$timing"
-                    Send-Film -Film $film -Kind $kind | Out-Null
-                    Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
-                    $w = Wait-Until -TimeoutSec 240 -IntervalSec 0.2 -Condition {
+                    $film = New-FilmFor -Kind $kind -Layout 'file' -Label "re$timing" -Size $(if ($timing -eq 'during') { 'big' } else { 'small' })
+                    try {
+                        Set-WeirPause -Paused $true
+                        Send-Film -Film $film -Kind $kind | Out-Null
+                        Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
+                        $queued = Wait-Until -TimeoutSec 120 -IntervalSec 0.5 -Condition { Get-FilmHandoff -Film $film }
+                        if (-not $queued.Ok) { $what = 'the first hand-off never appeared'; Add-Note "Attempt ${try}: $what."; continue }
+                        # Weir takes the first send now. During: removed and sent again straight away, while it works. After: once its
+                        # cleaned file is in its output, before Deluno has queued the import.
+                        Set-WeirPause -Paused $false
+                        if ($timing -eq 'after') {
+                            Wait-Until -TimeoutSec 60 -IntervalSec 0.05 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($film.Title) }).Count -gt 0 } | Out-Null
+                        }
                         $h = Get-FilmHandoff -Film $film
-                        if (-not $h) { return $null }
-                        $state = "$($h.processor.state)"
-                        if ($timing -eq 'during' -and $state -match 'process|running|analys|clean|start|work' -and $h.status -ne 'completed') { return $h }
-                        if ($timing -eq 'after' -and ($state -match 'complet|done|finish' -or $h.status -eq 'completed') -and -not $h.importJobId) { return $h }
-                        if ($h.importJobId) { return $h }   # too late: the import was queued before the moment was seen
-                        $null
+                        $open = $h -and -not $h.importJobId -and ($timing -eq 'after' -or $h.status -ne 'completed')
+                        if ($open) { $reached = $true; $first = $h }
+                        else { $what = "status '$($h.status)', import $(if ($h.importJobId) { 'queued' } else { 'not queued' })"; Add-Note "Attempt ${try}: the $timing moment was missed ($what); trying a new film." }
                     }
-                    if ($w.Ok -and -not $w.Value.importJobId) { $reached = $true; $first = $w.Value }
-                    else { Add-Note "Attempt ${try}: the $timing moment was missed (processor said '$($w.Value.processor.state)', status '$($w.Value.status)'); trying a new film." }
+                    finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
                 }
-                Add-Check "The $timing moment was reached with the first send still open" ([bool]$reached) $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { 'missed three times' })
+                Add-Check "The $timing moment was reached with the first send still open" ([bool]$reached) $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($what)" })
                 if (-not $reached) { return }
                 Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
                 Start-Sleep -Seconds 1
