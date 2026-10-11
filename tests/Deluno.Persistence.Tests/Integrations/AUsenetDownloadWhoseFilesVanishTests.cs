@@ -18,7 +18,7 @@ public sealed class AUsenetDownloadWhoseFilesVanishTests
     private const string Category = "/downloads/completed/movies";
     private static readonly DateTimeOffset Done = DateTimeOffset.Parse("2026-10-11T13:14:50Z");
 
-    private static bool OnlyTheCategoryFolderIsThere(string path) => path.TrimEnd('/') == Category;
+    private static bool OnlyTheCategoryFolderIsThere(string path) => path.Replace((char)92, (char)47).TrimEnd((char)47) == Category;
 
     [Fact]
     public void A_file_inside_a_job_folder_that_was_deleted_with_it_is_gone()
@@ -31,7 +31,7 @@ public sealed class AUsenetDownloadWhoseFilesVanishTests
     public void A_path_whose_category_folder_cannot_be_seen_either_is_not_called_gone()
     {
         Assert.False(DownloadFilesGone.AreGone($"{Category}/{SabRelease}/{SabRelease}.mkv", _ => false));
-        Assert.False(DownloadFilesGone.AreGone($"/mnt/other-machine/{SabRelease}/{SabRelease}.mkv", path => path == "/mnt"));
+        Assert.False(DownloadFilesGone.AreGone($"/mnt/other-machine/{SabRelease}/{SabRelease}.mkv", path => path.Replace((char)92, (char)47) == "/mnt"));
     }
 
     [Theory]
