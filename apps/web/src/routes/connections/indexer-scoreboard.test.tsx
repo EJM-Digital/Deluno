@@ -38,7 +38,7 @@ describe("the Scoreboard says each indexer's name once (#1249)", () => {
 
   it("keeps every metric as a column of the one table", () => {
     render(<IndexerScoreboard snapshot={snapshot(rows)} />);
-    for (const label of ["Queries", "Grabs", "Query to grab", "Response", "Failure rate"]) {
+    for (const label of ["Queries", "Grabs", "Grab rate", "Response", "Failed"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
   });

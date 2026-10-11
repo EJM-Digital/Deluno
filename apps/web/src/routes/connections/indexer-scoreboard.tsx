@@ -16,6 +16,14 @@ function scoreboardName(row: Pick<IndexerScoreboardRow, "name" | "healthStatus">
 
 export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSnapshot }) {
   const rows = snapshot.indexers;
+  // Each metric's bars are scaled to the biggest reading in that column, so rows compare down a column.
+  const max = {
+    queries: Math.max(0, ...rows.map((row) => row.totalQueries)),
+    grabs: Math.max(0, ...rows.map((row) => row.successfulGrabs)),
+    conversion: Math.max(0, ...rows.map((row) => row.queryToGrabConversion ?? 0)),
+    response: Math.max(0, ...rows.map((row) => row.averageResponseMilliseconds ?? 0)),
+    failureRate: Math.max(0, ...rows.map((row) => row.failureRate))
+  };
   return (
     <div className="grid gap-(--page-gap)">
       <SummaryStrip
@@ -62,37 +70,31 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
         </ListCard>
       ) : (
         <>
-          <div className="grid gap-(--page-gap) md:grid-cols-2">
-            <ScoreboardBars title="Queries" rows={rows} value={(row) => row.totalQueries} empty="No queries in this window." />
-            <ScoreboardBars title="Successful grabs" rows={rows} value={(row) => row.successfulGrabs} empty="No successful grabs in this window." tone="success" />
-            <ScoreboardBars title="Average response" rows={rows} value={(row) => row.averageResponseMilliseconds ?? 0} format={(value) => `${numberFormat.format(Math.round(value))} ms`} empty="No response history in this window." tone="info" />
-            <ScoreboardBars title="Failure rate" rows={rows} value={(row) => row.failureRate * 100} format={(value) => `${value.toFixed(1)}%`} empty="No failed queries in this window." tone="danger" />
-          </div>
-
           <ListCard title={`Last ${snapshot.windowDays} days`} titleCase={false}>
             <ListTable
               listId="indexer-scoreboard"
               items={rows}
+              chevron={false}
               columns={[
                 { id: "indexer", label: "Indexer", sort: (row) => scoreboardName(row).toLowerCase() },
-                { id: "queries", label: "Queries", sort: (row) => row.totalQueries },
-                { id: "response", label: "Response", sort: (row) => row.averageResponseMilliseconds },
-                { id: "failureRate", label: "Failure rate", sort: (row) => row.failureRate },
-                { id: "grabs", label: "Grabs", sort: (row) => row.totalGrabs },
-                { id: "conversion", label: "Conversion", sort: (row) => row.queryToGrabConversion },
-                { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (row) => toneSortValue(statusTone(row), row.isEnabled ? row.healthStatus : row.healthStatus === "removed" ? "Removed" : "Paused") }
+                { id: "queries", label: "Queries", mobile: true, sort: (row) => row.totalQueries },
+                { id: "grabs", label: "Grabs", mobile: true, sort: (row) => row.successfulGrabs },
+                { id: "conversion", label: "Grab rate", mobile: true, sort: (row) => row.queryToGrabConversion },
+                { id: "response", label: "Response", mobile: true, sort: (row) => row.averageResponseMilliseconds },
+                { id: "failureRate", label: "Failed", mobile: true, sort: (row) => row.failureRate },
+                { id: "status", label: "Status", width: LIST_TRACK.status, sort: (row) => toneSortValue(statusTone(row), statusLabel(row)) }
               ]}
             >
-              {(rows) => rows.map((row) => (
+              {(sorted) => sorted.map((row) => (
                 <ListRow key={row.id}>
-                  <ListNameCell name={scoreboardName(row)} sub={row.recommendation} />
-                  <ListCell numeric primary={numberFormat.format(row.totalQueries)} secondary={`Search ${numberFormat.format(row.searchQueries)} · RSS ${numberFormat.format(row.rssQueries)} · Auth ${numberFormat.format(row.authQueries)}`} />
-                  <ListCell numeric primary={row.averageResponseMilliseconds === null ? "—" : `${numberFormat.format(Math.round(row.averageResponseMilliseconds))} ms`} secondary={numberFormat.format(row.candidatesReturned) + " candidates"} />
-                  <ListCell numeric primary={<span className={row.failureRate >= 0.25 ? "text-destructive" : "text-foreground"}>{formatPercent(row.failureRate)}</span>} secondary={`${numberFormat.format(row.failedQueries)} failed`} />
-                  <ListCell numeric primary={numberFormat.format(row.totalGrabs)} secondary={`${numberFormat.format(row.successfulGrabs)} successful`} />
-                  <ListCell numeric primary={row.queryToGrabConversion === null ? "—" : formatPercent(row.queryToGrabConversion)} secondary="successful grabs / queries" />
-                  <ListCell mobile>
-                    <Chip tone={statusTone(row)}>{row.isEnabled ? row.healthStatus : row.healthStatus === "removed" ? "Removed" : "Paused"}</Chip>
+                  <ListNameCell name={scoreboardName(row)} sub={<>{row.recommendation}<Chip tone={statusTone(row)} className="mt-1 flex w-fit md:hidden">{statusLabel(row)}</Chip></>} />
+                  <MetricCell reading={row.totalQueries} max={max.queries} text={numberFormat.format(row.totalQueries)} detail={`Search ${numberFormat.format(row.searchQueries)} · RSS ${numberFormat.format(row.rssQueries)} · Auth ${numberFormat.format(row.authQueries)}`} tone="primary" />
+                  <MetricCell reading={row.successfulGrabs} max={max.grabs} text={numberFormat.format(row.successfulGrabs)} detail={`${numberFormat.format(row.totalGrabs)} grabs in all`} tone="success" />
+                  <MetricCell reading={row.queryToGrabConversion} max={max.conversion} text={row.queryToGrabConversion === null ? "—" : formatPercent(row.queryToGrabConversion)} detail="successful grabs per query" tone="success" />
+                  <MetricCell reading={row.averageResponseMilliseconds} max={max.response} text={row.averageResponseMilliseconds === null ? "—" : `${numberFormat.format(Math.round(row.averageResponseMilliseconds))} ms`} detail={`${numberFormat.format(row.candidatesReturned)} candidates returned`} tone="info" />
+                  <MetricCell reading={row.failureRate} max={max.failureRate} text={formatPercent(row.failureRate)} detail={`${numberFormat.format(row.failedQueries)} failed`} tone="danger" warn={row.failureRate >= 0.25} />
+                  <ListCell>
+                    <Chip tone={statusTone(row)}>{statusLabel(row)}</Chip>
                   </ListCell>
                 </ListRow>
               ))}
@@ -104,49 +106,25 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
   );
 }
 
-function ScoreboardBars({
-  title,
-  rows,
-  value,
-  format = (reading) => numberFormat.format(Math.round(reading)),
-  empty,
-  tone = "primary"
-}: {
-  title: string;
-  rows: IndexerScoreboardRow[];
-  value: (row: IndexerScoreboardRow) => number;
-  format?: (reading: number) => string;
-  empty: string;
-  tone?: "primary" | "success" | "info" | "danger";
+/** One reading with a thin bar under it, scaled across the table's rows. The detail is the cell's tooltip. */
+function MetricCell({ reading, max, text, detail, tone, warn = false }: {
+  reading: number | null;
+  max: number;
+  text: string;
+  detail: string;
+  tone: "primary" | "success" | "info" | "danger";
+  warn?: boolean;
 }) {
-  const values = rows.map(value);
-  const max = Math.max(...values, 0);
-  const hasValue = values.some((reading) => reading > 0);
+  const width = reading === null || !Number.isFinite(reading) || !Number.isFinite(max) || reading <= 0 || max <= 0 ? 0 : Math.max(2, (reading / max) * 100);
   return (
-    <ListCard title={title}>
-      {!hasValue ? (
-        <ListEmpty title={empty} />
-      ) : (
-        <div className="space-y-3 px-(--card-pad-x) py-(--card-pad-y)">
-          {rows.slice().sort((left, right) => value(right) - value(left)).map((row) => {
-            const reading = value(row);
-            return (
-              <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center justify-between gap-3 text-(length:--type-caption)">
-                    <span className="truncate font-medium text-foreground">{scoreboardName(row)}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{format(reading)}</span>
-                  </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-3">
-                    <div className={`h-full rounded-full ${barClass(tone)}`} style={{ width: `${max === 0 ? 0 : Math.max(2, (reading / max) * 100)}%` }} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </ListCard>
+    <ListCell numeric mobile>
+      <span title={detail} className="block min-w-14">
+        <span className={`block truncate ${warn ? "text-destructive" : "text-foreground"}`}>{text}</span>
+        <span aria-hidden className="mt-1 block h-1.5 overflow-hidden rounded-full bg-surface-3">
+          <span className={`block h-full rounded-full ${barClass(tone)}`} style={{ width: `${width}%` }} />
+        </span>
+      </span>
+    </ListCell>
   );
 }
 
@@ -156,6 +134,10 @@ function formatPercent(value: number) {
 
 function barClass(tone: "primary" | "success" | "info" | "danger") {
   return tone === "success" ? "bg-success" : tone === "info" ? "bg-info" : tone === "danger" ? "bg-destructive" : "bg-primary";
+}
+
+function statusLabel(row: IndexerScoreboardRow) {
+  return row.isEnabled ? row.healthStatus : row.healthStatus === "removed" ? "Removed" : "Paused";
 }
 
 function statusTone(row: IndexerScoreboardRow): ChipProps["tone"] {
