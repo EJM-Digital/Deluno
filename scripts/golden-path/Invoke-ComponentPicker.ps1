@@ -26,6 +26,14 @@ $Scope = [System.Windows.Automation.TreeScope]
 $CT = [System.Windows.Automation.ControlType]
 
 function Log([string] $line) { "{0:o} {1}" -f (Get-Date).ToUniversalTime(), $line | Out-File -FilePath $LogPath -Append -Encoding utf8 }
+# Any error stops the run at once and says which step it was, instead of a log that just ends.
+trap { Log "FAILED at step '$script:Step': $($_.Exception.Message)"; exit 1 }
+$script:Step = 'start'
+function Step([string] $name) { $script:Step = $name; Log "step: $name" }
+# Windows Server opens Server Manager at sign-in and it comes to the front over the picker. Close it whenever it shows.
+function Clear-ServerManager { $p = @(Get-Process ServerManager -ErrorAction SilentlyContinue); if ($p.Count -gt 0) { $p | Stop-Process -Force -ErrorAction SilentlyContinue; Log "closed Server Manager (it had opened over the picker)" } }
+# A control the next step needs: found, or the run fails now saying which one was missing.
+function Need($root, [string] $name) { $e = ByName $root $name; if (-not $e) { throw "the control '$name' is not in the window" }; $e }
 function ByName($root, [string] $name) { $root.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $name))) }
 function AllOfType($root, $type) { $root.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $type))) }
 function Press($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
@@ -34,6 +42,8 @@ function Texts($root) { @(AllOfType $root $CT::Text | ForEach-Object { $_.Curren
 
 New-Item -ItemType Directory -Force -Path (Split-Path $LogPath) | Out-Null
 Log "waiting for the picker window (first run asks 'Start Deluno when you sign in to Windows?' before it)"
+Step 'wait for the picker window'
+Clear-ServerManager
 $window = $null
 $asked = $false
 for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
@@ -60,10 +70,13 @@ for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
             $asked = $true
         }
     }
-    if (-not $window) { Start-Sleep -Seconds 1 }
+    if (-not $window) { if ($i % 5 -eq 0) { Clear-ServerManager }; Start-Sleep -Seconds 1 }
 }
 if (-not $asked) { Log "start-with-windows question was NOT shown before the picker" }
 if (-not $window) { Log "FAILED: the picker never appeared"; exit 1 }
+Clear-ServerManager
+Step 'focus the picker'
+try { $window.SetFocus(); Log "picker focused" } catch { Log "could not focus the picker ($($_.Exception.Message)); going on, the controls are pressed through UI Automation" }
 Log "picker open; texts: $((Texts $window) -join ' | ')"
 
 # Tick every row. WinForms' CheckedListBox shows each row to UI Automation as a CheckBox with a Toggle pattern
@@ -76,6 +89,7 @@ function Rows($root) {
 $rows = Rows $window
 Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
 if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
+Step 'tick every row'
 foreach ($row in $rows) {
     $done = $false
     try {
@@ -88,9 +102,11 @@ foreach ($row in $rows) {
         $row.SetFocus()
         [System.Windows.Forms.SendKeys]::SendWait(' ')
     }
+    Log "ticked '$($row.Current.Name)'"
     Start-Sleep -Milliseconds 300
 }
 Start-Sleep -Seconds 1
+Step 'check the ticks'
 $unticked = 0
 foreach ($row in (Rows $window)) {
     $state = try { $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState } catch { 'unknown' }
@@ -104,13 +120,16 @@ foreach ($field in 'SABnzbd username', 'NZBGet username') { $box = ByName $windo
 foreach ($field in 'SABnzbd password', 'NZBGet password') { $box = ByName $window $field; if ($box) { SetText $box $UsenetPassword } }
 Log "folders: $((AllOfType $window $CT::Edit | ForEach-Object { $_.Current.Name + '=' + $(try { $_.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value } catch { '' }) } | Where-Object { $_ -notmatch 'password' }) -join ' | ')"
 
-Press (ByName $window 'Install selected')
+Step 'press Install selected'
+Press (Need $window 'Install selected')
 Log "pressed Install selected"
+Step 'follow the progress'
 
 $deadline = (Get-Date).AddMinutes($InstallMinutes)
 $last = ''
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
+    Clear-ServerManager
     $now = ByName $AE::RootElement 'Set up download clients and Weir'
     if (-not $now) { Log "the picker window closed by itself"; break }
     $texts = (Texts $now) -join ' | '

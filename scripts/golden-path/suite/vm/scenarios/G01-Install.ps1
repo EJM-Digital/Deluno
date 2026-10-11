@@ -18,14 +18,9 @@ function Invoke-GroupInstall {
             $span = ([DateTime]::Parse($setting[-1].t) - [DateTime]::Parse($setting[0].t)).TotalSeconds
             Add-Note ("The icon said 'setting up' for {0:N0} s." -f $span)
         }
-        $menuFile = Join-Path $logs 'traymenu-first.json'
-        if (Test-Path $menuFile) {
-            $menu = Get-Content -Raw $menuFile | ConvertFrom-Json
-            $items = @($menu.items | Where-Object { $_ })
-            $ok = ($items.Count -eq 2 -and $items[0] -match '^Open Deluno' -and $items[1] -match '^Quit Deluno')
-            Add-Check 'The menu during setup is exactly "Open Deluno" and "Quit Deluno"' $ok ("items: " + ($items -join ' | '))
-        }
-        else { Add-Check 'The menu during setup was read' $false 'traymenu-first.json was not written: the icon was never found by the watcher.' }
+        # The first-run menu is not read here: opening any menu while the picker is being driven disturbs it (a right click once opened
+        # Server Manager's jump list over the picker). The hover text and the dot, which need no click, are the first-run evidence.
+        Add-Note 'The first-run tray menu ("Open Deluno" and "Quit Deluno") is not read during the picker; only the hover text and the dot are.'
 
         # Weir through the picker.
         $weir = Get-WeirExe
