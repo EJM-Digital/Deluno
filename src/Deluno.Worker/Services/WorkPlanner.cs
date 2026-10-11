@@ -963,7 +963,10 @@ public sealed class WorkPlanner(
         // so Transfers agrees with Activity. Optional like the rest.
         IDownloadDispatchesRepository? downloadIntegrityDispatches = null,
         // #1155: lets a hand-off that has waited past its limit import the finished copy sitting in the ready folder.
-        IProcessorOutputImportQueue? processorOutputImports = null)
+        IProcessorOutputImportQueue? processorOutputImports = null,
+        // #1242: lets a problem closed because its file was imported take its System row with it at once.
+        IHealthCheckRepository? healthChecks = null,
+        IRealtimeEventPublisher? realtime = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.ImportAutomation,
@@ -1051,6 +1054,8 @@ public sealed class WorkPlanner(
             existingJobs,
             cancellationToken);
         await RecordUnmatchedProcessorOutputsAsync(
+            processorRepository,
+            jobQueueRepository,
             activityFeedRepository,
             movieCatalogRepository,
             seriesCatalogRepository,
@@ -1066,7 +1071,9 @@ public sealed class WorkPlanner(
                 downloadIntegrityDispatches,
                 activityFeedRepository,
                 processorRepository,
-                processorConnectionService)
+                processorConnectionService,
+                healthChecks: healthChecks,
+                realtime: realtime)
             .SettleAsync(cancellationToken);
         await new ProcessorHandoffWatcher(
                 processorRepository,
@@ -2007,6 +2014,8 @@ public sealed class WorkPlanner(
     }
 
     private static async Task RecordUnmatchedProcessorOutputsAsync(
+        IProcessorRepository processorRepository,
+        IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -2059,10 +2068,20 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            IReadOnlyList<ProcessorHandoffItem>? handoffs = null;
             foreach (var file in files)
             {
                 var sourceKey = NormalizeSourceKey(file);
                 if (knownImportSources.Contains(sourceKey))
+                {
+                    continue;
+                }
+
+                // A file a send that was removed left, for a release a person sent again (#1242): the resend's hand-off
+                // is on its way and imports this very file, so it is not a stranger. Looked at again on the next pass;
+                // if the resend never imports it, the file is listed then.
+                handoffs ??= await processorRepository.ListProcessorHandoffsAsync(library.Id, 500, cancellationToken);
+                if (await IsOutputOfAReleaseSentAgainAsync(handoffs, jobQueueRepository, file, cancellationToken))
                 {
                     continue;
                 }
@@ -2105,6 +2124,27 @@ public sealed class WorkPlanner(
                     cancellationToken);
             }
         }
+    }
+
+    private static async Task<bool> IsOutputOfAReleaseSentAgainAsync(
+        IReadOnlyList<ProcessorHandoffItem> handoffs,
+        IJobQueueRepository jobQueueRepository,
+        string file,
+        CancellationToken cancellationToken)
+    {
+        var name = Path.GetFileName(file);
+        var stem = Path.GetFileNameWithoutExtension(file);
+        foreach (var handoff in handoffs.Where(item => ExpectedOutputDirectoryNames(item.SourcePath)
+                     .Any(expected => string.Equals(expected, name, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(expected, stem, StringComparison.OrdinalIgnoreCase))))
+        {
+            if (await ImportedDownloads.SentAgainSinceAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, handoff.CreatedUtc, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

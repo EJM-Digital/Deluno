@@ -375,7 +375,9 @@ public sealed class DelunoHeartbeatWorker(
                 services.GetRequiredService<IBlockedReleaseRepository>(),
                 services.GetRequiredService<Deluno.Quality.Data.IQualityRepository>(),
                 services.GetRequiredService<IDownloadDispatchesRepository>(),
-                services.GetRequiredService<Deluno.Platform.Contracts.IProcessorOutputImportQueue>());
+                services.GetRequiredService<Deluno.Platform.Contracts.IProcessorOutputImportQueue>(),
+                services.GetService<IHealthCheckRepository>(),
+                services.GetService<IRealtimeEventPublisher>());
 
             await workPlanner.PlanSharingReclaimAsync(
                 downloadClientTelemetryService,

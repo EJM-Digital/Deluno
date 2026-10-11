@@ -7,8 +7,21 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, TimeSpan? readBackDelay = null) : DownloadClientBase
+public sealed class NzbGetDownloadClient(
+    IHttpClientFactory httpClientFactory,
+    TimeSpan? readBackDelay = null,
+    TimeSpan? removalSettle = null,
+    TimeSpan? removalPoll = null) : DownloadClientBase
 {
+    /// <summary>
+    /// How long a removal is given to settle (#1244). <c>GroupDelete</c> answers true at once and takes a job out of the
+    /// queue asynchronously: one with a connection still waiting on an article is listed until that connection gives up,
+    /// which the golden run saw take about a minute.
+    /// </summary>
+    private readonly TimeSpan _removalSettle = removalSettle ?? TimeSpan.FromMinutes(2);
+
+    private readonly TimeSpan _removalPoll = removalPoll ?? TimeSpan.FromMilliseconds(250);
+
     private readonly TimeSpan _readBackDelay = readBackDelay ?? TimeSpan.FromMilliseconds(500);
 
     public override string Protocol => "nzbget";
@@ -384,7 +397,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
                 return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
                     () => Has(finalDelete: false),
                     async () => Done(await Edit("GroupDelete") || await Edit("HistoryDelete"),
-                        "Removed this download from NZBGet, leaving its files.", "remove this download"));
+                        "Removed this download from NZBGet, leaving its files.", "remove this download"),
+                    _removalSettle, _removalPoll, cancellationToken);
 
             // The same, and the files with it. GroupFinalDelete is the only
             // command that does both; GroupDelete does not.
@@ -392,7 +406,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory, T
                 return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
                     () => Has(finalDelete: true),
                     async () => Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
-                        "Removed this download from NZBGet, along with its files.", "remove this download"));
+                        "Removed this download from NZBGet, along with its files.", "remove this download"),
+                    _removalSettle, _removalPoll, cancellationToken);
 
             // Two requests, because NZBGet keeps the thing that refuses a
             // release somewhere the first one does not reach. The history entry

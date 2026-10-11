@@ -178,6 +178,9 @@ public sealed class ProcessorOutputImportQueue(
         => await FindReturnedTitleAsync(handoff, cancellationToken) is null
             && await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken);
 
+    public Task<bool> WasSentAgainAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => ImportedDownloads.SentAgainSinceAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, handoff.CreatedUtc, cancellationToken);
+
     public async Task<DateTimeOffset?> TitleCameBackWithoutItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
         => (await FindReturnedTitleAsync(handoff, cancellationToken))?.AddedUtc;
 

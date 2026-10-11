@@ -222,7 +222,11 @@ public static class ProcessorOutcomeDelivery
         return await SettleAsync(
             repository,
             activityFeed,
-            attempted with { Delivery = delivery, NextAttemptUtc = null, ProcessorSaid = told.Message },
+            // What is kept is what the processor said that agrees with this outcome (#1242): its reply can carry the
+            // stored note of another send of the same release, and the record is read back on the hand-off's drawer.
+            attempted with { Delivery = delivery, NextAttemptUtc = null, ProcessorSaid = delivery is ProcessorOutcomeDeliveries.Delivered or ProcessorOutcomeDeliveries.Settled
+                    ? OwnWords(told.Message, record.Outcome == ProcessorOutcomeRecord.Imported)
+                    : told.Message },
             announce: true,
             cancellationToken);
     }
@@ -353,7 +357,7 @@ public static class ProcessorOutcomeDelivery
             .Where(sentence => !string.IsNullOrWhiteSpace(sentence))
             .Where(sentence => imported
                 ? !System.Text.RegularExpressions.Regex.IsMatch(sentence, @"will not (be )?import|not imported|did not import", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : !System.Text.RegularExpressions.Regex.IsMatch(sentence, @"(?<!not )(?<!not be )imported (the|this|it)|has imported", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                : !System.Text.RegularExpressions.Regex.IsMatch(sentence, @"(?<!not )(?<!not be )\bimported (the|this|it)\b|\bhas imported\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             .ToArray();
         return sentences.Length == 0 ? null : string.Join(" ", sentences);
     }
