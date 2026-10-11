@@ -33,6 +33,15 @@ public static class ProcessorFailureClasses
     /// </summary>
     public const string SourceGone = "source_gone";
 
+    /// <summary>
+    /// The processor did not take the hand-off because another connection owns the file (#1250). It reports failed with no
+    /// disposition and holds nothing for this hand-off, so Deluno sends it again (see <see cref="ProcessorNotTaken"/>).
+    /// </summary>
+    public const string NotTaken = "not_taken";
+
+    public static bool IsNotTaken(string? failureClass)
+        => string.Equals(failureClass?.Trim(), NotTaken, StringComparison.OrdinalIgnoreCase);
+
     public static bool IsSourceGone(string? failureClass)
         => string.Equals(failureClass?.Trim(), SourceGone, StringComparison.OrdinalIgnoreCase);
 

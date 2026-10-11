@@ -1292,6 +1292,18 @@ public sealed class WorkPlanner(
                             : item.AddedUtc,
                         library.ProcessorConnectionId),
                     cancellationToken);
+                // The processor was busy with this file for another connection (#1250): it is sent again after its
+                // back-off, not on every pass.
+                if (handoff.Status == ProcessorHandoffStatuses.Waiting
+                    && ProcessorNotTaken.IsBusyMessage(handoff.FailureMessage)
+                    && ProcessorNotTaken.RetryNotDue(
+                        handoff,
+                        ProcessorNotTaken.TriesSoFar(await activityFeedRepository.ListActivityAsync(200, "processor-handoff", handoff.Id, cancellationToken)),
+                        now))
+                {
+                    continue;
+                }
+
                 var currentHandoff = handoff;
                 ProcessorSubmissionResult? submission = null;
                 var connection = await processorRepository.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken);

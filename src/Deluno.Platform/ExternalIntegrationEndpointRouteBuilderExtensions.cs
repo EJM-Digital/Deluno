@@ -1418,6 +1418,66 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     statusCode: StatusCodes.Status202Accepted);
             }
 
+            // Another connection owns the file, so the processor did not take this hand-off (#1250). Nothing is wrong
+            // with the release and the processor holds nothing: it is sent again after a back-off, and only after the
+            // last try does it become one problem a person can clear. Never held, refused, blocklisted or touched.
+            if (status == "failed" && disposition is null && ProcessorFailureClasses.IsNotTaken(request.FailureClass))
+            {
+                // A hand-off already ended (the person or Deluno closed it, the download was removed) stays as it is, and
+                // a repeat of a report already acted on is not another try.
+                if (!ProcessorHandoffStatuses.IsWithProcessor(handoff.Status)
+                    || (string.Equals(handoff.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase)
+                        && ProcessorNotTaken.IsBusyMessage(handoff.FailureMessage)))
+                {
+                    return Results.Json(
+                        new { status = "failed", handoffId = handoff.Id, alreadyHandled = true },
+                        statusCode: StatusCodes.Status202Accepted);
+                }
+
+                var tries = ProcessorNotTaken.TriesSoFar(
+                    await activityFeed.ListActivityAsync(200, "processor-handoff", handoff.Id, cancellationToken));
+                var willRetry = tries < ProcessorNotTaken.RetryAfter.Count;
+                var notTakenMessage = willRetry
+                    ? ProcessorNotTaken.BusyMessage(processorName)
+                    : ProcessorNotTaken.GaveUpMessage(processorName, handoff.ReleaseName);
+                await repository.UpdateProcessorHandoffAsync(
+                    handoff.Id,
+                    willRetry ? ProcessorHandoffStatuses.Waiting : ProcessorHandoffStatuses.Failed,
+                    null,
+                    null,
+                    notTakenMessage,
+                    cancellationToken);
+                var retryAfter = willRetry ? ProcessorNotTaken.RetryAfter[tries] : (TimeSpan?)null;
+                var notTakenActivity = await activityFeed.RecordActivityAsync(
+                    willRetry ? "processing.not-taken" : "processing.not-taken.gave-up",
+                    notTakenMessage,
+                    JsonSerializer.Serialize(new
+                    {
+                        request.LibraryId,
+                        HandoffId = handoff.Id,
+                        handoff.ReleaseName,
+                        request.FailureClass,
+                        Message = message,
+                        ProcessorName = processorName,
+                        Attempt = tries + 1,
+                        RetryAfterMinutes = retryAfter?.TotalMinutes
+                    }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return Results.Json(
+                    new
+                    {
+                        status = "failed",
+                        handoffId = handoff.Id,
+                        activityId = notTakenActivity.Id,
+                        willRetry,
+                        retryAfterMinutes = retryAfter?.TotalMinutes
+                    },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 status,
