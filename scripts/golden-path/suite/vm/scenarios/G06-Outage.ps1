@@ -59,7 +59,8 @@ function Watch-WeirSignals {
             Dashboard = $(if ($Want -eq 'amber') { $r.DashboardAmber } else { $r.DashboardGreen })
             Server = $(if ($Want -eq 'amber') { $r.ServerHealth -match 'degraded|unhealthy|down|unreachable' } else { $r.ServerHealth -match 'healthy' -and $r.ServerHealth -notmatch 'un' })
         }
-        foreach ($k in $first.Keys) { if ($null -eq $first[$k] -and $hit[$k]) { $first[$k] = [math]::Round($since, 1) } }
+        # A copy of the keys: writing to a hashtable while its own Keys are enumerated throws "Collection was modified" (rc.30.22).
+        foreach ($k in @($first.Keys)) { if ($null -eq $first[$k] -and $hit[$k]) { $first[$k] = [math]::Round($since, 1) } }
         if (@($first.Values | Where-Object { $null -eq $_ }).Count -eq 0) { break }
         Start-Sleep -Milliseconds 300
     }
@@ -102,12 +103,23 @@ function Complete-Outage {
     Save-Evidence -Name "outage-$Label-green.json" -Text ($green | Select-Object Tray, System, Dashboard, Server | ConvertTo-Json)
 }
 
+# Whatever an outage scenario did, Weir is running again before the next scenario starts (an error in the first one left it
+# down for the second in rc.30.22, so the second never had a hand-off reach Weir).
+function Restore-WeirAfterOutage {
+    if (Test-WeirAnswering) { return }
+    try { Start-WeirApp } catch { Write-SuiteLog "   could not start Weir again: $($_.Exception.Message)" }
+    Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { Test-WeirAnswering } | Out-Null
+}
+
 function Invoke-GroupOutage {
     try {
         Open-OutagePages
         Invoke-Scenario -Id 'outage.idle' -Title 'Weir quits with nothing in flight: the tray, System and the Dashboard go amber within a minute and come back' -Body {
-            Invoke-OutageOnce -Label 'idle' | Out-Null
-            Complete-Outage -Label 'idle'
+            try {
+                Invoke-OutageOnce -Label 'idle' | Out-Null
+                Complete-Outage -Label 'idle'
+            }
+            finally { Restore-WeirAfterOutage }
         }
         Invoke-Scenario -Id 'outage.inflight' -Title 'Weir quits with a hand-off in flight: the same places go amber and come back, and the hand-off ends clearly' -Body {
             # A big film keeps Weir busy long enough to quit it mid-way.
@@ -120,8 +132,11 @@ function Invoke-GroupOutage {
             }
             Add-Check 'A hand-off is in flight when Weir quits' $w.Ok $(if ($w.Ok) { "processor said '$($w.Value.processor.state)'" } else { 'the hand-off never reached Weir' })
             if (-not $w.Ok) { return }
-            Invoke-OutageOnce -Label 'inflight' | Out-Null
-            Complete-Outage -Label 'inflight'
+            try {
+                Invoke-OutageOnce -Label 'inflight' | Out-Null
+                Complete-Outage -Label 'inflight'
+            }
+            finally { Restore-WeirAfterOutage }
             # The hand-off must end in a place a person can see: finished, or failed and offered again; never silently open for good.
             $end = Wait-Until -TimeoutSec 300 -IntervalSec 2 -Condition {
                 $h = Get-FilmHandoff -Film $film
@@ -136,5 +151,5 @@ function Invoke-GroupOutage {
             }
         }
     }
-    finally { Close-OutagePages }
+    finally { Restore-WeirAfterOutage; Close-OutagePages }
 }

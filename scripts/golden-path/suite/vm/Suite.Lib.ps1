@@ -285,29 +285,51 @@ function Get-Library {
 
 # ---------------------------------------------------------------- Weir
 
+# What Weir needs on a request that changes something, sent the way its own page sends it: Weir answers 403 to any change that
+# carries an Origin header but no X-Requested-With (its protocol middleware), so the suite's login and every PUT/POST were refused
+# (rc.30.22: "403 Forbidden" in the resend and vanish groups, and the Weir login Connect Weir made "does not sign in").
+function Get-WeirHeaders {
+    param([Parameter(Mandatory)] [string] $Origin)
+    @{ Origin = $Origin; 'X-Requested-With' = 'XMLHttpRequest' }
+}
+
 # Weir keeps a session cookie and a CSRF token; the suite signs in with the throwaway login made for it.
 function Connect-Weir {
     $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     $origin = $script:S.WeirUrl
     $csrf = (Invoke-RestMethod -Uri "$origin/api/v1/auth/csrf" -WebSession $sess -UseBasicParsing -TimeoutSec 20).csrf_token
     $body = @{ username = (Get-SuiteSecret 'weir-username'); password = (Get-SuiteSecret 'weir-password'); csrf_token = $csrf } | ConvertTo-Json
-    Invoke-RestMethod -Uri "$origin/api/v1/auth/login" -Method Post -ContentType 'application/json' -Body $body -WebSession $sess -Headers @{ Origin = $origin } -UseBasicParsing -TimeoutSec 20 | Out-Null
+    try {
+        Invoke-RestMethod -Uri "$origin/api/v1/auth/login" -Method Post -ContentType 'application/json' -Body $body -WebSession $sess -Headers (Get-WeirHeaders -Origin $origin) -UseBasicParsing -TimeoutSec 20 | Out-Null
+    }
+    catch { throw (Hide-Secrets ("Weir's sign-in answered: {0} {1}" -f $_.Exception.Message, $_.ErrorDetails.Message)) }
     $script:S.WeirSession = $sess
 }
 
 function Invoke-Weir {
     param([string] $Method = 'GET', [Parameter(Mandatory)] [string] $Path, $Body = $null)
-    if (-not $script:S.WeirSession) { Connect-Weir }
-    $origin = $script:S.WeirUrl
-    $p = @{ Uri = "$origin/api/v1$Path"; Method = $Method; WebSession = $script:S.WeirSession; UseBasicParsing = $true; TimeoutSec = 30; Headers = @{ Origin = $origin } }
-    if ($Method -ne 'GET') {
-        $csrf = (Invoke-RestMethod -Uri "$origin/api/v1/auth/csrf" -WebSession $script:S.WeirSession -UseBasicParsing -TimeoutSec 20).csrf_token
-        $payload = @{}
-        if ($Body) { foreach ($k in $Body.Keys) { $payload[$k] = $Body[$k] } }
-        $payload['csrf_token'] = $csrf
-        $p.ContentType = 'application/json'; $p.Body = ($payload | ConvertTo-Json -Depth 6)
+    # A session that Weir no longer knows (a restart, an expiry) answers 401 or 403: sign in again once and repeat the request.
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        if (-not $script:S.WeirSession) { Connect-Weir }
+        $origin = $script:S.WeirUrl
+        $p = @{ Uri = "$origin/api/v1$Path"; Method = $Method; WebSession = $script:S.WeirSession; UseBasicParsing = $true; TimeoutSec = 30; Headers = (Get-WeirHeaders -Origin $origin) }
+        try {
+            if ($Method -ne 'GET') {
+                $csrf = (Invoke-RestMethod -Uri "$origin/api/v1/auth/csrf" -WebSession $script:S.WeirSession -UseBasicParsing -TimeoutSec 20).csrf_token
+                $payload = @{}
+                if ($Body) { foreach ($k in $Body.Keys) { $payload[$k] = $Body[$k] } }
+                $payload['csrf_token'] = $csrf
+                $p.ContentType = 'application/json'; $p.Body = ($payload | ConvertTo-Json -Depth 6)
+            }
+            return (Invoke-RestMethod @p)
+        }
+        catch {
+            $code = $null
+            try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($attempt -eq 1 -and $code -in 401, 403) { $script:S.WeirSession = $null; continue }
+            throw (Hide-Secrets ("Weir answered {0} to {1} {2}: {3} {4}" -f $code, $Method, $Path, $_.Exception.Message, $_.ErrorDetails.Message))
+        }
     }
-    Invoke-RestMethod @p
 }
 
 # Pause or resume Weir's processing. Keep looking for new files stays on, as in a person's "Pause until I resume".
