@@ -13,9 +13,13 @@ function Invoke-GroupInstall {
         $setting = @($lines | Where-Object { $_.deluno -and $_.deluno.found -and $_.deluno.hover -match 'setting up' })
         Add-Check 'The Deluno icon read "setting up" while the picker ran' ($setting.Count -ge 5) "$($setting.Count) readings"
         if ($setting.Count -ge 5) {
-            $blink = Get-BlinkSummary -Readings ($setting | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $_.deluno.brightness; Colour = $_.deluno.colour } })
-            Add-Check 'The dot blinks (its brightness alternates, its colour never changes)' ($blink.Blinks -and $blink.Colours.Count -le 1) ("samples {0}, flips {1}, levels {2}, colours [{3}]" -f $blink.Samples, $blink.Flips, $blink.BrightnessLevels, ($blink.Colours -join ','))
-            Add-Check 'The dot is grey while Deluno sets itself up' (@($blink.Colours).Count -eq 0 -or @($blink.Colours)[0] -eq 'grey') ("colours [{0}]" -f ($blink.Colours -join ','))
+            $dot = Get-FirstRunDotSummary -Readings ($setting | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $_.deluno.brightness; Colour = $_.deluno.colour } })
+            $blink = $dot.Blink
+            $detail = "samples {0}, flips {1}, levels {2}, colours [{3}]" -f $blink.Samples, $blink.Flips, $blink.BrightnessLevels, ($blink.Colours -join ',')
+            # A blink is the dot drawn, then not drawn: only the brightness changes. A reading of the whole icon shows the dot's own
+            # colour while it is drawn and the logo (amber) while it is not, so "grey and amber" is one grey dot blinking over the logo.
+            Add-Check 'The dot blinks (its brightness alternates, and it is drawn then not drawn)' ($blink.Blinks -and $dot.LogoColours.Count -le 1) $detail
+            Add-Check 'The dot is grey while Deluno sets itself up (never red, green or blue)' ($dot.GreyShown -and $dot.OnlyGreyAndLogo) $detail
             $span = ([DateTime]::Parse($setting[-1].t) - [DateTime]::Parse($setting[0].t)).TotalSeconds
             Add-Note ("The icon said 'setting up' for {0:N0} s." -f $span)
         }

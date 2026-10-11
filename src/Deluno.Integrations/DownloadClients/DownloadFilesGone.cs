@@ -19,8 +19,9 @@ public static class DownloadFilesGone
             or DownloadQueueStatuses.NotHandedOver;
 
     /// <summary>
-    /// True only for a path whose folder this machine can see and which is not there. A path on another machine,
-    /// unmapped, is not "gone", it is simply out of sight.
+    /// True only for a path that is not there while a folder above it, one or two levels up, is. A path on another
+    /// machine, unmapped, is not "gone", it is simply out of sight. Two levels, because SABnzbd keeps a finished job's
+    /// file inside the job's own folder, and that folder goes with the file (rc.30.22).
     /// </summary>
     public static bool AreGone(string? sourcePath, Func<string, bool> pathExists)
     {
@@ -30,7 +31,18 @@ public static class DownloadFilesGone
         }
 
         var parent = Path.GetDirectoryName(sourcePath.TrimEnd((char)92, (char)47));
-        return !string.IsNullOrWhiteSpace(parent) && pathExists(parent);
+        if (string.IsNullOrWhiteSpace(parent))
+        {
+            return false;
+        }
+
+        if (pathExists(parent))
+        {
+            return true;
+        }
+
+        var grandparent = Path.GetDirectoryName(parent.TrimEnd((char)92, (char)47));
+        return !string.IsNullOrWhiteSpace(grandparent) && pathExists(grandparent);
     }
 
     public static bool AreGoneOnDisk(string? sourcePath) =>
