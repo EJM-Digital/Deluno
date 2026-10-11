@@ -455,21 +455,19 @@ describe("clientsForPathMapping (#809)", () => {
   });
 });
 
-// A name is kept only when a person typed it: a blank one, or the name the screen read back, is worked out from the address.
+// #1248: a name given is kept, through the screen as through the API; the address names an indexer only when none is given.
 describe("indexer save payload name", () => {
   const blank = emptyIndexerForm();
 
-  it("keeps a typed name", () => {
-    expect(buildIndexerSavePayload({ ...blank, name: "My tracker" }, blank, false).keepName).toBe(true);
+  it("sends the name a person typed", () => {
+    expect(buildIndexerSavePayload({ ...blank, name: " My tracker " }, blank, false).name).toBe("My tracker");
   });
 
-  it("leaves a blank name to the address", () => {
-    expect(buildIndexerSavePayload(blank, blank, false).keepName).toBe(false);
+  it("sends a blank name when none was given, so the address names it", () => {
+    expect(buildIndexerSavePayload(blank, blank, false).name).toBe("");
   });
 
-  it("does not call the name an edit read back a typed one", () => {
-    const saved = { ...blank, name: "nzbgeek.info" };
-    expect(buildIndexerSavePayload(saved, saved, true).keepName).toBe(false);
-    expect(buildIndexerSavePayload({ ...saved, name: "My geek" }, saved, true).keepName).toBe(true);
+  it("does not send a keep-name flag: the server keeps any name it is given", () => {
+    expect(buildIndexerSavePayload({ ...blank, name: "My tracker" }, blank, false)).not.toHaveProperty("keepName");
   });
 });

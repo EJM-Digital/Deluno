@@ -90,3 +90,45 @@ describe("IndexerDrawerBody name field", () => {
     expect(renderWith("https://tracker.example.test/api", "My tracker").value).toBe("My tracker");
   });
 });
+
+// #1248: Remove... was dimmed while anything else was busy and said nothing about why.
+describe("IndexerDrawerBody Remove while something else is running", () => {
+  function renderSaved(busy: string | null) {
+    render(
+      <IndexerDrawerBody
+        form={{ ...emptyIndexerForm(), protocol: "torznab", baseUrl: "https://tracker.example.test/api", name: "My tracker" }}
+        setForm={() => {}}
+        editing={{ id: "i1", name: "My tracker", protocol: "torznab", baseUrl: "https://tracker.example.test/api", priority: 10, categories: "2000", mediaScope: "both", isEnabled: true } as never}
+        settings={emptyPlatformSettingsSnapshot}
+        proxies={[]}
+        throttle={null}
+        errors={{}}
+        clearError={() => {}}
+        showKey={false}
+        setShowKey={() => {}}
+        fineTuneOpen
+        setFineTuneOpen={() => {}}
+        busy={busy}
+        onReset={() => {}}
+        onAcknowledgeVip={() => {}}
+        onRemove={() => {}}
+      />
+    );
+    return screen.getByRole("button", { name: "Remove…" }) as HTMLButtonElement;
+  }
+
+  it("is available, with nothing to explain, when nothing is running", () => {
+    expect(renderSaved(null).disabled).toBe(false);
+    expect(screen.queryByText(/^Waiting for/)).toBeNull();
+  });
+
+  it("says it is waiting for the connection test to finish", () => {
+    expect(renderSaved("test:form").disabled).toBe(true);
+    expect(screen.getByText("Waiting for the connection test to finish")).toBeTruthy();
+  });
+
+  it("says it is waiting for a save to finish", () => {
+    expect(renderSaved("save").disabled).toBe(true);
+    expect(screen.getByText("Waiting for the save to finish")).toBeTruthy();
+  });
+});

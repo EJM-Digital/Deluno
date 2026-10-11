@@ -179,3 +179,28 @@ describe("ClientDrawerBody the client's own warnings (#1193)", () => {
     expect(screen.queryByRole("button", { name: /warnings/ })).toBeNull();
   });
 });
+
+// #1248: the same dimmed Remove... with no reason as the indexer drawer.
+describe("ClientDrawerBody Remove while the connection test runs (#1248)", () => {
+  it("says it is waiting for the connection test to finish", () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}><ClientDrawerBody
+        form={{ ...emptyClientForm(), protocol: "qbittorrent", host: "192.168.1.10", port: "8080" }}
+        setForm={() => {}}
+        editing={{ id: "c1", name: "Seedbox" } as never}
+        errors={{}}
+        clearError={() => {}}
+        mappings={[]}
+        newMapping={{ remotePath: "", localPath: "" }}
+        setNewMapping={() => {}}
+        busy="test:form"
+        onAddMapping={() => {}}
+        onRemoveMapping={() => {}}
+        onTestMapping={() => {}}
+        onRemove={() => {}}
+      /></QueryClientProvider>
+    );
+    expect((screen.getByRole("button", { name: "Remove…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Waiting for the connection test to finish")).toBeTruthy();
+  });
+});
