@@ -80,11 +80,19 @@ function Invoke-GroupStuck {
             $a["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'dummy' -Label 'zero') -Kind $kind
             $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'short' -Label 'short') -Kind $kind
         }
+        # A Usenet client works down its queue: a job whose every article is unanswered holds the connections and the jobs
+        # behind it wait at 0 bytes (rc.30.22: SABnzbd's "short" job read 0% behind the "zero" job). So the job that is
+        # stuck just short of the end goes first, and the one stuck at 0 bytes is sent once that one is struck and gone.
         foreach ($kind in $script:Kinds.usenet) {
-            $a["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'zero' -HangAll) -Kind $kind
             $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'short' -HangLast) -Kind $kind
         }
         $seenA = Wait-AllStruck -Films $a
+        $zeroUsenet = @{}
+        foreach ($kind in $script:Kinds.usenet) {
+            $zeroUsenet["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'zero' -HangAll) -Kind $kind
+        }
+        $seenZero = Wait-AllStruck -Films $zeroUsenet
+        foreach ($key in $zeroUsenet.Keys) { $a[$key] = $zeroUsenet[$key]; $seenA[$key] = $seenZero[$key] }
         foreach ($key in $a.Keys | Sort-Object) {
             $parts = $key -split '\.'
             $what = if ($parts[0] -eq 'zero') { 'stuck at 0 bytes' } else { 'stuck just short of the end' }
