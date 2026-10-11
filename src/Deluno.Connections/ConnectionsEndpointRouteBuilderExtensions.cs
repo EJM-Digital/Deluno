@@ -91,7 +91,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateIndexerAsync(request, cancellationToken);
-            item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+            // A name the person gave is not replaced by the aggregator's (#1248).
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+            }
+
             // #1134: a test run in the drawer before the add is kept with the
             // indexer, so the list says what the person just saw rather than
             // "Untested". Only a status Deluno itself produces is kept.
@@ -270,7 +275,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             {
                 // Only an address or key that changed is worth asking the aggregator about again;
                 // an enable/pause toggle or a priority change makes no request (#1076).
-                if (before is null || AggregatorIndexerNames.LookupNeeded(before, item))
+                var renamed = !string.IsNullOrWhiteSpace(request.Name)
+                    && !string.Equals(request.Name.Trim(), before?.Name, StringComparison.OrdinalIgnoreCase);
+                if (!renamed && (before is null || AggregatorIndexerNames.LookupNeeded(before, item)))
                 {
                     item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
                 }
