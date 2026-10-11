@@ -192,15 +192,16 @@ function Publish-WeirScenarioKey {
 # ran, there is no such account and the run fails with that reason. It also fails if no film Deluno handed to Weir is left in place,
 # because Weir's With-Deluno scenarios follow those downloads.
 function Publish-WeirScenarioLogin {
-    param([string] $Path = 'C:\golden\weir-scenario-login.txt')
+    param([string] $Path = 'C:\golden\weir-scenario-login.txt', [switch] $BeforeAnyFilm)
     if (-not (Test-Path (Join-Path (Get-SuiteRoot) 'weir-connected.flag'))) { throw 'Connect Weir did not run in this VM, so there is no Weir login to hand over.' }
     $user = Get-SuiteSecret 'weir-username'
     $pass = Get-SuiteSecret 'weir-password'
     # The login must really work, or Weir's suite would fail on it for no reason it could explain.
     $script:S.WeirSession = $null
     try { Connect-Weir } catch { throw 'The Weir login Connect Weir made does not sign in to Weir.' }
+    # Before any film (Weir's Update phase runs between Deluno's setup and its groups) there is nothing to follow yet.
     $left = @(Get-Handoffs | Where-Object { $_.status -eq 'completed' -and $_.sourcePath -and (Test-Path -LiteralPath $_.sourcePath) })
-    if ($left.Count -eq 0) { throw 'No film that Deluno handed to Weir is left in place for Weir''s scenarios to follow.' }
+    if ($left.Count -eq 0 -and -not $BeforeAnyFilm) { throw 'No film that Deluno handed to Weir is left in place for Weir''s scenarios to follow.' }
     [IO.File]::WriteAllText($Path, $user + "`n" + $pass + "`n", (New-Object Text.UTF8Encoding($false)))
     Write-SuiteLog "The Weir login Connect Weir made was written to $Path for Weir's suite (not shown); $($left.Count) handed-off films are in place."
 }

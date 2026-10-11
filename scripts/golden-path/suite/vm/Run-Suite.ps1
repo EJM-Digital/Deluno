@@ -16,12 +16,17 @@
 
 .PARAMETER SkipEnvironment
     Do not set Deluno up again (it was set up by an earlier run of this folder).
+
+.PARAMETER SetupOnly
+    Set Deluno up, leave Weir's login (and the Deluno key) for Weir's own suite, and stop before any group. Weir's Update phase runs
+    here, between Deluno's setup and its films (Invoke-ScenarioSuite.ps1 -AfterSetupScript); the groups then run with -SkipEnvironment.
 #>
 [CmdletBinding()]
 param(
     [string] $Root = 'C:\golden\suite',
     [string[]] $Groups = @(),
-    [switch] $SkipEnvironment
+    [switch] $SkipEnvironment,
+    [switch] $SetupOnly
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
@@ -45,6 +50,12 @@ try {
     Write-SuiteLog 'Scenario suite starting.'
     if (-not $SkipEnvironment) { Initialize-SuiteEnvironment }
     else { Wait-DelunoUp | Out-Null; Connect-Deluno; Start-FeedAndStubs; Initialize-Indexers; Initialize-BaseVideos }
+    if ($SetupOnly) {
+        Publish-WeirScenarioKey
+        Publish-WeirScenarioLogin -BeforeAnyFilm
+        Write-SuiteLog 'Set up only: Weir''s login and the Deluno key are left for Weir''s suite; no group runs in this pass.'
+        return
+    }
     foreach ($group in Get-ScenarioPlan) {
         if ($Groups.Count -gt 0 -and $group.Name -notin $Groups) { continue }
         Write-SuiteLog "=== group $($group.Name)"
@@ -64,7 +75,7 @@ catch { $final = Hide-Secrets $_.Exception.Message; Write-SuiteLog "SUITE ERROR 
 finally {
     Save-Results
     # After the last scenario: the key Weir's scenario suite needs (Weir #954). A failure here is the run's failure.
-    if ($Groups.Count -eq 0 -or $Groups -contains 'problems') {
+    if (-not $SetupOnly -and ($Groups.Count -eq 0 -or $Groups -contains 'problems')) {
         try { Publish-WeirScenarioKey }
         catch { $final = 'Could not make the key for Weir''s suite: ' + (Hide-Secrets $_.Exception.Message); Write-SuiteLog $final }
         try { Publish-WeirScenarioLogin }
