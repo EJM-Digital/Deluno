@@ -1168,6 +1168,20 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
+            // A send a person removed and asked for again (#1242). The processor had started it and reports it after the
+            // release was sent again but before Deluno made the new send's hand-off, so there is no superseded record
+            // to find it by yet. The report belongs to the newer send, which settles from its own: it is answered as
+            // already handled, never a 409, and nothing about this ended hand-off changes. A hand-off nobody sent
+            // again keeps the "too late" answer below.
+            if (!ProcessorHandoffStatuses.AcceptsLateOutput(handoff.Status) &&
+                !string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
+                await outputImports.WasSentAgainAsync(handoff, cancellationToken))
+            {
+                return Results.Json(
+                    new { status = "superseded", handoffId = handoff.Id, alreadyHandled = true },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             // The event names the hand-off and the file as two separate claims,
             // and being inside the output folder only says the processor wrote
             // where it was told. A file that is recognisably another download's
