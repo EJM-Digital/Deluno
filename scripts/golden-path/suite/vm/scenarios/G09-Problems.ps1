@@ -87,7 +87,14 @@ function Invoke-GroupProblems {
         foreach ($film in $films) {
             if (@(Find-Handoffs -Name $film.Release).Count -eq 0) { continue }
             $checked++
-            foreach ($p in @(Get-StoryProblems -Film $film)) { [void]$bad.Add("$($film.Release): $p") }
+            $found = @(Get-StoryProblems -Film $film)
+            foreach ($p in $found) { [void]$bad.Add("$($film.Release): $p") }
+            if ($found.Count) {
+                # Every Activity line of that film and every hand-off row of it, so the next run shows which two lines were told
+                # (rc.30.22 recorded neither).
+                $lines = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) } | ForEach-Object { $_ -replace '\s+', ' ' })
+                Save-Evidence -Name "story-$($film.Title).txt" -Text (("problems: " + ($found -join ' || ')) + "`n`nactivity lines:`n" + ($lines -join "`n") + "`n`nhand-offs:`n" + (@(Find-Handoffs -Name $film.Release) | ConvertTo-Json -Depth 4))
+            }
         }
         Add-Check "At least one hand-off was checked" ($checked -gt 0) "$checked films with a hand-off"
         Add-Check "No hand-off has a closing line that tells two stories, ends in a doubled full stop, or repeats" ($bad.Count -eq 0) (($bad | Select-Object -First 5) -join " || ")

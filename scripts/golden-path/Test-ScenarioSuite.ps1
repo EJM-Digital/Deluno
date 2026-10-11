@@ -117,11 +117,20 @@ $mockScript = {
     $l.Prefixes.Add("http://127.0.0.1:$p/")
     $l.Start()
     $logins = 0
+    $weirLogins = 0
     while ($l.IsListening) {
         $ctx = $l.GetContext(); $req = $ctx.Request; $res = $ctx.Response
         $path = $req.Url.AbsolutePath; $auth = $req.Headers['Authorization']
         $code = 200; $body = '{}'
-        if ($path -eq '/api/auth/login') { $logins++; $body = '{"accessToken":"tok-' + $logins + '","user":{"name":"golden"}}' }
+        if ($path -like '/api/v1/*') {
+            # Weir's protocol middleware: a change that carries an Origin but no X-Requested-With is refused with 403.
+            $xrw = $req.Headers['X-Requested-With']
+            if ($path -eq '/api/v1/auth/csrf') { $body = '{"csrf_token":"c1"}' }
+            elseif ($req.HttpMethod -ne 'GET' -and $xrw -ne 'XMLHttpRequest') { $code = 403; $body = '{"detail":"Missing X-Requested-With header."}' }
+            elseif ($path -eq '/api/v1/auth/login') { $weirLogins++; $body = '{}' }
+            elseif ($path -eq '/api/v1/pause') { if ($weirLogins -lt 2) { $code = 403; $body = '{"detail":"Forbidden."}' } else { $body = '{"paused":true}' } }
+        }
+        elseif ($path -eq '/api/auth/login') { $logins++; $body = '{"accessToken":"tok-' + $logins + '","user":{"name":"golden"}}' }
         elseif ($path -eq '/stop') { $body = 'bye'; $l.Stop() }
         elseif ($auth -ne ('Bearer tok-' + $logins) -and $path -ne '/api/auth/bootstrap-status') { $code = 401; $body = '{"message":"sign in"}' }
         elseif ($path -eq '/api/integrations/processors/handoffs') { $body = '[{"id":"h1","releaseName":"Gpfilm.2020.1080p","status":"completed","importJobId":"j1","createdUtc":"2026-10-11T10:00:00Z"},{"id":"h2","releaseName":"Gpfilm.2020.1080p","status":"failed","createdUtc":"2026-10-11T11:00:00Z"}]' }
@@ -194,6 +203,26 @@ try {
     Check 'both Weir secrets are masked in text' ((Hide-Secrets ((Get-SuiteSecret 'weir-username') + ' ' + (Get-SuiteSecret 'weir-password'))) -eq '*** ***')
     . (Join-Path $suite 'vm\scenarios\G09-Problems.ps1')
     Check 'the story rules are defined' ($null -ne (Get-Command Get-StoryProblems -ErrorAction SilentlyContinue))
+
+    # Weir: every change carries X-Requested-With beside Origin, and a session Weir no longer knows is replaced once.
+    $wh = Get-WeirHeaders -Origin 'http://localhost:9347'
+    Check 'Weir requests carry Origin and X-Requested-With' ($wh['Origin'] -eq 'http://localhost:9347' -and $wh['X-Requested-With'] -eq 'XMLHttpRequest')
+    $script:S.WeirUrl = "http://127.0.0.1:$port"
+    $paused = Invoke-Weir -Method PUT -Path '/pause' -Body @{ paused = $true; scan_while_paused = $true }
+    Check 'a refused session is signed in again once and the change goes through' ($paused.paused -eq $true)
+
+    # What a strike line says, from the real Activity lines of the rc.30.22 run.
+    . (Join-Path $suite 'vm\scenarios\G05-Stuck.ps1')
+    $slowLine = 'Gpslownqtx27.2020.1080p.WEB-DL.x264-GOLDEN (Too slow): It stayed under 2048 KB/s for 1 check, so Deluno stopped waiting for it and will not pick it again. Deluno blocked this release, is looking for another copy and removed it from SABnzbd.'
+    $zeroLine = 'Gpzerohsiq22.2020.1080p.WEB-DL.x264-GOLDEN (No progress): It made no progress for 2 checks in a row, so Deluno stopped waiting for it and will not pick it again. Deluno blocked this release, is looking for another copy and removed it from NZBGet.'
+    $strikeFilm = [pscustomobject]@{ Title = 'GpTest' }
+    Invoke-Scenario -Id 't.slow1' -Title 'slow, 1 check' -Body { Assert-Struck -Film $strikeFilm -Seen @{ Line = $slowLine; Seconds = 17; MaxProgress = 0; Statuses = @{} } -Strikes 1 -RuleWords 'slow|speed|stayed under' -InARow $false }
+    Invoke-Scenario -Id 't.zero2' -Title 'no progress, 2 checks in a row' -Body { Assert-Struck -Film $strikeFilm -Seen @{ Line = $zeroLine; Seconds = 348; MaxProgress = 0; Statuses = @{} } -Strikes 2 -RuleWords 'No progress' }
+    Invoke-Scenario -Id 't.zero2wrong' -Title 'a plural where one is expected' -Body { Assert-Struck -Film $strikeFilm -Seen @{ Line = ($zeroLine -replace 'for 2 checks', 'for 1 checks'); Seconds = 1; MaxProgress = 0; Statuses = @{} } -Strikes 1 -RuleWords 'No progress' }
+    $res2 = @{}; foreach ($r in $script:S.Results) { $res2[$r.id] = $r }
+    Check 'the speed rule''s real line (for 1 check, no "in a row") passes' ($res2['t.slow1'].status -eq 'pass') (($res2['t.slow1'].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.name + ' ' + $_.detail }) -join '; ')
+    Check 'the no-progress rule''s real line (for 2 checks in a row) passes' ($res2['t.zero2'].status -eq 'pass')
+    Check 'a wrong plural (1 checks) still fails' ($res2['t.zero2wrong'].status -eq 'fail')
 }
 finally {
     try { Invoke-WebRequest "http://127.0.0.1:$port/stop" -UseBasicParsing -TimeoutSec 3 | Out-Null } catch { }
@@ -313,6 +342,15 @@ Check 'an amber dot reads amber' ((Get-DotClassFromPixels -Pixels @(New-Px 40 0.
 $mixed = Get-BlinkSummary -Readings @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $(if ($_ % 2) { 0.31 } else { 0.18 }); Colour = $(if ($_ -eq 5) { 'amber' } else { 'grey' }) } })
 Check 'one outlier colour in a run does not break a blink' ($mixed.Blinks -and $mixed.Colours.Count -eq 1 -and $mixed.Colours[0] -eq 'grey')
 
+Write-Host 'The first-run dot is a grey dot over the logo'
+$blinkReadings = @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $(if ($_ % 2) { 0.833 } else { 0.8503 }); Colour = $(if ($_ % 2) { 'amber' } else { 'grey' }) } })
+$firstRun = Get-FirstRunDotSummary -Readings $blinkReadings
+Check 'grey and amber readings that alternate are one grey dot blinking over the amber logo (the rc.30.22 readings)' ($firstRun.Blink.Blinks -and $firstRun.GreyShown -and $firstRun.OnlyGreyAndLogo -and $firstRun.LogoColours.Count -eq 1)
+$redDot = Get-FirstRunDotSummary -Readings @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $(if ($_ % 2) { 0.833 } else { 0.8503 }); Colour = $(if ($_ % 2) { 'red' } else { 'grey' }) } })
+Check 'a red reading is not the logo and fails' (-not $redDot.OnlyGreyAndLogo)
+$noGrey = Get-FirstRunDotSummary -Readings @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $(if ($_ % 2) { 0.833 } else { 0.8503 }); Colour = 'amber' } })
+Check 'a dot that is never grey fails' (-not $noGrey.GreyShown)
+
 Write-Host 'The qBittorrent and Deluge films are told to check their data'
 $script:Called = New-Object System.Collections.ArrayList
 function Find-QueueRow { param($Name, [switch] $IncludeHistory) [pscustomobject]@{ id = 'abc'; clientId = 'c1'; releaseName = $Name } }
@@ -326,6 +364,24 @@ Check 'qBittorrent is settled with Deluno''s Re-check' ((Invoke-FilmSettle -Film
 Check 'Deluge is settled through its web API' ((Invoke-FilmSettle -Film $dFilm -WaitForRowSec 5) -and $script:Called -contains 'deluge:D.2020' -and $script:Called -notcontains 'recheck:D.2020')
 $before = $script:Called.Count
 Check 'Transmission is left alone' (-not (Invoke-FilmSettle -Film $tFilm) -and $script:Called.Count -eq $before)
+
+Write-Host 'qBittorrent data goes where the client looks for it'
+$dataRoot = Join-Path ([IO.Path]::GetTempPath()) ('qb-data-' + [guid]::NewGuid().ToString('N'))
+try {
+    Check 'qBittorrent''s data folder is the category folder inside its incomplete folder' ($script:Fx.Incomplete.qbittorrent -match 'qBittorrent\\deluno-movies$')
+    $script:Fx.Incomplete.qbittorrent = Join-Path $dataRoot 'qBittorrent'
+    New-Item -ItemType Directory -Force -Path $script:Fx.Incomplete.qbittorrent | Out-Null
+    $lookIn = Join-Path $dataRoot 'qBittorrent\deluno-movies'
+    function Find-QueueRow { param($Name, [switch] $IncludeHistory) [pscustomobject]@{ id = 'abc'; clientId = 'c1'; releaseName = $Name; sourcePath = (Join-Path $lookIn ($Name + '.mkv')) } }
+    $mf = [pscustomobject]@{ Release = 'Gpmove.2020'; ClientKind = 'qbittorrent'; Protocol = 'torrent'; Layout = 'file' }
+    Set-Content -Path (Join-Path $script:Fx.Incomplete.qbittorrent 'Gpmove.2020.mkv') -Value 'film'
+    Check 'data one folder above the one the client names is moved there' ((Move-FilmDataToClientPath -Film $mf) -and (Test-Path (Join-Path $lookIn 'Gpmove.2020.mkv')) -and -not (Test-Path (Join-Path $script:Fx.Incomplete.qbittorrent 'Gpmove.2020.mkv')))
+    $script:Fx.Incomplete.qbittorrent = $lookIn
+    Check 'data already in the folder the client names is left alone' (-not (Move-FilmDataToClientPath -Film $mf))
+    $mt = [pscustomobject]@{ Release = 'Gptr.2020'; ClientKind = 'transmission'; Protocol = 'torrent'; Layout = 'file' }
+    Check 'Transmission data is never moved' (-not (Move-FilmDataToClientPath -Film $mt))
+}
+finally { Remove-Item -LiteralPath $dataRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })

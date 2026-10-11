@@ -211,3 +211,20 @@ function Get-BlinkSummary {
     for ($i = 1; $i -lt $found.Count; $i++) { if ([math]::Abs([double]$found[$i].Brightness - [double]$found[$i - 1].Brightness) -gt 0.01) { $flips++ } }
     [pscustomobject]@{ Samples = $found.Count; BrightnessLevels = $levels.Count; Flips = $flips; Colours = $colours; Blinks = ($flips -ge 4 -and $levels.Count -ge 2) }
 }
+
+# The first-run dot blinks by drawing the dot and then not drawing it. A reading takes the whole icon, so while the dot is drawn it
+# reads grey (the dot covers the icon's colour) and while it is not drawn it reads the brand logo's own colour (amber). rc.30.22 read
+# "colours [amber,grey]" and called the dot amber. The dot's colour is the colour of the readings where it is drawn; the others are
+# the logo showing. This returns both, and says whether any colour appeared that a grey dot over an amber logo cannot make (red,
+# green, blue: a real dot of that colour).
+function Get-FirstRunDotSummary {
+    param([object[]] $Readings)
+    $blink = Get-BlinkSummary -Readings $Readings
+    $other = @($blink.Colours | Where-Object { $_ -ne 'grey' })
+    [pscustomobject]@{
+        Blink = $blink
+        GreyShown = (@($blink.Colours) -contains 'grey')
+        LogoColours = $other
+        OnlyGreyAndLogo = (@($other | Where-Object { $_ -ne 'amber' }).Count -eq 0)
+    }
+}

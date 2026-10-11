@@ -42,12 +42,18 @@ function Invoke-GroupTryAgain {
                 Add-Check 'The hand-off failed while Weir was down' ($null -ne $h) $(if ($h) { "status $($h.status): $($h.failureMessage)" } else { 'it never failed' })
                 if (-not $h) { return }
                 Open-DelunoPage -Page $page -Path '/queue' -Login $script:S.Login
-                $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Click-PageText -Page $page -Pattern ([regex]::Escape($f.Title)) -TimeoutSec 0 }
+                $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Click-PageText -Page $page -Pattern ([regex]::Escape($f.Title)) -TimeoutSec 0 -RowOnly }
                 Add-Check 'The download opens in Transfers' $opened.Ok ''
                 if (-not $opened.Ok) { return }
                 $btn = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { (Get-DrawerText -Page $page) -match 'Send to .* again' }
                 Add-Check 'The drawer offers "Send to Weir ... again"' $btn.Ok ''
-                if (-not $btn.Ok) { return }
+                if (-not $btn.Ok) {
+                    # What the person would have seen, and what the server said at that moment, so the next run can tell a drawer that
+                    # lacks the button from a drawer that was never the right one (rc.30.22 recorded neither).
+                    $now = Get-FilmHandoff -Film $f
+                    Save-Evidence -Name "tryagain-$kind-nobutton.txt" -Text ("page: {0}`nhand-off now: {1}`n`ndrawer or page text:`n{2}" -f (Invoke-CdpEval -Page $page -Script 'location.href'), $(if ($now) { "$($now.status) / $($now.failureMessage)" } else { 'none' }), (Get-DrawerText -Page $page))
+                    return
+                }
                 $before = Get-DrawerText -Page $page
                 Add-Check 'Before the press the drawer shows the failure' ($before -match $script:OldFailure) ''
 
