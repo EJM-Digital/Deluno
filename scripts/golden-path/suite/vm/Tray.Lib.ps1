@@ -130,8 +130,11 @@ function Open-TrayMenu {
     if (-not $btn -or $btn.Element.Current.IsOffscreen) { $opened = Open-TrayOverflow; $btn = Find-TrayIcon -Icon $Icon }
     if (-not $btn) { return @() }
     Wait-UiaClickable -Element $btn.Element -What "the $Icon tray icon"
-    $r = $btn.Element.Current.BoundingRectangle
-    Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) -Right
+    # Through the icon's own automation element: focus it and press the menu key. A click at a screen position can land on the
+    # taskbar (it once opened Server Manager's jump list over the component picker), so none is ever sent for the icon.
+    $btn.Element.SetFocus()
+    Start-Sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
     Start-Sleep -Milliseconds 700
     Get-OpenMenuItems
 }
