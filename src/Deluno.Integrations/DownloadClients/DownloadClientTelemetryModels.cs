@@ -39,6 +39,10 @@ public static class DownloadClientActions
     /// </summary>
     public const string RemoveRefusedCopy = "remove-refused-copy";
 
+    /// <summary>Whether the action takes the download out of the client (#1252): every one of these is checked before and after.</summary>
+    public static bool RemovesTheDownload(string action)
+        => action is Delete or DeleteWithData or RemoveRefusedCopy;
+
     // #810: queue priority/reorder. Each adapter that supports queueing maps
     // these onto its own native call (increasePrio/topPriority for
     // qBittorrent, queue-move-* for Transmission, queue_top/up/down/bottom for

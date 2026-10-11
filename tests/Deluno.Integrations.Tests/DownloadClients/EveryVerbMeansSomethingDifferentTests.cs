@@ -108,6 +108,24 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         Assert.NotEqual(leaveFiles, takeFiles);
     }
 
+    /// <summary>#1252: a second removal of the same download is a plain failure on uTorrent too, and sends no second remove.</summary>
+    [Theory]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy)]
+    public async Task A_second_utorrent_removal_is_a_failure_and_sends_no_second_remove(string action)
+    {
+        var sent = new List<string>();
+        var handler = new RecordingHandler(sent);
+        var client = new UTorrentDownloadClient(() => handler);
+        Assert.True((await client.ExecuteActionAsync(Client("utorrent"), action, QueueItemId("utorrent"), CancellationToken.None)).Succeeded);
+
+        var again = await client.ExecuteActionAsync(Client("utorrent"), action, QueueItemId("utorrent"), CancellationToken.None);
+
+        Assert.False(again.Succeeded);
+        Assert.Contains("has no download with that id", again.Message);
+    }
+
     /// <summary>
     /// And pausing one download is not pausing the client.
     /// </summary>
@@ -378,10 +396,56 @@ public sealed class EveryVerbMeansSomethingDifferentTests
             var isSabList = path.Contains("api?mode=queue", StringComparison.OrdinalIgnoreCase) && !path.Contains("name=", StringComparison.OrdinalIgnoreCase)
                 || path.Contains("api?mode=history", StringComparison.OrdinalIgnoreCase) && !path.Contains("name=", StringComparison.OrdinalIgnoreCase);
             var isNzbGetList = body.Contains("\"listgroups\"", StringComparison.Ordinal) || body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase);
+            // A torrent client's list of torrents is read the same way before and after a removal (#1252).
+            var isTorrentList = path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("\"torrent-get\"", StringComparison.Ordinal)
+                || body.Contains("web.update_ui", StringComparison.Ordinal)
+                || path.Contains("list=1", StringComparison.OrdinalIgnoreCase);
             if (!path.Contains("auth/login", StringComparison.OrdinalIgnoreCase) && !body.Contains("auth.login", StringComparison.OrdinalIgnoreCase)
-                && !path.Contains("token.html", StringComparison.OrdinalIgnoreCase) && !isSabList && !isNzbGetList)
+                && !path.Contains("token.html", StringComparison.OrdinalIgnoreCase) && !isSabList && !isNzbGetList && !isTorrentList)
             {
                 sent.Add($"{path} {body}".Trim());
+            }
+
+            if (isTorrentList)
+            {
+                var held = !_removed;
+                var infoHash = "0123456789abcdef0123456789abcdef01234567";
+                string content;
+                if (path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase))
+                {
+                    content = held
+                        ? RecordedReplies.Qbittorrent("finished-folder").Body("torrents/info", ("0.hash", infoHash))
+                        : RecordedReplies.Qbittorrent("removed-twice").Body("torrents/info");
+                }
+                else if (body.Contains("\"torrent-get\"", StringComparison.Ordinal))
+                {
+                    content = held
+                        ? RecordedReplies.Transmission("finished-folder").Body("\"torrent-get\"", ("arguments.torrents.0.downloadDir", "/no/such/folder"))
+                        : RecordedReplies.Transmission("removed-twice").Body("torrent-get");
+                }
+                else if (body.Contains("web.update_ui", StringComparison.Ordinal))
+                {
+                    content = held
+                        ? "{\"result\":{\"torrents\":{\"" + infoHash + "\":{\"name\":\"Some.Film\"}}},\"error\":null,\"id\":2}"
+                        : RecordedReplies.Deluge("removed-twice").Body("web.update_ui");
+                }
+                else
+                {
+                    content = held
+                        ? "{\"torrents\":[[\"" + infoHash + "\",136,\"Some.Film\"]]}"
+                        : "{\"torrents\":[]}";
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
+            }
+
+            if (path.Contains("torrents/delete", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("\"torrent-remove\"", StringComparison.Ordinal)
+                || body.Contains("core.remove_torrent", StringComparison.Ordinal)
+                || path.Contains("action=remove", StringComparison.OrdinalIgnoreCase))
+            {
+                _removed = true;
             }
 
             // The job is there until the first delete or edit is sent, and gone after it.

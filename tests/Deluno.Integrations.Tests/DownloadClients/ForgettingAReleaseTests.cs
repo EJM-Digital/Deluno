@@ -124,10 +124,22 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_on_nzbget_finally_deletes_the_history_entry()
     {
         var bodies = new List<string>();
+        var removed = false;
         var handler = RecordedReplies.Handler("nzbget", [RecordedReplies.Nzbget("removed-without-data"), RecordedReplies.Nzbget("removed-with-data")], (_, body) =>
         {
             bodies.Add(body);
-            return null;
+            if (body.Contains("\"editqueue\"", StringComparison.Ordinal))
+            {
+                removed = true;
+                return null;
+            }
+
+            // The job is in NZBGet's history (the recorded finished job, as job 42) until it is removed (#1252).
+            return body.Contains("\"history\"", StringComparison.Ordinal)
+                ? RecordedReplies.Json(removed
+                    ? RecordedReplies.Nzbget("removed-with-data").Body("\"history\"")
+                    : RecordedReplies.Nzbget("finished-folder").Body("\"history\"", ("result.0.NZBID", 42)))
+                : null;
         });
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
@@ -180,10 +192,20 @@ public sealed class ForgettingAReleaseTests
     public async Task Forgetting_on_qbittorrent_removes_the_transfer_with_its_files()
     {
         var bodies = new List<string>();
-        var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("removed-with-data")], (_, body) =>
+        var removed = false;
+        var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("removed-with-data")], (request, body) =>
         {
             bodies.Add(body);
-            return null;
+            if (body.Contains("deleteFiles", StringComparison.Ordinal))
+            {
+                removed = true;
+                return null;
+            }
+
+            // The torrent is in qBittorrent's list until it is removed (#1252).
+            return request.RequestUri!.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal)
+                ? (removed ? RecordedReplies.Qbittorrent("removed-twice") : RecordedReplies.Qbittorrent("finished-folder")).Find("torrents/info").Reply.ToResponse()
+                : null;
         });
 
         var result = await new QbittorrentDownloadClient(() => handler)

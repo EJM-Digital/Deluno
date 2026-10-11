@@ -737,9 +737,55 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                     && !path.Contains("name=", StringComparison.OrdinalIgnoreCase)
                 || body.Contains("\"listgroups\"", StringComparison.Ordinal)
                 || body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase);
-            if (!isSignIn && !isList)
+            // A torrent client's list of torrents is read before and after a removal (#1252): the torrent is there until a
+            // call that removes it went out.
+            var isTorrentList = path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("\"torrent-get\"", StringComparison.Ordinal)
+                || body.Contains("web.update_ui", StringComparison.Ordinal)
+                || path.Contains("list=1", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("<methodName>d.name</methodName>", StringComparison.Ordinal);
+            if (!isSignIn && !isList && !isTorrentList)
             {
                 Requests.Add($"{path} {body}".Trim());
+            }
+
+            if (isTorrentList)
+            {
+                var held = Requests.Count == 0;
+                if (path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Json(held
+                        ? RecordedReplies.Qbittorrent("finished-folder").Body("torrents/info")
+                        : RecordedReplies.Qbittorrent("removed-twice").Body("torrents/info"));
+                }
+
+                if (body.Contains("\"torrent-get\"", StringComparison.Ordinal))
+                {
+                    return Json(held
+                        ? RecordedReplies.Transmission("finished-folder").Body("\"torrent-get\"", ("arguments.torrents.0.downloadDir", "/no/such/folder"))
+                        : RecordedReplies.Transmission("removed-twice").Body("\"torrent-get\""));
+                }
+
+                if (body.Contains("web.update_ui", StringComparison.Ordinal))
+                {
+                    return Json(held
+                        ? HeldDelugeTorrent()
+                        : RecordedReplies.Deluge("removed-twice").Body("web.update_ui"));
+                }
+
+                if (body.Contains("<methodName>d.name</methodName>", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            held
+                                ? "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>Some.Movie</string></value></param></params></methodResponse>"
+                                : "<?xml version=\"1.0\"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i4>-501</i4></value></member><member><name>faultString</name><value><string>Could not find info-hash.</string></value></member></struct></value></fault></methodResponse>",
+                            Encoding.UTF8, "text/xml")
+                    };
+                }
+
+                return Json(held ? "{\"torrents\":[[\"" + QueueItemId + "\",136,\"Some.Movie\"]]}" : "{\"torrents\":[]}");
             }
 
             if (path.Contains("token.html", StringComparison.OrdinalIgnoreCase))
@@ -792,6 +838,17 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             }
 
             return RecordedReplies.Json("{\"status\":true,\"result\":true}");
+        }
+
+        /// <summary>Deluge's recorded list of a finished torrent, filed under this test's own torrent id.</summary>
+        private static string HeldDelugeTorrent()
+        {
+            var root = System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Deluge("finished-folder").Body("web.update_ui"))!;
+            var torrents = root["result"]!["torrents"]!.AsObject();
+            var first = torrents.First();
+            torrents.Remove(first.Key);
+            torrents[QueueItemId] = first.Value;
+            return root.ToJsonString();
         }
 
         private static HttpResponseMessage Json(string content)

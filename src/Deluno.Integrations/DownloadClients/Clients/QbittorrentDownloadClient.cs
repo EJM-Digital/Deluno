@@ -881,24 +881,53 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             pairs.Add(new("value", "true"));
         }
-        HttpResponseMessage? lastResponse = null;
-        foreach (var endpoint in endpoints)
+        async Task<DownloadClientActionResult> Send()
         {
-            lastResponse?.Dispose();
-            lastResponse = await http.PostAsync(endpoint, new FormUrlEncodedContent(pairs), cancellationToken);
-            if (lastResponse.IsSuccessStatusCode || lastResponse.StatusCode != HttpStatusCode.NotFound) break;
+            HttpResponseMessage? lastResponse = null;
+            foreach (var endpoint in endpoints)
+            {
+                lastResponse?.Dispose();
+                lastResponse = await http.PostAsync(endpoint, new FormUrlEncodedContent(pairs), cancellationToken);
+                if (lastResponse.IsSuccessStatusCode || lastResponse.StatusCode != HttpStatusCode.NotFound) break;
+            }
+            using (lastResponse)
+            {
+                return lastResponse?.IsSuccessStatusCode == true
+                    ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
+                    : DownloadClientHelpers.ActionFailure(
+                        client,
+                        queueItemId,
+                        action,
+                        $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.",
+                        lastResponse?.StatusCode);
+            }
         }
-        using (lastResponse)
+
+        // #1252: a removal is done only when qBittorrent had the torrent before and no longer has it after, the same
+        // look-don't-believe rule SABnzbd and NZBGet follow (#1212).
+        if (DownloadClientActions.RemovesTheDownload(action))
         {
-            return lastResponse?.IsSuccessStatusCode == true
-                ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
-                : DownloadClientHelpers.ActionFailure(
-                    client,
-                    queueItemId,
-                    action,
-                    $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.",
-                    lastResponse?.StatusCode);
+            return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "qBittorrent",
+                async () =>
+                {
+                    try
+                    {
+                        using var response = await http.GetAsync($"api/v2/torrents/info?hashes={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+                        if (!response.IsSuccessStatusCode) return ClientHas.Unknown;
+                        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                        return document.RootElement.ValueKind == JsonValueKind.Array
+                            ? document.RootElement.GetArrayLength() > 0 ? ClientHas.Yes : ClientHas.No
+                            : ClientHas.Unknown;
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+                    {
+                        return ClientHas.Unknown;
+                    }
+                },
+                Send, ClientRemovalGuard.TorrentSettleWindow, ClientRemovalGuard.TorrentSettlePoll, cancellationToken);
         }
+
+        return await Send();
     }
 
     /// <summary>

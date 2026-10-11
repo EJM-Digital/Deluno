@@ -59,13 +59,24 @@ public sealed class DelugeRemovalIsReportedHonestlyTests
 
     private sealed class Handler(string removeAnswer) : HttpMessageHandler
     {
+        private bool _removed;
+
         public List<string> Bodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
             Bodies.Add(body);
-            var answer = body.Contains("core.remove_torrent", StringComparison.Ordinal) ? removeAnswer : """{"result":true,"error":null,"id":1}""";
+            // Deluge holds the torrent until it is removed (#1252): its list shows it before, and not after a removal it accepted.
+            var removing = body.Contains("core.remove_torrent", StringComparison.Ordinal);
+            if (removing && removeAnswer.Contains("\"result\":true", StringComparison.Ordinal)) _removed = true;
+            var answer = removing
+                ? removeAnswer
+                : body.Contains("web.update_ui", StringComparison.Ordinal)
+                    ? _removed
+                        ? """{"result":{"torrents":{}},"error":null,"id":2}"""
+                        : """{"result":{"torrents":{"abc123":{"name":"Some.Film"}}},"error":null,"id":2}"""
+                    : """{"result":true,"error":null,"id":1}""";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
         }
     }
