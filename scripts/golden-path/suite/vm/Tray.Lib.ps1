@@ -110,11 +110,24 @@ function Get-DotClassFromPixels {
 }
 
 # One reading of an app's tray icon: its hover text and the colour of its dot. Icon is the app's name ("Deluno" or "Weir").
+# Windows keeps the hidden-icons choice per app under NotifyIconSettings. Promoting Deluno's and Weir's entries shows their icons on
+# the taskbar itself, so they can be read with no pop-up and no key: opening and closing the pop-up during the install sent an
+# Escape that cancelled the component picker (rc.30.21 to rc.30.24).
+function Set-TrayIconsPromoted {
+    Get-ChildItem -Path 'HKCU:\Control Panel\NotifyIconSettings' -ErrorAction SilentlyContinue | ForEach-Object {
+        $path = (Get-ItemProperty -Path $_.PSPath -Name ExecutablePath -ErrorAction SilentlyContinue).ExecutablePath
+        if ($path -match '\\(Deluno|Weir)\.exe$') {
+            $promoted = (Get-ItemProperty -Path $_.PSPath -Name IsPromoted -ErrorAction SilentlyContinue).IsPromoted
+            if ($promoted -ne 1) { Set-ItemProperty -Path $_.PSPath -Name IsPromoted -Value 1 -Type DWord -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
 function Get-TrayDot {
-    param([Parameter(Mandatory)] [string] $Icon)
+    param([Parameter(Mandatory)] [string] $Icon, [switch] $NoOverflow)
     $btn = Find-TrayIcon -Icon $Icon
     $opened = $false
-    if (-not $btn -or $btn.Element.Current.IsOffscreen) {
+    if (-not $NoOverflow -and (-not $btn -or $btn.Element.Current.IsOffscreen)) {
         $opened = Open-TrayOverflow
         $btn = Find-TrayIcon -Icon $Icon
     }
