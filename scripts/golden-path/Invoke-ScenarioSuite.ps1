@@ -76,6 +76,8 @@ $suiteDir = Join-Path $PSScriptRoot 'suite'
 . (Join-Path $suiteDir 'SuiteHost.Lib.ps1')
 
 $plan = @(Get-ScenarioPlan)
+# "-Groups resend,stuck" through powershell -File arrives as one string; split it.
+$Groups = @($Groups | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($Groups.Count -gt 0) {
     $unknown = @($Groups | Where-Object { $_ -notin $plan.Name })
     if ($unknown.Count -gt 0) { throw "Unknown group(s): $($unknown -join ', '). Groups: $($plan.Name -join ', ')." }
