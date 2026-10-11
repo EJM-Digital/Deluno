@@ -397,6 +397,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const openImportJob = openActivity?.id.startsWith("import:") ? jobs.find((job) => `import:${job.id}` === openActivity.id) ?? null : null;
   const openImportInfo = openImportJob ? parseImportJobPayload(openImportJob.payloadJson) : null;
   const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
+  /** The hand-off drawer of a download that has left the client follows the same hold as the download's drawer (#1234, #1243). */
+  const resendingOpenHandoff = openHandoff ? isResendingHandoff(openHandoff, resentHandoffIds) : false;
   const attentionDetails = useMemo(() => {
     const map = new Map<string, AttentionDetail>();
     for (const row of heldReleases) {
@@ -960,7 +962,12 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   }
 
   async function retryHandoff(handoff: ProcessorHandoffItem) {
-    await run(
+    // The hold starts on the press, not when the request answers: the page is re-read as soon as it does, and a read that landed
+    // before the hold was set drew the old failure beside the moved header (rc.30.23, #1234). The failed row as it is now is
+    // remembered too: until the hand-off's own state moves on, that row is the old failure, not a new one.
+    const held = [handoff.id, resentItemKey(handoff.clientId, handoff.queueItemId), oldFailureKey(handoff.id, handoff.updatedUtc)];
+    setResentHandoffIds((current) => new Set(current).add(held[0]).add(held[1]).add(held[2]));
+    const sent = await run(
       `handoff:${handoff.id}`,
       async () => {
         const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/retry`, { method: "POST" });
@@ -973,10 +980,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         }
       },
       `Sent to ${handoff.processorName ?? "the processor"} again.`
-    ).then((sent) => {
-      // The failed row as it is now is remembered too: until the hand-off's own state moves on, that row is the old failure, not a new one (#1234).
-      if (sent) setResentHandoffIds((current) => new Set(current).add(handoff.id).add(resentItemKey(handoff.clientId, handoff.queueItemId)).add(oldFailureKey(handoff.id, handoff.updatedUtc)));
-    });
+    );
+    // Refused: nothing is being sent, so the failure shows as it did.
+    if (!sent) setResentHandoffIds((current) => { const next = new Set(current); for (const key of held) next.delete(key); return next; });
   }
 
   /** Say again what became of the file, from the start (#580). */
@@ -2310,13 +2316,13 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           if (!open) setDrawer(null);
         }}
         title={openActivity?.name ?? "Activity"}
-        description={openActivity ? `${openActivity.sub} · ${openActivity.status}` : undefined}
+        description={openActivity ? `${openActivity.sub} · ${resendingOpenHandoff ? drawerStatusLabel(openActivity.status, true, openHandoff?.processorName) : openActivity.status}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openActivity ? (
           <DrawerSection title="What happened">
             <div className="grid gap-1.5">
-              <Fact label="Outcome" value={openActivity.detail} />
+              <Fact label="Outcome" value={resendingOpenHandoff ? `Sending it to ${openHandoff?.processorName ?? "the processor"} again. The result shows here when it answers.` : openActivity.detail} />
               {/* The hand-off's and the import's own paths are printed below under their names; Detail would say the same path a second time. */}
               {openActivity.extra && ![openHandoff?.sourcePath, openHandoff?.outputPath, openImportInfo?.sourcePath, openImportInfo?.destinationPath].includes(openActivity.extra) ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
               <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
@@ -2330,7 +2336,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         ) : null}
         {/* Whether the processor heard what became of its file, so it can let go
             of its copy — and a way to say it again (#580). */}
-        {openHandoff?.outcome ? (
+        {openHandoff?.outcome && !resendingOpenHandoff ? (
           <ProcessorOutcomeSection
             handoff={openHandoff}
             outcome={openHandoff.outcome}
@@ -2355,7 +2361,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             />
           </DrawerSection>
         ) : null}
-        {openHandoff && (canImportOriginal(openHandoff.status) || handoffNeedsPerson(openHandoff)) ? (
+        {openHandoff && !resendingOpenHandoff && (canImportOriginal(openHandoff.status) || handoffNeedsPerson(openHandoff)) ? (
           <DrawerSection title="What you can do" aside={processorStageLabel(openHandoff.status)}>
             {handoffFixes(openHandoff)}
           </DrawerSection>
