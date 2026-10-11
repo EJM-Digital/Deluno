@@ -1,6 +1,6 @@
 # Golden path
 
-The run that gates every Deluno release and every Weir stable release. Since 11 Oct 2026 (Deluno #1238) it is a scripted scenario suite that proves the release candidate before the tag, not a session driven by hand; no release is waived from it. This page is the same, word for word, in both repositories. A change to it is made in both, in the same words.
+The run that gates every `v*` tag of both apps, Deluno and Weir, release candidates included. Each app's tag waits for its own app's scenario suite, passed on that exact commit. Since 11 Oct 2026 (Deluno #1238, Weir #954) the run is a scripted scenario suite that proves the release candidate before the tag, not a session driven by hand; no tag is waived from it. This page is the same, word for word, in both repositories. A change to it is made in both, in the same words.
 
 ## Why
 
@@ -8,7 +8,7 @@ Green tests have shipped bugs that only showed when the product was used: a paus
 
 ## When, where and who
 
-- **When:** before the tag, on the exact commit that will be tagged, for every release it gates, release candidates included. A release whose tagged commit has no passing record does not publish, and nothing is waived: the suite runs first, then the tag is made.
+- **When:** before the tag, on the exact commit that will be tagged, for every `v*` tag of either app, release candidates included. A release whose tagged commit has no passing record of its own app's suite does not publish, and nothing is waived: the suite runs first, then the tag is made.
 - **Where:** a clean Hyper-V Windows VM with a saved clean checkpoint, reverted before every run. The real-data machine is not the golden path.
 - **What is installed:** Deluno's installer built from Deluno's commit, and Weir's Setup built from Weir's commit. Weir's comes from a manual CI run given the release it will become, `gh workflow run ci.yml --repo jampat000/Weir --ref main -f version=<version>`, as the artifact `weir-windows-<short sha>`. It reports `<version>+<short sha>`.
 - **Who:** whoever is releasing starts the suite (below) and reads its results file. It runs unattended and records the commit status itself.
@@ -112,4 +112,4 @@ The VM has no news server and no Usenet account, and no real login is ever used.
 
 ## After the run
 
-The tag is made on the commit the suite passed, through `scripts/tag-release.ps1`, and each release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`) confirms the record before anything is published. Issues fixed in that release close with the run's evidence in the closing note.
+The tag is made on the commit its own app's suite passed, through `scripts/tag-release.ps1`, and each release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`) confirms the record before anything is published. Issues fixed in that release close with the run's evidence in the closing note.
