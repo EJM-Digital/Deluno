@@ -90,38 +90,39 @@ $rows = Rows $window
 Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
 if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
 Step 'tick every row'
-$rowType = $rows[0].Current.ControlType
-foreach ($rowName in @($rows | ForEach-Object { $_.Current.Name })) {
-    # Look the row up again: ticking a row can lay the window out again (the Usenet logins appear), which leaves an
-    # element read before it stale, and a stale element answers "Unsupported Pattern" (rc.30.21's first runs).
-    # By the kind of control the rows were at the start: ticking a row adds checkboxes of its own (for example a login
-    # option), and Rows prefers checkboxes, so asking it again would no longer return list rows.
-    $row = @(AllOfType $window $rowType) | Where-Object { $_.Current.Name -eq $rowName } | Select-Object -First 1
-    if (-not $row) { Log "FAILED: row '$rowName' is gone from the picker"; exit 1 }
-    $done = $false
+# Rows are found by name every time, of any control type: ticking a row lays the window out again and adds controls
+# of its own (login boxes, a checkbox), so an element or a type read before can go stale or stop matching.
+$rowNames = @($rows | ForEach-Object { $_.Current.Name })
+function FindRow([string]$name) {
+    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $name)
+    return $window.FindFirst($Scope::Descendants, $cond)
+}
+function RowState($row) { try { "$($row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState)" } catch { 'unknown' } }
+function TickRow([string]$name) {
+    $row = FindRow $name
+    if (-not $row) { Log "row '$name' not found this time"; return }
+    if ((RowState $row) -eq 'On') { return }
     try {
-        $toggle = $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
-        if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { $toggle.Toggle() }
-        $done = $true
-    } catch { }
-    if (-not $done) {
+        $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+        Log "ticked '$name'"
+    } catch {
         # As a person would: focus the row and press Space, which ticks a checked list row.
         try { $row.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch { }
-        $row.SetFocus()
-        [System.Windows.Forms.SendKeys]::SendWait(' ')
-        Log "ticked '$rowName' with Space (no toggle on that row)"
-    } else {
-        Log "ticked '$rowName'"
+        try { $row.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait(' '); Log "ticked '$name' with Space" } catch { Log "could not tick '$name': $($_.Exception.Message)" }
     }
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 400
 }
-Start-Sleep -Seconds 1
+foreach ($pass in 1, 2) {
+    foreach ($name in $rowNames) { TickRow $name }
+    Start-Sleep -Seconds 1
+}
 Step 'check the ticks'
 $unticked = 0
-foreach ($row in @(AllOfType $window $rowType)) {
-    $state = try { $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState } catch { 'unknown' }
-    Log "row '$($row.Current.Name)': $state"
-    if ("$state" -ne 'On' -and $row.Current.Name -notmatch 'already installed') { $unticked++ }
+foreach ($name in $rowNames) {
+    $row = FindRow $name
+    $state = if ($row) { RowState $row } else { 'not found' }
+    Log "row '$name': $state"
+    if ($state -ne 'On' -and $name -notmatch 'already installed') { $unticked++ }
 }
 if ($unticked -gt 0) { Log "FAILED: $unticked row(s) are not ticked"; exit 1 }
 
