@@ -11,6 +11,10 @@
 function Send-FilmAgain {
     param([Parameter(Mandatory)] $Film)
     Restore-FilmData -Film $Film
+    # The library is routed to one client at a time and the other films were sent since (rc.30.22: a qBittorrent film sent
+    # again while the library pointed at NZBGet answered 400, "no download client that can take a release from Golden feed").
+    # "Search now" on the title sends to the client the title's library is routed to, so route it back first.
+    Set-LibraryClient -Kind $Film.ClientKind | Out-Null
     $r = Try-Deluno -Method POST -Path "/api/movies/$($Film.MovieId)/grab" -Body @{
         releaseName = $Film.Release; indexerId = $Film.IndexerId; indexerName = $(if ($Film.Protocol -eq 'usenet') { 'Golden Newznab stub' } else { 'Golden feed' })
         candidateQuality = 'WEB 1080p'; downloadUrl = $Film.Url; sizeBytes = $Film.Size; seeders = 50; force = $true
