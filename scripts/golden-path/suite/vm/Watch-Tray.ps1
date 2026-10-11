@@ -25,8 +25,10 @@ $probed = -not $ProbeMenuOnce
 while (-not (Test-Path -LiteralPath $StopFile)) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $line = [ordered]@{ t = [DateTime]::UtcNow.ToString('o') }
+    # Read without any pop-up or key: the icons are promoted onto the taskbar (see Set-TrayIconsPromoted in Tray.Lib.ps1).
+    try { Set-TrayIconsPromoted } catch { }
     foreach ($app in 'Deluno', 'Weir') {
-        try { $r = Get-TrayDot -Icon $app; $line[$app.ToLowerInvariant()] = [ordered]@{ found = $r.Found; hover = $r.Hover; colour = $r.Colour; brightness = $r.Brightness } }
+        try { $r = Get-TrayDot -Icon $app -NoOverflow; $line[$app.ToLowerInvariant()] = [ordered]@{ found = $r.Found; hover = $r.Hover; colour = $r.Colour; brightness = $r.Brightness } }
         catch { $line[$app.ToLowerInvariant()] = [ordered]@{ found = $false; error = $_.Exception.Message } }
     }
     if (-not $probed -and $line.deluno -and $line.deluno.found) {
