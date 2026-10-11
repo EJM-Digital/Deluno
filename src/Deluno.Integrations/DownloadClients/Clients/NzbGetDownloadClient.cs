@@ -104,7 +104,7 @@ public sealed class NzbGetDownloadClient(
             }
             return new DownloadQueueItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? "Unknown NZBGet item"), item.NzbName ?? "Unknown NZBGet item",
-                item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
+                item.Category ?? string.Empty, QueueStatus(item.Status, progress, downloaded, status), progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
                 CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
@@ -550,6 +550,29 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetPPParameter([property: JsonPropertyName("Name")] string Name, [property: JsonPropertyName("Value")] string Value);
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
+
+    /// <summary>
+    /// What a queue row reads. NZBGet says QUEUED for a job that has no article in flight at this moment, and a hung
+    /// article does that between its retries, so a job stuck near its end flickered between downloading and queued and
+    /// the No progress rule, which only judges a job that is downloading, never struck it (rc.30.22, #1225). A job that
+    /// has data and reads QUEUED while the whole client moves nothing, and is not paused, is stuck, not waiting its
+    /// turn: it reads as downloading, and the stall check judges it. A job queued behind a client that is moving bytes,
+    /// a paused job or client, and a job that never started are still waiting.
+    /// </summary>
+    internal static string QueueStatus(string? nativeStatus, double progress, long downloadedBytes, long? clientRateBytesPerSecond, bool clientPaused)
+    {
+        var normalized = DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
+        return normalized == DownloadQueueStatuses.Queued
+            && string.Equals(nativeStatus?.Trim(), "QUEUED", StringComparison.OrdinalIgnoreCase)
+            && downloadedBytes > 0 && progress < 100d
+            && !clientPaused && (clientRateBytesPerSecond ?? 0) <= 0
+                ? DownloadQueueStatuses.Downloading
+                : normalized;
+    }
+
+    private static string QueueStatus(string? nativeStatus, double progress, long downloadedBytes, NzbGetStatus? status)
+        => QueueStatus(nativeStatus, progress, downloadedBytes, status?.DownloadRate,
+            status is { } value && (value.DownloadPaused == true || value.PostPaused == true || value.ScanPaused == true));
 
     private HttpClient CreateHttp(DownloadClientItem client)
     {
