@@ -2645,6 +2645,104 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1254: a Usenet release sent again has a new download id, so Deluno hands it to the processor again and
+    /// imports the cleaned file again. The film is already in the library at that very path. Same content settles
+    /// as already in the library; different content replaces the title's own file through the recycle bin. Either
+    /// way the import succeeds the first time, leaves one copy in the library and nothing in the processor's output
+    /// (the scenario suite saw it retry with "The destination file already exists" until it gave up).
+    /// </summary>
+    [Theory]
+    [InlineData("hardlink", true)]
+    [InlineData("hardlink", false)]
+    [InlineData("copy", true)]
+    [InlineData("copy", false)]
+    public async Task A_release_sent_again_with_a_new_download_id_settles_on_the_file_the_title_already_has(string transferMode, bool identical)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-12T18:50:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var readyPath = Path.Combine(storage.DataRoot, "Weir", "Ready", "Movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies", MediaType: "movies", Purpose: "Main",
+                RootPath: movieRootPath, DownloadsPath: downloadsPath, QualityProfileId: null,
+                ImportWorkflow: ImportWorkflows.RefineBeforeImport,
+                ProcessorName: "External Refiner", ProcessorOutputPath: readyPath,
+                ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "hold",
+                AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
+                SearchIntervalMinutes: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
+                CleanupMode: "keep-source"),
+            CancellationToken.None);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("Gpreafterermj27", 2020, null), CancellationToken.None);
+
+        const string release = "Gpreafterermj27.2020.1080p.WEB-DL.x264-GOLDEN";
+        string CleanedFile(byte[] bytes)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(readyPath, release)).FullName;
+            var file = Path.Combine(folder, release + ".mkv");
+            File.WriteAllBytes(file, bytes);
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-1));
+            return file;
+        }
+
+        async Task<ImportPipelineResult> ImportAsync(string source, string downloadId)
+        {
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+                releaseName: release, indexerName: "TestIndexer",
+                downloadClientId: "client-1", downloadClientName: "TestClient",
+                status: "sent", notesJson: null, clientExternalId: downloadId, cancellationToken: CancellationToken.None);
+            return await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(source, null, "movies", "Gpreafterermj27", 2020, [], [], null, null),
+                    transferMode, Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+                CancellationToken.None);
+        }
+
+        var firstBytes = Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray();
+        var first = await ImportAsync(CleanedFile(firstBytes), "SABnzbd_nzo_first");
+        Assert.True(first.Succeeded, first.Message);
+        var libraryFile = (await movies.GetByIdAsync(catalogued.Id, CancellationToken.None))!.FilePath!;
+        Assert.True(File.Exists(libraryFile), libraryFile);
+
+        // The same release sent again: the processor cleans it again into the same path.
+        var secondBytes = (byte[])firstBytes.Clone();
+        if (!identical)
+        {
+            secondBytes[100] ^= 0xFF;
+            secondBytes[secondBytes.Length - 5] ^= 0xFF;
+        }
+        var secondSource = CleanedFile(secondBytes);
+        var second = await ImportAsync(secondSource, "SABnzbd_nzo_second");
+
+        Assert.True(second.Succeeded, second.Message);
+        Assert.NotEqual(409, second.StatusCode);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
+        var film = (await movies.GetByIdAsync(catalogued.Id, CancellationToken.None))!;
+        Assert.Equal(libraryFile, film.FilePath);
+        Assert.Equal(secondBytes, await File.ReadAllBytesAsync(libraryFile));
+        Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(libraryFile)!, "*.mkv"));
+        Assert.False(File.Exists(secondSource), "nothing is left in the processor's output");
+        Assert.False(Directory.Exists(Path.GetDirectoryName(secondSource)!), "the release's folder in the processor's output is cleared too");
+    }
+
+    /// <summary>
     /// The opt-in "remove source after import" setting still governs a
     /// hardlink import unchanged (#936: never flip an existing install's
     /// automatic behaviour on) - a hardlinked source is the same bytes as the
