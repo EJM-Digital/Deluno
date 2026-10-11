@@ -90,10 +90,13 @@ $rows = Rows $window
 Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
 if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
 Step 'tick every row'
+$rowType = $rows[0].Current.ControlType
 foreach ($rowName in @($rows | ForEach-Object { $_.Current.Name })) {
     # Look the row up again: ticking a row can lay the window out again (the Usenet logins appear), which leaves an
     # element read before it stale, and a stale element answers "Unsupported Pattern" (rc.30.21's first runs).
-    $row = @(Rows $window) | Where-Object { $_.Current.Name -eq $rowName } | Select-Object -First 1
+    # By the kind of control the rows were at the start: ticking a row adds checkboxes of its own (for example a login
+    # option), and Rows prefers checkboxes, so asking it again would no longer return list rows.
+    $row = @(AllOfType $window $rowType) | Where-Object { $_.Current.Name -eq $rowName } | Select-Object -First 1
     if (-not $row) { Log "FAILED: row '$rowName' is gone from the picker"; exit 1 }
     $done = $false
     try {
@@ -115,7 +118,7 @@ foreach ($rowName in @($rows | ForEach-Object { $_.Current.Name })) {
 Start-Sleep -Seconds 1
 Step 'check the ticks'
 $unticked = 0
-foreach ($row in (Rows $window)) {
+foreach ($row in @(AllOfType $window $rowType)) {
     $state = try { $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState } catch { 'unknown' }
     Log "row '$($row.Current.Name)': $state"
     if ("$state" -ne 'On' -and $row.Current.Name -notmatch 'already installed') { $unticked++ }
