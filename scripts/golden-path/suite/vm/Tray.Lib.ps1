@@ -44,7 +44,29 @@ function Open-TrayOverflow {
     try { Wait-UiaClickable -Element $chevron.Element -What "the hidden-icons button" -TimeoutSec 3; $chevron.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 600; return $true } catch { return $false }
 }
 
-function Close-TrayOverflow { [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Start-Sleep -Milliseconds 200 }
+# Escape goes to whatever window is in front. During the install that is the component picker, and an Escape there
+# cancels it (rc.30.21: the picker vanished 0.5 to 4 s after opening on every run). So a key is sent only when the window
+# in front really is the shell's overflow (owned by explorer) or a pop-up menu (window class #32768).
+if (-not ("GpFg.Win" -as [type])) {
+    Add-Type -Namespace GpFg -Name Win -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetClassName(System.IntPtr h, System.Text.StringBuilder s, int n);
+"@
+}
+function Get-ForegroundInfo {
+    $h = [GpFg.Win]::GetForegroundWindow(); $procId = [uint32]0; [void][GpFg.Win]::GetWindowThreadProcessId($h, [ref]$procId)
+    $sb = New-Object System.Text.StringBuilder 256; [void][GpFg.Win]::GetClassName($h, $sb, 256)
+    $name = try { (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { "" }
+    [pscustomobject]@{ Process = $name; Class = $sb.ToString() }
+}
+function Send-EscapeIfSafe([string] $Kind) {
+    $fg = Get-ForegroundInfo
+    $isMenu = $fg.Class -eq "#32768"
+    $isShell = $fg.Process -eq "explorer" -or $fg.Process -eq "ShellExperienceHost" -or $fg.Process -eq "ShellHost"
+    if (($Kind -eq "menu" -and $isMenu) -or ($Kind -eq "overflow" -and ($isShell -or $isMenu))) { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") }
+}
+function Close-TrayOverflow { Send-EscapeIfSafe overflow; Start-Sleep -Milliseconds 200 }
 
 function Find-TrayIcon {
     param([Parameter(Mandatory)] [string] $Icon)
@@ -146,7 +168,7 @@ function Get-OpenMenuItems {
     @($items | Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { [string]$_.Current.Name })
 }
 
-function Close-TrayMenu { [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Start-Sleep -Milliseconds 300 }
+function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 }
 
 # Opens the app's tray menu and clicks the item whose name matches the pattern. Returns $true when it was clicked.
 function Invoke-TrayMenuItem {
