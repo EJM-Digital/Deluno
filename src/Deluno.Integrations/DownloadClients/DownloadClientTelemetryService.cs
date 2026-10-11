@@ -3918,7 +3918,9 @@ public sealed class DownloadClientTelemetryService(
     /// </summary>
     internal static DownloadClientTelemetrySnapshot MarkDownloadsWhoseFilesAreGone(
         DownloadClientTelemetrySnapshot snapshot,
-        Func<string, bool> pathExists)
+        Func<string, bool> pathExists,
+        IReadOnlyList<ProcessorHandoffItem>? handoffs = null,
+        IReadOnlyList<DownloadDispatchItem>? settledDispatches = null)
     {
         if (!snapshot.Queue.Any(item => DownloadFilesGone.ExpectsItsFiles(item.Status)))
         {
