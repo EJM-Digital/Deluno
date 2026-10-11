@@ -1,0 +1,35 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "rpc-error",
+  "recordedAt": "2026-10-11T01:56:09Z",
+  "note": "A call to a method NZBGet does not have: it answers with an error object.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "nosuchmethod",
+          "params": [],
+          "id": 17
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 17,
+          "error": {
+            "name": "JSONRPCError",
+            "code": 1,
+            "message": "Invalid procedure"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "finished-folder",
+  "recordedAt": "2026-10-11T02:03:18Z",
+  "note": "A torrent over a folder (a film and a small extra file) already in its save folder: complete, two files.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "torrents=<44213 bytes>&stopped=false&paused=false&savepath=C:\\golden\\recorded\\qbittorrent"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "added_torrent_ids": [
+            "3b1d84012faffbb5c3c8d00d92358d52f2c856eb"
+          ],
+          "failure_count": 0,
+          "pending_count": 0,
+          "success_count": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=3b1d84012faffbb5c3c8d00d92358d52f2c856eb"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1791684194,
+            "amount_left": 0,
+            "auto_tmm": false,
+            "availability": -1,
+            "category": "",
+            "comment": "",
+            "completed": 576682030,
+            "completion_on": 1791684196,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "C:\\golden\\recorded\\qbittorrent\\Recorded.qbittorrent.Folder",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "C:\\Downloads\\Incomplete\\qBittorrent",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "3b1d84012faffbb5c3c8d00d92358d52f2c856eb",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "3b1d84012faffbb5c3c8d00d92358d52f2c856eb",
+            "infohash_v2": "",
+            "last_activity": 1791684194,
+            "magnet_uri": "magnet:?xt=urn:btih:3b1d84012faffbb5c3c8d00d92358d52f2c856eb&dn=Recorded.qbittorrent.Folder&xl=576682030",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded.qbittorrent.Folder",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 2200,
+            "pieces_num": 2200,
+            "popularity": 0,
+            "priority": 0,
+            "private": false,
+            "progress": 1,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 0,
+            "root_path": "C:\\golden\\recorded\\qbittorrent\\Recorded.qbittorrent.Folder",
+            "save_path": "C:\\golden\\recorded\\qbittorrent",
+            "seeding_time": 2,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 576682030,
+            "state": "stalledUP",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 1,
+            "total_size": 576682030,
+            "total_wasted": 0,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/files?hash=3b1d84012faffbb5c3c8d00d92358d52f2c856eb"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "availability": -1,
+            "index": 0,
+            "is_seed": true,
+            "name": "Recorded.qbittorrent.Folder/Recorded.qbittorrent.Folder.mkv",
+            "piece_range": [
+              0,
+              2199
+            ],
+            "priority": 1,
+            "progress": 1,
+            "size": 576677428
+          },
+          {
+            "availability": -1,
+            "index": 1,
+            "name": "Recorded.qbittorrent.Folder/Recorded.qbittorrent.Folder.nfo",
+            "piece_range": [
+              2199,
+              2199
+            ],
+            "priority": 1,
+            "progress": 1,
+            "size": 4602
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "version",
+  "recordedAt": "2026-10-11T02:02:46Z",
+  "note": "The client's own version call.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/app/version"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "v5.2.1"
+      }
+    }
+  ]
+}

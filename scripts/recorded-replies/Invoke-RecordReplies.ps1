@@ -27,7 +27,7 @@
     Deluno's side (-DelunoSide): turns the proxy files left by Start-RecordingProxy.ps1 into tests/fixtures/recorded/deluno.
 
 .PARAMETER RigHost         The Hyper-V host that holds the VM. Never committed; pass it on the command line.
-.PARAMETER VmMediaFile     A real public film inside the VM (the golden path's Big Buck Bunny, for example).
+.PARAMETER VmMediaFile     A real public film inside the VM (Sintel, which is already in the VM, for example).
 .PARAMETER Apps            Which to record. Default: all of sabnzbd, nzbget, qbittorrent, transmission, deluge, weir.
 .EXAMPLE
     ./scripts/recorded-replies/Invoke-RecordReplies.ps1 -RigHost <host> -VmMediaFile C:\golden\media\bunny.mkv
@@ -40,7 +40,7 @@ param(
     [string] $VmCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-goldenvm-admin.xml'),
     [string] $OutDirectory,
     [ValidateSet('sabnzbd', 'nzbget', 'qbittorrent', 'transmission', 'deluge', 'weir')] [string[]] $Apps = @('sabnzbd', 'nzbget', 'qbittorrent', 'transmission', 'deluge', 'weir'),
-    [string] $VmMediaFile = 'C:\golden\media\film.mkv',
+    [string] $VmMediaFile = 'C:\Media\Movies\Sintel (2010)\Sintel (2010) [WEB 1080p].mkv',
     [int] $NewznabPort = 1180,
     [int] $NntpPort = 1119,
     [int] $SabnzbdPort = 8080, [string] $SabnzbdConfigPath,
@@ -49,6 +49,7 @@ param(
     [int] $TransmissionPort = 9091,
     [int] $DelugePort = 8112,
     [string] $WeirUrl = 'http://127.0.0.1:9347', [string] $WeirVersion = 'rc.13', [string] $WeirSource = 'deluno',
+    [switch] $NoSwarm,   # skip the two-client transfers (about 20 of the 35 minutes)
     [switch] $DelunoSide, [string] $DelunoVersion = 'current', [int] $PerState = 3
 )
 
@@ -63,10 +64,16 @@ $vmParams = [ordered]@{
     NzbgetPort = $NzbgetPort; QbittorrentPort = $QbittorrentPort; TransmissionPort = $TransmissionPort; DelugePort = $DelugePort
     WeirUrl = $WeirUrl; WeirVersion = $WeirVersion; WeirSource = $WeirSource
     # The Usenet stub as it is in this repository (hang file, folder jobs); the VM's copy is brought up to it.
-    TrackerScript = (Get-Content -Raw -LiteralPath (Join-Path $here 'Start-LocalTracker.ps1'))
-    StubFiles = @('UsenetStub.Lib.ps1', 'New-UsenetRelease.ps1', 'Start-NntpStub.ps1', 'Start-NewznabStub.ps1') | ForEach-Object { [ordered]@{ name = $_; text = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "scripts\golden-path\usenet-stub\$_")) } }
-    DelunoVersion = $DelunoVersion; PerState = $PerState
+    DelunoVersion = $DelunoVersion; PerState = $PerState; NoSwarm = [bool]$NoSwarm
 }
+# Script text the VM needs (the torrent-making scripts, the local tracker, the Usenet stub as it is in this repository). Sent as
+# plain values beside the small JSON of settings, not inside it: Windows PowerShell 5.1 serialises that much text far too slowly.
+$texts = @{
+    FeedFiles = [hashtable[]]@(@('Add-Release.ps1', 'Make-Torrent.ps1') | ForEach-Object { @{ name = [string]$_; text = [string](Get-Content -Raw -LiteralPath (Join-Path $repoRoot "scripts\golden-path\torznab-feed\$_")) } })
+    TrackerScript = [string](Get-Content -Raw -LiteralPath (Join-Path $here 'Start-LocalTracker.ps1'))
+    StubFiles = [hashtable[]]@(@('UsenetStub.Lib.ps1', 'New-UsenetRelease.ps1', 'Start-NntpStub.ps1', 'Start-NewznabStub.ps1') | ForEach-Object { @{ name = [string]$_; text = [string](Get-Content -Raw -LiteralPath (Join-Path $repoRoot "scripts\golden-path\usenet-stub\$_")) } })
+}
+
 
 # The in-VM program: the helper library, the recorders, then the calls. It prints a JSON document on its last line.
 $libs = 'Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Collect-DelunoSide.ps1' |
@@ -75,27 +82,33 @@ $calls = [System.Text.StringBuilder]::new()
 $map = [ordered]@{ sabnzbd = 'Invoke-RecordSabnzbd'; nzbget = 'Invoke-RecordNzbget'; weir = 'Invoke-RecordWeir' }
 foreach ($app in $map.Keys) {
     if ($Apps -contains $app) {
-        $null = $calls.AppendLine("try { $($map[$app]) `$p } catch { Add-Missing ('$app stopped: ' + `$_.Exception.Message) }")
+        $null = $calls.AppendLine("Write-RunLog 'start $app'; try { $($map[$app]) `$p } catch { Add-Missing ('$app stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }")
     }
 }
+if ($Apps -contains 'sabnzbd' -or $Apps -contains 'nzbget') { $null = $calls.AppendLine('try { Remove-UsenetStubReleases } catch { }') }
 $torrentApps = @($Apps | Where-Object { $_ -in 'qbittorrent', 'transmission', 'deluge' })
 if ($torrentApps.Count -gt 0) {
-    $null = $calls.AppendLine("try { Invoke-RecordTorrentClients `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent clients stopped: ' + `$_.Exception.Message) }")
+    $null = $calls.AppendLine("Write-RunLog 'start torrent clients'; try { Invoke-RecordTorrentClients `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent clients stopped: ' + `$_.Exception.Message) }")
 }
 if ($DelunoSide) { $null = $calls.AppendLine('try { Invoke-CollectDelunoSide $p } catch { Add-Missing (''deluno side stopped: '' + $_.Exception.Message) }') }
 # A script block body cannot start with param() after other statements, so the parameters arrive as one JSON argument.
-$program = ($libs -join "`n") + "`n`$p = `$args[0] | ConvertFrom-Json`n" + $calls.ToString() +
-    "`n[pscustomobject]@{ recordings = @(`$script:Recordings); missing = @(`$script:Missing); logs = `$script:Logs } | ConvertTo-Json -Depth 30 -Compress`n"
+$program = ($libs -join "`n") + "`n`$p = `$args[0] | ConvertFrom-Json`nforeach (`$k in `$args[1].Keys) { `$p | Add-Member -NotePropertyName `$k -NotePropertyValue `$args[1][`$k] -Force }`n" + $calls.ToString() +
+    "`n[pscustomobject]@{ recordings = @(`$script:Recordings); missing = @(`$script:Missing); logs = `$script:Logs; computerName = `$env:COMPUTERNAME; userName = `$env:USERNAME } | ConvertTo-Json -Depth 30 -Compress`n"
 
 $rigCred = Import-Clixml $RigCredentialFile
 $vmCred = Import-Clixml $VmCredentialFile
 $rig = New-PSSession -ComputerName $RigHost -Credential $rigCred
 try {
+    if ($env:RECORD_DUMP) {   # for debugging the capture itself: write what would be sent to the VM and stop
+        Set-Content -LiteralPath (Join-Path $env:RECORD_DUMP 'program.ps1') -Value $program -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $env:RECORD_DUMP 'params.json') -Value ($vmParams | ConvertTo-Json -Depth 4 -Compress) -Encoding utf8
+        return
+    }
     Write-Host "Recording $($Apps -join ', ') on $VmName. This takes about 30 to 40 minutes: the film downloads through the Usenet clients."
-    $raw = Invoke-Command -Session $rig -ArgumentList $program, ($vmParams | ConvertTo-Json -Compress), $VmName, $vmCred -ScriptBlock {
-        param($text, $json, $name, $cred)
+    $raw = Invoke-Command -Session $rig -ArgumentList $program, ($vmParams | ConvertTo-Json -Depth 4 -Compress), $texts, $VmName, $vmCred -ScriptBlock {
+        param($text, $json, $moreText, $name, $cred)
         $sb = [scriptblock]::Create($text)
-        Invoke-Command -VMName $name -Credential $cred -ArgumentList $json -ScriptBlock $sb
+        Invoke-Command -VMName $name -Credential $cred -ArgumentList $json, $moreText -ScriptBlock $sb
     }
 } finally { Remove-PSSession $rig -ErrorAction SilentlyContinue }
 
@@ -104,7 +117,7 @@ $result = $resultText | ConvertFrom-Json
 New-Item -ItemType Directory -Force -Path $OutDirectory | Out-Null
 
 # Machine and user names to remove on top of the scrubber's own patterns: the VM's name and its sign-in name.
-$names = @($VmName, $vmCred.UserName.Split('\')[-1]) | Where-Object { $_ }
+$names = @($VmName, $vmCred.UserName.Split('\')[-1], $result.computerName, $result.userName) | Where-Object { $_ } | Select-Object -Unique
 $nameArgs = $names | ForEach-Object { '--name'; $_ }
 
 $written = 0
@@ -112,15 +125,19 @@ foreach ($recording in $result.recordings) {
     $folder = Join-Path $OutDirectory (Join-Path $recording.app $recording.version)
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
     $file = Join-Path $folder ($recording.state + '.json')
-    ($recording | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $file -Encoding utf8
+    # UTF-8 without a byte-order mark: Set-Content -Encoding utf8 writes one in Windows PowerShell 5.1, which the JSON readers refuse.
+    [IO.File]::WriteAllText($file, (($recording | ConvertTo-Json -Depth 30) + "`n"), (New-Object Text.UTF8Encoding($false)))
     $written++
 }
-foreach ($name in @($result.logs.PSObject.Properties.Name)) {
+$logNames = @($result.logs.PSObject.Properties.Name | Where-Object { $_ })
+if ($logNames.Count -gt 0) {
     $weirVersion = @($result.recordings | Where-Object { $_.app -eq 'weir' } | Select-Object -First 1).version
     if (-not $weirVersion) { $weirVersion = $WeirVersion }
-    $logFolder = Join-Path $OutDirectory "weir\$weirVersion\logs"
+    $logFolder = Join-Path $OutDirectory (Join-Path 'weir' (Join-Path $weirVersion 'logs'))
     New-Item -ItemType Directory -Force -Path $logFolder | Out-Null
-    Set-Content -LiteralPath (Join-Path $logFolder $name) -Value $result.logs.$name -Encoding utf8
+    foreach ($name in $logNames) {
+        [IO.File]::WriteAllText((Join-Path $logFolder $name), ([string]$result.logs.$name + "`n"), (New-Object Text.UTF8Encoding($false)))
+    }
 }
 
 # Scrub, tidy (JSON text bodies become JSON), then check nothing private is left. The check fails the run, loudly.
@@ -134,11 +151,12 @@ $lines = @('# Recordings the golden VM could not produce', '', "Written by scrip
 $lines += @($result.missing | Sort-Object -Unique | ForEach-Object { "- $_" })
 # Apps the golden VM does not have, listed every run until they are installed there.
 $lines += @(
+    '- weir failed with failureClass not_taken (Weir #956, Deluno #1250): Weir answers it when a second connection of the same kind hands off a file whose processing pass belongs to the first; the VM has one Deluno connection to Weir, so it cannot be produced there. It needs a second processor connection in Deluno pointing at the same Weir and watched folder',
     '- rtorrent: not installed in the VM; install it there (or on a machine the script can reach) and add a recorder',
     '- utorrent: not installed in the VM; same',
     '- emby, jellyfin, plex: not installed in the VM; their library, item and playback replies need a server with real media',
     '- torznab and newznab feeds: only the golden path stubs exist in the VM, and a stub is not a real indexer; a real indexer''s caps and search replies need its API key'
 )
-$lines | Set-Content -LiteralPath $missingFile -Encoding utf8
+[IO.File]::WriteAllText($missingFile, (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
 
 Write-Host "Wrote $written recordings to $OutDirectory; $(@($result.missing).Count) states are missing (see MISSING.md)."

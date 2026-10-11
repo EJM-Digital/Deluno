@@ -1,0 +1,114 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "settings",
+  "recordedAt": "2026-10-11T02:05:14Z",
+  "note": "The core settings, session state, free space and labels, as Deluno reads them.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_config_values",
+          "params": [
+            [
+              "download_location",
+              "move_completed",
+              "move_completed_path"
+            ]
+          ],
+          "id": 34
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "download_location": "C:\\Downloads\\Incomplete\\Deluge",
+            "move_completed": true,
+            "move_completed_path": "C:\\Downloads\\Completed"
+          },
+          "error": null,
+          "id": 34
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_session_state",
+          "params": [],
+          "id": 35
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": [
+            "9353dfdad43e6f267e9d495a6838679c1ec15d8b",
+            "d8185091144732e990e3595f7db0e4410b1d9424"
+          ],
+          "error": null,
+          "id": 35
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_free_space",
+          "params": [],
+          "id": 36
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": 20316094464,
+          "error": null,
+          "id": 36
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.get_labels",
+          "params": [],
+          "id": 37
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": [
+            "<scrubbed>-movies",
+            "<scrubbed>-tv",
+            "recorded-movies"
+          ],
+          "error": null,
+          "id": 37
+        }
+      }
+    }
+  ]
+}

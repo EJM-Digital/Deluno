@@ -2,6 +2,7 @@ using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -13,15 +14,17 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class RemovingAUsenetDownloadTests
 {
-    private const string EmptyQueue = "{\"queue\":{\"status\":\"Idle\",\"slots\":[]}}";
-    private const string EmptyHistory = "{\"history\":{\"slots\":[]}}";
+    private static string EmptyQueue => RecordedReplies.Sabnzbd("removed-without-data").Body("mode=queue&output", ("queue.slots", new System.Text.Json.Nodes.JsonArray()));
+
+    private static string EmptyHistory => RecordedReplies.Sabnzbd("removed-with-data").Body("mode=history&output", ("history.slots", new System.Text.Json.Nodes.JsonArray()));
 
     private static string QueueWith(string nzoId)
-        => "{\"queue\":{\"status\":\"Downloading\",\"slots\":[{\"nzo_id\":\"" + nzoId + "\",\"filename\":\"Some.Film.2020.1080p\",\"status\":\"Downloading\",\"mb\":\"100\",\"mbleft\":\"50\"}]}}";
+        => RecordedReplies.Sabnzbd("downloading").Body("mode=queue&output", ("^queue.slots", 1), ("queue.slots.0.nzo_id", nzoId), ("queue.slots.0.filename", "Some.Film.2020.1080p"));
 
     private static string HistoryWith(string nzoId, string name, string storage)
-        => "{\"history\":{\"slots\":[{\"nzo_id\":\"" + nzoId + "\",\"name\":\"" + name + "\",\"status\":\"Completed\",\"storage\":"
-            + System.Text.Json.JsonSerializer.Serialize(storage) + ",\"path\":\"/downloads/incomplete/" + name + "\"}]}}";
+        => RecordedReplies.Sabnzbd("finished-single-file").Body(
+            "mode=history&output",
+            ("^history.slots", 1), ("history.slots.0.nzo_id", nzoId), ("history.slots.0.name", name), ("history.slots.0.storage", storage), ("history.slots.0.path", "/downloads/incomplete/" + name));
 
     /// <summary>A stand-in SABnzbd: the lists it holds, and a queue delete that removes only what it has.</summary>
     private sealed class FakeSab(string queueJson, string historyJson, bool historyDeleteRemoves = true)
@@ -41,12 +44,12 @@ public sealed class RemovingAUsenetDownloadTests
                 {
                     var had = _queue.Contains("nzo_id", StringComparison.Ordinal);
                     if (had) _queue = EmptyQueue;
-                    return Json(had ? "{\"status\":true,\"nzo_ids\":[\"x\"]}" : "{\"status\":false,\"nzo_ids\":[]}");
+                    return (had ? RecordedReplies.Sabnzbd("removed-without-data") : RecordedReplies.Sabnzbd("unknown-id")).Response("mode=queue&name=delete");
                 }
 
                 // History delete: yes for any id, as SABnzbd 5.1.3 does.
                 if (historyDeleteRemoves) _history = EmptyHistory;
-                return Json("{\"status\":true}");
+                return RecordedReplies.Sabnzbd("removed-with-data").Response("mode=history&name=delete");
             }
 
             return Json(query.Contains("mode=history", StringComparison.Ordinal) ? _history : _queue);
@@ -178,7 +181,7 @@ public sealed class RemovingAUsenetDownloadTests
         {
             asked.Add(request.RequestUri!.Query);
             return request.RequestUri.Query.Contains("name=delete", StringComparison.Ordinal)
-                ? Json("{\"status\":true}")
+                ? RecordedReplies.Sabnzbd("removed-with-data").Response("mode=history&name=delete")
                 : new HttpResponseMessage(HttpStatusCode.InternalServerError);
         });
 
@@ -189,17 +192,19 @@ public sealed class RemovingAUsenetDownloadTests
     }
 
     [Fact]
-    public async Task Sabnzbd_saying_false_to_a_delete_is_a_failure()
+    public async Task Sabnzbd_refusing_the_key_on_a_delete_is_a_failure()
     {
+        var refused = RecordedReplies.Sabnzbd("api-key-refused");
         var handler = new StubHandler(request => request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal)
-            ? Json("{\"status\":false,\"error\":\"API Key Incorrect\"}")
+            ? refused.Response("name=delete")
             : Json(request.RequestUri.Query.Contains("mode=history", StringComparison.Ordinal) ? EmptyHistory : QueueWith("SABnzbd_nzo_abc")));
 
         var result = await Sab(handler).ExecuteActionAsync(Sabnzbd(), DownloadClientActions.DeleteWithData, "SABnzbd_nzo_abc", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.DoesNotContain("action sent", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("API Key Incorrect", result.Message);
+        // SABnzbd 5.1.3 refuses a wrong key with HTTP 403 (body "API Key Incorrect"), and Deluno reports the status.
+        Assert.Contains("403", result.Message);
     }
 
     [Theory]
@@ -208,18 +213,22 @@ public sealed class RemovingAUsenetDownloadTests
     [InlineData(DownloadClientActions.MoveToTop)]
     public async Task Sabnzbd_saying_false_to_any_other_action_is_a_failure(string action)
     {
-        var handler = new StubHandler(_ => Json("{\"status\":false,\"error\":\"Unknown job\"}"));
+        // SABnzbd's own "no" (status false), as it answers a queue delete of a job it does not have. (Its pause and resume of an id it
+        // does not have answer status true, recorded in the unknown-id state: SABnzbd cannot tell Deluno there, so these tests
+        // use the "no" it does give.)
+        var no = RecordedReplies.Sabnzbd("unknown-id").Find("mode=queue&name=delete").Reply;
+        var handler = new StubHandler(_ => no.ToResponse());
 
         var result = await Sab(handler).ExecuteActionAsync(Sabnzbd(), action, "SABnzbd_nzo_abc", CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("Unknown job", result.Message);
+        Assert.DoesNotContain("action sent", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task Sabnzbd_saying_yes_to_a_pause_is_still_a_success()
     {
-        var handler = new StubHandler(_ => Json("{\"status\":true}"));
+        var handler = new StubHandler(_ => RecordedReplies.Sabnzbd("paused").Response("name=pause"));
 
         var result = await Sab(handler).ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Pause, "SABnzbd_nzo_abc", CancellationToken.None);
 
@@ -229,7 +238,7 @@ public sealed class RemovingAUsenetDownloadTests
     [Fact]
     public async Task Nzbget_saying_false_to_an_edit_is_a_failure()
     {
-        var handler = new StubHandler(_ => Json("{\"result\":false}"));
+        var handler = new StubHandler(_ => RecordedReplies.Nzbget("unknown-id").Response("GroupPause"));
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
             .ExecuteActionAsync(NzbGet(), DownloadClientActions.Pause, "42", CancellationToken.None);
@@ -248,12 +257,17 @@ public sealed class RemovingAUsenetDownloadTests
             Bodies.Add(body);
             if (body.Contains("\"listgroups\"", StringComparison.Ordinal))
             {
-                return Json(inQueue ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Some.Film\",\"Status\":\"DOWNLOADING\",\"FileSizeHi\":0,\"RemainingSizeHi\":0}]}" : "{\"result\":[]}");
+                // NZBGet's own queue listing: with a job in it (only its id and name are this test's), or empty.
+                return inQueue
+                    ? RecordedReplies.Nzbget("queued").Response("listgroups", ("^result", 1), ("result.0.NZBID", 42), ("result.0.NZBName", "Some.Film"))
+                    : RecordedReplies.Nzbget("removed-without-data").Response("listgroups", ("result", new System.Text.Json.Nodes.JsonArray()));
             }
 
             if (body.Contains("\"history\"", StringComparison.Ordinal))
             {
-                return Json(inHistory ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Some.Film\",\"Status\":\"SUCCESS/ALL\",\"FileSizeHi\":0}]}" : "{\"result\":[]}");
+                return inHistory
+                    ? RecordedReplies.Nzbget("finished-single-file").Response("\"history\"", ("^result", 1), ("result.0.NZBID", 42), ("result.0.NZBName", "Some.Film"))
+                    : RecordedReplies.Nzbget("removed-with-data").Response("\"history\"", ("result", new System.Text.Json.Nodes.JsonArray()));
             }
 
             if (body.Contains("\"editqueue\"", StringComparison.Ordinal))
@@ -266,10 +280,12 @@ public sealed class RemovingAUsenetDownloadTests
                     if (group) inQueue = false; else inHistory = false;
                 }
 
-                return Json(matched ? "{\"result\":true}" : "{\"result\":false}");
+                return matched
+                    ? RecordedReplies.Nzbget("removed-with-data").Response("HistoryFinalDelete")
+                    : RecordedReplies.Nzbget("unknown-id").Response("GroupFinalDelete");
             }
 
-            return Json("{\"result\":null}");
+            return RecordedReplies.Nzbget("version").Response("version");
         }
     }
 
@@ -294,7 +310,7 @@ public sealed class RemovingAUsenetDownloadTests
         var handler = new StubHandler(request =>
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
-            return body.Contains("editqueue", StringComparison.Ordinal) ? Json("{\"result\":true}") : nzb.Answer(request);
+            return body.Contains("editqueue", StringComparison.Ordinal) ? RecordedReplies.Nzbget("removed-with-data").Response("HistoryFinalDelete") : nzb.Answer(request);
         });
 
         // Given its settle window (#1244) and still listing the job at the end of it, the removal did not happen.
@@ -324,7 +340,7 @@ public sealed class RemovingAUsenetDownloadTests
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
             return body.Contains("editqueue", StringComparison.Ordinal)
-                ? Json("{\"result\":null,\"error\":{\"code\":1,\"message\":\"Access denied\"}}")
+                ? RecordedReplies.Nzbget("rpc-error").Response("nosuchmethod")
                 : nzb.Answer(request);
         });
 
@@ -332,7 +348,7 @@ public sealed class RemovingAUsenetDownloadTests
             .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "42", CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("Access denied", result.Message);
+        Assert.Contains((string)RecordedReplies.Nzbget("rpc-error").Find("nosuchmethod").Reply.Json()["error"]!["message"]!, result.Message);
     }
 
     [Fact]

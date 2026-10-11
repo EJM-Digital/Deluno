@@ -8,6 +8,7 @@ using Deluno.Integrations.DownloadClients;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Data.Common;
 using System.Text.Json;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Persistence.Tests.Jobs;
 
@@ -617,7 +618,8 @@ public sealed class DownloadDispatchRepositoryTests
             200,
             "Release URL sent to SABnzbd.",
             null,
-            "{\"status\":true,\"nzo_ids\":[\"native-sab-id-42\"]}",
+            // SABnzbd's own answer to an add (recorded, #1237); only the job id is this test's.
+            RecordedReplies.Sabnzbd("queued").Body("mode=addurl", ("nzo_ids.0", "native-sab-id-42")),
             CancellationToken.None,
             externalId: "native-sab-id-42");
 

@@ -63,12 +63,25 @@ function Initialize-UsenetStubReleases($p) {
     $script:UsenetStub
 }
 
+# Takes back what the extra releases added: their articles in the stub's folder, and the releases themselves (about 1.3 GB each).
+function Remove-UsenetStubReleases {
+    $stub = $script:UsenetStub
+    foreach ($key in 'Folder', 'Stuck') {
+        $articles = "C:\golden\recorded\usenet\$key\articles"
+        if ($stub -and (Test-Path $articles)) { foreach ($f in Get-ChildItem $articles -File) { Remove-Item -LiteralPath (Join-Path $stub.Root "articles\$($f.Name)") -Force -ErrorAction SilentlyContinue } }
+    }
+    Remove-Item 'C:\golden\recorded\usenet' -Recurse -Force -ErrorAction SilentlyContinue
+    if ($stub) { Remove-Item -LiteralPath (Join-Path $stub.Root 'hang.txt') -Force -ErrorAction SilentlyContinue }
+    $script:UsenetStub = $null
+}
+
 function Start-HangingArticle($stub) { Set-Content -LiteralPath (Join-Path $stub.Root 'hang.txt') -Value $stub.Stuck.LastArticle -Encoding ascii }
 function Stop-HangingArticle($stub) { Remove-Item -LiteralPath (Join-Path $stub.Root 'hang.txt') -Force -ErrorAction SilentlyContinue }
 
 # ---------------------------------------------------------------- SABnzbd
 
 function Invoke-RecordSabnzbd($p) {
+    Assert-FreeSpace 8 'the Usenet clients'
     $key = Find-SabApiKey $p.SabnzbdConfigPath
     Register-Secret $key
     $sab = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.SabnzbdPort)"
@@ -80,6 +93,11 @@ function Invoke-RecordSabnzbd($p) {
     if (-not $versionText) { Add-Missing 'sabnzbd: it did not answer mode=version'; return }
     $ver = $versionText
     Save-State sabnzbd $ver 'version' 'mode=version' @($v)
+    $wrong = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.SabnzbdPort)"
+    Save-State sabnzbd $ver 'api-key-refused' 'Calls made with a wrong API key: a queue read and a queue delete, which SABnzbd refuses inside a 200 answer.' @(
+        (Send-Recorded -Client $wrong -Path '/api?mode=queue&output=json&apikey=not-the-key'),
+        (Send-Recorded -Client $wrong -Path '/api?mode=queue&name=delete&value=SABnzbd_nzo_doesnotexist&del_files=1&output=json&apikey=not-the-key'),
+        (Send-Recorded -Client $wrong -Path '/api?mode=version&output=json'))
     Save-State sabnzbd $ver 'idle' 'Nothing queued: the queue and the history as SABnzbd answers when empty.' @((Api 'mode=queue'), (Api 'mode=history'))
 
     # queued: the queue paused, a job added, so it waits.
@@ -89,13 +107,24 @@ function Invoke-RecordSabnzbd($p) {
     Start-Sleep -Seconds 3
     Save-State sabnzbd $ver 'queued' 'The whole queue paused, then one job added by address: it waits in the queue.' @($add, (Api 'mode=queue'))
 
+    # settings and a category move on the queued job
+    Save-State sabnzbd $ver 'settings' 'The categories, the configuration and the warnings, as Deluno reads them.' @((Api 'mode=get_cats'), (Api 'mode=get_config'), (Api 'mode=warnings'))
+    Save-State sabnzbd $ver 'warnings-cleared' 'The warnings cleared (SABnzbd''s own answer).' @((Api 'mode=warnings&name=clear'))
+    $cat = Api "mode=change_cat&value=$idA&value2=movies"
+    Save-State sabnzbd $ver 'category-moved' 'A queued job moved to another category.' @($cat, (Api 'mode=queue'))
+    $badCat = Api "mode=change_cat&value=$idA&value2=does-not-exist"
+    Save-State sabnzbd $ver 'category-unknown' 'A move to a category that does not exist.' @($badCat, (Api 'mode=queue'))
+
     # removed without data: that queued job removed, nothing downloaded to keep or delete.
     $removeA = Api "mode=queue&name=delete&value=$idA&del_files=0"
     Save-State sabnzbd $ver 'removed-without-data' 'The queued job removed from the queue with del_files=0.' @($removeA, (Api 'mode=queue'))
 
     # unknown id
     $unknown = Api 'mode=queue&name=delete&value=SABnzbd_nzo_doesnotexist&del_files=1'
-    Save-State sabnzbd $ver 'unknown-id' 'A removal of a job id SABnzbd never had.' @($unknown, (Api 'mode=queue'))
+    $unknownPause = Api 'mode=queue&name=pause&value=SABnzbd_nzo_doesnotexist'
+    $unknownResume = Api 'mode=queue&name=resume&value=SABnzbd_nzo_doesnotexist'
+    $unknownTop = Api 'mode=switch&value=SABnzbd_nzo_doesnotexist&value2=0'
+    Save-State sabnzbd $ver 'unknown-id' 'A removal, a pause, a resume and a move to the top for a job id SABnzbd never had.' @($unknown, (Api 'mode=queue'), $unknownPause, $unknownResume, $unknownTop)
 
     # the real job
     $addB = Api "mode=addurl&name=$nzbUrl&nzbname=Recorded.Film"
@@ -144,6 +173,13 @@ function Invoke-RecordSabnzbd($p) {
                 Start-Sleep -Seconds 40
                 Save-State sabnzbd $ver 'stalled-near-end' 'A job whose last article the news server never answers: it sticks at 99% with a few KB left and never finishes.' @($addS, (Api 'mode=queue'), (Api 'mode=queue'))
             } else { Add-Missing 'sabnzbd stalled-near-end: the job never got within 2 MB of the end' }
+            # The same NZB sent again as a file while SABnzbd discards duplicates (set back afterwards): it answers at once, with no job id.
+            $previous = (Get-ReplyJson (Api 'mode=get_config')).config.misc.no_dupes
+            $dupOn = Api 'mode=set_config&section=misc&keyword=no_dupes&value=1'
+            $dup = Api ("mode=addlocalfile&name=" + [uri]::EscapeDataString($stub.Stuck.Nzb) + "&nzbname=Recorded.Stuck")
+            foreach ($extraId in @((Get-ReplyJson $dup).nzo_ids | Where-Object { $_ -and $_ -ne $idS })) { $null = Api "mode=queue&name=delete&value=$extraId&del_files=1" }
+            $null = Api "mode=set_config&section=misc&keyword=no_dupes&value=$previous"
+            Save-State sabnzbd $ver 'duplicate-add' 'The same NZB sent again while SABnzbd discards duplicates: its answer has no job id.' @($dupOn, $dup)
             $null = Api "mode=queue&name=delete&value=$idS&del_files=1"
         } finally { Stop-HangingArticle $stub }
     }
@@ -174,6 +210,9 @@ function Invoke-RecordNzbget($p) {
     $ver = (Get-ReplyJson $v).result
     if (-not $ver) { Add-Missing 'nzbget: it did not answer version'; return }
     Save-State nzbget $ver 'version' 'JSON-RPC version' @($v)
+    $badCred = New-Object pscredential('nzbget', (ConvertTo-SecureString 'not-the-password' -AsPlainText -Force))
+    $refused = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.NzbgetPort)" -BasicAuth $badCred
+    Save-State nzbget $ver 'login-refused' 'A call made with a wrong login.' @((Send-Recorded -Client $refused -Method POST -Path '/jsonrpc' -Json ([ordered]@{ method = 'version'; params = @(); id = 1 })))
     Save-State nzbget $ver 'idle' 'Nothing queued: listgroups and history when empty.' @((Rpc 'listgroups'), (Rpc 'history' @($false)))
 
     # append(NZBFilename, NZBContent (a URL is fetched), Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters)
@@ -183,10 +222,16 @@ function Invoke-RecordNzbget($p) {
     Start-Sleep -Seconds 4
     Save-State nzbget $ver 'queued' 'The whole queue paused, then one job appended paused: it waits in the queue.' @($addA, (Rpc 'listgroups'))
 
+    Save-State nzbget $ver 'settings' 'The server status and the configuration, as Deluno reads them.' @((Rpc 'status'), (Rpc 'config'))
+    $cat = Rpc 'editqueue' @('GroupSetCategory', 'movies', @([int]$idA))
+    Save-State nzbget $ver 'category-moved' 'A queued job moved to another category.' @($cat, (Rpc 'listgroups'))
     $removeA = Rpc 'editqueue' @('GroupFinalDelete', '', @([int]$idA))
     Save-State nzbget $ver 'removed-without-data' 'The queued job removed with GroupFinalDelete before anything downloaded.' @($removeA, (Rpc 'listgroups'), (Rpc 'history' @($false)))
     $unknown = Rpc 'editqueue' @('GroupFinalDelete', '', @(999999))
-    Save-State nzbget $ver 'unknown-id' 'A removal of a job id NZBGet never had.' @($unknown)
+    $unknownPause = Rpc 'editqueue' @('GroupPause', '', @(999999))
+    $unknownTop = Rpc 'editqueue' @('GroupMoveTop', '', @(999999))
+    Save-State nzbget $ver 'unknown-id' 'A removal, a pause and a move to the top for a job id NZBGet never had.' @($unknown, $unknownPause, $unknownTop)
+    Save-State nzbget $ver 'rpc-error' 'A call to a method NZBGet does not have: it answers with an error object.' @((Rpc 'nosuchmethod'))
 
     $addB = Rpc 'append' @('Recorded.Film.nzb', $nzbUrl, '', 0, $false, $false, '', 0, 'SCORE', @())
     $idB = [int](Get-ReplyJson $addB).result

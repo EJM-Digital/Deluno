@@ -209,12 +209,23 @@ public sealed class IndexerTorrentFetcherTests
     /// </summary>
     public sealed class SabnzbdAnswersWithNoId
     {
+        // SABnzbd's own recorded answer to an add it discarded as a duplicate (#1237), and two ways its answer could lack the id:
+        // the id key gone, and the id empty. Those two are the recorded answer to an ordinary add with the id removed or emptied.
         [Theory]
-        [InlineData("""{"status":true,"nzo_ids":[]}""")]
-        [InlineData("""{"status":true}""")]
-        [InlineData("""{"status":true,"nzo_ids":[""]}""")]
-        public async Task An_accepted_nzb_with_no_id_is_a_client_that_already_has_it(string answer)
+        [InlineData("duplicate")]
+        [InlineData("no-id-key")]
+        [InlineData("empty-id")]
+        public async Task An_accepted_nzb_with_no_id_is_a_client_that_already_has_it(string shape)
         {
+            var added = Deluno.Tests.Recorded.RecordedReplies.Sabnzbd("queued");
+            var answer = shape switch
+            {
+                // SABnzbd's own answer to an add with its job list emptied. (Its real answer to a discarded duplicate is not recorded
+                // yet: the capture script now sends the NZB as a file for that, listed in MISSING.md.)
+                "duplicate" => added.Body("mode=addurl", ("nzo_ids", new System.Text.Json.Nodes.JsonArray())),
+                "no-id-key" => added.Body("mode=addurl", ("nzo_ids", null)),
+                _ => added.Body("mode=addurl", ("nzo_ids.0", ""))
+            };
             var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer) });
             var client = new DownloadClientItem(
                 "sab-1", "SABnzbd", "sabnzbd", "localhost", 8080, null, "key", "http://localhost:8080/", false, null,
@@ -235,7 +246,7 @@ public sealed class IndexerTorrentFetcherTests
         [Fact]
         public async Task An_accepted_nzb_with_an_id_is_a_send()
         {
-            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"status":true,"nzo_ids":["SABnzbd_nzo_abc"]}""") });
+            var handler = new StubHandler(_ => Deluno.Tests.Recorded.RecordedReplies.Sabnzbd("queued").Response("mode=addurl", ("nzo_ids.0", "SABnzbd_nzo_abc")));
             var client = new DownloadClientItem(
                 "sab-1", "SABnzbd", "sabnzbd", "localhost", 8080, null, "key", "http://localhost:8080/", false, null,
                 "movies", "tv", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

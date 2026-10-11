@@ -1,0 +1,23 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "add-refused",
+  "recordedAt": "2026-10-11T02:03:09Z",
+  "note": "A file that is not a torrent sent to the client to add: it refuses it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "torrents=<21 bytes>&savepath=C:\\golden\\recorded\\qbittorrent"
+      },
+      "reply": {
+        "status": 415,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Error: 'file.torrent' is not a valid torrent file."
+      }
+    }
+  ]
+}

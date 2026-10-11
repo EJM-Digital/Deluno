@@ -1,0 +1,195 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "category-moved",
+  "recordedAt": "2026-10-11T01:56:09Z",
+  "note": "A queued job moved to another category.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupSetCategory",
+            "movies",
+            [
+              24
+            ]
+          ],
+          "id": 9
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 9,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 10
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 10,
+          "result": [
+            {
+              "FirstID": 9,
+              "LastID": 9,
+              "RemainingSizeLo": 0,
+              "RemainingSizeHi": 0,
+              "RemainingSizeMB": 0,
+              "PausedSizeLo": 0,
+              "PausedSizeHi": 0,
+              "PausedSizeMB": 0,
+              "RemainingFileCount": 0,
+              "RemainingParCount": 0,
+              "MinPriority": 0,
+              "MaxPriority": 0,
+              "ActiveDownloads": 1,
+              "Status": "FETCHING",
+              "NZBID": 9,
+              "NZBName": "Recorded.Failed",
+              "NZBNicename": "Recorded.Failed",
+              "Kind": "URL",
+              "URL": "http://127.0.0.1:1/missing.nzb",
+              "NZBFilename": "Recorded.Failed.nzb",
+              "DestDir": "",
+              "FinalDir": "",
+              "Category": "",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "UNKNOWN",
+              "FileSizeLo": 0,
+              "FileSizeHi": 0,
+              "FileSizeMB": 0,
+              "FileCount": 0,
+              "MinPostTime": 0,
+              "MaxPostTime": 0,
+              "TotalArticles": 0,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 1791683714,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 1,
+              "ExtraParBlocks": 0,
+              "Parameters": [],
+              "ScriptStatuses": [],
+              "ServerStats": [],
+              "PostInfoText": "NONE",
+              "PostStageProgress": -272293888,
+              "PostStageTimeSec": 0,
+              "Log": []
+            },
+            {
+              "FirstID": 24,
+              "LastID": 24,
+              "RemainingSizeLo": 1757312844,
+              "RemainingSizeHi": 0,
+              "RemainingSizeMB": 1675,
+              "PausedSizeLo": 1757312844,
+              "PausedSizeHi": 0,
+              "PausedSizeMB": 1675,
+              "RemainingFileCount": 1,
+              "RemainingParCount": 0,
+              "MinPriority": 0,
+              "MaxPriority": 0,
+              "ActiveDownloads": 0,
+              "Status": "PAUSED",
+              "NZBID": 24,
+              "NZBName": "Recorded.Queued.A",
+              "NZBNicename": "Recorded.Queued.A",
+              "Kind": "NZB",
+              "URL": "http://127.0.0.1:1180/api?t=get&id=golden6925692986&apikey=<scrubbed>",
+              "NZBFilename": "Recorded.Queued.A.nzb",
+              "DestDir": "C:\\Downloads\\Incomplete\\NZBGet\\Recorded.Queued.A.#24",
+              "FinalDir": "",
+              "Category": "movies",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 1757312844,
+              "FileSizeHi": 0,
+              "FileSizeMB": 1675,
+              "FileCount": 1,
+              "MinPostTime": 1791494440,
+              "MaxPostTime": 1791494440,
+              "TotalArticles": 2369,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 2,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [],
+              "PostInfoText": "NONE",
+              "PostStageProgress": -272293888,
+              "PostStageTimeSec": 0,
+              "Log": []
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "failed",
+  "recordedAt": "2026-10-11T01:56:02Z",
+  "note": "A job whose NZB address does not answer, left to fail.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=addurl&name=http%3A%2F%2F127.0.0.1%3A1%2Fmissing.nzb&nzbname=Recorded.Failed&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "status": true,
+          "nzo_ids": [
+            "409508b3-3a7c-4898-8854-97b138905197"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=queue&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "queue": {
+            "version": "5.1.3",
+            "paused": false,
+            "pause_int": "0",
+            "paused_all": false,
+            "diskspace1": "17.77",
+            "diskspace2": "17.77",
+            "diskspace1_norm": "17.8 G",
+            "diskspace2_norm": "17.8 G",
+            "diskspacetotal1": "98.81",
+            "diskspacetotal2": "98.81",
+            "speedlimit": "0",
+            "speedlimit_abs": "0",
+            "have_warnings": "0",
+            "finishaction": null,
+            "quota": "0 B",
+            "have_quota": false,
+            "left_quota": "0 B",
+            "cache_art": "0",
+            "cache_size": "0 B",
+            "kbpersec": "24.34",
+            "speed": "24 K",
+            "mbleft": "0.00",
+            "mb": "0.00",
+            "sizeleft": "0 B",
+            "size": "0 B",
+            "noofslots_total": 3,
+            "noofslots": 3,
+            "start": 0,
+            "limit": 0,
+            "finish": 0,
+            "status": "Downloading",
+            "timeleft": "0:00:00",
+            "slots": [
+              {
+                "index": 0,
+                "nzo_id": "22993ceb-bb51-4d9f-aa2f-24d2bd994124",
+                "unpackopts": "0",
+                "priority": "Normal",
+                "script": "None",
+                "filename": "Recorded.Failed",
+                "labels": [
+                  "WAIT 212 sec"
+                ],
+                "password": "",
+                "cat": "None",
+                "mbleft": "0.00",
+                "mb": "0.00",
+                "size": "0 B",
+                "sizeleft": "0 B",
+                "percentage": "0",
+                "mbmissing": "0.00",
+                "direct_unpack": null,
+                "status": "Grabbing",
+                "timeleft": "0:00:00",
+                "avg_age": "-",
+                "time_added": 1791681250
+              },
+              {
+                "index": 1,
+                "nzo_id": "8fba532d-58f3-4d44-92c2-03531c45bd7a",
+                "unpackopts": "0",
+                "priority": "Normal",
+                "script": "None",
+                "filename": "Recorded.Failed",
+                "labels": [
+                  "WAIT 10 sec"
+                ],
+                "password": "",
+                "cat": "None",
+                "mbleft": "0.00",
+                "mb": "0.00",
+                "size": "0 B",
+                "sizeleft": "0 B",
+                "percentage": "0",
+                "mbmissing": "0.00",
+                "direct_unpack": null,
+                "status": "Grabbing",
+                "timeleft": "0:00:00",
+                "avg_age": "-",
+                "time_added": 1791683161
+              },
+              {
+                "index": 2,
+                "nzo_id": "409508b3-3a7c-4898-8854-97b138905197",
+                "unpackopts": "0",
+                "priority": "Normal",
+                "script": "None",
+                "filename": "Recorded.Failed",
+                "labels": [],
+                "password": "",
+                "cat": "None",
+                "mbleft": "0.00",
+                "mb": "0.00",
+                "size": "0 B",
+                "sizeleft": "0 B",
+                "percentage": "0",
+                "mbmissing": "0.00",
+                "direct_unpack": null,
+                "status": "Grabbing",
+                "timeleft": "0:00:00",
+                "avg_age": "-",
+                "time_added": 1791683762
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=history&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "history": {
+            "total_size": "15.9 G",
+            "month_size": "15.9 G",
+            "week_size": "15.9 G",
+            "day_size": "15.9 G",
+            "slots": [
+              {
+                "completed": 1791681616,
+                "name": "Recorded.Failed - http://127.0.0.1:1/missing.nzb",
+                "nzb_name": "http://127.0.0.1:1/missing.nzb",
+                "category": "*",
+                "pp": "",
+                "script": "None",
+                "report": "future",
+                "url": "http://127.0.0.1:1/missing.nzb",
+                "status": "Failed",
+                "nzo_id": "d225ae38-a9a5-4e16-b76a-4beb833af97a",
+                "storage": "",
+                "path": "",
+                "script_line": "",
+                "download_time": 0,
+                "postproc_time": 0,
+                "stage_log": [
+                  {
+                    "name": "Source",
+                    "actions": [
+                      "http://127.0.0.1:1/missing.nzb",
+                      "URL Fetching failed",
+                      " Maximum retries"
+                    ]
+                  }
+                ],
+                "downloaded": 0,
+                "completeness": null,
+                "fail_message": "URL Fetching failed; Maximum retries",
+                "url_info": "",
+                "bytes": 0,
+                "meta": null,
+                "series": null,
+                "md5sum": null,
+                "password": null,
+                "duplicate_key": "0 0 1:1/1/",
+                "archive": false,
+                "time_added": 1791678291,
+                "size": "0 B",
+                "action_line": "",
+                "loaded": false,
+                "retry": true
+              }
+            ],
+            "ppslots": 0,
+            "noofslots": 1,
+            "last_history_update": 85,
+            "version": "5.1.3"
+          }
+        }
+      }
+    }
+  ]
+}

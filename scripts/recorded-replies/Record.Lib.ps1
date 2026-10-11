@@ -5,6 +5,20 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
 
+# A running log inside the VM (C:\golden\recorded-run.log), so a long run can be watched from outside: the host only gets the
+# result when the run ends. Never holds a login: it is written from the same text Save-State and Add-Missing show.
+function Write-RunLog([string] $Text) {
+    try { Add-Content -LiteralPath 'C:\golden\recorded-run.log' -Value ((Get-Date).ToString('HH:mm:ss') + ' ' + $Text) -Encoding utf8 } catch { }
+}
+
+# The recorder copies and downloads real films, which fill a small VM disk (a run once left it with 0.2 GB free and every client failed
+# with "not enough space"). It checks before each phase, and every phase removes what it made.
+function Assert-FreeSpace([int] $Gigabytes, [string] $Phase) {
+    $free = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+    Write-RunLog "free space on C: $free GB before $Phase"
+    if ($free -lt $Gigabytes) { throw "only $free GB are free on C:, and $Phase needs $Gigabytes GB. Free space in the VM and run it again." }
+}
+
 # What every recorder fills in.
 $script:Recordings = [System.Collections.Generic.List[object]]::new()
 $script:Missing = [System.Collections.Generic.List[string]]::new()
@@ -100,11 +114,12 @@ function Save-State {
     $json = ConvertTo-Json -InputObject $recording -Depth 30 -Compress
     if (Get-Command Remove-KnownSecrets -ErrorAction SilentlyContinue) { $json = Remove-KnownSecrets $json }
     $script:Recordings.Add(($json | ConvertFrom-Json))
-    Write-Host ("recorded {0} {1} {2} ({3} exchange(s))" -f $App, $safeVersion, $State, @($Exchanges).Count)
+    $line = ('recorded {0} {1} {2} ({3} exchange(s))' -f $App, $safeVersion, $State, @($Exchanges).Count)
+    Write-Host $line; Write-RunLog $line
 }
 
 # A state this run could not produce, and what it needs. Listed in the run's summary and in the README of the library.
-function Add-Missing([string] $Text) { $script:Missing.Add($Text); Write-Host "MISSING $Text" -ForegroundColor Yellow }
+function Add-Missing([string] $Text) { $script:Missing.Add($Text); Write-Host "MISSING $Text" -ForegroundColor Yellow; Write-RunLog "MISSING $Text" }
 
 # Polls until the test says the app reached a state, or the time is up. Returns the last value the test saw.
 function Wait-Until {
@@ -124,7 +139,7 @@ function Get-ClosedPortClient([string] $Description) { New-RecordedClient -BaseU
 # The newest torrent the golden feed made (Add-Release.ps1 appends one line to releases.jsonl per release), read as bytes
 # so a client is handed the file itself and needs no address of the feed.
 function Get-FeedTorrent {
-    param([string] $FeedRoot = 'C:\golden\feed', [string] $Title)
+    param([string] $FeedRoot = 'C:\golden\recorded\feed', [string] $Title)
     $lines = @(Get-Content -LiteralPath (Join-Path $FeedRoot 'releases.jsonl') | Where-Object { $_.Trim() })
     $entries = $lines | ForEach-Object { $_ | ConvertFrom-Json }
     $entry = if ($Title) { $entries | Where-Object { $_.title -eq $Title } | Select-Object -Last 1 } else { $entries | Select-Object -Last 1 }
@@ -133,9 +148,9 @@ function Get-FeedTorrent {
 }
 
 function Add-FeedRelease {
-    param([string] $Title, [string] $File, [string] $Folder, [string] $Tracker, [int] $DummyMb = 0, [switch] $DeadTracker, [string] $FeedRoot = 'C:\golden\feed')
+    param([string] $Title, [string] $File, [string] $Folder, [string] $Tracker, [int] $DummyMb = 0, [switch] $DeadTracker, [string] $FeedRoot = 'C:\golden\recorded\feed')
     $adder = Join-Path $FeedRoot 'Add-Release.ps1'
-    if (-not (Test-Path $adder)) { throw "The golden feed is not in the VM ($adder). Run the golden path with the Torznab feed first." }
+    if (-not (Test-Path $adder)) { throw "The torrent-making scripts are not in the VM ($adder); Invoke-RecordTorrentClients puts them there." }
     $arguments = @{ Title = $Title; Root = $FeedRoot }
     if ($Folder) { $arguments.Folder = $Folder } elseif ($File) { $arguments.File = $File } else { $arguments.DummyMb = $DummyMb }
     if ($Tracker) { $arguments.Tracker = $Tracker }

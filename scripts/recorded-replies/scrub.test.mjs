@@ -89,3 +89,12 @@ test('JSON that arrived as text is stored as JSON, except where a number would n
   assert.equal(tidy.exchanges[1].reply.bodyText, '{"size":12345678901234567890}');
   assert.equal(tidy.exchanges[2].reply.bodyText, 'Ok.');
 });
+
+test('a setting listed by name is scrubbed by what the name says, and keys that name a login are scrubbed by part', () => {
+  const out = scrubValue({ result: [{ Name: 'ControlPassword', Value: 'tegbzn' }, { Name: 'MainDir', Value: 'D:/x' }], web_ui_username: 'admin', proxy_password: 'p', locale: 'en' });
+  assert.equal(out.result[0].Value, scrubbedValue);
+  assert.equal(out.result[1].Value, 'D:/x');
+  assert.equal(out.web_ui_username, scrubbedValue);
+  assert.equal(out.proxy_password, scrubbedValue);
+  assert.equal(out.locale, 'en');
+});

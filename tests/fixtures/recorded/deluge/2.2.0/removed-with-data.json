@@ -1,0 +1,92 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "removed-with-data",
+  "recordedAt": "2026-10-11T02:05:17Z",
+  "note": "The finished torrent removed together with its data.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.remove_torrent",
+          "params": [
+            "d8185091144732e990e3595f7db0e4410b1d9424",
+            true
+          ],
+          "id": 51
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": true,
+          "error": null,
+          "id": 51
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "d8185091144732e990e3595f7db0e4410b1d9424"
+              ]
+            }
+          ],
+          "id": 52
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "KeyError: 'd8185091144732e990e3595f7db0e4410b1d9424'",
+            "code": 3
+          },
+          "id": 52
+        }
+      }
+    }
+  ]
+}

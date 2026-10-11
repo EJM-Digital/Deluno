@@ -1,0 +1,90 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "removed-with-data",
+  "recordedAt": "2026-10-11T02:04:17Z",
+  "note": "The finished torrent removed together with its data.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-remove",
+          "arguments": {
+            "ids": [
+              "04d6d32adaa36ddd9877f0734a7027a4a0055042"
+            ],
+            "delete-local-data": true
+          },
+          "tag": 39
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 39
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-get",
+          "arguments": {
+            "fields": [
+              "id",
+              "hashString",
+              "name",
+              "status",
+              "percentDone",
+              "rateDownload",
+              "rateUpload",
+              "error",
+              "errorString",
+              "downloadDir",
+              "totalSize",
+              "leftUntilDone",
+              "peersConnected",
+              "peersSendingToUs",
+              "isStalled",
+              "isFinished",
+              "trackerStats",
+              "files",
+              "addedDate",
+              "downloadedEver",
+              "uploadedEver",
+              "eta",
+              "queuePosition",
+              "labels"
+            ],
+            "ids": [
+              "04d6d32adaa36ddd9877f0734a7027a4a0055042"
+            ]
+          },
+          "tag": 40
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": []
+          },
+          "result": "success",
+          "tag": 40
+        }
+      }
+    }
+  ]
+}

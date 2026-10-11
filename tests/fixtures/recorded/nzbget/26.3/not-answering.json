@@ -1,0 +1,25 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "not-answering",
+  "recordedAt": "2026-10-11T01:59:04Z",
+  "note": "The request sent to a port nothing listens on: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "version",
+          "params": [],
+          "id": 1
+        }
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "No connection could be made because the target machine actively refused it 127.0.0.1:1"
+      }
+    }
+  ]
+}
