@@ -1,0 +1,105 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "paused",
+  "recordedAt": "2026-10-11T02:02:57Z",
+  "note": "The first torrent paused by its hash.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/stop",
+        "bodyText": "hashes=8d878a21c3d4180ae08b4e044904667d9f30bec5"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=8d878a21c3d4180ae08b4e044904667d9f30bec5"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1791684166,
+            "amount_left": 734003200,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "",
+            "comment": "",
+            "completed": 0,
+            "completion_on": -1,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "C:\\Downloads\\Incomplete\\qBittorrent\\Recorded.Stalled.One.qbittorrent",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "C:\\Downloads\\Incomplete\\qBittorrent",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "8d878a21c3d4180ae08b4e044904667d9f30bec5",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "8d878a21c3d4180ae08b4e044904667d9f30bec5",
+            "infohash_v2": "",
+            "last_activity": 1791684166,
+            "magnet_uri": "magnet:?xt=urn:btih:8d878a21c3d4180ae08b4e044904667d9f30bec5&dn=Recorded.Stalled.One.qbittorrent&xl=734003200&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded.Stalled.One.qbittorrent",
+            "num_complete": 0,
+            "num_incomplete": 4,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 0,
+            "pieces_num": 2800,
+            "popularity": 0,
+            "priority": 1,
+            "private": false,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 0,
+            "root_path": "",
+            "save_path": "C:\\golden\\recorded\\qbittorrent\\save",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 734003200,
+            "state": "stoppedDL",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 7,
+            "total_size": 734003200,
+            "total_wasted": 0,
+            "tracker": "http://127.0.0.1:9/announce",
+            "trackers_count": 1,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    }
+  ]
+}

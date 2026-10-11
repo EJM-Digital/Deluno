@@ -1,0 +1,34 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "add-refused",
+  "recordedAt": "2026-10-11T02:04:14Z",
+  "note": "A file that is not a torrent sent to the client to add: it refuses it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-add",
+          "arguments": {
+            "download-dir": "C:\\golden\\recorded\\transmission",
+            "metainfo": "dGhpcyBpcyBub3QgYSB0b3JyZW50"
+          },
+          "tag": 30
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "unrecognized info",
+          "tag": 30
+        }
+      }
+    }
+  ]
+}

@@ -1,15 +1,14 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
 /// <summary>
 /// #1000: SABnzbd's <c>addurl</c> gets the release's own name as
 /// <c>nzbname</c> ("Name of the job, if empty the NZB filename is used"),
-/// distinct from the URL still sent as <c>name</c>.
+/// distinct from the URL still sent as <c>name</c>. SABnzbd's reply is its recorded one (#1237).
 /// </summary>
 public sealed class SabnzbdNzbNameTests
 {
@@ -22,7 +21,7 @@ public sealed class SabnzbdNzbNameTests
         var handler = new StubHandler(request =>
         {
             queries.Add(request.RequestUri!.Query);
-            return Json("{\"status\":true,\"nzo_ids\":[\"SABnzbd_nzo_1\"]}");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
         });
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
@@ -42,7 +41,7 @@ public sealed class SabnzbdNzbNameTests
         var handler = new StubHandler(request =>
         {
             queries.Add(request.RequestUri!.Query);
-            return Json("{\"status\":true,\"nzo_ids\":[\"SABnzbd_nzo_1\"]}");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
         });
 
         await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
@@ -61,9 +60,6 @@ public sealed class SabnzbdNzbNameTests
             MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null, Priority: 1, IsEnabled: true,
             HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
             LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
-
-    private static HttpResponseMessage Json(string body)
-        => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {

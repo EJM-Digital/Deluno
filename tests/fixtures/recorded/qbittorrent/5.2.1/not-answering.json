@@ -1,0 +1,20 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "not-answering",
+  "recordedAt": "2026-10-11T02:03:52Z",
+  "note": "The request sent to a port nothing listens on: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info"
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "No connection could be made because the target machine actively refused it 127.0.0.1:1"
+      }
+    }
+  ]
+}

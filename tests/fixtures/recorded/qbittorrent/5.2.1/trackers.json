@@ -1,0 +1,53 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "trackers",
+  "recordedAt": "2026-10-11T02:03:09Z",
+  "note": "The trackers of a finished torrent.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/trackers?hash=d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 2,
+            "tier": -1,
+            "url": "** [DHT] **"
+          },
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 2,
+            "tier": -1,
+            "url": "** [PeX] **"
+          },
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 2,
+            "tier": -1,
+            "url": "** [LSD] **"
+          }
+        ]
+      }
+    }
+  ]
+}

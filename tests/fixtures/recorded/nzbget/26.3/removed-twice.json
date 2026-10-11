@@ -1,0 +1,37 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "removed-twice",
+  "recordedAt": "2026-10-11T01:56:51Z",
+  "note": "The same removal sent a second time.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "HistoryFinalDelete",
+            "",
+            [
+              26
+            ]
+          ],
+          "id": 38
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 38,
+          "result": false
+        }
+      }
+    }
+  ]
+}

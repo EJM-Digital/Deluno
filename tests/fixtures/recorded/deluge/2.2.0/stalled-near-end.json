@@ -1,0 +1,447 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "stalled-near-end",
+  "recordedAt": "2026-10-11T02:11:34Z",
+  "note": "The seeder stopped when the download was past 97%: it sticks short of 100% with no peer and never finishes.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "c8bd46949c0daee70a4abf5e3096df264b7ac60c"
+              ]
+            }
+          ],
+          "id": 188
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {
+              "c8bd46949c0daee70a4abf5e3096df264b7ac60c": {
+                "seeding_time": 0,
+                "download_payload_rate": 8533,
+                "message": "OK",
+                "move_completed_path": "C:\\Downloads\\Completed",
+                "move_completed": false,
+                "num_peers": 0,
+                "num_seeds": 0,
+                "progress": 97.4031982421875,
+                "remove_at_ratio": false,
+                "save_path": "C:\\golden\\recorded\\swarm\\qbittorrent-deluge\\leech",
+                "state": "Downloading",
+                "stop_at_ratio": false,
+                "stop_ratio": 2,
+                "time_added": 1791684546,
+                "total_done": 561702452,
+                "trackers": [
+                  {
+                    "url": "http://127.0.0.1:18999/announce",
+                    "trackerid": "",
+                    "tier": 0,
+                    "fail_limit": 0,
+                    "source": 1,
+                    "verified": false,
+                    "message": "",
+                    "last_error": {
+                      "value": 0,
+                      "category": ""
+                    },
+                    "next_announce": null,
+                    "min_announce": null,
+                    "scrape_incomplete": 0,
+                    "scrape_complete": 0,
+                    "scrape_downloaded": 0,
+                    "fails": 0,
+                    "updating": false,
+                    "start_sent": false,
+                    "complete_sent": false,
+                    "endpoints": [],
+                    "send_stats": false
+                  }
+                ],
+                "tracker_status": "Announce OK",
+                "upload_payload_rate": 0,
+                "private": false,
+                "total_size": 576677428,
+                "eta": 1754,
+                "queue": 0,
+                "ratio": 0,
+                "name": "Recorded.Swarm.qbittorrent.deluge.mkv",
+                "label": ""
+              }
+            },
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Active",
+                  2
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  1
+                ],
+                [
+                  "Seeding",
+                  1
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "127.0.0.1",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "opentrackr.org",
+                  1
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ],
+                [
+                  "localclient",
+                  2
+                ]
+              ],
+              "label": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "<scrubbed>-movies",
+                  0
+                ],
+                [
+                  "<scrubbed>-tv",
+                  1
+                ],
+                [
+                  "recorded-movies",
+                  0
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "num_connections": 1,
+              "upload_rate": 0,
+              "download_rate": 0,
+              "download_protocol_rate": 0,
+              "upload_protocol_rate": 0,
+              "dht_nodes": 366,
+              "has_incoming_connections": 1,
+              "free_space": 19189252096,
+              "external_ip": null
+            }
+          },
+          "error": null,
+          "id": 188
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {
+              "id": [
+                "c8bd46949c0daee70a4abf5e3096df264b7ac60c"
+              ]
+            }
+          ],
+          "id": 189
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {
+              "c8bd46949c0daee70a4abf5e3096df264b7ac60c": {
+                "seeding_time": 0,
+                "download_payload_rate": 8533,
+                "message": "OK",
+                "move_completed_path": "C:\\Downloads\\Completed",
+                "move_completed": false,
+                "num_peers": 0,
+                "num_seeds": 0,
+                "progress": 97.4031982421875,
+                "remove_at_ratio": false,
+                "save_path": "C:\\golden\\recorded\\swarm\\qbittorrent-deluge\\leech",
+                "state": "Downloading",
+                "stop_at_ratio": false,
+                "stop_ratio": 2,
+                "time_added": 1791684546,
+                "total_done": 561702452,
+                "trackers": [
+                  {
+                    "url": "http://127.0.0.1:18999/announce",
+                    "trackerid": "",
+                    "tier": 0,
+                    "fail_limit": 0,
+                    "source": 1,
+                    "verified": false,
+                    "message": "",
+                    "last_error": {
+                      "value": 0,
+                      "category": ""
+                    },
+                    "next_announce": null,
+                    "min_announce": null,
+                    "scrape_incomplete": 0,
+                    "scrape_complete": 0,
+                    "scrape_downloaded": 0,
+                    "fails": 0,
+                    "updating": false,
+                    "start_sent": false,
+                    "complete_sent": false,
+                    "endpoints": [],
+                    "send_stats": false
+                  }
+                ],
+                "tracker_status": "Announce OK",
+                "upload_payload_rate": 0,
+                "private": false,
+                "total_size": 576677428,
+                "eta": 1754,
+                "queue": 0,
+                "ratio": 0,
+                "name": "Recorded.Swarm.qbittorrent.deluge.mkv",
+                "label": ""
+              }
+            },
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Active",
+                  2
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  1
+                ],
+                [
+                  "Seeding",
+                  1
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "127.0.0.1",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "opentrackr.org",
+                  1
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ],
+                [
+                  "localclient",
+                  2
+                ]
+              ],
+              "label": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  2
+                ],
+                [
+                  "<scrubbed>-movies",
+                  0
+                ],
+                [
+                  "<scrubbed>-tv",
+                  1
+                ],
+                [
+                  "recorded-movies",
+                  0
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "num_connections": 1,
+              "upload_rate": 0,
+              "download_rate": 0,
+              "download_protocol_rate": 0,
+              "upload_protocol_rate": 0,
+              "dht_nodes": 366,
+              "has_incoming_connections": 1,
+              "free_space": 19189252096,
+              "external_ip": null
+            }
+          },
+          "error": null,
+          "id": 189
+        }
+      }
+    }
+  ]
+}

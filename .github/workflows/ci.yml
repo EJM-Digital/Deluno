@@ -167,6 +167,11 @@ jobs:
         shell: pwsh
         run: ./scripts/check-tracked-files.ps1
 
+      - name: No test builds an external app's reply inline, and the recorded-reply scrubber works
+        run: |
+          node scripts/check-recorded-replies.mjs
+          node --test scripts/check-recorded-replies.test.mjs scripts/recorded-replies/scrub.test.mjs
+
       - name: The Windows icon is built from the current logo
         run: node scripts/check-windows-icon.mjs
 

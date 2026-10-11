@@ -1,0 +1,24 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "warnings-cleared",
+  "recordedAt": "2026-10-11T01:53:22Z",
+  "note": "The warnings cleared (SABnzbd's own answer).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=warnings&name=clear&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "status": true
+        }
+      }
+    }
+  ]
+}

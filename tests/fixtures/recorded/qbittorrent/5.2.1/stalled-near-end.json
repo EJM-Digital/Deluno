@@ -1,0 +1,35 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "stalled-near-end",
+  "recordedAt": "2026-10-11T02:17:14Z",
+  "note": "The seeder stopped when the download was past 97%: it sticks short of 100% with no peer and never finishes.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=69ca35bca234b9cb822abc435ddbababf6147591"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "[{\"added_on\":1791684880,\"amount_left\":6923828,\"auto_tmm\":false,\"availability\":0.9869999885559082,\"category\":\"\",\"comment\":\"\",\"completed\":569753600,\"completion_on\":-1,\"connections_count\":0,\"connections_limit\":100,\"content_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\\\\Recorded.Swarm.deluge.qbittorrent.mkv\",\"created_by\":\"\",\"creation_date\":-1,\"dl_limit\":0,\"dlspeed\":9148,\"download_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\",\"downloaded\":569775695,\"downloaded_session\":569775695,\"eta\":3,\"f_l_piece_prio\":false,\"force_start\":false,\"has_metadata\":true,\"hash\":\"69ca35bca234b9cb822abc435ddbababf6147591\",\"inactive_seeding_time_limit\":-2,\"infohash_v1\":\"69ca35bca234b9cb822abc435ddbababf6147591\",\"infohash_v2\":\"\",\"last_activity\":1791685004,\"magnet_uri\":\"magnet:?xt=urn:btih:69ca35bca234b9cb822abc435ddbababf6147591&dn=Recorded.Swarm.deluge.qbittorrent.mkv&xl=576677428&tr=http%3A%2F%2F127.0.0.1%3A18999%2Fannounce\",\"max_inactive_seeding_time\":-1,\"max_ratio\":-1,\"max_seeding_time\":-1,\"name\":\"Recorded.Swarm.deluge.qbittorrent.mkv\",\"num_complete\":1,\"num_incomplete\":0,\"num_leechs\":0,\"num_seeds\":0,\"piece_size\":262144,\"pieces_have\":2172,\"pieces_num\":2200,\"popularity\":0,\"priority\":1,\"private\":false,\"progress\":0.9879935859046662,\"ratio\":0,\"ratio_limit\":-2,\"reannounce\":37,\"root_path\":\"\",\"save_path\":\"C:\\\\golden\\\\recorded\\\\swarm\\\\deluge-qbittorrent\\\\leech\",\"seeding_time\":0,\"seeding_time_limit\":-2,\"seen_complete\":1791685004,\"seq_dl\":false,\"share_limit_action\":\"Default\",\"size\":576677428,\"state\":\"downloading\",\"super_seeding\":false,\"tags\":\"\",\"time_active\":152,\"total_size\":576677428,\"total_wasted\":22095,\"tracker\":\"http://127.0.0.1:18999/announce\",\"trackers_count\":1,\"up_limit\":0,\"uploaded\":0,\"uploaded_session\":0,\"upspeed\":0}]"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=69ca35bca234b9cb822abc435ddbababf6147591"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "[{\"added_on\":1791684880,\"amount_left\":6923828,\"auto_tmm\":false,\"availability\":0.9869999885559082,\"category\":\"\",\"comment\":\"\",\"completed\":569753600,\"completion_on\":-1,\"connections_count\":0,\"connections_limit\":100,\"content_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\\\\Recorded.Swarm.deluge.qbittorrent.mkv\",\"created_by\":\"\",\"creation_date\":-1,\"dl_limit\":0,\"dlspeed\":9148,\"download_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\",\"downloaded\":569775695,\"downloaded_session\":569775695,\"eta\":3,\"f_l_piece_prio\":false,\"force_start\":false,\"has_metadata\":true,\"hash\":\"69ca35bca234b9cb822abc435ddbababf6147591\",\"inactive_seeding_time_limit\":-2,\"infohash_v1\":\"69ca35bca234b9cb822abc435ddbababf6147591\",\"infohash_v2\":\"\",\"last_activity\":1791685004,\"magnet_uri\":\"magnet:?xt=urn:btih:69ca35bca234b9cb822abc435ddbababf6147591&dn=Recorded.Swarm.deluge.qbittorrent.mkv&xl=576677428&tr=http%3A%2F%2F127.0.0.1%3A18999%2Fannounce\",\"max_inactive_seeding_time\":-1,\"max_ratio\":-1,\"max_seeding_time\":-1,\"name\":\"Recorded.Swarm.deluge.qbittorrent.mkv\",\"num_complete\":1,\"num_incomplete\":0,\"num_leechs\":0,\"num_seeds\":0,\"piece_size\":262144,\"pieces_have\":2172,\"pieces_num\":2200,\"popularity\":0,\"priority\":1,\"private\":false,\"progress\":0.9879935859046662,\"ratio\":0,\"ratio_limit\":-2,\"reannounce\":37,\"root_path\":\"\",\"save_path\":\"C:\\\\golden\\\\recorded\\\\swarm\\\\deluge-qbittorrent\\\\leech\",\"seeding_time\":0,\"seeding_time_limit\":-2,\"seen_complete\":1791685004,\"seq_dl\":false,\"share_limit_action\":\"Default\",\"size\":576677428,\"state\":\"downloading\",\"super_seeding\":false,\"tags\":\"\",\"time_active\":152,\"total_size\":576677428,\"total_wasted\":22095,\"tracker\":\"http://127.0.0.1:18999/announce\",\"trackers_count\":1,\"up_limit\":0,\"uploaded\":0,\"uploaded_session\":0,\"upspeed\":0}]"
+      }
+    }
+  ]
+}

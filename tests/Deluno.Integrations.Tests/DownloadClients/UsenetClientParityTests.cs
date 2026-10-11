@@ -4,6 +4,7 @@ using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -29,7 +30,7 @@ public sealed class UsenetClientParityTests
         };
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(_ =>
-            JsonResponse("""{"version":"1.1","result":42}"""), sent)))
+            RecordedReplies.Nzbget("queued").Response("\"append\""), sent)))
             .GrabAsync(NzbGetClient(), request, CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -50,7 +51,7 @@ public sealed class UsenetClientParityTests
         var request = new DownloadClientGrabRequest("Pioneer.One.S01E01.1080p", "https://indexer.invalid/get/1", "tv", "TV", "altHUB");
 
         await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(_ =>
-            JsonResponse("""{"version":"1.1","result":42}"""), sent)))
+            RecordedReplies.Nzbget("queued").Response("\"append\""), sent)))
             .GrabAsync(NzbGetClient(), request, CancellationToken.None);
 
         using var document = JsonDocument.Parse(Assert.Single(sent));
@@ -68,7 +69,7 @@ public sealed class UsenetClientParityTests
         var handler = new StubHandler(request =>
         {
             query = request.RequestUri?.Query;
-            return JsonResponse("""{"status":true,"nzo_ids":["nzo-1"]}""");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
         }, []);
         var request = new DownloadClientGrabRequest(
             "Example.Show.S01E01", "http://indexer.test/download/42", "tv", "tv", "Fixture indexer")
@@ -90,7 +91,7 @@ public sealed class UsenetClientParityTests
         var handler = new StubHandler(request =>
         {
             query = request.RequestUri?.Query;
-            return JsonResponse("""{"status":true,"nzo_ids":["nzo-1"]}""");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
         }, []);
         var request = new DownloadClientGrabRequest(
             "Example.Show.S01E01", "http://indexer.test/download/42", "tv", "tv", "Fixture indexer")
@@ -111,7 +112,7 @@ public sealed class UsenetClientParityTests
         var handler = new StubHandler(request =>
         {
             query = request.RequestUri?.Query;
-            return JsonResponse("""{"status":true,"nzo_ids":["nzo-1"]}""");
+            return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
         }, []);
         var request = new DownloadClientGrabRequest(
             "Example.Show.S01E01", "http://indexer.test/download/42", "tv", "tv", "Fixture indexer");
@@ -159,10 +160,7 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task NzbGet_snapshot_is_degraded_when_free_disk_space_is_low()
     {
-        var handler = new RoutedNzbGetHandler(
-            listgroups: "[]",
-            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500}""",
-            history: "[]");
+        var handler = new RoutedNzbGetHandler(NzbGetList, NzbGetStatus(("result.FreeDiskSpaceMB", 500)), NzbGetHistory, NzbGetVersion);
 
         var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -173,10 +171,7 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task NzbGet_snapshot_stays_healthy_with_plenty_of_disk_space()
     {
-        var handler = new RoutedNzbGetHandler(
-            listgroups: "[]",
-            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500000}""",
-            history: "[]");
+        var handler = new RoutedNzbGetHandler(NzbGetList, NzbGetStatus(("result.FreeDiskSpaceMB", 500000)), NzbGetHistory, NzbGetVersion);
 
         var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -186,9 +181,7 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task Sabnzbd_snapshot_is_degraded_when_free_disk_space_is_low()
     {
-        var handler = new RoutedSabHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"3.2","diskspacetotal1":"500.0"}}""",
-            history: """{"history":{"slots":[]}}""");
+        var handler = new RoutedSabHandler(SabQueue(("queue.diskspace1", "3.2"), ("queue.diskspacetotal1", "500.0")), SabHistory);
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -199,9 +192,7 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task Sabnzbd_snapshot_stays_healthy_with_plenty_of_disk_space()
     {
-        var handler = new RoutedSabHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0"}}""",
-            history: """{"history":{"slots":[]}}""");
+        var handler = new RoutedSabHandler(SabQueue(("queue.diskspace1", "925.3"), ("queue.diskspacetotal1", "2000.0")), SabHistory);
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -213,26 +204,18 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task NzbGet_snapshot_reads_paused_when_downloads_are_paused()
     {
-        var handler = new RoutedNzbGetHandler(
-            listgroups: "[]",
-            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500000,"ServerStandBy":true,"DownloadPaused":true,"PostPaused":false,"ScanPaused":false}""",
-            history: "[]",
-            version: "\"21.1\"");
+        var handler = new RoutedNzbGetHandler(NzbGetList, NzbGetStatus(("result.FreeDiskSpaceMB", 500000), ("result.ServerStandBy", true), ("result.DownloadPaused", true), ("result.PostPaused", false), ("result.ScanPaused", false)), NzbGetHistory, NzbGetVersion);
 
         var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.True(snapshot!.ClientPaused);
-        Assert.Equal("21.1", snapshot.ClientVersion);
+        Assert.Equal(VersionOf(NzbGetVersion), snapshot.ClientVersion);
     }
 
     [Fact]
     public async Task NzbGet_standby_alone_with_nothing_explicitly_paused_is_not_read_as_paused()
     {
-        var handler = new RoutedNzbGetHandler(
-            listgroups: "[]",
-            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500000,"ServerStandBy":true,"DownloadPaused":false,"PostPaused":false,"ScanPaused":false}""",
-            history: "[]",
-            version: "\"21.1\"");
+        var handler = new RoutedNzbGetHandler(NzbGetList, NzbGetStatus(("result.FreeDiskSpaceMB", 500000), ("result.ServerStandBy", true), ("result.DownloadPaused", false), ("result.PostPaused", false), ("result.ScanPaused", false)), NzbGetHistory, NzbGetVersion);
 
         var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -242,24 +225,18 @@ public sealed class UsenetClientParityTests
     [Fact]
     public async Task Sabnzbd_snapshot_reads_paused_and_version()
     {
-        var handler = new RoutedSabHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","paused":true}}""",
-            history: """{"history":{"slots":[]}}""",
-            version: """{"version":"4.3.2"}""");
+        var handler = new RoutedSabHandler(SabQueue(("queue.diskspace1", "925.3"), ("queue.diskspacetotal1", "2000.0"), ("queue.paused", true)), SabHistory, SabVersion);
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.True(snapshot!.ClientPaused);
-        Assert.Equal("4.3.2", snapshot.ClientVersion);
+        Assert.Equal(VersionOf(SabVersion), snapshot.ClientVersion);
     }
 
     [Fact]
     public async Task Sabnzbd_snapshot_is_not_paused_when_the_client_says_so()
     {
-        var handler = new RoutedSabHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","paused":false}}""",
-            history: """{"history":{"slots":[]}}""",
-            version: """{"version":"4.3.2"}""");
+        var handler = new RoutedSabHandler(SabQueue(("queue.diskspace1", "925.3"), ("queue.diskspacetotal1", "2000.0"), ("queue.paused", false)), SabHistory, SabVersion);
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -272,9 +249,9 @@ public sealed class UsenetClientParityTests
     public async Task Sabnzbd_snapshot_reads_have_warnings_and_folds_them_into_health()
     {
         var handler = new RoutedSabWarningsHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","have_warnings":"1"}}""",
-            history: """{"history":{"slots":[]}}""",
-            warnings: """{"warnings":["WARNING: Disk full"]}""");
+            SabQueue(("queue.diskspace1", "925.3"), ("queue.diskspacetotal1", "2000.0"), ("queue.have_warnings", "1")),
+            SabHistory,
+            RecordedReplies.Sabnzbd("settings").Body("mode=warnings", ("warnings", new System.Text.Json.Nodes.JsonArray("WARNING: Disk full"))));
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -287,9 +264,9 @@ public sealed class UsenetClientParityTests
     public async Task Sabnzbd_snapshot_does_not_call_warnings_when_have_warnings_is_zero()
     {
         var handler = new RoutedSabWarningsHandler(
-            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","have_warnings":"0"}}""",
-            history: """{"history":{"slots":[]}}""",
-            warnings: """{"warnings":["should never be fetched"]}""");
+            SabQueue(("queue.diskspace1", "925.3"), ("queue.diskspacetotal1", "2000.0"), ("queue.have_warnings", "0")),
+            SabHistory,
+            RecordedReplies.Sabnzbd("settings").Body("mode=warnings", ("warnings", new System.Text.Json.Nodes.JsonArray("should never be fetched"))));
 
         var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -311,6 +288,16 @@ public sealed class UsenetClientParityTests
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
+
+    // Each client's own replies when it holds nothing (recorded, #1237); a test changes only the value it is about.
+    private static string NzbGetList => RecordedReplies.Nzbget("removed-without-data").Body("listgroups", ("result", new System.Text.Json.Nodes.JsonArray()));
+    private static string NzbGetHistory => RecordedReplies.Nzbget("removed-with-data").Body("\"history\"", ("result", new System.Text.Json.Nodes.JsonArray()));
+    private static string NzbGetStatus(params (string Path, object? Value)[] edits) => RecordedReplies.Nzbget("settings").Body("\"status\"", edits);
+    private static string NzbGetVersion => RecordedReplies.Nzbget("version").Body("version");
+    private static string SabQueue(params (string Path, object? Value)[] edits) => RecordedReplies.Sabnzbd("idle").Body("mode=queue&output", edits);
+    private static string SabHistory => RecordedReplies.Sabnzbd("idle").Body("mode=history&output");
+    private static string SabVersion => RecordedReplies.Sabnzbd("version").Body("mode=version");
+    private static string VersionOf(string body) => System.Text.Json.Nodes.JsonNode.Parse(body)![body.Contains("\"result\"") ? "result" : "version"]!.GetValue<string>();
 
     private static DownloadClientItem NzbGetClient()
         => new("client-1", "NZBGet", "nzbget", "localhost", 6789, "nzbget", "secret", "http://localhost:6789/", false, null,
@@ -338,22 +325,23 @@ public sealed class UsenetClientParityTests
     }
 
     /// <summary>Answers NZBGet's JSON-RPC calls by method name, as a snapshot poll makes four of them.</summary>
-    private sealed class RoutedNzbGetHandler(string listgroups, string status, string history, string version = "\"0.0\"") : HttpMessageHandler
+    private sealed class RoutedNzbGetHandler(string listgroups, string status, string history, string version) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
             var method = document.RootElement.GetProperty("method").GetString();
-            var result = method switch
+            // Each answer is NZBGet's whole recorded reply to that method.
+            var reply = method switch
             {
                 "listgroups" => listgroups,
                 "status" => status,
                 "history" => history,
                 "version" => version,
-                _ => "null"
+                _ => NzbGetVersion
             };
-            return JsonResponse($$"""{"version":"1.1","result":{{result}}}""");
+            return JsonResponse(reply);
         }
     }
 
@@ -366,7 +354,7 @@ public sealed class UsenetClientParityTests
             var body = query.Contains("mode=history", StringComparison.OrdinalIgnoreCase)
                 ? history
                 : query.Contains("mode=version", StringComparison.OrdinalIgnoreCase)
-                    ? version ?? """{"version":""}"""
+                    ? version ?? SabVersion
                     : queue;
             return Task.FromResult(JsonResponse(body));
         }
@@ -381,7 +369,7 @@ public sealed class UsenetClientParityTests
         {
             var query = request.RequestUri?.Query ?? string.Empty;
             if (query.Contains("mode=history", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(JsonResponse(history));
-            if (query.Contains("mode=version", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(JsonResponse("""{"version":""}"""));
+            if (query.Contains("mode=version", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(JsonResponse(SabVersion));
             if (query.Contains("mode=warnings", StringComparison.OrdinalIgnoreCase))
             {
                 WarningsCalled = true;
@@ -400,7 +388,7 @@ public sealed class UsenetClientParityTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             LastQuery = request.RequestUri?.Query;
-            return Task.FromResult(JsonResponse("{}"));
+            return Task.FromResult(RecordedReplies.Sabnzbd("warnings-cleared").Response("name=clear"));
         }
     }
 }
