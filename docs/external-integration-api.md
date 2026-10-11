@@ -702,9 +702,19 @@ A `failed` event may say what the processor did with the file:
 | `disposition` | `held` | The processor kept the original. Deluno records the failure and raises a Queue recovery case. |
 | | `rejected` | The processor deleted the download. Deluno refuses that release, tells the download client to forget it, searches for another copy, and answers `202`. If it cannot identify the release or record the refusal, it answers `409` and has done nothing, so the processor should keep the original. A repeat report for a hand-off already rejected answers `202` with `alreadyHandled: true` and does nothing new. |
 | `sourceRemoved` | `true` / `false` | Whether the file at `sourcePath` is gone. Informational. |
-| `failureClass` | e.g. `preflight`, `guardrail`, `execution` | Recorded with the refusal reason. |
+| `failureClass` | e.g. `preflight`, `guardrail`, `execution`; `source_gone` and `not_taken` are acted on by name (see below) | Recorded with the refusal reason. |
 
 A processor should send `rejected` only when the manifest's `capabilities` include `processor-reject-regrab`.
+
+**`failureClass: "not_taken"` with no `disposition` (the processor did not take the hand-off).** Two connections can share one download folder: two media managers, or two Deluno connections to one processor. While one connection's pass owns a file, the processor refuses a second hand-off for it and reports `status: "failed"`, `failureClass: "not_taken"`, no `disposition` and `sourceRemoved: false`. Nothing is wrong with the release and the processor holds nothing for this hand-off, so Deluno:
+
+- never raises a held recovery case, refuses or blocklists the release, or touches the download;
+- keeps the hand-off waiting to be sent, reading "<processor> is busy with this file for another connection; Deluno will send it again shortly.", and sends it again after 2, then 5, then 10 minutes;
+- after the third send again is refused too, ends it as one problem a person can dismiss, saying another connection keeps taking the file because two connections share one download folder, and what to do (give each its own folder, then send it again);
+- closes it if the download is removed meanwhile, and answers a report for a hand-off already closed without reopening it;
+- settles normally when a send again is accepted and answered, or when the cleaned output appears (`completed`, or the output folder).
+
+Deluno answers `202` with `{ "status": "failed", "handoffId": "…", "willRetry": true, "retryAfterMinutes": 2 }`. After the last try `willRetry` is `false` and `retryAfterMinutes` is `null`. A repeat of a report for a hand-off already waiting to be sent again, or already closed, answers `202` with `alreadyHandled: true` and is not counted as another try.
 
 #### Asking the processor instead of timing it out
 

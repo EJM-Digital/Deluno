@@ -174,6 +174,8 @@ public static class ActivityEventLabels
             ["processing.handoff.closed-imported"] = "Closed a hand-off for a file already imported",
             ["processing.waiting-too-long"] = "The processor never picked a file up",
             ["processing.resubmitted"] = "Sent to the processor again",
+            ["processing.not-taken"] = "Processor busy with the file for another connection, sending again",
+            ["processing.not-taken.gave-up"] = "Another connection keeps taking the file",
             ["processing.source-gone"] = "Download gone before the processor could clean it",
             ["processing.source-gone.settled"] = "Closed a hand-off whose download was gone",
             ["processing.superseded"] = "Hand-off closed, title imported another way",
