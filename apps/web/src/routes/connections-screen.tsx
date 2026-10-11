@@ -200,8 +200,8 @@ function emptyScoreboard(): IndexerScoreboardSnapshot {
   };
 }
 
-async function send(url: string, method: string, body?: unknown, failure = "Request failed.") {
-  const response = await authedFetch(url, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+async function send(url: string, method: string, body?: unknown, failure = "Request failed.", signal?: AbortSignal) {
+  const response = await authedFetch(url, { method, signal, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!response.ok && response.status !== 204) {
     const problem = await readValidationProblem(response.clone()).catch(() => null);
     const detail = problem?.errors ? Object.values(problem.errors).flat()[0] : problem?.title;
@@ -221,8 +221,7 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
 export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm, editing: boolean) {
   return {
     name: form.name.trim(),
-    // A name a person typed is kept; one the screen only read back, or left blank, is worked out from the address.
-    keepName: form.name.trim() !== "" && form.name.trim() !== initial.name.trim(),
+    // A name given is kept, and a blank one is worked out from the address (#1248).
     protocol: form.protocol,
     // Privacy is not sent at all. Deluno branches on none of it, nobody
     // can set it here, and guessing "private" for every hand-added source
@@ -543,6 +542,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // The running connection test, so a Test that never answers can be cancelled (#1248).
+  const testAbort = useRef<AbortController | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [newMapping, setNewMapping] = useState({ remotePath: "", localPath: "" });
@@ -725,10 +726,12 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     const savedAndUnchanged = Boolean(drawer.id) && !dirty;
     setBusy("test:form");
     setTestResult(null);
+    const abort = new AbortController();
+    testAbort.current = abort;
     try {
       const response = savedAndUnchanged
-        ? await send(`${base}/${drawer.id}/test`, "POST", undefined, "Test failed.")
-        : await send(`${base}/test${drawer.id ? `?id=${encodeURIComponent(drawer.id)}` : ""}`, "POST", isIndexer ? indexerPayload() : clientPayload(), "Test failed.");
+        ? await send(`${base}/${drawer.id}/test`, "POST", undefined, "Test failed.", abort.signal)
+        : await send(`${base}/test${drawer.id ? `?id=${encodeURIComponent(drawer.id)}` : ""}`, "POST", isIndexer ? indexerPayload() : clientPayload(), "Test failed.", abort.signal);
       const body = (await response.json()) as { healthStatus?: string; message?: string; lastHealthMessage?: string; failureCategory?: string | null; latencyMs?: number | null; caps?: { categories?: string | null; mediaScope?: string | null } | null };
       setTestResult({ healthStatus: body.healthStatus ?? "unknown", message: body.message ?? body.lastHealthMessage ?? "" });
       // #755: a generic Newznab/Torznab indexer's own t=caps response
@@ -749,10 +752,17 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       }
       if (savedAndUnchanged) revalidator.revalidate();
     } catch (error) {
-      setTestResult({ healthStatus: "unreachable", message: error instanceof Error ? error.message : "Test failed." });
+      setTestResult(abort.signal.aborted
+        ? { healthStatus: "unknown", message: "Test cancelled." }
+        : { healthStatus: "unreachable", message: error instanceof Error ? error.message : "Test failed." });
     } finally {
+      if (testAbort.current === abort) testAbort.current = null;
       setBusy(null);
     }
+  }
+
+  function cancelTest() {
+    testAbort.current?.abort();
   }
 
   // The server switches a new indexer or client on in Library Routing (#1135) unless the drawer's
@@ -1445,10 +1455,17 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             saveLabel={drawer.kind === "routing" ? "Save routing" : drawer.kind === "client" ? (drawer.id ? "Save client" : "Add client") : drawer.kind === "proxy" ? (drawer.id ? "Save proxy" : "Add proxy") : drawer.kind === "indexer" && drawer.id ? "Save indexer" : "Add indexer"}
             onCancel={requestClose}
             extraAction={drawer.kind === "indexer" || drawer.kind === "client" ? (
-              <Button type="button" variant="outline" onClick={() => void testForm()} disabled={busy !== null}>
-                {busy === "test:form" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
-                Test
-              </Button>
+              busy === "test:form" ? (
+                <Button type="button" variant="outline" onClick={cancelTest}>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cancel test
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={() => void testForm()} disabled={busy !== null}>
+                  <Wifi className="h-4 w-4" />
+                  Test
+                </Button>
+              )
             ) : undefined}
             saveEnabled={creating ? true : undefined}
             disabled={busy !== null}

@@ -171,17 +171,21 @@ export function DrawerFacts({ items }: { items: Array<{ label: React.ReactNode; 
 export function DrawerDanger({
   title,
   description,
-  action
+  action,
+  unavailableReason
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
   action: React.ReactNode;
+  /** Why the action cannot be used right now; said beside it so a dimmed button is never silent (#1248). */
+  unavailableReason?: string | null;
 }) {
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-(--grid-gap) rounded-[10px] border border-destructive/30 px-(--field-pad-x) py-2">
       <div className="min-w-0">
         <p className="text-(length:--type-body-sm) font-medium text-foreground">{title}</p>
         {description ? <p className="mt-0.5 text-(length:--type-caption) text-muted-foreground">{description}</p> : null}
+        {unavailableReason ? <p role="status" className="mt-0.5 text-(length:--type-caption) text-muted-foreground">{unavailableReason}</p> : null}
       </div>
       {action}
     </div>

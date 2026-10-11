@@ -21,7 +21,7 @@ async function listIndexers(page: Page) {
   return await response.json() as { id: string; name: string }[];
 }
 
-/** Adds an indexer through the API and returns the name the server gave it (it names an address after its host, and a tracker after its definition). */
+/** Adds an indexer through the API. The name given is the name it keeps (#1248), for every kind. */
 async function create(page: Page, kind: Kind, name: string) {
   const before = new Set((await listIndexers(page)).map((item) => item.id));
   const common = { name, privacy: "public", priority: 10, categories: "2000,5000", tags: "", mediaScope: "both", isEnabled: false };
@@ -37,6 +37,7 @@ async function create(page: Page, kind: Kind, name: string) {
   expect(response.ok(), `POST /api/indexers (${kind}) answered ${response.status()}: ${await response.text()}`).toBe(true);
   const made = (await listIndexers(page)).find((item) => !before.has(item.id));
   expect(made, "the new indexer is not in the list").toBeTruthy();
+  expect(made!.name, `a ${kind} indexer keeps the name it is given`).toBe(name);
   return made!;
 }
 
@@ -94,16 +95,50 @@ test("Remove stays dimmed while the drawer's own Test is still running, and work
 
     const remove = drawer.getByRole("button", { name: "Remove…" });
     await expect(remove).toBeDisabled();
+    // #1248: it says why, and the hung Test can be cancelled.
+    await expect(drawer.getByText("Waiting for the connection test to finish")).toBeVisible();
     await remove.click({ force: true });
     await expect(page.getByRole("dialog", { name: /^Remove / })).toHaveCount(0);
 
     release();
     await expect(remove).toBeEnabled();
+    await expect(drawer.getByText("Waiting for the connection test to finish")).toHaveCount(0);
     await remove.click();
     await page.getByRole("dialog", { name: /^Remove / }).getByRole("button", { name: "Remove indexer" }).click();
     await expect(page.getByRole("row").filter({ hasText: made.name })).toHaveCount(0);
   } finally {
     release();
+    for (const item of (await listIndexers(page)).filter((candidate) => candidate.id === made.id)) {
+      await page.request.delete(`/api/indexers/${item.id}`, { headers: await headers(page) }).catch(() => undefined);
+    }
+  }
+});
+
+test("a Test that never answers can be cancelled, and Remove is available again at once (#1248)", async ({ page }) => {
+  test.setTimeout(90_000);
+  await authenticateAndNavigate(page, "/indexers/indexers");
+  const made = await create(page, "torznab", `Removal-hung-${Date.now()}`);
+  // The request is never answered: only cancelling it ends the Test.
+  await page.route(/\/api\/indexers\/[^/]+\/test$/, () => new Promise(() => undefined));
+  try {
+    await page.goto("/indexers/indexers");
+    await page.getByRole("row").filter({ hasText: made.name }).first().click();
+    const drawer = page.getByRole("dialog", { name: made.name });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole("button", { name: "Test", exact: true }).click();
+
+    const remove = drawer.getByRole("button", { name: "Remove…" });
+    await expect(remove).toBeDisabled();
+    await expect(drawer.getByText("Waiting for the connection test to finish")).toBeVisible();
+    await drawer.getByRole("button", { name: "Cancel test" }).click();
+
+    await expect(remove).toBeEnabled();
+    await expect(drawer.getByText("Test cancelled.")).toBeVisible();
+    await remove.click();
+    await page.getByRole("dialog", { name: /^Remove / }).getByRole("button", { name: "Remove indexer" }).click();
+    await expect(page.getByRole("row").filter({ hasText: made.name })).toHaveCount(0);
+  } finally {
+    await page.unroute(/\/api\/indexers\/[^/]+\/test$/);
     for (const item of (await listIndexers(page)).filter((candidate) => candidate.id === made.id)) {
       await page.request.delete(`/api/indexers/${item.id}`, { headers: await headers(page) }).catch(() => undefined);
     }

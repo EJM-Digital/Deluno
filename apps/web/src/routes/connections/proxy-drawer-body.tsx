@@ -1,4 +1,5 @@
 import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
+import { removeUnavailableReason } from "./busy-reason";
 import type { ProxyItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { DrawerDanger, DrawerSection } from "../../components/ui/drawer";
@@ -77,6 +78,7 @@ export function ProxyDrawerBody({
       {editing ? (
         <DrawerSection>
           <DrawerDanger
+            unavailableReason={removeUnavailableReason(busy)}
             title="Remove this proxy"
             description="Indexers assigned to it go back to a direct connection."
             action={<Button type="button" variant="destructive" size="sm" onClick={onRemove} disabled={busy !== null}>Remove…</Button>}

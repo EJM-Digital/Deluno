@@ -81,6 +81,4 @@ public sealed record UpdateIndexerRequest(
     // The configured proxy (#748) this indexer's requests go through. Null
     // means "leave as is"; ClearProxy drops back to a direct connection.
     string? ProxyId = null,
-    bool? ClearProxy = null,
-    // Name was typed by a person and is kept (see CreateIndexerRequest.KeepName).
-    bool KeepName = false);
+    bool? ClearProxy = null);
