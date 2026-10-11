@@ -1,0 +1,47 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "unknown-id",
+  "recordedAt": "2026-10-11T02:04:04Z",
+  "note": "A removal of a hash the client never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "bodyText": "{\"method\":\"torrent-remove\",\"arguments\":{\"ids\":[\"0000000000000000000000000000000000000000\"],\"delete-local-data\":false},\"tag\":18}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 18
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "bodyText": "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"id\",\"hashString\",\"name\",\"status\",\"percentDone\",\"rateDownload\",\"rateUpload\",\"error\",\"errorString\",\"downloadDir\",\"totalSize\",\"leftUntilDone\",\"peersConnected\",\"peersSendingToUs\",\"isStalled\",\"isFinished\",\"trackerStats\",\"files\",\"addedDate\",\"downloadedEver\",\"uploadedEver\",\"eta\",\"queuePosition\",\"labels\"],\"ids\":[\"0000000000000000000000000000000000000000\"]},\"tag\":19}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": []
+          },
+          "result": "success",
+          "tag": 19
+        }
+      }
+    }
+  ]
+}

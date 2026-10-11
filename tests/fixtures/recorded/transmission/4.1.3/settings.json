@@ -1,0 +1,150 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "settings",
+  "recordedAt": "2026-10-11T02:04:14Z",
+  "note": "The session settings and the free space of the download folder, as Deluno reads them.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "session-get",
+          "arguments": {},
+          "tag": 31
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "alt-speed-down": 50,
+            "alt-speed-enabled": false,
+            "alt-speed-time-begin": 540,
+            "alt-speed-time-day": 127,
+            "alt-speed-time-enabled": false,
+            "alt-speed-time-end": 1020,
+            "alt-speed-up": 50,
+            "anti-brute-force-enabled": false,
+            "anti-brute-force-threshold": 100,
+            "blocklist-enabled": false,
+            "blocklist-size": 0,
+            "blocklist-url": "http://www.example.com/blocklist",
+            "cache-size-mb": 4,
+            "config-dir": "C:\\Users\\<user>\\AppData\\Local\\DelunoData\\components\\transmission",
+            "default-trackers": "",
+            "dht-enabled": true,
+            "download-dir": "C:\\Downloads\\Completed",
+            "download-dir-free-space": 20316827648,
+            "download-queue-enabled": true,
+            "download-queue-size": 5,
+            "encryption": "preferred",
+            "idle-seeding-limit": 30,
+            "idle-seeding-limit-enabled": false,
+            "incomplete-dir": "C:\\Downloads\\Incomplete\\Transmission",
+            "incomplete-dir-enabled": true,
+            "lpd-enabled": true,
+            "peer-limit-global": 200,
+            "peer-limit-per-torrent": 50,
+            "peer-port": 51414,
+            "peer-port-random-on-start": false,
+            "pex-enabled": true,
+            "port-forwarding-enabled": true,
+            "preferred_transports": [
+              "utp",
+              "tcp"
+            ],
+            "queue-stalled-enabled": true,
+            "queue-stalled-minutes": 30,
+            "rename-partial-files": true,
+            "reqq": 2000,
+            "rpc-version": 19,
+            "rpc-version-minimum": 14,
+            "rpc-version-semver": "6.0.1",
+            "script-torrent-added-enabled": false,
+            "script-torrent-added-filename": "",
+            "script-torrent-done-enabled": false,
+            "script-torrent-done-filename": "",
+            "script-torrent-done-seeding-enabled": false,
+            "script-torrent-done-seeding-filename": "",
+            "seed-queue-enabled": false,
+            "seed-queue-size": 10,
+            "seedRatioLimit": 2,
+            "seedRatioLimited": false,
+            "sequential_download": false,
+            "session-id": "<scrubbed>",
+            "speed-limit-down": 100,
+            "speed-limit-down-enabled": false,
+            "speed-limit-up": 100,
+            "speed-limit-up-enabled": false,
+            "start-added-torrents": true,
+            "tcp-enabled": true,
+            "trash-original-torrent-files": false,
+            "units": {
+              "memory-bytes": 1024,
+              "memory-units": [
+                "B",
+                "KiB",
+                "MiB",
+                "GiB",
+                "TiB"
+              ],
+              "size-bytes": 1000,
+              "size-units": [
+                "B",
+                "kB",
+                "MB",
+                "GB",
+                "TB"
+              ],
+              "speed-bytes": 1000,
+              "speed-units": [
+                "B/s",
+                "kB/s",
+                "MB/s",
+                "GB/s",
+                "TB/s"
+              ]
+            },
+            "utp-enabled": true,
+            "version": "4.1.3 (838877323f)"
+          },
+          "result": "success",
+          "tag": 31
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "free-space",
+          "arguments": {
+            "path": "C:\\golden\\recorded\\transmission"
+          },
+          "tag": 32
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "path": "C:\\golden\\recorded\\transmission",
+            "size-bytes": 20316827648,
+            "total_size": 106098061312
+          },
+          "result": "success",
+          "tag": 32
+        }
+      }
+    }
+  ]
+}

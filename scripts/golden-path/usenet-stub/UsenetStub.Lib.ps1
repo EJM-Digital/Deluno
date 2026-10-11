@@ -153,6 +153,18 @@ namespace Golden
             }
         }
 
+        private bool IsHung(string id)
+        {
+            try
+            {
+                string path = Path.Combine(Root, "hang.txt");
+                if (!File.Exists(path)) { return false; }
+                foreach (string line in File.ReadAllLines(path)) { if (line.Trim() == id) { return true; } }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
         private static string SafeId(string raw)
         {
             if (raw == null) { return null; }
@@ -200,6 +212,9 @@ namespace Golden
                             string id = SafeId(arg);
                             if (id != null && IsListed(HangFile, id)) { Thread.Sleep(Timeout.Infinite); }
                             if (ArticleDelayMs > 0 && id != null && cmd != "STAT" && IsListed(SlowFile, id)) { Thread.Sleep(ArticleDelayMs); }
+                            // An article named in <Root>\hang.txt is never answered, as a news server that stalls on one article does:
+                            // a download sticks just short of the end (the rc.30.19 "Stuckfilm" case).
+                            if (id != null && IsHung(id)) { while (!stopping) { Thread.Sleep(1000); } return; }
                             string file = id == null ? null : Path.Combine(Path.Combine(Root, "articles"), id + ".art");
                             if (file == null || !File.Exists(file))
                             {

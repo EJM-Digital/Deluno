@@ -1,0 +1,93 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "unknown-id",
+  "recordedAt": "2026-10-11T01:56:09Z",
+  "note": "A removal, a pause and a move to the top for a job id NZBGet never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupFinalDelete",
+            "",
+            [
+              999999
+            ]
+          ],
+          "id": 14
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 14,
+          "result": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupPause",
+            "",
+            [
+              999999
+            ]
+          ],
+          "id": 15
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 15,
+          "result": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupMoveTop",
+            "",
+            [
+              999999
+            ]
+          ],
+          "id": 16
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 16,
+          "result": false
+        }
+      }
+    }
+  ]
+}

@@ -247,7 +247,9 @@ $workflowChecks = @(
     @{ Label = "release workflow publishes only from its publish job, and ci-passed judges every CI job"; Args = @("scripts/check-release-workflow-gates.mjs") },
     @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs", "scripts/verify-golden-path-for-release.test.mjs", "scripts/tag-release.test.mjs", "scripts/check-release-workflow-gates.test.mjs") },
     @{ Label = "the installer's pinned download clients agree across the pin files, and the stale-pin check works"; Args = @("--test", "scripts/check-component-pins.test.mjs") },
-    @{ Label = "the installer's pin files name the same versions and checksums"; Args = @("scripts/check-component-pins.mjs", "--offline") }
+    @{ Label = "the installer's pin files name the same versions and checksums"; Args = @("scripts/check-component-pins.mjs", "--offline") },
+    @{ Label = "no test builds an external app's reply inline instead of loading a recording (#1237)"; Args = @("scripts/check-recorded-replies.mjs") },
+    @{ Label = "the recorded-reply rule and scrubber work"; Args = @("--test", "scripts/check-recorded-replies.test.mjs", "scripts/recorded-replies/scrub.test.mjs") }
 )
 foreach ($check in $workflowChecks) {
     $result = Invoke-LoggedCommand -FilePath $nodePath -Arguments $check.Args

@@ -1,0 +1,31 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "version",
+  "recordedAt": "2026-10-11T02:04:51Z",
+  "note": "The client's own version call.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "daemon.get_version",
+          "params": [],
+          "id": 5
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": "2.2.0",
+          "error": null,
+          "id": 5
+        }
+      }
+    }
+  ]
+}

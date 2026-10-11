@@ -1,0 +1,37 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "label-unknown",
+  "recordedAt": "2026-10-11T02:05:14Z",
+  "note": "A move to a label that does not exist.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.set_torrent",
+          "params": [
+            "d8185091144732e990e3595f7db0e4410b1d9424",
+            "does-not-exist"
+          ],
+          "id": 43
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Failure: [Failure instance: Traceback (failure with no frames): <class 'deluge.error.WrappedException'>: Unknown Label\nTraceback (most recent call last):\n  File \"deluge\\core\\rpcserver.py\", line 342, in dispatch\n  File \"c:\\program files\\deluge\\_internal\\deluge\\plugins\\label-0.3-py3.9.egg\\deluge_label\\core.py\", line 318, in set_torrent\n    check_input((not label_id) or (label_id in self.labels), _('Unknown Label'))\n  File \"c:\\program files\\deluge\\_internal\\deluge\\plugins\\label-0.3-py3.9.egg\\deluge_label\\core.py\", line 66, in check_input\n    raise Exception(message)\nException: Unknown Label\n\n]",
+            "code": 4
+          },
+          "id": 43
+        }
+      }
+    }
+  ]
+}

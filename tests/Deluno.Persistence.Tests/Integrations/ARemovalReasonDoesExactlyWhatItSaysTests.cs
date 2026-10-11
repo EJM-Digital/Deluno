@@ -18,6 +18,7 @@ using Deluno.Recovery.Services;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -748,7 +749,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
             if (path.Contains("api/v2/", StringComparison.OrdinalIgnoreCase))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+                return path.Contains("auth/login", StringComparison.OrdinalIgnoreCase)
+                    ? RecordedReplies.Qbittorrent("sign-in").Response("auth/login")
+                    : RecordedReplies.Qbittorrent("removed-with-data").Response("torrents/delete");
             }
 
             if (body.Contains("<methodCall>", StringComparison.Ordinal))
@@ -765,25 +768,30 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             var removed = Requests.Count > 0;
             if (path.Contains("mode=queue", StringComparison.OrdinalIgnoreCase) && isList)
             {
-                return Json(removed ? "{\"queue\":{\"slots\":[]}}" : "{\"queue\":{\"slots\":[{\"nzo_id\":\"queue-item-1\",\"filename\":\"x\"}]}}");
+                // SABnzbd's own queue reply (recorded, #1237): with a job in it until the delete went out, then empty.
+                return Json(removed
+                    ? RecordedReplies.Sabnzbd("removed-without-data").Body("mode=queue&output", ("queue.slots", new System.Text.Json.Nodes.JsonArray()))
+                    : RecordedReplies.Sabnzbd("downloading").Body("mode=queue&output", ("^queue.slots", 1), ("queue.slots.0.nzo_id", "queue-item-1")));
             }
 
             if (path.Contains("mode=history", StringComparison.OrdinalIgnoreCase) && isList)
             {
-                return Json("{\"history\":{\"slots\":[]}}");
+                return Json(RecordedReplies.Sabnzbd("removed-with-data").Body("mode=history&output", ("history.slots", new System.Text.Json.Nodes.JsonArray())));
             }
 
             if (body.Contains("\"method\":\"history\"", StringComparison.OrdinalIgnoreCase))
             {
-                return Json("{\"result\":[]}");
+                return Json(RecordedReplies.Nzbget("removed-with-data").Body("\"history\"", ("result", new System.Text.Json.Nodes.JsonArray())));
             }
 
             if (body.Contains("\"listgroups\"", StringComparison.Ordinal))
             {
-                return Json(removed ? "{\"result\":[]}" : "{\"result\":[{\"NZBID\":42,\"NZBName\":\"x\"}]}");
+                return Json(removed
+                    ? RecordedReplies.Nzbget("removed-without-data").Body("listgroups", ("result", new System.Text.Json.Nodes.JsonArray()))
+                    : RecordedReplies.Nzbget("queued").Body("listgroups", ("^result", 1), ("result.0.NZBID", 42)));
             }
 
-            return Json("{\"status\":true,\"result\":true}");
+            return RecordedReplies.Json("{\"status\":true,\"result\":true}");
         }
 
         private static HttpResponseMessage Json(string content)

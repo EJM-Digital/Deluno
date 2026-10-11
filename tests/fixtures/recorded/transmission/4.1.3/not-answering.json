@@ -1,0 +1,25 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "not-answering",
+  "recordedAt": "2026-10-11T02:04:51Z",
+  "note": "The request sent to a port nothing listens on: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "session-get",
+          "arguments": {},
+          "tag": 1
+        }
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "No connection could be made because the target machine actively refused it 127.0.0.1:1"
+      }
+    }
+  ]
+}

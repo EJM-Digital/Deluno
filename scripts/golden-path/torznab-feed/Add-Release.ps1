@@ -13,6 +13,7 @@
 .PARAMETER File    A local file to make the torrent over.
 .PARAMETER Folder A local folder to make a multi-file torrent over (the release downloads into its own folder).
 .PARAMETER DummyMb A size in MB for a torrent with no data.
+.PARAMETER Tracker A tracker address to put in the torrent (the local tracker of scripts/recorded-replies).
 .PARAMETER DeadTracker With -File: name a tracker that does not answer, as a real swarm that is down would (a complete torrent must still be handed off, #1183).
 .PARAMETER Root    Where the feed keeps its files. Defaults to C:\golden\feed in the VM.
 #>
@@ -23,6 +24,7 @@ param(
     [int] $Seeders = 50,
     [string] $File,
     [string] $Folder,
+    [string] $Tracker,
     [int] $DummyMb = 0,
     [switch] $DeadTracker,
     [string] $TorrentName,
@@ -34,8 +36,8 @@ $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $out = "$Root\torrents\$id.torrent"
 $maker = Join-Path $PSScriptRoot 'Make-Torrent.ps1'
 if (-not (Test-Path $maker)) { $maker = "$Root\Make-Torrent.ps1" }
-if ($Folder) { $info = & $maker -Folder $Folder -Out $out -DeadTracker:$DeadTracker }
-elseif ($File) { $info = & $maker -File $File -Out $out -DeadTracker:$DeadTracker }
+if ($Folder) { $info = & $maker -Folder $Folder -Out $out -DeadTracker:$DeadTracker -Tracker $Tracker }
+elseif ($File) { $info = & $maker -File $File -Out $out -DeadTracker:$DeadTracker -Tracker $Tracker }
 else { $info = & $maker -Dummy -Length ([long]$DummyMb * 1MB) -Name $(if ($TorrentName) { $TorrentName } else { $Title }) -Out $out }
 $i = $info | ConvertFrom-Json
 $line = [pscustomobject]@{ title = $Title; cat = $Cat; seeders = $Seeders; size = $i.size; infohash = $i.infohash; torrent = "$id.torrent" } | ConvertTo-Json -Compress

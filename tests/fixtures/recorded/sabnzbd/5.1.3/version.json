@@ -1,0 +1,24 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "version",
+  "recordedAt": "2026-10-11T01:53:18Z",
+  "note": "mode=version",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=version&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "version": "5.1.3"
+        }
+      }
+    }
+  ]
+}

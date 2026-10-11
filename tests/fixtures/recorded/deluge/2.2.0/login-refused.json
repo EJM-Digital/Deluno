@@ -1,0 +1,33 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "login-refused",
+  "recordedAt": "2026-10-11T02:02:46Z",
+  "note": "auth.login with a wrong password.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "auth.login",
+          "params": [
+            "not-the-password"
+          ],
+          "id": 1
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": false,
+          "error": null,
+          "id": 1
+        }
+      }
+    }
+  ]
+}

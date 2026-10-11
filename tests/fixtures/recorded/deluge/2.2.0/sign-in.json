@@ -1,0 +1,55 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "sign-in",
+  "recordedAt": "2026-10-11T02:02:46Z",
+  "note": "auth.login and web.connected (the session cookie is removed from the recording).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "auth.login",
+          "params": [
+            "deluge"
+          ],
+          "id": 2
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": true,
+          "error": null,
+          "id": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.connected",
+          "params": [],
+          "id": 3
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": true,
+          "error": null,
+          "id": 3
+        }
+      }
+    }
+  ]
+}
