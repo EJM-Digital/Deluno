@@ -155,3 +155,29 @@ function Set-HealthRules {
         Invoke-Deluno -Method PUT -Path "/api/download-health/rules/$($base.id)" -Body $body | Out-Null
     }
 }
+
+# After the last scenario: leave Deluno and Weir up, and hand Weir's own scenario suite (Weir #954, which runs next in this VM) an API
+# key for Deluno. Deluno keeps only a key's hash, so the key can only be made here, with the suite's in-VM login, over Deluno's own
+# API: scopes read and imports. It goes to one file, one line, the key and nothing else. The key is registered as a secret first, so
+# nothing the suite writes (log, results, evidence, the collected logs) can hold it, and it is never printed or copied out of the VM;
+# Weir's suite reads the file over PowerShell Direct and deletes it.
+function Publish-WeirScenarioKey {
+    param([string] $Path = 'C:\golden\deluno-weir-scenario-key.txt')
+    # Both apps up, as the next suite expects.
+    $up = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { (Try-Deluno -Path '/api/auth/bootstrap-status' -TimeoutSec 5).Status -eq 200 }
+    if (-not $up.Ok) { throw 'Deluno is not answering, so no key could be made for Weir''s suite.' }
+    if (-not (Test-WeirAnswering)) {
+        Start-WeirApp
+        $w = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Test-WeirAnswering }
+        if (-not $w.Ok) { throw 'Weir is not answering and did not start again.' }
+    }
+    Connect-Deluno
+    $created = Invoke-Deluno -Method POST -Path '/api/api-keys' -Body @{ name = 'Weir scenario suite'; scopes = 'read,imports' }
+    $key = [string]$created.apiKey
+    if (-not $key) { throw 'Deluno did not return an API key.' }
+    # Mask first: from here on the key can appear in no line the suite writes.
+    $script:S.Secrets['weir-scenario-key'] = $key
+    ($script:S.Secrets | ConvertTo-Json) | Set-Content -Path $script:S.SecretFile -Encoding ascii
+    [IO.File]::WriteAllText($Path, $key + "`n", (New-Object Text.UTF8Encoding($false)))
+    Write-SuiteLog "A Deluno API key with scopes read,imports was written to $Path for Weir's suite (not shown)."
+}
