@@ -265,6 +265,37 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp(client);
 
+        // #1252: a removal is done only when rTorrent had the download before and no longer has it after (#1212).
+        if (DownloadClientActions.RemovesTheDownload(action))
+        {
+            return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "rTorrent",
+                async () =>
+                {
+                    try
+                    {
+                        await SendAsync(http, baseUri, "d.name", [queueItemId], cancellationToken);
+                        return ClientHas.Yes;
+                    }
+                    catch (RtorrentFaultException)
+                    {
+                        // rTorrent answers a hash it does not hold with a fault.
+                        return ClientHas.No;
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                    {
+                        return ClientHas.Unknown;
+                    }
+                },
+                () => RemoveAsync(client, http, baseUri, action, queueItemId, cancellationToken),
+                ClientRemovalGuard.TorrentSettleWindow, ClientRemovalGuard.TorrentSettlePoll, cancellationToken);
+        }
+
+        return await RemoveAsync(client, http, baseUri, action, queueItemId, cancellationToken);
+    }
+
+    private static async Task<DownloadClientActionResult> RemoveAsync(
+        DownloadClientItem client, HttpClient http, Uri baseUri, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         if (action == DownloadClientActions.DeleteWithData)
         {
             return await DeleteWithDataAsync(client, http, baseUri, queueItemId, cancellationToken);

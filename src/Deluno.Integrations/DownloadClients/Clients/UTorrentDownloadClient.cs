@@ -225,18 +225,46 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(8));
         var token = await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
-        using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action={verb}&hash={Uri.EscapeDataString(queueItemId)}", cancellationToken);
-        if (response.IsSuccessStatusCode)
+
+        async Task<DownloadClientActionResult> Send()
         {
-            return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "uTorrent action sent.");
+            using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action={verb}&hash={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "uTorrent action sent.");
+            }
+
+            return DownloadClientHelpers.ActionFailure(
+                client,
+                queueItemId,
+                action,
+                $"uTorrent returned {(int)response.StatusCode}.",
+                response.StatusCode);
         }
 
-        return DownloadClientHelpers.ActionFailure(
-            client,
-            queueItemId,
-            action,
-            $"uTorrent returned {(int)response.StatusCode}.",
-            response.StatusCode);
+        // #1252: a removal is done only when uTorrent had the torrent before and no longer has it after (#1212).
+        if (!DownloadClientActions.RemovesTheDownload(action))
+        {
+            return await Send();
+        }
+
+        return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "uTorrent",
+            async () =>
+            {
+                try
+                {
+                    var payload = await http.GetFromJsonAsync<UTorrentListResponse>($"gui/?token={Uri.EscapeDataString(token)}&list=1", cancellationToken);
+                    if (payload?.Torrents is null) return ClientHas.Unknown;
+                    return payload.Torrents.Any(item => item.Count > 0 && string.Equals(AsString(item[0]), queueItemId, StringComparison.OrdinalIgnoreCase))
+                        ? ClientHas.Yes
+                        : ClientHas.No;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+                {
+                    return ClientHas.Unknown;
+                }
+            },
+            Send, ClientRemovalGuard.TorrentSettleWindow, ClientRemovalGuard.TorrentSettlePoll, cancellationToken);
     }
 
     /// <summary>

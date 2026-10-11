@@ -265,6 +265,39 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
+
+        // #1252: a removal is done only when Deluge had the torrent before and no longer has it after (#1212).
+        if (DownloadClientActions.RemovesTheDownload(action))
+        {
+            return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "Deluge",
+                async () =>
+                {
+                    try
+                    {
+                        var listing = new DelugeRequest("web.update_ui", [new[] { "name" }, new Dictionary<string, object> { ["id"] = new[] { queueItemId } }], 2);
+                        var found = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, new Uri(baseUri, "json"), listing, cancellationToken);
+                        // Deluge answers a filter on an id it lacks with a KeyError (recorded, Deluge 2.2.0); any other error is not an answer.
+                        if (found?.Error is { } problem)
+                        {
+                            return problem.Message?.StartsWith("KeyError", StringComparison.Ordinal) == true ? ClientHas.No : ClientHas.Unknown;
+                        }
+
+                        return found?.Result?.Torrents is { } torrents
+                            ? torrents.ContainsKey(queueItemId) ? ClientHas.Yes : ClientHas.No
+                            : ClientHas.No;
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                    {
+                        return ClientHas.Unknown;
+                    }
+                },
+                () => RemoveAsync(), ClientRemovalGuard.TorrentSettleWindow, ClientRemovalGuard.TorrentSettlePoll, cancellationToken);
+        }
+
+        return await RemoveAsync();
+
+        async Task<DownloadClientActionResult> RemoveAsync()
+        {
         // core.remove_torrent takes one torrent id, not a list: a list is
         // refused with an error Deluno used to ignore, so a "removed" download
         // stayed in Deluge (#1148). The others take the list form.
@@ -290,6 +323,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         }
 
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Deluge action sent.");
+        }
     }
 
     /// <summary>
