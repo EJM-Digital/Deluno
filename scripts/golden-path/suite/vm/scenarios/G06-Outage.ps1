@@ -122,21 +122,27 @@ function Invoke-GroupOutage {
             finally { Restore-WeirAfterOutage }
         }
         Invoke-Scenario -Id 'outage.inflight' -Title 'Weir quits with a hand-off in flight: the same places go amber and come back, and the hand-off ends clearly' -Body {
-            # A big film keeps Weir busy long enough to quit it mid-way.
+            # A hand-off is in flight while Weir holds it unfinished. A film is cleaned in seconds (rc.30.22: the hand-off was
+            # sent, cleaned and imported inside 20 s, before the check looked), so Weir is paused: it takes the hand-off and
+            # keeps it, and is quit with it held.
             $film = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Size 'big' -Label 'outage'
-            Send-Film -Film $film -Kind 'qbittorrent' | Out-Null
-            Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
-            $w = Wait-Until -TimeoutSec 120 -IntervalSec 0.3 -Condition {
-                $h = Get-FilmHandoff -Film $film
-                if ($h -and "$($h.processor.state)" -match 'process|running|analys|clean|start|work|queue|wait') { $h } else { $null }
-            }
-            Add-Check 'A hand-off is in flight when Weir quits' $w.Ok $(if ($w.Ok) { "processor said '$($w.Value.processor.state)'" } else { 'the hand-off never reached Weir' })
-            if (-not $w.Ok) { return }
+            Set-WeirPause -Paused $true
             try {
-                Invoke-OutageOnce -Label 'inflight' | Out-Null
-                Complete-Outage -Label 'inflight'
+                Send-Film -Film $film -Kind 'qbittorrent' | Out-Null
+                Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
+                $w = Wait-Until -TimeoutSec 180 -IntervalSec 1 -Condition {
+                    $h = Get-FilmHandoff -Film $film
+                    if ($h -and $h.status -in 'waiting', 'submitted', 'accepted', 'started') { $h } else { $null }
+                }
+                Add-Check 'A hand-off is in flight when Weir quits' $w.Ok $(if ($w.Ok) { "status $($w.Value.status), processor said '$($w.Value.processor.state)'" } else { $h = Get-FilmHandoff -Film $film; if ($h) { Save-Evidence -Name 'outage-inflight-handoff.json' -Text ($h | ConvertTo-Json -Depth 4) }; $(if ($h) { "the hand-off was already $($h.status)" } else { 'no hand-off was made in 3 minutes' }) })
+                if (-not $w.Ok) { return }
+                try {
+                    Invoke-OutageOnce -Label 'inflight' | Out-Null
+                    Complete-Outage -Label 'inflight'
+                }
+                finally { Restore-WeirAfterOutage }
             }
-            finally { Restore-WeirAfterOutage }
+            finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
             # The hand-off must end in a place a person can see: finished, or failed and offered again; never silently open for good.
             $end = Wait-Until -TimeoutSec 300 -IntervalSec 2 -Condition {
                 $h = Get-FilmHandoff -Film $film
