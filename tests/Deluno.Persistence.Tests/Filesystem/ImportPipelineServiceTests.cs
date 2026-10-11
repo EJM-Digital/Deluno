@@ -6773,6 +6773,84 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1254, next door: a season pack sent again is cleaned again into files that differ from the ones its
+    /// episodes already own at the same paths. The pack import replaces its own episodes' files the first time
+    /// instead of blocking on "already exists" and being retried until it gives up.
+    /// </summary>
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("hardlink")]
+    public async Task A_season_pack_sent_again_replaces_the_files_its_episodes_already_own(string transferMode)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-12T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Resent Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        var packDirectory = Path.Combine(downloadsPath, "Resent.Pack.S01");
+        async Task<ImportExecuteRequest> CleanPackAsync(byte seed)
+        {
+            Directory.CreateDirectory(packDirectory);
+            foreach (var episode in new[] { 1, 2 })
+            {
+                var source = Path.Combine(packDirectory, $"Resent.Pack.S01E{episode:D2}.mkv");
+                await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(seed + episode), 4096).ToArray());
+                File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            }
+            return new ImportExecuteRequest(
+                new ImportPreviewRequest(
+                    packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                    SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+                transferMode, false, true);
+        }
+
+        Assert.True((await service.ExecuteAsync(await CleanPackAsync(0x20), CancellationToken.None)).Succeeded);
+        var owned = new List<string>();
+        foreach (var episode in (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes)
+        {
+            owned.Add((await repository.GetEpisodeFilePathAsync(episode.EpisodeId, CancellationToken.None))!);
+        }
+
+        var sentAgain = await service.ExecuteAsync(
+            (await CleanPackAsync(0x70)) with { DispatchId = "season-dispatch-2" },
+            CancellationToken.None);
+
+        Assert.True(sentAgain.Succeeded, sentAgain.Message);
+        Assert.NotEqual(409, sentAgain.StatusCode);
+        foreach (var path in owned)
+        {
+            Assert.True(File.Exists(path));
+            Assert.All(await File.ReadAllBytesAsync(path), value => Assert.True(value >= 0x71));
+        }
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.deluno-pack-backup*", SearchOption.AllDirectories));
+        if (transferMode == "copy")
+        {
+            Assert.Empty(Directory.EnumerateFiles(packDirectory));
+        }
+        Assert.Equal(2, (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.Count(episode => episode.HasFile));
+    }
+
+    /// <summary>
     /// #945: a single-file upgrade already recycles the sidecar subtitles
     /// beside the video it replaces (#893). A season-pack replacement went
     /// through a different path - <c>RecycleReplacedFilesAsync</c> was never
