@@ -26,6 +26,8 @@ function Get-StoryProblems {
     param([Parameter(Mandatory)] $Film)
     $problems = New-Object System.Collections.ArrayList
     $lines = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) })
+    # What Deluno says to the person about telling the processor (imported, will not import) is checked for contradiction and
+    # for a doubled full stop. "Could not tell the processor yet, will keep trying" is a step on the way, not a closing line.
     $closing = @($lines | Where-Object { $_ -match "Told the processor what happened|Could not tell the processor" })
     foreach ($c in @($closing | Where-Object { $_ -match "imported the file" -and $_ -match "will not import|will not be imported" })) {
         $flat = $c -replace '\s+', ' '
@@ -35,8 +37,13 @@ function Get-StoryProblems {
         $flat = $c -replace '\s+', ' '
         [void]$problems.Add('ends in a doubled full stop: ' + $flat.Substring(0, [math]::Min(240, $flat.Length)))
     }
-    $handoffs = @(Find-Handoffs -Name $Film.Release)
-    if ($closing.Count -gt [math]::Max(1, $handoffs.Count)) { [void]$problems.Add("$($closing.Count) closing lines for $($handoffs.Count) hand-offs") }
+    # One closing line for each hand-off (each send, by its own id). A resent release has the replaced send's one line
+    # ("an earlier send needed no report") and the new send's one line: two lines for two sends, never two for one. A hand-off
+    # row is reused for a resend under a new id, so the replaced send is no longer in the hand-off list: its id still counts.
+    $final = @($lines | Where-Object { $_ -match '"category":"processing\.outcome-(reported|not-reported|superseded)"' })
+    $perSend = @{}
+    foreach ($f in $final) { $id = if ($f -match 'HandoffId\W+([0-9a-f]{32})') { $Matches[1] } else { 'unknown' }; $perSend[$id] = 1 + [int]$perSend[$id] }
+    foreach ($id in @($perSend.Keys | Where-Object { $perSend[$_] -gt 1 })) { [void]$problems.Add("$($perSend[$id]) closing lines for the one send $id") }
     @($problems)
 }
 

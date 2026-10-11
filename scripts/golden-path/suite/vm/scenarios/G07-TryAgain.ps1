@@ -68,7 +68,9 @@ function Invoke-GroupTryAgain {
                     $now = [DateTime]::UtcNow
                     [void]$samples.Add([pscustomobject]@{ At = $now; Text = ($t -replace '\s+', ' ') })
                     $cur = Get-FilmHandoff -Film $f
-                    if (-not $serverMoved -and $cur -and $cur.status -notin 'failed', 'rejected') { $serverMoved = $now }
+                    # "waiting" is Deluno's own queue for the send (the retry is sent in its next pass, 27 to 47 s after the press in the rc.30.23
+                    # run), and the header says Sending again for exactly that: the hand-off has moved on once it is submitted.
+                    if (-not $serverMoved -and $cur -and $cur.status -notin 'failed', 'rejected', 'waiting') { $serverMoved = $now }
                     if (-not $sawSending -and $t -match 'Sending to .* again') { $sawSending = $now }
                     if ($serverMoved -and -not $headerMoved -and $t -notmatch 'Sending to .* again') { $headerMoved = $now }
                     if ($cur -and $cur.status -eq 'completed' -and $cur.importJobId -and (Find-Imported -Title $f.Title)) { $imported = $true; Start-Sleep -Seconds 2; break }
