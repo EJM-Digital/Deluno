@@ -15,7 +15,11 @@ param(
     [Parameter(Mandatory)] [string] $UsenetPassword,
     [string] $LogPath = 'C:\golden\picker.log',
     [int] $WaitForWindowSeconds = 600,
-    [int] $InstallMinutes = 40
+    [int] $InstallMinutes = 40,
+    # Leave the browser alone at the end (for a run on a workstation, where Open Deluno would open a page).
+    [switch] $SkipOpenDeluno,
+    # Tick with the keyboard only (list focused, Home, Down, Space), to prove that route where the Toggle pattern would have worked.
+    [switch] $ForceKeys
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,52 +83,86 @@ Step 'focus the picker'
 try { $window.SetFocus(); Log "picker focused" } catch { Log "could not focus the picker ($($_.Exception.Message)); going on, the controls are pressed through UI Automation" }
 Log "picker open; texts: $((Texts $window) -join ' | ')"
 
-# Tick every row. WinForms' CheckedListBox shows each row to UI Automation as a CheckBox with a Toggle pattern
-# (not as a ListItem), so look for those; fall back to list items (select, then press Space).
-function Rows($root) {
-    $boxes = @(AllOfType $root $CT::CheckBox | Where-Object { $_.Current.Name -notmatch "Use the same login" })
-    if ($boxes.Count -gt 0) { return $boxes }
-    return @(AllOfType $root $CT::ListItem)
+# Tick every row. The six rows are the children of the picker's one list, a WinForms CheckedListBox. Depending on the Windows build and on
+# what has been ticked, UI Automation shows a row as a ListItem or as a CheckBox, and lookups by control type or by name come and go as
+# the window lays itself out. So nothing is held between steps and nothing is looked up by type or name: every step asks the LIST for
+# its children again and takes row N by position. A row is ticked through its Toggle pattern; if that is refused, the keyboard does it
+# as a person would (list focused, Home, Down to the row, Space) -- but only once the list is verified to hold the keyboard focus in
+# the picker's own window, so a stray key can never reach Skip (which closes the picker).
+Add-Type -Namespace Gp -Name Fg -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h);'
+function Get-PickerList {
+    $w = ByName $AE::RootElement 'Set up download clients and Weir'
+    if (-not $w) { throw 'the picker window is gone' }
+    $lists = @(AllOfType $w $CT::List | Where-Object { $_.Current.ClassName -match 'ListBox' })
+    if ($lists.Count -ne 1) { throw "expected one component list in the picker, found $($lists.Count)" }
+    $lists[0]
 }
-$rows = Rows $window
-Log "rows: $($rows.Count): $((@($rows) | ForEach-Object { $_.Current.Name }) -join ' | ')"
-if ($rows.Count -eq 0) { Log "FAILED: the picker lists no component rows to tick"; exit 1 }
-Step 'tick every row'
-# Rows are found by name every time, of any control type: ticking a row lays the window out again and adds controls
-# of its own (login boxes, a checkbox), so an element or a type read before can go stale or stop matching.
-$rowNames = @($rows | ForEach-Object { $_.Current.Name })
-function FindRow([string]$name) {
-    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $name)
-    return $window.FindFirst($Scope::Descendants, $cond)
-}
+function Get-PickerRows { @((Get-PickerList).FindAll($Scope::Children, [System.Windows.Automation.Condition]::TrueCondition)) }
 function RowState($row) { try { "$($row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState)" } catch { 'unknown' } }
-function TickRow([string]$name) {
-    $row = FindRow $name
-    if (-not $row) { Log "row '$name' not found this time"; return }
-    if ((RowState $row) -eq 'On') { return }
-    try {
-        $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
-        Log "ticked '$name'"
-    } catch {
-        # As a person would: focus the row and press Space, which ticks a checked list row.
-        try { $row.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch { }
-        try { $row.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait(' '); Log "ticked '$name' with Space" } catch { Log "could not tick '$name': $($_.Exception.Message)" }
-    }
+function Assert-ListHasKeyboard {
+    $w = ByName $AE::RootElement 'Set up download clients and Weir'
+    if (-not $w) { throw 'the picker window is gone, so no key was sent' }
+    $hwnd = [System.IntPtr]$w.Current.NativeWindowHandle
+    if ([Gp.Fg]::GetForegroundWindow() -ne $hwnd) { [void][Gp.Fg]::SetForegroundWindow($hwnd); Start-Sleep -Milliseconds 300 }
+    if ([Gp.Fg]::GetForegroundWindow() -ne $hwnd) { throw 'the picker is not the foreground window, so no key was sent' }
+    $list = Get-PickerList
+    $list.SetFocus(); Start-Sleep -Milliseconds 200
+    $has = $list.Current.HasKeyboardFocus -or (@(Get-PickerRows | Where-Object { $_.Current.HasKeyboardFocus }).Count -gt 0)
+    if (-not $has) { throw 'the component list does not hold the keyboard focus, so no key was sent (a stray key could hit Skip)' }
+}
+function Get-RowStates { (@(Get-PickerRows) | ForEach-Object { $(if ((RowState $_) -eq 'On') { '1' } else { '0' }) }) -join '' }
+function Tick-RowByKeys([int] $index) {
+    # The focus a row reports to UI Automation is not reliable, so the proof of a key is the row's own state, read back by the caller.
+    # What makes a key safe is that the list holds the keyboard focus in the picker's own window: Home and Down cannot leave the
+    # list, and Space only ticks, so Skip (which closes the picker) is never pressed.
+    Assert-ListHasKeyboard
+    [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
+    Start-Sleep -Milliseconds 300
+    for ($d = 0; $d -lt $index; $d++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Milliseconds 300
+    Assert-ListHasKeyboard
+    Log "keys: states before Space (1 = on, 0 = off): $(Get-RowStates)"
+    [System.Windows.Forms.SendKeys]::SendWait(' ')
     Start-Sleep -Milliseconds 400
+    Log "keys: states after Space: $(Get-RowStates)"
 }
-foreach ($pass in 1, 2) {
-    foreach ($name in $rowNames) { TickRow $name }
-    Start-Sleep -Seconds 1
+Step 'read the rows'
+$names = @(Get-PickerRows | ForEach-Object { $_.Current.Name })
+Log "rows: $($names.Count): $($names -join ' | ')"
+if ($names.Count -eq 0) { throw 'the picker lists no component rows to tick' }
+Step 'tick every row'
+for ($i = 0; $i -lt $names.Count; $i++) {
+    $name = $names[$i]
+    if ($name -match 'already installed') { Log "row $i '$name': left alone (already installed)"; continue }
+    $ok = $false
+    for ($attempt = 1; $attempt -le 3 -and -not $ok; $attempt++) {
+        $row = @(Get-PickerRows)[$i]
+        if (-not $row) { throw "row $i '$name' is not in the list any more" }
+        $state = RowState $row
+        if ($state -eq 'On') { $ok = $true; break }
+        $how = 'Toggle'
+        try { if ($ForceKeys) { throw 'keys only' }; $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() }
+        catch { $how = 'keys'; Tick-RowByKeys $i }
+        Start-Sleep -Milliseconds 400
+        $after = RowState (@(Get-PickerRows)[$i])
+        Log "row $i '$name': $how, was $state, now $after (attempt $attempt)"
+        if ($after -eq 'On') { $ok = $true } elseif ($after -eq 'unknown' -and $how -eq 'keys') { $ok = $true }
+    }
+    if (-not $ok) { throw "row $i '$name' would not tick after 3 tries" }
 }
+Start-Sleep -Seconds 1
 Step 'check the ticks'
 $unticked = 0
-foreach ($name in $rowNames) {
-    $row = FindRow $name
-    $state = if ($row) { RowState $row } else { 'not found' }
-    Log "row '$name': $state"
-    if ($state -ne 'On' -and $name -notmatch 'already installed') { $unticked++ }
+$i = 0
+foreach ($row in @(Get-PickerRows)) {
+    $state = RowState $row
+    Log "row '$($row.Current.Name)': $state"
+    if ($state -ne 'On' -and $state -ne 'unknown' -and $row.Current.Name -notmatch 'already installed') { $unticked++ }
+    $i++
 }
-if ($unticked -gt 0) { Log "FAILED: $unticked row(s) are not ticked"; exit 1 }
+if ($i -ne $names.Count) { throw "the list has $i rows now, it had $($names.Count)" }
+if ($unticked -gt 0) { throw "$unticked row(s) are not ticked" }
+$window = ByName $AE::RootElement 'Set up download clients and Weir'
 
 # The Usenet logins appear once SABnzbd or NZBGet is ticked.
 foreach ($field in 'SABnzbd username', 'NZBGet username') { $box = ByName $window $field; if ($box) { SetText $box $UsenetUser } }
@@ -154,7 +192,7 @@ $window = ByName $AE::RootElement 'Set up download clients and Weir'
 if ($window) {
     Log "final: $((Texts $window) -join ' | ')"
     $open = ByName $window 'Open Deluno'
-    if ($open -and $open.Current.IsEnabled) { Press $open; Log "pressed Open Deluno"; Start-Sleep -Seconds 8 }
+    if ($open -and $open.Current.IsEnabled -and -not $SkipOpenDeluno) { Press $open; Log "pressed Open Deluno"; Start-Sleep -Seconds 8 }
     $browsers = @(Get-Process msedge, chrome, firefox -ErrorAction SilentlyContinue)
     Log "browser processes after Open Deluno: $($browsers.Count)"
     $close = ByName $window 'Close'
