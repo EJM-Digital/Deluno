@@ -223,6 +223,27 @@ try {
     Check 'the speed rule''s real line (for 1 check, no "in a row") passes' ($res2['t.slow1'].status -eq 'pass') (($res2['t.slow1'].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.name + ' ' + $_.detail }) -join '; ')
     Check 'the no-progress rule''s real line (for 2 checks in a row) passes' ($res2['t.zero2'].status -eq 'pass')
     Check 'a wrong plural (1 checks) still fails' ($res2['t.zero2wrong'].status -eq 'fail')
+
+    # The closing lines of a resent release, in the shape of the rc.30.23 run (story-Gprebeforerojy14): the replaced send was told
+    # "could not tell yet", then "needed no report"; the new send was told once. Two sends, one closing line each.
+    $origActivity = ${function:Get-ActivityText}
+    function New-StoryLine([string] $Category, [string] $Label, [string] $HandoffId, [string] $Message) {
+        (@{ category = $Category; label = $Label; message = $Message; detailsJson = (@{ HandoffId = $HandoffId; ReleaseName = 'GpStory.2020.1080p.WEB-DL.x264-GOLDEN.mkv' } | ConvertTo-Json -Compress) } | ConvertTo-Json -Compress)
+    }
+    $first = '01a12b7cbd217acd854f29182ad898ea'; $second = '01a12b7dab657b34acf9000717af90d3'
+    $resent = @(
+        (New-StoryLine 'processing.outcome-superseded' 'An earlier send needed no report, a newer send took over' $first 'GpStory.2020.1080p.WEB-DL.x264-GOLDEN.mkv was sent to Weir again after this send, so Deluno left the report to the newer send.'),
+        (New-StoryLine 'processing.outcome-reported' 'Told the processor what happened' $second 'Deluno told Weir it has GpStory.2020.1080p.WEB-DL.x264-GOLDEN.mkv. Weir recorded that Deluno imported the file.'),
+        (New-StoryLine 'processing.outcome-delayed' 'Could not tell the processor yet, will keep trying' $first 'Deluno could not tell Weir what became of GpStory.2020.1080p.WEB-DL.x264-GOLDEN.mkv yet, and will keep trying.'))
+    $script:StoryLines = $resent
+    function Get-ActivityText { $script:StoryLines }
+    $storyFilm = [pscustomobject]@{ Title = 'GpStory'; Release = 'GpStory.2020.1080p.WEB-DL.x264-GOLDEN' }
+    Check 'a resent release with one closing line for each send (and a "will keep trying" step) tells one story' (@(Get-StoryProblems -Film $storyFilm).Count -eq 0) ((@(Get-StoryProblems -Film $storyFilm)) -join '; ')
+    $script:StoryLines = $resent + (New-StoryLine 'processing.outcome-reported' 'Told the processor what happened' $second 'Deluno told Weir it has GpStory.2020.1080p.WEB-DL.x264-GOLDEN.mkv. Weir recorded that Deluno imported the file.')
+    Check 'two closing lines for the one send are still a problem' (@(Get-StoryProblems -Film $storyFilm).Count -eq 1)
+    $script:StoryLines = @((New-StoryLine 'processing.outcome-reported' 'Told the processor what happened' $second 'Deluno told Weir it has GpStory.mkv. Weir recorded that Deluno imported the file. Deluno will not import this file.'))
+    Check 'imported and will not import in one line is still a problem' (@(Get-StoryProblems -Film $storyFilm).Count -eq 1)
+    Set-Item -Path function:Get-ActivityText -Value $origActivity
 }
 finally {
     try { Invoke-WebRequest "http://127.0.0.1:$port/stop" -UseBasicParsing -TimeoutSec 3 | Out-Null } catch { }

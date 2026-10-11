@@ -64,7 +64,10 @@ function Invoke-GroupFilms {
         $h = Get-FilmHandoff -Film $film
         Add-Check 'The hand-off settled' ($h -and $h.status -eq 'completed') $(if ($h) { $h.status } else { 'no hand-off' })
         $weirLog = Get-WeirLogText
-        Add-Check 'Weir''s log names the film it cleaned' ($weirLog -match [regex]::Escape($film.Title)) ''
+        # Weir 1.0.0-rc.13 logs a cleaned file only as "Hand-off callback: reported completed to Deluno" and never names the film
+        # (its recorded log in the rc.30.23 run), so the proof that it cleaned this film is the output path it gave the hand-off.
+        Add-Check 'Weir cleaned the film (the hand-off carries the output path Weir gave it, named for the film)' ($h -and "$($h.outputPath)" -match [regex]::Escape($film.Title)) $(if ($h) { "$($h.outputPath)" } else { '' })
+        Add-Check 'Weir''s log shows it reported a completed hand-off to Deluno' ($weirLog -match 'Hand-off callback: reported completed') ''
         Add-Check 'Weir''s log never names the extra' ($weirLog -notmatch 'featurette') ''
     }
 }
