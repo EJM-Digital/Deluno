@@ -41,7 +41,7 @@ function Get-TrayButtons {
 function Open-TrayOverflow {
     $chevron = @(Get-TrayButtons | Where-Object { $_.Name -match 'Show Hidden Icons|Notification Chevron|hidden icons' }) | Select-Object -First 1
     if (-not $chevron) { return $false }
-    try { $chevron.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 600; return $true } catch { return $false }
+    try { Wait-UiaClickable -Element $chevron.Element -What "the hidden-icons button" -TimeoutSec 3; $chevron.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 600; return $true } catch { return $false }
 }
 
 function Close-TrayOverflow { [System.Windows.Forms.SendKeys]::SendWait('{ESC}'); Start-Sleep -Milliseconds 200 }
@@ -105,6 +105,22 @@ function Send-Click {
     [Golden.Mouse]::mouse_event($up, 0, 0, 0, [UIntPtr]::Zero)
 }
 
+# Waits until a UI Automation element can be clicked (enabled and on screen) and throws, saying why, when it cannot. A click on a
+# disabled control does nothing and says nothing, so the suite never sends one.
+function Wait-UiaClickable {
+    param([Parameter(Mandatory)] $Element, [string] $What = 'the control', [int] $TimeoutSec = 10)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
+    while ($true) {
+        $enabled = $Element.Current.IsEnabled
+        $offscreen = $Element.Current.IsOffscreen
+        if ($enabled -and -not $offscreen) { return }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            throw "Could not click $What within $TimeoutSec s: it is $(if (-not $enabled) { 'disabled' } else { 'not visible' })."
+        }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
 # Opens an app's tray menu with a right click and returns the visible menu items' names (empty when it could not be opened).
 # The menu is left open; the caller picks an item with Invoke-TrayMenuItem or closes it with Close-TrayMenu.
 function Open-TrayMenu {
@@ -113,6 +129,7 @@ function Open-TrayMenu {
     $opened = $false
     if (-not $btn -or $btn.Element.Current.IsOffscreen) { $opened = Open-TrayOverflow; $btn = Find-TrayIcon -Icon $Icon }
     if (-not $btn) { return @() }
+    Wait-UiaClickable -Element $btn.Element -What "the $Icon tray icon"
     $r = $btn.Element.Current.BoundingRectangle
     Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) -Right
     Start-Sleep -Milliseconds 700
@@ -137,6 +154,7 @@ function Invoke-TrayMenuItem {
     $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
     foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
         if (-not $el.Current.IsOffscreen -and $el.Current.Name -match $Item) {
+            Wait-UiaClickable -Element $el -What "the menu item '$($el.Current.Name)'"
             try { $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return $true }
             catch { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); return $true }
         }
