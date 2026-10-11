@@ -398,6 +398,20 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status409Conflict, wrongRelease);
         }
 
+        // A release sent again (#1254): the processor cleans it again into a file that differs from the one the
+        // title already holds at this very path (a fresh remux is never byte for byte the last one). That file is
+        // this title's own, and the send was a deliberate grab of the title, so this is the replacement an upgrade
+        // or an explicit resend makes: the old file goes to the recycle bin and the new one takes its place, under
+        // the same quality and runtime guards. Left as a conflict it was retried until it gave up, with the cleaned
+        // file stranded in the processor's output.
+        if (File.Exists(preview.DestinationPath)
+            && !request.Overwrite
+            && !IsSameContent(preview.SourcePath, preview.DestinationPath)
+            && await TitleOwnsDestinationAsync(request, mediaType, preview.DestinationPath, cancellationToken))
+        {
+            request = request with { Overwrite = true, ExpectedExistingPath = preview.DestinationPath };
+        }
+
         // A title removed without its files and added again finds its own file still at the
         // destination. The identical file is the title's file: link it, never overwrite it.
         var adoptExisting = File.Exists(preview.DestinationPath)
@@ -1009,7 +1023,8 @@ public sealed partial class ImportPipelineService(
         IReadOnlyList<LibraryItem> libraries,
         CancellationToken cancellationToken,
         IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
-        bool replacementAuthorized = false)
+        bool replacementAuthorized = false,
+        bool resendOfOwnFiles = false)
     {
         var blockReasons = new List<string>();
         var normalizedReplacementTargets = (replacementTargets ?? [])
@@ -1254,6 +1269,12 @@ public sealed partial class ImportPipelineService(
                         {
                             blockReasons.Add($"Episode {EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber)} already owns a different file. Replace it through an episode-scoped review instead of a season-pack import.");
                         }
+                        else if (resendOfOwnFiles && File.Exists(file.Preview.DestinationPath))
+                        {
+                            // A pack sent again (#1254): the file already at this path is the episode's own, so the
+                            // cleaned copy replaces it through the recycle bin like any other replacement.
+                            replacements.Add(new TvPackReplacement(episodeId, trackedPath, file.Preview.DestinationPath));
+                        }
                         continue;
                     }
 
@@ -1318,7 +1339,7 @@ public sealed partial class ImportPipelineService(
                 .ToArray();
             foreach (var file in files.Where(file => file.Preview.DestinationExists))
             {
-                if (!replacementAuthorized || !ownedExistingPaths.Any(path => IsSamePath(path, file.Preview.DestinationPath)))
+                if ((!replacementAuthorized && !resendOfOwnFiles) || !ownedExistingPaths.Any(path => IsSamePath(path, file.Preview.DestinationPath)))
                 {
                     blockReasons.Add($"{Path.GetFileName(file.Preview.DestinationPath)} already exists but is not the fully committed pack owned by these episodes.");
                 }
@@ -1449,7 +1470,8 @@ public sealed partial class ImportPipelineService(
             libraries,
             cancellationToken,
             request.ReplacementTargets,
-            request.Overwrite);
+            request.Overwrite,
+            resendOfOwnFiles: !string.IsNullOrWhiteSpace(request.DispatchId));
 
         if (plan.AlreadyCommitted)
         {
@@ -4111,6 +4133,39 @@ public sealed partial class ImportPipelineService(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether the file at the destination is the one the catalogue tracks for the title this download was
+    /// grabbed for: a film's file, or the episode's. Only a grab of the title (a dispatch) can say so.
+    /// </summary>
+    private async Task<bool> TitleOwnsDestinationAsync(
+        ImportExecuteRequest request,
+        string mediaType,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        var dispatch = await ResolveDispatchAsync(request.DispatchId, cancellationToken);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return false;
+        }
+
+        string? tracked;
+        if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+        {
+            tracked = (await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken))?.FilePath;
+        }
+        else if (string.Equals(dispatch.EntityType, "episode", StringComparison.OrdinalIgnoreCase))
+        {
+            tracked = await seriesCatalogRepository.GetEpisodeFilePathAsync(dispatch.EntityId, cancellationToken);
+        }
+        else
+        {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(tracked) && IsSamePath(tracked, destinationPath);
     }
 
     private async Task<DownloadDispatchItem?> ResolveDispatchAsync(
