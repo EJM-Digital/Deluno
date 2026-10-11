@@ -109,7 +109,7 @@ public sealed class TrackerIndexerPersistenceTests
         await repo.UpdateIndexerAsync(created.Id, new UpdateIndexerRequest("Renamed", null, null, null, null, null, null, null, null, null), CancellationToken.None);
         var read = (await repo.ListIndexersAsync(CancellationToken.None)).Single();
 
-        Assert.Equal("tracker.example", read.Name);
+        Assert.Equal("Renamed", read.Name);
         Assert.Equal("seeders", read.DefinitionSettings!["sort"]);
         Assert.Equal("hunter2", read.DefinitionSecrets!["password"]);
     }

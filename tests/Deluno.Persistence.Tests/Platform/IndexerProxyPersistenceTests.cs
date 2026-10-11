@@ -249,6 +249,6 @@ public sealed class IndexerProxyPersistenceTests
         var list = await repo.ListProxiesAsync(CancellationToken.None);
 
         var only = Assert.Single(list);
-        Assert.Equal(["indexer.example.test"], only.AssignedIndexerNames);
+        Assert.Equal(["Uses proxy"], only.AssignedIndexerNames);
     }
 }

@@ -1,4 +1,5 @@
 import { SecretUnreadableNotice, repeatsSecretNotice } from "../../components/app/secret-unreadable-notice";
+import { removeUnavailableReason } from "./busy-reason";
 import { useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -408,7 +409,7 @@ export function IndexerDrawerBody({
 
       {editing ? (
         <DrawerSection>
-          <DrawerDanger title="Remove this indexer" description="Libraries routed only to it will need another indexer." action={<Button type="button" variant="destructive" size="sm" onClick={onRemove} disabled={busy !== null}>Remove…</Button>} />
+          <DrawerDanger unavailableReason={removeUnavailableReason(busy)} title="Remove this indexer" description="Libraries routed only to it will need another indexer." action={<Button type="button" variant="destructive" size="sm" onClick={onRemove} disabled={busy !== null}>Remove…</Button>} />
         </DrawerSection>
       ) : null}
     </>
