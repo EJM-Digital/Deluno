@@ -40,19 +40,31 @@ function Start-AgainDownload {
 
 # What must be true once a resend has settled.
 function Assert-ResendSettled {
-    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] $First, [int] $TimeoutSec = 180, [string] $What)
+    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] $First, [int] $TimeoutSec = 180, [string] $What, [switch] $SameHashMayCountAsImported)
     $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Condition {
         $second = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -ne $First.id } | Select-Object -First 1
         if ($second -and $second.status -eq 'completed' -and $second.importJobId) { $second } else { $null }
     }
     $second = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -ne $First.id } | Select-Object -First 1
-    Add-Check "$What : the new hand-off settles on its own" $w.Ok $(if ($second) { "status $($second.status), processor $($second.processor.state), output $($second.outputPath), after $($w.Seconds) s" } else { 'there is no second hand-off' })
+    # After: Deluno imports a cleaned film within a second or two of Weir's report, so the first send is often imported before
+    # "I don't want it" lands (rc.30.24: every client). A torrent sent again has the same info-hash, and Deluno takes it as the
+    # download it has already imported, so no second hand-off is made; that is right when the first send was imported.
+    $firstImported = $false
+    if (-not $second -and $SameHashMayCountAsImported) {
+        $firstNow = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -eq $First.id } | Select-Object -First 1
+        $firstImported = [bool]($firstNow -and $firstNow.status -eq 'completed' -and $firstNow.importJobId)
+        if ($firstImported) { Add-Note "$What : the first send was imported before the removal landed; the resent torrent (same info-hash) counts as that import." }
+    }
+    Add-Check "$What : the new hand-off settles on its own" ($w.Ok -or $firstImported) $(if ($second) { "status $($second.status), processor $($second.processor.state), output $($second.outputPath), after $($w.Seconds) s" } elseif ($firstImported) { 'the first send was imported; the same torrent counts as imported' } else { 'there is no second hand-off' })
     $lib = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { Find-Imported -Title $Film.Title }
     Add-Check "$What : the film is in the library" $lib.Ok ''
     $files = @(Get-ChildItem -Path 'C:\Media\Movies' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($Film.Title) -and $_.Extension -in '.mkv', '.mp4' })
     Add-Check "$What : exactly one copy is in the library" ($files.Count -eq 1) "$($files.Count) files"
+    # The import that follows a settled hand-off is given a minute to clear Weir's output: a hand-off with an import job is not
+    # yet an import (rc.30.24: SABnzbd and NZBGet hand-offs read completed while their import failed again and again, #1254).
+    $leftWait = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($Film.Title) }).Count -eq 0 }
     $leftInWeir = @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($Film.Title) })
-    Add-Check "$What : nothing of it waits in Weir's output" ($leftInWeir.Count -eq 0) (($leftInWeir | ForEach-Object { $_.FullName }) -join '; ')
+    Add-Check "$What : nothing of it waits in Weir's output" ($leftWait.Ok -and $leftInWeir.Count -eq 0) (($leftInWeir | ForEach-Object { $_.FullName }) -join '; ')
     # A resend reuses the film's hand-off row under a new id, so the first send's id is no longer listed once the new send exists:
     # that is the first send closed (it is kept as a replaced send and has its own closing line). Left open means it is still listed in an open state.
     $firstNow = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -eq $First.id } | Select-Object -First 1
@@ -141,7 +153,7 @@ function Invoke-GroupResend {
                 Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
                 Start-Sleep -Seconds 1
                 Start-AgainDownload -Film $film
-                Assert-ResendSettled -Film $film -First $first -What "$timing/$kind"
+                Assert-ResendSettled -Film $film -First $first -What "$timing/$kind" -SameHashMayCountAsImported:($timing -eq 'after' -and $film.Protocol -eq 'torrent')
             }
         }
     }
