@@ -342,6 +342,7 @@ public sealed class NzbGetDownloadClient(
         // history as "deleted", so after a plain delete the job is checked where it was; a final delete leaves no record.
         var looks = 0;
         var wasQueued = false;
+        NzbGetHistoryItem? finishedJob = null;
         async Task<ClientHas> Has(bool finalDelete)
         {
             try
@@ -356,8 +357,16 @@ public sealed class NzbGetDownloadClient(
                 }
 
                 var inQueue = queued.Result.Any(item => item.NzbId == id);
-                var inHistory = history.Result.Any(item => item.NzbId == id);
+                var recorded = history.Result.FirstOrDefault(item => item.NzbId == id);
+                var inHistory = recorded is not null;
                 looks++;
+                if (looks == 1)
+                {
+                    // #1252: where a finished job's files are, noted before the record goes: FinalDir when NZBGet moved
+                    // them there, else DestDir.
+                    finishedJob = recorded;
+                }
+
                 if (looks == 1)
                 {
                     wasQueued = inQueue;
@@ -379,6 +388,28 @@ public sealed class NzbGetDownloadClient(
                 : DownloadClientHelpers.ActionFailure(client, queueItemId, action,
                     $"NZBGet did not {what}{(string.IsNullOrWhiteSpace(lastError) ? string.Empty : $": {lastError}")}. Nothing was changed.",
                     upstreamDetail: lastError);
+
+        // #1252, after #1224: NZBGet's final delete removes the job's record and its working files but not the folder it
+        // moved the finished files to, so the job's own folder goes here, extras and all, under #1224's rules (named
+        // after the job, never a root or a category folder). A job that never finished has no record to read.
+        DownloadClientActionResult WithFolderRemoved(DownloadClientActionResult done)
+        {
+            if (!done.Succeeded || finishedJob is null)
+            {
+                return done;
+            }
+
+            var where = !string.IsNullOrWhiteSpace(finishedJob.FinalDir) ? finishedJob.FinalDir : finishedJob.DestDir;
+            if (string.IsNullOrWhiteSpace(where))
+            {
+                return done;
+            }
+
+            var problem = DownloadFolderRemoval.Remove(where, finishedJob.NzbName ?? finishedJob.Name, ClientSaveFolders.IsSameMachine(client));
+            return problem is null
+                ? done
+                : DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Removed this download from NZBGet, but its files are still on disk.") with { FilesNote = problem };
+        }
 
         switch (action)
         {
@@ -405,8 +436,8 @@ public sealed class NzbGetDownloadClient(
             case DownloadClientActions.DeleteWithData:
                 return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
                     () => Has(finalDelete: true),
-                    async () => Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
-                        "Removed this download from NZBGet, along with its files.", "remove this download"),
+                    async () => WithFolderRemoved(Done(await Edit("GroupFinalDelete") || await Edit("HistoryFinalDelete"),
+                        "Removed this download from NZBGet, along with its files.", "remove this download")),
                     _removalSettle, _removalPoll, cancellationToken);
 
             // Two requests, because NZBGet keeps the thing that refuses a
@@ -416,12 +447,16 @@ public sealed class NzbGetDownloadClient(
             // hidden entry still refuses the release. The job is in one place
             // or the other, so either one working is enough.
             case DownloadClientActions.RemoveRefusedCopy:
-            {
-                var fromQueue = await Edit("GroupFinalDelete");
-                var fromHistory = await Edit("HistoryFinalDelete");
-                return Done(fromQueue || fromHistory,
-                    "Removed this download and its history entry from NZBGet, so it will accept this release again.", "remove this download");
-            }
+                return await ClientRemovalGuard.RunAsync(client, queueItemId, action, "NZBGet",
+                    () => Has(finalDelete: true),
+                    async () =>
+                    {
+                        var fromQueue = await Edit("GroupFinalDelete");
+                        var fromHistory = await Edit("HistoryFinalDelete");
+                        return WithFolderRemoved(Done(fromQueue || fromHistory,
+                            "Removed this download and its history entry from NZBGet, so it will accept this release again.", "remove this download"));
+                    },
+                    _removalSettle, _removalPoll, cancellationToken);
 
             // #810: GroupMoveTop/GroupMoveBottom are NZBGet's own edit-queue
             // commands for the ends of the queue; GroupMoveOffset moves it by
@@ -770,7 +805,7 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null);
-    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses);
+    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses, [property: JsonPropertyName("FinalDir")] string? FinalDir = null);
 
     /// <summary>One post-processing script's own outcome, from NZBGet's history <c>ScriptStatuses</c> (#910) — SUCCESS, FAILURE or a script-specific warning wording.</summary>
     internal sealed record NzbGetScriptStatus([property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Status")] string? Status);

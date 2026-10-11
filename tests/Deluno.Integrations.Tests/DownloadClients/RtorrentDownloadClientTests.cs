@@ -121,6 +121,24 @@ public sealed class RtorrentDownloadClientTests
         Assert.All(handler.RequestUris, uri => Assert.Equal("/RPC2/", uri!.AbsolutePath));
     }
 
+    /// <summary>#1252: a second removal of the same download is a plain failure, not "done" (rTorrent answers a hash it no longer holds with a fault).</summary>
+    [Theory]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    public async Task A_second_removal_is_a_failure_and_sends_no_second_erase(string action)
+    {
+        var handler = new RtorrentHandler(downloadListBefore: "[]", downloadListAfter: "[]");
+        var client = new RtorrentDownloadClient(new StubFactory(handler));
+        Assert.True((await client.ExecuteActionAsync(Client(), action, "abc123hash", CancellationToken.None)).Succeeded);
+
+        var again = await client.ExecuteActionAsync(Client(), action, "abc123hash", CancellationToken.None);
+
+        Assert.False(again.Succeeded);
+        Assert.Contains("has no download with that id", again.Message);
+        Assert.Single(handler.Requests, request => request.Contains("<methodName>d.erase</methodName>", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(DownloadClientActions.Pause, "d.pause")]
     [InlineData(DownloadClientActions.Resume, "d.resume")]
@@ -344,6 +362,7 @@ public sealed class RtorrentDownloadClientTests
     private sealed class RtorrentHandler(string downloadListBefore, string downloadListAfter) : HttpMessageHandler
     {
         private bool _loaded;
+        private bool _erased;
 
         public List<string> Requests { get; } = [];
 
@@ -358,6 +377,13 @@ public sealed class RtorrentDownloadClientTests
             AuthorizationHeaders.Add(request.Headers.Authorization);
             RequestUris.Add(request.RequestUri);
             var method = MethodNameOf(body);
+
+            // #1252: rTorrent holds the download until d.erase, and answers a hash it does not hold with a fault.
+            if (method == "d.erase") _erased = true;
+            if (method == "d.name")
+            {
+                return XmlResponse(_erased ? FaultResponse("Could not find info-hash.") : MethodResponse(AsValue(TypedString("Some.Film"))));
+            }
 
             if (method.StartsWith("load.", StringComparison.Ordinal))
             {
@@ -404,6 +430,8 @@ public sealed class RtorrentDownloadClientTests
     /// <summary>Answers d.base_path with a fixed path and everything else (d.erase) with success, recording every method called.</summary>
     private sealed class RtorrentDeleteWithDataHandler(string basePath) : HttpMessageHandler
     {
+        private bool _erased;
+
         public List<string> Methods { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -411,6 +439,13 @@ public sealed class RtorrentDownloadClientTests
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             var method = MethodNameOf(body);
             Methods.Add(method);
+
+            // #1252: rTorrent holds the download until d.erase, and answers a hash it does not hold with a fault.
+            if (method == "d.erase") _erased = true;
+            if (method == "d.name")
+            {
+                return XmlResponse(_erased ? FaultResponse("Could not find info-hash.") : MethodResponse(AsValue(TypedString("Some.Film"))));
+            }
 
             if (method == "d.base_path")
             {

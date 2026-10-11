@@ -38,7 +38,8 @@ public sealed class EveryClientRemovesOnlyWhatItHasTests
                 return null;
             }
 
-            return listingFails ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : listing(_has, request, body);
+            var answer = listing(_has, request, body);
+            return listingFails && answer is not null ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : answer;
         });
     }
 
@@ -73,8 +74,8 @@ public sealed class EveryClientRemovesOnlyWhatItHasTests
         return app switch
         {
             "qbittorrent" => new QbittorrentDownloadClient(() => rig.Handler).ExecuteActionAsync(item, action, Hash, CancellationToken.None),
-            "transmission" => new TransmissionDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, Hash, CancellationToken.None),
-            "deluge" => new DelugeDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, Hash, CancellationToken.None),
+            "transmission" => new TransmissionDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, "6c3e9edfdfed4f074f7a1ea1580dd68fa6bd06d2", CancellationToken.None),
+            "deluge" => new DelugeDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, "e9bd596b3856c07c12055a22bc5f6046a76d1328", CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(app))
         };
     }
