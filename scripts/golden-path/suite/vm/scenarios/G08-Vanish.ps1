@@ -65,17 +65,45 @@ function Invoke-GroupVanish {
             Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { Get-FilmHandoff -Film $films2[$kind] } | Out-Null
         }
         foreach ($kind in Get-AllKinds) { Remove-FilmFiles -Film $films2[$kind] | Out-Null; $removedAt[$kind] = [DateTime]::UtcNow }
-        Start-Sleep -Seconds 60
+        # While Weir is still paused Deluno must say so itself, within one check (#1210): the row reads "Files are gone".
+        $flaggedAfter = @{}
+        $deadline = [DateTime]::UtcNow.AddSeconds(90)
+        while ([DateTime]::UtcNow -lt $deadline -and $flaggedAfter.Count -lt 5) {
+            foreach ($row in @(Get-TelemetryRows -IncludeHistory)) {
+                foreach ($kind in Get-AllKinds) {
+                    if (-not $flaggedAfter.ContainsKey($kind) -and ($row.releaseName -like "*$($films2[$kind].Release)*" -or $row.title -like "*$($films2[$kind].Title)*") -and $row.status -eq 'filesGone') {
+                        $flaggedAfter[$kind] = [math]::Round(([DateTime]::UtcNow - $removedAt[$kind]).TotalSeconds, 1)
+                    }
+                }
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        foreach ($kind in Get-AllKinds) {
+            if ($flaggedAfter.ContainsKey($kind)) { continue }
+            try { Save-Evidence -Name "vanish-waiting-$kind-row.json" -Text (Find-QueueRow -Name $films2[$kind].Release -IncludeHistory | ConvertTo-Json -Depth 4) } catch { }
+        }
     }
     finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
-    Start-Sleep -Seconds 30
+    # Weir waits for a file that is not there before it reports the source gone (about 11 minutes in rc.13), so the hand-off
+    # is given that long plus a margin, and all five are watched at once.
+    $goneAt = @{}
+    $deadline = [DateTime]::UtcNow.AddMinutes(14)
+    while ([DateTime]::UtcNow -lt $deadline -and $goneAt.Count -lt 5) {
+        foreach ($kind in Get-AllKinds) {
+            if ($goneAt.ContainsKey($kind)) { continue }
+            $h = Get-FilmHandoff -Film $films2[$kind]
+            if ($h -and ($h.status -eq 'source-gone' -or ($h.status -eq 'dismissed' -and "$($h.failureMessage)" -match 'gone|no longer'))) { $goneAt[$kind] = [DateTime]::UtcNow }
+        }
+        Start-Sleep -Seconds 5
+    }
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "vanish.waiting.$kind" -Title "A $kind download's files vanish while the hand-off waits: it ends as source gone, nothing imported" -Body {
             $f = $films2[$kind]
             $h = Get-FilmHandoff -Film $f
             Add-Check 'There was a hand-off' ($null -ne $h) ''
             if (-not $h) { return }
-            Add-Check 'The hand-off ends as "source gone" (a plain reason, a new copy offered)' ($h.status -eq 'source-gone') "status $($h.status): $($h.failureMessage)"
+            Add-Check 'Deluno said "Files are gone" within 30 s, while Weir was still paused' ($flaggedAfter.ContainsKey($kind) -and $flaggedAfter[$kind] -le 30) $(if ($flaggedAfter.ContainsKey($kind)) { "after $($flaggedAfter[$kind]) s" } else { 'it never did' })
+            Add-Check 'The hand-off ends as "source gone" once Weir reports it (a plain reason, a new copy offered)' $goneAt.ContainsKey($kind) "status $($h.status): $($h.failureMessage) (watched up to 14 min after Weir resumed)"
             Add-Check 'Nothing of it was imported' ($null -eq (Find-Imported -Title $f.Title)) ''
             $out = @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($f.Title) })
             Add-Check 'Nothing of it waits in Weir''s output' ($out.Count -eq 0) (($out | ForEach-Object { $_.FullName }) -join '; ')

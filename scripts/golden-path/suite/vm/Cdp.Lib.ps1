@@ -124,16 +124,18 @@ function Get-DrawerText {
 # "not on the page", "hidden", "disabled" or "covered" it was. With -TimeoutSec 0 it looks once and returns $false when the control
 # is not ready (for a caller that is only probing); otherwise it returns $true.
 function Click-PageText {
-    param($Page, [Parameter(Mandatory)] [string] $Pattern, [string] $Within = '', [int] $TimeoutSec = 15)
+    param($Page, [Parameter(Mandatory)] [string] $Pattern, [string] $Within = '', [int] $TimeoutSec = 15, [switch] $RowOnly)
+    $rowOnlyJs = if ($RowOnly) { 'true' } else { 'false' }
+    $selector = if ($RowOnly) { '[role=row],tr' } else { 'button,a,[role=button],[role=row],tr,[role=tab]' }
     $scope = if ($Within) { 'document.querySelector(' + ($Within | ConvertTo-Json) + ')||document' } else { 'document' }
     $js = @"
 (function(){
   var re = new RegExp($(($Pattern | ConvertTo-Json)), 'i');
   var scope = $scope;
-  var els = Array.prototype.slice.call(scope.querySelectorAll('button,a,[role=button],[role=row],tr,[role=tab]'));
+  var els = Array.prototype.slice.call(scope.querySelectorAll('$selector'));
   var ready = null, readyLen = 1e9, blocked = null;
   els.forEach(function(e){
-    var t = (e.getAttribute('aria-label') || e.innerText || '').trim();
+    var t = ($rowOnlyJs ? (e.innerText || '') : (e.getAttribute('aria-label') || e.innerText || '')).trim();
     if (!re.test(t)) return;
     var r = e.getBoundingClientRect();
     var cs = getComputedStyle(e);

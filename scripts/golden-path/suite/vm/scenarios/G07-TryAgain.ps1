@@ -42,7 +42,7 @@ function Invoke-GroupTryAgain {
                 Add-Check 'The hand-off failed while Weir was down' ($null -ne $h) $(if ($h) { "status $($h.status): $($h.failureMessage)" } else { 'it never failed' })
                 if (-not $h) { return }
                 Open-DelunoPage -Page $page -Path '/queue' -Login $script:S.Login
-                $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Click-PageText -Page $page -Pattern ([regex]::Escape($f.Title)) -TimeoutSec 0 }
+                $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Click-PageText -Page $page -Pattern ([regex]::Escape($f.Title)) -TimeoutSec 0 -RowOnly }
                 Add-Check 'The download opens in Transfers' $opened.Ok ''
                 if (-not $opened.Ok) { return }
                 $btn = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { (Get-DrawerText -Page $page) -match 'Send to .* again' }
