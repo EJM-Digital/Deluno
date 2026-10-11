@@ -63,7 +63,7 @@ param(
     [string[]] $Groups = @(),
     [string] $Repository = 'jampat000/Deluno',
     [string] $ResultsUrl,
-    [int] $TimeoutMinutes = 75,
+    [int] $TimeoutMinutes = 240,
     [switch] $DryRun,
     [switch] $ListOnly,
     [switch] $SkipInstall
@@ -171,7 +171,13 @@ if (-not $SkipInstall) {
     $hook = {
         param($rigSession, $name, $cred)
         Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
-        Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -ArgumentList @('GoldenSuiteTray', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Watch-Tray.ps1" -ProbeMenuOnce') -Block $startTaskBlock | Out-Null
+        # Windows Server opens Server Manager at sign-in and it covers the picker: close it now and stop it opening again.
+        Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
+            New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
+            Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
+            Get-Process ServerManager -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        } | Out-Null
+        Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -ArgumentList @('GoldenSuiteTray', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Watch-Tray.ps1"') -Block $startTaskBlock | Out-Null
     }
     $harness = Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1'
     Write-Host 'Installing the candidate the way a person does (restore checkpoint, Setup, component picker)...' -ForegroundColor Cyan

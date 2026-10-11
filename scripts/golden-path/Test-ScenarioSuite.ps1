@@ -302,6 +302,31 @@ Check 'an alternating dot of one colour is a blink' ($blinking.Blinks -and $blin
 $steady = Get-BlinkSummary -Readings @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = 0.31; Colour = 'green' } })
 Check 'a steady dot is not a blink' (-not $steady.Blinks)
 
+Write-Host 'The dot classifier reads grey, and one stray reading is ignored'
+function New-Px([double] $H, [double] $S, [double] $B, [int] $Count) { 1..$Count | ForEach-Object { [pscustomobject]@{ H = $H; S = $S; B = $B } } }
+$greyDot = Get-DotClassFromPixels -Pixels @((New-Px 0 0.02 0.55 40) + (New-Px 0 0.0 0.15 200))
+Check 'an unsaturated dot reads grey' ($greyDot.Colour -eq 'grey') $greyDot.Colour
+$strays = Get-DotClassFromPixels -Pixels @((New-Px 0 0.02 0.55 40) + (New-Px 210 0.9 0.6 3) + (New-Px 0 0.0 0.15 200))
+Check 'a few stray saturated pixels do not turn a grey dot blue' ($strays.Colour -eq 'grey') $strays.Colour
+Check 'a green dot reads green' ((Get-DotClassFromPixels -Pixels @(New-Px 120 0.8 0.5 60)).Colour -eq 'green')
+Check 'an amber dot reads amber' ((Get-DotClassFromPixels -Pixels @(New-Px 40 0.9 0.6 60)).Colour -eq 'amber')
+$mixed = Get-BlinkSummary -Readings @(1..12 | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $(if ($_ % 2) { 0.31 } else { 0.18 }); Colour = $(if ($_ -eq 5) { 'amber' } else { 'grey' }) } })
+Check 'one outlier colour in a run does not break a blink' ($mixed.Blinks -and $mixed.Colours.Count -eq 1 -and $mixed.Colours[0] -eq 'grey')
+
+Write-Host 'The qBittorrent and Deluge films are told to check their data'
+$script:Called = New-Object System.Collections.ArrayList
+function Find-QueueRow { param($Name, [switch] $IncludeHistory) [pscustomobject]@{ id = 'abc'; clientId = 'c1'; releaseName = $Name } }
+function Invoke-Recheck { param($Film) [void]$script:Called.Add("recheck:$($Film.Release)"); $true }
+function Invoke-DelugeSettle { param($Film) [void]$script:Called.Add("deluge:$($Film.Release)"); $true }
+function Write-SuiteLog { param($m) }
+$qFilm = [pscustomobject]@{ Release = 'Q.2020'; ClientKind = 'qbittorrent' }
+$dFilm = [pscustomobject]@{ Release = 'D.2020'; ClientKind = 'deluge' }
+$tFilm = [pscustomobject]@{ Release = 'T.2020'; ClientKind = 'transmission' }
+Check 'qBittorrent is settled with Deluno''s Re-check' ((Invoke-FilmSettle -Film $qFilm -WaitForRowSec 5) -and $script:Called -contains 'recheck:Q.2020')
+Check 'Deluge is settled through its web API' ((Invoke-FilmSettle -Film $dFilm -WaitForRowSec 5) -and $script:Called -contains 'deluge:D.2020' -and $script:Called -notcontains 'recheck:D.2020')
+$before = $script:Called.Count
+Check 'Transmission is left alone' (-not (Invoke-FilmSettle -Film $tFilm) -and $script:Called.Count -eq $before)
+
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })
 if ($script:failures -gt 0) { exit 1 }

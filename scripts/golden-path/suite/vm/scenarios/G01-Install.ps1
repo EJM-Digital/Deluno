@@ -15,17 +15,13 @@ function Invoke-GroupInstall {
         if ($setting.Count -ge 5) {
             $blink = Get-BlinkSummary -Readings ($setting | ForEach-Object { [pscustomobject]@{ Found = $true; Brightness = $_.deluno.brightness; Colour = $_.deluno.colour } })
             Add-Check 'The dot blinks (its brightness alternates, its colour never changes)' ($blink.Blinks -and $blink.Colours.Count -le 1) ("samples {0}, flips {1}, levels {2}, colours [{3}]" -f $blink.Samples, $blink.Flips, $blink.BrightnessLevels, ($blink.Colours -join ','))
+            Add-Check 'The dot is grey while Deluno sets itself up' (@($blink.Colours).Count -eq 0 -or @($blink.Colours)[0] -eq 'grey') ("colours [{0}]" -f ($blink.Colours -join ','))
             $span = ([DateTime]::Parse($setting[-1].t) - [DateTime]::Parse($setting[0].t)).TotalSeconds
             Add-Note ("The icon said 'setting up' for {0:N0} s." -f $span)
         }
-        $menuFile = Join-Path $logs 'traymenu-first.json'
-        if (Test-Path $menuFile) {
-            $menu = Get-Content -Raw $menuFile | ConvertFrom-Json
-            $items = @($menu.items | Where-Object { $_ })
-            $ok = ($items.Count -eq 2 -and $items[0] -match '^Open Deluno' -and $items[1] -match '^Quit Deluno')
-            Add-Check 'The menu during setup is exactly "Open Deluno" and "Quit Deluno"' $ok ("items: " + ($items -join ' | '))
-        }
-        else { Add-Check 'The menu during setup was read' $false 'traymenu-first.json was not written: the icon was never found by the watcher.' }
+        # The first-run menu is not read here: opening any menu while the picker is being driven disturbs it (a right click once opened
+        # Server Manager's jump list over the picker). The hover text and the dot, which need no click, are the first-run evidence.
+        Add-Note 'The first-run tray menu ("Open Deluno" and "Quit Deluno") is not read during the picker; only the hover text and the dot are.'
 
         # Weir through the picker.
         $weir = Get-WeirExe
