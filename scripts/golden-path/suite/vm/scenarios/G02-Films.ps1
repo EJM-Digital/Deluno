@@ -39,7 +39,10 @@ function Invoke-GroupFilms {
             foreach ($pair in @(@('Sent to the download client'), @('Sent to the processor'), @('Imported into the library'))) {
                 Add-Check "Activity says: $($pair[0])" (@($act | Where-Object { $_ -match $pair[0] }).Count -ge 1) ''
             }
-            Save-Evidence -Name "film-$kind.json" -Text (@{ film = $film; timings = $r; handoff = $r.Handoff } | ConvertTo-Json -Depth 8)
+            # Plain values only: a FileInfo walks its folder and every parent at depth 8, and that ran out of memory (rc.30.21).
+            $timings = [ordered]@{ Finished = $r.Finished; FinishedSec = $r.FinishedSec; HandedOff = $r.HandedOff; HandedSec = $r.HandedSec; Settled = $r.Settled; Imported = $r.Imported; ImportedSec = $r.ImportedSec; File = $(if ($r.File) { "$($r.File.FullName) ($($r.File.Length) bytes)" } else { $null }) }
+            $filmInfo = [ordered]@{ Title = $film.Title; Release = $film.Release; Kind = $kind }
+            Save-Evidence -Name "film-$kind.json" -Text (@{ film = $filmInfo; timings = $timings; handoff = $r.Handoff } | ConvertTo-Json -Depth 5)
         }
     }
 
