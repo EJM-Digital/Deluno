@@ -260,7 +260,17 @@ if ($edge) {
             Check 'a button is found by its text and pressed with a real click' (Click-PageText -Page $page -Pattern '^Send to .* again')
             Start-Sleep -Milliseconds 300
             Check 'the click reached the page' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'clicked')
-            Check 'a button that is not there is not found' (-not (Click-PageText -Page $page -Pattern 'No such button'))
+            Check 'a button that is not there is not found' (-not (Click-PageText -Page $page -Pattern 'No such button' -TimeoutSec 0))
+            $busyHtml = '<html><body><button id=remove disabled onclick="document.title=''removed''">Remove...</button><script>setTimeout(function(){document.getElementById("remove").disabled=false},1500)</script></body></html>'
+            Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = 'data:text/html,' + [uri]::EscapeDataString($busyHtml) } | Out-Null
+            Start-Sleep -Milliseconds 400
+            Check 'a disabled button is not clicked when the caller only probes' (-not (Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 0))
+            $threw = ''; try { Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 1 | Out-Null } catch { $threw = $_.Exception.Message }
+            Check 'a button that stays disabled fails with a message that says so' ($threw -match 'disabled') $threw
+            Start-Sleep -Milliseconds 800
+            Check 'a button that becomes enabled is clicked once it is' (Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 5)
+            Start-Sleep -Milliseconds 300
+            Check 'the click reached the enabled button' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'removed')
             Close-CdpPage -Page $page
         }
     }

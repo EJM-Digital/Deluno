@@ -118,32 +118,60 @@ function Get-DrawerText {
     [string](Invoke-CdpEval -Page $Page -Script '(function(){var d=document.querySelector("[role=dialog],[data-state=open][role=dialog],aside[aria-label]");return (d?d:document.body).innerText;})()')
 }
 
-# Finds the smallest visible clickable element (button, link, row) whose text matches the pattern and presses it with a real
-# mouse click. Returns $true when one was found.
+# Presses the control whose text matches the pattern, the way a person does: it waits until the control is there, visible, enabled
+# and not covered by something else, then clicks it with real mouse events. A disabled control (a drawer that is busy, say) ignores a
+# click without a word, so the suite never clicks one: it waits up to -TimeoutSec and then throws a message that says which of
+# "not on the page", "hidden", "disabled" or "covered" it was. With -TimeoutSec 0 it looks once and returns $false when the control
+# is not ready (for a caller that is only probing); otherwise it returns $true.
 function Click-PageText {
-    param($Page, [Parameter(Mandatory)] [string] $Pattern, [string] $Within = '')
+    param($Page, [Parameter(Mandatory)] [string] $Pattern, [string] $Within = '', [int] $TimeoutSec = 15)
+    $scope = if ($Within) { 'document.querySelector(' + ($Within | ConvertTo-Json) + ')||document' } else { 'document' }
     $js = @"
 (function(){
   var re = new RegExp($(($Pattern | ConvertTo-Json)), 'i');
-  var scope = $(if ($Within) { 'document.querySelector(' + ($Within | ConvertTo-Json) + ')||document' } else { 'document' });
+  var scope = $scope;
   var els = Array.prototype.slice.call(scope.querySelectorAll('button,a,[role=button],[role=row],tr,[role=tab]'));
-  var best = null, bestLen = 1e9;
+  var ready = null, readyLen = 1e9, blocked = null;
   els.forEach(function(e){
     var t = (e.getAttribute('aria-label') || e.innerText || '').trim();
+    if (!re.test(t)) return;
     var r = e.getBoundingClientRect();
-    if (!re.test(t) || r.width < 2 || r.height < 2 || e.disabled) return;
-    if (t.length < bestLen) { best = e; bestLen = t.length; }
+    var cs = getComputedStyle(e);
+    var why = null;
+    if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none') why = 'hidden';
+    else if (e.disabled || e.getAttribute('aria-disabled') === 'true' || cs.pointerEvents === 'none' || e.closest('fieldset:disabled')) why = 'disabled';
+    if (why) { if (!blocked || why === 'disabled') blocked = {why: why, text: t.slice(0, 60)}; return; }
+    if (t.length < readyLen) { ready = e; readyLen = t.length; }
   });
-  if (!best) return null;
-  best.scrollIntoView({block:'center'});
-  var r = best.getBoundingClientRect();
-  return {x: r.left + r.width/2, y: r.top + r.height/2};
+  if (!ready) return blocked ? {state: blocked.why, text: blocked.text} : {state: 'none'};
+  ready.scrollIntoView({block: 'center'});
+  var r = ready.getBoundingClientRect();
+  var x = r.left + r.width / 2, y = r.top + r.height / 2;
+  var top = document.elementFromPoint(x, y);
+  if (!top || !(ready === top || ready.contains(top) || top.contains(ready))) return {state: 'covered', text: (ready.innerText || '').trim().slice(0, 60)};
+  return {state: 'ready', x: x, y: y};
 })()
 "@
-    $pt = Invoke-CdpEval -Page $Page -Script $js
-    if (-not $pt) { return $false }
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
+    $last = $null
+    while ($true) {
+        $last = Invoke-CdpEval -Page $Page -Script $js
+        if ($last -and $last.state -eq 'ready') { break }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            if ($TimeoutSec -le 0) { return $false }
+            $why = switch ($last.state) {
+                'none' { 'no control with that text is on the page' }
+                'hidden' { "the control '$($last.text)' is on the page but not visible" }
+                'disabled' { "the control '$($last.text)' is disabled (the screen is still busy), so a click would do nothing" }
+                'covered' { "the control '$($last.text)' is covered by something else" }
+                default { "the control is not ready ($($last.state))" }
+            }
+            throw "Could not click /$Pattern/ within $TimeoutSec s: $why."
+        }
+        Start-Sleep -Milliseconds 250
+    }
     foreach ($type in 'mouseMoved', 'mousePressed', 'mouseReleased') {
-        $params = @{ type = $type; x = $pt.x; y = $pt.y; button = 'left'; clickCount = 1 }
+        $params = @{ type = $type; x = $last.x; y = $last.y; button = 'left'; clickCount = 1 }
         Send-Cdp -Page $Page -Method 'Input.dispatchMouseEvent' -Params $params | Out-Null
     }
     $true

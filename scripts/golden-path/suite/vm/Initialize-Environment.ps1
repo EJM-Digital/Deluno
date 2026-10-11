@@ -34,12 +34,12 @@ function Complete-WeirWizard {
             if ($text -match 'Sign in|Log in') {
                 Set-PageInput -Page $page -Selector 'input[name=username],input[type=text],input:not([type])' -Value 'golden' | Out-Null
                 Set-PageInput -Page $page -Selector 'input[type=password]' -Value (Get-SuiteSecret 'weir-password') | Out-Null
-                Click-PageText -Page $page -Pattern '^(Sign in|Log in)' | Out-Null
+                Click-PageText -Page $page -Pattern '^(Sign in|Log in)' -TimeoutSec 10 | Out-Null
                 Start-Sleep -Seconds 3
             }
             $steps = @()
             foreach ($pattern in '^Finish setup', '^Continue to Weir') {
-                if (Click-PageText -Page $page -Pattern $pattern) { $steps += $pattern; Start-Sleep -Seconds 2 }
+                if (Click-PageText -Page $page -Pattern $pattern -TimeoutSec 0) { $steps += $pattern; Start-Sleep -Seconds 2 }
             }
             $now = (Get-PageText -Page $page) -replace '\s+', ' '
             Write-SuiteLog ("   Weir's first-run wizard: pressed [{0}]; the page now reads: {1}" -f ($steps -join ', '), $now.Substring(0, [math]::Min(120, $now.Length)))
