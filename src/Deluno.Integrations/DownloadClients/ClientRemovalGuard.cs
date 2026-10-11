@@ -29,6 +29,11 @@ internal static class ClientRemovalGuard
 {
     private static readonly TimeSpan MaxPause = TimeSpan.FromSeconds(5);
 
+    /// <summary>A torrent client drops a removed torrent at once; this only covers a moment's lag, never a wait for a refusal.</summary>
+    public static readonly TimeSpan TorrentSettleWindow = TimeSpan.FromSeconds(2);
+
+    public static readonly TimeSpan TorrentSettlePoll = TimeSpan.FromMilliseconds(250);
+
     public static async Task<DownloadClientActionResult> RunAsync(
         Deluno.Connections.Contracts.DownloadClientItem client,
         string queueItemId,

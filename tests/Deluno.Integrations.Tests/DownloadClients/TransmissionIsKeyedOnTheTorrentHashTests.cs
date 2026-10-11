@@ -53,12 +53,12 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     {
         var sent = new List<string>();
 
-        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, "{\"result\":\"success\",\"arguments\":{}}")))
+        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, "{\"result\":\"success\",\"arguments\":{}}", holds: true)))
             .ExecuteActionAsync(Client(), action, Hash.ToUpperInvariant(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        // A removal with its data first reads the torrent's name and folder (#1224), so the action is the last request.
-        using var document = JsonDocument.Parse(sent[^1]);
+        // A removal first looks for the torrent and reads its name and folder (#1224, #1252), and looks again after, so the action is found by its method.
+        using var document = JsonDocument.Parse(sent.Last(body => body.Contains($"\"{method}\"", StringComparison.Ordinal)));
         Assert.Equal(method, document.RootElement.GetProperty("method").GetString());
         Assert.Equal(Hash, document.RootElement.GetProperty("arguments").GetProperty("ids")[0].GetString());
     }
@@ -104,13 +104,25 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    private sealed class Handler(List<string> sent, string reply) : HttpMessageHandler
+    /// <summary>With <paramref name="holds"/> the daemon holds the torrent until a torrent-remove arrives (#1252), as the recorded one did.</summary>
+    private sealed class Handler(List<string> sent, string reply, bool holds = false) : HttpMessageHandler
     {
+        private bool _removed;
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             sent.Add(body);
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+            var answer = reply;
+            if (holds && body.Contains("\"torrent-get\"", StringComparison.Ordinal))
+            {
+                answer = _removed
+                    ? "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}"
+                    : "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"hashString\":\"" + Hash + "\",\"name\":\"Some.Film\",\"downloadDir\":\"/no/such/folder\"}]}}";
+            }
+
+            if (body.Contains("\"torrent-remove\"", StringComparison.Ordinal)) _removed = true;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
         }
     }
 }
