@@ -40,7 +40,7 @@ function Start-AgainDownload {
 
 # What must be true once a resend has settled.
 function Assert-ResendSettled {
-    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] $First, [int] $TimeoutSec = 180, [string] $What, [switch] $SameHashMayCountAsImported)
+    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] $First, [int] $TimeoutSec = 180, [string] $What, [switch] $SameHashMayCountAsImported, [switch] $FirstWasImported)
     $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Condition {
         $second = @(Find-Handoffs -Name $Film.Release) | Where-Object { $_.id -ne $First.id } | Select-Object -First 1
         if ($second -and $second.status -eq 'completed' -and $second.importJobId) { $second } else { $null }
@@ -72,7 +72,10 @@ function Assert-ResendSettled {
     $unmatched = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) -and $_ -match 'Unmatched in processor output' })
     Add-Check "$What : no 'unmatched in processor output' problem was raised" ($unmatched.Count -eq 0) "$($unmatched.Count) rows"
     $import = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) -and $_ -match 'Imported into the library' })
-    Add-Check "$What : it was imported once" ($import.Count -eq 1) "$($import.Count) 'Imported into the library' rows"
+    # When the first send was imported before the removal landed, a resend with a new download id (Usenet) is a second, real
+    # import that replaces the first copy through the recycle bin (#1254): two rows, one file. Otherwise exactly one.
+    $expected = if ($FirstWasImported -and $second) { 2 } else { 1 }
+    Add-Check "$What : it was imported $(if ($expected -eq 2) { 'twice (the first send, then the resend replacing it)' } else { 'once' })" ($import.Count -eq $expected) "$($import.Count) 'Imported into the library' rows"
     Test-OneStory -Film $Film -What $What
 }
 
@@ -152,8 +155,11 @@ function Invoke-GroupResend {
                 if (-not $reached) { return }
                 Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
                 Start-Sleep -Seconds 1
+                # Whether the first send reached the library before the removal (Deluno imports a cleaned film within a second or two).
+                $firstWasImported = (Wait-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { Find-Imported -Title $film.Title }).Ok
+                if ($firstWasImported) { Add-Note "$timing/$kind : the first send was imported before the removal landed." }
                 Start-AgainDownload -Film $film
-                Assert-ResendSettled -Film $film -First $first -What "$timing/$kind" -SameHashMayCountAsImported:($timing -eq 'after' -and $film.Protocol -eq 'torrent')
+                Assert-ResendSettled -Film $film -First $first -What "$timing/$kind" -SameHashMayCountAsImported:($timing -eq 'after' -and $film.Protocol -eq 'torrent') -FirstWasImported:$firstWasImported
             }
         }
     }
