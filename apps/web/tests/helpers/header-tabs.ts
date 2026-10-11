@@ -24,11 +24,24 @@ export async function openTab(page: Page, name: string): Promise<void> {
 /** The tab is reachable: drawn in the row, or listed under More. */
 export async function expectTabReachable(page: Page, name: string): Promise<void> {
   const link = sectionLink(page, name);
-  await expect(link.or(page.getByRole("button", { name: "More", exact: true }))).not.toHaveCount(0);
-  if (await link.count()) return;
-  await page.getByRole("button", { name: "More", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const more = page.getByRole("button", { name: "More", exact: true });
+  await expect(link.or(more)).not.toHaveCount(0);
+  // The row re-measures while the page settles and folds what does not fit into More, so one look can land between
+  // the two: drawn after More was opened, or folded after the row was read. Look again until the tab is in one of the
+  // places, and if it never is, say what each place held so a real gap is told apart from a slow layout.
+  let seen = "";
+  await expect.poll(async () => {
+    if (await link.count()) return true;
+    if (!(await more.count())) return false;
+    await more.click();
+    const items = page.getByRole("menuitem");
+    await items.first().waitFor({ timeout: 2_000 }).catch(() => undefined);
+    const listed = await items.allInnerTexts();
+    await page.keyboard.press("Escape");
+    const drawn = await page.getByRole("navigation", { name: "Sections" }).getByRole("link").allInnerTexts();
+    seen = `row: [${drawn.join(", ")}]; More: [${listed.join(", ")}]`;
+    return listed.some((text) => text.trim() === name);
+  }, { message: () => `"${name}" is neither a tab nor under More (${seen})`, timeout: 15_000 }).toBe(true);
 }
 
 /** A local-state section switch: a tab on the title line, a radio in the toolbar row below `lg`. */
