@@ -67,6 +67,8 @@ finally {
     if ($Groups.Count -eq 0 -or $Groups -contains 'problems') {
         try { Publish-WeirScenarioKey }
         catch { $final = 'Could not make the key for Weir''s suite: ' + (Hide-Secrets $_.Exception.Message); Write-SuiteLog $final }
+        try { Publish-WeirScenarioLogin }
+        catch { $final = 'Could not hand Weir''s suite its login: ' + (Hide-Secrets $_.Exception.Message); Write-SuiteLog $final }
     }
     Set-Content -Path $flag -Value $final -Encoding utf8
     Write-SuiteLog "Scenario suite finished: $final"

@@ -1,7 +1,7 @@
 <#
     Removal: "Remove this copy" on a finished download, as a folder and as a single file; removing twice reads as a failure and
-    writes no second Activity row. Uses the films of G02-Films.ps1 (folder releases on every client) and, on the torrent
-    clients, a second film saved as a single file.
+    writes no second Activity row. Each scenario sends its own film (a folder release on every client; on the torrent clients
+    also a single file), so the films of G02-Films.ps1 stay in place for Weir's scenarios.
 #>
 function Test-RemoveThisCopy {
     param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] [string] $What)
@@ -30,9 +30,11 @@ function Test-RemoveThisCopy {
 function Invoke-GroupRemoval {
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "remove-copy.$kind.folder" -Title "Remove this copy on a finished $kind download (a folder), and removing twice" -Body {
-            $film = $script:FilmByKind[$kind]
-            if (-not $film) { throw "There is no $kind film from the films group; run it first." }
-            Wait-FilmImported -Film $film | Out-Null
+            # Its own film: the films of the films group stay in place, because Weir's scenarios follow them.
+            $film = New-FilmFor -Kind $kind -Layout 'folder' -Label 'removal'
+            Send-Film -Film $film -Kind $kind | Out-Null
+            $r = Wait-FilmImported -Film $film
+            Add-Check 'The film was imported first' $r.Imported ''
             Test-RemoveThisCopy -Film $film -What "$kind folder"
         }
     }

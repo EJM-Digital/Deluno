@@ -186,6 +186,12 @@ try {
     Check 'the key is masked in the suite log' ((Get-Content -Raw (Join-Path $tmp 'logs\suite.log')) -notmatch 'key-ABCDEF123456')
     Check 'the key is masked in any text the suite writes' ((Hide-Secrets 'x key-ABCDEF123456 y') -notmatch 'key-ABCDEF123456')
     Check 'the key is registered so the collected logs are masked too' ((Get-Content -Raw (Join-Path $tmp 'secrets.json')) -match 'weir-scenario-key')
+    $loginFile = Join-Path $tmp 'weir-login.txt'
+    $threwNoConnect = ''; try { Publish-WeirScenarioLogin -Path $loginFile } catch { $threwNoConnect = $_.Exception.Message }
+    Check 'with no Connect Weir the login is not handed over, and the reason says so' ($threwNoConnect -match 'Connect Weir did not run' -and -not (Test-Path $loginFile))
+    New-SuiteSecret 'weir-username' | Out-Null; New-SuiteSecret 'weir-password' | Out-Null
+    Check 'the Weir username is a made-up name, not a word that would hide ordinary text' ((Get-SuiteSecret 'weir-username') -match '^Gp-')
+    Check 'both Weir secrets are masked in text' ((Hide-Secrets ((Get-SuiteSecret 'weir-username') + ' ' + (Get-SuiteSecret 'weir-password'))) -eq '*** ***')
     . (Join-Path $suite 'vm\scenarios\G09-Problems.ps1')
     Check 'the story rules are defined' ($null -ne (Get-Command Get-StoryProblems -ErrorAction SilentlyContinue))
 }
@@ -271,14 +277,13 @@ if ($edge) {
             Start-Sleep -Milliseconds 300
             Check 'the click reached the page' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'clicked')
             Check 'a button that is not there is not found' (-not (Click-PageText -Page $page -Pattern 'No such button' -TimeoutSec 0))
-            $busyHtml = '<html><body><button id=remove disabled onclick="document.title=''removed''">Remove...</button><script>setTimeout(function(){document.getElementById("remove").disabled=false},1500)</script></body></html>'
+            $busyHtml = '<html><body><button id=remove disabled onclick="document.title=''removed''">Remove...</button><script>setTimeout(function(){document.getElementById("remove").disabled=false},3500)</script></body></html>'
             Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = 'data:text/html,' + [uri]::EscapeDataString($busyHtml) } | Out-Null
             Start-Sleep -Milliseconds 400
             Check 'a disabled button is not clicked when the caller only probes' (-not (Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 0))
             $threw = ''; try { Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 1 | Out-Null } catch { $threw = $_.Exception.Message }
             Check 'a button that stays disabled fails with a message that says so' ($threw -match 'disabled') $threw
-            Start-Sleep -Milliseconds 800
-            Check 'a button that becomes enabled is clicked once it is' (Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 5)
+            Check 'a button that becomes enabled is clicked once it is' (Click-PageText -Page $page -Pattern "^Remove" -TimeoutSec 10)
             Start-Sleep -Milliseconds 300
             Check 'the click reached the enabled button' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'removed')
             Close-CdpPage -Page $page
