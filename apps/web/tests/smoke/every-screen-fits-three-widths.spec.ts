@@ -728,7 +728,7 @@ test.describe("a title page's header, Destination and History tabs read at every
     });
   }
 
-  // C6: a removed indexer whose history kept no name still has one on the Scoreboard, in its row and in the bar charts.
+  // C6: a removed indexer whose history kept no name still has one on the Scoreboard, once, in its row.
   test("the Scoreboard names a removed indexer", async ({ page }) => {
     await page.setViewportSize(SIZES[1]);
     await authenticateAndNavigate(page, "/movies");
@@ -739,7 +739,7 @@ test.describe("a title page's header, Destination and History tabs read at every
     await page.goto("/indexers/scoreboard");
     await expect(page.getByText("Needs attention: 29% of 7 queries").first()).toBeVisible();
     await expect(page.getByRole("region", { name: /Last 30 days/ }).getByText("A removed indexer")).toBeVisible();
-    await expect(page.getByRole("region", { name: "Queries" }).getByText("A removed indexer")).toBeVisible();
+    await expect(page.getByText("A removed indexer")).toHaveCount(1);
   });
 });
 
