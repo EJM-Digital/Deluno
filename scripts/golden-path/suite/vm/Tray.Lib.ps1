@@ -82,18 +82,29 @@ function Get-DotColour {
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     try { $g.CopyFromScreen([int]$Rect.X, [int]$Rect.Y, 0, 0, (New-Object System.Drawing.Size($w, $h))) } finally { $g.Dispose() }
-    $sumH = 0.0; $n = 0; $bright = 0.0
+    $px = New-Object System.Collections.ArrayList
     for ($x = 0; $x -lt $w; $x++) {
         for ($y = 0; $y -lt $h; $y++) {
             $c = $bmp.GetPixel($x, $y)
-            $bright += $c.GetBrightness()
-            if ($c.GetSaturation() -gt 0.55 -and $c.GetBrightness() -gt 0.25) { $sumH += $c.GetHue(); $n++ }
+            [void]$px.Add([pscustomobject]@{ H = $c.GetHue(); S = $c.GetSaturation(); B = $c.GetBrightness() })
         }
     }
     $bmp.Dispose()
-    $mean = [math]::Round($bright / ($w * $h), 4)
-    if ($n -lt 3) { return [pscustomobject]@{ Colour = 'none'; Hue = $null; Brightness = $mean; Pixels = $n } }
-    $hue = $sumH / $n
+    Get-DotClassFromPixels -Pixels @($px)
+}
+
+# Classifies a dot from its pixels (hue, saturation, brightness each). Saturated pixels vote by their median hue; a handful of
+# stray saturated pixels (anti-aliasing, a neighbour's glow) is not a dot, and a dot with no colour in it is grey (the first-run
+# tray draws a grey dot while Deluno sets itself up).
+function Get-DotClassFromPixels {
+    param([object[]] $Pixels)
+    if (-not $Pixels -or $Pixels.Count -eq 0) { return $null }
+    $mean = [math]::Round((($Pixels | Measure-Object -Property B -Average).Average), 4)
+    $sat = @($Pixels | Where-Object { $_.S -gt 0.55 -and $_.B -gt 0.25 })
+    $n = $sat.Count
+    if ($n -lt 12) { return [pscustomobject]@{ Colour = 'grey'; Hue = $null; Brightness = $mean; Pixels = $n } }
+    $hues = @($sat | ForEach-Object { [double]$_.H } | Sort-Object)
+    $hue = $hues[[int][math]::Floor($hues.Count / 2)]
     $name = if ($hue -lt 20 -or $hue -gt 340) { 'red' } elseif ($hue -lt 65) { 'amber' } elseif ($hue -lt 170) { 'green' } elseif ($hue -lt 260) { 'blue' } else { 'other' }
     [pscustomobject]@{ Colour = $name; Hue = [math]::Round($hue, 1); Brightness = $mean; Pixels = $n }
 }
@@ -194,7 +205,8 @@ function Get-BlinkSummary {
     param([object[]] $Readings)
     $found = @($Readings | Where-Object { $_.Found -and $null -ne $_.Brightness })
     $levels = @($found | ForEach-Object { [math]::Round([double]$_.Brightness, 2) } | Select-Object -Unique)
-    $colours = @($found | ForEach-Object { $_.Colour } | Where-Object { $_ -and $_ -ne 'none' } | Select-Object -Unique)
+    # A colour read once in the whole run is an outlier sample, not the dot's colour.
+    $colours = @($found | ForEach-Object { $_.Colour } | Where-Object { $_ -and $_ -ne 'none' } | Group-Object | Where-Object { $_.Count -ge 2 -or $found.Count -lt 3 } | ForEach-Object { $_.Name })
     $flips = 0
     for ($i = 1; $i -lt $found.Count; $i++) { if ([math]::Abs([double]$found[$i].Brightness - [double]$found[$i - 1].Brightness) -gt 0.01) { $flips++ } }
     [pscustomobject]@{ Samples = $found.Count; BrightnessLevels = $levels.Count; Flips = $flips; Colours = $colours; Blinks = ($flips -ge 4 -and $levels.Count -ge 2) }

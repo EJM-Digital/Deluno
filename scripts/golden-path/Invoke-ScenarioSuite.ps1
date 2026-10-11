@@ -63,7 +63,7 @@ param(
     [string[]] $Groups = @(),
     [string] $Repository = 'jampat000/Deluno',
     [string] $ResultsUrl,
-    [int] $TimeoutMinutes = 75,
+    [int] $TimeoutMinutes = 240,
     [switch] $DryRun,
     [switch] $ListOnly,
     [switch] $SkipInstall

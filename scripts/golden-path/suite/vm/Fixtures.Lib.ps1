@@ -273,7 +273,44 @@ function Send-Film {
     $Film | Add-Member -NotePropertyName ClientId -NotePropertyValue $client.id -Force
     $Film | Add-Member -NotePropertyName ClientKind -NotePropertyValue $Kind -Force
     Write-SuiteLog ("   sent {0} to {1}" -f $Film.Release, $Kind)
+    # qBittorrent and Deluge do not pick up data placed in their Incomplete folder on their own: ask them to check it now.
+    if (Test-ClientNeedsSettle -Kind $Kind) { Invoke-FilmSettle -Film $Film -WaitForRowSec 60 | Out-Null }
     $Film
+}
+
+# The two torrent clients that must be told to look at data already in place (qBittorrent: Deluno's Re-check; Deluge: its web
+# API). Transmission checks on its own.
+function Test-ClientNeedsSettle {
+    param([Parameter(Mandatory)] [string] $Kind)
+    $Kind -in 'qbittorrent', 'deluge'
+}
+
+# Presses the right action for the film's client once its queue row exists: Re-check for qBittorrent, force_recheck plus
+# move_storage for Deluge. Returns whether the action was sent.
+function Invoke-FilmSettle {
+    param([Parameter(Mandatory)] $Film, [int] $WaitForRowSec = 0)
+    if (-not (Test-ClientNeedsSettle -Kind $Film.ClientKind)) { return $false }
+    if ($WaitForRowSec -gt 0) {
+        $w = Wait-Until -TimeoutSec $WaitForRowSec -IntervalSec 2 -Condition { Find-QueueRow -Name $Film.Release }
+        if (-not $w.Ok) { Write-SuiteLog ("   {0}: no queue row to re-check after {1} s" -f $Film.Release, $WaitForRowSec); return $false }
+    }
+    $ok = $false
+    try { $ok = if ($Film.ClientKind -eq 'deluge') { [bool](Invoke-DelugeSettle -Film $Film) } else { [bool](Invoke-Recheck -Film $Film) } }
+    catch { Write-SuiteLog ("   {0}: the settle step failed: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
+    Write-SuiteLog ("   {0}: {1} sent={2}" -f $Film.Release, $(if ($Film.ClientKind -eq 'deluge') { 'force_recheck + move_storage' } else { 'Re-check' }), $ok)
+    $ok
+}
+
+# What a failed film needs in its evidence: the client's queue row and what is in the client's folders.
+function Save-FilmClientEvidence {
+    param([Parameter(Mandatory)] $Film)
+    try {
+        $row = Find-QueueRow -Name $Film.Release -IncludeHistory
+        $folders = foreach ($root in 'C:\Downloads\Incomplete', 'C:\Downloads\Completed') {
+            if (Test-Path $root) { Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 200 | ForEach-Object { '{0}  {1}' -f $_.FullName, $(if ($_.PSIsContainer) { '<dir>' } else { "$($_.Length) bytes" }) } }
+        }
+        Save-Evidence -Name ("film-client-{0}-{1}.txt" -f $Film.ClientKind, $Film.Title) -Text ("queue row:`n{0}`n`nfolders:`n{1}" -f ($row | ConvertTo-Json -Depth 4), ($folders -join "`n"))
+    } catch { }
 }
 
 # Deluno's Re-check action on a client's entry (a client that did not take the data first time round).
@@ -323,11 +360,12 @@ function Wait-FilmFinished {
         }
         if ($row.isHistory) { return $row }
         if ($row.status -in 'completed', 'processing', 'processed', 'waitingForProcessor', 'importReady', 'importQueued', 'imported' -or [double]$row.progress -ge 100) { return $row }
-        if ($Film.Protocol -eq 'torrent' -and $state.Nudged -lt 3 -and ([DateTime]::UtcNow - $Film.SentUtc).TotalSeconds -gt (10 + 15 * $state.Nudged)) {
+        if ($Film.Protocol -eq 'torrent' -and (Test-ClientNeedsSettle -Kind $Film.ClientKind) -and ([DateTime]::UtcNow - $Film.SentUtc).TotalSeconds -gt (20 * ($state.Nudged + 1))) {
             $state.Nudged++
-            if ($Film.ClientKind -eq 'deluge') { Invoke-DelugeSettle -Film $Film | Out-Null } else { Invoke-Recheck -Film $Film | Out-Null }
+            Invoke-FilmSettle -Film $Film | Out-Null
         }
         $null
     }
+    if (-not $w.Ok) { Save-FilmClientEvidence -Film $Film }
     $w
 }
