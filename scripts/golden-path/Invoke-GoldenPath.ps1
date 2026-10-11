@@ -73,10 +73,16 @@ param(
     [switch] $UsenetStub,
     [int] $UsenetStubNntpPort = 1119,
     [int] $UsenetStubNewznabPort = 1180,
+    # Make the stub's own film small (about 90 MB, two minutes) instead of the 1.6 GB Big Buck Bunny release: the scenario suite sends its own
+    # controlled releases and only needs the stub up, so it skips the minutes the big film takes to make.
+    [switch] $UsenetStubSmall,
     # The run's throwaway Deluno login. With it the script points Deluno at the stub through Deluno's own API;
     # without it the script prints the one command that does, to run once the account exists and a Usenet client is connected.
     [string] $DelunoUsername,
-    [string] $DelunoPassword
+    [string] $DelunoPassword,
+    # Run once the VM answers over PowerShell Direct and before the installer is copied: called with the host session, the VM name
+    # and the VM credential, so the scenario suite can start its tray watcher before Setup runs (Invoke-ScenarioSuite.ps1).
+    [scriptblock] $AfterVmReady
 )
 
 $ErrorActionPreference = 'Stop'
@@ -178,12 +184,14 @@ function Start-UsenetStubInVm {
     $files = @('UsenetStub.Lib.ps1', 'New-UsenetRelease.ps1', 'Start-NntpStub.ps1', 'Start-NewznabStub.ps1', 'Set-UsenetStubInDeluno.ps1') |
         ForEach-Object { , @($_, (Get-Content -Raw (Join-Path $stubDir $_))) }
     $made = Invoke-InVm {
-        param($pairs, $nntpPort, $newznabPort)
+        param($pairs, $nntpPort, $newznabPort, $small)
         $dir = 'C:\golden\usenet-stub'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
         foreach ($p in $pairs) { Set-Content -Path (Join-Path $dir $p[0]) -Value $p[1] -Encoding utf8 }
         $release = Join-Path $dir 'release'
-        $info = & (Join-Path $dir 'New-UsenetRelease.ps1') -OutDirectory $release
+        $makeArgs = @{ OutDirectory = $release }
+        if ($small) { $makeArgs.DurationSeconds = 125; $makeArgs.VideoMegabitsPerSecond = 6; $makeArgs.MinimumMegabytes = 60 }
+        $info = & (Join-Path $dir 'New-UsenetRelease.ps1') @makeArgs
         $user = "$env:USERDOMAIN\$env:USERNAME"
         $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -209,7 +217,7 @@ function Start-UsenetStubInVm {
             try { $newznab = (Invoke-WebRequest "http://127.0.0.1:$newznabPort/api?t=caps" -UseBasicParsing -TimeoutSec 5).Content } catch { }
         }
         [pscustomobject]@{ Name = $info.name; SizeMb = [math]::Round($info.sizeBytes / 1MB, 1); Parts = $info.parts; Nntp = $nntp; NewznabOk = ($newznab -like '*<caps>*') }
-    } @($files, $UsenetStubNntpPort, $UsenetStubNewznabPort)
+    } @($files, $UsenetStubNntpPort, $UsenetStubNewznabPort, [bool]$UsenetStubSmall)
     $ok = ($made.Nntp -like '200*') -and $made.NewznabOk
     Add-Result 'Usenet stub running in the VM (news server and Newznab indexer)' $(if ($ok) { 'passed' } else { 'failed' }) ("Release $($made.Name), $($made.SizeMb) MB in $($made.Parts) parts. News server on 127.0.0.1:$UsenetStubNntpPort answered '$($made.Nntp)'; indexer on http://127.0.0.1:$UsenetStubNewznabPort/ answered caps: $($made.NewznabOk).")
     if (-not $ok) { return }
@@ -257,6 +265,10 @@ try {
     if (-not $ready) { Add-Result 'VM answers over PowerShell Direct' 'failed' "No answer within 15 minutes (last error: $lastErr)."; throw 'VM did not come up.' }
     $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
     Add-Result 'VM answers over PowerShell Direct' 'passed' $os
+    if ($AfterVmReady) {
+        try { & $AfterVmReady $rig $VmName $vmCred; Add-Result 'Hook after the VM is ready' 'passed' 'Ran.' }
+        catch { Add-Result 'Hook after the VM is ready' 'failed' $_.Exception.Message }
+    }
 
     # 3. Copy the installer in: local -> host temp -> VM (Copy-Item over a PowerShell Direct session).
     try {

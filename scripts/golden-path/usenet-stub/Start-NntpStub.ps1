@@ -14,6 +14,15 @@
 .PARAMETER Port
     The port on 127.0.0.1. Defaults to 1119. Use 0 for any free port; the port is printed and written to -ReadyFile.
 
+.PARAMETER HangFile
+    A file of message-ids (one a line) that are never answered, so a download stops just short of the end (Stuckfilm, #1225).
+
+.PARAMETER ArticleDelayMs
+    A pause before each article named in -SlowFile, so that download crawls (the "too slow" rule).
+
+.PARAMETER SlowFile
+    A file of message-ids (one a line) that -ArticleDelayMs applies to.
+
 .PARAMETER ReadyFile
     When given, "ready <port>" is written here once the server listens, so a caller can wait for it.
 
@@ -24,7 +33,13 @@
 param(
     [Parameter(Mandatory)] [string] $Root,
     [int] $Port = 1119,
-    [string] $ReadyFile
+    [string] $ReadyFile,
+    # A file of message-ids (one a line) the server never answers, read on every request: a news server that stalls on its last article.
+    [string] $HangFile,
+    # A pause before each article named in -SlowFile, in milliseconds: a slow news server.
+    [int] $ArticleDelayMs = 0,
+    # A file of message-ids (one a line) that -ArticleDelayMs applies to.
+    [string] $SlowFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,6 +51,9 @@ if (-not (Test-Path (Join-Path $Root 'articles'))) { throw "No articles folder u
 $server = New-Object Golden.NntpServer
 $server.Root = $Root
 $server.Port = $Port
+$server.HangFile = $HangFile
+$server.ArticleDelayMs = $ArticleDelayMs
+$server.SlowFile = $SlowFile
 $server.Start()
 Write-Host "NNTP stub listening on 127.0.0.1:$($server.Port), serving $Root"
 if ($ReadyFile) { Set-Content -Path $ReadyFile -Value "ready $($server.Port)" -Encoding ascii }
