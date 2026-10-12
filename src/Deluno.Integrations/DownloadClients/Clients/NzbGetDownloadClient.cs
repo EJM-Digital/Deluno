@@ -306,6 +306,19 @@ public sealed class NzbGetDownloadClient(
     /// </summary>
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong login is said as that, not as "returned 401".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
 
@@ -329,7 +342,7 @@ public sealed class NzbGetDownloadClient(
                 lastError = reply?.Error?.Message;
                 return reply is { Error: null, Result: true };
             }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
             {
                 lastError = exception.Message;
                 return false;
@@ -376,9 +389,39 @@ public sealed class NzbGetDownloadClient(
                 var stillThere = finalDelete ? inQueue || inHistory : wasQueued ? inQueue : inHistory;
                 return stillThere ? ClientHas.Yes : ClientHas.No;
             }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
             {
                 return ClientHas.Unknown;
+            }
+        }
+
+        // The job's own place in NZBGet's queue and whether it is paused. NZBGet 26.3 still says DOWNLOADING for a job a moment
+        // after GroupPause while a connection finishes its article (recorded), so paused means the status says so or all of
+        // what is left is paused.
+        async Task<ClientPauseReading> ReadPauseAsync()
+        {
+            try
+            {
+                var queued = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetQueueItem>>>(
+                    http, endpoint, new NzbGetRequest("listgroups", []), cancellationToken);
+                if (queued?.Result is null)
+                {
+                    return new(ClientHas.Unknown, false);
+                }
+
+                var job = queued.Result.FirstOrDefault(item => item.NzbId == id);
+                if (job is null)
+                {
+                    return new(ClientHas.No, false);
+                }
+
+                var paused = string.Equals(job.Status, "PAUSED", StringComparison.OrdinalIgnoreCase)
+                    || (job.RemainingSizeMb is > 0 && job.PausedSizeMb is { } pausedMb && pausedMb >= job.RemainingSizeMb);
+                return new(ClientHas.Yes, paused);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
+            {
+                return new(ClientHas.Unknown, false);
             }
         }
 
@@ -413,11 +456,19 @@ public sealed class NzbGetDownloadClient(
 
         switch (action)
         {
+            // #1251: NZBGet answers false for an id it did not match, but a pause or resume counts only when the job was in
+            // its queue before the call and shows the asked state after it, so the queue is read, not believed.
             case DownloadClientActions.Pause:
-                return Done(await Edit("GroupPause"), "Paused this download in NZBGet.", "pause this download");
+                return await ClientPauseGuard.RunAsync(client, queueItemId, action, "NZBGet",
+                    () => ReadPauseAsync(),
+                    async () => Done(await Edit("GroupPause"), "Paused this download in NZBGet.", "pause this download"),
+                    cancellationToken: cancellationToken);
 
             case DownloadClientActions.Resume:
-                return Done(await Edit("GroupResume"), "Resumed this download in NZBGet.", "resume this download");
+                return await ClientPauseGuard.RunAsync(client, queueItemId, action, "NZBGet",
+                    () => ReadPauseAsync(),
+                    async () => Done(await Edit("GroupResume"), "Resumed this download in NZBGet.", "resume this download"),
+                    cancellationToken: cancellationToken);
 
             // Out of the queue, files left where they are. A finished job is in
             // NZBGet's history rather than its queue, so when the queue edit
@@ -827,7 +878,7 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
-    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null);
+    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null, [property: JsonPropertyName("PausedSizeMB")] long? PausedSizeMb = null);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses, [property: JsonPropertyName("FinalDir")] string? FinalDir = null);
 
     /// <summary>One post-processing script's own outcome, from NZBGet's history <c>ScriptStatuses</c> (#910) — SUCCESS, FAILURE or a script-specific warning wording.</summary>

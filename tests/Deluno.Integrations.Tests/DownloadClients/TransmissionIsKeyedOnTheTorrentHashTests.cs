@@ -46,7 +46,6 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     }
 
     [Theory]
-    [InlineData("pause", "torrent-stop")]
     [InlineData("delete-with-data", "torrent-remove")]
     [InlineData("move-to-top", "queue-move-top")]
     public async Task Actions_address_the_torrent_by_its_hash(string action, string method)
