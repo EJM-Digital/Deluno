@@ -338,6 +338,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IProcessorRepository repository,
             IActivityFeedRepository activityFeed,
+            IProcessorHandoffSender? sender,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -385,7 +386,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 cancellationToken);
             if (retried is null) return Results.NotFound();
 
-            await activityFeed.RecordActivityAsync(
+            // "Deluno will try it again" is written only once the send goes ahead, or when it is left for the planner;
+            // a refusal says why instead.
+            Task SayWillTryAsync() => activityFeed.RecordActivityAsync(
                 "processing.retry-requested",
                 $"Deluno will try {handoff.ReleaseName} with {connection.Name} again using the same hand-off ID.",
                 JsonSerializer.Serialize(new
@@ -401,6 +404,50 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 "processor-handoff",
                 handoff.Id,
                 cancellationToken);
+
+            // The person pressed a button, so the send starts now, through the planner's own send (#1253). The planner
+            // skips a hand-off being sent, so it goes out once. Without a sender the planner sends it on its next pass.
+            if (sender is not null)
+            {
+                var send = await sender.SendNowAsync(handoff.Id, SayWillTryAsync, cancellationToken);
+                if (send.Kind == ProcessorHandoffSendKind.Waiting)
+                {
+                    await SayWillTryAsync();
+                }
+
+                if (send.Kind == ProcessorHandoffSendKind.Refused)
+                {
+                    // Deluno's own check said no, and nothing was sent: it goes back to what it was, not left reading
+                    // as waiting.
+                    var now = await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken);
+                    if (now is not null && string.Equals(now.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await repository.UpdateProcessorHandoffAsync(handoff.Id, handoff.Status, null, null, handoff.FailureMessage, cancellationToken);
+                    }
+
+                    await activityFeed.RecordActivityAsync(
+                        "processing.retry-refused",
+                        $"Deluno did not try {handoff.ReleaseName} again. {send.Message}",
+                        JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, ConnectionId = connection.Id, connection.Name }),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
+                        cancellationToken);
+
+                    return Results.Conflict(new { message = send.Message });
+                }
+
+                if (send.Kind == ProcessorHandoffSendKind.ProcessorRefused)
+                {
+                    return Results.Conflict(new { message = send.Message });
+                }
+
+                retried = await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken) ?? retried;
+            }
+            else
+            {
+                await SayWillTryAsync();
+            }
 
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
         });
