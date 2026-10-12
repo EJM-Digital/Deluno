@@ -1001,6 +1001,69 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1255: the quality of the file an upgrade replaced is read from that file's own name, not from the
+    /// library folders above it. A library root called "library-2160-cache" made a WEB 720p copy count as
+    /// "WEB 2160p" on the Live screen.
+    /// </summary>
+    [Theory]
+    [InlineData("library-2160-cache")]
+    [InlineData("remux-bluray-hdtv-dvd")]
+    public async Task An_upgrade_reports_the_replaced_files_own_quality_not_its_library_folders(string libraryFolderName)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, libraryFolderName, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        async Task<ImportPipelineResult> ImportAsync(string fileName, string releaseName, byte fill, int size, bool replace)
+        {
+            var source = Path.Combine(downloadsPath, fileName);
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat(fill, size).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+                releaseName: releaseName, indexerName: "TestIndexer",
+                downloadClientId: "client-1", downloadClientName: "TestClient",
+                status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+            return await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(source, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                    "copy", Overwrite: replace, AllowCopyFallback: true, ForceReplacement: replace, DispatchId: dispatchId),
+                CancellationToken.None);
+        }
+
+        var first = await ImportAsync("The.Wild.Robot.2024.WEB.720p.mkv", "The Wild Robot 2024 WEB 720p", 0x11, 4096, replace: false);
+        Assert.True(first.Succeeded, first.Message);
+        var second = await ImportAsync("The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv", "The Wild Robot 2024 REPACK 1080p BluRay", 0x22, 8192, replace: true);
+        Assert.True(second.Succeeded, second.Message);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT details_json FROM activity_events WHERE category = 'filesystem.import.completed' ORDER BY created_utc DESC, rowid DESC LIMIT 1;";
+        var details = Assert.IsType<string>(await command.ExecuteScalarAsync());
+        using var document = JsonDocument.Parse(details);
+        Assert.Equal("WEB 720p", document.RootElement.GetProperty("PreviousQuality").GetString());
+        Assert.Equal("Bluray 1080p", document.RootElement.GetProperty("NewQuality").GetString());
+    }
+
+    /// <summary>
     /// #856: an upgrade that replaces an existing file dispatches both
     /// "upgrade" and "file.deleted" for the file it replaced — the two
     /// triggers only fire together because an upgrade is what removed it.
@@ -1634,13 +1697,27 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
+    public Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
+        => ImportFolderShapedMovieAndExpectWebNameAsync("downloads");
+
+    // #1255: the temp data root of every test is a random 32-hex folder name,
+    // and about 1 in 2,000 of them contains "2160" (or "720"/"480"). Quality was read
+    // from the whole source path, so "...\<guid with 2160>\downloads\Arrival.2016.
+    // 1080p.WEB-VERIFY" was filed as "WEB 2160p" and the gate failed once. The
+    // folders the file sits in above its release folder say nothing about it.
+    [Theory]
+    [InlineData("library-2160-cache")]
+    [InlineData("remux-bluray-hdtv-dvd")]
+    public Task ExecuteAsync_names_the_file_from_its_release_not_from_the_folders_above_it(string downloadsFolderName)
+        => ImportFolderShapedMovieAndExpectWebNameAsync(downloadsFolderName);
+
+    private static async Task ImportFolderShapedMovieAndExpectWebNameAsync(string downloadsFolderName)
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
         await InitializeAllAsync(storage, timeProvider);
 
-        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var downloadsPath = Path.Combine(storage.DataRoot, downloadsFolderName);
         var movieRootPath = Path.Combine(storage.DataRoot, "movies");
         var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
         Directory.CreateDirectory(Path.Combine(releaseFolder, "Subs"));
@@ -1688,7 +1765,9 @@ public sealed class ImportPipelineServiceTests
 
         Assert.True(result.Succeeded, result.Message);
         var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
-        Assert.True(File.Exists(destinationPath));
+        Assert.True(
+            File.Exists(destinationPath),
+            $"Expected {destinationPath} but the import used {result.Response?.Preview.DestinationPath}");
         Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
     }
 
@@ -3348,6 +3427,63 @@ public sealed class ImportPipelineServiceTests
         Assert.NotNull(snapshot);
         Assert.Equal("Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", snapshot.ReleaseNameEvidence);
         Assert.Equal([netflix.Id], snapshot.MatchedRuleIds);
+    }
+
+    /// <summary>
+    /// #1255: with no grab behind it, the preference evaluation reads the incoming file's own name, not the
+    /// download folders above it. A download folder called "library-2160p-remux" made a file named nothing
+    /// look like a 2160p remux to the installed-file record.
+    /// </summary>
+    [Fact]
+    public async Task A_file_with_no_grab_is_evaluated_on_its_own_name_not_its_download_folders()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T04:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "library-2160p-remux");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Sintel.2010.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var profile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest("E2E Movies 1080p", "movies", "WEB 1080p", "WEB 1080p", null, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: profile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, qualityRepository: quality);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en", ImdbId: "tt1727587"),
+                "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+
+        var imported = Assert.Single(tracked);
+        var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+            MediaKind.Movie, imported.MovieId, library.Id, fileIdentity: null, CancellationToken.None,
+            imported.FilePath, imported.FileSizeBytes);
+        Assert.NotNull(snapshot);
+        Assert.DoesNotContain("2160", snapshot.ReleaseNameEvidence, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("remux", snapshot.ReleaseNameEvidence, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(snapshot.Facts, fact => fact.State == PreferenceFactState.Present && fact.TraitId.Contains("2160", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
