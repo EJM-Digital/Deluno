@@ -338,6 +338,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IProcessorRepository repository,
             IActivityFeedRepository activityFeed,
+            IProcessorHandoffSender? sender,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -401,6 +402,27 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 "processor-handoff",
                 handoff.Id,
                 cancellationToken);
+
+            // The person pressed a button, so the send starts now, through the planner's own send (#1253). The planner
+            // skips a hand-off being sent, so it goes out once. Without a sender the planner sends it on its next pass.
+            if (sender is not null)
+            {
+                var send = await sender.SendNowAsync(handoff.Id, cancellationToken);
+                if (send.Kind == ProcessorHandoffSendKind.Refused)
+                {
+                    // Deluno's own check said no, and nothing was sent: it goes back to what it was, not left reading
+                    // as waiting. When the processor refused, the hand-off already reads failed with its reason.
+                    var now = await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken);
+                    if (now is not null && string.Equals(now.Status, ProcessorHandoffStatuses.Waiting, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await repository.UpdateProcessorHandoffAsync(handoff.Id, handoff.Status, null, null, handoff.FailureMessage, cancellationToken);
+                    }
+
+                    return Results.Conflict(new { message = send.Message });
+                }
+
+                retried = await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken) ?? retried;
+            }
 
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
         });

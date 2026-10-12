@@ -77,7 +77,7 @@ public sealed class WorkPlanner(
     /// disk. What is not sent this pass is sent the next one, which is how a
     /// slow processor slows Deluno down instead of filling the disk.</para>
     /// </summary>
-    private const int MostFilesWithOneProcessor = 20;
+    internal const int MostFilesWithOneProcessor = 20;
 
     public Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
@@ -1309,48 +1309,24 @@ public sealed class WorkPlanner(
                 var connection = await processorRepository.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken);
                 if (connection is { IsEnabled: true } && handoff.Status == "waiting")
                 {
-                    // Deluno's own view of sourcePath, translated to the
-                    // processor's (#962). The stored hand-off keeps Deluno's
-                    // path; only what goes out over the wire changes.
-                    var pathMappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-                    var outboundHandoff = await HandoffFileSelection.ForProcessorAsync(handoff, library, connection, pathMappings, processorConnectionService, activityFeedRepository, cancellationToken);
-                    submission = await processorConnectionService.SubmitAsync(connection, outboundHandoff, cancellationToken);
-                    currentHandoff = await processorRepository.UpdateProcessorHandoffAsync(
-                        handoff.Id,
-                        submission.Status,
-                        null,
-                        null,
-                        submission.IsAccepted ? null : submission.Message,
-                        cancellationToken) ?? handoff;
-                    if (ProcessorHealthRules.HealthAfterSubmission(submission) is { } submittedHealth)
+                    // Try again sends from Transfers at once (#1253); whoever holds a hand-off's lease sends it, and the
+                    // other leaves it. Once the lease is held the hand-off is read again: one that has moved on is not sent.
+                    using var lease = ProcessorHandoffSends.TryBegin(handoff.Id);
+                    if (lease is null)
                     {
-                        await processorRepository.RecordProcessorConnectionHealthAsync(
-                            connection.Id,
-                            submittedHealth,
-                            submission.Message,
-                            cancellationToken);
+                        continue;
                     }
-                    await activityFeedRepository.RecordActivityAsync(
-                        submission.IsAccepted ? "processing.submitted" : "processing.submission-failed",
-                        submission.IsAccepted
-                            ? $"Deluno submitted {item.Title} to {connection.Name}."
-                            : $"Deluno could not submit {item.Title} to {connection.Name}. {submission.Message}",
-                        JsonSerializer.Serialize(new
-                        {
-                            DispatchId = dispatch?.DispatchId,
-                            item.ReleaseName,
-                            item.SourcePath,
-                            HandoffId = handoff.Id,
-                            ConnectionId = connection.Id,
-                            connection.Name,
-                            connection.Provider,
-                            submission.Status,
-                            submission.StatusCode
-                        }, PayloadJsonOptions),
-                        null,
-                        "processor-handoff",
-                        handoff.Id,
-                        cancellationToken);
+
+                    var fresh = await processorRepository.GetProcessorHandoffAsync(handoff.Id, cancellationToken);
+                    if (fresh is null || fresh.Status != "waiting")
+                    {
+                        continue;
+                    }
+
+                    handoff = fresh;
+                    (currentHandoff, submission) = await ProcessorHandoffSubmission.SubmitAsync(
+                        handoff, library, connection, item.Title, dispatch?.DispatchId,
+                        processorRepository, processorConnectionService, activityFeedRepository, cancellationToken);
                 }
                 var waitKey = handoff.Id;
                 if (currentHandoff.Status != "failed" && recentWaitingKeys.Add(waitKey))
