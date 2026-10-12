@@ -9,6 +9,33 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.26
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.25, plus:
+
+- Try again on a failed hand-off sends it straight away, not on Deluno's next
+  pass up to 47 seconds later, and never sends it twice. If Deluno refuses to
+  try again, Activity says why.
+- Pausing or resuming a download counts as done only when the download client
+  really paused or resumed it. A download the client no longer has is reported
+  plainly, on every download client.
+- A download client that refuses Deluno's API key or login now says so in plain
+  words and tells you where to check it, instead of a bare error number.
+- Deluno reads a film's or episode's quality from the release's own name, never
+  from the folders above it, so a library or downloads folder with "2160" or
+  "Remux" in its name no longer files films under the wrong quality.
+
 ## 1.0.0-rc.30.25
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
