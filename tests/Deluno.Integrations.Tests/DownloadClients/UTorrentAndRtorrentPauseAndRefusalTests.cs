@@ -96,7 +96,10 @@ public sealed class UTorrentAndRtorrentPauseAndRefusalTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Calls.Add(request.RequestUri!.PathAndQuery);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            // uTorrent's token page is asked first; an empty page gives an empty token, and every other call is unanswered.
+            return Task.FromResult(request.RequestUri.AbsolutePath.EndsWith("token.html", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         }
     }
 
