@@ -65,6 +65,9 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
         /// <summary>Pause and resume calls that reached the client.</summary>
         public int Changes { get; private set; }
 
+        /// <summary>The last pause or resume call, path and body, to show it names the download and not the whole client.</summary>
+        public string? LastChange { get; private set; }
+
         public HttpMessageHandler Handler => RecordedReplies.Handler(_app, Recordings(), Intercept);
 
         private Recording[] Recordings() => _app switch
@@ -91,6 +94,7 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
             if (pause || resume)
             {
                 Changes++;
+                LastChange = Uri.UnescapeDataString(call);
                 if (_obeys)
                 {
                     Paused = pause;
@@ -189,6 +193,20 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
     }
 
     /// <summary>The issue's first line: an id the client does not have is a plain failure, and nothing is sent for it.</summary>
+    /// <summary>And pausing one download is not pausing the client: the call names the job (this replaces the old per-client check that ran on made-up replies).</summary>
+    [Theory]
+    [MemberData(nameof(EveryClientAndAction))]
+    public async Task The_call_names_the_download_it_changes(string app, string action)
+    {
+        var pausing = action == DownloadClientActions.Pause;
+        var rig = new Rig(app, has: true, paused: !pausing);
+
+        await Run(app, rig, action);
+
+        Assert.NotNull(rig.LastChange);
+        Assert.Contains(IdOf(app), rig.LastChange, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [MemberData(nameof(EveryClientAndAction))]
     public async Task A_job_the_client_never_had_is_a_plain_failure_and_nothing_is_sent(string app, string action)

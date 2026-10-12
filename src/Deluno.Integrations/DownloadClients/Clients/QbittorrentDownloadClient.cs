@@ -840,6 +840,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong login or key is said as that, not as "returned 403".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         using var handler = this.handlerFactory();
@@ -892,6 +905,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             }
             using (lastResponse)
             {
+                if (lastResponse is not null)
+                {
+                    ClientCredentials.ThrowIfRefused(lastResponse, client);
+                }
+
                 return lastResponse?.IsSuccessStatusCode == true
                     ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
                     : DownloadClientHelpers.ActionFailure(
@@ -901,6 +919,43 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                         $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.",
                         lastResponse?.StatusCode);
             }
+        }
+
+        // #1251: a pause or a resume is done only when qBittorrent had the torrent before and shows it in the asked state after.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "qBittorrent",
+                async () =>
+                {
+                    try
+                    {
+                        using var response = await http.GetAsync($"api/v2/torrents/info?hashes={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+                        ClientCredentials.ThrowIfRefused(response, client);
+                        if (!response.IsSuccessStatusCode) return new ClientPauseReading(ClientHas.Unknown, false);
+                        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                        if (document.RootElement.ValueKind != JsonValueKind.Array)
+                        {
+                            return new ClientPauseReading(ClientHas.Unknown, false);
+                        }
+
+                        var torrent = document.RootElement.EnumerateArray().FirstOrDefault();
+                        if (torrent.ValueKind != JsonValueKind.Object)
+                        {
+                            return new ClientPauseReading(ClientHas.No, false);
+                        }
+
+                        // qBittorrent 5 says stopped*, earlier releases paused*.
+                        var state = torrent.TryGetProperty("state", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                        var paused = state is not null
+                            && (state.StartsWith("paused", StringComparison.OrdinalIgnoreCase) || state.StartsWith("stopped", StringComparison.OrdinalIgnoreCase));
+                        return new ClientPauseReading(ClientHas.Yes, paused);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException && !ClientCredentials.IsRefusal(exception))
+                    {
+                        return new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                },
+                Send, ClientPauseGuard.SettleWindow, ClientPauseGuard.SettlePoll, cancellationToken);
         }
 
         // #1252: a removal is done only when qBittorrent had the torrent before and no longer has it after, the same
@@ -913,13 +968,14 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                     try
                     {
                         using var response = await http.GetAsync($"api/v2/torrents/info?hashes={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+                        ClientCredentials.ThrowIfRefused(response, client);
                         if (!response.IsSuccessStatusCode) return ClientHas.Unknown;
                         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
                         return document.RootElement.ValueKind == JsonValueKind.Array
                             ? document.RootElement.GetArrayLength() > 0 ? ClientHas.Yes : ClientHas.No
                             : ClientHas.Unknown;
                     }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException && !ClientCredentials.IsRefusal(exception))
                     {
                         return ClientHas.Unknown;
                     }
@@ -1152,7 +1208,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             throw new HttpRequestException($"qBittorrent answered the sign-in with {(int)result.Status}.", null, result.Status);
         }
 
-        throw new InvalidOperationException("qBittorrent rejected the configured username/password.");
+        // #1251: said as what it is, with where to check.
+        throw ClientCredentials.Refused("qBittorrent", Deluno.Connections.DownloadClientCredential.UsernameAndPassword);
     }
 
     /// <summary>

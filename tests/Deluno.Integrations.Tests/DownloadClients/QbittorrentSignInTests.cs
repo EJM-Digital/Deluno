@@ -48,7 +48,7 @@ public sealed class QbittorrentSignInTests
         var check = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(Client(), "deluno-movies", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Unreachable, check.Status);
-        Assert.Contains("rejected", check.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("refused Deluno's username and password", check.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, handler.Logins);
     }
 

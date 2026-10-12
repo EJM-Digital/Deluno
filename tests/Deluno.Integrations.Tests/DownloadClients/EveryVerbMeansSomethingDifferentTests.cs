@@ -130,12 +130,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
     /// And pausing one download is not pausing the client.
     /// </summary>
     [Theory]
-    [InlineData("qbittorrent")]
-    [InlineData("deluge")]
-    [InlineData("transmission")]
     [InlineData("utorrent")]
-    [InlineData("sabnzbd")]
-    [InlineData("nzbget")]
     public async Task Pausing_names_the_download_being_paused(string protocol)
     {
         var sent = await CaptureAsync(protocol, DownloadClientActions.Pause);
