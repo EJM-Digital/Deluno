@@ -3607,7 +3607,7 @@ public sealed partial class ImportPipelineService(
             return new CatalogImportResult { CatalogUpdated = false, CatalogId = null };
         }
 
-        var quality = mediaDecisionService.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
+        var quality = mediaDecisionService.DetectQuality(QualityEvidenceFromPaths(preview.SourcePath, preview.DestinationPath));
         var fileSizeBytes = GetFileSize(preview.DestinationPath);
         var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
 
@@ -3679,7 +3679,7 @@ public sealed partial class ImportPipelineService(
                     libraryId: library.Id,
                     filePath: item.DestinationPath,
                     fileSizeBytes: GetFileSize(item.DestinationPath),
-                    currentQuality: mediaDecisionService.DetectQuality($"{item.SourcePath} {item.DestinationPath}"),
+                    currentQuality: mediaDecisionService.DetectQuality(QualityEvidenceFromPaths(item.SourcePath, item.DestinationPath)),
                     evaluatedUtc: evaluatedUtc,
                     source: "filesystem.import",
                     customFormats: customFormats,
@@ -5350,6 +5350,27 @@ public sealed partial class ImportPipelineService(
     }
 
     /// <summary>
+    /// What a path says about a release's quality (#1255): its file name with the release folder around it,
+    /// or its release folder's own name, never the folders further up. Reading the whole path let a library or download folder
+    /// named "2160p" (or a test's random temp folder that happened to contain 2160) turn a 1080p WEB
+    /// release into "WEB 2160p" and change the name it was filed under.
+    /// </summary>
+    private static string QualityEvidenceFromPaths(params string?[] paths)
+        => string.Join(' ', paths.Select(QualityEvidenceFromPath).Where(part => part.Length > 0));
+
+    private static string QualityEvidenceFromPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        var segments = path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+        // A video file is named alongside the release folder it sits in; a folder is the release itself.
+        return string.Join(' ', segments.TakeLast(segments.Length > 0 && SupportedVideoExtensions.Contains(segments[^1]) ? 2 : 1));
+    }
+
+    /// <summary>
     /// What Deluno decided about the release being imported: the quality it
     /// counts as, the group that made it, and the custom formats it matched.
     ///
@@ -5376,7 +5397,7 @@ public sealed partial class ImportPipelineService(
             return NamingDecision.None;
         }
 
-        var quality = mediaDecisionService.DetectQuality($"{evidence} {request.SourcePath}");
+        var quality = mediaDecisionService.DetectQuality($"{evidence} {QualityEvidenceFromPaths(request.SourcePath)}");
         var releaseGroup = ReleaseGroupPattern().Match(evidence) is { Success: true } group
             ? group.Groups["group"].Value
             : null;
@@ -5652,7 +5673,7 @@ public sealed partial class ImportPipelineService(
         // incoming name is how an episode Deluno took as WEB-DL could be filed
         // as something else entirely.
         var quality = decision.Quality
-            ?? LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}")
+            ?? LibraryQualityDecider.DetectQuality($"{incomingName} {QualityEvidenceFromPaths(request.SourcePath)}")
             ?? string.Empty;
         // #760/#761: {Air-Date} and {absolute:000} come from this exact
         // episode's own catalogued numbering, never re-parsed from the
