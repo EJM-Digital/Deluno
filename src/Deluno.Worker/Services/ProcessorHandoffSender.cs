@@ -20,7 +20,7 @@ public sealed class ProcessorHandoffSender(
     IProcessorConnectionService processorConnectionService,
     IActivityFeedRepository activityFeedRepository) : IProcessorHandoffSender
 {
-    public async Task<ProcessorHandoffSendResult> SendNowAsync(string handoffId, CancellationToken cancellationToken)
+    public async Task<ProcessorHandoffSendResult> SendNowAsync(string handoffId, Func<Task>? beforeSend, CancellationToken cancellationToken)
     {
         using var lease = ProcessorHandoffSends.TryBegin(handoffId);
         if (lease is null)
@@ -75,13 +75,18 @@ public sealed class ProcessorHandoffSender(
             return new(ProcessorHandoffSendKind.Waiting, $"{connection.Name} is holding as many files as it can; Deluno sends this one as soon as there is room.");
         }
 
+        if (beforeSend is not null)
+        {
+            await beforeSend();
+        }
+
         var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
         var (sent, submission) = await ProcessorHandoffSubmission.SubmitAsync(
             handoff, library, connection, handoff.ReleaseName, dispatch?.DispatchId,
             processorRepository, processorConnectionService, activityFeedRepository, cancellationToken);
         return submission.IsAccepted
             ? new(ProcessorHandoffSendKind.Sent, $"Sent to {connection.Name} again.")
-            : new(ProcessorHandoffSendKind.Refused, sent.FailureMessage ?? submission.Message);
+            : new(ProcessorHandoffSendKind.ProcessorRefused, sent.FailureMessage ?? submission.Message);
     }
 
     /// <summary>Deluno's own check said no. Nothing was sent and the hand-off is left as it is; the caller puts back what it changed.</summary>

@@ -168,6 +168,7 @@ public static class ActivityEventLabels
             ["processing.processor-unreachable"] = "Processor could not be reached",
             ["processing.kept-waiting"] = "Kept waiting for the processor",
             ["processing.retry-requested"] = "Asked the processor to try again",
+            ["processing.retry-refused"] = "Did not try the hand-off again",
             ["processing.search-again"] = "Searching for another copy",
             ["processing.output.deleted"] = "Deleted the processor's leftover output",
             ["processing.output.already-imported"] = "Deleted a second copy the processor sent",

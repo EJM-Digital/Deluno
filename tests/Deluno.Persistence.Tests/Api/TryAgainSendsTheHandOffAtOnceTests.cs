@@ -295,4 +295,58 @@ public sealed class TryAgainSendsTheHandOffAtOnceTests
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(0, rig.Sent);
     }
+
+    private static async Task<IReadOnlyList<ActivityEventItem>> LinesAsync(ApplicationTestHost app, string handoffId)
+        => await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(50, "processor-handoff", handoffId, CancellationToken.None);
+
+    [Fact]
+    public async Task A_retry_Deluno_refuses_says_why_in_Activity_and_never_that_it_will_try_again()
+    {
+        await using var rig = await StartAsync("handoff-accepted");
+        var app = rig.App;
+        var scene = await SceneAsync(app);
+        var handoff = await FailedHandoffAsync(app, scene);
+        Directory.Delete(scene.Downloads, recursive: true);
+
+        Assert.Equal(HttpStatusCode.Conflict, (await TryAgainAsync(app, handoff)).StatusCode);
+
+        var lines = await LinesAsync(app, handoff.Id);
+        Assert.DoesNotContain(lines, line => line.Category == "processing.retry-requested");
+        Assert.DoesNotContain(lines, line => line.Message.Contains("will try", StringComparison.OrdinalIgnoreCase));
+        var refused = Assert.Single(lines, line => line.Category == "processing.retry-refused");
+        Assert.Contains("are gone", refused.Message);
+    }
+
+    [Fact]
+    public async Task A_retry_that_goes_ahead_says_it_will_try_again_before_the_hand_off_is_submitted()
+    {
+        await using var rig = await StartAsync("handoff-accepted");
+        var app = rig.App;
+        var scene = await SceneAsync(app);
+        var handoff = await FailedHandoffAsync(app, scene);
+
+        Assert.Equal(HttpStatusCode.Accepted, (await TryAgainAsync(app, handoff)).StatusCode);
+
+        var lines = await LinesAsync(app, handoff.Id);
+        Assert.DoesNotContain(lines, line => line.Category == "processing.retry-refused");
+        var will = Assert.Single(lines, line => line.Category == "processing.retry-requested");
+        var submitted = Assert.Single(lines, line => line.Category == "processing.submitted");
+        Assert.True(will.CreatedUtc <= submitted.CreatedUtc);
+    }
+
+    [Fact]
+    public async Task A_retry_the_processor_refuses_still_says_it_tried_because_the_send_went_ahead()
+    {
+        await using var rig = await StartAsync("handoff-refused-not-watched");
+        var app = rig.App;
+        var scene = await SceneAsync(app);
+        var handoff = await FailedHandoffAsync(app, scene);
+
+        Assert.Equal(HttpStatusCode.Conflict, (await TryAgainAsync(app, handoff)).StatusCode);
+
+        var lines = await LinesAsync(app, handoff.Id);
+        Assert.Single(lines, line => line.Category == "processing.retry-requested");
+        Assert.Single(lines, line => line.Category == "processing.submission-failed");
+        Assert.DoesNotContain(lines, line => line.Category == "processing.retry-refused");
+    }
 }
