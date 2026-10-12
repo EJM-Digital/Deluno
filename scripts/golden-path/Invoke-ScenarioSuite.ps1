@@ -43,6 +43,14 @@
 .PARAMETER SkipInstall
     Use the VM as it is (already installed, for example after an earlier run); skips the checkpoint restore and the picker.
 
+.PARAMETER AfterSetupScript
+    A script on this machine to run once Deluno is set up in the VM and before any group: Weir's own suite runs its Update phase
+    here (Weir's login is left for it). Its exit code is reported but does not change Deluno's verdict.
+
+.PARAMETER AfterSuiteScript
+    A script on this machine to run after the groups and the log collection (Weir's login and the key are left for it again):
+    Weir's WithDeluno and Fresh phases. Its exit code is reported but does not change Deluno's verdict.
+
 .PARAMETER ResultsUrl
     Optional target_url for the status (where the results file can be read).
 
@@ -66,7 +74,9 @@ param(
     [int] $TimeoutMinutes = 240,
     [switch] $DryRun,
     [switch] $ListOnly,
-    [switch] $SkipInstall
+    [switch] $SkipInstall,
+    [string] $AfterSetupScript,
+    [string] $AfterSuiteScript
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,6 +86,8 @@ $suiteDir = Join-Path $PSScriptRoot 'suite'
 . (Join-Path $suiteDir 'SuiteHost.Lib.ps1')
 
 $plan = @(Get-ScenarioPlan)
+# "-Groups resend,stuck" through powershell -File arrives as one string; split it.
+$Groups = @($Groups | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($Groups.Count -gt 0) {
     $unknown = @($Groups | Where-Object { $_ -notin $plan.Name })
     if ($unknown.Count -gt 0) { throw "Unknown group(s): $($unknown -join ', '). Groups: $($plan.Name -join ', ')." }
@@ -216,6 +228,26 @@ try {
         # The tray watcher has done its job (the install is over); it must not touch the tray while the scenarios read it.
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { New-Item -ItemType File -Force -Path 'C:\golden\suite\logs\traywatch.stop' | Out-Null; Start-Sleep -Seconds 3 } | Out-Null
         $runArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite"'
+        if ($AfterSetupScript) {
+            # Deluno is set up first (Connect Weir makes Weir's account), then Weir's Update phase runs, then the groups on the same
+            # environment. Weir's WithDeluno phase judges only hand-offs made after its update, so the groups must come after it.
+            Write-Host 'Setting Deluno up before the hand-over to the after-setup script...' -ForegroundColor Cyan
+            Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -ArgumentList @('GoldenSuiteSetup', ($runArgs + ' -SetupOnly')) -Block $startTaskBlock | Out-Null
+            $setupDone = $null
+            $setupDeadline = (Get-Date).AddMinutes(30)
+            while ((Get-Date) -lt $setupDeadline -and $null -eq $setupDone) {
+                Start-Sleep -Seconds 15
+                $setupDone = Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
+            }
+            if ($setupDone -ne 'ok') { throw "Setting Deluno up before the after-setup script did not finish: $(if ($setupDone) { $setupDone } else { 'no done flag in 30 minutes' })" }
+            Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { Remove-Item -LiteralPath 'C:\golden\suite\results\done.flag' -ErrorAction SilentlyContinue } | Out-Null
+            Write-Host "Running the after-setup script: $AfterSetupScript" -ForegroundColor Cyan
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSetupScript
+            $afterSetupExit = $LASTEXITCODE
+            Write-Host "The after-setup script exited $afterSetupExit." -ForegroundColor $(if ($afterSetupExit -eq 0) { 'Green' } else { 'Yellow' })
+            if ($afterSetupExit -ne 0) { [void]$warnings.Add("The after-setup script ($AfterSetupScript) exited $afterSetupExit.") }
+            $runArgs += ' -SkipEnvironment'
+        }
         if ($Groups.Count -gt 0) { $runArgs += ' -Groups ' + ($Groups -join ',') }
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -ArgumentList @('GoldenSuiteRun', $runArgs) -Block $startTaskBlock | Out-Null
         Write-Host 'The suite is running in the VM. Progress:' -ForegroundColor Cyan
@@ -322,5 +354,11 @@ elseif ($fullRun) {
     $out = & gh @statusArgs 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Host "Recording the status failed: $out" -ForegroundColor Red; exit 2 }
     Write-Host "Recorded golden-path=$($verdict.State) on $fullSha." -ForegroundColor Green
+}
+# Weir's WithDeluno and Fresh phases follow on the VM as the groups left it (the run left Weir's login and the key again).
+if ($AfterSuiteScript -and -not $suiteDidNotRun) {
+    Write-Host "Running the after-suite script: $AfterSuiteScript" -ForegroundColor Cyan
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSuiteScript
+    Write-Host "The after-suite script exited $LASTEXITCODE." -ForegroundColor $(if ($LASTEXITCODE -eq 0) { 'Green' } else { 'Yellow' })
 }
 if ($verdict.State -eq 'success') { exit 0 } else { exit 1 }

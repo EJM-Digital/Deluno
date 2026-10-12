@@ -201,6 +201,18 @@ try {
     New-SuiteSecret 'weir-username' | Out-Null; New-SuiteSecret 'weir-password' | Out-Null
     Check 'the Weir username is a made-up name, not a word that would hide ordinary text' ((Get-SuiteSecret 'weir-username') -match '^Gp-')
     Check 'both Weir secrets are masked in text' ((Hide-Secrets ((Get-SuiteSecret 'weir-username') + ' ' + (Get-SuiteSecret 'weir-password'))) -eq '*** ***')
+    # Weir's Update phase runs after Deluno's setup and before any film: the login is handed over then, with nothing to follow yet.
+    Set-Content -Path (Join-Path (Get-SuiteRoot) 'weir-connected.flag') -Value 'x'
+    $realConnectWeir = ${function:Connect-Weir}; $realGetHandoffs = ${function:Get-Handoffs}
+    function Connect-Weir { }
+    function Get-Handoffs { @() }
+    $threwNoFilm = ''; try { Publish-WeirScenarioLogin -Path $loginFile } catch { $threwNoFilm = $_.Exception.Message }
+    Check 'after the groups, a login with no handed-off film left is refused' ($threwNoFilm -match 'No film' -and -not (Test-Path $loginFile))
+    Publish-WeirScenarioLogin -Path $loginFile -BeforeAnyFilm
+    Check 'before any film (-BeforeAnyFilm) the login is handed over: two lines, username then password' ([IO.File]::ReadAllText($loginFile) -eq ((Get-SuiteSecret 'weir-username') + "`n" + (Get-SuiteSecret 'weir-password') + "`n"))
+    Remove-Item -LiteralPath $loginFile, (Join-Path (Get-SuiteRoot) 'weir-connected.flag') -ErrorAction SilentlyContinue
+    Set-Item -Path function:Connect-Weir -Value $realConnectWeir; Set-Item -Path function:Get-Handoffs -Value $realGetHandoffs
+    Check 'the setup-only pass hands Weir its login before any film and runs no group' ((Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')) -match '(?s)if \(\$SetupOnly\) \{.*Publish-WeirScenarioLogin -BeforeAnyFilm.*return')
     . (Join-Path $suite 'vm\scenarios\G09-Problems.ps1')
     Check 'the story rules are defined' ($null -ne (Get-Command Get-StoryProblems -ErrorAction SilentlyContinue))
 
