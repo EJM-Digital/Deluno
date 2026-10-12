@@ -261,9 +261,52 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong login is said as that, not as "returned 401".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    /// <summary>Whether rTorrent's <c>d.is_active</c> says the download is not running (#1251): 0 is paused or stopped.</summary>
+    internal static bool IsPaused(long isActive) => isActive == 0;
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp(client);
+
+        // #1251: a pause or a resume is done only when rTorrent had the download before and shows it in the asked state after.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "rTorrent",
+                async () =>
+                {
+                    try
+                    {
+                        var active = await SendAsync(http, baseUri, "d.is_active", [queueItemId], cancellationToken);
+                        return AsLong(active) is { } value
+                            ? new ClientPauseReading(ClientHas.Yes, IsPaused(value))
+                            : new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                    catch (RtorrentFaultException)
+                    {
+                        // rTorrent answers a hash it does not hold with a fault.
+                        return new ClientPauseReading(ClientHas.No, false);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception) && exception is not ClientCredentialsRefusedException)
+                    {
+                        return new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                },
+                () => RemoveAsync(client, http, baseUri, action, queueItemId, cancellationToken),
+                ClientPauseGuard.SettleWindow, ClientPauseGuard.SettlePoll, cancellationToken);
+        }
 
         // #1252: a removal is done only when rTorrent had the download before and no longer has it after (#1212).
         if (DownloadClientActions.RemovesTheDownload(action))
@@ -281,7 +324,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
                         // rTorrent answers a hash it does not hold with a fault.
                         return ClientHas.No;
                     }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception))
                     {
                         return ClientHas.Unknown;
                     }
@@ -320,7 +363,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             await SendAsync(http, baseUri, method, [queueItemId], cancellationToken);
             return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "rTorrent action sent.");
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception))
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
         }

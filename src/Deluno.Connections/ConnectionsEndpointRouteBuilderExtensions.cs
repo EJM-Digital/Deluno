@@ -1780,14 +1780,18 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var login = await QbittorrentSignIn.SignInAsync(client, item.Username, item.Secret, cancellationToken);
             if (!login.SignedIn)
             {
-                return ("degraded", login.Rejected ? "qBittorrent rejected the configured username/password." : $"qBittorrent rejected the login with {(int)login.Status}.", "auth");
+                // #1251: a refused login reads in plain words, with where to check it.
+                var qbitKind = string.IsNullOrWhiteSpace(item.Username) ? DownloadClientCredential.ApiKey : DownloadClientCredential.UsernameAndPassword;
+                return login.Rejected || DownloadClientCredentialText.IsRefusal(login.Status)
+                    ? ("degraded", DownloadClientCredentialText.Refused("qBittorrent", qbitKind), "auth")
+                    : ("degraded", $"qBittorrent rejected the login with {(int)login.Status}.", "auth");
             }
         }
 
         using var response = await client.GetAsync("api/v2/app/version", cancellationToken);
         return response.IsSuccessStatusCode
             ? ("healthy", $"Connected to qBittorrent at {uri.Host}:{uri.Port}.", null)
-            : HealthFromStatusCode("qBittorrent", response.StatusCode);
+            : HealthFromStatusCode("qBittorrent", response.StatusCode, string.IsNullOrWhiteSpace(item.Username) ? DownloadClientCredential.ApiKey : DownloadClientCredential.UsernameAndPassword);
     }
 
     /// <summary>The shared Usenet reading (<see cref="UsenetProviderCheck"/>); null when the client could not be asked, which never turns a pass into a failure.</summary>
@@ -1840,7 +1844,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         using var response = await client.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return HealthFromStatusCode("SABnzbd", response.StatusCode);
+            return HealthFromStatusCode("SABnzbd", response.StatusCode, DownloadClientCredential.ApiKey);
         }
 
         // #1142: SABnzbd with no news server answers every call happily and downloads nothing.
@@ -1869,12 +1873,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }, cancellationToken);
             return retry.IsSuccessStatusCode
                 ? ("healthy", $"Connected to Transmission at {uri.Host}:{uri.Port}.", null)
-                : HealthFromStatusCode("Transmission", retry.StatusCode);
+                : HealthFromStatusCode("Transmission", retry.StatusCode, DownloadClientCredential.UsernameAndPassword);
         }
 
         return response.IsSuccessStatusCode
             ? ("healthy", $"Connected to Transmission at {uri.Host}:{uri.Port}.", null)
-            : HealthFromStatusCode("Transmission", response.StatusCode);
+            : HealthFromStatusCode("Transmission", response.StatusCode, DownloadClientCredential.UsernameAndPassword);
     }
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
@@ -1884,13 +1888,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         using var response = await client.PostSizedJsonAsync(new Uri(uri, "json"), login, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return HealthFromStatusCode("Deluge", response.StatusCode);
+            return HealthFromStatusCode("Deluge", response.StatusCode, DownloadClientCredential.Password);
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         return body.Contains("true", StringComparison.OrdinalIgnoreCase)
             ? ("healthy", $"Connected to Deluge at {uri.Host}:{uri.Port}.", null)
-            : ("degraded", "Deluge login failed. Check the Web UI password.", "auth");
+            : ("degraded", DownloadClientCredentialText.Refused("Deluge", DownloadClientCredential.Password), "auth");
     }
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
@@ -1903,7 +1907,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return HealthFromStatusCode("NZBGet", response.StatusCode);
+            return HealthFromStatusCode("NZBGet", response.StatusCode, DownloadClientCredential.UsernameAndPassword);
         }
 
         // #1142: NZBGet cannot download until a real news server is set, so the test says so too.
@@ -1988,9 +1992,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static (string healthStatus, string message, string? failureCategory) HealthFromStatusCode(
         string integrationName,
-        HttpStatusCode statusCode)
+        HttpStatusCode statusCode,
+        DownloadClientCredential? credential = null)
         => IsAuthenticationFailure(statusCode)
-            ? ("degraded", $"{integrationName} rejected authentication with {(int)statusCode}.", "auth")
+            ? ("degraded", credential is { } kind
+                ? DownloadClientCredentialText.Refused(integrationName, kind)
+                : $"{integrationName} rejected authentication with {(int)statusCode}.", "auth")
             : IntegrationResiliencePolicy.IsTransientHttpStatusCode(statusCode)
                 ? ("unreachable", $"{integrationName} returned transient HTTP {(int)statusCode}.", "http-transient")
                 : ("degraded", $"{integrationName} returned {(int)statusCode}.", "http");

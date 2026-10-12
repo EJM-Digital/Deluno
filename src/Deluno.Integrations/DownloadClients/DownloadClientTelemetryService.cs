@@ -1533,6 +1533,11 @@ public sealed class DownloadClientTelemetryService(
                 }
                 : await implementation.ExecuteActionAsync(client, action, queueItemId, cancellationToken);
         }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a key or login the client refused, said as that on every path.
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException or JsonException)
         {
             return new DownloadClientActionResult(client.Id, queueItemId, action, false, exception.Message)
@@ -1565,6 +1570,18 @@ public sealed class DownloadClientTelemetryService(
             }
 
             return snapshot;
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a key or login the client refused reads as that, not as "403".
+            var refusal = ClientCredentials.MessageFor(client, exception)!;
+            return CreateSnapshot(
+                client,
+                [],
+                capturedUtc,
+                "degraded",
+                refusal,
+                failure: IntegrationFailureFactory.FromLegacy("download-client", client.Id, client.Name, "telemetry", "auth", refusal));
         }
         catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
         {

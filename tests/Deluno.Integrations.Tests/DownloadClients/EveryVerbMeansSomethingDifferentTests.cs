@@ -126,23 +126,8 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         Assert.Contains("has no download with that id", again.Message);
     }
 
-    /// <summary>
-    /// And pausing one download is not pausing the client.
-    /// </summary>
-    [Theory]
-    [InlineData("qbittorrent")]
-    [InlineData("deluge")]
-    [InlineData("transmission")]
-    [InlineData("utorrent")]
-    [InlineData("sabnzbd")]
-    [InlineData("nzbget")]
-    public async Task Pausing_names_the_download_being_paused(string protocol)
-    {
-        var sent = await CaptureAsync(protocol, DownloadClientActions.Pause);
-
-        Assert.NotEmpty(sent);
-        Assert.Contains(sent, request => request.Contains(QueueItemId(protocol), StringComparison.OrdinalIgnoreCase));
-    }
+    // Pausing names the download: since #1251 every client's pause is looked at before and after, so that check lives in
+    // EveryClientPausesAndResumesOnlyWhatItHasTests (the five recorded clients). uTorrent and rTorrent have no recording yet.
 
     /// <summary>
     /// #810: move to top/up/down/bottom are each their own request against

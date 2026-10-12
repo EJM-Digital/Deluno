@@ -315,6 +315,19 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong login is said as that, not as "returned 401".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         // One arm per verb, with `delete-local-data` set by the arm rather than
         // recomputed, because that flag is the whole of the difference between
         // two of them. Deluno never deletes a shared file itself (#287).
@@ -364,6 +377,41 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             return leftover is null ? done : done with { FilesNote = leftover };
         }
 
+        // #1251: a pause or a resume is done only when Transmission had the torrent before and shows it in the asked state after.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "Transmission",
+                async () =>
+                {
+                    try
+                    {
+                        var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
+                        {
+                            ["ids"] = new[] { torrentId },
+                            ["fields"] = new[] { "id", "hashString", "status" }
+                        }), cancellationToken);
+                        if (response.Arguments?.Torrents is not { } torrents)
+                        {
+                            return new ClientPauseReading(ClientHas.Unknown, false);
+                        }
+
+                        var torrent = torrents.Count == 1
+                            ? torrents[0]
+                            : torrents.FirstOrDefault(item => string.Equals(item.HashString, queueItemId, StringComparison.OrdinalIgnoreCase)
+                                || (torrentId is int number && item.Id == number));
+                        // Status 0 is Transmission's "stopped".
+                        return torrent is null
+                            ? new ClientPauseReading(ClientHas.No, false)
+                            : new ClientPauseReading(ClientHas.Yes, torrent.Status == 0);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !ClientCredentials.IsRefusal(exception))
+                    {
+                        return new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                },
+                Send, ClientPauseGuard.SettleWindow, ClientPauseGuard.SettlePoll, cancellationToken);
+        }
+
         // #1252: a removal is done only when Transmission had the torrent before and no longer has it after (#1212).
         if (!DownloadClientActions.RemovesTheDownload(action))
         {
@@ -384,7 +432,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                         ? torrents.Count > 0 ? ClientHas.Yes : ClientHas.No
                         : ClientHas.Unknown;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+                catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !ClientCredentials.IsRefusal(exception))
                 {
                     return ClientHas.Unknown;
                 }

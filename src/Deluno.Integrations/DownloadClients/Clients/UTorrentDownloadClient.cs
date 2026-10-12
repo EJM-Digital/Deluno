@@ -204,6 +204,26 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong login is said as that, not as "returned 401".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    /// <summary>
+    /// Whether a torrent's WebUI status bitfield (<c>list</c> index 1) says it is not running (#1251): the paused bit is set, or
+    /// the started bit is not. A stopped torrent is told to start by a resume, so it counts as not running.
+    /// </summary>
+    internal static bool IsPaused(int statusBits)
+        => (statusBits & UTorrentStatus.Paused) != 0 || (statusBits & UTorrentStatus.Started) == 0;
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         // "removedata" is uTorrent's remove-the-file-too verb; "remove" forgets
         // the torrent and leaves the payload where it is (#287).
         //
@@ -229,6 +249,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         async Task<DownloadClientActionResult> Send()
         {
             using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action={verb}&hash={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+            ClientCredentials.ThrowIfRefused(response, client);
             if (response.IsSuccessStatusCode)
             {
                 return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "uTorrent action sent.");
@@ -240,6 +261,32 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 action,
                 $"uTorrent returned {(int)response.StatusCode}.",
                 response.StatusCode);
+        }
+
+        // #1251: a pause or a resume is done only when uTorrent had the torrent before and shows it in the asked state after.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "uTorrent",
+                async () =>
+                {
+                    try
+                    {
+                        using var listing = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&list=1", cancellationToken);
+                        ClientCredentials.ThrowIfRefused(listing, client);
+                        if (!listing.IsSuccessStatusCode) return new ClientPauseReading(ClientHas.Unknown, false);
+                        var payload = await listing.Content.ReadFromJsonAsync<UTorrentListResponse>(cancellationToken);
+                        if (payload?.Torrents is null) return new ClientPauseReading(ClientHas.Unknown, false);
+                        var row = payload.Torrents.FirstOrDefault(item => item.Count > 1 && string.Equals(AsString(item[0]), queueItemId, StringComparison.OrdinalIgnoreCase));
+                        return row is null
+                            ? new ClientPauseReading(ClientHas.No, false)
+                            : new ClientPauseReading(ClientHas.Yes, IsPaused((int)AsInt64(row[1])));
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException && !ClientCredentials.IsRefusal(exception))
+                    {
+                        return new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                },
+                Send, ClientPauseGuard.SettleWindow, ClientPauseGuard.SettlePoll, cancellationToken);
         }
 
         // #1252: a removal is done only when uTorrent had the torrent before and no longer has it after (#1212).
@@ -259,7 +306,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                         ? ClientHas.Yes
                         : ClientHas.No;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException && !ClientCredentials.IsRefusal(exception))
                 {
                     return ClientHas.Unknown;
                 }

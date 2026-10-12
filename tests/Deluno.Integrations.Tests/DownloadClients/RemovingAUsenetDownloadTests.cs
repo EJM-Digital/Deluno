@@ -203,8 +203,8 @@ public sealed class RemovingAUsenetDownloadTests
 
         Assert.False(result.Succeeded);
         Assert.DoesNotContain("action sent", result.Message, StringComparison.OrdinalIgnoreCase);
-        // SABnzbd 5.1.3 refuses a wrong key with HTTP 403 (body "API Key Incorrect"), and Deluno reports the status.
-        Assert.Contains("403", result.Message);
+        // SABnzbd 5.1.3 refuses a wrong key with HTTP 403 (body "API Key Incorrect"), and Deluno says what was refused (#1251).
+        Assert.StartsWith("SABnzbd refused Deluno's API key; check it in the client's settings", result.Message);
     }
 
     [Theory]
@@ -225,14 +225,21 @@ public sealed class RemovingAUsenetDownloadTests
         Assert.DoesNotContain("action sent", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #1251: this used to say a "yes" to a pause was a success. SABnzbd's recorded answer to a pause of an id it never had is
+    /// also "yes" (status true), so the yes is not believed: the queue has to hold the job (EveryClientPausesAndResumesOnlyWhatItHasTests).
+    /// </summary>
     [Fact]
-    public async Task Sabnzbd_saying_yes_to_a_pause_is_still_a_success()
+    public async Task Sabnzbd_saying_yes_to_a_pause_is_not_a_success_when_the_job_is_not_in_its_queue()
     {
-        var handler = new StubHandler(_ => RecordedReplies.Sabnzbd("paused").Response("name=pause"));
+        var unknown = RecordedReplies.Sabnzbd("unknown-id");
+        var handler = new StubHandler(request => request.RequestUri!.Query.Contains("name=pause", StringComparison.Ordinal)
+            ? unknown.Response("name=pause")
+            : unknown.Response("mode=queue&output=json"));
 
         var result = await Sab(handler).ExecuteActionAsync(Sabnzbd(), DownloadClientActions.Pause, "SABnzbd_nzo_abc", CancellationToken.None);
 
-        Assert.True(result.Succeeded, result.Message);
+        Assert.False(result.Succeeded, result.Message);
     }
 
     [Fact]
