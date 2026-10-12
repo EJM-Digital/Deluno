@@ -1,3 +1,4 @@
+using Deluno.Connections;
 using Deluno.Connections.Usenet;
 using System.Net;
 using System.Globalization;
@@ -136,6 +137,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=queue&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+        ClientCredentials.ThrowIfRefused(response, "SABnzbd", DownloadClientCredential.ApiKey);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<SabQueueResponse>(cancellationToken);
         var queue = (payload?.Queue?.Slots ?? []).Select(item =>
@@ -306,6 +308,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         using var response = await http.GetAsync(
             new Uri(baseUri, $"api?mode=resume&output=json&apikey={Uri.EscapeDataString(client.Secret)}"),
             cancellationToken);
+        if (DownloadClientCredentialText.IsRefusal(response.StatusCode)) return new ClientResumeResult(true, false, DownloadClientCredentialText.Refused("SABnzbd", DownloadClientCredential.ApiKey));
         if (!response.IsSuccessStatusCode) return new ClientResumeResult(true, false, $"SABnzbd answered {(int)response.StatusCode} when asked to resume.");
         // SABnzbd answers {"status": true} or {"status": false, "error": ...}.
         try
@@ -475,6 +478,19 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (ClientCredentialsRefusedException refused)
+        {
+            // #1251: a wrong API key is said as that, not as "returned 403".
+            return ClientCredentials.Failure(client, queueItemId, action, refused);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         if (string.IsNullOrWhiteSpace(client.Secret))
@@ -588,6 +604,22 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                 });
         }
 
+        // #1251: SABnzbd answers {"status":true} to a pause or a resume of an id it has never heard of, so the yes proves
+        // nothing. The job must be in the queue before the call and show the asked state after it.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "SABnzbd",
+                () => ReadPauseAsync(http, baseUri, key, queueItemId, cancellationToken),
+                async () =>
+                {
+                    var sentPause = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}&apikey={key}&output=json", cancellationToken);
+                    return sentPause.Accepted
+                        ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.")
+                        : DidNotWork(client, queueItemId, action, sentPause, "did not accept it");
+                },
+                cancellationToken: cancellationToken);
+        }
+
         var sent = await SendAsync(http, baseUri, $"api?mode={mode}&value={itemId}{priorityValue}&apikey={key}&output=json", cancellationToken);
         return sent.Accepted
             ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.")
@@ -605,6 +637,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
                 "SABnzbd could not be reached, so nothing was changed.", category: "unreachable");
+        }
+
+        if (outcome.StatusCode is { } refusedStatus && DownloadClientCredentialText.IsRefusal(refusedStatus))
+        {
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.Refused("SABnzbd", DownloadClientCredential.ApiKey));
         }
 
         if (outcome.StatusCode is { } code && (int)code is < 200 or >= 300)
@@ -662,6 +699,9 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
 
         var queueRemoved = await SendAsync(http, baseUri, $"api?mode=queue&name=delete&value={id}&del_files=1&apikey={key}&output=json", cancellationToken);
         var historyRemoved = await SendAsync(http, baseUri, $"api?mode=history&name=delete&value={id}&del_files=1&apikey={key}&output=json", cancellationToken);
+
+        ClientCredentials.ThrowIfRefused(queueRemoved.StatusCode, "SABnzbd", DownloadClientCredential.ApiKey);
+        ClientCredentials.ThrowIfRefused(historyRemoved.StatusCode, "SABnzbd", DownloadClientCredential.ApiKey);
 
         if (historyRemoved.Reached || queueRemoved.Reached)
         {
@@ -732,6 +772,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         try
         {
             using var queueResponse = await http.GetAsync(new Uri(baseUri, $"api?mode=queue&output=json&apikey={key}"), cancellationToken);
+            ClientCredentials.ThrowIfRefused(queueResponse, "SABnzbd", DownloadClientCredential.ApiKey);
             if (!queueResponse.IsSuccessStatusCode) return (ClientHas.Unknown, null);
             var queue = (await queueResponse.Content.ReadFromJsonAsync<SabQueueResponse>(cancellationToken))?.Queue;
             if (queue is null) return (ClientHas.Unknown, null);
@@ -741,6 +782,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             }
 
             using var historyResponse = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={key}"), cancellationToken);
+            ClientCredentials.ThrowIfRefused(historyResponse, "SABnzbd", DownloadClientCredential.ApiKey);
             if (!historyResponse.IsSuccessStatusCode) return (ClientHas.Unknown, null);
             var history = (await historyResponse.Content.ReadFromJsonAsync<SabHistoryResponse>(cancellationToken))?.History;
             if (history is null) return (ClientHas.Unknown, null);
@@ -750,6 +792,32 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or JsonException)
         {
             return (ClientHas.Unknown, null);
+        }
+    }
+
+    /// <summary>
+    /// Whether SABnzbd's queue holds this job right now and whether the job is paused (#1251). Asked of the queue itself,
+    /// because SABnzbd's pause and resume calls answer yes for any id. A finished job is in the history, not the queue, and
+    /// cannot be paused, so it counts as not there.
+    /// </summary>
+    private static async Task<ClientPauseReading> ReadPauseAsync(
+        HttpClient http, Uri baseUri, string key, string nzoId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=queue&output=json&apikey={key}"), cancellationToken);
+            ClientCredentials.ThrowIfRefused(response, "SABnzbd", DownloadClientCredential.ApiKey);
+            if (!response.IsSuccessStatusCode) return new(ClientHas.Unknown, false);
+            var queue = (await response.Content.ReadFromJsonAsync<SabQueueResponse>(cancellationToken))?.Queue;
+            if (queue is null) return new(ClientHas.Unknown, false);
+            var slot = (queue.Slots ?? []).FirstOrDefault(item => string.Equals(item.NzoId, nzoId, StringComparison.OrdinalIgnoreCase));
+            return slot is null
+                ? new(ClientHas.No, false)
+                : new(ClientHas.Yes, string.Equals(slot.Status, "Paused", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or JsonException)
+        {
+            return new(ClientHas.Unknown, false);
         }
     }
 

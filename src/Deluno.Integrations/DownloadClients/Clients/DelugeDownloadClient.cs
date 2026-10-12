@@ -1,3 +1,4 @@
+using Deluno.Connections;
 using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -235,6 +236,19 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await ExecuteActionCoreAsync(client, action, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is not null)
+        {
+            // #1251: a wrong password is said as that, not as "returned 401" or "refused the password".
+            return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
         // One arm per verb. `remove_data` is the second argument to
         // core.remove_torrent and is the only thing separating two of these, so
         // it is set by the arm rather than recomputed from the action name.
@@ -266,6 +280,41 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
 
+        // #1251: a pause or a resume is done only when Deluge had the torrent before and shows it in the asked state after.
+        if (action is DownloadClientActions.Pause or DownloadClientActions.Resume)
+        {
+            return await ClientPauseGuard.RunAsync(client, queueItemId, action, "Deluge",
+                async () =>
+                {
+                    try
+                    {
+                        var listing = new DelugeRequest("web.update_ui", [new[] { "name", "state" }, new Dictionary<string, object> { ["id"] = new[] { queueItemId } }], 2);
+                        var found = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, new Uri(baseUri, "json"), listing, cancellationToken);
+                        // Deluge answers a filter on an id it lacks with a KeyError (recorded, Deluge 2.2.0); any other error is not an answer.
+                        if (found?.Error is { } problem)
+                        {
+                            return problem.Message?.StartsWith("KeyError", StringComparison.Ordinal) == true
+                                ? new ClientPauseReading(ClientHas.No, false)
+                                : new ClientPauseReading(ClientHas.Unknown, false);
+                        }
+
+                        if (found?.Result?.Torrents is not { } torrents)
+                        {
+                            return new ClientPauseReading(ClientHas.No, false);
+                        }
+
+                        return torrents.TryGetValue(queueItemId, out var torrent)
+                            ? new ClientPauseReading(ClientHas.Yes, string.Equals(torrent.State, "Paused", StringComparison.OrdinalIgnoreCase))
+                            : new ClientPauseReading(ClientHas.No, false);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
+                    {
+                        return new ClientPauseReading(ClientHas.Unknown, false);
+                    }
+                },
+                () => RemoveAsync(), ClientPauseGuard.SettleWindow, ClientPauseGuard.SettlePoll, cancellationToken);
+        }
+
         // #1252: a removal is done only when Deluge had the torrent before and no longer has it after (#1212).
         if (DownloadClientActions.RemovesTheDownload(action))
         {
@@ -286,7 +335,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                             ? torrents.ContainsKey(queueItemId) ? ClientHas.Yes : ClientHas.No
                             : ClientHas.No;
                     }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
                     {
                         return ClientHas.Unknown;
                     }
@@ -624,7 +673,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         var login = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<bool>>(http, json, new DelugeRequest("auth.login", [client.Secret ?? string.Empty], 1), cancellationToken);
         if (login?.Result != true)
         {
-            throw new InvalidOperationException("Deluge refused the password.");
+            // #1251: said as what it is, with where to check.
+            throw ClientCredentials.Refused("Deluge", DownloadClientCredential.Password);
         }
 
         var connected = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<bool>>(http, json, new DelugeRequest("web.connected", [], 2), cancellationToken);
