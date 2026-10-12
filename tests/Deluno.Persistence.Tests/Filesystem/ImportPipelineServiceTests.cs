@@ -1634,13 +1634,27 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
+    public Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
+        => ImportFolderShapedMovieAndExpectWebNameAsync("downloads");
+
+    // #1255: the temp data root of every test is a random 32-hex folder name,
+    // and about 1 in 2,000 of them contains "2160" (or "720"/"480"). Quality was read
+    // from the whole source path, so "...\<guid with 2160>\downloads\Arrival.2016.
+    // 1080p.WEB-VERIFY" was filed as "WEB 2160p" and the gate failed once. The
+    // folders the file sits in above its release folder say nothing about it.
+    [Theory]
+    [InlineData("library-2160-cache")]
+    [InlineData("remux-bluray-hdtv-dvd")]
+    public Task ExecuteAsync_names_the_file_from_its_release_not_from_the_folders_above_it(string downloadsFolderName)
+        => ImportFolderShapedMovieAndExpectWebNameAsync(downloadsFolderName);
+
+    private static async Task ImportFolderShapedMovieAndExpectWebNameAsync(string downloadsFolderName)
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
         await InitializeAllAsync(storage, timeProvider);
 
-        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var downloadsPath = Path.Combine(storage.DataRoot, downloadsFolderName);
         var movieRootPath = Path.Combine(storage.DataRoot, "movies");
         var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
         Directory.CreateDirectory(Path.Combine(releaseFolder, "Subs"));
@@ -1688,7 +1702,9 @@ public sealed class ImportPipelineServiceTests
 
         Assert.True(result.Succeeded, result.Message);
         var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
-        Assert.True(File.Exists(destinationPath));
+        Assert.True(
+            File.Exists(destinationPath),
+            $"Expected {destinationPath} but the import used {result.Response?.Preview.DestinationPath}");
         Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
     }
 
