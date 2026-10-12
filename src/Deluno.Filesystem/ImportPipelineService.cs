@@ -3607,7 +3607,7 @@ public sealed partial class ImportPipelineService(
             return new CatalogImportResult { CatalogUpdated = false, CatalogId = null };
         }
 
-        var quality = mediaDecisionService.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
+        var quality = mediaDecisionService.DetectQuality(ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, preview.SourcePath, preview.DestinationPath));
         var fileSizeBytes = GetFileSize(preview.DestinationPath);
         var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
 
@@ -3679,13 +3679,13 @@ public sealed partial class ImportPipelineService(
                     libraryId: library.Id,
                     filePath: item.DestinationPath,
                     fileSizeBytes: GetFileSize(item.DestinationPath),
-                    currentQuality: mediaDecisionService.DetectQuality($"{item.SourcePath} {item.DestinationPath}"),
+                    currentQuality: mediaDecisionService.DetectQuality(ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, item.SourcePath, item.DestinationPath)),
                     evaluatedUtc: evaluatedUtc,
                     source: "filesystem.import",
                     customFormats: customFormats,
                     guidePackage: guidePackage,
                     preferencePlan: preferencePlan,
-                    releaseNameEvidence: dispatchReleaseName ?? item.SourcePath,
+                    releaseNameEvidence: dispatchReleaseName ?? ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, item.SourcePath),
                     acquisition: acquisition))
                 .OfType<PreferenceEvaluationSnapshot>()
                 .ToArray();
@@ -3873,7 +3873,7 @@ public sealed partial class ImportPipelineService(
                     ? replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).ToArray()
                     : [],
                 NewQuality = quality,
-                PreviousQuality = replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).Select(path => mediaDecisionService.DetectQuality(path)).FirstOrDefault(),
+                PreviousQuality = replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).Select(path => mediaDecisionService.DetectQuality(ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, path))).FirstOrDefault(),
                 FileSizeBytes = fileSizeBytes,
                 QualityMet = decision.QualityCutoffMet
             };
@@ -3997,7 +3997,7 @@ public sealed partial class ImportPipelineService(
                     : [],
             NewQuality = quality,
             PreviousQuality = !string.IsNullOrWhiteSpace(replacedMovieFilePath) && !IsSamePath(replacedMovieFilePath, preview.DestinationPath)
-                ? mediaDecisionService.DetectQuality(replacedMovieFilePath)
+                ? mediaDecisionService.DetectQuality(ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, replacedMovieFilePath))
                 : null,
             FileSizeBytes = fileSizeBytes,
             QualityMet = decision.QualityCutoffMet
@@ -5376,7 +5376,7 @@ public sealed partial class ImportPipelineService(
             return NamingDecision.None;
         }
 
-        var quality = mediaDecisionService.DetectQuality($"{evidence} {request.SourcePath}");
+        var quality = mediaDecisionService.DetectQuality($"{evidence} {ReleasePathEvidence.FromPaths(mediaDecisionService.DetectQuality, request.SourcePath)}");
         var releaseGroup = ReleaseGroupPattern().Match(evidence) is { Success: true } group
             ? group.Groups["group"].Value
             : null;
@@ -5652,7 +5652,7 @@ public sealed partial class ImportPipelineService(
         // incoming name is how an episode Deluno took as WEB-DL could be filed
         // as something else entirely.
         var quality = decision.Quality
-            ?? LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}")
+            ?? LibraryQualityDecider.DetectQuality($"{incomingName} {ReleasePathEvidence.FromPaths(LibraryQualityDecider.DetectQuality, request.SourcePath)}")
             ?? string.Empty;
         // #760/#761: {Air-Date} and {absolute:000} come from this exact
         // episode's own catalogued numbering, never re-parsed from the
