@@ -39,7 +39,8 @@ internal static class ClientCredentials
 
     /// <summary>For a catch: turns an HTTP failure that is a refusal into the plain exception; otherwise lets it through.</summary>
     public static bool IsRefusal(Exception exception)
-        => exception is HttpRequestException { StatusCode: { } code } && DownloadClientCredentialText.IsRefusal(code);
+        => exception is ClientCredentialsRefusedException
+           || (exception is HttpRequestException { StatusCode: { } code } && DownloadClientCredentialText.IsRefusal(code));
 
     /// <summary>
     /// What a client's protocol takes as its credential: SABnzbd an API key, Deluge a password, qBittorrent an API key when

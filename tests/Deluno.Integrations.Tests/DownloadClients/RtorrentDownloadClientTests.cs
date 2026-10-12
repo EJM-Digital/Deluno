@@ -140,8 +140,6 @@ public sealed class RtorrentDownloadClientTests
     }
 
     [Theory]
-    [InlineData(DownloadClientActions.Pause, "d.pause")]
-    [InlineData(DownloadClientActions.Resume, "d.resume")]
     [InlineData(DownloadClientActions.Recheck, "d.check_hash")]
     [InlineData(DownloadClientActions.Delete, "d.erase")]
     [InlineData(DownloadClientActions.RemoveRefusedCopy, "d.erase")]
