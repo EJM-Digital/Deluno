@@ -8,8 +8,11 @@ public enum ProcessorHandoffSendKind
     /// <summary>The processor took it. The hand-off now reads submitted.</summary>
     Sent,
 
-    /// <summary>The send did not go: Deluno's own checks or the processor refused it. The hand-off says why.</summary>
+    /// <summary>Deluno's own checks refused it, so nothing was sent.</summary>
     Refused,
+
+    /// <summary>The send went ahead and the processor refused it. The hand-off reads failed with the processor's reason.</summary>
+    ProcessorRefused,
 
     /// <summary>Another send of the same hand-off is under way or already done, so this one did nothing.</summary>
     AlreadySending,
@@ -26,7 +29,8 @@ public sealed record ProcessorHandoffSendResult(ProcessorHandoffSendKind Kind, s
 /// </summary>
 public interface IProcessorHandoffSender
 {
-    Task<ProcessorHandoffSendResult> SendNowAsync(string handoffId, CancellationToken cancellationToken);
+    /// <param name="beforeSend">Runs once every check has passed, just before the hand-off goes out. Not run on a refusal.</param>
+    Task<ProcessorHandoffSendResult> SendNowAsync(string handoffId, Func<Task>? beforeSend, CancellationToken cancellationToken);
 }
 
 /// <summary>
