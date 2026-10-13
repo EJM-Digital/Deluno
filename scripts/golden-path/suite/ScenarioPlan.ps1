@@ -27,6 +27,76 @@ function Get-ScenarioPlan {
     $groups | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Function = $_.Function; Host = [bool]$_.Host; Ids = @($_.Ids) } }
 }
 
+# ---------------------------------------------------------------- choosing single scenarios (-Scenarios)
+
+# Turns what a person typed after -Scenarios (ids, comma separated or as separate values; * and ? stand for any text, so
+# "resend.*.sabnzbd" works) into the plan's ids, in plan order, with none twice. An id that matches nothing is an error that names
+# the nearest ids, so a typo never quietly runs nothing.
+function Resolve-ScenarioSelection {
+    param([string[]] $Scenarios = @(), [object[]] $Plan = @(Get-ScenarioPlan))
+    $wanted = @($Scenarios | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($wanted.Count -eq 0) { return @() }
+    $all = @($Plan | ForEach-Object { $_.Ids })
+    $picked = New-Object System.Collections.Generic.HashSet[string]
+    $unknown = New-Object System.Collections.ArrayList
+    foreach ($w in $wanted) {
+        $hits = @($all | Where-Object { $_ -like $w })
+        if ($hits.Count -eq 0) { [void]$unknown.Add($w) }
+        foreach ($h in $hits) { [void]$picked.Add($h) }
+    }
+    if ($unknown.Count -gt 0) {
+        $near = @($unknown | ForEach-Object { $stem = ($_ -split '\.')[0]; $all | Where-Object { $_ -like "$stem*" } } | Select-Object -Unique | Select-Object -First 12)
+        throw ("Unknown scenario(s): {0}. {1}" -f ($unknown -join ', '), $(if ($near.Count) { 'Did you mean: ' + ($near -join ', ') + '?' } else { 'Run with -ListOnly to see every id.' }))
+    }
+    @($all | Where-Object { $picked.Contains($_) })
+}
+
+# What a run covers, from -Groups and -Scenarios: the chosen ids, whether it is the full run, whether any chosen scenario runs in
+# the VM (the install, the setup and the groups are needed only then) and whether the host's own update scenario is chosen.
+function Get-RunScope {
+    param([object[]] $Plan = @(Get-ScenarioPlan), [string[]] $Groups = @(), [string[]] $Scenarios = @())
+    $selection = @(Resolve-ScenarioSelection -Scenarios $Scenarios -Plan $Plan)
+    if ($selection.Count -gt 0 -and $Groups.Count -gt 0) { throw 'Use -Groups or -Scenarios, not both.' }
+    $chosen = @(if ($selection.Count -gt 0) { $selection } elseif ($Groups.Count -gt 0) { $Plan | Where-Object { $_.Name -in $Groups } | ForEach-Object { $_.Ids } } else { $Plan | ForEach-Object { $_.Ids } })
+    $vmIds = @($Plan | Where-Object { -not $_.Host } | ForEach-Object { $_.Ids })
+    [pscustomobject]@{
+        Selection = $selection
+        FullRun = ($Groups.Count -eq 0 -and $selection.Count -eq 0)
+        ChosenIds = $chosen
+        NeedVm = [bool](@($vmIds | Where-Object { $_ -in $chosen }).Count)
+        RunUpdate = ('update.over-running-previous' -in $chosen)
+    }
+}
+
+# The selection the runner is working to: $null means everything (a full run). Set once, at the start of a run.
+$script:SelectedScenarioIds = $null
+
+function Set-ScenarioSelection {
+    param([string[]] $Ids = @())
+    $ids = @($Ids | Where-Object { $_ })
+    if ($ids.Count -eq 0) { $script:SelectedScenarioIds = $null; return }
+    $set = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($i in $ids) { [void]$set.Add($i) }
+    $script:SelectedScenarioIds = $set
+}
+
+function Test-ScenarioSelected {
+    param([Parameter(Mandatory)] [string] $Id)
+    ($null -eq $script:SelectedScenarioIds) -or $script:SelectedScenarioIds.Contains($Id)
+}
+
+function Test-AnyScenarioSelected {
+    param([string[]] $Ids = @())
+    foreach ($i in $Ids) { if (Test-ScenarioSelected $i) { return $true } }
+    $false
+}
+
+# The kinds (clients) for which the scenario named by IdFormat (one {0} for the kind) is selected, in the order given.
+function Get-SelectedKinds {
+    param([Parameter(Mandatory)] [string] $IdFormat, [string[]] $Kinds = $script:AllClientKinds)
+    @($Kinds | Where-Object { Test-ScenarioSelected ($IdFormat -f $_) })
+}
+
 # What the issue lists, scenario by scenario, for the plan printout and the docs.
 function Get-ScenarioTopics {
     @(
