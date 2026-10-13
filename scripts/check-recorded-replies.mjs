@@ -29,6 +29,9 @@ export const signatures = [
   { app: 'qBittorrent', all: ['hash', 'state'] },
   { app: 'Transmission', any: ['percentDone', 'hashString', 'rateDownload', 'peersConnected', 'downloadedEver'] },
   { app: 'Deluge', any: ['total_done', 'move_completed_path', 'num_seeds', 'download_payload_rate', 'is_finished'] },
+  // uTorrent and rTorrent are not installed in the golden VM, so nothing of theirs is recorded yet: their tests are listed "pending".
+  { app: 'uTorrent', any: ['build'], text: ["id='token'", 'id=\\"token\\"'] },
+  { app: 'rTorrent', text: ['<methodResponse>', '<methodResponse'] },
   { app: 'Weir', any: ['watched_folder', 'manager_library_key', 'folders_from_manager', 'queuePosition', 'watchedPath', 'handoff_ended', 'handoff_not_finished', 'outcome_already_recorded', 'handoff-status', 'handoff-outcome', 'library-folders'] }
 ];
 
@@ -109,10 +112,11 @@ export function innerReplies(source) {
   for (const literal of literals(source)) {
     if (literal.text.length < 6) continue;
     for (const signature of signatures) {
-      const keys = signature.any ?? signature.all;
+      const keys = signature.any ?? signature.all ?? [];
       const hits = keys.filter((key) => keyPattern(key).test(literal.text));
-      if (signature.any ? hits.length > 0 : hits.length === keys.length) {
-        found.push({ app: signature.app, line: literal.line, key: hits[0] });
+      const textHits = (signature.text ?? []).filter((text) => literal.text.includes(text));
+      if ((signature.any ? hits.length > 0 : signature.all ? hits.length === keys.length : false) || textHits.length > 0) {
+        found.push({ app: signature.app, line: literal.line, key: hits[0] ?? textHits[0] });
         break;
       }
     }
@@ -221,7 +225,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(0);
   }
   if (problems.length > 0) {
-    console.error('Tests that build an external app\'s reply inline (#1237):');
+    console.error('Recorded replies and the tests that use them (#1237):');
     for (const problem of problems) console.error('  ' + problem);
     process.exit(1);
   }

@@ -52,8 +52,21 @@ var info = RecordedReplies.Qbittorrent("finished-single-file").Body("torrents/in
 ```
 
 A path in `Body`/`Response` is dot-separated names and array positions; `*` is the first property of an object (a
-Deluge torrent is keyed by its hash); a null value removes the property. A state that was never recorded fails with how to
+Deluge torrent is keyed by its hash); a null value removes the property (`RecordedReplies.JsonNull` sets an explicit JSON null). `[Name=InterDir]`
+picks the list element whose `Name` is `InterDir` (NZBGet's config is a list of `{Name, Value}`; the dots inside the brackets
+belong to the name). A path starting `>` renames a property (a category or label Deluno made is scrubbed in a recording, and the
+test needs the name its code looks for); `^list` with a count keeps that many elements, and `+list` with a count copies the
+first element up to that many (`+` alone is the list at the root). A state that was never recorded fails with how to
 record it. Do not write the reply by hand to get past that: say it is missing, and record it.
+
+```csharp
+// A sequence as it happened (pause, list, resume, list): each call gets the next recorded reply to the same kind of call, the last repeats.
+// The recordings given after answer the calls the sequence never made (the sign-in before it).
+var handler = RecordedReplies.Qbittorrent("resumed").Sequence(RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"));
+
+// An app that did not answer: every request fails with the connection error the recording holds.
+var down = RecordedReplies.Deluge("not-answering").NotAnswering();
+```
 
 Replies are the newest version recorded of each app (`MISSING.md` lists what the VM could not produce). rTorrent, uTorrent and the
 media servers are not recorded; a test of those keeps its own shape and says so in `tests/recorded-reply-allow-list.json`.
@@ -65,6 +78,20 @@ through its states and writes this folder; see `scripts/recorded-replies/README.
 writes goes through `scripts/recorded-replies/scrub.mjs`, which removes API keys, passwords, cookies,
 LAN addresses and machine names. `RecordedRepliesTests` fails if a committed recording still carries
 any of them.
+
+## Every recording is replayed
+
+`npm run ci:check` also fails for a recording that no test replays (the newest version of each app): a test names a state by
+loading it (`RecordedReplies.Qbittorrent("paused")`), or lists it in a file that loads that app's recordings. A state Deluno has no
+behaviour for (a reply to a call it never makes, such as moving an existing Usenet job to another category) is listed under
+`noBehaviour` in `tests/recorded-reply-allow-list.json` with the reason.
+
+## uTorrent and rTorrent
+
+Neither is installed in the golden VM, so their tests still build their replies inline and are listed `pending` in the allow-list,
+each entry saying exactly what to record for that file (the token page, `list=1` rows, the `action=` replies and a wrong login for
+uTorrent; `system.client_version`, `d.multicall2`, the pause, resume and erase calls and their fault for an unknown hash, the load
+calls, label, files, trackers and a wrong login for rTorrent). The check flags an inline uTorrent or rTorrent reply the same way as any other.
 
 ## Deliberate malformed replies
 

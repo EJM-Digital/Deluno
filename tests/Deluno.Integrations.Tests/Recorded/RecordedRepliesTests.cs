@@ -162,6 +162,93 @@ public sealed class RecordedRepliesTests : IDisposable
         Assert.Throws<KeyNotFoundException>(() => reply.BodyWith(("result.nothing.here", 1)));
     }
 
+    private const string Settings = """
+        { "app": "demo", "version": "1.0", "state": "settings",
+          "exchanges": [
+            { "request": { "method": "POST", "path": "/rpc", "body": { "method": "config" } },
+              "reply": { "status": 200, "headers": {}, "body": { "result": [ { "Name": "DestDir", "Value": "C:/Completed" }, { "Name": "Category1.DestDir", "Value": "C:/Completed/Movies" } ], "cats": { "scrubbed-movies": { "path": "x" }, "other": { "path": "y" } } } } }
+          ] }
+        """;
+
+    [Fact]
+    public void A_list_of_settings_is_changed_by_the_name_of_the_setting_and_a_scrubbed_name_can_be_renamed()
+    {
+        Write("demo", "1.0", "settings", Settings);
+        var reply = RecordedReplies.Load("demo", "1.0", "settings", root).Single.Reply;
+
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(reply.BodyWith(
+            ("result.[Name=Category1.DestDir].Value", ""),   // the dots inside the brackets belong to the name
+            (">cats.scrubbed-movies", "deluno-movies"),         // > renames a property
+            ("cats.deluno-movies.path", "z")))!;
+
+        Assert.Equal("C:/Completed", (string)edited["result"]![0]!["Value"]!);
+        Assert.Equal("", (string)edited["result"]![1]!["Value"]!);
+        Assert.Null(edited["cats"]!["scrubbed-movies"]);
+        Assert.Equal("z", (string)edited["cats"]!["deluno-movies"]!["path"]!);
+        Assert.Equal("y", (string)edited["cats"]!["other"]!["path"]!);
+        Assert.Throws<KeyNotFoundException>(() => reply.BodyWith(("result.[Name=Nothing].Value", "x")));
+    }
+
+    [Fact]
+    public void A_list_at_the_root_can_be_made_longer_and_a_value_can_be_an_explicit_null_rather_than_taken_out()
+    {
+        Write("demo", "1.0", "listing", """
+            { "app": "demo", "version": "1.0", "state": "listing",
+              "exchanges": [ { "request": { "method": "GET", "path": "/torrents" }, "reply": { "status": 200, "headers": {}, "body": [ { "hash": "a", "size": 5 } ] } } ] }
+            """);
+        var reply = RecordedReplies.Load("demo", "1.0", "listing", root).Single.Reply;
+
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(reply.BodyWith(("+", 3), ("1.hash", "b"), ("0.size", RecordedReplies.JsonNull), ("2.size", null)))!;
+
+        Assert.Equal(3, edited.AsArray().Count);
+        Assert.Equal("b", (string)edited[1]!["hash"]!);
+        Assert.True(edited[0]!.AsObject().ContainsKey("size"));
+        Assert.Null(edited[0]!["size"]);
+        Assert.False(edited[2]!.AsObject().ContainsKey("size"));
+    }
+
+    [Fact]
+    public async Task A_recording_is_replayed_in_the_order_it_happened_and_the_last_reply_repeats()
+    {
+        Write("demo", "1.0", "controls", """
+            { "app": "qbittorrent", "version": "1.0", "state": "controls",
+              "exchanges": [
+                { "request": { "method": "GET", "path": "/api/v2/torrents/info?hashes=a" }, "reply": { "status": 200, "headers": {}, "body": [ { "state": "stoppedDL" } ] } },
+                { "request": { "method": "POST", "path": "/api/v2/torrents/start", "bodyText": "hashes=a" }, "reply": { "status": 200, "headers": {}, "bodyText": "" } },
+                { "request": { "method": "GET", "path": "/api/v2/torrents/info?hashes=a" }, "reply": { "status": 200, "headers": {}, "body": [ { "state": "downloading" } ] } }
+              ] }
+            """);
+        Write("demo", "1.0", "opening", """
+            { "app": "qbittorrent", "version": "1.0", "state": "opening",
+              "exchanges": [ { "request": { "method": "POST", "path": "/api/v2/auth/login", "bodyText": "u" }, "reply": { "status": 204, "headers": {}, "bodyText": "" } } ] }
+            """);
+        using var client = new HttpClient(RecordedReplies.Load("demo", "1.0", "controls", root).Sequence(RecordedReplies.Load("demo", "1.0", "opening", root))) { BaseAddress = new Uri("http://localhost/") };
+
+        async Task<string> Info() => await (await client.GetAsync("/api/v2/torrents/info?hashes=zzz")).Content.ReadAsStringAsync();
+
+        Assert.Contains("stoppedDL", await Info());
+        using var login = await client.PostAsync("/api/v2/auth/login", new StringContent("username=x"));
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, login.StatusCode);
+        using var started = await client.PostAsync("/api/v2/torrents/start", new StringContent("hashes=zzz"));
+        Assert.Equal(System.Net.HttpStatusCode.OK, started.StatusCode);
+        Assert.Contains("downloading", await Info());
+        Assert.Contains("downloading", await Info());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetAsync("/api/v2/never-recorded"));
+    }
+
+    [Fact]
+    public async Task An_app_that_did_not_answer_makes_every_request_fail_as_the_recording_shows()
+    {
+        Write("demo", "1.0", "down", """
+            { "app": "demo", "version": "1.0", "state": "down",
+              "exchanges": [ { "request": { "method": "GET", "path": "/x" }, "reply": { "status": 0, "error": "No connection could be made because the target machine actively refused it." } } ] }
+            """);
+        using var client = new HttpClient(RecordedReplies.Load("demo", "1.0", "down", root).NotAnswering()) { BaseAddress = new Uri("http://localhost/") };
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("/anything"));
+        Assert.Contains("actively refused", failure.Message);
+    }
+
     [Fact]
     public async Task The_operation_handler_answers_a_call_with_the_reply_to_the_same_kind_of_call_whatever_its_ids()
     {
