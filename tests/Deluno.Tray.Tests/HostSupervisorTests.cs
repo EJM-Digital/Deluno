@@ -1038,12 +1038,32 @@ public sealed class HostSupervisorTests
         // DELUNO_STRESS_SEEDS raises the count for a hunt (for example 2000); the default is the 40 the suite runs.
         var seeds = int.TryParse(Environment.GetEnvironmentVariable("DELUNO_STRESS_SEEDS"), out var asked) && asked > 0 ? asked : 40;
         var repeats = int.TryParse(Environment.GetEnvironmentVariable("DELUNO_STRESS_REPEAT"), out var times) && times > 0 ? times : 1;
-        for (var round = 1; round <= repeats; round++)
+        // DELUNO_STRESS_STARVE=1 fills the thread pool with blocked work, so any continuation the supervisor leaves to the pool
+        // arrives long after the fake clock has moved on: the harshest way to show a race between the clock and the pool.
+        using var release = new ManualResetEventSlim();
+        if (Environment.GetEnvironmentVariable("DELUNO_STRESS_STARVE") == "1")
         {
-            for (var seed = 1; seed <= seeds; seed++)
+            ThreadPool.GetMinThreads(out var worker, out var io);
+            ThreadPool.SetMinThreads(Math.Min(worker, 2), io);
+            for (var i = 0; i < Environment.ProcessorCount * 8; i++)
             {
-                await RunStressSeedAsync(seed);
+                _ = Task.Run(() => release.Wait(TimeSpan.FromMinutes(5)));
             }
+        }
+
+        try
+        {
+            for (var round = 1; round <= repeats; round++)
+            {
+                for (var seed = 1; seed <= seeds; seed++)
+                {
+                    await RunStressSeedAsync(seed);
+                }
+            }
+        }
+        finally
+        {
+            release.Set();
         }
     }
 
