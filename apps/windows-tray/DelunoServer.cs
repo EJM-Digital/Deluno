@@ -202,7 +202,6 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         _app.UseDelunoRequestPipeline();
 
         await _app.StartAsync(_cts.Token);
-        progress?.Enter(StartupPhase.Ready);
 
         var startedApp = _app;
         // StopApplication() only cancels a token here (nothing waits on WaitForShutdown), so
@@ -216,6 +215,10 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         ListeningPort = port;
         ReachableUrls = NetworkAccess.GetReachableUrls(port);
         await EnsureFirewallRuleAndLogAsync(port, settings.DataRoot, _cts.Token).ConfigureAwait(false);
+
+        // Ready means this method is done, not only that Kestrel is listening: the supervisor stops watching a start at
+        // Ready, and the firewall reading above is still part of the start. It is still covered by the web host window.
+        progress?.Enter(StartupPhase.Ready);
     }
 
     /// <summary>

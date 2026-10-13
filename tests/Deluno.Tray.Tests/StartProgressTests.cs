@@ -71,6 +71,8 @@ public sealed class StartProgressTests : IDisposable
     public async Task The_marker_is_replaced_atomically_so_a_reader_never_sees_a_torn_file()
     {
         var progress = new StartProgress(_time, Marker, pid: 100);
+        // A marker is there before the reader starts, so "missing" is never what it sees.
+        progress.Enter(StartupPhase.Migrations, "first");
         using var stop = new CancellationTokenSource();
         var torn = 0;
         var reader = Task.Run(() =>
