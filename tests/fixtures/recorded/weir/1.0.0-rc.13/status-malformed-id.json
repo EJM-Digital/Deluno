@@ -1,0 +1,39 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "status-malformed-id",
+  "recordedAt": "2026-10-13T21:26:23Z",
+  "note": "The status poll with an id that is not an id Weir could have issued.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/not-a-real-id"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Weir has never received this hand-off."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/%20"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Weir has never received this hand-off."
+        }
+      }
+    }
+  ]
+}

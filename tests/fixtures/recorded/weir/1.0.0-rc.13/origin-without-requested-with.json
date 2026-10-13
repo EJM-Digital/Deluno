@@ -1,0 +1,45 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "origin-without-requested-with",
+  "recordedAt": "2026-10-13T21:26:23Z",
+  "note": "A POST and a DELETE that carry an Origin header but no X-Requested-With: 403.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "body": {
+          "outcome": "imported",
+          "occurredUtc": "2026-10-13T21:26:22.4216811Z",
+          "importedPath": "C:\\Media\\Movies\\X.mkv",
+          "reason": null
+        }
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Missing X-Requested-With header. This endpoint requires an authenticated browser session."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/intake/handoffs/deluno/ca6a4588-0458-49c1-ade7-c3c456928d79"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Missing X-Requested-With header. This endpoint requires an authenticated browser session."
+        }
+      }
+    }
+  ]
+}

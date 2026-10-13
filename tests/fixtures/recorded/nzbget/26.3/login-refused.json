@@ -2,9 +2,66 @@
   "app": "nzbget",
   "version": "26.3",
   "state": "login-refused",
-  "recordedAt": "2026-10-11T01:56:04Z",
-  "note": "A call made with a wrong login.",
+  "recordedAt": "2026-10-13T20:44:37Z",
+  "note": "Calls made with a wrong login while NZBGet's AuthorizedIP was emptied (the VM's NZBGet lets 127.0.0.1 in without one): listgroups, status and version are all refused with a 401 and a WWW-Authenticate header, and so is a call with no login.",
   "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 1
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "www-authenticate": "Basic realm=\"NZBGet\"",
+          "content-type": "text/plain"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "status",
+          "params": [],
+          "id": 2
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "www-authenticate": "Basic realm=\"NZBGet\"",
+          "content-type": "text/plain"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 5
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "www-authenticate": "Basic realm=\"NZBGet\"",
+          "content-type": "text/plain"
+        },
+        "bodyText": ""
+      }
+    },
     {
       "request": {
         "method": "POST",
@@ -12,19 +69,16 @@
         "body": {
           "method": "version",
           "params": [],
-          "id": 1
+          "id": 3
         }
       },
       "reply": {
-        "status": 200,
+        "status": 401,
         "headers": {
-          "content-type": "application/json"
+          "www-authenticate": "Basic realm=\"NZBGet\"",
+          "content-type": "text/plain"
         },
-        "body": {
-          "version": "1.1",
-          "id": 1,
-          "result": "26.3"
-        }
+        "bodyText": ""
       }
     }
   ]

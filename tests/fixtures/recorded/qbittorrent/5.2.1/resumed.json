@@ -1,0 +1,222 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "resumed",
+  "recordedAt": "2026-10-13T20:38:56Z",
+  "note": "A torrent paused by its hash and resumed by its hash: the list as the client answered after the pause and after the resume.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "torrents=<56143 bytes>&stopped=false&paused=false&savepath=C:\\golden\\recorded\\qbittorrent\\save"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "added_torrent_ids": [
+            "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e"
+          ],
+          "failure_count": 0,
+          "pending_count": 0,
+          "success_count": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/stop",
+        "bodyText": "hashes=2d24a2f8b7448f1ef3fc61507a1d866c647ec47e"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=2d24a2f8b7448f1ef3fc61507a1d866c647ec47e"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1791923926,
+            "amount_left": 734003200,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "",
+            "comment": "",
+            "completed": 0,
+            "completion_on": -1,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "C:\\Downloads\\Incomplete\\qBittorrent\\Recorded.Control.qbittorrent",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "C:\\Downloads\\Incomplete\\qBittorrent",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e",
+            "infohash_v2": "",
+            "last_activity": 1791923926,
+            "magnet_uri": "magnet:?xt=urn:btih:2d24a2f8b7448f1ef3fc61507a1d866c647ec47e&dn=Recorded.Control.qbittorrent&xl=734003200&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded.Control.qbittorrent",
+            "num_complete": 0,
+            "num_incomplete": 4,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 0,
+            "pieces_num": 2800,
+            "popularity": 0,
+            "priority": 1,
+            "private": false,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 0,
+            "root_path": "",
+            "save_path": "C:\\golden\\recorded\\qbittorrent\\save",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 734003200,
+            "state": "stoppedDL",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 3,
+            "total_size": 734003200,
+            "total_wasted": 0,
+            "tracker": "http://127.0.0.1:9/announce",
+            "trackers_count": 1,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/start",
+        "bodyText": "hashes=2d24a2f8b7448f1ef3fc61507a1d866c647ec47e"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=2d24a2f8b7448f1ef3fc61507a1d866c647ec47e"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1791923926,
+            "amount_left": 734003200,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "",
+            "comment": "",
+            "completed": 0,
+            "completion_on": -1,
+            "connections_count": 1,
+            "connections_limit": 100,
+            "content_path": "C:\\Downloads\\Incomplete\\qBittorrent\\Recorded.Control.qbittorrent",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "C:\\Downloads\\Incomplete\\qBittorrent",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e",
+            "infohash_v2": "",
+            "last_activity": 1791923926,
+            "magnet_uri": "magnet:?xt=urn:btih:2d24a2f8b7448f1ef3fc61507a1d866c647ec47e&dn=Recorded.Control.qbittorrent&xl=734003200&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded.Control.qbittorrent",
+            "num_complete": 0,
+            "num_incomplete": 5,
+            "num_leechs": 1,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 0,
+            "pieces_num": 2800,
+            "popularity": 0,
+            "priority": 1,
+            "private": false,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 53,
+            "root_path": "",
+            "save_path": "C:\\golden\\recorded\\qbittorrent\\save",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 734003200,
+            "state": "stalledDL",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 5,
+            "total_size": 734003200,
+            "total_wasted": 0,
+            "tracker": "http://127.0.0.1:9/announce",
+            "trackers_count": 1,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    }
+  ]
+}

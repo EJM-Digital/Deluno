@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "outcome-handoff-ended-after-failed",
+  "recordedAt": "2026-10-13T20:46:03Z",
+  "note": "The outcome reported for a hand-off that failed: 409 handoff_ended.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/5bdbd331-dbcc-46f5-a1e8-f2b4fa8bbf33/outcome",
+        "body": {
+          "outcome": "not-imported",
+          "occurredUtc": "2026-10-13T20:46:03.8850251Z",
+          "importedPath": null,
+          "reason": "Recorded: the hand-off failed"
+        }
+      },
+      "reply": {
+        "status": 409,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "This hand-off ended failed, so Weir handed back no file to import.",
+          "code": "handoff_ended"
+        }
+      }
+    }
+  ]
+}

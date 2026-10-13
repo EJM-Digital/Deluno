@@ -1,0 +1,24 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "cancel-completed",
+  "recordedAt": "2026-10-13T21:26:22Z",
+  "note": "A cancel of a hand-off Weir finished long ago: 409 with the state in its words.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a"
+      },
+      "reply": {
+        "status": 409,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "This hand-off is completed, so Weir did not cancel it."
+        }
+      }
+    }
+  ]
+}

@@ -104,7 +104,13 @@ function Invoke-RecordWeir($p) {
     else { Add-Missing 'weir status-queued: the burst of hand-offs was finished before the last could be seen queued' }
     # An outcome for a hand-off that has not been worked yet: 409 handoff_not_finished.
     $notFinished = Outcome $victim.Id 'imported' $victim.Payload.sourcePath $null
-    Save-State weir $ver $(if ((Get-ReplyJson $notFinished).code) { "outcome-$(((Get-ReplyJson $notFinished).code) -replace '_', '-')" } else { "outcome-before-finished-$($notFinished.reply.status)" }) 'The outcome reported for a hand-off still waiting its turn: Weir answers 409 handoff_not_finished.' @($notFinished)
+    # Named by what Weir really answered: 409 handoff_not_finished only when the hand-off was still unfinished, and a plain 200 when it had
+    # already been worked by the time the outcome arrived (Weir takes only a few seconds per film).
+    if ((Get-ReplyJson $notFinished).code) {
+        Save-State weir $ver "outcome-$(((Get-ReplyJson $notFinished).code) -replace '_', '-')" 'The outcome reported for a hand-off that was not finished: Weir answers 409 with the code in this recording.' @($notFinished)
+    } else {
+        Save-State weir $ver "outcome-finished-in-burst-$($notFinished.reply.status)" 'The outcome reported for the last hand-off of a burst. Weir had already finished it by then, so this is a 200 for a finished hand-off, not an answer for one that was not finished (Record-WeirStates.ps1 records those).' @($notFinished)
+    }
     $cancel = Send-Recorded -Client $w -Method DELETE -Path "/api/v1/intake/handoffs/$source/$($victim.Id)" -Headers $headers
     Save-State weir $ver $(if ($cancel.reply.status -ge 200 -and $cancel.reply.status -lt 300) { 'handoff-cancelled' } else { 'handoff-cancel-refused' }) 'A hand-off cancelled by Deluno (DELETE) while it was still waiting its turn (or, when Weir had already started it, refused).' @($cancel, (Status $victim.Id))
     $ended = Outcome $victim.Id 'not-imported' $null 'Recorded: the hand-off was cancelled'
@@ -113,7 +119,8 @@ function Invoke-RecordWeir($p) {
     # one that is working, cancelled too late
     $working = $burst[0]
     $late = Send-Recorded -Client $w -Method DELETE -Path "/api/v1/intake/handoffs/$source/$($working.Id)" -Headers $headers
-    Save-State weir $ver 'handoff-cancel-too-late' 'A cancel for a hand-off Weir has already started or finished.' @($late)
+    if ($late.reply.status -eq 409) { Save-State weir $ver 'handoff-cancel-too-late' 'A cancel for a hand-off Weir has already started or finished: refused with 409.' @($late) }
+    else { Save-State weir $ver "handoff-cancelled-in-burst-$($late.reply.status)" 'A cancel for the first hand-off of a burst. Weir answered a success, so that hand-off was still queued; it is not a cancel that came too late.' @($late) }
     # The rest of the burst is cancelled while it waits, so Weir is not left working through copies of the same film.
     foreach ($entry in $burst | Select-Object -Skip 1) { $null = Send-Recorded -Client $w -Method DELETE -Path "/api/v1/intake/handoffs/$source/$($entry.Id)" -Headers $headers }
     $null = Wait-Handoff $burst[0].Id 'burst first'

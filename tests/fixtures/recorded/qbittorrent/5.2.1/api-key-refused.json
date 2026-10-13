@@ -1,0 +1,36 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "api-key-refused",
+  "recordedAt": "2026-10-13T20:39:17Z",
+  "note": "Calls made with a bad API key sent as a bearer token (and no sign-in cookie): a torrent list and a stop.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Forbidden"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/stop",
+        "bodyText": "hashes=0000000000000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Forbidden"
+      }
+    }
+  ]
+}

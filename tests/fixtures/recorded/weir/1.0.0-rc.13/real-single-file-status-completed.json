@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "real-single-file-status-completed",
+  "recordedAt": "2026-10-13T21:41:32Z",
+  "note": "A single-file qBittorrent download (Deluno sent the file itself as sourcePath), asked after Weir finished it: outputPath is flat in the output folder, with no folder named after the source.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "01a1371c38837e979272e31cd3ce6c3a",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-13T21:12:44.622905Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Gprecsingleemdq01.2020.1080p.WEB-DL.x264-GOLDEN.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Gprecsingleemdq01.2020.1080p.WEB-DL.x264-GOLDEN.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

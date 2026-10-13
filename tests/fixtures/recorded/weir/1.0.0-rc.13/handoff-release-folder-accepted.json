@@ -1,0 +1,40 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "handoff-release-folder-accepted",
+  "recordedAt": "2026-10-13T20:45:51Z",
+  "note": "A hand-off whose sourcePath is a release folder (the film and a small .nfo), with no sourceFiles: Weir accepts it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "4dc806ba-4d55-4b20-801e-9090b7aaee44",
+          "libraryId": "01a136e9242275898618c522d88dec53",
+          "mediaType": "movie",
+          "sourcePath": "C:\\Downloads\\Completed\\Movies\\Recorded.Weir.Folder.2008.1080p.WEB-DL.x264-GOLDEN",
+          "releaseName": "Big Buck Bunny (2008) Recorded Folder",
+          "queueItemId": "0f0b9cd7-a2d8-4b87-ac86-687607a7e493",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Big Buck Bunny (2008) Recorded Folder",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

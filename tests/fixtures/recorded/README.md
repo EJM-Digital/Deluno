@@ -71,3 +71,40 @@ any of them.
 A test that needs a reply no real app would send (truncated JSON, the wrong type) may build it inline
 only if it is listed, with a reason, in `tests/recorded-reply-allow-list.json`. `npm run ci:check` runs
 `scripts/check-recorded-replies.mjs`, which fails on any other test that builds an external app's reply.
+
+## Controls, wrong logins, configuration errors and Weir's states (recorded 13 Oct 2026)
+
+Recorded with `Invoke-RecordReplies.ps1 -Extra controls | nzbget-config | weir-states` (`scripts/recorded-replies/README.md`).
+
+| App | States |
+|---|---|
+| SABnzbd 5.1.3, NZBGet 26.3 | `resumed`: a job paused by its id and resumed by its id, with the queue before and after. |
+| qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0 | `resumed` (pause, list, resume, list) and `pause-unknown-id` (a hash no client ever had; Transmission also a numeric id). qBittorrent answers 200 and nothing; Transmission answers success; Deluge answers an error with a Python traceback. |
+| qBittorrent | `api-key-refused`: a bad API key sent as a bearer token is a 403 "Forbidden". |
+| Transmission | `login-refused`: the 401, its `WWW-Authenticate: Basic realm="Transmission"` and body. The VM's Transmission has RPC authentication off, so this came from a second copy of the same daemon started for a few seconds with a throwaway login. |
+| Deluge | `unauthenticated-call`: after a failed `auth.login` (result false), every call answers `Not authenticated` (code 1). |
+| NZBGet | `login-refused` (replaced: it held only the open `version` call): `listgroups`, `status` and `version` with a wrong login, and with none, all answer 401 with `WWW-Authenticate: Basic realm="NZBGet"`. NZBGet lets `AuthorizedIP` (127.0.0.1) in without a login, so this was recorded with that option emptied for a few seconds. |
+| NZBGet | `loadconfig-clean`, `config-error-paused` (`reload` after an invalid `AppBin=x` line, then `status` with `DownloadPaused` true and `log` [0, 200] with "Invalid option" and "Pausing all activities due to errors in configuration"), `config-error-cleared` (the line gone, `reload`, `DownloadPaused` false with no `resumedownload` needed). `loadconfig` is the older file taken from a config that already carried the four invalid lines (#1257). |
+| Weir 1.0.0-rc.13 | `handoff-release-folder-accepted` and `release-folder-status-working/completed`; `handoff-source-files-accepted` and `source-files-status-working/completed` (Weir treats `sourceFiles` like the folder: it answers the same); `status-queued` (with `queuePosition`), `status-working`, `status-cancelled`, `status-failed` (a file under the 50 MB minimum); `outcome-handoff-not-finished-queued` and `-working` (409 `handoff_not_finished`); `outcome-handoff-ended` (after a cancel) and `outcome-handoff-ended-after-failed` (409 `handoff_ended`); `handoff-cancelled` (204 for a queued hand-off), `handoff-cancel-working` (409 "is working") and `handoff-cancel-too-late` (409 "is completed"); `outcome-not-imported-no-reason`, `-default-reason` and `-import-refused`, and `outcome-imported-with-reason`; `outcome-superseded` and `outcome-superseded-newer`. |
+
+Weir accepts any `reason` text on a `not-imported` outcome and answers every one the same (`released` false, "kept its copy"), so the reasons recorded are the three kinds Deluno sends: none, the default words of a closed hand-off, and an import refusal. Weir has no separate "superseded" answer either: the same source sent again gets a new hand-off, and the outcome of the older one is answered like any other (200).
+
+Two older Weir recordings were misnamed and were renamed to what they hold: `outcome-before-finished-200` is `outcome-finished-in-burst-200` (a 200 for a hand-off that had already finished), and `handoff-cancel-too-late` is `handoff-cancelled-in-burst-204` (a 204 for a hand-off still queued). The true "before finished" and "too late" replies are the `outcome-handoff-not-finished-*` and `handoff-cancel-too-late` states above.
+
+## Deluno's own side, and Weir's refusals (recorded 13 Oct 2026)
+
+`deluno/1.0.0-rc.30.30/` holds what the real Deluno sent Weir and what Weir sent Deluno, written down by `Start-RecordingProxy.ps1` (one proxy in front of Weir, one in front of Deluno, with Deluno's connection to Weir and Weir's connection to Deluno pointed at them for the run and put back after). A request carries `headers`: `x-webhook-secret` (scrubbed), `idempotency-key` (`<handoffId>:<revision>`) and `content-type`. The states are in `docs/deluno-weir-contract.md`, sections 7 and 8.
+
+`weir/1.0.0-rc.13/` gained Weir's refusals, sent straight at Weir with a wrong or no secret or a refused body (`status-wrong-secret`, `status-no-secret`, `cancel-wrong-secret`, `outcome-wrong-secret`, `cancel-unknown-id`, `status-unknown-id`, `status-malformed-id`, `outcome-unknown-id`, `cancel-completed`, `status-unknown-source`, `status-no-connection-for-source`, `outcome-malformed`, `origin-without-requested-with`). These requests carry no `headers` (this recorder does not keep them): the wrong-secret ones were sent with a wrong value and the no-secret one with none; `status-unknown-source` holds the same call with the secret and then without it. `outcome-malformed` holds five calls in order: an unknown outcome word, a missing outcome, text that is not JSON (all `422`), the first of these again without a secret (`422`: the body is checked before the secret), and a body not declared as JSON (`415`).
+
+### Where Weir puts a single-file source's output
+
+Recorded from the real Deluno handing Weir three downloads (`real-single-file-status-completed`, `real-release-folder-status-completed`, `real-usenet-folder-status-completed`):
+
+| Source Deluno hands over | `outputPath` Weir reports |
+|---|---|
+| a single file, `C:\Downloads\Completed\Movies\<release>.mkv` | `C:\Weir\Ready\Movies\<release>.mkv`: **flat**, no folder named after the source |
+| a release folder (Transmission), `C:\Downloads\Completed\Movies\<release>` | `C:\Weir\Ready\Movies\<release>\<release>.mkv` |
+| a Usenet job: Deluno names the file inside the job folder, `...\Movies\<release>\<release>.mkv` | `C:\Weir\Ready\Movies\<release>\<release>.mkv` |
+
+So the output is at `<output>\<path of the source relative to the watched folder>`, and a single file has no stem folder: `WorkPlanner.FindCorrelatedProcessorOutputs`, which looks only in a folder named after the source, cannot find a single-file output on its own (Deluno #1262). The events report carries the real path, so an import that follows the report is not affected.

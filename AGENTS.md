@@ -30,6 +30,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 - Frontend/backend map: `docs/deluno-frontend-backend-map.md`
 - API contracts: `docs/deluno-ui-api-contract.md`
 - External integrations: `docs/external-integration-api.md`
+- Deluno-Weir contract (every call, reply and report, with its recording and test): `docs/deluno-weir-contract.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
 - CI and release standard (shared with Weir): `docs/ci-standard.md`
