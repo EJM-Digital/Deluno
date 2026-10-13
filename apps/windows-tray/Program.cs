@@ -43,15 +43,15 @@ internal static class Program
         HookLog.Write($"Main starting: args=[{string.Join(' ', args)}].");
         HookLog.Write($"Standard handles at start: {standardHandles}.");
 
-        // The install and update hooks only log (the firewall rule and the
-        // picker run on first start), yet Setup kills the hook after 30
+        // The install and update hooks do almost nothing here (the first-run steps run on the first start of a true first
+        // install, never on a reinstall over existing data), yet Setup kills the hook after 30
         // seconds, and on a freshly booted PC busy with Windows servicing and
         // Defender, Velopack's own start-up before it reaches the callback took
         // longer than that (#968, clean-VM runs 10 and 11). So those two hooks
         // answer here, before Velopack is loaded at all.
         if (IsFastExitInstallHook(args))
         {
-            HookLog.Write("after install/update: done; the firewall step and the picker run on first start.");
+            HookLog.Write("after install/update: done; a true first install runs its first-run steps on its first start, a reinstall over existing data does not.");
             // A silent Setup over a running Deluno leaves it stopped: bring it back once Setup has exited (#1256).
             RelaunchAfterSetup.OnInstallOrUpdateHook();
             return 0;
