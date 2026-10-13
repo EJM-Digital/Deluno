@@ -194,14 +194,14 @@ public sealed class RecordedRepliesTests : IDisposable
     {
         Write("demo", "1.0", "listing", """
             { "app": "demo", "version": "1.0", "state": "listing",
-              "exchanges": [ { "request": { "method": "GET", "path": "/torrents" }, "reply": { "status": 200, "headers": {}, "body": [ { "hash": "a", "size": 5 } ] } } ] }
+              "exchanges": [ { "request": { "method": "GET", "path": "/torrents" }, "reply": { "status": 200, "headers": {}, "body": [ { "name": "a", "size": 5 } ] } } ] }
             """);
         var reply = RecordedReplies.Load("demo", "1.0", "listing", root).Single.Reply;
 
-        var edited = System.Text.Json.Nodes.JsonNode.Parse(reply.BodyWith(("+", 3), ("1.hash", "b"), ("0.size", RecordedReplies.JsonNull), ("2.size", null)))!;
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(reply.BodyWith(("+", 3), ("1.name", "b"), ("0.size", RecordedReplies.JsonNull), ("2.size", null)))!;
 
         Assert.Equal(3, edited.AsArray().Count);
-        Assert.Equal("b", (string)edited[1]!["hash"]!);
+        Assert.Equal("b", (string)edited[1]!["name"]!);
         Assert.True(edited[0]!.AsObject().ContainsKey("size"));
         Assert.Null(edited[0]!["size"]);
         Assert.False(edited[2]!.AsObject().ContainsKey("size"));
