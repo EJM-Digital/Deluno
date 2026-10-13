@@ -20,6 +20,7 @@ function Send-FilmAgain {
         candidateQuality = 'WEB 1080p'; downloadUrl = $Film.Url; sizeBytes = $Film.Size; seeders = 50; force = $true
         overrideReason = 'Golden scenario suite: sending the same release again'; duplicateAction = $null
     }
+    if (-not $Film.PSObject.Properties["FirstSentUtc"]) { $Film | Add-Member -NotePropertyName FirstSentUtc -NotePropertyValue $Film.SentUtc -Force }
     $Film.SentUtc = [DateTime]::UtcNow
     $r
 }
@@ -36,6 +37,47 @@ function Start-AgainDownload {
     if (Test-ClientNeedsSettle -Kind $Film.ClientKind) { Invoke-FilmSettle -Film $Film -WaitForRowSec 60 | Out-Null }
     $w = Wait-FilmFinished -Film $Film -TimeoutSec 180
     if (-not $w.Ok) { throw "$($Film.Release) did not finish in $($Film.ClientKind) after being sent again (its client row and folders are in the evidence)." }
+}
+
+
+# Deluno's own log files as lines (the suite also keeps them whole at the end of the run).
+function Get-DelunoLogLines {
+    param([string] $Match)
+    $roots = @((Join-Path $env:LOCALAPPDATA 'Deluno\logs'), (Join-Path $env:LOCALAPPDATA 'DelunoData\logs')) | Where-Object { Test-Path $_ }
+    foreach ($r in $roots) {
+        Get-ChildItem -Path $r -Recurse -File -Include '*.log', '*.jsonl' -ErrorAction SilentlyContinue | Where-Object { $_.Length -lt 500MB } | ForEach-Object {
+            $in = $null
+            try {
+                $in = [IO.File]::Open($_.FullName, 'Open', 'Read', 'ReadWrite,Delete')
+                $reader = New-Object IO.StreamReader($in)
+                while (($line = $reader.ReadLine()) -ne $null) { if ($line -match $Match) { $line } }
+            } catch { } finally { if ($in) { $in.Dispose() } }
+        }
+    }
+}
+
+# Weir's "Hand-off report to .../processors/events returned HTTP 409" lines made at or after a moment. Weir's line does not name the
+# film, so the window is the judge here; Deluno's own line (below) names the hand-off.
+function Get-WeirReport409Lines {
+    param([Parameter(Mandatory)] [DateTime] $SinceUtc)
+    $lines = (Get-WeirLogText) -split "`r?`n" | Where-Object { $_ -match 'processors/events returned HTTP 409' }
+    foreach ($l in $lines) {
+        if ($l -match '"timestamp":\s*"([^"]+)"') {
+            $t = [DateTime]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal)
+            if ($t -ge $SinceUtc.ToUniversalTime().AddSeconds(-2)) { $l }
+        }
+    }
+}
+
+# #1242: the first send's late report is settled (2xx), never refused. Weir's log must hold no HTTP 409 for the report, and
+# Deluno's answer log (one Information line per answer) must show none for the film's hand-offs.
+function Assert-NoReport409 {
+    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] $First, [Parameter(Mandatory)] [DateTime] $SinceUtc, [Parameter(Mandatory)] [string] $What)
+    $ids = @($First.id) + @(@(Find-Handoffs -Name $Film.Release) | ForEach-Object { $_.id }) | Where-Object { $_ } | Select-Object -Unique
+    $weir = @(Get-WeirReport409Lines -SinceUtc $SinceUtc)
+    Add-Check "$What : Weir's log shows no HTTP 409 for the hand-off report" ($weir.Count -eq 0) (($weir | ForEach-Object { if ($_.Length -gt 220) { $_.Substring(0, 220) } else { $_ } }) -join ' || ')
+    $deluno = @(Get-DelunoLogLines -Match 'processors/events answered 409' | Where-Object { $line = $_; @($ids | Where-Object { $line -match [regex]::Escape($_) }).Count -gt 0 })
+    Add-Check "$What : Deluno's /processors/events log shows no 409 for this film's hand-offs" ($deluno.Count -eq 0) (($deluno | ForEach-Object { if ($_.Length -gt 300) { $_.Substring(0, 300) } else { $_ } }) -join ' || ')
 }
 
 # What must be true once a resend has settled.
@@ -77,6 +119,7 @@ function Assert-ResendSettled {
     $expected = if ($FirstWasImported -and $second) { 2 } else { 1 }
     Add-Check "$What : it was imported $(if ($expected -eq 2) { 'twice (the first send, then the resend replacing it)' } else { 'once' })" ($import.Count -eq $expected) "$($import.Count) 'Imported into the library' rows"
     Test-OneStory -Film $Film -What $What
+    Assert-NoReport409 -Film $Film -First $First -SinceUtc $Film.FirstSentUtc -What $What
 }
 
 function Invoke-GroupResend {

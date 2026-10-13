@@ -35,7 +35,7 @@ internal static class ImportedDownloads
         var latest = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, clientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase))
+                && Deluno.Integrations.DownloadClients.DownloadAttempts.SameRelease(dispatch.ReleaseName, releaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
         return latest is not null
