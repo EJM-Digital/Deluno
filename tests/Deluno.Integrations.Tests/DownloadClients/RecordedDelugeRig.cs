@@ -25,7 +25,7 @@ internal static class RecordedDelugeRig
         => edits.Select(e => ("result.torrents.*." + e.Field, e.Value)).ToArray();
 
     /// <summary>A Deluge answering every call from its recordings, with the torrent list (and optionally the label's options and core settings) as given.</summary>
-    public static HttpMessageHandler Handler(string updateUi, string? labelOptions = null, string? coreConfig = null, Action<string>? onCall = null)
+    public static HttpMessageHandler Handler(string updateUi, string? labelOptions = null, string? coreConfig = null, Action<string>? onCall = null, string? labels = null)
         => RecordedReplies.Handler(
             "deluge",
             [RecordedReplies.Deluge("sign-in"), RecordedReplies.Deluge("settings"), RecordedReplies.Deluge("label-set")],
@@ -34,10 +34,23 @@ internal static class RecordedDelugeRig
                 onCall?.Invoke(body);
                 // Unless a test says otherwise, neither the label nor Deluge itself moves a finished torrent anywhere.
                 if (body.Contains("web.update_ui", StringComparison.Ordinal)) return RecordedReplies.Json(updateUi);
+                if (labels is not null && body.Contains("label.get_labels", StringComparison.Ordinal)) return RecordedReplies.Json(labels);
                 if (body.Contains("label.get_options", StringComparison.Ordinal)) return RecordedReplies.Json(labelOptions ?? LabelOptions(false, string.Empty));
                 if (body.Contains("core.get_config_values", StringComparison.Ordinal)) return RecordedReplies.Json(coreConfig ?? CoreConfig(false, string.Empty));
                 return null;
             });
+
+    /// <summary>The recorded list of labels, with the two Deluno made (their names are scrubbed in the recording) named as a person would.</summary>
+    public static string Labels()
+        => RecordedReplies.Deluge("settings").Body("label.get_labels", ("result.0", "movies"), ("result.1", "tv"));
+
+    /// <summary>A Deluge answering the folder check from its recordings: its core folders as recorded (the download location as given), its labels, and the label's options.</summary>
+    public static HttpMessageHandler FolderCheck(bool labelMoves, string labelFolder, string downloadLocation = @"D:\Incomplete\Deluge")
+        => Handler(
+            string.Empty,
+            LabelOptions(labelMoves, labelFolder),
+            RecordedReplies.Deluge("settings").Body("core.get_config_values", ("result.download_location", downloadLocation)),
+            labels: Labels());
 
     /// <summary>The label's recorded options, with the label moving finished downloads to the folder (or not).</summary>
     public static string LabelOptions(bool moves, string folder)
