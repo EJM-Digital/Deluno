@@ -12,6 +12,10 @@
 //   kind "pending":    not yet moved onto a recording (#1237 step 4). Each is removed when its file is converted,
 //                      and the check fails for a listed file that no longer has an inline reply.
 //
+// A second rule keeps the library honest the other way round: every recorded state (the newest version of each app) is named by a
+// test that replays it, so a recording nobody uses does not sit there looking like coverage. A state Deluno has no behaviour for
+// (a reply to a call it never makes) is listed under "noBehaviour" in the allow-list with the reason.
+//
 // Usage: node scripts/check-recorded-replies.mjs [--root <repo>] [--list]   (--list prints the files that need entries)
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -125,12 +129,53 @@ function* testFiles(directory) {
   }
 }
 
+// The recordings of each app at its newest version: [{ app, state }].
+export function recordedStates(root) {
+  const base = join(root, 'tests', 'fixtures', 'recorded');
+  const found = [];
+  if (!existsSync(base)) return found;
+  const key = (version) => version.split(/[.-]/).map((part) => (/^\d+$/.test(part) ? part.padStart(6, '0') : part)).join('.');
+  for (const app of readdirSync(base)) {
+    const appFolder = join(base, app);
+    if (!statSync(appFolder).isDirectory()) continue;
+    const versions = readdirSync(appFolder).filter((v) => statSync(join(appFolder, v)).isDirectory()).sort((a, b) => key(a).localeCompare(key(b)));
+    const newest = versions.at(-1);
+    if (!newest) continue;
+    for (const file of readdirSync(join(appFolder, newest))) if (file.endsWith('.json')) found.push({ app, state: file.slice(0, -5) });
+  }
+  return found;
+}
+
+// The recorded states no test names. A test names a state by loading it (RecordedReplies.Qbittorrent("paused")), or by listing it in
+// a file that loads that app's recordings (an InlineData of states).
+export function unreplayedStates(root, noBehaviour = []) {
+  const sources = [];
+  for (const file of testFiles(join(root, 'tests'))) {
+    if (file.endsWith('RecordedRepliesTests.cs')) continue;
+    sources.push(readFileSync(file, 'utf8'));
+  }
+  const exempt = new Set(noBehaviour.map((entry) => `${entry.app}/${entry.state}`));
+  return recordedStates(root).filter(({ app, state }) => {
+    if (exempt.has(`${app}/${state}`)) return false;
+    const accessor = app[0].toUpperCase() + app.slice(1);
+    const call = new RegExp(String.raw`${accessor}\(\s*"${state}"`);
+    const quoted = `"${state}"`;
+    return !sources.some((text) => call.test(text)
+      || ((text.includes(`RecordedReplies.${accessor}(`) || text.includes(`RecordedReplies.Handler("${app}"`)) && text.includes(quoted)));
+  });
+}
+
 export function check(root) {
   const problems = [];
   const allowPath = join(root, 'tests', 'recorded-reply-allow-list.json');
   const listed = new Map();
+  let noBehaviour = [];
   if (existsSync(allowPath)) {
     const allow = JSON.parse(readFileSync(allowPath, 'utf8'));
+    noBehaviour = allow.noBehaviour ?? [];
+    for (const entry of noBehaviour) {
+      if (!entry.app || !entry.state || (entry.reason ?? '').trim().length < 20) problems.push(`tests/recorded-reply-allow-list.json: a noBehaviour entry needs an app, a state and the reason Deluno has no behaviour for it (${entry.app}/${entry.state}).`);
+    }
     for (const entry of allow.entries ?? []) {
       if (!entry.file || !['deliberate', 'pending'].includes(entry.kind)) problems.push(`${allowPath}: an entry needs a file and a kind of "deliberate" or "pending".`);
       else if (entry.kind === 'deliberate' && (entry.reason ?? '').trim().length < 20) problems.push(`tests/recorded-reply-allow-list.json: ${entry.file} is deliberate but gives no reason (say why no real app's reply would do).`);
@@ -156,6 +201,12 @@ export function check(root) {
   for (const [file, entry] of listed) {
     if (!existsSync(join(root, file))) problems.push(`tests/recorded-reply-allow-list.json: ${file} no longer exists; remove its entry.`);
     else if (!offenders.has(file)) problems.push(`tests/recorded-reply-allow-list.json: ${file} no longer builds a reply inline; remove its ${entry.kind} entry.`);
+  }
+  for (const { app, state } of unreplayedStates(root, noBehaviour)) {
+    problems.push(`tests/fixtures/recorded/${app}: the recording "${state}" is replayed by no test. Test the behaviour it shows (RecordedReplies.${app[0].toUpperCase() + app.slice(1)}("${state}")), or list it under "noBehaviour" in tests/recorded-reply-allow-list.json with the reason Deluno has no behaviour for it.`);
+  }
+  for (const entry of noBehaviour) {
+    if (entry.app && entry.state && !recordedStates(root).some((r) => r.app === entry.app && r.state === entry.state)) problems.push(`tests/recorded-reply-allow-list.json: noBehaviour ${entry.app}/${entry.state} is not a recording; remove it.`);
   }
   return { problems, offenders };
 }
