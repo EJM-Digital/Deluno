@@ -64,7 +64,7 @@
     {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/KeepSeedingMoveOnEveryTorrentClientTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording (#1237, step 4). Remove this entry when it does."
+      "reason": "qBittorrent and Deluge moved onto recordings (KeepSeedingMoveOnQbittorrentAndDelugeTests). Still inline: Transmission (4.1.3 label-set is recorded, not yet used), rTorrent and uTorrent (not installed on the VM), and Deluge with the Label plugin off (#1237, step 4). Remove this entry when they move."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/LibraryDownloadFolderPerGrabTests.cs",
