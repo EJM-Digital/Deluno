@@ -35,6 +35,10 @@ public static class FirstRunTrayModel
         new(TrayMenuId.Quit, "Quit Deluno", ToolTip: TrayMenuState.QuitToolTip)
     ];
 
+    /// <summary>A first run of a Deluno that has never been set up here; a reinstall over existing data is not one.</summary>
+    public static bool IsFirstRun(IReadOnlyCollection<string> args, Func<string, string?> environment, bool existingInstall)
+        => throw new NotImplementedException();
+
     /// <summary>
     /// True when this start is the installer's first run of an installed copy: not a Velopack hook call, not a service
     /// command, and the installer's first-run marker is set.
