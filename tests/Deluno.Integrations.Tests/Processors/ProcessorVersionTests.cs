@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Deluno.Contracts;
 using Deluno.Integrations.Processors;
+using Deluno.Tests.Recorded;
 using Deluno.Platform.Contracts;
 
 namespace Deluno.Integrations.Tests.Processors;
@@ -21,12 +22,12 @@ public sealed class ProcessorVersionTests
         var service = Service(request =>
         {
             sent.Add((request.RequestUri!.AbsolutePath, request.Headers.TryGetValues("X-Webhook-Secret", out var values) ? values.Single() : null));
-            return Json("""{"machine_name":"nas","capabilities":["handoff-status"],"version":"4.0.0"}""");
+            return Capabilities();
         });
 
         var version = await service.ReadVersionAsync(Connection(), CancellationToken.None);
 
-        Assert.Equal("4.0.0", version);
+        Assert.Equal("1.0.0-rc.13", version);
         var call = Assert.Single(sent);
         Assert.Equal("/api/v1/intake/capabilities", call.Path);
         Assert.Equal("shared-secret", call.Secret);
@@ -39,9 +40,11 @@ public sealed class ProcessorVersionTests
         var service = Service(request =>
         {
             paths.Add(request.RequestUri!.AbsolutePath);
+            // Weir's description of its API is not recorded (the golden VM's recorder does not ask for it); this is the
+            // shape its API description has, with Weir's refusal of a secret that is wrong for everything else.
             return request.RequestUri.AbsolutePath == "/openapi.json"
                 ? Json("""{"openapi":"3.1.0","info":{"title":"Weir API","version":"1.0.0-rc.10"}}""")
-                : new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                : RecordedReplies.Weir("capabilities-wrong-secret").Response("capabilities");
         });
 
         Assert.Equal("1.0.0-rc.10", await service.ReadVersionAsync(Connection(), CancellationToken.None));
@@ -55,20 +58,20 @@ public sealed class ProcessorVersionTests
         var service = Service(request =>
         {
             paths.Add(request.RequestUri!.AbsolutePath);
-            return Json("""{"version":"1.0.0-rc.10"}""");
+            return Capabilities();
         });
 
-        Assert.Equal("1.0.0-rc.10", await service.ReadVersionAsync(Connection(), CancellationToken.None));
+        Assert.Equal("1.0.0-rc.13", await service.ReadVersionAsync(Connection(), CancellationToken.None));
         Assert.Single(paths);
     }
 
     [Fact]
     public async Task A_development_build_publishes_its_dev_version()
-        => Assert.Equal("0.0.1-dev", await Service(_ => Json("""{"version":"0.0.1-dev"}""")).ReadVersionAsync(Connection(), CancellationToken.None));
+        => Assert.Equal("0.0.1-dev", await Service(_ => Capabilities(("version", "0.0.1-dev"))).ReadVersionAsync(Connection(), CancellationToken.None));
 
     [Fact]
     public async Task A_processor_that_publishes_no_version_has_none()
-        => Assert.Null(await Service(_ => Json("""{"machine_name":"nas","capabilities":["handoff-status"]}""")).ReadVersionAsync(Connection(), CancellationToken.None));
+        => Assert.Null(await Service(_ => Capabilities(("version", null))).ReadVersionAsync(Connection(), CancellationToken.None));
 
     [Fact]
     public async Task A_processor_before_it_had_capabilities_has_none()
@@ -88,7 +91,7 @@ public sealed class ProcessorVersionTests
         var service = Service(_ =>
         {
             sent++;
-            return Json("""{"version":"4.0.0"}""");
+            return Capabilities();
         });
 
         Assert.Null(await service.ReadVersionAsync(Connection() with { SecretUnreadable = true }, CancellationToken.None));
@@ -112,7 +115,7 @@ public sealed class ProcessorVersionTests
         var store = new Store();
         var service = new ProcessorConnectionService(
             new Factory(new HttpClient(new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/capabilities")
-                ? Json("""{"version":"1.0.0-rc.12"}""")
+                ? Capabilities()
                 : new HttpResponseMessage(HttpStatusCode.OK)))),
             versions: store);
 
@@ -120,7 +123,7 @@ public sealed class ProcessorVersionTests
 
         Assert.True(result.IsReachable);
         var recorded = Assert.Single(store.Recorded);
-        Assert.Equal((ConnectionKinds.Processor, "connection-1", "weir", "1.0.0-rc.12"), recorded);
+        Assert.Equal((ConnectionKinds.Processor, "connection-1", "weir", "1.0.0-rc.13"), recorded);
     }
 
     [Fact]
@@ -151,6 +154,10 @@ public sealed class ProcessorVersionTests
 
     private static ProcessorConnectionService Service(Func<HttpRequestMessage, HttpResponseMessage> send)
         => new(new Factory(new HttpClient(new StubHandler(send))));
+
+    /// <summary>Weir 1.0.0-rc.13's recorded capabilities, with the given values of it changed.</summary>
+    private static HttpResponseMessage Capabilities(params (string Path, object? Value)[] edits)
+        => Json(RecordedReplies.Weir("capabilities").Body("capabilities", edits));
 
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };

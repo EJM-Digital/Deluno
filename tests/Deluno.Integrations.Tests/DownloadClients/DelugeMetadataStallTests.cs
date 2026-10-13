@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -50,18 +48,12 @@ public sealed class DelugeMetadataStallTests
         DateTimeOffset addedUtc,
         DateTimeOffset capturedUtc)
     {
-        var savePath = @"C:\Deluno\Downloads\Deluge";
-        var torrent = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"state\":\"Downloading\""
-            + $",\"progress\":{progress.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,"
-            + $"\"total_size\":{totalSize},\"total_done\":0,\"num_peers\":{peers},\"time_added\":{addedUtc.ToUnixTimeSeconds()},"
-            + "\"label\":\"movies\",\"message\":\"OK\",\"save_path\":" + Json(savePath)
-            + "}}},\"error\":null,\"id\":2}";
-        var handler = new DelugeHandler(torrent);
+        // Deluge 2.2.0's recorded list of a magnet whose metadata never arrived, with the size, progress, peers and age under test.
+        var handler = RecordedDelugeRig.Handler(RecordedDelugeRig.NoMetadata(
+            ("label", "movies"), ("progress", progress), ("total_size", totalSize), ("num_peers", peers), ("time_added", addedUtc.ToUnixTimeSeconds())));
         var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Client(), capturedUtc, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
-
-    private static string Json(string value) => System.Text.Json.JsonSerializer.Serialize(value);
 
     private static DownloadClientItem Client()
         => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", false, null, "movies", "tv", null, 1, true,
@@ -70,15 +62,5 @@ public sealed class DelugeMetadataStallTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class DelugeHandler(string updateUi) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            var answer = body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
     }
 }

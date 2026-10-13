@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Deluno.Integrations.Processors;
+using Deluno.Tests.Recorded;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
@@ -157,7 +158,8 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
         var service = new ProcessorConnectionService(new Factory(new HttpClient(new Handler(request =>
         {
             body = request.Content!.ReadAsStringAsync().Result;
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+            // Weir 1.0.0-rc.13's recorded acceptance of a hand-off.
+            return RecordedReplies.Weir("handoff-accepted").Response("webhook");
         }))));
 
         await service.SubmitAsync(Connection, Handoff() with { SourceFiles = ["/a/Movie.mkv"] }, CancellationToken.None);
@@ -167,14 +169,30 @@ public sealed class AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests : IDisp
         Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("sourceFiles", out _));
     }
 
+    /// <summary>
+    /// Weir's recorded folder list (the library the test is about), with its minimum size as Weir sent it, as an explicit null, left out,
+    /// or as text (the deliberate malformed case: no Weir sends a number as text).
+    /// </summary>
     [Theory]
-    [InlineData("""[{"watched_folder":"/w","manager_library_key":"lib-1","minimum_file_size_bytes":52428800}]""", 52428800L)]
-    [InlineData("""[{"watched_folder":"/w","manager_library_key":"lib-1","minimum_file_size_bytes":null}]""", null)]
-    [InlineData("""[{"watched_folder":"/w","manager_library_key":"lib-1"}]""", null)]
-    [InlineData("""[{"watched_folder":"/w","manager_library_key":"lib-1","minimum_file_size_bytes":"big"}]""", null)]
-    public void The_minimum_is_read_as_bytes_and_absent_means_none(string json, long? expected)
+    [InlineData("recorded", 52428800L)]
+    [InlineData("null", null)]
+    [InlineData("absent", null)]
+    [InlineData("text", null)]
+    public void The_minimum_is_read_as_bytes_and_absent_means_none(string kind, long? expected)
     {
-        using var document = JsonDocument.Parse(json);
+        var minimum = kind switch
+        {
+            "null" => RecordedReplies.JsonNull,
+            "text" => "big",
+            _ => (object?)null
+        };
+        var edits = new List<(string, object?)> { ("^libraries", 1) };
+        if (kind != "recorded")
+        {
+            edits.Add(("libraries.0.minimum_file_size_bytes", minimum));
+        }
+
+        using var document = JsonDocument.Parse(RecordedReplies.Weir("library-folders").Body("library-folders", edits.ToArray()));
         Assert.Equal(expected, Assert.Single(ProcessorConnectionService.ParseLibraryFolders(document.RootElement)).MinimumFileSizeBytes);
     }
 

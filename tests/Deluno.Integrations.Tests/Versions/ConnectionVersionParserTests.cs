@@ -1,4 +1,5 @@
 using Deluno.Connections.Versions;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.Versions;
 
@@ -20,21 +21,25 @@ public sealed class ConnectionVersionParserTests
         => Assert.Null(ConnectionVersionParsers.FromQbittorrent(body));
 
     [Fact]
+    public void Qbittorrent_reads_its_recorded_version_answer()
+        => Assert.Equal("5.2.1", ConnectionVersionParsers.FromQbittorrent(RecordedReplies.Qbittorrent("version").Single.Reply.Body));
+
+    [Fact]
     public void Transmission_reads_the_version_without_its_build_hash()
-        => Assert.Equal("4.0.5", ConnectionVersionParsers.FromTransmission(
-            """{"arguments":{"download-dir":"/downloads","rpc-version":18,"rpc-version-minimum":14,"version":"4.0.5 (a6fe2de319)"},"result":"success"}"""));
+        => Assert.Equal("4.1.3", ConnectionVersionParsers.FromTransmission(RecordedReplies.Transmission("version").Body("session-get")));
 
     [Fact]
     public void Transmission_without_a_version_field_says_nothing()
-        => Assert.Null(ConnectionVersionParsers.FromTransmission("""{"arguments":{"rpc-version":15},"result":"success"}"""));
+        => Assert.Null(ConnectionVersionParsers.FromTransmission(RecordedReplies.Transmission("version").Body("session-get", ("arguments.version", null))));
 
     [Fact]
     public void Deluge_reads_the_daemon_info_result()
-        => Assert.Equal("2.1.1", ConnectionVersionParsers.FromDeluge("""{"result":"2.1.1","error":null,"id":9}"""));
+        => Assert.Equal("2.2.0", ConnectionVersionParsers.FromDeluge(RecordedReplies.Deluge("version").Body("daemon.get_version")));
 
+    /// <summary>An answer with an error and no result: Deluge 2.2.0's recorded "Not authenticated" reply.</summary>
     [Fact]
     public void Deluge_error_answer_says_nothing()
-        => Assert.Null(ConnectionVersionParsers.FromDeluge("""{"result":null,"error":{"message":"Unknown method","code":2},"id":9}"""));
+        => Assert.Null(ConnectionVersionParsers.FromDeluge(RecordedReplies.Deluge("unauthenticated-call").Body("web.connected")));
 
     [Fact]
     public void Plex_reads_the_identity_version_without_its_hash_kept_as_part_of_the_number()
@@ -55,13 +60,13 @@ public sealed class ConnectionVersionParserTests
     [Fact]
     public void A_processor_publishes_its_version_in_its_capabilities()
     {
-        Assert.Equal("4.0.0", ConnectionVersionParsers.FromProcessorCapabilities("""{"machine_name":"nas","capabilities":["handoff-status"],"version":"4.0.0"}"""));
-        Assert.Equal("0.0.1-dev", ConnectionVersionParsers.FromProcessorCapabilities("""{"version":"0.0.1-dev"}"""));
+        Assert.Equal("1.0.0-rc.13", ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities")));
+        Assert.Equal("0.0.1-dev", ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities", ("version", "0.0.1-dev"))));
     }
 
     [Fact]
     public void A_processor_before_it_published_a_version_says_nothing()
-        => Assert.Null(ConnectionVersionParsers.FromProcessorCapabilities("""{"machine_name":"nas","capabilities":["handoff-status"]}"""));
+        => Assert.Null(ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities", ("version", null))));
 
     [Theory]
     [InlineData(null)]

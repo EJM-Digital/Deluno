@@ -15,6 +15,9 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
 
     public override bool SetsSaveFolderPerGrab => true;
 
+    private static readonly System.Text.RegularExpressions.Regex AlreadyInSession = new(
+        @"already in session \(([0-9a-fA-F]{40})\)", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
@@ -79,6 +82,22 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             // when Deluge actually said why.
             if (added?.Error?.Message is { Length: > 0 } errorMessage)
             {
+                // Deluge 2.2.0 answers an add of a torrent it already holds with an error object that names the torrent
+                // ("Torrent already in session (<hash>)", recorded). That is the torrent being there, not a dead release, and
+                // it names the hash even for a link Deluno holds no hash for.
+                if (AlreadyInSession.Match(errorMessage) is { Success: true } held)
+                {
+                    var heldHash = held.Groups[1].Value.ToLowerInvariant();
+                    return DownloadClientHelpers.GrabSuccess(
+                        client,
+                        request,
+                        "Deluge already holds this release. Deluno is following the copy it has instead of sending another.") with
+                    {
+                        ExternalId = heldHash,
+                        IsDuplicateFollow = true
+                    };
+                }
+
                 return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"Deluge refused the release: {errorMessage}.");
             }
 

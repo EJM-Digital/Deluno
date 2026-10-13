@@ -47,17 +47,15 @@ public sealed class NzbGetSavesOnlyItsOwnFileOptionsTests
     private sealed class Nzbget
     {
         private readonly Recording _settings = RecordedReplies.Nzbget("settings");
-        private readonly Recording _loadconfig = RecordedReplies.Nzbget("loadconfig");
+        private readonly Recording _loadconfig;
         private readonly bool _loadconfigFails;
 
         public Nzbget(bool damagedFile = true, bool loadconfigFails = false)
         {
             _loadconfigFails = loadconfigFails;
+            // The file as the bug left it, or the file of an NZBGet that never had the bug (both recorded).
+            _loadconfig = RecordedReplies.Nzbget(damagedFile ? "loadconfig" : "loadconfig-clean");
             File = RecordedOptions(_loadconfig, "loadconfig");
-            if (!damagedFile)
-            {
-                File.RemoveAll(o => RuntimeOnly.Contains(o.Key));
-            }
 
             Runtime = RecordedOptions(_settings, "\"config\"").Where(o => RuntimeOnly.Contains(o.Key)).ToList();
         }
@@ -134,7 +132,8 @@ public sealed class NzbGetSavesOnlyItsOwnFileOptionsTests
     public async Task When_loadconfig_cannot_be_answered_the_save_falls_back_to_config_minus_the_runtime_only_values()
     {
         var nzbget = new Nzbget(damagedFile: false, loadconfigFails: true);
-        var inMemory = RecordedOptions(RecordedReplies.Nzbget("settings"), "\"config\"").Where(o => !RuntimeOnly.Contains(o.Key)).ToList();
+        // The stand-in answers config with the file plus the recorded runtime-only values, so config minus those is the file's own options.
+        var inMemory = nzbget.File.Where(o => !RuntimeOnly.Contains(o.Key)).ToList();
 
         var result = await Client(nzbget).SetUsenetProviderAsync(NzbGetClient(), Provider, CancellationToken.None);
 

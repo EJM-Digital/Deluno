@@ -1,165 +1,77 @@
 {
-  "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237).",
+  "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237). \"noBehaviour\" lists a recording no test replays because Deluno has no behaviour for the call it shows; scripts/check-recorded-replies.mjs fails for any other recording that no test names.",
   "entries": [
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/AddPausedGrabTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ClientVersionReadingTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ADelugeHealthyStatusIsNotAnErrorTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ContentBlocklistFileListingTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ADelugeTorrentIsReadyOnlyInItsFinalFolderTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/EveryVerbMeansSomethingDifferentTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/AnAsynchronousRemovalIsGivenTimeToSettleTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/FreeSpaceReportingTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ClientFoldersAreReadTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/ClientIncompleteFoldersAreReadTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/CompleteTorrentWithTrackerErrorTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeFinishedButMovingTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeMetadataStallTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeSharingAndTrackerTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/EveryClientAgreesOnFinishedAndPeersTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/GrabAppearanceLookupPerClientTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/KeepSeedingMoveOnEveryTorrentClientTests.cs",
       "kind": "pending",
-      "reason": "qBittorrent and Deluge moved onto recordings (KeepSeedingMoveOnQbittorrentAndDelugeTests). Still inline: Transmission (4.1.3 label-set is recorded, not yet used), rTorrent and uTorrent (not installed on the VM), and Deluge with the Label plugin off (#1237, step 4). Remove this entry when they move."
+      "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/LibraryDownloadFolderPerGrabTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/RtorrentDownloadClientTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentAdapterGapsTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentKeepsItsSessionTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentMetadataStallTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentStateMappingTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentTrackerStatusTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TheIgnoreListMatchesTagsAndTrackerDomainsTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The rTorrent part still build their replies inline (#1237, the owner will have them tested properly later). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/TorrentFileGrabsOnEveryClientTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionAndDelugeQueueAndSeedLimitTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/UTorrentGrabLabelTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionGrabDuplicateTests.cs",
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/UTorrentSnapshotTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionIsKeyedOnTheTorrentHashTests.cs",
+      "file": "tests/Deluno.Persistence.Tests/Integrations/ARemovalReasonDoesExactlyWhatItSaysTests.cs",
       "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
+    }
+  ],
+  "noBehaviour": [
+    {
+      "app": "sabnzbd",
+      "state": "category-moved",
+      "reason": "SABnzbd's mode=change_cat on a queued job. Deluno sets a Usenet job's category only when it adds it; it never moves an existing Usenet job to another category (keep-seeding moves are for torrents)."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionMetadataStallTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "app": "sabnzbd",
+      "state": "category-unknown",
+      "reason": "SABnzbd's mode=change_cat to a category it does not have. Deluno never moves an existing Usenet job to another category."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionSharingAndStallTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionTrackerStatusTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Processors/AHandoffLeavesOutFilesBelowTheProcessorsMinimumTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Processors/AskingTheProcessorTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Processors/ProcessorLibraryFoldersTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Processors/ProcessorVersionTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Versions/ConnectionVersionParserTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
+      "app": "nzbget",
+      "state": "category-moved",
+      "reason": "NZBGet's editqueue GroupSetCategory on a queued job. Deluno never moves an existing Usenet job to another category."
     }
   ]
 }

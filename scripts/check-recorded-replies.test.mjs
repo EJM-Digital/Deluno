@@ -83,3 +83,32 @@ test('the repository passes its own rule', () => {
   const { problems } = check(new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
   assert.deepEqual(problems, []);
 });
+
+test('a recording no test replays fails, naming it, unless it is listed as having no behaviour in Deluno', () => {
+  const recording = JSON.stringify({ app: 'qbittorrent', version: '5.2.1', state: 'resumed', exchanges: [{ request: { method: 'GET', path: '/x' }, reply: { status: 200 } }] });
+  const files = {
+    'tests/fixtures/recorded/qbittorrent/5.2.1/resumed.json': recording,
+    'tests/fixtures/recorded/qbittorrent/5.1.0/old.json': recording,
+    'tests/A.Tests/Unrelated.cs': inline('"resumed"')
+  };
+  let root = repo(files);
+  try {
+    const text = check(root).problems.join('\n');
+    assert.match(text, /the recording "resumed" is replayed by no test/);
+    assert.doesNotMatch(text, /old/, 'only the newest version of an app is looked at');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+
+  // A test that loads it by name replays it; so does a file that loads that app's recordings and lists the state.
+  for (const text of [inline('RecordedReplies.Qbittorrent("resumed")'), inline('RecordedReplies.Qbittorrent(state); [InlineData("resumed")]')]) {
+    root = repo({ ...files, 'tests/A.Tests/Unrelated.cs': text });
+    try { assert.deepEqual(check(root).problems, []); } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+
+  root = repo(files, []);
+  writeFileSync(join(root, 'tests', 'recorded-reply-allow-list.json'), JSON.stringify({ entries: [], noBehaviour: [{ app: 'qbittorrent', state: 'resumed', reason: 'Deluno never makes this call, so there is nothing to replay.' }] }));
+  try { assert.deepEqual(check(root).problems, []); } finally { rmSync(root, { recursive: true, force: true }); }
+
+  root = repo(files, []);
+  writeFileSync(join(root, 'tests', 'recorded-reply-allow-list.json'), JSON.stringify({ entries: [], noBehaviour: [{ app: 'qbittorrent', state: 'gone', reason: 'Deluno never makes this call, so there is nothing to replay.' }] }));
+  try { assert.match(check(root).problems.join('\n'), /noBehaviour qbittorrent\/gone is not a recording/); } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -101,11 +99,12 @@ public sealed class TransmissionMetadataStallTests
         DateTimeOffset addedUtc,
         DateTimeOffset capturedUtc)
     {
-        var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"The.Last.of.Us.S01E07.2023.720p.WEB-DL\","
-            + $"\"status\":{status},\"percentDone\":{percentDone.ToString(System.Globalization.CultureInfo.InvariantCulture)},"
-            + $"\"totalSize\":{totalSize},\"downloadedEver\":0,\"peersConnected\":{peers},"
-            + $"\"addedDate\":{addedUtc.ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0}}]}}}}";
-        var handler = new TransmissionHandler(torrentGet);
+        // Transmission 4.1.3's recorded list of a magnet whose metadata never came, in the status, size, progress, peers and age under test.
+        var torrentGet = RecordedTransmissionRig.Reply(
+            RecordedTransmissionRig.NoMetadata,
+            ("status", status), ("totalSize", totalSize), ("percentDone", percentDone), ("peersConnected", peers),
+            ("addedDate", addedUtc.ToUnixTimeSeconds()), ("rateDownload", 0), ("rateUpload", 0), ("eta", 0));
+        var handler = RecordedTransmissionRig.Handler(torrentGet);
         var client = new TransmissionDownloadClient(new Factory(handler));
         var snapshot = await client.GetSnapshotAsync(Client(), capturedUtc, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
@@ -118,17 +117,5 @@ public sealed class TransmissionMetadataStallTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class TransmissionHandler(string torrentGet) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-get\"", StringComparison.Ordinal)
-                ? torrentGet
-                : "{\"result\":\"success\",\"arguments\":{}}";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
     }
 }

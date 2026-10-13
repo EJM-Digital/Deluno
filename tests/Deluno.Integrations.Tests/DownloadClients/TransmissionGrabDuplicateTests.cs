@@ -1,8 +1,7 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -19,12 +18,12 @@ public sealed class TransmissionGrabDuplicateTests
     [Fact]
     public async Task A_transmission_duplicate_answer_is_followed_instead_of_reported_as_an_ordinary_send()
     {
-        var handler = new TransmissionDuplicateHandler();
+        var handler = Answering(RecordedReplies.Transmission("duplicate-add").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("abc", result.ExternalId);
+        Assert.Equal("04d6d32adaa36ddd9877f0734a7027a4a0055042", result.ExternalId);
         Assert.True(result.IsDuplicateFollow);
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }
@@ -40,19 +39,19 @@ public sealed class TransmissionGrabDuplicateTests
     [Fact]
     public async Task A_transmission_refusal_reason_is_read_as_a_dead_release()
     {
-        var handler = new TransmissionRefusalHandler("invalid or corrupt torrent file");
+        var handler = Answering(RecordedReplies.Transmission("add-refused").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
-        Assert.Contains("invalid or corrupt torrent file", result.Message, StringComparison.Ordinal);
+        Assert.Contains("unrecognized info", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task An_ordinary_added_torrent_is_not_read_as_a_duplicate()
     {
-        var handler = new TransmissionAddedHandler();
+        var handler = Answering(RecordedReplies.Transmission("finished-single-file").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
@@ -74,39 +73,13 @@ public sealed class TransmissionGrabDuplicateTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    private sealed class TransmissionDuplicateHandler : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
-                ? """{"result":"success","arguments":{"torrent-duplicate":{"id":7,"hashString":"abc"}}}"""
-                : """{"result":"success","arguments":{}}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
-    }
-
-    private sealed class TransmissionRefusalHandler(string reason) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
-                ? "{\"result\":\"" + reason + "\",\"arguments\":{}}"
-                : """{"result":"success","arguments":{}}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
-    }
-
-    private sealed class TransmissionAddedHandler : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
-                ? """{"result":"success","arguments":{"torrent-added":{"id":7,"hashString":"abc"}}}"""
-                : """{"result":"success","arguments":{}}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
-    }
+    /// <summary>
+    /// Transmission 4.1.3 answering the add with the recorded reply and every other call (its category lookup and label) with its recorded
+    /// settings and label replies.
+    /// </summary>
+    private static HttpMessageHandler Answering(HttpResponseMessage addReply)
+        => RecordedReplies.Handler(
+            "transmission",
+            [RecordedReplies.Transmission("settings"), RecordedReplies.Transmission("label-set")],
+            (_, body) => body.Contains("\"torrent-add\"", StringComparison.Ordinal) ? addReply : null);
 }

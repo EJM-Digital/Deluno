@@ -1,10 +1,8 @@
-using System.Globalization;
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -172,16 +170,18 @@ public sealed class TransmissionSharingAndStallTests
         long activityDate = 0,
         long doneDate = 0)
     {
-        var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
-            + $"\"status\":{status},\"percentDone\":{percentDone.ToString(CultureInfo.InvariantCulture)},"
-            + $"\"totalSize\":5000000000,\"downloadedEver\":2000000000,\"peersConnected\":{peersConnected},\"peersSendingToUs\":{peersSendingToUs},"
-            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"activityDate\":{activityDate},\"doneDate\":{doneDate},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
-            + $"\"isStalled\":{(isStalled ? "true" : "false")},\"error\":{error}"
-            + (errorString is null ? string.Empty : $",\"errorString\":\"{errorString}\"")
-            + (uploadRatio is null ? string.Empty : $",\"uploadRatio\":{uploadRatio.Value.ToString(CultureInfo.InvariantCulture)}")
-            + (secondsSeeding is null ? string.Empty : $",\"secondsSeeding\":{secondsSeeding.Value.ToString(CultureInfo.InvariantCulture)}")
-            + "}]}}";
-        var handler = new TransmissionHandler(torrentGet);
+        // Transmission 4.1.3's recorded list of a download in progress, in the status, progress, swarm, error and sharing values under
+        // test. The recording's field list was shorter than the one Deluno asks for now, so the sharing and activity figures are added to
+        // the recorded torrent; a figure Transmission does not send is taken out.
+        var edits = new List<(string, object?)>
+        {
+            ("status", status), ("percentDone", percentDone), ("peersConnected", peersConnected), ("peersSendingToUs", peersSendingToUs),
+            ("addedDate", DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()), ("activityDate", activityDate), ("doneDate", doneDate),
+            ("rateDownload", 0), ("rateUpload", 0), ("eta", 0), ("isStalled", isStalled), ("error", error),
+            ("errorString", errorString ?? string.Empty), ("uploadRatio", uploadRatio), ("secondsSeeding", secondsSeeding)
+        };
+        var torrentGet = RecordedTransmissionRig.Reply(RecordedTransmissionRig.Downloading, edits.ToArray());
+        var handler = RecordedTransmissionRig.Handler(torrentGet);
         var client = new TransmissionDownloadClient(new Factory(handler));
         var snapshot = await client.GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
@@ -194,17 +194,5 @@ public sealed class TransmissionSharingAndStallTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class TransmissionHandler(string torrentGet) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-get\"", StringComparison.Ordinal)
-                ? torrentGet
-                : "{\"result\":\"success\",\"arguments\":{}}";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
     }
 }

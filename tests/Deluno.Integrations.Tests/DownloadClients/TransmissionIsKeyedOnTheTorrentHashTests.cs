@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -20,8 +20,9 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     public async Task The_queue_files_a_torrent_by_its_hash_and_keeps_the_number_only_as_its_old_id()
     {
         var sent = new List<string>();
-        var reply = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"hashString\":\"" + Hash.ToUpperInvariant() + "\","
-            + "\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"status\":6,\"percentDone\":1,\"totalSize\":5,\"downloadedEver\":5,\"error\":0}]}}";
+        // Transmission 4.1.3's recorded list of a finished torrent, with the number and upper-case hash under test.
+        var reply = RecordedTransmissionRig.Reply(
+            RecordedTransmissionRig.Finished, ("id", 7), ("hashString", Hash.ToUpperInvariant()), ("name", "Sherlock.Jr.1924.1080p.BluRay"));
 
         var snapshot = await new TransmissionDownloadClient(new Factory(new Handler(sent, reply)))
             .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
@@ -35,7 +36,8 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     [Fact]
     public async Task A_daemon_that_sends_no_hash_still_works_by_number()
     {
-        var reply = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Old.Daemon.1924\",\"status\":6,\"percentDone\":1,\"error\":0}]}}";
+        // The same recorded torrent as an old daemon would send it: no hash.
+        var reply = RecordedTransmissionRig.Reply(RecordedTransmissionRig.Finished, ("id", 7), ("hashString", null), ("name", "Old.Daemon.1924"));
 
         var snapshot = await new TransmissionDownloadClient(new Factory(new Handler([], reply)))
             .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
@@ -52,7 +54,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     {
         var sent = new List<string>();
 
-        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, "{\"result\":\"success\",\"arguments\":{}}", holds: true)))
+        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, string.Empty, holds: true)))
             .ExecuteActionAsync(Client(), action, Hash.ToUpperInvariant(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -67,7 +69,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     {
         var sent = new List<string>();
 
-        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, "{}")))
+        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, string.Empty)))
             .ExecuteActionAsync(Client(), "pause", "not-an-id", CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -77,8 +79,9 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     [Fact]
     public async Task A_grab_reports_the_torrents_hash_as_its_id_including_when_the_client_already_had_it()
     {
-        var added = "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{\"id\":12,\"hashString\":\"" + Hash + "\"}}}";
-        var duplicate = "{\"result\":\"success\",\"arguments\":{\"torrent-duplicate\":{\"id\":12,\"hashString\":\"" + Hash.ToUpperInvariant() + "\"}}}";
+        // Transmission 4.1.3's recorded answers to an add and to an add of a torrent it already held, with the hash under test.
+        var added = RecordedReplies.Transmission("finished-single-file").Body("torrent-add", ("arguments.torrent-added.hashString", Hash));
+        var duplicate = RecordedReplies.Transmission("duplicate-add").Body("torrent-add", ("arguments.torrent-duplicate.hashString", Hash.ToUpperInvariant()));
 
         var first = await Grab(added);
         var second = await Grab(duplicate);
@@ -103,7 +106,10 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    /// <summary>With <paramref name="holds"/> the daemon holds the torrent until a torrent-remove arrives (#1252), as the recorded one did.</summary>
+    /// <summary>
+    /// With <paramref name="holds"/> the daemon holds the torrent until a torrent-remove arrives (#1252), as the recorded one did. A
+    /// removal, a move to the top and a torrent list with nothing in it are Transmission 4.1.3's recorded replies.
+    /// </summary>
     private sealed class Handler(List<string> sent, string reply, bool holds = false) : HttpMessageHandler
     {
         private bool _removed;
@@ -112,16 +118,25 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             sent.Add(body);
-            var answer = reply;
             if (holds && body.Contains("\"torrent-get\"", StringComparison.Ordinal))
             {
-                answer = _removed
-                    ? "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}"
-                    : "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"hashString\":\"" + Hash + "\",\"name\":\"Some.Film\",\"downloadDir\":\"/no/such/folder\"}]}}";
+                return RecordedReplies.Json(_removed
+                    ? RecordedReplies.Transmission("idle").Body("torrent-get", ("^arguments.torrents", 0))
+                    : RecordedTransmissionRig.Reply(RecordedTransmissionRig.Finished, ("id", 7), ("hashString", Hash), ("name", "Some.Film"), ("downloadDir", "/no/such/folder")));
             }
 
-            if (body.Contains("\"torrent-remove\"", StringComparison.Ordinal)) _removed = true;
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
+            if (body.Contains("\"torrent-remove\"", StringComparison.Ordinal))
+            {
+                _removed = true;
+                return RecordedReplies.Transmission("removed-with-data").Response("torrent-remove");
+            }
+
+            if (body.Contains("\"queue-move-top\"", StringComparison.Ordinal))
+            {
+                return RecordedReplies.Transmission("queue-moved").Response("queue-move-top");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, System.Text.Encoding.UTF8, "application/json") };
         }
     }
 }
