@@ -165,7 +165,19 @@ public sealed class NzbGetDownloadClient(
             var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetLogEntry>>>(
                 http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("log", [0, 200]), cancellationToken);
             var entries = response?.Result;
-            if (entries is null || !entries.Any(entry => entry.Text?.Contains("errors in configuration", StringComparison.OrdinalIgnoreCase) == true))
+            var pause = entries?.Where(entry => entry.Text?.Contains("errors in configuration", StringComparison.OrdinalIgnoreCase) == true)
+                .OrderBy(entry => entry.Time).ThenBy(entry => entry.Id).LastOrDefault();
+            if (entries is null || pause is null)
+            {
+                return null;
+            }
+
+            // Configuration errors are only logged when NZBGet loads its settings (at start or on reload). NZBGet logs its
+            // start-up lines ("nzbget 26.3 server-mode", "using ...nzbget.conf") in the same second as that load's errors, so a
+            // start line logged LATER than the pause means NZBGet loaded again without new errors: a pause now is the person's.
+            var startedAgain = entries.Any(entry => entry.Time > pause.Time && entry.Text is { } text
+                && (text.Contains("server-mode", StringComparison.OrdinalIgnoreCase) || (text.StartsWith("using ", StringComparison.OrdinalIgnoreCase) && text.Contains("nzbget.conf", StringComparison.OrdinalIgnoreCase))));
+            if (startedAgain)
             {
                 return null;
             }
@@ -933,7 +945,7 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
-    private sealed record NzbGetLogEntry([property: JsonPropertyName("ID")] int Id, [property: JsonPropertyName("Kind")] string? Kind, [property: JsonPropertyName("Text")] string? Text);
+    private sealed record NzbGetLogEntry([property: JsonPropertyName("ID")] int Id, [property: JsonPropertyName("Kind")] string? Kind, [property: JsonPropertyName("Text")] string? Text, [property: JsonPropertyName("Time")] long Time = 0);
 
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null, [property: JsonPropertyName("PausedSizeMB")] long? PausedSizeMb = null);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses, [property: JsonPropertyName("FinalDir")] string? FinalDir = null);
