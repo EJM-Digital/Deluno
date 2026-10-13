@@ -77,6 +77,27 @@ public sealed class NzbGetPausedOverConfigurationErrorsIsSaidTests
     }
 
     [Fact]
+    public async Task An_old_error_entry_followed_by_a_clean_start_then_a_pause_the_person_chose_reads_as_an_ordinary_pause()
+    {
+        // config-error-cleared holds no log reply, so the recorded paused log is used with its two start-up entries
+        // ("nzbget 26.3 server-mode", "using ...nzbget.conf") given a later time: NZBGet started again after the error.
+        var (snapshot, methods) = await Poll("config-error-paused", recording =>
+        {
+            var log = recording.Find("\"log\"").Reply.Json()["result"]!.AsArray();
+            var texts = log.Select(e => e!["Text"]!.GetValue<string>()).ToList();
+            var later = log[0]!["Time"]!.GetValue<long>() + 3600;
+            return recording.Body("\"log\"",
+                ($"result.{texts.FindIndex(t => t.Contains("server-mode"))}.Time", later),
+                ($"result.{texts.FindIndex(t => t.StartsWith("using "))}.Time", later));
+        });
+
+        Assert.Contains("log", methods);
+        Assert.Equal("healthy", snapshot.HealthStatus);
+        Assert.Null(snapshot.ClientWarnings);
+        Assert.True(snapshot.ClientPaused);
+    }
+
+    [Fact]
     public async Task Once_the_errors_are_fixed_the_warning_goes_and_the_log_is_not_read_while_nothing_is_paused()
     {
         var (snapshot, methods) = await Poll("config-error-cleared");
