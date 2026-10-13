@@ -18,7 +18,7 @@
 //
 // Usage: node scripts/check-recorded-replies.mjs [--root <repo>] [--list]   (--list prints the files that need entries)
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Keys only these apps answer with. `all` keys must all be present in the one literal.
@@ -154,9 +154,12 @@ export function recordedStates(root) {
 // a file that loads that app's recordings (an InlineData of states).
 export function unreplayedStates(root, noBehaviour = []) {
   const sources = [];
+  const files = [];
   for (const file of testFiles(join(root, 'tests'))) {
     if (file.endsWith('RecordedRepliesTests.cs')) continue;
-    sources.push(readFileSync(file, 'utf8'));
+    const text = readFileSync(file, 'utf8');
+    sources.push(text);
+    files.push({ dir: dirname(file), text });
   }
   const exempt = new Set(noBehaviour.map((entry) => `${entry.app}/${entry.state}`));
   return recordedStates(root).filter(({ app, state }) => {
@@ -164,8 +167,12 @@ export function unreplayedStates(root, noBehaviour = []) {
     const accessor = app[0].toUpperCase() + app.slice(1);
     const call = new RegExp(String.raw`${accessor}\(\s*"${state}"`);
     const quoted = `"${state}"`;
+    // A contract test goes through a helper that loads the app (WeirContract.Rec("state")): a state quoted in a file beside the
+    // file that loads that app's recordings counts as named, like one loaded straight from RecordedReplies.
+    const loaderDirs = new Set(files.filter((f) => f.text.includes(`RecordedReplies.${accessor}(`)).map((f) => f.dir));
     return !sources.some((text) => call.test(text)
-      || ((text.includes(`RecordedReplies.${accessor}(`) || text.includes(`RecordedReplies.Handler("${app}"`)) && text.includes(quoted)));
+      || ((text.includes(`RecordedReplies.${accessor}(`) || text.includes(`RecordedReplies.Handler("${app}"`)) && text.includes(quoted)))
+      && !files.some((f) => loaderDirs.has(f.dir) && f.text.includes(quoted));
   });
 }
 

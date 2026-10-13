@@ -112,3 +112,17 @@ test('a recording no test replays fails, naming it, unless it is listed as havin
   writeFileSync(join(root, 'tests', 'recorded-reply-allow-list.json'), JSON.stringify({ entries: [], noBehaviour: [{ app: 'qbittorrent', state: 'gone', reason: 'Deluno never makes this call, so there is nothing to replay.' }] }));
   try { assert.match(check(root).problems.join('\n'), /noBehaviour qbittorrent\/gone is not a recording/); } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a state quoted in a contract test beside the helper that loads the app counts as replayed', () => {
+  const recording = JSON.stringify({ app: 'weir', version: '1.0.0', state: 'status-working', exchanges: [{ request: { method: 'GET', path: '/x' }, reply: { status: 200 } }] });
+  const files = {
+    'tests/fixtures/recorded/weir/1.0.0/status-working.json': recording,
+    'tests/A.Tests/Contract/Helper.cs': inline('RecordedReplies.Weir(state)'),
+    'tests/A.Tests/Contract/Behaviour.cs': inline('Rec("status-working")')
+  };
+  let root = repo(files);
+  try { assert.deepEqual(check(root).problems, []); } finally { rmSync(root, { recursive: true, force: true }); }
+  delete files['tests/A.Tests/Contract/Behaviour.cs'];
+  root = repo(files);
+  try { assert.match(check(root).problems.join('\n'), /"status-working" is replayed by no test/); } finally { rmSync(root, { recursive: true, force: true }); }
+});
