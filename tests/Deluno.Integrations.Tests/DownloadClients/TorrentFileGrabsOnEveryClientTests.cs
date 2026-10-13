@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -45,7 +46,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task qBittorrent_takes_the_file_as_an_upload_and_the_grab_is_known_by_its_hash()
     {
-        var handler = new QbitHandler(before: "[]", after: $$"""[{"hash":"{{Hash}}"}]""");
+        var handler = new QbitHandler(before: Listing(), after: Listing(Hash));
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(Client("qbittorrent"), Request(), CancellationToken.None);
 
@@ -60,7 +61,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task qBittorrent_already_holding_a_torrent_file_is_followed_not_failed()
     {
-        var handler = new QbitHandler(before: $$"""[{"hash":"{{Hash}}"}]""", after: $$"""[{"hash":"{{Hash}}"}]""");
+        var handler = new QbitHandler(before: Listing(Hash), after: Listing(Hash), addReply: RecordedReplies.Qbittorrent("duplicate-add").Response("torrents/add"));
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(Client("qbittorrent"), Request(), CancellationToken.None);
 
@@ -72,7 +73,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task qBittorrent_never_showing_the_known_hash_is_still_known_by_it_for_the_never_showed_path()
     {
-        var handler = new QbitHandler(before: "[]", after: "[]");
+        var handler = new QbitHandler(before: Listing(), after: Listing());
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(Client("qbittorrent"), Request(), CancellationToken.None);
 
@@ -84,15 +85,24 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     public async Task qBittorrent_names_the_known_hash_not_an_unrelated_torrent_that_appeared_first()
     {
         var handler = new QbitHandler(
-            before: "[]",
-            after: $$"""[{"hash":"9999999999999999999999999999999999999999"},{"hash":"{{Hash}}"}]""");
+            before: Listing(),
+            after: Listing("9999999999999999999999999999999999999999", Hash));
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(Client("qbittorrent"), Request(), CancellationToken.None);
 
         Assert.Equal(Hash, result.ExternalId);
     }
 
-    private sealed class QbitHandler(string before, string after) : HttpMessageHandler
+    /// <summary>qBittorrent 5.2.1's recorded list of torrents, made to hold the given hashes (none: its recorded answer to a hash it never had).</summary>
+    private static string Listing(params string[] hashes)
+        => hashes.Length == 0
+            ? RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info")
+            : RecordedReplies.Qbittorrent("finished-single-file").Body(
+                "torrents/info",
+                new[] { ("+", (object?)hashes.Length) }.Concat(hashes.Select((hash, index) => ($"{index}.hash", (object?)hash))).ToArray());
+
+    /// <summary>qBittorrent 5.2.1 as recorded: sign-in, the list before and after the add, and the add's own reply (the recorded success unless the test gives one).</summary>
+    private sealed class QbitHandler(string before, string after, HttpResponseMessage? addReply = null) : HttpMessageHandler
     {
         private bool added;
 
@@ -105,10 +115,19 @@ public sealed class TorrentFileGrabsOnEveryClientTests
             {
                 added = true;
                 AddBody = Encoding.Latin1.GetString(await request.Content!.ReadAsByteArrayAsync(cancellationToken));
-                return Text("Ok.");
+                return addReply ?? RecordedReplies.Qbittorrent("finished-single-file").Response("torrents/add");
             }
 
-            return path.Contains("torrents/info", StringComparison.Ordinal) ? Json(added ? after : before) : Text("Ok.");
+            if (path.Contains("auth/login", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("sign-in").Response("auth/login");
+            if (path.Contains("app/version", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("version").Response("app/version");
+            // The category the grab puts on the torrent: the recorded creation (qBittorrent said it was there already) and move.
+            if (path.Contains("torrents/createCategory", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/createCategory");
+            if (path.Contains("torrents/setCategory", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
+            // Automatic management is not recorded; qBittorrent answers its other changes with an empty 200, as the recorded category move does.
+            if (path.Contains("torrents/setAutoManagement", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
+            return path.Contains("torrents/info", StringComparison.Ordinal)
+                ? RecordedReplies.Json(added ? after : before)
+                : throw new InvalidOperationException("qBittorrent was asked something no recording answers: " + path);
         }
     }
 
@@ -117,7 +136,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task Deluge_holding_a_torrent_file_already_is_followed_by_the_files_own_hash()
     {
-        var handler = new DelugeHandler(addResult: "null", sessionHashes: [Hash]);
+        var handler = new DelugeHandler(addReply: RecordedReplies.Deluge("duplicate-add").Response("core.add_torrent_file"), sessionHashes: [Hash]);
 
         var result = await new DelugeDownloadClient(new StubFactory(handler)).GrabAsync(Client("deluge", 8112), Request(), CancellationToken.None);
 
@@ -128,7 +147,8 @@ public sealed class TorrentFileGrabsOnEveryClientTests
         Assert.Contains(Convert.ToBase64String(File), handler.AddBody, StringComparison.Ordinal);
     }
 
-    private sealed class DelugeHandler(string addResult, IReadOnlyList<string> sessionHashes) : HttpMessageHandler
+    /// <summary>Deluge 2.2.0 as recorded: sign-in, the add's own reply, and its session state holding the given hashes.</summary>
+    private sealed class DelugeHandler(HttpResponseMessage addReply, IReadOnlyList<string> sessionHashes) : HttpMessageHandler
     {
         public string AddBody { get; private set; } = string.Empty;
 
@@ -138,12 +158,18 @@ public sealed class TorrentFileGrabsOnEveryClientTests
             if (body.Contains("core.add_torrent_", StringComparison.Ordinal))
             {
                 AddBody = body;
-                return Json($$"""{"result":{{addResult}},"error":null,"id":2}""");
+                return addReply;
             }
 
-            return body.Contains("core.get_session_state", StringComparison.Ordinal)
-                ? Json($$"""{"result":[{{string.Join(",", sessionHashes.Select(hash => $"\"{hash}\""))}}],"error":null,"id":9}""")
-                : Json("""{"result":true,"error":null,"id":1}""");
+            if (body.Contains("core.get_session_state", StringComparison.Ordinal))
+            {
+                return RecordedReplies.Json(RecordedReplies.Deluge("settings").Body(
+                    "core.get_session_state", ("result", new System.Text.Json.Nodes.JsonArray(sessionHashes.Select(hash => (System.Text.Json.Nodes.JsonNode?)hash).ToArray()))));
+            }
+
+            return body.Contains("auth.login", StringComparison.Ordinal) ? RecordedReplies.Deluge("sign-in").Response("auth.login")
+                : body.Contains("web.connected", StringComparison.Ordinal) ? RecordedReplies.Deluge("sign-in").Response("web.connected")
+                : throw new InvalidOperationException("Deluge was asked something no recording answers: " + body);
         }
     }
 
@@ -212,7 +238,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task Transmission_takes_the_file_as_metainfo_and_the_grab_is_known_by_its_hash()
     {
-        var handler = new TransmissionHandler("""{"result":"success","arguments":{"torrent-added":{"id":7,"hashString":"DE4158016FBC49EBF35641903CEC65A0AD0D30B5"}}}""");
+        var handler = new TransmissionHandler(RecordedReplies.Transmission("finished-single-file").Body("torrent-add", ("arguments.torrent-added.hashString", Hash.ToUpperInvariant())));
 
         var result = await new TransmissionDownloadClient(new StubFactory(handler)).GrabAsync(Client("transmission", 9091), Request(), CancellationToken.None);
 
@@ -225,7 +251,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task Transmission_that_names_no_hash_for_the_file_is_still_known_by_the_hash_Deluno_worked_out_and_never_by_its_number()
     {
-        var handler = new TransmissionHandler("""{"result":"success","arguments":{"torrent-added":{"id":7}}}""");
+        var handler = new TransmissionHandler(RecordedReplies.Transmission("finished-single-file").Body("torrent-add", ("arguments.torrent-added.hashString", null)));
 
         var result = await new TransmissionDownloadClient(new StubFactory(handler)).GrabAsync(Client("transmission", 9091), Request(), CancellationToken.None);
 
@@ -235,7 +261,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
     [Fact]
     public async Task Transmission_already_holding_a_torrent_file_is_followed_by_its_hash()
     {
-        var handler = new TransmissionHandler("""{"result":"success","arguments":{"torrent-duplicate":{"id":7,"hashString":"de4158016fbc49ebf35641903cec65a0ad0d30b5"}}}""");
+        var handler = new TransmissionHandler(RecordedReplies.Transmission("duplicate-add").Body("torrent-add", ("arguments.torrent-duplicate.hashString", Hash)));
 
         var result = await new TransmissionDownloadClient(new StubFactory(handler)).GrabAsync(Client("transmission", 9091), Request(), CancellationToken.None);
 
@@ -256,7 +282,10 @@ public sealed class TorrentFileGrabsOnEveryClientTests
                 return Json(addReply);
             }
 
-            return Json("""{"result":"success","arguments":{}}""");
+            // Its category lookup and label: Transmission 4.1.3's recorded session settings and label change.
+            return body.Contains("\"session-get\"", StringComparison.Ordinal)
+                ? RecordedReplies.Transmission("settings").Response("session-get")
+                : RecordedReplies.Transmission("label-set").Response("torrent-set");
         }
     }
 
