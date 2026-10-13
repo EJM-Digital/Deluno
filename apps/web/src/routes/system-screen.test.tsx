@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../lib/route-cache";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
@@ -518,5 +518,49 @@ describe("Processor-output rows are dismissed with their issue (#1228)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/c1/dismiss", expect.objectContaining({ method: "POST" })));
     await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
     expect(toastMock.success).toHaveBeenCalledWith("Dismissed. Nothing was deleted.");
+  });
+});
+
+/** #1260: backup settings that could not be read are said so on System > Backups, and saving again repairs them and clears the message. */
+describe("Backup settings problem (#1260)", () => {
+  function renderBackups() {
+    const router = createMemoryRouter([{ path: "*", element: <SystemPage /> }], { initialEntries: ["/system/backups"] });
+    render(<RouterProvider router={router} />);
+  }
+
+  const settings = {
+    enabled: false, frequency: "daily", timeOfDay: "03:00", retentionCount: 7, backupFolder: "", lastRunUtc: null, nextRunUtc: null
+  };
+
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    loaderData.backupSettings = null;
+  });
+
+  it("shows the problem in plain words with what to do, and saving again makes it go", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (loaderData as any).backupSettings = { ...settings, problem: "The backup settings file is damaged, so the standard settings are in use and scheduled backups are off until you save the settings again." };
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "PUT" ? settings : []));
+
+    renderBackups();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("The backup settings file is damaged");
+    expect(screen.getByRole("alert")).toHaveTextContent("Save the backup settings again to repair them.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Repair backup settings" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/backups/settings", expect.objectContaining({ method: "PUT" })));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("shows nothing when the settings were read fine", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (loaderData as any).backupSettings = { ...settings, problem: null };
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+
+    renderBackups();
+
+    expect(screen.queryByText("Save the backup settings again to repair them.")).toBeNull();
   });
 });
