@@ -2281,7 +2281,7 @@ public sealed class WorkPlanner(
         }
     }
 
-    internal static IReadOnlyList<string> FindCorrelatedProcessorOutputs(string outputRoot, string sourcePath)
+    internal static IReadOnlyList<string> FindCorrelatedProcessorOutputs(string outputRoot, string sourcePath, string? watchedFolder = null)
     {
         if (string.IsNullOrWhiteSpace(outputRoot) || string.IsNullOrWhiteSpace(sourcePath))
         {
@@ -2333,7 +2333,7 @@ public sealed class WorkPlanner(
     /// health check also reads, so an active hand-off's own working folder is
     /// never reported as unexpected (#921).
     /// </summary>
-    internal static IReadOnlyList<string> ExpectedOutputDirectoryNames(string sourcePath)
+    internal static IReadOnlyList<string> ExpectedOutputDirectoryNames(string sourcePath, string? watchedFolder = null)
     {
         // Path.GetFileName only recognises this OS's own separator, but a
         // source path can be reported by a download client running on a
