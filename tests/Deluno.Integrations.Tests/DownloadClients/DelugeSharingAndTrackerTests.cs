@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -161,20 +159,13 @@ public sealed class DelugeSharingAndTrackerTests
 
     private static async Task<DownloadQueueItem> Snapshot(string state, double? ratio, double? seedingTime, string trackerStatus, string message = "OK")
     {
-        var savePath = @"C:\Deluno\Downloads\Deluge";
-        var torrent = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"state\":" + Json(state)
-            + ",\"progress\":40.0,\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,\"total_size\":5000000000,\"total_done\":2000000000,\"num_peers\":2,"
-            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":" + Json(message) + ",\"save_path\":" + Json(savePath)
-            + (ratio is null ? string.Empty : $",\"ratio\":{ratio.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
-            + (seedingTime is null ? string.Empty : $",\"seeding_time\":{seedingTime.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
-            + ",\"tracker_status\":" + Json(trackerStatus)
-            + "}}},\"error\":null,\"id\":2}";
-        var handler = new DelugeHandler(torrent);
+        // Deluge 2.2.0's recorded list of a torrent that is downloading, with the state, sharing figures, tracker status and message under test.
+        // A figure Deluge does not report is taken out of the reply, as a null edit does.
+        var handler = RecordedDelugeRig.Handler(RecordedDelugeRig.Downloading(
+            ("state", state), ("label", "movies"), ("progress", 40.0), ("download_payload_rate", 0), ("upload_payload_rate", 0), ("eta", 0), ("num_peers", 2), ("message", message), ("ratio", ratio), ("seeding_time", seedingTime), ("tracker_status", trackerStatus)));
         var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
-
-    private static string Json(string value) => System.Text.Json.JsonSerializer.Serialize(value);
 
     private static DownloadClientItem Client()
         => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", false, null, "movies", "tv", null, 1, true,
@@ -183,15 +174,5 @@ public sealed class DelugeSharingAndTrackerTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class DelugeHandler(string updateUi) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            var answer = body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
     }
 }
