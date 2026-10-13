@@ -9,6 +9,26 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.30
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.29, plus:
+
+- When Weir (or another processor) comes back after being down, Deluno shows
+  it as working again within about 20 seconds, on the tray, System and the
+  Dashboard. Before, it could take more than a minute, and with automatic jobs
+  switched off it never came back on its own.
+
 ## 1.0.0-rc.30.29
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
