@@ -1945,7 +1945,7 @@ public sealed class DownloadClientTelemetryService(
                             Kind: "sabnzbd-client-warning",
                             Summary: $"{snapshot.ClientName} reported: {warningText}",
                             Evidence: warningText,
-                            RecommendedAction: "Clear this warning in SABnzbd, or from this client's row on Connections.",
+                            RecommendedAction: "Fix it in the client, then clear this warning from this client's row on Connections.",
                             CanSafelyRetry: false,
                             CanSafelyRemove: false)
                     ]
