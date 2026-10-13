@@ -1,9 +1,8 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -49,11 +48,12 @@ public sealed class TheIgnoreListMatchesTagsAndTrackerDomainsTests
     [Fact]
     public async Task Qbittorrent_reports_its_tags_and_every_tracker_host_so_a_tracker_domain_entry_exempts_it()
     {
-        var torrents = "[{\"hash\":\"abc123\",\"name\":\"Example.Movie.2026.1080p\",\"category\":\"movies\",\"state\":\"stalledDL\",\"progress\":0.4,"
-            + "\"dlspeed\":0,\"upspeed\":0,\"eta\":8640000,\"size\":1000,\"downloaded\":400,\"num_seeds\":0,\"added_on\":1700000000,"
-            + "\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\",\"tags\":\"keep, private\",\"tracker\":\"\"}]";
-        var trackers = "[{\"url\":\"** [DHT] **\",\"status\":2,\"msg\":\"\"},{\"url\":\"https://tracker.example.org:443/abc/announce\",\"status\":2,\"msg\":\"\"}]";
-        var client = new QbittorrentDownloadClient(() => new Handler(torrents, trackers));
+        // qBittorrent 5.2.1's recorded list of a torrent with no peers (state stalledDL) carrying the tags under test, and its recorded
+        // tracker list (DHT, PeX, LSD) with the PeX line replaced by a real tracker's announce address.
+        var torrents = RecordedQbittorrentRig.Info(
+            RecordedQbittorrentRig.Stalled, ("hash", "abc123"), ("category", "movies"), ("tags", "keep, private"), ("tracker", string.Empty));
+        var trackers = RecordedReplies.Qbittorrent("trackers").Body("torrents/trackers", ("1.url", "https://tracker.example.org:443/abc/announce"));
+        var client = new QbittorrentDownloadClient(() => RecordedQbittorrentRig.Handler(torrents, trackers));
 
         var snapshot = await client.GetSnapshotAsync(
             new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", false, null, "movies", "tv", null, 1, true,
@@ -65,18 +65,5 @@ public sealed class TheIgnoreListMatchesTagsAndTrackerDomainsTests
         Assert.Equal(["tracker.example.org"], item.TrackerHosts);
         Assert.True(Entry(domain: "tracker.example.org").Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts));
         Assert.True(Entry(tag: "private").Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts));
-    }
-
-    private sealed class Handler(string torrents, string trackers) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal) ? "Ok."
-                : path.Contains("torrents/info", StringComparison.Ordinal) ? torrents
-                : path.Contains("torrents/trackers", StringComparison.Ordinal) ? trackers
-                : "{}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") });
-        }
     }
 }
