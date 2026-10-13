@@ -192,7 +192,7 @@ public sealed class ImportRestartRecoveryKeepsMediaTests
                 File.WriteAllBytes(sourcePath, bytes);
             }
 
-            var markerPath = stagingPath + ".deluno-marker.json";
+            var markerPath = ImportRestartMarkerFile.PathFor(stagingPath);
             if (writeMarker)
             {
                 File.WriteAllText(markerPath, markerText ?? ValidMarkerText());
@@ -213,8 +213,8 @@ public sealed class ImportRestartRecoveryKeepsMediaTests
                 "Sanctuary (2024)"));
         }
 
-        public ImportRestartRecoveryService CreateService()
-            => new(Libraries, Pipeline, Jobs, NullLogger<ImportRestartRecoveryService>.Instance);
+        public ImportRestartRecoveryService CreateService(IImportRestartMarkerIo? io = null, bool withRecycleBin = true)
+            => new(Libraries, Pipeline, Jobs, NullLogger<ImportRestartRecoveryService>.Instance, withRecycleBin ? Bin : null, Health, io);
 
         /// <summary>The media is still where the import left it, or it is in the recycle bin where the person can restore it.</summary>
         public async Task<bool> MediaIsSafeAsync(Scene scene)
