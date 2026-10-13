@@ -402,7 +402,6 @@ public sealed class DelunoHeartbeatWorker(
         {
             var cleanupService = services.GetRequiredService<IDispatchCleanupService>();
             await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
-            await workPlanner.RunProcessorHealthPassAsync(processorRepository, processorConnectionService, stoppingToken);
             await workPlanner.RunProcessorOutcomePassAsync(
                 services.GetRequiredService<ProcessorOutcomeReporter>(),
                 stoppingToken);
