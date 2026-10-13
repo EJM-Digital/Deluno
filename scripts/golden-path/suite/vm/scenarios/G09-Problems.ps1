@@ -54,6 +54,27 @@ function Test-OneStory {
     Add-Check "$What : the closing lines tell one story (no imported-and-will-not-import, no doubled full stop, one line per hand-off)" ($p.Count -eq 0) ($p -join " || ")
 }
 
+# Makes sure the story check has a finished hand-off to read. When an earlier scenario of this run already made one, nothing is added (a full
+# run reads all of theirs). Otherwise a film is sent through every client, imported, and given time to write its closing line.
+function Ensure-StoryFilms {
+    $have = @($script:AllFilms | Where-Object { $_.Protocol -and @(Find-Handoffs -Name $_.Release | Where-Object { $_.status -eq 'completed' }).Count -gt 0 })
+    if ($have.Count -gt 0) { return }
+    Write-SuiteLog '   no hand-off was made earlier in this run: sending one film through every client for the story check.'
+    $sent = @{}
+    foreach ($kind in Get-AllKinds) {
+        try { $sent[$kind] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Label 'story') -Kind $kind }
+        catch { Write-SuiteLog "   could not send the $kind story film: $(Hide-Secrets $_.Exception.Message)" }
+    }
+    foreach ($kind in $sent.Keys) {
+        $film = $sent[$kind]
+        Wait-FilmImported -Film $film | Out-Null
+        # The closing line is written when Deluno has told the processor what happened, a little after the import.
+        Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition {
+            @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) -and $_ -match '"category":"processing\.outcome-(reported|not-reported|superseded)"' }).Count -gt 0
+        } | Out-Null
+    }
+}
+
 function Invoke-GroupProblems {
     Invoke-Scenario -Id 'problems.dismiss-everywhere' -Title 'A problem shown in several places clears everywhere when it is dismissed in any one' -Body {
         Stop-WeirApp | Out-Null
@@ -88,6 +109,9 @@ function Invoke-GroupProblems {
     }
 
     Invoke-Scenario -Id 'activity.one-story' -Title 'Every hand-off''s closing lines in Activity tell one story' -Body {
+        # In a full run this reads every hand-off the earlier groups made. Run alone (or after a few scenarios) there may be none
+        # to read, so one film is sent through each client and followed to its closing line first.
+        Ensure-StoryFilms
         $films = @($script:AllFilms | Where-Object { $_.Protocol })
         $checked = 0
         $bad = New-Object System.Collections.ArrayList

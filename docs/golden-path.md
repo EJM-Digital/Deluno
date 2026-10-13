@@ -16,7 +16,7 @@ Green tests have shipped bugs that only showed when the product was used: a paus
 
 ## The scenario suite
 
-`scripts/golden-path/Invoke-ScenarioSuite.ps1` is the run. It proves a release candidate on the golden VM, unattended, in about 40 minutes, and passes or fails each scenario with its evidence.
+`scripts/golden-path/Invoke-ScenarioSuite.ps1` is the run. It proves a release candidate on the golden VM, unattended, and passes or fails each scenario with its evidence. A full run takes **about two hours** (124 minutes in the rc.30.29 run, which included Weir's own phases); the table under "How long a full run takes" gives the time of each part.
 
 ```powershell
 ./scripts/golden-path/Invoke-ScenarioSuite.ps1 -RigHost <host> -InstallerPath <Deluno-rc-Setup.exe> -Version <x.y.z-rc.N> -Commit <sha>
@@ -24,9 +24,33 @@ Green tests have shipped bugs that only showed when the product was used: a paus
 
 - **Before the tag.** Build the installer of the commit that will be tagged with a manual `ci.yml` run (the `windows-installer` artifact), run the suite on it, and tag only when it passes. The suite checks that the installed Deluno carries the commit given (`Deluno.exe` reports `<version>+<sha>`), so a status can never be recorded for a build that was not the one tested.
 - **What it does.** It restores the clean checkpoint, installs the candidate the way a person does (the component picker ticks the five download clients plus Weir), starts a tray watcher before Setup so the first run can be read, then copies the suite into the VM and runs it in the signed-in desktop session. The suite sets Deluno up through its own API (first account, Connect all, Connect Weir, libraries, routing, the Usenet stub and a local Torznab feed), with throwaway logins made inside the VM that are never printed or leave it, and then runs every scenario.
-- **The result.** `scenario-suite-results.md` and `.json` in the run's folder (under `artifacts/`, not committed): a pass or fail for every scenario, the checks behind it with their timings, and the harness's own install lines. A scenario that never reports counts as an error. The run's folder also keeps, next to the result, `vm-logs`: Deluno's and Weir's full logs, the request lines for `/processors/events` (`processors-events-requests.log`), the tray watcher's log, the suite's own log and each scenario's evidence.
-- **The status.** On a full pass it records `golden-path` = `success` on the commit (`gh api repos/<owner>/<repo>/statuses/<sha> -f state=success -f context=golden-path ...`), which is what `scripts/tag-release.ps1` and the release workflow read. On any failure it records `failure` and names the failed scenarios in the description, so an earlier success can never be used by mistake. A run limited to some groups (`-Groups`) records nothing. `-DryRun` runs everything and prints the status command instead of running it.
+- **The result.** `scenario-suite-results.md` and `.json` in the run's folder (under `artifacts/`, not committed): a pass or fail for every scenario, the checks behind it with their timings, and the harness's own install lines. A scenario that never reports counts as an error. The run's folder also keeps, next to the result, `vm-logs`: Deluno's and Weir's full logs, the request lines for `/processors/events` (`processors-events-requests.log`, matched in Deluno's `deluno-<date>.jsonl` log, which holds the line Deluno writes for each answer it gives to Weir's call; `processors-events-requests.diag.txt` beside it names the folders and files searched, and the results file's warning says what is missing if the log is empty), the tray watcher's log, the suite's own log and each scenario's evidence.
+- **The status.** On a full pass it records `golden-path` = `success` on the commit (`gh api repos/<owner>/<repo>/statuses/<sha> -f state=success -f context=golden-path ...`), which is what `scripts/tag-release.ps1` and the release workflow read. On any failure it records `failure` and names the failed scenarios in the description, so an earlier success can never be used by mistake. A run limited to some groups (`-Groups`) or to single scenarios (`-Scenarios`) records nothing and can never be a pass for the tag; its exit code still says whether what it ran passed. `-DryRun` runs everything and prints the status command instead of running it.
+- **One scenario at a time (`-Scenarios`).** After a fix, run only the scenario that needed it; the whole suite is not re-run because one scenario failed (owner, 14 Oct 2026). `-Scenarios` takes ids, comma separated, or patterns: `-Scenarios stuck.short.deluge`, `-Scenarios 'resend.during.sabnzbd,resend.after.sabnzbd'`, `-Scenarios 'resend.*.sabnzbd'`. A mistyped id is an error naming the nearest ids. Every id in the plan can be chosen alone. Each group prepares only what the chosen scenarios read: `film.sabnzbd` sends SABnzbd's film and no other; the "before" resend scenarios share one window, but only for the clients chosen; the failures of `tryagain` and the two vanish phases are made for the chosen clients only; `activity.one-story` sends its own film through each client when no earlier scenario of the run made one. A scenario run alone sets up the same environment, with the same rules, as in a full run, and gives the same verdict. `-Scenarios` and `-Groups` are not used together. The update scenario is the host's own: `-Scenarios update.over-running-previous` runs on a clean machine of its own and needs no install of the candidate in the VM.
+- **A fast start for those runs (`-UseReadyCheckpoint`).** Installing the candidate through the picker and setting Deluno up take about 15 minutes. With `-UseReadyCheckpoint` the first run of a commit does them as usual and then saves the machine as a Hyper-V checkpoint named `ready-<version>-<first 8 of the sha>` (`-ReadyCheckpoint <name>` chooses another). Every later run of that commit restores it with `Restore-VMSnapshot`, as the harness restores `clean`, and goes straight to the scenarios; the suite's scripts are copied in again each time, and the installed build is still checked against the commit. The checkpoint is a standard one (disk and memory), so the restored machine has Deluno, Weir and the clients running and the desktop signed in; the VM's own checkpoint type is put back after it is taken. A new commit has a new name, so a rebuild never reuses an old checkpoint, and saving a new one removes any other `ready-*` (one at a time keeps the disk small). If a restore fails the normal install runs instead and the checkpoint is saved again. It is never used for a full run (a full run always installs from `clean`, so the install scenario stays covered), for `install-first-run` (that scenario reads the install itself), with `-AfterSetupScript` or with `-SkipInstall`. To throw one away: `Remove-VMSnapshot -VMName <vm> -Name ready-...` on the host.
 - **Checking the suite's own code** needs no VM: `./scripts/golden-path/Test-ScenarioSuite.ps1` (run by `npm run ci:check`) parses every script, checks the plan against the group files, the host's judging and status code, and the Deluno, Weir, Edge and news-stub code against local mocks. `Invoke-ScenarioSuite.ps1 -ListOnly` prints the scenarios.
+
+### How long a full run takes
+
+About two hours, not forty minutes (the earlier figure was an estimate that was never measured). From the rc.30.29 run (4 to 6 am, 124.1 minutes in all); the groups' times are the wall clock between their first and last line in the suite's log:
+
+| Part | Time |
+| --- | ---: |
+| Restore, Setup and the component picker | 10 min |
+| Deluno's setup through its API | 4 min |
+| Weir's own update phase (the after-setup hook) | 3 min |
+| `install` | under 1 min |
+| `films` | 3 min |
+| `removal` | 8 min |
+| `resend` | 31 min |
+| `stuck` | 20 min |
+| `outage` | 4 min |
+| `tryagain` | 3 min |
+| `vanish` | 15 min |
+| `problems` | 5 min |
+| Log collection, Weir's remaining phases and the `update` scenario | 16 min |
+
+The groups alone are about 89 minutes. The slow ones wait on real clocks: `resend` (three timings on five clients, the first sends held at Weir until the moment is made), `stuck` (a one-minute check interval and two strikes), and `vanish` (Weir takes about 11 minutes to report a missing source). That is why a run of single scenarios, not the whole suite, is the way to check a fix.
 
 ### What each scenario proves
 

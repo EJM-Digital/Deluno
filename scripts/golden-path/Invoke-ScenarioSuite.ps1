@@ -51,6 +51,22 @@
 .PARAMETER Groups
     Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems, update). A partial run never records a pass.
 
+.PARAMETER Scenarios
+    Run only these scenarios: ids, comma separated, or patterns (resend.*.sabnzbd). Each group prepares only what the chosen scenarios
+    need, so a scenario run alone gives the verdict it gives in a full run; "film.sabnzbd" sends only SABnzbd's film. Not together
+    with -Groups. A partial run never records a pass and never records a commit status. The tag is made from a full run only.
+
+.PARAMETER UseReadyCheckpoint
+    A fast start for runs of single scenarios or groups: Deluno installed through the picker and the environment set up, saved as a
+    Hyper-V checkpoint named ready-<version>-<short sha>. If that checkpoint exists it is restored and the install and setup are
+    skipped (the installed build is still checked against the commit). If it does not, the normal install and setup run and the
+    checkpoint is saved before the scenarios start; any other ready-* checkpoint is removed then. Never for a full run (a full run
+    always installs from clean, because the install scenario must stay covered), and never with install-first-run (it reads the
+    install itself) or -AfterSetupScript.
+
+.PARAMETER ReadyCheckpoint
+    The name to use instead of ready-<version>-<short sha>. It should still name the commit.
+
 .PARAMETER SkipInstall
     Use the VM as it is (already installed, for example after an earlier run); skips the checkpoint restore and the picker.
 
@@ -82,6 +98,9 @@ param(
     [string] $VmCredentialFile = (Join-Path $env:LOCALAPPDATA 'Deluno-goldenvm-admin.xml'),
     [string] $OutDirectory,
     [string[]] $Groups = @(),
+    [string[]] $Scenarios = @(),
+    [switch] $UseReadyCheckpoint,
+    [string] $ReadyCheckpoint,
     [string] $Repository = 'jampat000/Deluno',
     [string] $ResultsUrl,
     [int] $TimeoutMinutes = 240,
@@ -106,6 +125,15 @@ if ($Groups.Count -gt 0) {
     if ($unknown.Count -gt 0) { throw "Unknown group(s): $($unknown -join ', '). Groups: $($plan.Name -join ', ')." }
 }
 
+# Which scenarios this run is about (-Scenarios names them one by one, -Groups whole groups, neither is the full run).
+$scope = Get-RunScope -Plan $plan -Groups $Groups -Scenarios $Scenarios
+$selection = @($scope.Selection)
+$fullRun = $scope.FullRun
+$chosenIds = @($scope.ChosenIds)
+$needVm = $scope.NeedVm
+$runUpdate = $scope.RunUpdate
+
+
 if ($ListOnly) {
     $topics = Get-ScenarioTopics
     foreach ($g in $plan) {
@@ -119,6 +147,7 @@ if ($ListOnly) {
 
 foreach ($p in 'RigHost', 'InstallerPath', 'Version', 'Commit') { if (-not (Get-Variable $p -ValueOnly)) { throw "-$p is required." } }
 if ($PreviousInstallerPath -and -not (Test-Path $PreviousInstallerPath)) { throw "Previous installer not found: $PreviousInstallerPath" }
+$installerSha = if (Test-Path $InstallerPath) { (Get-FileHash $InstallerPath -Algorithm SHA256).Hash } else { '' }
 
 # The full commit, so the status lands on the right one.
 $fullSha = $Commit
@@ -126,6 +155,14 @@ if ($Commit -notmatch '^[0-9a-fA-F]{40}$') {
     $resolved = & git -C $repoRoot rev-parse --verify "$Commit^{commit}" 2>$null
     if ($LASTEXITCODE -eq 0 -and $resolved) { $fullSha = $resolved.Trim() }
     elseif (-not $DryRun) { throw "Commit '$Commit' is not a commit in this repository, so the status could not be recorded on it. Pass the full sha, or fetch it." }
+}
+
+# The ready checkpoint (a fast start for partial runs): decided before anything is touched.
+$readyName = ''
+if ($UseReadyCheckpoint) {
+    $readyProblem = Get-ReadyCheckpointProblem -Scope $scope -AfterSetupScript ([bool]$AfterSetupScript) -SkipInstall $SkipInstall.IsPresent
+    if ($readyProblem) { throw "-UseReadyCheckpoint cannot be used: $readyProblem" }
+    $readyName = Get-ReadyCheckpointName -Version $Version -Commit $fullSha -Override $ReadyCheckpoint
 }
 
 if (-not $OutDirectory) { $OutDirectory = Join-Path $repoRoot ("artifacts\scenario-suite-{0}-{1}" -f $Version, (Get-Date -Format 'yyyyMMdd-HHmm')) }
@@ -184,12 +221,85 @@ $startTaskBlock = {
 
 $bundle = Get-VmFileBundle
 
+# ------------------------------------------------------------------ the ready checkpoint (rig side)
+
+# Runs a block on the Hyper-V host, in a session of its own (the checkpoint is looked for before the main session is open).
+function Invoke-OnRig {
+    param([scriptblock] $Block, [object[]] $ArgumentList = @())
+    Invoke-Command -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile) -ArgumentList $ArgumentList -ScriptBlock $Block
+}
+
+function Test-RigCheckpoint {
+    param([string] $Name)
+    [bool](Invoke-OnRig -ArgumentList $VmName, $Name -Block { param($vm, $cp) Get-VMSnapshot -VMName $vm -Name $cp -ErrorAction SilentlyContinue })
+}
+
+# The same restore the harness does for 'clean' (Invoke-GoldenPath.ps1): turn the VM off, restore the checkpoint, start it.
+function Restore-RigCheckpoint {
+    param([string] $Name)
+    Invoke-OnRig -ArgumentList $VmName, $Name -Block {
+        param($vm, $cp)
+        if ((Get-VM -Name $vm).State -ne 'Off') { Stop-VM -Name $vm -TurnOff -Force }
+        Restore-VMSnapshot -VMName $vm -Name $cp -Confirm:$false
+        Start-VM -Name $vm
+    }
+}
+
+function Remove-RigReadyCheckpoints {
+    param([string] $Pattern = 'ready-*')
+    Invoke-OnRig -ArgumentList $VmName, $Pattern -Block {
+        param($vm, $like)
+        foreach ($s in @(Get-VMSnapshot -VMName $vm | Where-Object { $_.Name -like $like })) { Remove-VMSnapshot -VMSnapshot $s -Confirm:$false }
+        # The disks of a removed checkpoint are merged in the background; the next checkpoint waits for that to finish.
+        $deadline = (Get-Date).AddMinutes(10)
+        while ((Get-Date) -lt $deadline -and ((Get-VM -Name $vm).Status -match 'Merging')) { Start-Sleep -Seconds 5 }
+    }
+}
+
+# Saves the running VM as a checkpoint. A standard checkpoint (disk and memory) is taken on purpose: the restored VM is then exactly
+# as it was, Deluno, Weir and the download clients running and the desktop session signed in, so there is nothing to start or wait
+# for. The VM's own checkpoint type is put back afterwards, so the clean checkpoint and the other runs are unaffected.
+function New-RigCheckpoint {
+    param([string] $Name)
+    Remove-RigReadyCheckpoints
+    Invoke-OnRig -ArgumentList $VmName, $Name -Block {
+        param($vm, $cp)
+        $original = (Get-VM -Name $vm).CheckpointType
+        Set-VM -Name $vm -CheckpointType Standard
+        try { Checkpoint-VM -Name $vm -SnapshotName $cp }
+        finally { Set-VM -Name $vm -CheckpointType $original }
+    }
+}
+
 # ------------------------------------------------------------------ 1. install (the harness)
 
 $harnessFile = Join-Path $OutDirectory ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
 $harnessFailures = @()
 $harnessRows = @()
-if (-not $SkipInstall) {
+# With -UseReadyCheckpoint: restore the ready checkpoint if there is one (no install, no setup); otherwise install and set up as
+# usual and save one before the scenarios start.
+$readyRestored = $false
+$makeReady = $false
+$runNotes = New-Object System.Collections.ArrayList
+if ($readyName -and -not $needVm) { Write-Host "Only the update scenario was chosen, which runs on a clean machine of its own: the ready checkpoint is not used." -ForegroundColor Yellow }
+elseif ($readyName) {
+    Write-Host "Looking for the ready checkpoint '$readyName' on $VmName..." -ForegroundColor Cyan
+    if (Test-RigCheckpoint -Name $readyName) {
+        try {
+            Restore-RigCheckpoint -Name $readyName
+            $readyRestored = $true
+            [void]$runNotes.Add("Started from the ready checkpoint '$readyName' (Deluno already installed and set up; the install and setup were not run in this pass).")
+            Write-Host "Restored '$readyName'; the install and the setup are skipped." -ForegroundColor Green
+        }
+        catch {
+            $makeReady = $true
+            [void]$warnings.Add("The ready checkpoint '$readyName' could not be restored ($($_.Exception.Message)); the normal install and setup ran instead and it was saved again.")
+        }
+    }
+    else { $makeReady = $true; Write-Host "There is no '$readyName' yet: installing and setting up as usual, then saving it." -ForegroundColor Cyan }
+}
+
+if (-not $SkipInstall -and $needVm -and -not $readyRestored) {
     # Before Setup runs, start the tray watcher in the desktop session, so the first-run icon is read from its first second.
     $hook = {
         param($rigSession, $name, $cred)
@@ -216,12 +326,25 @@ if (-not $SkipInstall) {
 
 $rigCred = Import-Clixml $RigCredentialFile
 $vmCred = Import-Clixml $VmCredentialFile
-$rig = New-PSSession -ComputerName $RigHost -Credential $rigCred
 $reported = @()
 $installedBuild = ''
 $buildMatches = $false
 $runnerNote = ''
+$rig = $null
+if (-not $needVm) { $buildMatches = $true; $installedBuild = '(not installed: only the update scenario was chosen)' }
+if ($needVm) {
+$rig = New-PSSession -ComputerName $RigHost -Credential $rigCred
 try {
+    if ($readyRestored) {
+        # The restored VM resumes where it was saved. Wait until it answers, then set its clock right (a restored VM wakes with the old time).
+        $vmUp = $false
+        $vmDeadline = (Get-Date).AddMinutes(15)
+        while ((Get-Date) -lt $vmDeadline -and -not $vmUp) {
+            try { Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $env:COMPUTERNAME } | Out-Null; $vmUp = $true } catch { Start-Sleep -Seconds 5 }
+        }
+        if (-not $vmUp) { throw "The VM restored from the ready checkpoint '$readyName' did not answer within 15 minutes. Delete that checkpoint and run again to make a new one." }
+        Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { try { & w32tm.exe /resync /force | Out-Null } catch { } } | Out-Null
+    }
     $installedBuild = [string](Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block {
         $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Deluno') -Recurse -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\current\\' } | Select-Object -First 1
         if (-not $exe) { $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Deluno') -Recurse -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -239,27 +362,42 @@ try {
         # The tray watcher has done its job (the install is over); it must not touch the tray while the scenarios read it.
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { New-Item -ItemType File -Force -Path 'C:\golden\suite\logs\traywatch.stop' | Out-Null; Start-Sleep -Seconds 3 } | Out-Null
         $runArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite"'
-        if ($AfterSetupScript) {
-            # Deluno is set up first (Connect Weir makes Weir's account), then Weir's Update phase runs, then the groups on the same
-            # environment. Weir's WithDeluno phase judges only hand-offs made after its update, so the groups must come after it.
-            Write-Host 'Setting Deluno up before the hand-over to the after-setup script...' -ForegroundColor Cyan
-            Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -ArgumentList @('GoldenSuiteSetup', ($runArgs + ' -SetupOnly')) -Block $startTaskBlock | Out-Null
+        if ($AfterSetupScript -or $makeReady) {
+            # Deluno is set up first (Connect Weir makes Weir's account). With an after-setup script, Weir's Update phase runs then,
+            # and the groups follow on the same environment (Weir's WithDeluno phase judges only hand-offs made after its update).
+            # With a ready checkpoint to make, the setup is saved as the checkpoint, and the scenarios follow on the same machine.
+            $setupMode = if ($AfterSetupScript) { ' -SetupOnly' } else { ' -PrepareOnly' }
+            Write-Host $(if ($AfterSetupScript) { 'Setting Deluno up before the hand-over to the after-setup script...' } else { 'Setting Deluno up, to save it as the ready checkpoint...' }) -ForegroundColor Cyan
+            Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -ArgumentList @('GoldenSuiteSetup', ($runArgs + $setupMode)) -Block $startTaskBlock | Out-Null
             $setupDone = $null
             $setupDeadline = (Get-Date).AddMinutes(30)
             while ((Get-Date) -lt $setupDeadline -and $null -eq $setupDone) {
                 Start-Sleep -Seconds 15
                 $setupDone = Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
             }
-            if ($setupDone -ne 'ok') { throw "Setting Deluno up before the after-setup script did not finish: $(if ($setupDone) { $setupDone } else { 'no done flag in 30 minutes' })" }
+            if ($setupDone -ne 'ok') { throw "Setting Deluno up before the scenarios did not finish: $(if ($setupDone) { $setupDone } else { 'no done flag in 30 minutes' })" }
             Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { Remove-Item -LiteralPath 'C:\golden\suite\results\done.flag' -ErrorAction SilentlyContinue } | Out-Null
-            Write-Host "Running the after-setup script: $AfterSetupScript" -ForegroundColor Cyan
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSetupScript
-            $afterSetupExit = $LASTEXITCODE
-            Write-Host "The after-setup script exited $afterSetupExit." -ForegroundColor $(if ($afterSetupExit -eq 0) { 'Green' } else { 'Yellow' })
-            if ($afterSetupExit -ne 0) { [void]$warnings.Add("The after-setup script ($AfterSetupScript) exited $afterSetupExit.") }
+            if ($AfterSetupScript) {
+                Write-Host "Running the after-setup script: $AfterSetupScript" -ForegroundColor Cyan
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSetupScript
+                $afterSetupExit = $LASTEXITCODE
+                Write-Host "The after-setup script exited $afterSetupExit." -ForegroundColor $(if ($afterSetupExit -eq 0) { 'Green' } else { 'Yellow' })
+                if ($afterSetupExit -ne 0) { [void]$warnings.Add("The after-setup script ($AfterSetupScript) exited $afterSetupExit.") }
+            }
+            else {
+                # The machine is quiet now: the setup pass has ended and the scenarios have not begun. Save it.
+                try {
+                    Write-Host "Saving the ready checkpoint '$readyName'..." -ForegroundColor Cyan
+                    New-RigCheckpoint -Name $readyName
+                    [void]$runNotes.Add("Saved the ready checkpoint '$readyName' (Deluno installed and set up). The next run of single scenarios for this commit starts from it with -UseReadyCheckpoint; any other ready-* checkpoint was removed.")
+                }
+                catch { [void]$warnings.Add("The ready checkpoint '$readyName' could not be saved: $($_.Exception.Message). This run went on without it.") }
+            }
             $runArgs += ' -SkipEnvironment'
         }
+        elseif ($readyRestored) { $runArgs += ' -SkipEnvironment' }
         if ($Groups.Count -gt 0) { $runArgs += ' -Groups ' + ($Groups -join ',') }
+        if ($selection.Count -gt 0) { $runArgs += ' -Scenarios ' + ($selection -join ',') }
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -ArgumentList @('GoldenSuiteRun', $runArgs) -Block $startTaskBlock | Out-Null
         Write-Host 'The suite is running in the VM. Progress:' -ForegroundColor Cyan
 
@@ -314,12 +452,18 @@ try {
             New-Item -ItemType Directory -Force -Path $logDir | Out-Null
             Expand-Archive -Path (Join-Path $OutDirectory 'vm-logs.zip') -DestinationPath $logDir -Force
             $eventsLog = Join-Path $logDir 'processors-events-requests.log'
+            $eventsDiag = Join-Path $logDir 'processors-events-requests.diag.txt'
+            # What was searched and what is missing, as the VM wrote it, so the warning names the cause and not just "none".
+            $diagMissing = @(if (Test-Path $eventsDiag) { Get-Content $eventsDiag | Where-Object { $_ -like 'MISSING:*' } })
             if (Test-Path $eventsLog) {
                 $n = @(Get-Content $eventsLog).Count
                 Write-Host "Kept /processors/events request lines: $n"
-                if ($n -eq 0) { [void]$warnings.Add('No /processors/events request lines were found in Deluno''s log.') }
+                if ($n -eq 0) {
+                    $why = if ($diagMissing.Count -gt 0) { ($diagMissing -join ' ') -replace '^MISSING:\s*', '' } else { 'Deluno''s log was searched and no line names the route.' }
+                    [void]$warnings.Add("No /processors/events lines were found in Deluno's log: $why (the folders and files searched are in vm-logs/processors-events-requests.diag.txt).$(if (-not $fullRun) { ' A run of a few scenarios may have no hand-off for Weir to report.' })")
+                }
             }
-            else { [void]$warnings.Add('The /processors/events request log was not collected.') }
+            else { [void]$warnings.Add('The /processors/events request log was not collected at all: the log collection (Collect-Logs.ps1) did not write processors-events-requests.log.') }
             foreach ($need in @(@('deluno', 'Deluno''s logs'), @('weir', 'Weir''s logs'))) {
                 if (@(Get-ChildItem (Join-Path $logDir $need[0]) -File -ErrorAction SilentlyContinue).Count -eq 0) { [void]$warnings.Add("$($need[1]) were not collected.") }
             }
@@ -329,6 +473,7 @@ try {
     catch { [void]$warnings.Add("Collecting the logs failed: $($_.Exception.Message)") }
 }
 finally { Remove-PSSession $rig -ErrorAction SilentlyContinue }
+}
 
 # ------------------------------------------------------------------ Weir's phases, then the update phase
 
@@ -443,15 +588,14 @@ function Invoke-UpdatePhase {
     catch { return (New-UpdateFailureRecord "The update phase stopped: $($_.Exception.Message)") }
 }
 
-if ($Groups.Count -eq 0 -or $Groups -contains 'update') {
+if ($runUpdate) {
     $reported = @($reported) + @(Invoke-UpdatePhase)
 }
 
 # ------------------------------------------------------------------ results and the status
 
-$fullRun = ($Groups.Count -eq 0)
 $suiteDidNotRun = ($harnessFailures.Count -gt 0 -or -not $buildMatches)
-$merged = @(Merge-SuiteResults -Plan $plan -Reported $reported -Groups $Groups)
+$merged = @(Merge-SuiteResults -Plan $plan -Reported $reported -Groups $Groups -Scenarios $selection)
 if ($suiteDidNotRun) {
     # Nothing ran: every planned scenario is an error with the reason, so the status names them.
     $merged = @($merged | ForEach-Object { $_.Error = $runnerNote; $_ })
@@ -466,14 +610,18 @@ elseif (-not $fullRun) { $recorded = 'not recorded (a partial run records nothin
 
 $minutes = $clock.Elapsed.TotalMinutes
 $md = New-ResultsMarkdown -Verdict $verdict -Merged $merged -HarnessRows $harnessRows -Version $Version -Commit $fullSha -InstallerSha256 $installerSha `
-    -InstalledBuild $installedBuild -Minutes $minutes -DryRun $DryRun.IsPresent -RecordedStatus $recorded -Warnings @($warnings)
+    -InstalledBuild $installedBuild -Minutes $minutes -DryRun $DryRun.IsPresent -RecordedStatus $recorded -Warnings @($warnings) -Notes @($runNotes) -Coverage (Get-RunCoverageText -Scope $scope)
 $resultsMd = Join-Path $OutDirectory 'scenario-suite-results.md'
 Set-Content -Path $resultsMd -Value $md -Encoding utf8
 ([ordered]@{ version = $Version; commit = $fullSha; installedBuild = $installedBuild; state = $verdict.State; passed = $verdict.Passed; total = $verdict.Total; failed = $verdict.Failed; minutes = [math]::Round($minutes, 1); scenarios = $merged } |
     ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $OutDirectory 'scenario-suite-results.json') -Encoding utf8
 
 Write-Host ''
-Write-Host ("Verdict: {0}. {1} of {2} scenarios passed in {3:N1} minutes." -f $verdict.State.ToUpperInvariant(), $verdict.Passed, $verdict.Total, $minutes) -ForegroundColor $(if ($verdict.State -eq 'success') { 'Green' } else { 'Red' })
+# A partial run never records a status, but its exit code and its verdict line still say whether what it ran passed (every chosen
+# scenario passed, the install had no failed line, the build is the commit, and nothing stopped the run early).
+$partialPassed = (-not $fullRun) -and $verdict.Failed.Count -eq 0 -and @($verdict.HarnessFailures).Count -eq 0 -and $verdict.BuildMatches -and -not $runnerNote -and $verdict.Total -gt 0
+$verdictLabel = if ($partialPassed) { 'PASSED (a partial run: no status is recorded)' } else { $verdict.State.ToUpperInvariant() }
+Write-Host ("Verdict: {0}. {1} of {2} scenarios passed in {3:N1} minutes." -f $verdictLabel, $verdict.Passed, $verdict.Total, $minutes) -ForegroundColor $(if ($verdict.State -eq 'success' -or $partialPassed) { 'Green' } else { 'Red' })
 if ($verdict.Failed.Count -gt 0) { Write-Host ("Failed or not reported: " + ($verdict.Failed -join ', ')) -ForegroundColor Red }
 Write-Host "Results: $resultsMd"
 
@@ -483,4 +631,4 @@ elseif ($fullRun) {
     if ($LASTEXITCODE -ne 0) { Write-Host "Recording the status failed: $out" -ForegroundColor Red; exit 2 }
     Write-Host "Recorded golden-path=$($verdict.State) on $fullSha." -ForegroundColor Green
 }
-if ($verdict.State -eq 'success') { exit 0 } else { exit 1 }
+if ($verdict.State -eq 'success' -or $partialPassed) { exit 0 } else { exit 1 }
