@@ -103,7 +103,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // qBittorrent 5.1 and later answer 409 when nothing was added, which is
         // also how it reports a torrent it already holds; that must reach the
         // duplicate check below rather than throw as if the client were down.
-        if (response.StatusCode != HttpStatusCode.Conflict)
+        // 415 is qBittorrent 5.2.1's answer to an upload that is not a torrent ("... is not a valid torrent file", recorded):
+        // the client looked at the exact file it was handed and turned it down, the same finding as "Fails." below.
+        if (response.StatusCode is not (HttpStatusCode.Conflict or HttpStatusCode.UnsupportedMediaType))
         {
             response.EnsureSuccessStatusCode();
         }
@@ -121,7 +123,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // a dead release, so the caller blocklists it and lets the next
         // search pick a different one, instead of leaving it to fail the
         // same way again on its ordinary retry cycle.
-        if (!alreadyHeld && (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase) || response.StatusCode == HttpStatusCode.Conflict))
+        if (!alreadyHeld && (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase) || response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnsupportedMediaType))
         {
             return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, "qBittorrent refused the release URL. It may be a dead link or a file it could not read.") with
             {
