@@ -197,6 +197,8 @@ export interface BackupSettingsSnapshot {
   backupFolder: string;
   lastRunUtc: string | null;
   nextRunUtc: string | null;
+  /** Plain words when the saved settings could not be read and the standard ones are in use; saving again repairs them. */
+  problem?: string | null;
 }
 
 export interface BackupItem {
