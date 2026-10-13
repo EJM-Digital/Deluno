@@ -161,7 +161,7 @@ public sealed class NzbGetDownloadClient(
         var http = CreateHttp(client);
         try
         {
-            var current = await ReadOptionsAsync(http, baseUri, cancellationToken);
+            var current = await ReadFileOptionsAsync(http, baseUri, cancellationToken);
             if (current is null)
             {
                 return new(client.Id, client.Name, false, $"Deluno could not read {client.Name}'s settings, so it left them alone.");
@@ -207,13 +207,25 @@ public sealed class NzbGetDownloadClient(
         }
     }
 
-    /// <summary>NZBGet's options as it holds them now, or null when it could not be asked.</summary>
-    private static async Task<IReadOnlyList<KeyValuePair<string, string>>?> ReadOptionsAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    /// <summary>
+    /// The options nzbget.conf holds, which is what <c>saveconfig</c> writes back (#1257). <c>loadconfig</c> answers exactly
+    /// that; <c>config</c> answers the settings in memory plus NZBGet's runtime-only values, which must never be saved. A file
+    /// the bug already damaged still lists those values, so they are taken out of either answer. When <c>loadconfig</c>
+    /// cannot be answered, the in-memory settings minus the runtime-only values stand in for it.
+    /// </summary>
+    private static async Task<IReadOnlyList<KeyValuePair<string, string>>?> ReadFileOptionsAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        var fromFile = await ReadOptionsAsync(http, baseUri, cancellationToken, "loadconfig");
+        return NzbGetServerPlan.WithoutRuntimeOnly(fromFile ?? await ReadOptionsAsync(http, baseUri, cancellationToken) ?? []) is { Count: > 0 } options ? options : null;
+    }
+
+    /// <summary>NZBGet's options as it holds them now (<c>config</c>), or null when it could not be asked.</summary>
+    private static async Task<IReadOnlyList<KeyValuePair<string, string>>?> ReadOptionsAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken, string method = "config")
     {
         try
         {
             var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetOption>>>(
-                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("config", []), cancellationToken);
+                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest(method, []), cancellationToken);
             return response?.Result is null
                 ? null
                 : response.Result.Where(option => option.Name is not null).Select(option => new KeyValuePair<string, string>(option.Name!, option.Value ?? string.Empty)).ToArray();

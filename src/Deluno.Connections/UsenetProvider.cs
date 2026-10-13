@@ -68,6 +68,17 @@ public static class NzbGetServerPlan
     private static readonly System.Text.RegularExpressions.Regex ServerOption =
         new(@"^Server(\d+)\.(.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
+    /// <summary>
+    /// The values NZBGet's <c>config</c> call adds to the settings it holds (#1257): where it runs and which version it is.
+    /// They are not options of nzbget.conf, and a <c>saveconfig</c> that carries them writes four lines NZBGet rejects
+    /// ("Invalid option"), after which it pauses all downloads over errors in configuration.
+    /// </summary>
+    public static readonly IReadOnlyList<string> RuntimeOnlyOptions = ["ConfigFile", "AppBin", "AppDir", "Version"];
+
+    /// <summary>The options without NZBGet's runtime-only values. A file the bug already damaged is repaired by this, not preserved.</summary>
+    public static IReadOnlyList<KeyValuePair<string, string>> WithoutRuntimeOnly(IReadOnlyList<KeyValuePair<string, string>> options)
+        => options.Where(option => !RuntimeOnlyOptions.Contains(option.Key, StringComparer.OrdinalIgnoreCase)).ToArray();
+
     /// <summary>True when at least one server is switched on and has a real address.</summary>
     public static bool HasWorkingServer(IReadOnlyList<KeyValuePair<string, string>> options)
         => Servers(options).Any(server =>
@@ -83,6 +94,7 @@ public static class NzbGetServerPlan
     /// <summary>The full option list with the provider written into one server slot and every placeholder server switched off.</summary>
     public static IReadOnlyList<KeyValuePair<string, string>> Apply(IReadOnlyList<KeyValuePair<string, string>> options, UsenetProviderRequest request)
     {
+        options = WithoutRuntimeOnly(options);
         var servers = Servers(options);
         var slot = servers
                 .Where(server => string.Equals(server.Value.GetValueOrDefault("Name"), UsenetProviderText.ServerName, StringComparison.OrdinalIgnoreCase))
