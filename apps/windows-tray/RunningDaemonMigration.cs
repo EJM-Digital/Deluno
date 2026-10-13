@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Deluno.Api.Network;
+using Deluno.Infrastructure.Processes;
 
 namespace Deluno.Tray;
 
@@ -33,20 +34,15 @@ public sealed class WindowsTransmissionDaemonControl(BundledComponentSpec? spec)
             }
 
             var info = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='transmission-daemon.exe'\\\" | ForEach-Object { $_.CommandLine }\"")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var process = Process.Start(info);
-            if (process is null)
+                "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='transmission-daemon.exe'\\\" | ForEach-Object { $_.CommandLine }\"");
+            // Read as it arrives, closed standard input, and a limit: PowerShell can stall on a busy machine (#1258).
+            var result = await ChildProcess.RunAsync(info, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+            if (!result.Started || result.TimedOut)
             {
                 return [];
             }
 
-            var text = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            var text = result.Output;
             return text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -78,7 +74,7 @@ public sealed class WindowsTransmissionDaemonControl(BundledComponentSpec? spec)
             try
             {
                 process.Kill();
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                await process.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
             catch
             {

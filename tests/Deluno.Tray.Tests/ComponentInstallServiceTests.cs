@@ -354,13 +354,12 @@ public sealed class ComponentInstallServiceTests
     [Fact]
     public async Task While_Weir_is_starting_the_progress_says_so_in_plain_words_and_other_components_do_not()
     {
-        var downloadedPath = WriteTempFile(new byte[20]);
         var weirSteps = new List<ComponentProgress>();
         var otherSteps = new List<ComponentProgress>();
         foreach (var (spec, steps) in new[] { (WeirLikeSpec with { Kind = "weir", DisplayName = "Weir" }, weirSteps), (WeirLikeSpec, otherSteps) })
         {
             var service = new ComponentInstallService(
-                new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: true),
+                new FakePrograms(), new FakePorts(), new RecordingDownloader(WriteTempFile(new byte[20])), new FakeSignatures(signed: true),
                 new RecordingProcesses(exitCode: 0), new RecordingProcessStarter(new FakeStartedProcess(hasExited: false)),
                 new FakeReadinessChecker(readyOnCall: 1));
 

@@ -144,15 +144,14 @@ public sealed class LeftoverDownloadCleanupService(
             return WindowsLinkCount.Read(path);
         }
 
-        using var process = Process.Start(new ProcessStartInfo("stat", ["-c", "%h", path])
+        // Read as it arrives and stopped if it does not finish (#1258).
+        var result = Deluno.Infrastructure.Processes.ChildProcess.Run(new ProcessStartInfo("stat", ["-c", "%h", path]), TimeSpan.FromSeconds(10));
+        if (!result.Started)
         {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        }) ?? throw new IOException("Could not start 'stat' to read the link count.");
-        var output = process.StandardOutput.ReadToEnd().Trim();
-        process.WaitForExit(5000);
-        if (process.ExitCode != 0 || !int.TryParse(output, out var count))
+            throw new IOException("Could not start 'stat' to read the link count.");
+        }
+
+        if (result.ExitCode != 0 || !int.TryParse(result.Output.Trim(), out var count))
         {
             throw new IOException($"'stat' could not read the link count for '{path}'.");
         }

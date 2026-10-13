@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Processes;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -51,48 +52,36 @@ public static class FilePermissions
         }
     }
 
+    private static readonly TimeSpan ChgrpLimit = TimeSpan.FromSeconds(30);
+
     private static async Task TryChownGroupAsync(string path, string group, ILogger logger, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "chgrp",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = new ProcessStartInfo { FileName = "chgrp" };
         startInfo.ArgumentList.Add(group);
         startInfo.ArgumentList.Add(path);
 
-        Process? process;
-        try
+        // Read as it arrives and stopped if it does not finish, so a stalled share cannot hold the import up (#1258).
+        var result = await ChildProcess.RunAsync(startInfo, ChgrpLimit, cancellationToken);
+        if (!result.Started)
         {
-            process = Process.Start(startInfo);
-        }
-        catch (Win32Exception exception)
-        {
-            logger.LogWarning(exception, "Could not run chgrp {Group} for {Path}: the chgrp binary was not found.", group, path);
+            logger.LogWarning("Could not run chgrp {Group} for {Path}: the chgrp binary was not found.", group, path);
             return;
         }
 
-        if (process is null)
+        if (result.TimedOut)
         {
+            logger.LogWarning("chgrp {Group} for {Path} did not finish in time and was stopped.", group, path);
             return;
         }
 
-        using (process)
+        if (result.ExitCode != 0)
         {
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            if (process.ExitCode != 0)
-            {
-                logger.LogWarning(
-                    "chgrp {Group} for {Path} exited with code {ExitCode}: {Error}. This only works when Deluno's own process owns the file.",
-                    group,
-                    path,
-                    process.ExitCode,
-                    (await errorTask).Trim());
-            }
+            logger.LogWarning(
+                "chgrp {Group} for {Path} exited with code {ExitCode}: {Error}. This only works when Deluno's own process owns the file.",
+                group,
+                path,
+                result.ExitCode,
+                result.Error.Trim());
         }
     }
 }
