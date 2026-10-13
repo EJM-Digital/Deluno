@@ -195,10 +195,19 @@ function Get-OpenMenuItems {
 function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 }
 
 # Opens the app's tray menu and clicks the item whose name matches the pattern. Returns $true when it was clicked.
+# Why the last Invoke-TrayMenuItem returned false, so a caller can say it (rc.30.28: "via its tray menu: False" twice with no
+# reason, while the same Weir build quit from its menu in the run before).
+$script:TrayMenuMiss = $null
+
 function Invoke-TrayMenuItem {
     param([Parameter(Mandatory)] [string] $Icon, [Parameter(Mandatory)] [string] $Item)
-    $names = Open-TrayMenu -Icon $Icon
-    if ($names.Count -eq 0) { return $false }
+    $script:TrayMenuMiss = $null
+    $names = @(Open-TrayMenu -Icon $Icon)
+    if ($names.Count -eq 0) {
+        $dot = try { Get-TrayDot -Icon $Icon } catch { $null }
+        $script:TrayMenuMiss = "the $Icon icon's menu did not open (icon found: $(if ($dot) { $dot.Found } else { 'unknown' }); hover '$(if ($dot) { $dot.Hover })')"
+        return $false
+    }
     $uia = [System.Windows.Automation.AutomationElement]
     $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
     foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
@@ -209,6 +218,7 @@ function Invoke-TrayMenuItem {
         }
     }
     Close-TrayMenu
+    $script:TrayMenuMiss = "the $Icon menu opened but no visible item matched '$Item'; items: $($names -join ' | ')"
     $false
 }
 
