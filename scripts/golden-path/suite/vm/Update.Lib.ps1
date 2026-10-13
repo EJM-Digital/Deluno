@@ -75,9 +75,25 @@ function Get-DelunoStateSummary {
     [pscustomobject]@{ Clients = $clients; Libraries = $libs; Activity = $activity }
 }
 
+# The start log's lines written at or after $Since. Lines are picked by their own timestamp, not by counting the lines that
+# were there before: the new build may start a fresh log (rc.30.28: the old log had 7 lines, the new one was written from
+# scratch, so skipping 7 lines lost "is starting"). A line with no timestamp belongs to the line above it.
+function Get-StartLogSince {
+    param([string] $StartLog, [Parameter(Mandatory)] [DateTime] $Since)
+    if (-not (Test-Path $StartLog)) { return @() }
+    $keep = $false
+    @(Get-Content $StartLog | Where-Object {
+        if ($_ -match '^(\d{4}-\d{2}-\d{2}T[0-9:.]+[+-]\d{2}:\d{2})\s') {
+            $at = [DateTimeOffset]::MinValue
+            $keep = [DateTimeOffset]::TryParse($Matches[1], [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref] $at) -and $at.UtcDateTime -ge $Since.ToUniversalTime()
+        }
+        $keep
+    })
+}
+
 function Save-UpdateEvidence {
-    param([string] $StartLog, [int] $FromLine)
-    $text = if (Test-Path $StartLog) { (Get-Content $StartLog | Select-Object -Skip $FromLine) -join "`n" } else { 'no tray-startup.log' }
+    param([string] $StartLog, [Parameter(Mandatory)] [DateTime] $Since)
+    $text = if (Test-Path $StartLog) { (Get-StartLogSince -StartLog $StartLog -Since $Since) -join "`n" } else { 'no tray-startup.log' }
     Save-Evidence -Name 'update-start-log.txt' -Text $text
     # What the install hook decided about bringing Deluno back (RelaunchAfterSetup, #1256), and when the jobs database was last written.
     $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
@@ -108,7 +124,6 @@ function Invoke-UpdateScenario {
         Add-Note ("State before: {0} download clients, {1} libraries, {2} Activity rows." -f $before.Clients.Count, $before.Libraries.Count, $before.Activity)
         Add-Check 'The previous release holds state to preserve (a download client, a library, Activity rows)' ($before.Clients.Count -gt 0 -and $before.Libraries.Count -gt 0 -and $before.Activity -gt 0) ("{0} clients, {1} libraries, {2} Activity rows" -f $before.Clients.Count, $before.Libraries.Count, $before.Activity)
         $startLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\tray-startup.log'
-        $markLine = if (Test-Path $startLog) { @(Get-Content $startLog).Count } else { 0 }
 
         # The update: the candidate's Setup, silently, over the RUNNING previous release. From here nothing starts Deluno.
         $began = Get-Date
@@ -122,7 +137,7 @@ function Invoke-UpdateScenario {
             if ($now.Count -gt 0) { $now } else { $null }
         }
         Add-Check 'Deluno was started again after Setup, by nobody in this scenario (a new process appeared)' $started.Ok $(if ($started.Ok) { "process $($started.Value[0].Id) after $($started.Seconds) s" } else { 'Deluno was never started again after Setup: the installer did not relaunch it. This is not a hung start.' })
-        if (-not $started.Ok) { Save-UpdateEvidence $startLog $markLine; return }
+        if (-not $started.Ok) { Save-UpdateEvidence -StartLog $startLog -Since $began; return }
         $newPid = $started.Value[0].Id
 
         # Did the new process come up? (Deluno's part)
@@ -130,7 +145,7 @@ function Invoke-UpdateScenario {
         $marker = Read-StartMarker
         $where = if ($marker) { "start marker: pid $($marker.pid), try $($marker.attempt), phase $($marker.phase), step '$($marker.detail)', at $($marker.atUtc)" } else { 'no start marker was written' }
         Add-Check 'Deluno was started again and answered (a hung or failed start would not)' $back.Ok $(if ($back.Ok) { "after $($back.Seconds) s; $where" } else { "Deluno was started again but never answered within 6 minutes. $where" })
-        if (-not $back.Ok) { Save-UpdateEvidence $startLog $markLine; return }
+        if (-not $back.Ok) { Save-UpdateEvidence -StartLog $startLog -Since $began; return }
         Add-Note ("Back {0:N0} s after Setup began (process {1})." -f ((Get-Date) - $began).TotalSeconds, $newPid)
         $nowExe = Get-InstalledDelunoExe
         Add-Check 'It is the candidate build' ($nowExe.VersionInfo.ProductVersion -like "*$CandidateVersion*") "running '$($nowExe.VersionInfo.ProductVersion)', candidate '$CandidateVersion'"
@@ -140,7 +155,7 @@ function Invoke-UpdateScenario {
         $ready = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { $m = Read-StartMarker; if ($m -and $m.pid -eq $newPid -and $m.phase -eq 'ready') { $m } else { $null } }
         $marker = Read-StartMarker
         Add-Check 'The start marker reads "ready" for the new process' $ready.Ok $(if ($marker) { "pid $($marker.pid), phase $($marker.phase), $($marker.detail)" } else { 'no start-progress.json' })
-        $lines = if (Test-Path $startLog) { @(Get-Content $startLog | Select-Object -Skip $markLine) } else { @() }
+        $lines = Get-StartLogSince -StartLog $startLog -Since $began
         $retried = @($lines | Where-Object { $_ -match 'Deluno started on try [2-9]' -or $_ -match 'Start try [2-9] of' })
         $gaveUp = @($lines | Where-Object { $_ -match '\[error\]' -or $_ -match 'Giving up' })
         Add-Check 'The first start after the update needed no retry' ($retried.Count -eq 0) ($retried -join ' | ')
