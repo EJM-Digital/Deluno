@@ -14,9 +14,9 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// the new category; a refusal is a plain failure with its reason, and not one of these paths ever removes, deletes
 /// or pauses anything.
 ///
-/// <para>TODO(#1237): every reply below is written from each client's documented API (qBittorrent Web API
-/// <c>torrents/info</c>, <c>setCategory</c>, <c>setAutoManagement</c>, <c>torrents/categories</c>; Deluge's Label plugin
-/// <c>label.get_labels</c>, <c>label.set_torrent</c> and <c>core.get_torrent_status</c>; Transmission's <c>torrent-get</c> and
+/// <para>qBittorrent's and Deluge's moves are tested on their recorded replies in <see cref="KeepSeedingMoveOnQbittorrentAndDelugeTests"/>
+/// (only Deluge's Label-plugin-off replies are still here, as they are not recorded). TODO(#1237): every reply below is written from each
+/// client's documented API (Transmission's <c>torrent-get</c> and
 /// <c>torrent-set</c> with <c>labels</c>; rTorrent's <c>d.custom1</c> and <c>d.custom1.set</c>; the uTorrent WebUI
 /// <c>setprops</c> and <c>list=1</c>). Replace each fake reply with the recorded real reply once #1237 lands them
 /// under <c>tests/fixtures/recorded/&lt;app&gt;/&lt;version&gt;/</c>. Each one is marked
@@ -26,126 +26,7 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
 {
     private const string Hash = "abcdef0123456789abcdef0123456789abcdef01";
 
-    // ---------------------------------------------------------------- qBittorrent
-
-    [Fact]
-    public async Task Qbittorrent_moves_a_manually_managed_torrent_with_set_category_and_changes_nothing_else()
-    {
-        var qbit = new QbitFake { Category = "deluno-movies", AutoManaged = false };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", "deluno-movies", CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("keep-seeding", qbit.Category);
-        var call = Assert.Single(qbit.Calls, c => c.Path.EndsWith("torrents/setCategory", StringComparison.Ordinal));
-        Assert.Contains($"hashes={Hash}", call.Body);
-        Assert.Contains("category=keep-seeding", call.Body);
-        // A torrent already on manual management is not touched, and nothing is paused, stopped or removed.
-        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setAutoManagement", StringComparison.Ordinal));
-        qbit.AssertNothingWasRemovedPausedOrRelocated();
-    }
-
-    [Fact]
-    public async Task Qbittorrent_takes_an_automatically_managed_torrent_off_it_first_so_the_move_cannot_relocate_the_data()
-    {
-        var qbit = new QbitFake { Category = "deluno-movies", AutoManaged = true };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", "deluno-movies", CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Message);
-        var order = qbit.Calls.Select(c => c.Path.Split('/').Last()).Where(name => name is "setAutoManagement" or "setCategory").ToArray();
-        Assert.Equal(["setAutoManagement", "setCategory"], order);
-        Assert.Contains("enable=false", qbit.Calls.Single(c => c.Path.EndsWith("setAutoManagement", StringComparison.Ordinal)).Body);
-        qbit.AssertNothingWasRemovedPausedOrRelocated();
-    }
-
-    [Fact]
-    public async Task Qbittorrent_refusing_a_category_it_does_not_have_is_a_plain_failure_and_the_torrent_is_left_as_it_was()
-    {
-        var qbit = new QbitFake { Category = "deluno-movies", KnownCategories = ["deluno-movies"] };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", "deluno-movies", CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("does not have a category named keep-seeding", result.Message, StringComparison.Ordinal);
-        Assert.Contains("Create it in qBittorrent first", result.Message, StringComparison.Ordinal);
-        Assert.Equal("deluno-movies", qbit.Category);
-        qbit.AssertNothingWasRemovedPausedOrRelocated();
-    }
-
-    [Fact]
-    public async Task Qbittorrent_that_says_ok_but_still_reports_the_old_category_is_not_believed()
-    {
-        var qbit = new QbitFake { Category = "deluno-movies", IgnoreSetCategory = true };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", "deluno-movies", CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("still has this download in deluno-movies", result.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Qbittorrent_without_the_torrent_is_a_failure_and_nothing_is_set()
-    {
-        var qbit = new QbitFake { Has = false };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", null, CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("has no download with that id", result.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setCategory", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Qbittorrent_that_cannot_be_reached_is_a_failure_that_changes_nothing()
-    {
-        var qbit = new QbitFake { InfoStatus = HttpStatusCode.ServiceUnavailable };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", null, CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setCategory", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Qbittorrent_already_in_the_category_asks_for_no_change()
-    {
-        var qbit = new QbitFake { Category = "keep-seeding" };
-
-        var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", "keep-seeding", CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Message);
-        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setCategory", StringComparison.Ordinal));
-    }
-
-    [Theory]
-    [InlineData("keep-seeding", DownloadClientCategoryStatuses.Ready)]
-    [InlineData("nope", DownloadClientCategoryStatuses.Missing)]
-    public async Task Qbittorrent_checks_a_keep_seeding_category_against_its_own_list_and_never_creates_it(string category, string status)
-    {
-        var qbit = new QbitFake { KnownCategories = ["deluno-movies", "keep-seeding"] };
-
-        var result = await qbit.Client().CheckKeepSeedingCategoryAsync(Item("qbittorrent"), category, CancellationToken.None);
-
-        Assert.Equal(status, result.Status);
-        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("createCategory", StringComparison.Ordinal));
-    }
-
     // ---------------------------------------------------------------- Deluge
-
-    [Fact]
-    public async Task Deluge_sets_the_label_with_label_set_torrent_and_changes_nothing_else()
-    {
-        var deluge = new DelugeFake { Label = "movies", Labels = ["movies", "keep-seeding"] };
-
-        var result = await new DelugeDownloadClient(deluge.Factory()).SetCategoryAsync(Item("deluge"), Hash, "keep-seeding", "movies", CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("keep-seeding", deluge.Label);
-        var call = Assert.Single(deluge.Methods, m => m.Name == "label.set_torrent");
-        Assert.Equal([Hash, "keep-seeding"], call.Params);
-        Assert.DoesNotContain(deluge.Methods, m => m.Name is "core.remove_torrent" or "core.pause_torrent" or "core.move_storage" or "core.set_torrent_options" or "label.add");
-    }
 
     [Fact]
     public async Task Deluge_with_the_label_plugin_off_says_so_and_changes_nothing()
@@ -169,43 +50,6 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
         Assert.Equal(DownloadClientCategoryStatuses.Unsupported, result.Status);
         Assert.False(result.Supported);
         Assert.Contains("Label plugin is off", result.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Deluge_never_creates_a_label_it_does_not_have()
-    {
-        var deluge = new DelugeFake { Label = "movies", Labels = ["movies"] };
-
-        var result = await new DelugeDownloadClient(deluge.Factory()).SetCategoryAsync(Item("deluge"), Hash, "keep-seeding", "movies", CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("no label named keep-seeding", result.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(deluge.Methods, m => m.Name is "label.add" or "label.set_torrent");
-        var check = await new DelugeDownloadClient(deluge.Factory()).CheckKeepSeedingCategoryAsync(Item("deluge"), "keep-seeding", CancellationToken.None);
-        Assert.Equal(DownloadClientCategoryStatuses.Missing, check.Status);
-    }
-
-    [Fact]
-    public async Task Deluge_refusing_the_label_in_its_reply_is_a_failure_with_its_reason()
-    {
-        var deluge = new DelugeFake { Label = "movies", Labels = ["movies", "keep-seeding"], RefuseSetWith = "Unknown Label" };
-
-        var result = await new DelugeDownloadClient(deluge.Factory()).SetCategoryAsync(Item("deluge"), Hash, "keep-seeding", "movies", CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("Unknown Label", result.Message, StringComparison.Ordinal);
-        Assert.Equal("movies", deluge.Label);
-    }
-
-    [Fact]
-    public async Task Deluge_that_does_not_hold_the_torrent_is_a_failure_and_nothing_is_set()
-    {
-        var deluge = new DelugeFake { Has = false, Labels = ["keep-seeding"] };
-
-        var result = await new DelugeDownloadClient(deluge.Factory()).SetCategoryAsync(Item("deluge"), Hash, "keep-seeding", null, CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.DoesNotContain(deluge.Methods, m => m.Name == "label.set_torrent");
     }
 
     // ---------------------------------------------------------------- Transmission
@@ -414,62 +258,6 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
 
     private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented qBittorrent Web API shapes.</summary>
-    private sealed class QbitFake : HttpMessageHandler
-    {
-        public string? Category { get; set; } = "";
-        public bool AutoManaged { get; set; }
-        public bool Has { get; set; } = true;
-        public bool IgnoreSetCategory { get; set; }
-        public HttpStatusCode InfoStatus { get; set; } = HttpStatusCode.OK;
-        public string[] KnownCategories { get; set; } = ["deluno-movies", "keep-seeding"];
-        public List<(string Path, string Body)> Calls { get; } = [];
-
-        public QbittorrentDownloadClient Client() => new(() => this);
-
-        public void AssertNothingWasRemovedPausedOrRelocated()
-            => Assert.DoesNotContain(Calls, c => Regex.IsMatch(c.Path, "torrents/(delete|pause|stop|setLocation|rename|recheck)"));
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            Calls.Add((path + request.RequestUri.Query, body));
-            if (path.EndsWith("torrents/info", StringComparison.Ordinal))
-            {
-                if (InfoStatus != HttpStatusCode.OK) return new HttpResponseMessage(InfoStatus);
-                return Json(Has
-                    ? JsonSerializer.Serialize(new[] { new { hash = Hash, name = "Example.Movie.2026", category = Category, auto_tmm = AutoManaged } })
-                    : "[]");
-            }
-
-            if (path.EndsWith("torrents/categories", StringComparison.Ordinal))
-            {
-                return Json(JsonSerializer.Serialize(KnownCategories.ToDictionary(name => name, name => new { name, savePath = "" })));
-            }
-
-            if (path.EndsWith("setAutoManagement", StringComparison.Ordinal))
-            {
-                AutoManaged = !body.Contains("enable=false", StringComparison.Ordinal);
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            }
-
-            if (path.EndsWith("torrents/setCategory", StringComparison.Ordinal))
-            {
-                var wanted = Uri.UnescapeDataString(Regex.Match(body, "category=([^&]*)").Groups[1].Value);
-                if (!KnownCategories.Contains(wanted, StringComparer.OrdinalIgnoreCase))
-                {
-                    return new HttpResponseMessage(HttpStatusCode.Conflict) { Content = new StringContent("Category name does not exist") };
-                }
-
-                if (!IgnoreSetCategory) Category = wanted;
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            }
-
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
-        }
-    }
 
     /// <summary>TODO(#1237): replace with the recorded reply. Documented Deluge web JSON-RPC and Label plugin shapes.</summary>
     private sealed class DelugeFake : HttpMessageHandler
