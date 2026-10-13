@@ -2475,8 +2475,9 @@ public sealed class ImportPipelineServiceTests
         var artifactRepair = await reconciliation.RepairAsync(
             new FilesystemReconciliationRepairRequest(artifact.Id, "cleanup-artifact"),
             CancellationToken.None);
-        Assert.True(artifactRepair.Repaired);
-        Assert.False(File.Exists(artifactPath));
+        // #1259: with no recycle bin to take it, a staging file is kept, never deleted for good.
+        Assert.False(artifactRepair.Repaired);
+        Assert.True(File.Exists(artifactPath));
     }
 
     /// <summary>

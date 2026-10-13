@@ -28,7 +28,6 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Companions/CompanionTools.cs"] = (2, "A companion installer download. " + OwnData),
         ["src/Deluno.Contracts/PendingComponentInstalls.cs"] = (1, "A state file under the data root. " + OwnData),
         ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (2, "Leftover files of a season pack, refused unless under a configured download path; and a write-probe file. " + DownloadArea),
-        ["src/Deluno.Filesystem/FilesystemReconciliationService.cs"] = (1, "Only a Deluno staging or backup artifact of an interrupted import (IsDelunoArtifact)."),
         ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188)."),
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
@@ -96,7 +95,6 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
     {
         ["src/Deluno.Companions/CompanionDownloads.cs"] = 2,
         ["src/Deluno.Filesystem/ImportPipelineService.cs"] = 11,
-        ["src/Deluno.Filesystem/FilesystemReconciliationService.cs"] = 1,
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = 10,
     };
 
