@@ -1643,7 +1643,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             }
 
             return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.JobId }, statusCode: StatusCodes.Status202Accepted);
-        });
+        }).AddEndpointFilter(ProcessorEventAnswerLog.LogAsync);
 
         return endpoints;
     }
