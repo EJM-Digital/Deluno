@@ -1,9 +1,9 @@
 {
   "app": "weir",
   "version": "1.0.0-rc.13",
-  "state": "outcome-before-finished-200",
+  "state": "outcome-finished-in-burst-200",
   "recordedAt": "2026-10-11T01:59:32Z",
-  "note": "The outcome reported for a hand-off still waiting its turn: Weir answers 409 handoff_not_finished.",
+  "note": "The outcome reported for the last hand-off of a burst. Weir had already finished it by then, so this is a 200 for a finished hand-off, not an answer for one that was not finished (see outcome-handoff-not-finished-queued and outcome-handoff-not-finished-working).",
   "exchanges": [
     {
       "request": {

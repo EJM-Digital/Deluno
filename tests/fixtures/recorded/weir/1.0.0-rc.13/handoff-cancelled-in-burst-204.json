@@ -1,9 +1,9 @@
 {
   "app": "weir",
   "version": "1.0.0-rc.13",
-  "state": "handoff-cancel-too-late",
+  "state": "handoff-cancelled-in-burst-204",
   "recordedAt": "2026-10-11T01:59:32Z",
-  "note": "A cancel for a hand-off Weir has already started or finished.",
+  "note": "A cancel for the first hand-off of a burst. Weir answered 204, so that hand-off was still queued; it is not a cancel that came too late (see handoff-cancel-too-late and handoff-cancel-working).",
   "exchanges": [
     {
       "request": {

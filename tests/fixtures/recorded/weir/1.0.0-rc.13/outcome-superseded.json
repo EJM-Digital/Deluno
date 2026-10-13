@@ -1,0 +1,112 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "outcome-superseded",
+  "recordedAt": "2026-10-13T20:46:16Z",
+  "note": "The same source sent again (a new handoffId), then the outcome of the OLDER hand-off reported while the newer one is still in Weir.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "8debfde8-02ce-4be2-919e-3bbee370cd20",
+          "libraryId": "01a136e9242275898618c522d88dec53",
+          "mediaType": "movie",
+          "sourcePath": "C:\\Downloads\\Completed\\Movies\\Recorded.Weir.Superseded.mkv",
+          "releaseName": "Big Buck Bunny (2008) Recorded Superseded",
+          "queueItemId": "8364c4d5-5eb8-47a9-af03-39d164ce794f",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Big Buck Bunny (2008) Recorded Superseded",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/5f6fc694-8d63-4758-a7c3-bf3b55141ac7"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "5f6fc694-8d63-4758-a7c3-bf3b55141ac7",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-13T20:46:16.560311Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/5f6fc694-8d63-4758-a7c3-bf3b55141ac7/outcome",
+        "body": {
+          "outcome": "imported",
+          "occurredUtc": "2026-10-13T20:46:16.7998578Z",
+          "importedPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv",
+          "reason": null
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "5f6fc694-8d63-4758-a7c3-bf3b55141ac7",
+          "outcome": "imported",
+          "released": false,
+          "message": "Weir recorded that Deluno imported the file. The manager's library file is Weir's copy itself, so Weir left it where it is."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/8debfde8-02ce-4be2-919e-3bbee370cd20"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "8debfde8-02ce-4be2-919e-3bbee370cd20",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-13T20:46:16.745048Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

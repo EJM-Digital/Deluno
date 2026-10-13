@@ -1,0 +1,114 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "config-error-cleared",
+  "recordedAt": "2026-10-13T20:45:29Z",
+  "note": "The invalid line removed and NZBGet reloaded: status shows DownloadPaused false (a resumedownload is in the recording only if the reload alone did not clear it).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "reload",
+          "params": [],
+          "id": 29
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 29,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "status",
+          "params": [],
+          "id": 51
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 51,
+          "result": {
+            "RemainingSizeLo": 0,
+            "RemainingSizeHi": 0,
+            "RemainingSizeMB": 0,
+            "ForcedSizeLo": 0,
+            "ForcedSizeHi": 0,
+            "ForcedSizeMB": 0,
+            "DownloadedSizeLo": 0,
+            "DownloadedSizeHi": 0,
+            "DownloadedSizeMB": 0,
+            "MonthSizeLo": 0,
+            "MonthSizeHi": 0,
+            "MonthSizeMB": 0,
+            "DaySizeLo": 0,
+            "DaySizeHi": 0,
+            "DaySizeMB": 0,
+            "ArticleCacheLo": 0,
+            "ArticleCacheHi": 0,
+            "ArticleCacheMB": 0,
+            "DownloadRate": 0,
+            "DownloadRateLo": 0,
+            "DownloadRateHi": 0,
+            "AverageDownloadRate": 0,
+            "AverageDownloadRateLo": 0,
+            "AverageDownloadRateHi": 0,
+            "DownloadLimit": 0,
+            "ThreadCount": 9,
+            "ParJobCount": 0,
+            "PostJobCount": 0,
+            "UrlCount": 0,
+            "UpTimeSec": 23,
+            "DownloadTimeSec": 0,
+            "ServerPaused": false,
+            "DownloadPaused": false,
+            "Download2Paused": false,
+            "ServerStandBy": true,
+            "PostPaused": false,
+            "ScanPaused": false,
+            "QuotaReached": false,
+            "FreeDiskSpaceLo": 298156032,
+            "FreeDiskSpaceHi": 19,
+            "FreeDiskSpaceMB": 78108,
+            "TotalDiskSpaceLo": 3018846208,
+            "TotalDiskSpaceHi": 24,
+            "TotalDiskSpaceMB": 101182,
+            "FreeInterDiskSpaceLo": 298156032,
+            "FreeInterDiskSpaceHi": 19,
+            "FreeInterDiskSpaceMB": 78108,
+            "TotalInterDiskSpaceLo": 3018846208,
+            "TotalInterDiskSpaceHi": 24,
+            "TotalInterDiskSpaceMB": 101182,
+            "ServerTime": 1791924329,
+            "ResumeTime": 0,
+            "FeedActive": false,
+            "QueueScriptCount": 0,
+            "NewsServers": [
+              {
+                "ID": 1,
+                "Active": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

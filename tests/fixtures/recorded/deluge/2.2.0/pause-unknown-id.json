@@ -1,0 +1,37 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "pause-unknown-id",
+  "recordedAt": "2026-10-13T20:39:17Z",
+  "note": "A pause of a hash (and, for Transmission, a numeric id) the client never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "bodyText": "{\"method\":\"core.pause_torrent\",\"params\":[[\"0000000000000000000000000000000000000000\"]],\"id\":11}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "{\"result\":null,\"error\":{\"message\":\"Failure: [Failure instance: Traceback (failure with no frames): <class 'deluge.error.WrappedException'>: '0000000000000000000000000000000000000000'\\nTraceback (most recent call last):\\n  File \\\"deluge\\\\core\\\\rpcserver.py\\\", line 342, in dispatch\\n  File \\\"deluge\\\\core\\\\core.py\\\", line 660, in pause_torrent\\n  File \\\"deluge\\\\core\\\\core.py\\\", line 670, in pause_torrents\\n  File \\\"deluge\\\\core\\\\core.py\\\", line 662, in pause_torrent\\n  File \\\"deluge\\\\core\\\\torrentmanager.py\\\", line 307, in __getitem__\\nKeyError: '0000000000000000000000000000000000000000'\\n\\n]\",\"code\":4},\"id\":11}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "bodyText": "{\"method\":\"web.update_ui\",\"params\":[[\"name\",\"state\",\"progress\",\"download_payload_rate\",\"upload_payload_rate\",\"eta\",\"total_size\",\"total_done\",\"num_peers\",\"num_seeds\",\"time_added\",\"label\",\"message\",\"save_path\",\"move_completed\",\"move_completed_path\",\"ratio\",\"seeding_time\",\"tracker_status\",\"trackers\",\"private\",\"queue\",\"stop_at_ratio\",\"stop_ratio\",\"remove_at_ratio\"],{\"id\":[\"0000000000000000000000000000000000000000\"]}],\"id\":12}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "{\"result\":null,\"error\":{\"message\":\"KeyError: '0000000000000000000000000000000000000000'\",\"code\":3},\"id\":12}"
+      }
+    }
+  ]
+}
