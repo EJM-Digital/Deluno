@@ -481,6 +481,22 @@ foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', '
     Check "$fn is defined" ($null -ne (Get-Command $fn -ErrorAction SilentlyContinue))
 }
 
+Write-Host 'The keep-seeding group (#1240)'
+Check 'the plan has a moved and a public-removed scenario for each torrent client, and none for Usenet or the clients that are not in the VM' ((@('qbittorrent', 'transmission', 'deluge') | ForEach-Object { "keepseeding.moved.$_"; "keepseeding.public-removed.$_" } | Where-Object { $_ -notin $allIds }).Count -eq 0 -and @($allIds | Where-Object { $_ -like 'keepseeding.*' }).Count -eq 6)
+Check 'the keep-seeding group runs before the update phase, which stays last' (@($plan | ForEach-Object Name).IndexOf('keepseeding') -gt @($plan | ForEach-Object Name).IndexOf('stuck') -and $plan[-1].Name -eq 'update')
+# The line Deluno writes (DownloadClientTelemetryService.KeepSeedingActivity), as Activity returns it.
+$movedMessage = 'Moved Gpkeepprivatexyzq31.2020.1080p.WEB-DL.x264-GOLDEN to golden-keep-seeding on qBittorrent so it keeps seeding on Golden private feed, and is looking for another copy. Deluno blocked this release. It made no progress for 2 checks in a row.'
+$movedLine = (@{ category = 'download.health.remediation'; label = 'x'; message = $movedMessage } | ConvertTo-Json -Compress)
+$ksFilm = [pscustomobject]@{ Title = 'Gpkeepprivatexyzq31'; Release = 'Gpkeepprivatexyzq31.2020.1080p.WEB-DL.x264-GOLDEN' }
+Check 'the moved line is found for its release, as its message text' ((Get-KsMovedMessage -Film $ksFilm -Lines @($zeroLine, $movedLine)) -eq $movedMessage)
+Check 'a strike line for another release is not taken for the moved line' ($null -eq (Get-KsMovedMessage -Film ([pscustomobject]@{ Title = 'Other'; Release = 'Other.2020.1080p.WEB-DL.x264-GOLDEN' }) -Lines @($movedLine)))
+Check 'the moved line is not read as a removal, and a removal is not read as a move' ($null -eq (Get-KsRemovedMessage -Film $ksFilm -Lines @($movedLine)) -and $null -eq (Get-KsMovedMessage -Film $strikeFilm -Lines @($zeroLine)))
+$ksText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G10-KeepSeeding.ps1')
+Check 'the group sets the rule to move, puts it back, and puts the keep-seeding choices and the private indexer back through Deluno' ($ksText -match "privateAction = 'move-and-replace'" -and $ksText -match 'could not restore rule' -and $ksText -match 'could not restore the keep-seeding choices' -and $ksText -match '-Method DELETE -Path "/api/indexers/')
+Check 'the group reads each client itself for the category and the torrent, never only Deluno' ($ksText -match 'Get-KsClientTorrent' -and $ksText -match 'core\.get_torrent_status' -and $ksText -match 'torrent-get' -and $ksText -match 'torrents/info')
+Check 'the private torrent is checked for its data, for not being deleted, and for staying out of Transfers' ($ksText -match 'Get-KsFilesOnDisk' -and $ksText -match 'still holds the torrent' -and $ksText -match 'gone from Transfers')
+Check 'a password read for a client is masked in everything the suite writes' ($ksText -match 'S\.Secrets\["ks-\$Kind-password"\]')
+
 Write-Host 'The news stub can hang an article and slow another'
 . (Join-Path $root 'usenet-stub\UsenetStub.Lib.ps1')
 $stubRoot = Join-Path ([IO.Path]::GetTempPath()) ('stub-test-' + [guid]::NewGuid().ToString('N'))
