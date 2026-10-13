@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -133,13 +130,12 @@ public sealed class QbittorrentStateMappingTests
 
     private static async Task<DownloadQueueItem> Snapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0, bool? isPrivate = null)
     {
-        var privateField = isPrivate is { } value ? $",\"private\":{(value ? "true" : "false")}" : string.Empty;
-        var torrentsInfo = "[{\"hash\":\"abc123\",\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"category\":\"movies\","
-            + $"\"state\":\"{state}\",\"progress\":{progress.ToString(CultureInfo.InvariantCulture)},"
-            + $"\"dlspeed\":0,\"upspeed\":0,\"eta\":0,\"size\":5000000000,\"downloaded\":2000000000,"
-            + $"\"num_seeds\":{numSeeds},\"num_leechs\":{numLeechs},"
-            + $"\"added_on\":{DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"{privateField}}}]";
-        var handler = new QbittorrentHandler(torrentsInfo);
+        // qBittorrent 5.2.1's recorded list of a download in progress, in the state, progress, swarm and privacy under test.
+        // A privacy the client does not send is taken out of the reply.
+        var torrentsInfo = RecordedQbittorrentRig.Info(
+            RecordedQbittorrentRig.Downloading,
+            ("category", "movies"), ("state", state), ("progress", progress), ("num_seeds", numSeeds), ("num_leechs", numLeechs), ("private", isPrivate));
+        var handler = RecordedQbittorrentRig.Handler(torrentsInfo);
         var client = new QbittorrentDownloadClient(() => handler);
         var snapshot = await client.GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
@@ -148,18 +144,4 @@ public sealed class QbittorrentStateMappingTests
     private static DownloadClientItem Client()
         => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-
-    private sealed class QbittorrentHandler(string torrentsInfo) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal)
-                ? "Ok."
-                : path.Contains("torrents/info", StringComparison.Ordinal)
-                    ? torrentsInfo
-                    : "{}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") });
-        }
-    }
 }

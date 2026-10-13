@@ -408,6 +408,11 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
 
     private static JsonNode? Json2(JsonNode root, string path)
     {
+        if (path.Length == 0)
+        {
+            return root;
+        }
+
         JsonNode? node = root;
         foreach (var part in SplitPath(path))
         {
