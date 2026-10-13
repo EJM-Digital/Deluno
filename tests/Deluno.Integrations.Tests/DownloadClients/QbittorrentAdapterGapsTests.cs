@@ -1,8 +1,7 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -16,9 +15,10 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Reads_availability_last_activity_and_completion_on()
     {
-        var handler = new QbittorrentHandler("""
-            [{"hash":"abc123","name":"Example","state":"uploading","progress":1,"availability":1.5,"last_activity":1750000100,"completion_on":1750000200}]
-            """);
+        // qBittorrent 5.2.1's recorded list of a finished torrent, with the figures under test.
+        var handler = RecordedQbittorrentRig.Handler(RecordedQbittorrentRig.Info(
+            RecordedQbittorrentRig.Finished, ("hash", "abc123"), ("name", "Example"), ("state", "uploading"), ("progress", 1),
+            ("availability", 1.5), ("last_activity", 1750000100), ("completion_on", 1750000200)));
 
         var snapshot = await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient(), DateTimeOffset.UtcNow, CancellationToken.None);
@@ -32,9 +32,9 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Completion_on_of_minus_one_reads_as_not_completed_rather_than_epoch()
     {
-        var handler = new QbittorrentHandler("""
-            [{"hash":"abc123","name":"Example","state":"downloading","progress":0.4,"last_activity":1750000100,"completion_on":-1}]
-            """);
+        var handler = RecordedQbittorrentRig.Handler(RecordedQbittorrentRig.Info(
+            RecordedQbittorrentRig.Downloading, ("hash", "abc123"), ("name", "Example"), ("state", "downloading"), ("progress", 0.4),
+            ("last_activity", 1750000100), ("completion_on", -1)));
 
         var snapshot = await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient(), DateTimeOffset.UtcNow, CancellationToken.None);
@@ -46,7 +46,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Sends_no_authorization_header_and_logs_in_when_a_username_is_set()
     {
-        var handler = new RecordingHandler("[]");
+        var handler = new RecordingHandler();
         await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient() with { Username = "admin", Secret = "hunter2" }, DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -57,7 +57,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Sends_a_bearer_token_and_skips_login_when_only_a_secret_is_set()
     {
-        var handler = new RecordingHandler("[]");
+        var handler = new RecordingHandler();
         await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient() with { Username = null, Secret = "api-key-value" }, DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -113,6 +113,9 @@ public sealed class QbittorrentAdapterGapsTests
 
         Assert.True(result.Succeeded, result.Message);
         Assert.NotNull(handler.ShareLimitsBody);
+        // qBittorrent 5.2.1 refuses share limits sent without a share-limit action (400, recorded); a refusal here is swallowed
+        // by the grab, so the limits would silently never apply.
+        Assert.True(handler.ShareLimitsAccepted, "qBittorrent refused the share limits: " + handler.ShareLimitsBody);
         Assert.Contains("hashes=abc123", handler.ShareLimitsBody, StringComparison.Ordinal);
         Assert.Contains("ratioLimit=2.5", handler.ShareLimitsBody, StringComparison.Ordinal);
         Assert.Contains("seedingTimeLimit=4320", handler.ShareLimitsBody, StringComparison.Ordinal);
@@ -207,38 +210,30 @@ public sealed class QbittorrentAdapterGapsTests
             HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
             LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
 
-    private static HttpResponseMessage JsonResponse(string body)
-        => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    /// <summary>qBittorrent 5.2.1's recorded answer to a call that changes something, which is an empty 200 (the recorded category move).</summary>
+    private static HttpResponseMessage Changed() => RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
 
-    private sealed class QbittorrentHandler(string torrentsInfo) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal)
-                ? "Ok."
-                : path.Contains("torrents/info", StringComparison.Ordinal)
-                    ? torrentsInfo
-                    : "{}";
-            return Task.FromResult(JsonResponse(reply));
-        }
-    }
+    /// <summary>qBittorrent 5.2.1's recorded sign-in and version, which every call here starts with.</summary>
+    private static HttpResponseMessage? SignIn(string path)
+        => path.Contains("auth/login", StringComparison.Ordinal) ? RecordedReplies.Qbittorrent("sign-in").Response("auth/login")
+            : path.Contains("app/version", StringComparison.Ordinal) ? RecordedReplies.Qbittorrent("version").Response("app/version")
+            : null;
 
-    /// <summary>Records every request it answers, so a test can check what was (or was not) sent.</summary>
-    private sealed class RecordingHandler(string torrentsInfo) : HttpMessageHandler
+    /// <summary>The recorded answer to a list of torrents when qBittorrent has none.</summary>
+    private static HttpResponseMessage NoTorrents() => RecordedReplies.Json(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"));
+
+    /// <summary>Records every request it answers, so a test can check what was (or was not) sent. It answers from the recordings with an empty list.</summary>
+    private sealed class RecordingHandler : HttpMessageHandler
     {
+        private readonly HttpMessageHandler _inner = RecordedQbittorrentRig.Handler(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"));
+
         public List<HttpRequestMessage> Requests { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal)
-                ? "Ok."
-                : path.Contains("torrents/info", StringComparison.Ordinal)
-                    ? torrentsInfo
-                    : "{}";
-            return Task.FromResult(JsonResponse(reply));
+            var invoker = new HttpMessageInvoker(_inner, disposeHandler: false);
+            return invoker.SendAsync(request, cancellationToken);
         }
     }
 
@@ -251,25 +246,28 @@ public sealed class QbittorrentAdapterGapsTests
             if (path.Contains("torrents/add", StringComparison.Ordinal))
             {
                 addBodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
-                return JsonResponse("Ok.");
+                return RecordedReplies.Qbittorrent("finished-single-file").Response("torrents/add");
             }
 
-            if (path.Contains("auth/login", StringComparison.Ordinal)) return JsonResponse("Ok.");
-            if (path.Contains("torrents/info", StringComparison.Ordinal)) return JsonResponse("[]");
-            return JsonResponse("{}");
+            return SignIn(path) ?? (path.Contains("torrents/info", StringComparison.Ordinal)
+                ? NoTorrents()
+                : throw new InvalidOperationException("qBittorrent was asked something no recording answers: " + path));
         }
     }
 
     /// <summary>
-    /// Answers torrents/info with nothing, then the given hash once the add
-    /// has gone through — the before/after honesty check (#606) reading a
-    /// genuinely new torrent — and records whatever setShareLimits is asked.
+    /// Answers torrents/info with nothing, then the given hash once the add has gone through — the before/after honesty check (#606)
+    /// reading a genuinely new torrent — and records whatever the grab then sets. Every reply is qBittorrent 5.2.1's recorded one,
+    /// including its recorded refusal of share limits sent without a share-limit action.
     /// </summary>
     private sealed class AddThenNewHashHandler(string newHash) : HttpMessageHandler
     {
         private bool _added;
 
         public string? ShareLimitsBody { get; private set; }
+
+        /// <summary>Whether qBittorrent took the share limits (it refuses them without a share-limit action, as recorded).</summary>
+        public bool ShareLimitsAccepted { get; private set; }
 
         public string? AddBody { get; private set; }
 
@@ -282,44 +280,54 @@ public sealed class QbittorrentAdapterGapsTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             if (path.Contains("torrents/add", StringComparison.Ordinal))
             {
                 _added = true;
-                AddBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-                return JsonResponse("Ok.");
+                AddBody = body;
+                return RecordedReplies.Qbittorrent("finished-single-file").Response("torrents/add");
             }
 
             if (path.Contains("setShareLimits", StringComparison.Ordinal))
             {
-                ShareLimitsBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-                return JsonResponse("{}");
+                ShareLimitsBody = body;
+                ShareLimitsAccepted = body.Contains("shareLimitAction=", StringComparison.Ordinal);
+                return ShareLimitsAccepted ? Changed() : RecordedReplies.Qbittorrent("share-limits").Response("setShareLimits");
             }
 
             if (path.Contains("setLocation", StringComparison.Ordinal))
             {
-                LocationBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-                return JsonResponse("{}");
+                LocationBody = body;
+                return RecordedReplies.Qbittorrent("location-moved").Response("setLocation");
             }
 
             if (path.Contains("setCategory", StringComparison.Ordinal))
             {
-                CategoryBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-                return JsonResponse("{}");
+                CategoryBody = body;
+                return Changed();
+            }
+
+            if (path.Contains("createCategory", StringComparison.Ordinal))
+            {
+                return RecordedReplies.Qbittorrent("category-moved").Response("createCategory");
             }
 
             if (path.Contains("setAutoManagement", StringComparison.Ordinal))
             {
-                AutoManagementBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-                return JsonResponse("{}");
+                // Not recorded: qBittorrent answers its other changes with an empty 200.
+                AutoManagementBody = body;
+                return Changed();
             }
 
-            if (path.Contains("auth/login", StringComparison.Ordinal)) return JsonResponse("Ok.");
+            if (SignIn(path) is { } signIn) return signIn;
             if (path.Contains("torrents/info", StringComparison.Ordinal))
             {
-                return JsonResponse(_added ? $$"""[{"hash":"{{newHash}}","name":"Example"}]""" : "[]");
+                return _added
+                    ? RecordedReplies.Json(RecordedQbittorrentRig.Info(RecordedQbittorrentRig.Finished, ("hash", newHash), ("name", "Example")))
+                    : NoTorrents();
             }
 
-            return JsonResponse("{}");
+            throw new InvalidOperationException("qBittorrent was asked something no recording answers: " + path);
         }
     }
 }
