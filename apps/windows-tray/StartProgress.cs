@@ -33,8 +33,22 @@ public enum StartMarkerKind
     /// <summary>Another process wrote it: a start that ended (or is still going on) elsewhere. It is never this run's progress.</summary>
     OtherProcess,
 
+    /// <summary>The file could not be opened in time (a replace, a scanner or the disk held it). Not a verdict on its content.</summary>
+    Busy,
+
     /// <summary>It could not be read: half written, damaged, or from a version that wrote something else.</summary>
     Unreadable
+}
+
+/// <summary>The file-system calls the marker makes, so a test can hold, deny or slow each one without racing a clock.</summary>
+internal interface IMarkerFileSystem
+{
+    bool Exists(string path);
+    string ReadAllText(string path);
+    void WriteAllText(string path, string text);
+    void Move(string from, string to);
+    void CreateDirectory(string path);
+    void Sleep(TimeSpan span);
 }
 
 public sealed record StartMarkerRead(StartMarkerKind Kind, StartMarker? Marker);
@@ -84,6 +98,15 @@ public static class StartMarkerFile
             // Best effort.
         }
     }
+
+    // STUB (tests first): replaced by the real seam-based versions.
+    internal static string? Write(string path, StartMarker marker, IMarkerFileSystem io, bool quick = false)
+    {
+        Write(path, marker);
+        return null;
+    }
+
+    internal static StartMarkerRead Read(string path, int ownPid, IMarkerFileSystem io) => Read(path, ownPid);
 
     public static StartMarkerRead Read(string path, int ownPid)
     {
@@ -185,7 +208,13 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
     private StartProgressSnapshot _current;
 
     public StartProgress(TimeProvider time, string? markerPath, int pid, Action<string>? log = null)
+        : this(time, markerPath, pid, log, null)
     {
+    }
+
+    internal StartProgress(TimeProvider time, string? markerPath, int pid, Action<string>? log, IMarkerFileSystem? fileSystem)
+    {
+        _ = fileSystem; // STUB
         _time = time;
         _markerPath = markerPath;
         _pid = pid;
