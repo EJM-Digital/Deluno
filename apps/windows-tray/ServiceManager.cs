@@ -216,6 +216,9 @@ public static class ServiceManager
             reporter?.Report(FailureActionsProblemKey, "Deluno may not restart itself", FailureActionsProblemMessage, problem);
         });
 
+    internal static Task<string?> EnsureFailureActionsEarlyAsync(Action<string> logWarning, IScRunner? runner = null, TimeSpan? timeout = null)
+        => Task.FromResult<string?>(null);
+
     private static void RemoveService()
     {
         if (!IsInstalled()) return;

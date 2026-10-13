@@ -151,7 +151,7 @@ internal static class Program
             }
 
             EnsureWinFormsBootstrap();
-            var tray = new TrayApplication();
+            var tray = new TrayApplication(StartProgress.ForThisProcess());
             // The real icon is up (it is shown in its constructor), so the first-run one can go without a gap.
             _firstRunTray?.Dispose();
             _firstRunTray = null;

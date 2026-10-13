@@ -4,6 +4,7 @@ using Deluno.Api.Backup;
 using Deluno.Api.Updates;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Observability;
 using Deluno.Integrations;
 using Deluno.Intake;
@@ -25,7 +26,7 @@ using UserAuthorization = Deluno.Security.UserAuthorization;
 
 namespace Deluno.Tray;
 
-public sealed class DelunoServer : IDisposable
+public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposable
 {
     private WebApplication? _app;
     private CancellationTokenSource? _cts;
@@ -64,9 +65,59 @@ public sealed class DelunoServer : IDisposable
     /// <summary>Optional port override (from --port CLI arg). Takes precedence over AppSettings.Port.</summary>
     public static int? PortOverride { get; set; }
 
-    public async Task StartAsync()
+    /// <summary>
+    /// Builds and starts the web host. Throws when it cannot; a host left half-started by a failure is stopped and
+    /// disposed first, so its databases and port are free for the next try (#1256). The step it is in is reported to
+    /// the start-up progress before each step that can block.
+    /// </summary>
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await StartCoreAsync(cancellationToken);
+        }
+        catch
+        {
+            await DisposeHalfStartedAsync();
+            throw;
+        }
+    }
+
+    private async Task DisposeHalfStartedAsync()
+    {
+        var app = _app;
+        _app = null;
+        if (app is null)
+        {
+            return;
+        }
+
+        _stopRequested = true;
+        try { await app.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15)); } catch { /* the supervisor frees what is left */ }
+    }
+
+    /// <summary>
+    /// Stops the host and disposes it, within the token: what the supervisor does with a start that hung or failed so
+    /// the databases and the port are released. Not a "stopped by itself": the guard is told it was asked for.
+    /// </summary>
+    public async Task FreeAsync(CancellationToken cancellationToken)
+    {
+        _stopRequested = true;
+        var app = _app;
+        _app = null;
+        if (app is null)
+        {
+            return;
+        }
+
+        try { await app.StopAsync(cancellationToken); } catch { /* disposing closes Kestrel */ }
+        try { await app.DisposeAsync().AsTask().WaitAsync(cancellationToken); } catch (OperationCanceledException) { throw; } catch { /* best effort */ }
+    }
+
+    private async Task StartCoreAsync(CancellationToken cancellationToken)
     {
         _stopRequested = false;
+        progress?.Enter(StartupPhase.Starting, "building the web host");
         if (_app is not null)
         {
             // A host that stopped by itself is still held here; let it go before starting a new one.
@@ -75,7 +126,7 @@ public sealed class DelunoServer : IDisposable
         }
 
         _cts?.Dispose();
-        _cts = new CancellationTokenSource();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var settings = AppSettings.Load();
         var port = PortOverride ?? settings.Port;
 
@@ -111,6 +162,12 @@ public sealed class DelunoServer : IDisposable
         // The tray restarts the host itself (HostRestartSupervisor), so giving up
         // must not leave a failing exit code behind for the tray process.
         builder.Services.AddSingleton(new BackgroundServiceSafetyOptions { SetExitCodeWhenGivingUp = false });
+        if (progress is not null)
+        {
+            // The migrator, the storage bootstrap and the startup gate report each step through this (#1256).
+            builder.Services.AddSingleton(progress);
+        }
+
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         Firewall = new WindowsFirewallLanAccess(port);
         builder.Services.AddSingleton<ILanAccess>(Firewall);
@@ -145,6 +202,7 @@ public sealed class DelunoServer : IDisposable
         _app.UseDelunoRequestPipeline();
 
         await _app.StartAsync(_cts.Token);
+        progress?.Enter(StartupPhase.Ready);
 
         var startedApp = _app;
         // StopApplication() only cancels a token here (nothing waits on WaitForShutdown), so

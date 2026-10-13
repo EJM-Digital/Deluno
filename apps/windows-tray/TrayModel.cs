@@ -152,6 +152,9 @@ public sealed record TrayStatus
     /// <summary>Shown while the supervisor starts the host again, such as "try 2 of 5".</summary>
     public string? RestartNote { get; init; }
 
+    /// <summary>What a start is doing right now, in plain words ("opening the databases"); null when it just says Starting.</summary>
+    public string? StartNote { get; init; }
+
     public string Version { get; init; } = "0.0.0";
 
     /// <summary>A Transmission re-add is waiting (shown at the top of the menu).</summary>

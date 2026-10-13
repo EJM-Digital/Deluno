@@ -1,3 +1,4 @@
+#pragma warning disable CS9113 // stub: removed with the implementation
 using System.Data.Common;
 using Microsoft.Extensions.Logging;
 
@@ -7,7 +8,8 @@ public sealed class SqliteDatabaseMigrator(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     ILogger<SqliteDatabaseMigrator>? logger = null,
-    MigrationLockRetryOptions? lockRetry = null)
+    MigrationLockRetryOptions? lockRetry = null,
+    IStartupProgress? progress = null)
     : IDelunoDatabaseMigrator
 {
     private readonly MigrationLockRetryOptions _lockRetry = lockRetry ?? new MigrationLockRetryOptions();

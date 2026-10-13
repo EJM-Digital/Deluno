@@ -1,3 +1,4 @@
+#pragma warning disable CS9113 // stub: removed with the implementation
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,8 @@ public sealed class DelunoStorageBootstrapService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
     ILogger<DelunoStorageBootstrapService> logger,
-    MigrationLockRetryOptions? lockRetry = null)
+    MigrationLockRetryOptions? lockRetry = null,
+    IStartupProgress? progress = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
