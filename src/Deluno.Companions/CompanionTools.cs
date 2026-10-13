@@ -337,6 +337,12 @@ public sealed class WeirCompanion(
     /// <summary>Weir's published readiness route (its docs: GET /ready, no sign-in).</summary>
     public const string WeirReadyPath = "/ready";
 
+    /// <summary>The clock the wait for Weir to answer runs on; a test supplies its own.</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>How the wait between two looks at Weir passes; a test supplies one that moves its own clock.</summary>
+    public Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
+
     public string Id => CompanionToolIds.Weir;
 
     public string Name => "Weir";
@@ -736,7 +742,7 @@ public sealed class WeirCompanion(
                 }
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+            await Delay(TimeSpan.FromSeconds(3), cancellationToken);
         }
 
         return null;
