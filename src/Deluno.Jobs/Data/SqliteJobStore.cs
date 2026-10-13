@@ -3754,7 +3754,7 @@ public sealed class SqliteJobStore(
                 WHERE category = @category
                   AND related_entity_type IS @relatedEntityType
                   AND related_entity_id IS @relatedEntityId
-                ORDER BY created_utc DESC, id DESC
+                ORDER BY created_utc DESC, rowid DESC
                 LIMIT 1;
                 """;
             AddParameter(latest, "@category", category);
