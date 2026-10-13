@@ -259,14 +259,27 @@ public sealed class FilesystemReconciliationService(
                 return new FilesystemReconciliationRepairResult(false, action, "Cleanup refused because the file is not a Deluno staging artifact.");
             }
 
-            var deleted = TryDelete(fullPath);
-            await RecordRepairAsync(token, action, deleted, cancellationToken);
-            return new FilesystemReconciliationRepairResult(
-                deleted,
-                action,
-                deleted
-                    ? "The Deluno staging artifact was deleted."
-                    : "The staging artifact could not be deleted. Check permissions or file locks.");
+            // A stage file can be the only copy of a move import and a backup file is the previous library
+            // file, so neither is ever deleted for good (#1259): the recycle bin, or it stays where it is.
+            var recycled = false;
+            if (recycleBinService is not null && File.Exists(fullPath))
+            {
+                try
+                {
+                    recycled = await recycleBinService.StoreRemovedFileAsync(library, fullPath, null, cancellationToken) is not null
+                        && !File.Exists(fullPath);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    recycled = false;
+                }
+            }
+
+            var message = recycled
+                ? "The staging artifact was moved to the recycle bin. Restore it from there if it was needed."
+                : "The staging artifact was left where it is: Deluno never deletes it for good, and the recycle bin could not take it.";
+            await RecordRepairAsync(token, action, recycled, cancellationToken, message);
+            return new FilesystemReconciliationRepairResult(recycled, action, message);
         }
 
         if (token.Kind == "orphanFile" && action == "queue-import-review")
@@ -1145,13 +1158,15 @@ public sealed class FilesystemReconciliationService(
         IssueToken token,
         string action,
         bool repaired,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? detail = null)
     {
         await activityFeedRepository.RecordActivityAsync(
             repaired ? "filesystem.reconciliation.repaired" : "filesystem.reconciliation.repair-failed",
-            repaired
+            (repaired
                 ? $"Reconciliation repair '{action}' completed for {Path.GetFileName(token.Path)}."
-                : $"Reconciliation repair '{action}' failed for {Path.GetFileName(token.Path)}.",
+                : $"Reconciliation repair '{action}' failed for {Path.GetFileName(token.Path)}.")
+                + (detail is null ? string.Empty : " " + detail),
             JsonSerializer.Serialize(new
             {
                 token.Kind,
@@ -1286,24 +1301,6 @@ public sealed class FilesystemReconciliationService(
         catch
         {
             return null;
-        }
-    }
-
-    private static bool TryDelete(string path)
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return false;
-            }
-
-            File.Delete(path);
-            return true;
-        }
-        catch
-        {
-            return false;
         }
     }
 
