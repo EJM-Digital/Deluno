@@ -4,10 +4,12 @@
     previous release silently, and then starts Run-Update.ps1 in the desktop session. It is never run over the candidate the
     other groups used: that would be a downgrade onto a newer schema, which no real person does.
 
-    What it assumes about Velopack (not confirmed on this VM before the first run): Setup.exe, run silently over an instance of
-    the app that is running, stops that instance, replaces the install and then starts the new build itself, in the session Setup
-    ran in. (Weir #956 saw exactly that: a silent Setup over a running Weir, then a server started by the new tray.) So nothing
-    here starts Deluno after Setup. If that assumption is wrong the scenario says so, in these words, apart from a hung start:
+    What it knows about Velopack (rc.30.27 run): Setup.exe --silent over a running app stops that app, replaces the install and
+    starts nothing, because a silent Setup does not launch the app. So nothing in this scenario starts Deluno after Setup: the
+    candidate's own install hook arranges it (RelaunchAfterSetup, #1256), a short helper that waits for Setup to exit (about
+    11 s here) and then starts Deluno. The previous release here (rc.30.25) predates Deluno's running marks, so the hook finds
+    out that Deluno was running from Velopack's own log line "Killing process: ...Deluno.exe", tied to this Setup's id. If it
+    does not come back, the scenario says so, in these words, apart from a hung start:
       - "Deluno was never started again after Setup": no Deluno process other than the previous release's appeared within
         3 minutes. That is the installer not relaunching, not Deluno's start.
       - "Deluno was started again but never answered": a new process appeared and the web server never answered within
@@ -76,6 +78,11 @@ function Save-UpdateEvidence {
     param([string] $StartLog, [int] $FromLine)
     $text = if (Test-Path $StartLog) { (Get-Content $StartLog | Select-Object -Skip $FromLine) -join "`n" } else { 'no tray-startup.log' }
     Save-Evidence -Name 'update-start-log.txt' -Text $text
+    # What the install hook decided about bringing Deluno back (RelaunchAfterSetup, #1256), and what Velopack says it ended.
+    $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+    Save-Evidence -Name 'update-install-hook-log.txt' -Text $(if (Test-Path $hook) { (Get-Content $hook -Tail 80) -join "`n" } else { 'no install-hook.log' })
+    $velo = Join-Path $env:LOCALAPPDATA 'velopackelopack.log'
+    Save-Evidence -Name 'update-velopack-kills.txt' -Text $(if (Test-Path $velo) { (Select-String -Path $velo -Pattern 'Killing process|install hook' | Select-Object -Last 20 | ForEach-Object { $_.Line }) -join "`n" } else { 'no velopack.log' })
 }
 
 function Invoke-UpdateScenario {
