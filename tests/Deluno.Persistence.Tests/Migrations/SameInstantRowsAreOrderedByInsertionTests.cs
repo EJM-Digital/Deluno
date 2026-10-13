@@ -6,6 +6,7 @@ using Deluno.Libraries.Data;
 using Deluno.Media;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Data;
+using Deluno.Jobs.Contracts;
 
 namespace Deluno.Persistence.Tests.Migrations;
 
@@ -161,5 +162,128 @@ public sealed class SameInstantRowsAreOrderedByInsertionTests : IDisposable
             .GetLatestPreferenceEvaluationSnapshotAsync(MediaKind.Movie, "m1", "lib", "f", CancellationToken.None);
 
         Assert.Equal("plan-second", latest!.PlanId);
+    }
+
+    // ---- paged lists: the page token must walk rows written in one instant in the order they were written, losing and repeating none.
+
+    private static async Task<List<T>> WalkAsync<T>(Func<string?, Task<Page<T>>> page)
+    {
+        var all = new List<T>();
+        string? token = null;
+        for (var guard = 0; guard < 10; guard++)
+        {
+            var next = await page(token);
+            all.AddRange(next.Items);
+            if (next.NextPageToken is null)
+            {
+                return all;
+            }
+
+            token = next.NextPageToken;
+        }
+
+        throw new InvalidOperationException("The pages never ended.");
+    }
+
+    [Fact]
+    public async Task Job_pages_walk_rows_of_one_instant_newest_written_first_with_none_lost_or_repeated()
+    {
+        await MigrateAsync();
+        foreach (var id in new[] { HighId, "7" + HighId[1..], LowId })
+        {
+            await InsertAsync(DelunoDatabaseNames.Jobs, "job_queue", new()
+            {
+                ["id"] = id, ["job_type"] = "x", ["source"] = "s", ["status"] = "queued", ["created_utc"] = Instant, ["scheduled_utc"] = Instant
+            });
+        }
+
+        var store = new SqliteJobStore(_storage.Factory, Clock, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var jobs = await WalkAsync(token => store.ListPageAsync(new PageRequest(1, token), false, CancellationToken.None));
+
+        Assert.Equal([LowId, "7" + HighId[1..], HighId], jobs.Select(job => job.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task Activity_pages_walk_rows_of_one_instant_newest_written_first_with_none_lost_or_repeated()
+    {
+        await MigrateAsync();
+        foreach (var (id, message) in new[] { (HighId, "first"), ("7" + HighId[1..], "second"), (LowId, "third") })
+        {
+            await InsertAsync(DelunoDatabaseNames.Jobs, "activity_events", new()
+            {
+                ["id"] = id, ["category"] = "c", ["message"] = message, ["created_utc"] = Instant
+            });
+        }
+
+        var store = new SqliteJobStore(_storage.Factory, Clock, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var events = await WalkAsync(token => store.ListActivityPageAsync(new PageRequest(1, token), new ActivityQuery(), CancellationToken.None));
+
+        Assert.Equal(["third", "second", "first"], events.Select(item => item.Message).ToArray());
+    }
+
+    [Fact]
+    public async Task Search_cycle_run_pages_walk_rows_of_one_instant_newest_written_first_with_none_lost_or_repeated()
+    {
+        await MigrateAsync();
+        foreach (var id in new[] { HighId, "7" + HighId[1..], LowId })
+        {
+            await InsertAsync(DelunoDatabaseNames.Jobs, "search_cycle_runs", new()
+            {
+                ["id"] = id, ["library_id"] = "lib", ["started_utc"] = Instant
+            });
+        }
+
+        var store = new SqliteJobStore(_storage.Factory, Clock, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var runs = await WalkAsync(token => store.ListSearchCycleRunsPageAsync(new PageRequest(1, token), null, CancellationToken.None));
+
+        Assert.Equal([LowId, "7" + HighId[1..], HighId], runs.Select(run => run.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task Diagnostic_pages_walk_rows_of_one_instant_newest_written_first_with_none_lost_or_repeated()
+    {
+        await MigrateAsync();
+        foreach (var (id, message) in new[] { (HighId, "first"), ("7" + HighId[1..], "second"), (LowId, "third") })
+        {
+            await InsertAsync(DelunoDatabaseNames.Jobs, "activity_events", new()
+            {
+                ["id"] = id, ["category"] = "c", ["message"] = message, ["created_utc"] = Instant
+            });
+        }
+
+        var service = new Deluno.Api.Monitoring.MonitoringService(
+            null!, null!, null!, null!, null!, null!, _storage.Factory,
+            Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = _storage.DataRoot }),
+            null!, null!, Clock, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<Deluno.Api.Monitoring.MonitoringService>.Instance);
+        var items = await WalkAsync(token => service.SearchDiagnosticsAsync(
+            new Deluno.Api.Monitoring.MonitoringDiagnosticsQuery(null, null, null, null, new PageRequest(1, token)), CancellationToken.None));
+
+        Assert.Equal(["third", "second", "first"], items.Select(item => item.Message).ToArray());
+    }
+
+    [Fact]
+    public async Task Download_dispatch_pages_walk_rows_of_one_instant_newest_written_first_with_none_lost_or_repeated()
+    {
+        await MigrateAsync();
+        foreach (var (id, release) in new[] { (HighId, "first"), ("7" + HighId[1..], "second"), (LowId, "third") })
+        {
+            await InsertAsync(DelunoDatabaseNames.Jobs, "download_dispatches", new()
+            {
+                ["id"] = id, ["release_name"] = release, ["status"] = "queued", ["created_utc"] = Instant
+            });
+        }
+
+        var repository = new SqliteDownloadDispatchesRepository(_storage.Factory, Clock);
+        var seen = new List<string>();
+        string? token = null;
+        for (var guard = 0; guard < 10; guard++)
+        {
+            var (items, next) = await repository.QueryDispatchesAsync(new DispatchQueryFilter(), new DispatchPaginationOptions { PageSize = 1, PageToken = token }, CancellationToken.None);
+            seen.AddRange(items.Select(item => item.ReleaseName));
+            if (next is null) break;
+            token = next;
+        }
+
+        Assert.Equal(["third", "second", "first"], seen.ToArray());
     }
 }

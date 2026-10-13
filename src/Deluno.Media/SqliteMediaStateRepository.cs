@@ -1993,7 +1993,7 @@ public sealed class SqliteMediaStateRepository(
               AND (@fileIdentity IS NULL OR file_identity = @fileIdentity)
               AND (@filePath IS NULL OR file_path = @filePath)
               AND (@fileSizeBytes IS NULL OR file_size_bytes = @fileSizeBytes)
-            ORDER BY evaluated_utc DESC, id DESC
+            ORDER BY evaluated_utc DESC, rowid DESC
             LIMIT 1;
             """;
         AddParameter(command, "@mediaId", mediaId);
