@@ -3,6 +3,7 @@ using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -14,12 +15,15 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// made straight away, so it saw the job and called the removal failed.
 ///
 /// <para>The stand-in below lists the job for the next few looks after the delete and then drops it, which is the
-/// golden run's behaviour as the record gives it. The golden run's logs hold no recorded NZBGet replies, so the list
-/// shapes are the ones the other tests in this folder use.</para>
+/// golden run's behaviour as the record gives it. Every reply it gives is NZBGet 26.3's own, recorded (#1237).</para>
 /// </summary>
 public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
 {
-    /// <summary>A stand-in NZBGet whose edit answers true and whose lists keep the job for a few looks.</summary>
+    /// <summary>
+    /// A stand-in NZBGet that answers from NZBGet 26.3's recorded replies (#1237): the job is the recorded downloading film (id 26) or
+    /// the recorded finished one in the history, a removal is answered as the recording answers it, and the lists keep the job for a few
+    /// looks after the delete and then show the recorded lists of a client that no longer has it.
+    /// </summary>
     private sealed class SlowNzbGet(int lookingLeftAfterDelete, bool queued = true, int historyLooksLeft = 0)
     {
         private bool _inQueue = queued;
@@ -39,7 +43,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
             {
                 _deleteSeen = true;
                 _stillListedFor = lookingLeftAfterDelete;
-                return Json("{\"result\":true}");
+                return RecordedReplies.Nzbget("removed-without-data").Response("editqueue");
             }
 
             if (body.Contains("\"listgroups\"", StringComparison.Ordinal))
@@ -50,16 +54,16 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
                     if (_stillListedFor-- <= 0) _inQueue = false;
                 }
 
-                return Json(_inQueue ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Stuckfilm\",\"Status\":\"DOWNLOADING\",\"FileSizeHi\":0,\"RemainingSizeHi\":0}]}" : "{\"result\":[]}");
+                return _inQueue ? RecordedReplies.Nzbget("downloading").Response("listgroups") : RecordedReplies.Nzbget("removed-without-data").Response("listgroups");
             }
 
             if (body.Contains("\"history\"", StringComparison.Ordinal))
             {
                 if (_deleteSeen && _inHistory && historyLooksLeft-- <= 0) _inHistory = false;
-                return Json(_inHistory ? "{\"result\":[{\"NZBID\":42,\"NZBName\":\"Stuckfilm\",\"Status\":\"SUCCESS/ALL\",\"FileSizeHi\":0}]}" : "{\"result\":[]}");
+                return _inHistory ? RecordedReplies.Nzbget("finished-single-file").Response("history\"") : RecordedReplies.Nzbget("removed-with-data").Response("history\"");
             }
 
-            return Json("{\"result\":null}");
+            throw new InvalidOperationException("NZBGet was asked something the recordings do not answer: " + body);
         }
     }
 
@@ -71,7 +75,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         var nzb = new SlowNzbGet(lookingLeftAfterDelete: 2);
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)))
-            .ExecuteActionAsync(NzbGet(), action, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), action, "26", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.DoesNotContain("still has this download", result.Message);
@@ -84,7 +88,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         var nzb = new SlowNzbGet(lookingLeftAfterDelete: int.MaxValue);
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)), removalSettle: TimeSpan.FromMilliseconds(400), removalPoll: TimeSpan.FromMilliseconds(50))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "26", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("still has this download", result.Message);
@@ -97,7 +101,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         var nzb = new SlowNzbGet(lookingLeftAfterDelete: 0, queued: false, historyLooksLeft: 2);
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "26", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
     }
@@ -109,7 +113,7 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         var timer = Stopwatch.StartNew();
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "26", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1), $"took {timer.Elapsed}");
@@ -124,13 +128,13 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
             return body.Contains("editqueue", StringComparison.Ordinal)
-                ? Json("{\"result\":null,\"error\":{\"code\":1,\"message\":\"Access denied\"}}")
+                ? RecordedReplies.Json(RecordedReplies.Nzbget("rpc-error").Body("nosuchmethod", ("error.message", "Access denied")))
                 : nzb.Answer(request);
         });
         var timer = Stopwatch.StartNew();
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "26", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("Access denied", result.Message);
@@ -143,11 +147,14 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
         var handler = new StubHandler(request =>
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
-            return Json(body.Contains("\"editqueue\"", StringComparison.Ordinal) ? "{\"result\":true}" : "{\"result\":[]}");
+            // A client that has no job with that id: its recorded lists, which hold other jobs, and the recorded reply to an edit of an id it never had.
+            return body.Contains("\"editqueue\"", StringComparison.Ordinal) ? RecordedReplies.Nzbget("unknown-id").Response("editqueue")
+                : body.Contains("\"listgroups\"", StringComparison.Ordinal) ? RecordedReplies.Nzbget("idle").Response("listgroups")
+                : RecordedReplies.Nzbget("idle").Response("history\"");
         });
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "42", CancellationToken.None);
+            .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "26", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("has no download with that id", result.Message);
@@ -157,7 +164,8 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
     [Fact]
     public async Task A_sabnzbd_that_still_lists_the_job_straight_after_a_removal_fails_without_waiting()
     {
-        const string history = "{\"history\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc\",\"name\":\"Stuckfilm\",\"status\":\"Completed\",\"storage\":\"/nowhere/Stuckfilm\",\"path\":\"/nowhere/Stuckfilm\"}]}}";
+        // SABnzbd 5.1.3's recorded history, which holds the finished film still after the delete, as the stand-in's SABnzbd keeps it.
+        const string jobId = "7690dfab-c8ad-4a5e-92cd-427a14ce4ea6";
         var asked = new List<string>();
         var handler = new StubHandler(request =>
         {
@@ -165,15 +173,17 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
             asked.Add(query);
             if (query.Contains("name=delete", StringComparison.Ordinal))
             {
-                return Json("{\"status\":true}");
+                return RecordedReplies.Sabnzbd("removed-with-data").Response("name=delete");
             }
 
-            return Json(query.Contains("mode=history", StringComparison.Ordinal) ? history : "{\"queue\":{\"status\":\"Idle\",\"slots\":[]}}");
+            return query.Contains("mode=history", StringComparison.Ordinal)
+                ? RecordedReplies.Sabnzbd("finished-single-file").Response("mode=history")
+                : RecordedReplies.Sabnzbd("idle").Response("mode=queue");
         });
         var timer = Stopwatch.StartNew();
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
-            .ExecuteActionAsync(Client("sabnzbd", "SABnzbd", "api-key"), DownloadClientActions.DeleteWithData, "SABnzbd_nzo_abc", CancellationToken.None);
+            .ExecuteActionAsync(Client("sabnzbd", "SABnzbd", "api-key"), DownloadClientActions.DeleteWithData, jobId, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("still has this download", result.Message);
