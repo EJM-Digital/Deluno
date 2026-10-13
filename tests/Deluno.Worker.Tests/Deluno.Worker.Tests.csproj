@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <Compile Include="../Support/ScriptedStateFileSystem.cs" Link="Support/ScriptedStateFileSystem.cs" />
+    <!-- The recorded real replies of external apps and their loader (#1237). -->
+    <Compile Include="../fixtures/RecordedReplies.cs" Link="Recorded/RecordedReplies.cs" />
   </ItemGroup>
 
   <ItemGroup>
