@@ -112,43 +112,6 @@ public sealed class WorkPlanner(
             cancellationToken);
 
     /// <summary>
-    /// Asks each processor whether it is answering (#577).
-    ///
-    /// <para>Indexers and download clients have been checked on a schedule for
-    /// a long time; processors were checked only when a file was handed to one,
-    /// or when somebody pressed Test. So a processor that stopped between
-    /// submissions was not noticed until a file was already stuck behind it,
-    /// and — worse — health could be set to unreachable by the watcher and
-    /// never set back, so after one outage the answer on screen was stale for
-    /// good.</para>
-    /// </summary>
-    public Task RunProcessorHealthPassAsync(
-        IProcessorRepository processorRepository,
-        IProcessorConnectionService processorConnections,
-        CancellationToken cancellationToken)
-        => RunScheduledPassAsync(
-            SystemTasks.ProcessorHealth,
-            async () =>
-            {
-                foreach (var connection in await processorRepository.ListProcessorConnectionsAsync(cancellationToken))
-                {
-                    if (!connection.IsEnabled) continue;
-
-                    var support = await processorConnections.GetStatusSupportAsync(connection, cancellationToken);
-                    var healthy = support.Answer is not (ProcessorAnswer.Unreachable or ProcessorAnswer.Forbidden);
-                    await processorRepository.RecordProcessorConnectionHealthAsync(
-                        connection.Id,
-                        healthy ? "healthy" : support.Answer == ProcessorAnswer.Forbidden ? "degraded" : "unreachable",
-                        healthy
-                            ? null
-                            : support.Message ?? $"{connection.Name} did not answer.",
-                        cancellationToken);
-                }
-            },
-            "Processor health pass failed.",
-            cancellationToken);
-
-    /// <summary>
     /// Says again what a processor did not hear about the files it handed back
     /// (#580). Deluno said each one once and gave up, while Weir retries its own
     /// reports to Deluno on a heartbeat: reliable in one direction only.

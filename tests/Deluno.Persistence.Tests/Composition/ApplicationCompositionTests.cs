@@ -48,6 +48,7 @@ public sealed class ApplicationCompositionTests
 
         Assert.NotEmpty(hosted);
         Assert.All(hosted, service => Assert.NotNull(service));
+        Assert.Contains(hosted, service => service is Deluno.Worker.Services.ProcessorHealthWatcher);  // #1261: processor health has its own loop
     }
 
     /// <summary>
