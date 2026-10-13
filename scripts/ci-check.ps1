@@ -182,6 +182,29 @@ if ($tray.ExitCode -eq 0) {
     Write-Fail "tray would fail on Linux CI"
 }
 
+# The tray's tests too: on Linux they build as an empty net10.0 assembly, and a file linked in from outside the project
+# folder escapes the project's own "**/*.cs" removal (rc.30.29: ScriptedStateFileSystem.cs broke CI's backend build).
+# A separate obj and bin folder, so the Linux target does not disturb the Windows build's restore.
+$linuxSim = Join-Path ([IO.Path]::GetTempPath()) "deluno-traytests-linuxsim"
+$trayTests = Invoke-LoggedCommand -FilePath $dotnetPath -Arguments @(
+    "build",
+    "tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj",
+    "-p:SimulateLinuxCI=true",
+    "-p:BaseIntermediateOutputPath=$linuxSim/obj/",
+    "-p:OutputPath=$linuxSim/bin/",
+    "--configuration",
+    "Release"
+)
+
+if ($trayTests.ExitCode -eq 0) {
+    Write-Ok "tray tests build as an empty assembly"
+} elseif (Test-EnvLock $trayTests.Output) {
+    Write-Warn "Tray tests build locked by running server; CI will catch real errors"
+} else {
+    if ($trayTests.Output) { Write-Host $trayTests.Output }
+    Write-Fail "tray tests would fail on Linux CI"
+}
+
 Write-Host ""
 Write-Host "Frontend"
 
