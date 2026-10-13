@@ -143,7 +143,7 @@ public sealed class SqliteLibraryImportRunsRepository(
 
         return await ReadOneAsync(
             connection,
-            SelectColumns + " WHERE library_id = @libraryId ORDER BY created_utc DESC, id DESC LIMIT 1;",
+            SelectColumns + " WHERE library_id = @libraryId ORDER BY created_utc DESC, rowid DESC LIMIT 1;",
             command => AddParameter(command, "@libraryId", libraryId),
             cancellationToken);
     }
@@ -384,7 +384,7 @@ public sealed class SqliteLibraryImportRunsRepository(
             SELECT id, run_id, library_id, source_path, kind, detail, created_utc
             FROM library_import_issues
             WHERE run_id = @runId
-            ORDER BY created_utc ASC, id ASC
+            ORDER BY created_utc ASC, rowid ASC
             LIMIT @take;
             """;
         AddParameter(command, "@runId", runId);

@@ -19,7 +19,7 @@ public sealed class DelunoStorageBootstrapService(
         // Before the first connection, and that is the whole point. A restore
         // cannot write over databases the application is holding open, so the
         // upload is staged and applied here - the one moment nothing has them.
-        var restored = StagedRestore.ApplyPending(storageOptions.Value.DataRoot);
+        var restored = StagedRestore.ApplyPending(storageOptions.Value.DataRoot, message => logger.LogWarning("{Message}", message));
         if (restored.Count > 0)
         {
             logger.LogWarning(

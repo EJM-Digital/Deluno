@@ -421,6 +421,62 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Equal(["qbittorrent", "sabnzbd"], _saved.Keys.OrderBy(key => key).ToArray());
     }
 
+    // ---- #1260: an unread list is not an empty one; the sweep forgets sign-ins and that cannot be undone.
+
+    [Fact]
+    public async Task A_busy_install_record_does_not_make_the_sweep_forget_every_stored_sign_in()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { ReadFault = (_, _) => Deluno.Tests.Support.ScriptedStateFileSystem.SharingViolation() };
+        var busy = new FileInstalledComponentRecord(Path.Combine(_folder, "installed-components.json"), io: io);
+
+        var removed = await NewWirer(record: busy).SweepStoredSignInsAsync(CancellationToken.None);
+
+        Assert.Equal(0, removed);
+        Assert.Equal(["qbittorrent"], _saved.Keys.ToArray());
+    }
+
+    [Fact]
+    public async Task A_cut_short_install_record_does_not_make_the_sweep_forget_every_stored_sign_in()
+    {
+        Directory.CreateDirectory(_folder);
+        var path = Path.Combine(_folder, "installed-components.json");
+        File.WriteAllText(path, "[{\"Kind\":\"qbitt");
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
+
+        var removed = await NewWirer(record: new FileInstalledComponentRecord(path)).SweepStoredSignInsAsync(CancellationToken.None);
+
+        Assert.Equal(0, removed);
+        Assert.Equal(["qbittorrent"], _saved.Keys.ToArray());
+    }
+
+    [Theory]
+    [InlineData(StateFileKind.Busy)]
+    [InlineData(StateFileKind.Unreadable)]
+    public async Task Stored_sign_ins_that_cannot_be_read_just_now_are_not_swept(StateFileKind availability)
+    {
+        _saved["mystery"] = new BundledComponentCredentials("d", "e");
+
+        var removed = await NewWirer(credentialsAvailability: availability).SweepStoredSignInsAsync(CancellationToken.None);
+
+        Assert.Equal(0, removed);
+        Assert.Contains("mystery", _saved.Keys);
+    }
+
+    [Fact]
+    public async Task A_connection_that_works_is_still_reported_when_the_installed_list_is_busy_and_cannot_note_it()
+    {
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { ReadFault = (_, _) => Deluno.Tests.Support.ScriptedStateFileSystem.SharingViolation() };
+        var busy = new FileInstalledComponentRecord(Path.Combine(_folder, "installed-components.json"), io: io);
+
+        var result = await NewWirer(record: busy).ConnectAsync("nzbget", null, null, Url, CancellationToken.None);
+
+        Assert.True(result!.Healthy);
+        Assert.Contains(_activity, line => line.Contains("could not note that", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task With_no_way_to_look_the_install_record_alone_decides_what_a_stored_sign_in_is_kept_for()
     {
@@ -551,7 +607,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null, Deluno.Integrations.DownloadClients.IDownloadClientRegistry? registry = null)
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null, Deluno.Integrations.DownloadClients.IDownloadClientRegistry? registry = null, IInstalledComponentRecord? record = null, StateFileKind credentialsAvailability = StateFileKind.Ok)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -563,8 +619,9 @@ public sealed class InstalledComponentWiringTests : IDisposable
         credentials.Setup(store => store.Remove(It.IsAny<string>())).Callback((string kind) => _saved.Remove(kind));
         credentials.Setup(store => store.Has(It.IsAny<string>())).Returns((string kind) => _saved.ContainsKey(kind));
         credentials.Setup(store => store.Kinds()).Returns(() => _saved.Keys.ToArray());
+        credentials.Setup(store => store.Availability()).Returns(credentialsAvailability);
         return new InstalledComponentWirer(
-            _record,
+            record ?? _record,
             credentials.Object,
             new DownloadClientConnector(connections, new FakeTester(this)),
             connections,

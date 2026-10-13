@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Deluno.Api.Network;
+using Deluno.Contracts;
 
 namespace Deluno.Tray;
 
@@ -117,44 +118,28 @@ public interface IStartedComponentsRegistry
     void Add(string kind);
 }
 
-public sealed class FileStartedComponentsRegistry(string? path = null) : IStartedComponentsRegistry
+public sealed class FileStartedComponentsRegistry(string? path = null, IStateFileSystem? io = null) : IStartedComponentsRegistry
 {
     // Under the data root, not the install root Velopack replaces on a reinstall (#1177).
     private readonly string _path = path ?? Path.Combine(ComponentPaths.DataRoot(), "config", "started-components.json");
 
-    public IReadOnlyList<string> Read()
-    {
-        try
-        {
-            return File.Exists(_path)
-                ? JsonSerializer.Deserialize<List<string>>(File.ReadAllText(_path)) ?? []
-                : [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
+    /// <summary>The clients Deluno started. A file that is busy or damaged reads as none, so nothing is started from a guess; a write never starts from this.</summary>
+    public IReadOnlyList<string> Read() => StateFile.ReadLocked<List<string>>(_path, null, io).Value ?? [];
 
+    /// <summary>
+    /// Remembers that Deluno started this client. Throws <see cref="StateFileException"/> (in everyday words) when it could not
+    /// be remembered, leaving the file as it was: the other clients are never dropped from a failed read (#1260).
+    /// </summary>
     public void Add(string kind)
-    {
-        try
-        {
-            var kinds = Read().ToList();
-            if (kinds.Contains(kind, StringComparer.OrdinalIgnoreCase))
+        => StateFile.UpdateOrThrow<List<string>>(
+            _path,
+            current =>
             {
-                return;
-            }
-
-            kinds.Add(kind);
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(kinds));
-        }
-        catch
-        {
-            // Not being able to remember it only means no restart at sign-in.
-        }
-    }
+                var kinds = current ?? [];
+                return kinds.Contains(kind, StringComparer.OrdinalIgnoreCase) ? current : [.. kinds, kind];
+            },
+            "The list of download clients Deluno starts at sign-in",
+            io: io);
 }
 
 /// <summary>

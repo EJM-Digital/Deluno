@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Infrastructure.Storage;
 
 /// <summary>
@@ -32,11 +34,14 @@ public static class StagedRestore
         => Path.Combine(Path.GetFullPath(dataRoot), StagingFolderName, MarkerFileName);
 
     /// <summary>Records that this staged folder should be applied on next start.</summary>
-    public static void Arm(string dataRoot, string stagedFolder)
+    public static void Arm(string dataRoot, string stagedFolder, IStateFileSystem? io = null)
     {
         var marker = MarkerPath(dataRoot);
-        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-        File.WriteAllText(marker, Path.GetFullPath(stagedFolder));
+        // Atomic (#1260): a marker killed half-written would otherwise name a folder that is not there.
+        if (StateFile.Write(marker, Path.GetFullPath(stagedFolder), io) is { } problem)
+        {
+            throw new StateFileException($"The restore could not be set up to apply at the next start: {problem}.");
+        }
     }
 
     /// <summary>Whether a restore is waiting to be applied.</summary>
@@ -48,19 +53,38 @@ public static class StagedRestore
     /// <para>Call this before opening any database. It is deliberately quiet
     /// when nothing is staged: it runs on every start.</para>
     /// </summary>
-    public static IReadOnlyList<string> ApplyPending(string dataRoot)
+    public static IReadOnlyList<string> ApplyPending(string dataRoot, Action<string>? log = null, IStateFileSystem? io = null)
     {
         var root = Path.GetFullPath(dataRoot);
         var marker = MarkerPath(root);
-        if (!File.Exists(marker))
+        var read = StateFile.ReadText(marker, io);
+        if (read.Kind == StateFileKind.Missing)
         {
             return [];
         }
 
-        var staged = File.ReadAllText(marker).Trim();
-        if (string.IsNullOrWhiteSpace(staged) || !Directory.Exists(staged))
+        if (read.Kind == StateFileKind.Busy)
         {
-            // The marker outlived its folder. Clearing it is the only sensible
+            // Not a failed start (#1260): the restore waits for the next one, with the marker and the staged folder untouched.
+            log?.Invoke("A restore is waiting to be applied, but its marker was in use by something else, so it was left for the next start. Nothing was changed.");
+            return [];
+        }
+
+        var staged = read.Value ?? string.Empty;
+        if (read.Kind == StateFileKind.Unreadable || !Directory.Exists(staged))
+        {
+            var stagedFolders = Directory.Exists(Path.GetDirectoryName(marker)!)
+                ? Directory.GetDirectories(Path.GetDirectoryName(marker)!)
+                : [];
+            if (read.Kind == StateFileKind.Unreadable || stagedFolders.Length > 0)
+            {
+                // A marker that is empty, or names a folder that is not there while a staged restore is: it was cut short. Dropping it
+                // would silently lose the restore, so it is kept and said in plain words; the person can apply or remove it by hand.
+                log?.Invoke($"A restore is waiting to be applied, but its marker ({marker}) could not be understood, so it was not applied and nothing was removed. The staged files are in {Path.GetDirectoryName(marker)}; delete that folder to cancel the restore, or restore the backup again.");
+                return [];
+            }
+
+            // The marker outlived its folder, and nothing else is staged. Clearing it is the only sensible
             // move: leaving it means trying and failing on every start for ever.
             File.Delete(marker);
             return [];

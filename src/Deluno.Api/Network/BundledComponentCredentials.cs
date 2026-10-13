@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Security;
 using Deluno.Security.Hardening.Backends;
 using Microsoft.AspNetCore.Builder;
@@ -42,6 +43,9 @@ public interface IBundledComponentCredentialStore
 
     /// <summary>Forgets the saved sign-in for <paramref name="kind"/> (no error when there is none).</summary>
     void Remove(string kind);
+
+    /// <summary>Whether the saved sign-ins can be read right now (#1260). Busy or Unreadable means "unknown", never "none".</summary>
+    StateFileKind Availability() => StateFileKind.Ok;
 
     /// <summary>Every kind that has a saved sign-in, so a leftover one can be swept.</summary>
     IReadOnlyList<string> Kinds() => [];
@@ -104,16 +108,19 @@ public sealed class NoBundledComponentCredentialStore : IBundledComponentCredent
 /// read by another local account, which is acceptable for a password to a
 /// client whose Web UI is bound to this computer only (#1053).
 /// </summary>
-public sealed class FileBundledComponentCredentialStore(string path, ISecretProtector protector) : IBundledComponentCredentialStore
+public sealed class FileBundledComponentCredentialStore(string path, ISecretProtector protector, IStateFileSystem? io = null) : IBundledComponentCredentialStore
 {
     private const string PurposePrefix = "bundled-component:";
-    private static readonly object Gate = new();
+    private const string What = "Deluno's saved app sign-ins";
 
     public static string PathFor(string dataRoot) => Path.Combine(dataRoot, "secrets", "component-credentials.json");
 
     public bool Has(string kind) => Read().ContainsKey(kind);
 
     public IReadOnlyList<string> Kinds() => Read().Keys.ToArray();
+
+    /// <summary>Whether the file can be built on right now: a busy or damaged one cannot, and "no sign-ins" would be a guess.</summary>
+    public StateFileKind Availability() => StateFile.ReadLocked<Dictionary<string, StoredEntry>>(path, null, io).Kind;
 
     public BundledComponentCredentials? TryGet(string kind)
     {
@@ -126,55 +133,39 @@ public sealed class FileBundledComponentCredentialStore(string path, ISecretProt
         return string.IsNullOrEmpty(password) ? null : new BundledComponentCredentials(entry.Username, password);
     }
 
+    /// <summary>Saves the sign-in. Throws <see cref="StateFileException"/> (in everyday words) when the file is busy or damaged: nothing is written then.</summary>
     public void Save(string kind, BundledComponentCredentials credentials)
-    {
-        lock (Gate)
-        {
-            var entries = Read();
-            entries[kind] = new StoredEntry(credentials.Username, protector.Protect(PurposePrefix + kind, credentials.Password));
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
+        => StateFile.UpdateOrThrow<Dictionary<string, StoredEntry>>(
+            path,
+            current =>
             {
-                Directory.CreateDirectory(directory);
-            }
-
-            File.WriteAllText(path, JsonSerializer.Serialize(entries));
-        }
-    }
+                var entries = Copy(current);
+                entries[kind] = new StoredEntry(credentials.Username, protector.Protect(PurposePrefix + kind, credentials.Password));
+                return entries;
+            },
+            What,
+            io: io);
 
     public void Remove(string kind)
-    {
-        lock (Gate)
-        {
-            var entries = Read();
-            if (!entries.Remove(kind))
+        => StateFile.UpdateOrThrow<Dictionary<string, StoredEntry>>(
+            path,
+            current =>
             {
-                return;
-            }
+                var entries = Copy(current);
+                // Nothing to forget: leave the file exactly as it is.
+                return entries.Remove(kind) || current is not null ? entries : null;
+            },
+            What,
+            io: io);
 
-            File.WriteAllText(path, JsonSerializer.Serialize(entries));
-        }
-    }
+    private static Dictionary<string, StoredEntry> Copy(Dictionary<string, StoredEntry>? current)
+        => current is null
+            ? new Dictionary<string, StoredEntry>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, StoredEntry>(current, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The entries, or none when the file is missing, busy or damaged. Only reads use this: a write never starts from it.</summary>
     private Dictionary<string, StoredEntry> Read()
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return new Dictionary<string, StoredEntry>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            var parsed = JsonSerializer.Deserialize<Dictionary<string, StoredEntry>>(File.ReadAllText(path));
-            return parsed is null
-                ? new Dictionary<string, StoredEntry>(StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, StoredEntry>(parsed, StringComparer.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return new Dictionary<string, StoredEntry>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
+        => Copy(StateFile.ReadLocked<Dictionary<string, StoredEntry>>(path, null, io).Value);
 
     private sealed record StoredEntry(string Username, string Password);
 }
