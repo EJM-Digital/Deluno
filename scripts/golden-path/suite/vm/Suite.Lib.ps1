@@ -360,7 +360,7 @@ function Stop-WeirApp {
         Get-Process -Name 'Weir', 'WeirServer' -ErrorAction SilentlyContinue | Stop-Process -Force
         Wait-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition { -not (Get-Process -Name 'WeirServer' -ErrorAction SilentlyContinue) } | Out-Null
         $goneAt = [DateTime]::UtcNow
-        Add-Note 'Weir did not quit from its tray menu in 15 s; its processes were stopped.'
+        Add-Note ("Weir did not quit from its tray menu in 15 s; its processes were stopped.{0}" -f $(if (-not $quit -and $script:TrayMenuMiss) { " Why the menu was not used: $($script:TrayMenuMiss)." } elseif ($quit) { ' The menu item was clicked, but Weir did not go.' } else { '' }))
     }
     $script:S.WeirSession = $null
     [pscustomobject]@{ ViaTray = $quit; At = [DateTime]::UtcNow; GoneAt = $goneAt }
