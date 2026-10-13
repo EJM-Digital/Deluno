@@ -372,24 +372,29 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var saveProblem = AppSettings.Update(saved =>
+            {
+                if (!string.IsNullOrWhiteSpace(request.Mode) && UpdateModes.IsValid(request.Mode))
+                {
+                    saved.UpdateMode = request.Mode;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Channel))
+                {
+                    saved.UpdateChannel = request.Channel.Trim().ToLowerInvariant();
+                }
+
+                if (request.AutoCheck.HasValue)
+                {
+                    saved.AutoCheckUpdates = request.AutoCheck.Value;
+                }
+            });
+            if (saveProblem is not null)
+            {
+                throw new Deluno.Contracts.PlainFailureException(saveProblem);
+            }
+
             var settings = AppSettings.Load();
-
-            if (!string.IsNullOrWhiteSpace(request.Mode) && UpdateModes.IsValid(request.Mode))
-            {
-                settings.UpdateMode = request.Mode;
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.Channel))
-            {
-                settings.UpdateChannel = request.Channel.Trim().ToLowerInvariant();
-            }
-
-            if (request.AutoCheck.HasValue)
-            {
-                settings.AutoCheckUpdates = request.AutoCheck.Value;
-            }
-
-            settings.Save();
 
             // Force manager refresh if channel changed.
             _manager = null;

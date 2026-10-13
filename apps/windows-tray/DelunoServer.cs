@@ -127,7 +127,7 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
 
         _cts?.Dispose();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var settings = AppSettings.Load();
+        var settings = AppSettings.LoadForStart();
         var port = PortOverride ?? settings.Port;
 
         var builder = TrayLogging.CreateBuilder(new WebApplicationOptions

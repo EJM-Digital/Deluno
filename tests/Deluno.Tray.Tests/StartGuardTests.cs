@@ -304,6 +304,69 @@ public sealed class StartGuardTests : IDisposable
         return Path.Combine(dir!.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
     }
 
+    // ------------------------------------------------------------------ #1260: the guard's own file
+
+    private string GuardFile => Path.Combine(_folder, ProcessRelaunch.GuardFileName);
+
+    private ProcessRelaunch RelaunchOn(Deluno.Tests.Support.ScriptedStateFileSystem io, Launcher launcher, Log log)
+        => new(_folder, _time, launcher, pid: 321, exePath: @"C:\Apps\Deluno\Deluno.exe", log, io);
+
+    [Fact]
+    public void A_restart_record_that_is_busy_is_not_an_empty_one_so_the_guard_does_not_start_over_without_it()
+    {
+        Assert.True(Relaunch(new Launcher()).TryRestart("a"));
+        Assert.True(Relaunch(new Launcher()).TryRestart("b"));
+        var before = File.ReadAllText(GuardFile);
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { ReadFault = (_, _) => Deluno.Tests.Support.ScriptedStateFileSystem.SharingViolation() };
+        var launcher = new Launcher();
+        var log = new Log();
+
+        var restarted = RelaunchOn(io, launcher, log).TryRestart("hung");
+
+        Assert.False(restarted);
+        Assert.Empty(launcher.Launched);
+        Assert.Contains("in use by something else", log.ToString());
+        Assert.Equal(before, File.ReadAllText(GuardFile));
+    }
+
+    [Fact]
+    public void A_restart_record_with_a_delete_pending_is_busy_too()
+    {
+        Assert.True(Relaunch(new Launcher()).TryRestart("a"));
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { ReadFault = (_, _) => Deluno.Tests.Support.ScriptedStateFileSystem.AccessDenied() };
+        var launcher = new Launcher();
+
+        Assert.False(RelaunchOn(io, launcher, new Log()).TryRestart("hung"));
+        Assert.Empty(launcher.Launched);
+    }
+
+    [Fact]
+    public void A_damaged_restart_record_is_kept_as_a_copy_and_counted_as_empty_so_a_hung_start_can_still_be_freed()
+    {
+        File.WriteAllText(GuardFile, "[\"2026-10-13T08:5");
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { Now = Epoch };
+        var launcher = new Launcher();
+        var log = new Log();
+
+        var restarted = RelaunchOn(io, launcher, log).TryRestart("hung");
+
+        Assert.True(restarted);
+        Assert.Single(launcher.Launched);
+        Assert.Contains("was damaged", log.ToString());
+        Assert.Single(Directory.GetFiles(_folder, ProcessRelaunch.GuardFileName + ".unreadable-*"));
+    }
+
+    [Fact]
+    public void A_restart_that_cannot_be_recorded_is_said_in_the_log_not_swallowed()
+    {
+        var io = new Deluno.Tests.Support.ScriptedStateFileSystem { MoveFault = (_, _) => Deluno.Tests.Support.ScriptedStateFileSystem.SharingViolation() };
+        var log = new Log();
+
+        Assert.True(RelaunchOn(io, new Launcher(), log).TryRestart("hung"));
+
+        Assert.Contains("could not record this restart", log.ToString());
+    }
+
     // ------------------------------------------------------------------ the tray's words
 
     [Fact]

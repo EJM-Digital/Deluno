@@ -45,6 +45,7 @@ public sealed class ACutShortStateFileIsNeverWrittenOverTests : IDisposable
     {
         const string cut = "[\"nzbget\",\"qbitt";
         var path = Path.Combine(_root, "started-components.json");
+        Directory.CreateDirectory(_root);
         File.WriteAllText(path, cut);
 
         try { new FileStartedComponentsRegistry(path).Add("deluge"); } catch (IOException) { }

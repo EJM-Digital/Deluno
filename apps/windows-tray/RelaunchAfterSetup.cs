@@ -427,7 +427,16 @@ internal static class HeartbeatEvidence
         string? configured = null;
         try
         {
-            configured = AppSettings.Load().DataRoot;
+            var settings = AppSettings.Load();
+            if (settings.ValuesAreGuessed)
+            {
+                // A settings file that cannot be read does not say where a custom data root is (#1260): look only in the default folders, and say so.
+                RelaunchAfterSetup.LogDecision($"{settings.LoadProblem} The jobs database heartbeat was looked for in the default folders only.");
+            }
+            else
+            {
+                configured = settings.DataRoot;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {

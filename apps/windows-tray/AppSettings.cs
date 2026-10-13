@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using System.Text.Json.Serialization;
 using System.Reflection;
 
@@ -41,6 +42,32 @@ public sealed class AppSettings
             LegacyDefaultDataRoot: GetLegacyDefaultDataRoot());
     }
 
+    /// <summary>
+    /// Set when the settings file exists but could not be read (busy for the whole wait, or damaged), in everyday words.
+    /// While it is set, <see cref="Save"/> refuses: these values stand in for the file and must never be written over it (#1260).
+    /// </summary>
+    [JsonIgnore]
+    public string? LoadProblem { get; private set; }
+
+    /// <summary>
+    /// True when <see cref="LoadProblem"/> is set and these values are the defaults, not what the file held. A busy file read
+    /// again gives the last values this process read, which are not guessed; a damaged one, or a busy one at the first read, is.
+    /// </summary>
+    [JsonIgnore]
+    public bool ValuesAreGuessed { get; private set; }
+
+    /// <summary>Test seam: the disk. A test makes the settings file busy or cut short through this.</summary>
+    internal static IStateFileSystem Io { get; set; } = RealStateFileSystem.Instance;
+
+    private static readonly object LastGoodGate = new();
+    private static AppSettings? _lastGood;
+
+    /// <summary>
+    /// The settings. A missing file gives the defaults (a first run). A file that is busy is waited for; one that stays busy gives
+    /// the last values this process read, or the defaults if it never read any, with <see cref="LoadProblem"/> set. A damaged file
+    /// is copied aside (timestamped), logged, and gives the same. Whenever <see cref="LoadProblem"/> is set nothing saves these
+    /// values over the file (#1260).
+    /// </summary>
     public static AppSettings Load()
     {
         var pathToRead = ResolveConfigPath(out var loadedFromLegacyPath);
@@ -59,54 +86,159 @@ public sealed class AppSettings
             return settings;
         }
 
-        try
+        var read = StateFile.Read<AppSettings>(pathToRead, JsonOptions, Io);
+        switch (read.Kind)
         {
-            var json = File.ReadAllText(pathToRead);
-            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
-            settings.DataRoot = NormalizeDataRoot(settings.DataRoot);
-            if (!Deluno.Api.Updates.UpdateModes.IsValid(settings.UpdateMode))
-            {
-                settings.UpdateMode = Deluno.Api.Updates.UpdateModes.DownloadBackground;
-            }
-
-            if (string.IsNullOrWhiteSpace(settings.UpdateChannel))
-            {
-                settings.UpdateChannel = GetDefaultUpdateChannel();
-            }
-
-            if (string.IsNullOrWhiteSpace(settings.UpdateSource))
-            {
-                settings.UpdateSource = "https://github.com/jampat000/Deluno";
-            }
-
-            // If settings were loaded from the legacy path, transparently persist a normalized
-            // copy to the current path so subsequent runs use a single canonical location.
-            if (loadedFromLegacyPath)
-            {
-                TryPersistPrimaryConfig(settings);
-            }
-
-            return settings;
+            case StateFileKind.Missing:
+                // Removed between the look and the read: the same as no file.
+                return new AppSettings { DataRoot = ResolveFallbackDataRoot() };
+            case StateFileKind.Busy:
+                return Unread($"Deluno could not read its settings file ({pathToRead}) because something else was using it.");
+            case StateFileKind.Unreadable:
+                var kept = StateFile.KeepUnreadableCopy(pathToRead, Io);
+                var words = $"Deluno could not read its settings file ({pathToRead}) because it is damaged ({read.Detail}).{(kept is null ? string.Empty : $" A copy was kept as {Path.GetFileName(kept)}.")}";
+                HookLog.Write(words);
+                HookLog.Write(words, TrayStartLog.FileName);
+                return Unread(words);
         }
-        catch
+
+        var loaded = read.Value!;
+        loaded.DataRoot = NormalizeDataRoot(loaded.DataRoot);
+        if (!Deluno.Api.Updates.UpdateModes.IsValid(loaded.UpdateMode))
         {
-            return new AppSettings();
+            loaded.UpdateMode = Deluno.Api.Updates.UpdateModes.DownloadBackground;
+        }
+
+        if (string.IsNullOrWhiteSpace(loaded.UpdateChannel))
+        {
+            loaded.UpdateChannel = GetDefaultUpdateChannel();
+        }
+
+        if (string.IsNullOrWhiteSpace(loaded.UpdateSource))
+        {
+            loaded.UpdateSource = "https://github.com/jampat000/Deluno";
+        }
+
+        // If settings were loaded from the legacy path, transparently persist a normalized
+        // copy to the current path so subsequent runs use a single canonical location.
+        if (loadedFromLegacyPath)
+        {
+            TryPersistPrimaryConfig(loaded);
+        }
+
+        lock (LastGoodGate)
+        {
+            _lastGood = loaded.Copy();
+        }
+
+        return loaded;
+    }
+
+    /// <summary>
+    /// The settings for a start. Throws <see cref="StateFileException"/>, in everyday words, when the file could not be read and
+    /// the values would be guesses: starting on the default folders could hide a custom data root, and look like an empty install.
+    /// The supervisor retries the start, tells the person in a balloon, and the reason goes to the start log.
+    /// </summary>
+    public static AppSettings LoadForStart()
+    {
+        var settings = Load();
+        if (settings.ValuesAreGuessed)
+        {
+            throw new StateFileException($"{settings.LoadProblem} Deluno did not start, because starting on the default folders could hide your data. Close anything using that file and choose Restart; if the file is damaged, put the kept copy back after fixing it, or delete it to start with the defaults.");
+        }
+
+        return settings;
+    }
+
+    /// <summary>The data root, or <see cref="StateFileException"/> when the settings could not be read and the root would be a guess.</summary>
+    public static string RequireDataRoot()
+    {
+        var settings = Load();
+        return settings.ValuesAreGuessed
+            ? throw new StateFileException($"{settings.LoadProblem} Deluno did not use the default folders instead, because that could hide your data.")
+            : settings.DataRoot;
+    }
+
+    /// <summary>
+    /// Changes the saved settings: reads the file again under its lock, applies <paramref name="change"/> and writes the result
+    /// atomically, so two changes never lose each other and nothing is written from a guess. Null when it landed, else why not, in everyday words.
+    /// </summary>
+    public static string? Update(Action<AppSettings> change)
+    {
+        var basis = Load();
+        if (basis.LoadProblem is not null)
+        {
+            return $"{basis.LoadProblem} Nothing was changed.";
+        }
+
+        var result = StateFile.Update<AppSettings>(
+            GetConfigPath(),
+            current =>
+            {
+                var settings = current ?? basis;
+                change(settings);
+                settings.DataRoot = NormalizeDataRoot(settings.DataRoot);
+                return settings;
+            },
+            "Deluno's settings file",
+            JsonOptions,
+            Io);
+        return result.Problem;
+    }
+
+    private static AppSettings Unread(string problem)
+    {
+        AppSettings settings;
+        bool guessed;
+        lock (LastGoodGate)
+        {
+            guessed = _lastGood is null;
+            settings = _lastGood?.Copy() ?? new AppSettings();
+        }
+
+        settings.LoadProblem = problem;
+        settings.ValuesAreGuessed = guessed;
+        return settings;
+    }
+
+    private AppSettings Copy() => new()
+    {
+        Port = Port,
+        DataRoot = DataRoot,
+        UpdateMode = UpdateMode,
+        UpdateChannel = UpdateChannel,
+        AutoCheckUpdates = AutoCheckUpdates,
+        UpdateSource = UpdateSource,
+        AllowedHostsForceDisabled = AllowedHostsForceDisabled
+    };
+
+    /// <summary>Test seam: forgets the values this process last read.</summary>
+    internal static void ForgetLastRead()
+    {
+        lock (LastGoodGate)
+        {
+            _lastGood = null;
         }
     }
 
-    public void Save()
+    /// <summary>Writes these settings. Returns null when they landed, else why not, in everyday words. Refuses while <see cref="LoadProblem"/> is set.</summary>
+    public string? Save()
     {
-        var configPath = GetConfigPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        if (LoadProblem is not null)
+        {
+            return $"{LoadProblem} Nothing was saved.";
+        }
+
         DataRoot = NormalizeDataRoot(DataRoot);
-        File.WriteAllText(configPath, JsonSerializer.Serialize(this, JsonOptions));
+        var problem = StateFile.Write(GetConfigPath(), JsonSerializer.Serialize(this, JsonOptions), Io);
+        return problem is null ? null : $"Deluno could not save its settings: {problem}.";
     }
 
     private static string? ResolveConfigPath(out bool loadedFromLegacyPath)
     {
         loadedFromLegacyPath = false;
         var configPath = GetConfigPath();
-        if (File.Exists(configPath))
+        if (Io.Exists(configPath))
         {
             return configPath;
         }
@@ -114,14 +246,14 @@ public sealed class AppSettings
         // Where it was kept before #1177: inside the install folder Velopack's Setup replaces on a reinstall.
         // Read it from there once and write it to the current path (the same copy-forward the ProgramData fallback gets).
         var installFolderConfigPath = GetInstallFolderConfigPath();
-        if (File.Exists(installFolderConfigPath))
+        if (Io.Exists(installFolderConfigPath))
         {
             loadedFromLegacyPath = true;
             return installFolderConfigPath;
         }
 
         var legacyConfigPath = GetLegacyConfigPath();
-        if (File.Exists(legacyConfigPath))
+        if (Io.Exists(legacyConfigPath))
         {
             loadedFromLegacyPath = true;
             return legacyConfigPath;
@@ -156,26 +288,11 @@ public sealed class AppSettings
 
     private static void TryPersistPrimaryConfig(AppSettings settings)
     {
-        try
-        {
-            var configPath = GetConfigPath();
-            Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
-            var normalized = new AppSettings
-            {
-                Port = settings.Port,
-                DataRoot = NormalizeDataRoot(settings.DataRoot),
-                UpdateMode = settings.UpdateMode,
-                UpdateChannel = settings.UpdateChannel,
-                AutoCheckUpdates = settings.AutoCheckUpdates,
-                UpdateSource = settings.UpdateSource,
-                AllowedHostsForceDisabled = settings.AllowedHostsForceDisabled
-            };
-            File.WriteAllText(configPath, JsonSerializer.Serialize(normalized, JsonOptions));
-        }
-        catch
-        {
-            // Keep legacy-path fallback behavior if primary-path persistence fails.
-        }
+        // Only ever called when the primary file does not exist yet, so it never replaces a file that holds the person's settings.
+        var normalized = settings.Copy();
+        normalized.DataRoot = NormalizeDataRoot(settings.DataRoot);
+        // A failure to keep the copy is not worth stopping for: the next load reads the legacy path again and tries once more.
+        _ = StateFile.Write(GetConfigPath(), JsonSerializer.Serialize(normalized, JsonOptions), Io);
     }
 
     private static string ResolveFallbackDataRoot()
