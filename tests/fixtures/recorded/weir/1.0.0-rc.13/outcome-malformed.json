@@ -1,0 +1,167 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "outcome-malformed",
+  "recordedAt": "2026-10-13T21:26:23Z",
+  "note": "Outcome posts whose body is wrong: an unknown outcome word, a missing outcome, not JSON; with the secret and without.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "body": {
+          "outcome": "bogus",
+          "occurredUtc": "2026-10-13T21:26:23.1292625Z"
+        }
+      },
+      "reply": {
+        "status": 422,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": [
+            {
+              "type": "literal_error",
+              "loc": [
+                "body",
+                "outcome"
+              ],
+              "msg": "Input should be 'imported' or 'not-imported'",
+              "input": "bogus",
+              "ctx": {
+                "expected": "'imported' or 'not-imported'"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "body": {
+          "occurredUtc": "yesterday"
+        }
+      },
+      "reply": {
+        "status": 422,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": [
+            {
+              "type": "missing",
+              "loc": [
+                "body",
+                "outcome"
+              ],
+              "msg": "Field required",
+              "input": {
+                "occurredUtc": "yesterday"
+              }
+            },
+            {
+              "type": "datetime_parsing",
+              "loc": [
+                "body",
+                "occurredUtc"
+              ],
+              "msg": "Input should be a valid datetime, invalid character in year",
+              "input": "yesterday"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "bodyText": "this is not json"
+      },
+      "reply": {
+        "status": 422,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": [
+            {
+              "type": "json_invalid",
+              "loc": [
+                "body",
+                0
+              ],
+              "msg": "JSON decode error",
+              "input": {},
+              "ctx": {
+                "error": "Expecting value"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "body": {
+          "outcome": "bogus"
+        }
+      },
+      "reply": {
+        "status": 422,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": [
+            {
+              "type": "literal_error",
+              "loc": [
+                "body",
+                "outcome"
+              ],
+              "msg": "Input should be 'imported' or 'not-imported'",
+              "input": "bogus",
+              "ctx": {
+                "expected": "'imported' or 'not-imported'"
+              }
+            },
+            {
+              "type": "missing",
+              "loc": [
+                "body",
+                "occurredUtc"
+              ],
+              "msg": "Field required",
+              "input": {
+                "outcome": "bogus"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371c38837e979272e31cd3ce6c3a/outcome",
+        "bodyText": "plain"
+      },
+      "reply": {
+        "status": 415,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Send the body as application/json."
+        }
+      }
+    }
+  ]
+}

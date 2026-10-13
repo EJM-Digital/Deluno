@@ -4,11 +4,20 @@ Every call Deluno makes to Weir, every report Weir makes to Deluno, each reply, 
 recording and test that prove the row (#1239). Weir's own tests replay Deluno's side; Deluno's tests replay Weir's
 recorded replies. A change to either side's shape fails a test before it ships.
 
+- **Deluno's requests** are recorded from the real Deluno (`tests/fixtures/recorded/deluno/<version>/<state>.json`, 1.0.0-rc.30.30),
+  written down with their headers by a recording proxy between the real Deluno and the real Weir (`Start-RecordingProxy.ps1`,
+  `Collect-DelunoSide.ps1`; the proxy was in front of Weir and in front of Deluno, and both connections were put back after). The same
+  folder holds Weir's reports to Deluno and Deluno's replies to them.
 - **Weir's replies** are recorded from the real Weir (`tests/fixtures/recorded/weir/<version>/<state>.json`, newest
   1.0.0-rc.13; how they are recorded: `tests/fixtures/recorded/README.md`). No test writes a Weir reply itself.
 - **The tests** are in `tests/Deluno.Integrations.Tests/Processors/WeirContract/`:
-  - `WeirContractClientTests`: the real `ProcessorConnectionService` reads each recording, and the request Deluno
-    sends is held against the recorded request.
+  - `WeirContractClientTests`: the real `ProcessorConnectionService` reads each recording of Weir's replies.
+  - `WeirRealExchangeTests`: the request Deluno really sent (hand-off, outcome, status poll, cancel, the two asks) is held
+    against Deluno's own client, member for member and header for header, and Weir's recorded reply is read from it;
+    Weir's real error replies (wrong secret, unknown id, refused body) are read by the client.
+  - `WeirPlainTextFiveHundredTests`: the one reply that cannot be recorded (a plain-text 500); see `MISSING.md`.
+  - `tests/Deluno.Persistence.Tests/Api/WeirRealReportsTests.cs`: Weir's real reports to Deluno, posted to the real events
+    endpoint, answered as recorded.
   - `WeirContractBehaviourTests`: the real outcome delivery, hand-off cancellation and hand-off watcher act on what the
     client read; each test names what is stored, what Activity says and whether Deluno asks again.
   - `EveryWeirRecordingIsUsedByAContractTestTests`: the guard. It fails on a recording no contract test names, and on
@@ -21,7 +30,7 @@ recorded replies. A change to either side's shape fails a test before it ships.
   (`Down`) and assert the same rows below as "unreachable". See `tests/fixtures/recorded/MISSING.md`.
 
 Words in the tables: *Test* names a method in `WeirContractClientTests` (client) or `WeirContractBehaviourTests`
-(behaviour). Request rows are held by the `The_hand_off_Deluno_sends…` and `The_outcome_Deluno_sends…` tests.
+(behaviour). Request rows are held by `WeirRealExchangeTests` against the requests under `deluno/`.
 
 ## 1. Capabilities: `GET /api/v1/intake/capabilities`
 
@@ -81,6 +90,13 @@ scheduledFor, lastChangedUtc, outputPath, outputFiles, message }`. All reads are
 | `200` `cancelled` | `status-cancelled`, `handoff-cancelled` (second call) | state | hand-off ends stopped, "Weir stopped work on <release>."; Activity `processing.cancelled` | `A_hand_off_Weir_says_it_cancelled_ends_stopped` |
 | `404` `{ detail: "Weir has never received this hand-off." }` | `no-record` | not found | inside 15 minutes of the last change: nothing (not believed). After: hand-off ends lost, Activity `processing.lost`, case `processor-lost` raised | `A_hand_off_Weir_has_no_record_of_is_not_believed_inside_the_grace_window`, `A_hand_off_Weir_has_no_record_of_after_the_grace_window_is_lost_and_a_case_is_raised`, `A_hand_off_Weir_never_received_is_not_found` |
 | status of a hand-off read after a refused cancel | `handoff-cancel-working`, `handoff-cancel-too-late`, `handoff-cancel-refused`, `outcome-superseded`, `outcome-superseded-newer` | as above | as above | `A_status_is_read_as_Weir_said_it` |
+| `200` `completed`: a single-file source (qBittorrent) | `real-single-file-status-completed` | state, output path | as above. **`outputPath` is flat in the output folder (`<output>\<file>.mkv`), no folder named after the source** (#1262) | `Weirs_output_for_a_single_file_source_is_flat_and_for_a_release_folder_is_inside_a_folder_named_after_it` |
+| `200` `completed`: a release folder (Transmission) and a Usenet job (SABnzbd; Deluno names the file inside the job folder) | `real-release-folder-status-completed`, `real-usenet-folder-status-completed` | state, output path | as above; the output keeps the folder: `<output>\<release>\<release>.mkv` | same |
+| `200` `queued`, polled every minute while Weir is paused | `deluno/status-ask-queued` | state, place in line | waits | `The_status_poll_Deluno_sends_is_the_one_it_was_recorded_sending_and_a_queued_hand_off_is_read_as_queued` |
+| `401` `{ detail: "Invalid or missing X-Webhook-Secret header." }` (wrong secret, or none) | `status-wrong-secret`, `status-no-secret` | Forbidden | as for the capabilities refusal | `A_status_poll_Weir_refuses_for_its_secret_is_forbidden_and_says_to_check_the_secret` |
+| `404` `{ detail }` for an unknown or malformed id | `status-unknown-id`, `status-malformed-id` | not found | as `no-record` | `A_status_poll_for_an_id_Weir_does_not_know_is_not_found_whatever_the_id_looks_like` |
+| `404` `{ detail: "Unknown media manager source 'x'." }`, checked before the secret | `status-unknown-source` | (Deluno never asks under another source) | none | `A_source_key_Weir_does_not_know_is_answered_404_before_the_secret_is_looked_at` |
+| `403` `{ detail: "Set a webhook secret in Weir so a media manager can ask about hand-offs." }` (no connection of that source has a secret) | `status-no-connection-for-source` | Forbidden | as the 401 | `A_status_poll_under_a_source_Weir_has_no_connection_for_is_forbidden_with_Weirs_instruction` |
 | connection refused | none (simulated) | Unreachable | hand-off kept; the observation records when Weir went quiet; never counted against the file | `A_status_asked_while_Weir_is_switched_off_is_unreachable_not_an_answer`, `A_hand_off_is_not_given_up_while_Weir_is_switched_off` |
 
 ## 5. Cancel: `DELETE /api/v1/intake/handoffs/deluno/{handoffId}`
@@ -90,6 +106,11 @@ scheduledFor, lastChangedUtc, outputPath, outputFiles, message }`. All reads are
 | `204` (still queued) | `handoff-cancelled`, `handoff-cancelled-in-burst-204` | answered | hand-off ends stopped, "...and it was asked to drop <release>"; Activity `processing.cancelled` | `A_cancel_Weir_accepts_with_204_is_answered`, `A_cancel_Weir_accepts_ends_the_hand_off_as_stopped_and_says_Weir_was_asked_to_drop_it` |
 | `409` `{ detail: "This hand-off is working, so Weir did not cancel it." }` | `handoff-cancel-working` | busy, with Weir's words | nothing changed; "Weir has started work ... Deluno will not interrupt it" (a removed title ends it anyway and its output is not imported) | `A_cancel_Weir_refuses_with_409_is_busy_and_carries_Weirs_words`, `A_cancel_Weir_refuses_leaves_the_hand_off_alone_and_says_why`, `A_cancel_Weir_refuses_for_a_title_that_was_removed_ends_the_hand_off_anyway_and_does_not_import_its_output` |
 | `409` `{ detail: "...is completed, so Weir did not cancel it." }` | `handoff-cancel-too-late`, `handoff-cancel-refused` | busy, with Weir's words | same: nothing changed; the next status poll shows `completed` | same |
+| `204` as Deluno sent it: "Stop waiting" on a hand-off Weir holds queued | `deluno/cancel-queued` | answered | as the row above | `A_cancel_of_a_queued_hand_off_is_the_DELETE_it_was_recorded_sending_and_the_204_is_answered` |
+| `401` (wrong secret) | `cancel-wrong-secret` | Forbidden | nothing changed; the hand-off is not ended as dropped | `A_cancel_Weir_refuses_for_its_secret_is_forbidden` |
+| `404` `{ detail }` (an id Weir never received) | `cancel-unknown-id` | not found | hand-off ends stopped, as if it were dropped | `A_cancel_for_a_hand_off_Weir_never_received_is_not_found` |
+| `409` `{ detail: "This hand-off is completed, so Weir did not cancel it." }` (a hand-off finished long ago) | `cancel-completed` | busy, with Weir's words | nothing changed | `A_cancel_of_a_finished_hand_off_is_busy_with_Weirs_words` |
+| `403` `{ detail: "Missing X-Requested-With header…" }` (an Origin header with no X-Requested-With on a POST or DELETE; Deluno sends no Origin) | `origin-without-requested-with` | Forbidden | not sent by Deluno; recorded so Weir's rule stays known | `A_change_with_an_Origin_and_no_X_Requested_With_is_refused_403_and_read_as_forbidden` |
 | connection refused | none (simulated) | Unreachable | hand-off ends stopped and says "it could not be told, so it may still have <release>" | `A_cancel_while_Weir_is_switched_off_ends_the_hand_off_and_says_Weir_may_still_have_it` |
 
 ## 6. Outcome: `POST /api/v1/intake/handoffs/deluno/{handoffId}/outcome`
@@ -108,27 +129,50 @@ skipped files, or why it was not imported).
 | `409` `{ detail, code: "handoff_ended" }` (cancelled, failed) | `outcome-handoff-ended`, `outcome-handoff-ended-after-failed` | refused for good | refused, one attempt, never asked again; Activity `processing.outcome-not-reported` with Weir's words | `A_409_outcome_is_read_by_its_code_never_by_its_words`, `A_hand_off_Weir_says_has_ended_is_refused_for_good_and_Weirs_words_are_in_Activity` |
 | `409` `{ detail, code: "outcome_already_recorded" }` | `outcome-outcome-already-recorded` | settled | settled, never asked again; Activity `processing.outcome-kept` "kept its earlier answer" | `A_409_outcome_is_read_by_its_code_never_by_its_words`, `An_answer_Weir_already_has_is_settled_and_Deluno_stops_telling_it` |
 | `404` `{ detail }` | `no-record` | not found | "never received", not a failure, never asked again; Activity `processing.outcome-never-received` | `An_outcome_for_a_hand_off_Weir_never_received_is_not_found`, `A_hand_off_Weir_never_received_is_not_a_failure_and_is_not_asked_again` |
+| `401` (wrong secret) | `outcome-wrong-secret` | Forbidden | stays owed; the connection is shown refused | `An_outcome_Weir_refuses_for_its_secret_is_forbidden_and_so_stays_owed` |
+| `404` `{ detail: "Weir has never received this hand-off." }` | `outcome-unknown-id` | not found | as the row above | `An_outcome_for_a_hand_off_Weir_never_received_is_not_found` |
+| `422` (unknown outcome word, missing `outcome`, a body that is not JSON; checked before the secret) and `415` (not declared JSON) `{ detail: [...] }` | `outcome-malformed` | refused | the report was wrong; never sent again (Deluno never sends such a body) | `An_outcome_body_Weir_refuses_is_a_refused_report_not_a_report_owed_again` |
 | connection refused | none (simulated) | Unreachable | stays owed with "Deluno could not reach Weir."; `processing.outcome-delayed` | `An_outcome_sent_while_Weir_is_switched_off_is_unreachable_and_so_owed_again`, `An_outcome_sent_while_Weir_is_switched_off_stays_owed_and_says_it_could_not_be_told` |
 
-Other replies a processor may give an outcome (`401`/`403`, `5xx`, `400`/`422`) are read by plain HTTP rules and have no
-Weir recording; they are listed in `tests/fixtures/recorded/MISSING.md`.
+A plain-text `500 Internal Server Error` (the only 5xx Weir can give, for an exception nothing handled) cannot be produced on
+purpose, so it is not recorded; `WeirPlainTextFiveHundredTests` builds it, as a deliberate case (it needs no allow-list entry: the inline-reply check does not recognise a Weir reply), and pins that
+Deluno reads it as "not now" on the status poll, the cancel and the outcome. `429` is never sent by Weir. See
+`tests/fixtures/recorded/MISSING.md`.
 
 ## 7. Reports Weir sends to Deluno: `POST /api/integrations/processors/events`
 
-Replies are documented in `docs/external-integration-api.md` ("Replies and limits"), each held by
-`tests/Deluno.Persistence.Tests/Api/ProcessorCallbackContractTests.cs` and `AProcessorIsNotTakenAtItsWordTests`;
-a late report for a superseded send is held by `ALateReportForARemovedSendIsSettledTests` and
-`AResentReleaseSettlesItsOwnHandOffTests`. **No Weir report body has been recorded** (the report is a request Weir makes,
-and `tests/fixtures/recorded/deluno/` does not exist yet), so those tests build the report themselves from the
-documented shape. This is gap 1 in `tests/fixtures/recorded/MISSING.md`.
+Recorded by the proxy in front of the real Deluno during real hand-offs (`deluno/<version>/events-*`); each recorded body is
+posted to the real endpoint by `WeirRealReportsTests` and must get the recorded answer. The documented replies and limits
+(`docs/external-integration-api.md`, "Replies and limits") stay held by `ProcessorCallbackContractTests` and
+`AProcessorIsNotTakenAtItsWordTests`; a late report for a superseded send by `ALateReportForARemovedSendIsSettledTests` and
+`AResentReleaseSettlesItsOwnHandOffTests`.
+
+| Weir reports | Recording | Deluno answers | Deluno does | Test |
+|---|---|---|---|---|
+| `completed` with `outputPath` and `outputFiles` (a single file; a release folder; a Usenet job) | `events-completed` | `202` `{ status, handoffId, activityId, importJobId }` | an import is queued | `A_finished_hand_off_Weir_reports_is_accepted_and_an_import_is_queued` |
+| `completed` for a release that was sent again | `events-completed-resent` | `202` | the newer send settles from its own report | same |
+| `completed` after the person stopped waiting (the hand-off ended dismissed) | `events-too-late` | `409` `{ message, handoffId, status: "dismissed" }` | no import is queued | `A_finished_hand_off_Weir_reports_after_the_person_stopped_waiting_is_a_409_and_queues_no_import` |
+| `failed`, file under the minimum size (`disposition: "held"`) | `events-failed-under-minimum` | `202` `{ status: "failed", importJobId: null }` | nothing imported; the hand-off ends failed | `A_failed_hand_off_Weir_reports_is_accepted_and_nothing_is_imported` |
+| `failed` with `failureClass: "source_gone"` (the download was deleted) | `events-failed-source-gone` | `202` `{ status: "failed", settled }` | the hand-off ends as source gone | same |
+| `failed`, a file Weir cannot read (`disposition: "held"`) | `events-failed-unreadable` | `202` | nothing imported | same |
+
+The report bodies carry `handoffId`, `status`, `processorName`, `libraryId`, `releaseName`, `message`, then `outputPath` and
+`outputFiles` (a finished file), or `disposition`, `sourceRemoved`, `failureClass` (a failure). Authentication is Weir's Deluno
+API key, which the proxy forwards and never writes down. Not recorded, and listed in `MISSING.md`: `accepted`, `started` and
+`rejected` reports, `not_taken`, and a report for a hand-off Deluno has no row for at all.
 
 ## 8. Deluno's side as fixtures Weir can load
 
-`tests/fixtures/recorded/deluno/` (written by `scripts/recorded-replies/Collect-DelunoSide.ps1` from a recording proxy
-between the real Deluno and the real Weir) does not exist yet. Until it does, the request side of Weir's own recordings
-(`weir/<version>/*.json`) is what Deluno's requests are held against. **Those requests were sent by the recording scripts
-(`Record-Weir.ps1`, `Record-WeirStates.ps1`), written to the documented hand-off and outcome shapes, not by the real
-Deluno.** So `The_hand_off_Deluno_sends…` and `The_outcome_Deluno_sends…` keep Deluno, the scripts and Weir's replies in one
-shape (a change to what Deluno sends fails them), but they are not yet a record of what the real Deluno sent. Request
-headers are not recorded at all; the headers are asserted by the tests above from the code. Both are gap 2 in
-`tests/fixtures/recorded/MISSING.md`.
+`tests/fixtures/recorded/deluno/1.0.0-rc.30.30/` is the real Deluno's side of the talk, recorded by the proxy: its requests (with
+headers: `x-webhook-secret` scrubbed, `idempotency-key`, `content-type`) and Weir's replies. Weir's own tests can load it.
+
+| Recording | What it holds | Test |
+|---|---|---|
+| `handoff-single-file`, `handoff-release-folder`, `handoff-usenet-folder`, `handoff-resend` | the hand-off Deluno sends for a single file, a release folder, a Usenet job, and a release sent again (a new id and key for the same source) | `The_request_Deluno_sends_for_a_hand_off_is_the_request_it_was_recorded_sending`, `A_resend_carries_the_same_source_under_a_new_hand_off_id_and_a_new_key` |
+| `outcome-imported`, `outcome-imported-for-replaced-send`, `outcome-not-imported-removed` | the outcome Deluno tells (importedPath, reason) and Weir's `200` | `The_outcome_Deluno_tells_is_the_outcome_it_was_recorded_telling` |
+| `status-ask-queued`, `cancel-queued` | the status poll and the cancel | the status and cancel tests of `WeirRealExchangeTests` |
+| `capabilities-ask`, `library-folders-ask` | the two asks | `The_capabilities_ask_Deluno_sends_is_the_one_it_was_recorded_sending`, `The_library_folders_ask_Deluno_sends_is_the_one_it_was_recorded_sending` |
+| `events-*` | Weir's reports and Deluno's answers (section 7) | `WeirRealReportsTests` |
+
+The older requests inside `weir/<version>/*.json` were sent by `Record-Weir.ps1` and `Record-WeirStates.ps1` from the documented
+shapes. They are no longer what Deluno's requests are held against; they remain only as the requests that produced Weir's replies.

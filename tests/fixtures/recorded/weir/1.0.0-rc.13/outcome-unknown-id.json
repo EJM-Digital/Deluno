@@ -1,0 +1,30 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "outcome-unknown-id",
+  "recordedAt": "2026-10-13T21:26:22Z",
+  "note": "An outcome post for a hand-off id Weir never received: 404.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/ca6a4588-0458-49c1-ade7-c3c456928d79/outcome",
+        "body": {
+          "outcome": "imported",
+          "occurredUtc": "2026-10-13T21:26:22.4216811Z",
+          "importedPath": "C:\\Media\\Movies\\X.mkv",
+          "reason": null
+        }
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Weir has never received this hand-off."
+        }
+      }
+    }
+  ]
+}

@@ -156,51 +156,6 @@ public sealed class WeirContractClientTests
         Assert.Equal("Deluno could not submit the hand-off. Check the processor connection before retrying.", result.Message);
     }
 
-    // ----- hand-off submit: Deluno's request -----
-
-    /// <summary>
-    /// The request body Deluno builds for the same hand-off is the body Weir was recorded receiving: the same members,
-    /// the same order, the same values. A renamed, added or dropped member fails here before Weir sees it.
-    /// </summary>
-    [Theory]
-    [InlineData("handoff-accepted")]
-    [InlineData("handoff-accepted-missing-file")]
-    [InlineData("handoff-release-folder-accepted")]
-    [InlineData("handoff-source-files-accepted")]
-    [InlineData("handoff-resend-accepted")]
-    [InlineData("handoff-refused-not-watched")]
-    [InlineData("handoff-refused-wrong-secret")]
-    [InlineData("outcome-superseded")]
-    public async Task The_hand_off_Deluno_sends_is_the_hand_off_Weir_was_recorded_receiving(string state)
-    {
-        var recording = Rec(state);
-        var recorded = recording.Exchanges.First(e => e.Request.Method == "POST" && e.Request.Path == "/api/v1/intake/webhook/deluno");
-        var replay = new WeirReplay(recording);
-
-        await SubmitRecordedAsync(recording, replay);
-
-        var sent = Assert.Single(replay.Sent);
-        Assert.Equal("POST", sent.Method);
-        Assert.Equal(recorded.Request.Path, sent.Path);
-        Assert.Equal(
-            Body(recorded.Request.Body).AsObject().Select(p => p.Key),
-            Body(sent.Body).AsObject().Select(p => p.Key));
-        Assert.True(JsonNode.DeepEquals(Body(recorded.Request.Body), Body(sent.Body)), $"Deluno sent {sent.Body}, Weir was recorded receiving {recorded.Request.Body}.");
-    }
-
-    [Fact]
-    public async Task A_hand_off_carries_the_secret_and_a_key_that_changes_when_the_row_is_put_back_to_waiting()
-    {
-        var recording = Rec("handoff-accepted");
-        var replay = new WeirReplay(recording);
-        await SubmitRecordedAsync(recording, replay);
-
-        var sent = Assert.Single(replay.Sent);
-        Assert.Equal(Secret, sent.Headers["X-Webhook-Secret"]);
-        Assert.Matches(@"^[0-9a-f-]{36}:\d+$", sent.Headers["Idempotency-Key"]);
-        Assert.StartsWith(HandoffIdOf(recording) + ":", sent.Headers["Idempotency-Key"]);
-    }
-
     // ----- hand-off status -----
 
     /// <summary>Every status Weir was recorded giving, read the same way: the state, the place in line, the output and Weir's words.</summary>
@@ -379,53 +334,6 @@ public sealed class WeirContractClientTests
 
         Assert.Equal(ProcessorAnswer.Unreachable, result.Answer);
         Assert.Equal("Deluno could not reach Weir.", result.Message);
-    }
-
-    // ----- outcome: Deluno's request -----
-
-    /// <summary>
-    /// The body Deluno sends for an outcome is the body Weir was recorded receiving: the same members in the same order
-    /// (outcome, occurredUtc, importedPath, reason) and the same values. A not-imported outcome never carries an imported path.
-    /// </summary>
-    [Theory]
-    [InlineData("outcome-delivered")]
-    [InlineData("outcome-delivered-without-output-path")]
-    [InlineData("outcome-finished-in-burst-200")]
-    [InlineData("outcome-already-recorded")]
-    [InlineData("outcome-imported-with-reason")]
-    [InlineData("outcome-not-imported-no-reason")]
-    [InlineData("outcome-not-imported-default-reason")]
-    [InlineData("outcome-not-imported-import-refused")]
-    [InlineData("outcome-handoff-not-finished-queued")]
-    [InlineData("outcome-handoff-not-finished-working")]
-    [InlineData("outcome-handoff-ended")]
-    [InlineData("outcome-handoff-ended-after-failed")]
-    [InlineData("outcome-outcome-already-recorded")]
-    [InlineData("no-record")]
-    [InlineData("outcome-superseded")]
-    [InlineData("outcome-superseded-newer")]
-    public async Task The_outcome_Deluno_sends_is_the_outcome_Weir_was_recorded_receiving(string state)
-    {
-        var recording = Rec(state);
-        var recorded = recording.Exchanges.Last(e => e.Request.Method == "POST" && e.Request.Path.EndsWith("/outcome"));
-        var replay = new WeirReplay(recording);
-
-        await ReportRecordedAsync(recorded, replay);
-
-        var sent = Assert.Single(replay.Sent);
-        Assert.Equal("POST", sent.Method);
-        Assert.Equal(recorded.Request.Path, sent.Path);
-        Assert.Equal(Secret, sent.Headers["X-Webhook-Secret"]);
-        var wanted = Body(recorded.Request.Body).AsObject();
-        var actual = Body(sent.Body).AsObject();
-        Assert.Equal(wanted.Select(p => p.Key), actual.Select(p => p.Key));
-        // The instant is compared as an instant: the recorder and System.Text.Json write the same moment two ways.
-        Assert.Equal(
-            DateTimeOffset.Parse(wanted["occurredUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture),
-            DateTimeOffset.Parse(actual["occurredUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture));
-        wanted.Remove("occurredUtc");
-        actual.Remove("occurredUtc");
-        Assert.True(JsonNode.DeepEquals(wanted, actual), $"Deluno sent {sent.Body}, Weir was recorded receiving {recorded.Request.Body}.");
     }
 
     // ----- helpers -----
