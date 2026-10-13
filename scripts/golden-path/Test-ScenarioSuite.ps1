@@ -96,6 +96,18 @@ foreach ($f in 'Update.Lib.ps1', 'Run-Update.ps1') {
     [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $suite "vm\$f"), [ref]$ptok, [ref]$perr)
     Check "$f parses on this PowerShell" ($perr.Count -eq 0)
 }
+Check 'the new start-log lines are picked by their timestamp, not by counting the old log''s lines' ($afterSetup -match 'Get-StartLogSince' -and $updateLib -notmatch 'Select-Object -Skip \$markLine')
+# rc.30.28: the new build wrote a fresh tray-startup.log; skipping the old log's 7 lines lost "is starting".
+$startLogFile = Join-Path ([IO.Path]::GetTempPath()) ('startlog-' + [guid]::NewGuid().ToString('N') + '.log')
+@('2026-10-13T08:40:00.0000000-07:00 a line from the previous release',
+  '2026-10-13T08:48:47.2631564-07:00 Deluno 1.0.0-rc.30.28 is starting (process 2164, try 1).',
+  '2026-10-13T08:49:06.1954632-07:00 Deluno started on port 7879',
+  '  Data root: C:\data',
+  '2026-10-13T08:49:06.2075891-07:00 [info] Deluno started on its first try.') | Set-Content -Path $startLogFile -Encoding utf8
+. ([scriptblock]::Create(($updateLib -split "`n" | Out-String)))
+$picked = @(Get-StartLogSince -StartLog $startLogFile -Since ([DateTimeOffset]::Parse('2026-10-13T08:48:30-07:00').UtcDateTime))
+Check 'Get-StartLogSince keeps the new lines (with their continuation lines) and drops the old ones' ($picked.Count -eq 4 -and ($picked -match 'is starting') -and -not ($picked -match 'previous release') -and ($picked -match 'Data root'))
+Remove-Item -LiteralPath $startLogFile -ErrorAction SilentlyContinue
 $noUpdate = @(Merge-SuiteResults -Plan $plan -Reported @() -Groups @('update'))
 Check 'an update phase that never reported is an error in the merged results' ($noUpdate.Count -eq 1 -and $noUpdate[0].Status -eq 'error')
 $updateFailed = [pscustomobject]@{ id = 'update.over-running-previous'; title = 't'; status = 'fail'; seconds = 0; error = $null; checks = @([pscustomobject]@{ name = 'x'; ok = $false; detail = 'd' }); notes = @() }
