@@ -37,7 +37,7 @@ public static class FirstRunTrayModel
 
     /// <summary>A first run of a Deluno that has never been set up here; a reinstall over existing data is not one.</summary>
     public static bool IsFirstRun(IReadOnlyCollection<string> args, Func<string, string?> environment, bool existingInstall)
-        => throw new NotImplementedException();
+        => !existingInstall && IsFirstRun(args, environment);
 
     /// <summary>
     /// True when this start is the installer's first run of an installed copy: not a Velopack hook call, not a service
@@ -88,7 +88,8 @@ internal sealed class FirstRunTray : IDisposable
     /// <summary>Shows the icon when this start is a first run; null otherwise, or when the icon could not be shown.</summary>
     public static FirstRunTray? StartIfFirstRun(string[] args)
     {
-        if (!FirstRunTrayModel.IsFirstRun(args, Environment.GetEnvironmentVariable))
+        if (!FirstRunTrayModel.IsFirstRun(args, Environment.GetEnvironmentVariable)
+            || !FirstRunTrayModel.IsFirstRun(args, Environment.GetEnvironmentVariable, ExistingInstall.DetectThisMachine()))
         {
             return null;
         }
