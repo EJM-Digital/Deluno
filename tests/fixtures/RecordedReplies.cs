@@ -72,6 +72,10 @@ public static class RecordedReplies
                     return $"{method} {path} ?";
                 }
 
+            case "weir":
+                // A hand-off is named in the address by its id; the kind of question is the address without it.
+                return $"{method} {System.Text.RegularExpressions.Regex.Replace(path, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "{id}")}";
+
             default:
                 // qBittorrent and the rest: the path says what is asked.
                 return $"{method} {path}";
@@ -286,6 +290,42 @@ public sealed record Recording(string App, string Version, string State, IReadOn
     /// any order of its parameters), and fails the test on a request that was never recorded.
     /// </summary>
     public HttpMessageHandler ReplayHandler(Action<HttpRequestMessage>? onRequest = null) => new Replay(this, onRequest);
+
+    /// <summary>
+    /// A handler that replays the recording in the order it happened: each request is answered with the next recorded reply to the
+    /// same kind of call (the same method and path with ids left out, or the same JSON-RPC method), and once a kind of call has been
+    /// answered as many times as it was recorded, with its last recorded reply. Replays a sequence such as pause, list, resume, list
+    /// exactly as the app answered it. A call that was never recorded fails the test.
+    /// </summary>
+    public HttpMessageHandler Sequence() => new InOrder(this);
+
+    private sealed class InOrder(Recording recording) : HttpMessageHandler
+    {
+        private readonly Dictionary<string, int> _answered = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var kind = RecordedReplies.OperationOf(recording.App, request.Method.Method, request.RequestUri!.PathAndQuery, body);
+            var same = recording.Exchanges
+                .Where(e => RecordedReplies.OperationOf(recording.App, e.Request.Method, e.Request.Path, e.Request.Body) == kind)
+                .ToList();
+            if (same.Count == 0)
+            {
+                throw new InvalidOperationException($"{request.Method} {request.RequestUri!.PathAndQuery} was never recorded for {recording.App} {recording.Version} {recording.State} (as {kind}).");
+            }
+
+            var index = _answered.GetValueOrDefault(kind);
+            _answered[kind] = index + 1;
+            var chosen = same[Math.Min(index, same.Count - 1)];
+            if (chosen.Reply.Status == 0)
+            {
+                throw new HttpRequestException(chosen.Reply.Error ?? "The connection was refused.");
+            }
+
+            return chosen.Reply.ToResponse();
+        }
+    }
 
     /// <summary>
     /// A handler for an app that does not answer at all, as this recording shows (the connection is refused): every request fails with
