@@ -95,6 +95,9 @@ function Invoke-Scenario {
         [Parameter(Mandatory)] [string] $Title,
         [Parameter(Mandatory)] [scriptblock] $Body
     )
+    # A run limited to some scenarios (-Scenarios) records nothing for the others; their setup is skipped by the group, which asks
+    # Test-ScenarioSelected before it prepares anything.
+    if ((Get-Command Test-ScenarioSelected -ErrorAction SilentlyContinue) -and -not (Test-ScenarioSelected -Id $Id)) { return }
     $rec = [ordered]@{
         id = $Id; title = $Title; status = 'running'; startedUtc = [DateTime]::UtcNow.ToString('o'); seconds = 0
         checks = (New-Object System.Collections.ArrayList); notes = (New-Object System.Collections.ArrayList); error = $null

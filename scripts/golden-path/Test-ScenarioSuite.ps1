@@ -73,7 +73,7 @@ $iLogs = $hostScript.IndexOf('Collecting the logs failed')
 Check 'the update phase runs after the groups, the log collection and the -AfterSuiteScript hook' ($iLogs -gt 0 -and $iAfterSuite -gt $iLogs -and $iPhaseCall -gt $iAfterSuite)
 Check 'the update phase is recorded before the verdict, so the full-run verdict includes it' ($iPhaseCall -gt 0 -and $iVerdict -gt $iPhaseCall)
 $phaseBody = $hostScript.Substring($hostScript.IndexOf('function Invoke-UpdatePhase'))
-$phaseBody = $phaseBody.Substring(0, $phaseBody.IndexOf("`nif (`$Groups.Count -eq 0 -or `$Groups -contains 'update')"))
+$phaseBody = $phaseBody.Substring(0, $phaseBody.IndexOf("`nif (`$runUpdate)"))
 $iHarness = $phaseBody.IndexOf('Invoke-GoldenPath.ps1')
 Check 'the update phase restores the checkpoint first, through the harness, with the PREVIOUS release''s installer' ($iHarness -gt 0 -and $phaseBody -match '-InstallerPath \$PreviousInstallerPath' -and $phaseBody -match '-Checkpoint \$Checkpoint')
 Check 'the harness installs the previous release silently (not interactively)' ($phaseBody.Substring($iHarness, 700) -notmatch '-Interactive')
@@ -157,6 +157,153 @@ Check 'the results file names the verdict, every scenario and the failed check' 
 $rows = @(Read-HarnessRows -File (Join-Path ([IO.Path]::GetTempPath()) 'nothing-here.md'))
 Check 'a missing harness file reads as no rows' ($rows.Count -eq 0)
 
+Write-Host 'Single scenarios (-Scenarios): every id can be chosen alone (#1238)'
+$vmIds = @($plan | Where-Object { -not $_.Host } | ForEach-Object { $_.Ids })
+Check 'a list of ids picks them in plan order, once each' ((@(Resolve-ScenarioSelection -Scenarios @('film.nzbget,film.qbittorrent', 'film.nzbget') -Plan $plan) -join ',') -eq 'film.qbittorrent,film.nzbget')
+Check 'a pattern picks every match' ((@(Resolve-ScenarioSelection -Scenarios 'resend.*.sabnzbd' -Plan $plan) -join ',') -eq 'resend.before.sabnzbd,resend.during.sabnzbd,resend.after.sabnzbd')
+$typo = ''
+try { Resolve-ScenarioSelection -Scenarios 'film.qbitorrent' -Plan $plan | Out-Null } catch { $typo = $_.Exception.Message }
+Check 'an unknown id is an error that names near ids' ($typo -match 'Unknown scenario' -and $typo -match 'film\.qbittorrent')
+Check 'no -Scenarios means everything' ((Get-RunScope -Plan $plan -Groups @() -Scenarios @()).FullRun)
+$bothErr = ''
+try { Get-RunScope -Plan $plan -Groups @('films') -Scenarios @('film.deluge') | Out-Null } catch { $bothErr = $_.Exception.Message }
+Check '-Groups and -Scenarios together are refused' ($bothErr -match 'not both')
+$notAlone = @()
+foreach ($id in $allIds) {
+    $s = Get-RunScope -Plan $plan -Groups @() -Scenarios @($id)
+    $isHost = [bool]($plan | Where-Object { $_.Host -and $_.Ids -contains $id })
+    if (-not ((@($s.ChosenIds) -join ',') -eq $id -and -not $s.FullRun -and $s.NeedVm -eq (-not $isHost) -and $s.RunUpdate -eq $isHost)) { $notAlone += $id }
+}
+Check "every planned scenario id ($($allIds.Count)) can be chosen alone, and only the VM ones need the VM" ($notAlone.Count -eq 0) ($notAlone -join ', ')
+Check 'a run of the update scenario alone needs no VM stage' (-not (Get-RunScope -Plan $plan -Scenarios @('update.over-running-previous')).NeedVm)
+Check 'a run of groups still lists their ids' ((@((Get-RunScope -Plan $plan -Groups @('outage')).ChosenIds) -join ',') -eq 'outage.idle,outage.inflight')
+$onlyOne = @(Merge-SuiteResults -Plan $plan -Reported @() -Scenarios @('film.deluge', 'stuck.zero.sabnzbd'))
+Check 'the results of a scenario run list only the chosen scenarios (a missing one is an error)' ($onlyOne.Count -eq 2 -and @($onlyOne | Where-Object { $_.Status -ne 'error' }).Count -eq 0)
+Check 'a run of a scenario never records a pass' ((Get-SuiteVerdict -Merged @([pscustomobject]@{ Group = 'films'; Id = 'film.deluge'; Title = ''; Status = 'pass'; Seconds = 1; Error = ''; Checks = @(); Notes = @() }) -FullRun $false).State -eq 'failure')
+
+# Every group function run with one id chosen: only that scenario runs, and only its own setup (the films it needs) is done. The
+# group code runs against stand-ins for everything that touches Deluno, the clients or Weir, which only write down what was asked.
+& {   # a scope of its own, so the stand-ins below do not outlive these checks
+. (Join-Path $suite 'vm\scenarios\Common.ps1')
+foreach ($f in Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | Sort-Object Name) { . $f.FullName }
+$script:Trace = New-Object System.Collections.ArrayList
+$script:Made = New-Object System.Collections.ArrayList
+function Invoke-Scenario { param([string] $Id, [string] $Title, [scriptblock] $Body) if (-not (Test-ScenarioSelected -Id $Id)) { return }; [void]$script:Trace.Add("run:$Id") }
+function New-FilmFor {
+    param([string] $Kind, [string] $Layout, [string] $Variant, [string] $Size, [switch] $Extra, [string] $Label, [switch] $Slow, [switch] $HangLast, [switch] $HangAll)
+    $f = [pscustomobject]@{ Kind = $Kind; Label = $Label; Release = "R.$Label.$Kind"; Title = "T $Label $Kind"; Protocol = $(if (Test-IsTorrent $Kind) { 'torrent' } else { 'usenet' }); ClientKind = $Kind; SentUtc = [DateTime]::UtcNow }
+    [void]$script:Trace.Add("film:$Kind"); [void]$script:Made.Add($f); $f
+}
+function Send-Film { param($Film, [string] $Kind) [void]$script:Trace.Add("send:$Kind"); $Film }
+function Write-SuiteLog { param($Text) }
+function Hide-Secrets { param($Text) $Text }
+function Start-Sleep { param($Seconds, $Milliseconds) }
+function Invoke-Deluno { param($Method, $Path, $Body, $TimeoutSec) @() }
+function Set-HealthRules { param($On, $CheckMinutes) [void]$script:Trace.Add('rules') }
+function Wait-AllStruck { param($Films, $TimeoutSec) $h = @{}; foreach ($k in $Films.Keys) { $h[$k] = @{ Line = 'x'; Seconds = 1; MaxProgress = 0.0; Statuses = @{}; LastRow = $null } }; $h }
+function Set-WeirPause { param($Paused) [void]$script:Trace.Add("pause:$Paused") }
+function Stop-WeirApp { [void]$script:Trace.Add('weir:stop'); [pscustomobject]@{ GoneAt = [DateTime]::UtcNow; ViaTray = $true } }
+function Start-WeirApp { [void]$script:Trace.Add('weir:start') }
+function Test-WeirAnswering { $true }
+function Wait-FilmFinished { param($Film, $TimeoutSec) [pscustomobject]@{ Ok = $true } }
+function Wait-Until { param($Condition, $TimeoutSec, $IntervalSec) [pscustomobject]@{ Ok = $true; Seconds = 0; Value = [pscustomobject]@{ id = 'h1'; status = 'failed' } } }
+function Find-Handoffs { param($Name) @([pscustomobject]@{ id = 'h2'; status = 'completed'; releaseName = $Name }) }
+function Get-FilmHandoff { param($Film) [pscustomobject]@{ id = 'h1'; status = 'source-gone'; failureMessage = 'gone' } }
+function Remove-FilmDownload { param($Film, $Reason) $null }
+function Start-AgainDownload { param($Film) }
+function Remove-FilmFiles { param($Film) 0 }
+function Start-AutomationPause { [void]$script:Trace.Add('automation:pause') }
+function Stop-AutomationPause { [void]$script:Trace.Add('automation:resume') }
+function Get-TelemetryRows { param([switch] $IncludeHistory) @($script:Made | ForEach-Object { [pscustomobject]@{ releaseName = $_.Release; title = $_.Title; status = 'filesGone' } }) }
+function Find-QueueRow { param($Name, [switch] $IncludeHistory) $null }
+function Save-Evidence { param($Name, $Text) }
+function Start-Edge { }
+function New-CdpPage { param($Url) 'page' }
+function Close-CdpPage { param($Page) }
+function Open-OutagePages { [void]$script:Trace.Add('pages:open') }
+function Close-OutagePages { }
+function Restore-WeirAfterOutage { }
+
+function Get-ExpectedSetupKinds([string] $Id) {
+    if ($Id -eq 'film.extra-left-out') { return @('qbittorrent') }
+    if ($Id -match '^(film|resend\.before|stuck\.(zero|short|peers|slow)|tryagain|vanish\.(before|waiting))\.(?<k>[a-z]+)$') { return @($Matches['k']) }
+    @()
+}
+$groupFunctions = @($plan | Where-Object { -not $_.Host })
+$badRuns = @(); $badSetup = @(); $threw = @()
+foreach ($g in $groupFunctions) {
+    foreach ($id in $g.Ids) {
+        Set-ScenarioSelection -Ids @($id)
+        $script:Trace.Clear(); $script:Made.Clear()
+        try { & $g.Function } catch { $threw += "$id ($($_.Exception.Message))" }
+        $ran = @($script:Trace | Where-Object { $_ -like 'run:*' } | ForEach-Object { $_.Substring(4) })
+        if (($ran -join ',') -ne $id) { $badRuns += "$id ran [$($ran -join ',')]" }
+        $sent = @($script:Trace | Where-Object { $_ -like 'send:*' } | ForEach-Object { $_.Substring(5) })
+        $films = @($script:Trace | Where-Object { $_ -like 'film:*' } | ForEach-Object { $_.Substring(5) })
+        $want = @(Get-ExpectedSetupKinds $id)
+        if (($sent -join ',') -ne ($want -join ',') -or ($films -join ',') -ne ($want -join ',')) { $badSetup += "$id sent [$($sent -join ',')] made [$($films -join ',')] wanted [$($want -join ',')]" }
+    }
+}
+Set-ScenarioSelection -Ids @()
+Check "each of the $($vmIds.Count) scenarios, chosen alone, runs only itself" ($badRuns.Count -eq 0 -and $threw.Count -eq 0) (($badRuns + $threw) -join '; ')
+Check 'chosen alone, a scenario sends only the film(s) its own setup needs' ($badSetup.Count -eq 0) ($badSetup -join '; ')
+# Choosing nothing runs the whole group as before, with the same sends.
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0 }
+$fullBad = @()
+foreach ($g in $groupFunctions) {
+    $script:Trace.Clear(); $script:Made.Clear()
+    try { & $g.Function } catch { $fullBad += "$($g.Name) threw $($_.Exception.Message)" }
+    $ran = @($script:Trace | Where-Object { $_ -like 'run:*' } | ForEach-Object { $_.Substring(4) })
+    $sends = @($script:Trace | Where-Object { $_ -like 'send:*' }).Count
+    if ((@($ran | Sort-Object) -join ',') -ne (@($g.Ids | Sort-Object) -join ',')) { $fullBad += "$($g.Name) ran [$($ran -join ',')]" }
+    if ($sends -ne $sendsFull[$g.Name]) { $fullBad += "$($g.Name) sent $sends films, expected $($sendsFull[$g.Name])" }
+}
+Check 'with nothing chosen every group runs all its scenarios and sends the same films as before' ($fullBad.Count -eq 0) ($fullBad -join '; ')
+# Two scenarios of one group share one setup window and each reads only its own film.
+Set-ScenarioSelection -Ids @('resend.before.sabnzbd', 'resend.before.qbittorrent')
+$script:Trace.Clear(); $script:Made.Clear(); Invoke-GroupResend
+$sentTwo = @($script:Trace | Where-Object { $_ -like 'send:*' } | ForEach-Object { $_.Substring(5) })
+Check 'two chosen scenarios of a group share one window and send only their two films' ((($sentTwo | Sort-Object) -join ',') -eq 'qbittorrent,sabnzbd')
+Set-ScenarioSelection -Ids @()
+}
+$vmRunner = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
+Check 'the VM runner takes -Scenarios, skips a group none of whose scenarios was chosen, and leaves Weir''s key to a full run' ($vmRunner -match '\[string\[\]\] \$Scenarios' -and $vmRunner -match 'Test-AnyScenarioSelected -Ids \$group\.Ids' -and $vmRunner -match '\$selected\.Count -eq 0 -and \(\$Groups')
+
+Write-Host 'The ready checkpoint (a fast start for partial runs) (#1238)'
+$scFull = Get-RunScope -Plan $plan
+$scFilm = Get-RunScope -Plan $plan -Scenarios @('film.deluge')
+$scInst = Get-RunScope -Plan $plan -Scenarios @('install-first-run', 'film.deluge')
+$scInstGroup = Get-RunScope -Plan $plan -Groups @('install')
+Check 'a full run may not use a ready checkpoint (it installs from clean)' ((Get-ReadyCheckpointProblem -Scope $scFull) -match 'full run always installs')
+Check 'a run of one scenario may' ($null -eq (Get-ReadyCheckpointProblem -Scope $scFilm))
+Check 'a run of one group may' ($null -eq (Get-ReadyCheckpointProblem -Scope (Get-RunScope -Plan $plan -Groups @('stuck'))))
+Check 'install-first-run may not (chosen alone, with others, or as its group)' ((Get-ReadyCheckpointProblem -Scope $scInst) -match 'install' -and (Get-ReadyCheckpointProblem -Scope $scInstGroup) -match 'install')
+Check 'the after-setup hook and -SkipInstall may not' ((Get-ReadyCheckpointProblem -Scope $scFilm -AfterSetupScript $true) -match 'AfterSetupScript' -and (Get-ReadyCheckpointProblem -Scope $scFilm -SkipInstall $true) -match 'SkipInstall')
+$nameA = Get-ReadyCheckpointName -Version '1.0.0-rc.30.30' -Commit ('ade3e471' + 'f' * 32)
+$nameB = Get-ReadyCheckpointName -Version '1.0.0-rc.30.30' -Commit ('bbbbbbbb' + 'f' * 32)
+Check 'the checkpoint is named for the version and the commit, so a rebuild never reuses it' ($nameA -eq 'ready-1.0.0-rc.30.30-ade3e471' -and $nameA -ne $nameB)
+Check 'a name can be given' ((Get-ReadyCheckpointName -Version 'v' -Commit 'abc' -Override 'ready-mine') -eq 'ready-mine')
+$hostText = Get-Content -Raw (Join-Path $root 'Invoke-ScenarioSuite.ps1')
+Check 'the host script has -Scenarios, -UseReadyCheckpoint and -ReadyCheckpoint' ($hostText -match '\[string\[\]\] \$Scenarios' -and $hostText -match '\[switch\] \$UseReadyCheckpoint' -and $hostText -match '\[string\] \$ReadyCheckpoint')
+Check 'the ready checkpoint is restored and saved through Hyper-V cmdlets, as the clean one is' ($hostText -match 'Restore-VMSnapshot -VMName' -and $hostText -match 'Checkpoint-VM -Name' -and $hostText -match 'Get-VMSnapshot -VMName')
+Check 'a restored ready checkpoint skips the harness (install and setup)' ($hostText -match 'if \(-not \$SkipInstall -and \$needVm -and -not \$readyRestored\)')
+$iPrepare = $hostText.IndexOf("' -PrepareOnly'")
+$iSave = $hostText.IndexOf('New-RigCheckpoint -Name $readyName')
+Check 'a missing ready checkpoint is made after a normal install and setup, before the scenarios start' ($iPrepare -gt 0 -and $iSave -gt $iPrepare -and $iSave -lt $hostText.IndexOf("'GoldenSuiteRun'"))
+Check 'the installed build is still checked against the commit after a restore' ($hostText.IndexOf('Test-BuildMatchesCommit -ProductVersion') -gt $hostText.IndexOf('if ($readyRestored)'))
+Check 'only a full run records the status' ($hostText -match 'elseif \(\$fullRun\) \{\s+\$out = & gh')
+
+Write-Host 'The events-request log is collected and says what is missing (#1238)'
+$collect = Get-Content -Raw (Join-Path $suite 'vm\Collect-Logs.ps1')
+$pat = [regex]::Match($collect, '\$eventsPattern = ''([^'']+)''').Groups[1].Value
+Check 'the events pattern is in Collect-Logs' ($pat.Length -gt 0)
+foreach ($line in '{"message":"POST /api/integrations/processors/events answered 200"}', '2026-10-14 Processors events: answered 200 for handoff', '{"message":"processors-events reply"}', 'GET \/api\/integrations\/processors\/events') {
+    Check "the pattern finds: $line" ($line -match $pat)
+}
+Check 'the pattern does not take unrelated processor lines' (-not ('Processor connection test answered 200' -match $pat))
+Check 'Collect-Logs searches the machine-wide and per-user data folders and says what was searched and what is missing' ($collect -match 'ProgramData' -and $collect -match 'processors-events-requests\.diag\.txt' -and $collect -match 'MISSING: no Deluno log file' -and $collect -match 'MISSING: Deluno''''s log has lines')
+Check 'the host names what is missing when there are no events lines' ($hostText -match 'diagMissing' -and $hostText -match 'processors-events-requests\.diag\.txt')
+
 if ($env:OS -ne 'Windows_NT') {
     Write-Host 'The VM-side checks need Windows (HttpListener, UI Automation, Edge): skipped here.'
     Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures)
@@ -239,6 +386,13 @@ try {
     Check 'a scenario that checks nothing is an error, never a pass' ($res['t.empty'].status -eq 'error')
     $saved = Get-Content -Raw (Join-Path $tmp 'results\results.json') | ConvertFrom-Json
     Check 'results.json is written after each scenario' (@($saved.scenarios).Count -eq 4)
+    # A scenario that was not chosen records nothing and its body is not run (-Scenarios).
+    $script:BodyRan = $false
+    Set-ScenarioSelection -Ids @('t.chosen')
+    Invoke-Scenario -Id 't.other' -Title 'not chosen' -Body { $script:BodyRan = $true; Add-Check 'x' $true '' }
+    Invoke-Scenario -Id 't.chosen' -Title 'chosen' -Body { Add-Check 'y' $true '' }
+    Set-ScenarioSelection -Ids @()
+    Check 'a scenario that was not chosen is not run and is not recorded; the chosen one is' (-not $script:BodyRan -and @($script:S.Results | Where-Object { $_.id -eq 't.other' }).Count -eq 0 -and @($script:S.Results | Where-Object { $_.id -eq 't.chosen' -and $_.status -eq 'pass' }).Count -eq 1)
     $logText = Get-Content -Raw (Join-Path $tmp 'logs\suite.log')
     Check 'the log never holds a login' ($logText -notmatch [regex]::Escape($pw))
 

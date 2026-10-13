@@ -19,16 +19,19 @@ function Invoke-GroupVanish {
     # ---- before the hand-off
     $films = @{}
     $removedAt = @{}
+    # Only the clients whose scenario was chosen are sent a film.
+    $beforeKinds = @(Get-SelectedKinds -IdFormat 'vanish.before.{0}')
+    if ($beforeKinds.Count -gt 0) {
     try {
         Start-AutomationPause
-        foreach ($kind in Get-AllKinds) { $films[$kind] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Label 'gone') -Kind $kind }
-        foreach ($kind in Get-AllKinds) { Wait-FilmFinished -Film $films[$kind] -TimeoutSec 240 | Out-Null }
-        foreach ($kind in Get-AllKinds) { $n = Remove-FilmFiles -Film $films[$kind]; $removedAt[$kind] = [DateTime]::UtcNow; Write-SuiteLog "   $kind : deleted $n items" }
+        foreach ($kind in $beforeKinds) { $films[$kind] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Label 'gone') -Kind $kind }
+        foreach ($kind in $beforeKinds) { Wait-FilmFinished -Film $films[$kind] -TimeoutSec 240 | Out-Null }
+        foreach ($kind in $beforeKinds) { $n = Remove-FilmFiles -Film $films[$kind]; $removedAt[$kind] = [DateTime]::UtcNow; Write-SuiteLog "   $kind : deleted $n items" }
         $seen = @{}
         $deadline = [DateTime]::UtcNow.AddSeconds(90)
-        while ([DateTime]::UtcNow -lt $deadline -and $seen.Count -lt 5) {
+        while ([DateTime]::UtcNow -lt $deadline -and $seen.Count -lt $beforeKinds.Count) {
             foreach ($row in @(Get-TelemetryRows -IncludeHistory)) {
-                foreach ($kind in Get-AllKinds) {
+                foreach ($kind in $beforeKinds) {
                     if (-not $seen.ContainsKey($kind) -and ($row.releaseName -like "*$($films[$kind].Release)*" -or $row.title -like "*$($films[$kind].Title)*") -and $row.status -eq 'filesGone') {
                         $seen[$kind] = [math]::Round(([DateTime]::UtcNow - $removedAt[$kind]).TotalSeconds, 1)
                     }
@@ -39,13 +42,14 @@ function Invoke-GroupVanish {
         Start-Sleep -Seconds 5
         # A client that was never seen saying "Files are gone": keep the row Deluno held for it (its status and the sourcePath the
         # check judges), which the rc.30.22 run did not keep for SABnzbd and NZBGet.
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $beforeKinds) {
             if ($seen.ContainsKey($kind)) { continue }
             try { Save-Evidence -Name "vanish-before-$kind-row.json" -Text (Find-QueueRow -Name $films[$kind].Release -IncludeHistory | ConvertTo-Json -Depth 4) } catch { }
         }
     }
     finally { Stop-AutomationPause }
     Start-Sleep -Seconds 45
+    }
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "vanish.before.$kind" -Title "A $kind download's files vanish before the hand-off: Files are gone, never handed off" -Body {
             Add-Check 'Deluno said "Files are gone" within 30 s' ($seen.ContainsKey($kind) -and $seen[$kind] -le 30) $(if ($seen.ContainsKey($kind)) { "after $($seen[$kind]) s" } else { 'it never did' })
@@ -57,20 +61,22 @@ function Invoke-GroupVanish {
 
     # ---- while the hand-off waits at Weir
     $films2 = @{}
+    $waitKinds = @(Get-SelectedKinds -IdFormat 'vanish.waiting.{0}')
+    if ($waitKinds.Count -gt 0) {
     try {
         Set-WeirPause -Paused $true
-        foreach ($kind in Get-AllKinds) { $films2[$kind] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Label 'gonewait') -Kind $kind }
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $waitKinds) { $films2[$kind] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Label 'gonewait') -Kind $kind }
+        foreach ($kind in $waitKinds) {
             Wait-FilmFinished -Film $films2[$kind] -TimeoutSec 240 | Out-Null
             Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { Get-FilmHandoff -Film $films2[$kind] } | Out-Null
         }
-        foreach ($kind in Get-AllKinds) { Remove-FilmFiles -Film $films2[$kind] | Out-Null; $removedAt[$kind] = [DateTime]::UtcNow }
+        foreach ($kind in $waitKinds) { Remove-FilmFiles -Film $films2[$kind] | Out-Null; $removedAt[$kind] = [DateTime]::UtcNow }
         # While Weir is still paused Deluno must say so itself, within one check (#1210): the row reads "Files are gone".
         $flaggedAfter = @{}
         $deadline = [DateTime]::UtcNow.AddSeconds(90)
-        while ([DateTime]::UtcNow -lt $deadline -and $flaggedAfter.Count -lt 5) {
+        while ([DateTime]::UtcNow -lt $deadline -and $flaggedAfter.Count -lt $waitKinds.Count) {
             foreach ($row in @(Get-TelemetryRows -IncludeHistory)) {
-                foreach ($kind in Get-AllKinds) {
+                foreach ($kind in $waitKinds) {
                     if (-not $flaggedAfter.ContainsKey($kind) -and ($row.releaseName -like "*$($films2[$kind].Release)*" -or $row.title -like "*$($films2[$kind].Title)*") -and $row.status -eq 'filesGone') {
                         $flaggedAfter[$kind] = [math]::Round(([DateTime]::UtcNow - $removedAt[$kind]).TotalSeconds, 1)
                     }
@@ -78,18 +84,19 @@ function Invoke-GroupVanish {
             }
             Start-Sleep -Milliseconds 500
         }
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $waitKinds) {
             if ($flaggedAfter.ContainsKey($kind)) { continue }
             try { Save-Evidence -Name "vanish-waiting-$kind-row.json" -Text (Find-QueueRow -Name $films2[$kind].Release -IncludeHistory | ConvertTo-Json -Depth 4) } catch { }
         }
     }
     finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
+    }
     # Weir waits for a file that is not there before it reports the source gone (about 11 minutes in rc.13), so the hand-off
     # is given that long plus a margin, and all five are watched at once.
     $goneAt = @{}
     $deadline = [DateTime]::UtcNow.AddMinutes(14)
-    while ([DateTime]::UtcNow -lt $deadline -and $goneAt.Count -lt 5) {
-        foreach ($kind in Get-AllKinds) {
+    while ([DateTime]::UtcNow -lt $deadline -and $goneAt.Count -lt $waitKinds.Count) {
+        foreach ($kind in $waitKinds) {
             if ($goneAt.ContainsKey($kind)) { continue }
             $h = Get-FilmHandoff -Film $films2[$kind]
             if ($h -and ($h.status -eq 'source-gone' -or ($h.status -eq 'dismissed' -and "$($h.failureMessage)" -match 'gone|no longer'))) { $goneAt[$kind] = [DateTime]::UtcNow }

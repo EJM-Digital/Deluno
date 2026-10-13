@@ -19,7 +19,9 @@ function Get-WeirLogText {
 
 function Invoke-GroupFilms {
     # Send everything first. A torrent client gets a film in its own folder; qBittorrent's carries the small extra.
-    foreach ($kind in Get-AllKinds) {
+    # Only the films the chosen scenarios read: a client's own, and qBittorrent's for the extra that is left out.
+    $needed = @(Get-AllKinds | Where-Object { (Test-ScenarioSelected "film.$_") -or ($_ -eq 'qbittorrent' -and (Test-ScenarioSelected 'film.extra-left-out')) })
+    foreach ($kind in $needed) {
         try {
             $film = New-FilmFor -Kind $kind -Layout 'folder' -Extra:($kind -eq 'qbittorrent') -Label 'film'
             $script:FilmByKind[$kind] = Send-Film -Film $film -Kind $kind

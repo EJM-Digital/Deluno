@@ -10,13 +10,15 @@ $script:OldFailure = 'Needs your action|hand-?off failed|Could not send to|Rejec
 function Invoke-GroupTryAgain {
     $films = @{}
     $failed = @{}
+    # Only the clients whose scenario was chosen are sent a film (the failures share one outage).
+    $kinds = @(Get-SelectedKinds -IdFormat 'tryagain.{0}')
     Stop-WeirApp | Out-Null
     try {
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $kinds) {
             $f = New-FilmFor -Kind $kind -Layout 'file' -Label 'retry'
             $films[$kind] = Send-Film -Film $f -Kind $kind
         }
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $kinds) {
             $f = $films[$kind]
             Wait-FilmFinished -Film $f -TimeoutSec 240 | Out-Null
             $w = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition {
