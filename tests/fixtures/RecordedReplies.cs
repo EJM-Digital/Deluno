@@ -13,6 +13,12 @@ namespace Deluno.Tests.Recorded;
 /// </summary>
 public static class RecordedReplies
 {
+    /// <summary>
+    /// A value for <see cref="RecordedReply.BodyWith"/> that sets a property to an explicit JSON null (a plain null value takes
+    /// the property out of the reply, which is a different thing to a processor that sends "null").
+    /// </summary>
+    public static readonly object JsonNull = new();
+
     // The newest recorded state of each app, by name: RecordedReplies.Qbittorrent("finished-single-file").
     public static Recording Sabnzbd(string state) => RecordedReplies.LoadLatest("sabnzbd", state);
     public static Recording Nzbget(string state) => RecordedReplies.LoadLatest("nzbget", state);
@@ -396,6 +402,7 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
 
             switch (node)
             {
+                case JsonObject obj when ReferenceEquals(value, RecordedReplies.JsonNull): obj[last] = null; break;
                 case JsonObject obj when value is null: obj.Remove(last); break;
                 case JsonObject obj: obj[last] = Wrap(value); break;
                 case JsonArray arr when int.TryParse(last, out var index): arr[index] = Wrap(value); break;
