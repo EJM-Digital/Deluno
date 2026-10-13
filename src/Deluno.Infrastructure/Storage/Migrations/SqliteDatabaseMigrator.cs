@@ -1,4 +1,3 @@
-#pragma warning disable CS9113 // stub: removed with the implementation
 using System.Data.Common;
 using Microsoft.Extensions.Logging;
 
@@ -49,6 +48,9 @@ public sealed class SqliteDatabaseMigrator(
         var orderedMigrations = migrations.OrderBy(migration => migration.Version).ToArray();
         ValidateMigrationSet(databaseName, orderedMigrations);
 
+        // Before the step that can block, so a start that stops here leaves behind where it was (#1256).
+        progress?.Enter(StartupPhase.Migrations, $"{databaseName}: checking the changes to apply");
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(databaseName, cancellationToken);
         await EnsureHistoryTableAsync(connection, cancellationToken);
 
@@ -87,6 +89,7 @@ public sealed class SqliteDatabaseMigrator(
                     $"Database '{databaseName}' migration {migration.Version} was already applied with a different definition.");
             }
 
+            progress?.Enter(StartupPhase.Migrations, $"{databaseName}: V{migration.Version:0000} {migration.Name}");
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             await migration.UpAsync(connection, transaction, cancellationToken);
             await RecordAppliedMigrationAsync(connection, transaction, migration, cancellationToken);

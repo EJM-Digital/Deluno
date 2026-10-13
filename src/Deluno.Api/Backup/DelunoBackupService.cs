@@ -106,8 +106,11 @@ public sealed class DelunoBackupService(
             using (var fileStream = File.Create(targetPath))
             using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create))
             {
+                var position = 0;
                 foreach (var file in dataFiles)
                 {
+                    // Before the file is copied: a start waiting on this backup shows how far it has got.
+                    onFile?.Invoke($"{++position} of {dataFiles.Length}: {Path.GetFileName(file)}");
                     // Opened first, because opening is the only honest test of
                     // whether the file is still there. A `-wal` belongs to a
                     // database that is still being served, and SQLite deletes it

@@ -22,6 +22,11 @@
 .PARAMETER RigHost
     The Hyper-V host that holds the VM.
 
+.PARAMETER PreviousInstallerPath
+    The previous release's Setup.exe. The update scenario (update.over-running-previous, #1256) installs it, starts it, then runs the
+    candidate's Setup over it while it runs. It is copied into the VM as C:\golden\previous\Deluno-Setup.exe. Without it that
+    scenario fails, saying so: nothing waives it. Not needed when -Groups leaves the update group out.
+
 .PARAMETER InstallerPath
     The release candidate's Windows installer (Deluno-rc-Setup.exe, from a manual ci.yml run on the commit).
 
@@ -38,7 +43,7 @@
     Print the scenarios and what each proves, then stop. Touches nothing.
 
 .PARAMETER Groups
-    Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems). A partial run never records a pass.
+    Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems, update). A partial run never records a pass.
 
 .PARAMETER SkipInstall
     Use the VM as it is (already installed, for example after an earlier run); skips the checkpoint restore and the picker.
@@ -61,6 +66,7 @@
 param(
     [string] $RigHost,
     [string] $InstallerPath,
+    [string] $PreviousInstallerPath,
     [string] $Version,
     [string] $Commit,
     [string] $VmName = 'Deluno-GoldenPath',
@@ -105,6 +111,10 @@ if ($ListOnly) {
 }
 
 foreach ($p in 'RigHost', 'InstallerPath', 'Version', 'Commit') { if (-not (Get-Variable $p -ValueOnly)) { throw "-$p is required." } }
+if ($PreviousInstallerPath -and -not (Test-Path $PreviousInstallerPath)) { throw "Previous installer not found: $PreviousInstallerPath" }
+if (-not $PreviousInstallerPath -and ($Groups.Count -eq 0 -or $Groups -contains 'update')) {
+    Write-Host 'No -PreviousInstallerPath: the update scenario will fail, saying the previous release''s Setup.exe was not given.' -ForegroundColor Yellow
+}
 if (-not (Test-Path $InstallerPath)) { throw "Installer not found: $InstallerPath" }
 $InstallerPath = (Resolve-Path $InstallerPath).Path
 $installerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
@@ -225,6 +235,23 @@ try {
     }
     else {
         Send-BundleToVm -Session $rig -Name $VmName -Credential $vmCred -Bundle $bundle
+        if ($PreviousInstallerPath -and (-not $Groups -or $Groups -contains 'update')) {
+            Write-Host 'Copying the previous release''s installer into the VM for the update scenario...' -ForegroundColor Cyan
+            $stagedPrevious = Invoke-Command -Session $rig -ScriptBlock { $d = Join-Path $env:TEMP ('golden-prev-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $d | Out-Null; $d }
+            try {
+                Copy-Item -Path $PreviousInstallerPath -Destination (Join-Path $stagedPrevious 'Deluno-Setup.exe') -ToSession $rig
+                Invoke-Command -Session $rig -ArgumentList $stagedPrevious, $VmName, $vmCred -ScriptBlock {
+                    param($dir, $n, $cred)
+                    $s = New-PSSession -VMName $n -Credential $cred
+                    try {
+                        Invoke-Command -Session $s -ScriptBlock { New-Item -ItemType Directory -Force -Path 'C:\golden\previous' | Out-Null }
+                        Copy-Item -Path (Join-Path $dir 'Deluno-Setup.exe') -Destination 'C:\golden\previous\Deluno-Setup.exe' -ToSession $s -Force
+                    } finally { Remove-PSSession $s }
+                }
+            }
+            catch { [void]$warnings.Add("Copying the previous release's installer failed: $($_.Exception.Message)") }
+            finally { Invoke-Command -Session $rig -ArgumentList $stagedPrevious -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } }
+        }
         # The tray watcher has done its job (the install is over); it must not touch the tray while the scenarios read it.
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { New-Item -ItemType File -Force -Path 'C:\golden\suite\logs\traywatch.stop' | Out-Null; Start-Sleep -Seconds 3 } | Out-Null
         $runArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite"'
