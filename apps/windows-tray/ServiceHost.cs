@@ -47,7 +47,7 @@ public static class ServiceHost
         _ = ServiceStartGuard.WatchAsync(
             progress, new StartWindows(), TimeProvider.System, log, StartDiagnostics.Capture, code => Environment.Exit(code), watchStop.Token);
 
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        var builder = TrayLogging.CreateBuilder(new WebApplicationOptions
         {
             Args = args,
             WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")

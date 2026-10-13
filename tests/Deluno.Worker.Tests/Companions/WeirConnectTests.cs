@@ -54,6 +54,69 @@ public sealed class WeirConnectTests : IDisposable
             _security.Object, new Mock<ICompanionDownloader>().Object, factory.Object);
     }
 
+    private WeirCompanion NewCompanion(Microsoft.Extensions.Time.Testing.FakeTimeProvider time)
+    {
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient());
+        return new WeirCompanion(
+            _system.Object, _processors.Object, new ProcessorConnectionService(factory.Object),
+            _security.Object, new Mock<ICompanionDownloader>().Object, factory.Object)
+        {
+            Time = time,
+            Delay = (wait, _) => { time.Advance(wait); return Task.CompletedTask; }
+        };
+    }
+
+    private sealed class Notes : ICompanionProgress
+    {
+        public List<string> Messages { get; } = [];
+
+        public void Report(string step, string message) => Messages.Add(message);
+    }
+
+    [Fact]
+    public async Task A_Weir_that_takes_nearly_three_minutes_to_answer_after_an_update_is_still_waited_for()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var answersAt = time.GetUtcNow() + TimeSpan.FromSeconds(170);
+        _weir.BootstrapAllowed = true;
+        _system.Setup(item => item.ListeningPortsOf(It.IsAny<string>()))
+            .Returns(() => time.GetUtcNow() >= answersAt ? [_weir.Port] : []);
+
+        var outcome = await NewCompanion(time).ConnectAsync(Username, Password, "http://127.0.0.1:7879", CancellationToken.None);
+
+        Assert.True(outcome.Healthy, outcome.Message);
+    }
+
+    [Fact]
+    public async Task Weir_is_given_at_least_three_minutes_before_Deluno_says_it_did_not_start()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var began = time.GetUtcNow();
+        _system.Setup(item => item.ListeningPortsOf(It.IsAny<string>())).Returns(() => []);
+
+        var outcome = await NewCompanion(time).ConnectAsync(Username, Password, "http://127.0.0.1:7879", CancellationToken.None);
+
+        Assert.False(outcome.Healthy);
+        Assert.True(time.GetUtcNow() - began >= TimeSpan.FromMinutes(3), $"Gave up after {time.GetUtcNow() - began}.");
+        Assert.Contains("did not start answering", outcome.Message);
+    }
+
+    [Fact]
+    public async Task While_Weir_is_starting_the_install_says_so_in_plain_words()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        _weir.BootstrapAllowed = true;
+        var answersAt = time.GetUtcNow() + TimeSpan.FromSeconds(60);
+        _system.Setup(item => item.ListeningPortsOf(It.IsAny<string>()))
+            .Returns(() => time.GetUtcNow() >= answersAt ? [_weir.Port] : []);
+        var notes = new Notes();
+
+        await NewCompanion(time).RunAsync(new CompanionRunContext("http://127.0.0.1:7879", Path.GetTempPath(), notes), CancellationToken.None);
+
+        Assert.Contains(notes.Messages, message => message.Contains("Weir is starting; this can take a few minutes after an update", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task With_no_account_yet_the_persons_account_is_created_in_Weir_then_used_to_link_both_ways()
     {

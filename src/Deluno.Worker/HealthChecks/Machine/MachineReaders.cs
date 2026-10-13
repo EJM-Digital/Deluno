@@ -114,28 +114,14 @@ internal static class PowerShellRead
         try
         {
             var exe = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-            var start = new ProcessStartInfo(exe)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var start = new ProcessStartInfo(exe);
             start.ArgumentList.Add("-NoProfile");
             start.ArgumentList.Add("-NonInteractive");
             start.ArgumentList.Add("-Command");
             start.ArgumentList.Add(script);
-            using var process = Process.Start(start);
-            if (process is null)
-            {
-                return null;
-            }
-
-            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            limit.CancelAfter(timeout);
-            var output = await process.StandardOutput.ReadToEndAsync(limit.Token);
-            await process.WaitForExitAsync(limit.Token);
-            return process.ExitCode == 0 ? output : null;
+            // Both streams are read as they arrive, and a PowerShell that outlasts its time is stopped, not left running (#1258).
+            var result = await Deluno.Infrastructure.Processes.ChildProcess.RunAsync(start, timeout, cancellationToken);
+            return result.Started && !result.TimedOut && result.ExitCode == 0 ? result.Output : null;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

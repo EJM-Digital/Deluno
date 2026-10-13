@@ -24,6 +24,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Before anything else in the process writes: the standard handles are whatever the launcher left, and a pipe
+        // nobody reads would stop whatever writes to it (#1258). Point all three at the null device.
+        var standardHandles = StandardHandles.DetachToNullDevice();
+
         // Diagnostic only (#968): how long the OS took to create the process
         // and the CLR took to JIT and reach this line, before Velopack's hook
         // budget (30s install/update, 15s uninstall) even starts ticking on
@@ -37,6 +41,7 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += HookUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, e) => HookLog.Write($"unobserved task exception: {e.Exception}");
         HookLog.Write($"Main starting: args=[{string.Join(' ', args)}].");
+        HookLog.Write($"Standard handles at start: {standardHandles}.");
 
         // The install and update hooks only log (the firewall rule and the
         // picker run on first start), yet Setup kills the hook after 30

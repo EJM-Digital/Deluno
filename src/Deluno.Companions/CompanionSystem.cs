@@ -206,8 +206,7 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
         {
             using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = true, Verb = "runas" })
                 ?? throw new InvalidOperationException($"{Path.GetFileName(path)} did not start.");
-            await process.WaitForExitAsync(cancellationToken);
-            return new CompanionRunResult(process.ExitCode, false);
+            return await WaitForInstallerAsync(process, cancellationToken);
         }
         catch (Win32Exception exception) when (exception.NativeErrorCode == ErrorCancelled)
         {
@@ -219,8 +218,27 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
     {
         using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = false, CreateNoWindow = true })
             ?? throw new InvalidOperationException($"{Path.GetFileName(path)} did not start.");
-        await process.WaitForExitAsync(cancellationToken);
-        return new CompanionRunResult(process.ExitCode, false);
+        return await WaitForInstallerAsync(process, cancellationToken);
+    }
+
+    /// <summary>How long an installer is given. Long, since a vendor's installer can be slow, but never open-ended (#1258).</summary>
+    private static readonly TimeSpan InstallerLimit = TimeSpan.FromMinutes(15);
+
+    /// <summary>Waits for the installer; one that is still running after its limit is stopped and reported as failed (-1).</summary>
+    private static async Task<CompanionRunResult> WaitForInstallerAsync(Process process, CancellationToken cancellationToken)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(InstallerLimit);
+        try
+        {
+            await process.WaitForExitAsync(limit.Token);
+            return new CompanionRunResult(process.ExitCode, false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try { process.Kill(entireProcessTree: true); } catch (Exception exception) when (exception is InvalidOperationException or Win32Exception) { }
+            return new CompanionRunResult(-1, false);
+        }
     }
 
     public void Start(string path, string arguments)

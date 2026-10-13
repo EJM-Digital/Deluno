@@ -454,7 +454,7 @@ public static class TransmissionDaemon
             try
             {
                 process.Kill();
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                await process.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
             catch
             {
