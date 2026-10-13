@@ -15,6 +15,11 @@ public static class FirstRunTrayModel
 
     public const string HoverText = "Deluno - setting up";
 
+    /// <summary>The same icon while the backup before an update is installed at start is taken (#1256).</summary>
+    public const string BackupHoverText = "Deluno - backing up your data before the update";
+
+    public const string BackupOpenNotice = "Deluno is backing up its data before installing an update. Click the icon again in a moment.";
+
     public const string OpenNoticeTitle = "Deluno can't open yet";
 
     public const string OpenNotice = "Deluno is still setting up. Click the icon again once setup has finished.";
@@ -65,9 +70,13 @@ internal sealed class FirstRunTray : IDisposable
     private OwnedIcon? _icon;
     private bool _dotShown = true;
     private bool _disposed;
+    private readonly string _hover;
+    private readonly string _openNotice;
 
-    private FirstRunTray()
+    private FirstRunTray(string hover, string openNotice)
     {
+        _hover = hover;
+        _openNotice = openNotice;
         _thread = new Thread(Run) { IsBackground = true, Name = "Deluno first-run tray" };
         _thread.SetApartmentState(ApartmentState.STA);
     }
@@ -84,7 +93,7 @@ internal sealed class FirstRunTray : IDisposable
         {
             // Visual styles and DPI mode have to be set before the first window of the process exists.
             Program.EnsureWinFormsBootstrap();
-            var tray = new FirstRunTray();
+            var tray = new FirstRunTray(FirstRunTrayModel.HoverText, FirstRunTrayModel.OpenNotice);
             tray._thread.Start();
             tray._ready.Wait(TimeSpan.FromSeconds(5));
             HookLog.Write("first run: the tray icon is shown while Deluno sets itself up.");
@@ -93,6 +102,28 @@ internal sealed class FirstRunTray : IDisposable
         catch (Exception ex)
         {
             HookLog.Write($"first run: the tray icon could not be shown: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Shows the icon while the backup before an update is installed at start is taken, so that wait is never a blank
+    /// one (#1256). Null when the icon could not be shown. The caller takes it down with <see cref="Dispose"/>.
+    /// </summary>
+    public static FirstRunTray? StartForBackup()
+    {
+        try
+        {
+            Program.EnsureWinFormsBootstrap();
+            var tray = new FirstRunTray(FirstRunTrayModel.BackupHoverText, FirstRunTrayModel.BackupOpenNotice);
+            tray._thread.Start();
+            tray._ready.Wait(TimeSpan.FromSeconds(5));
+            HookLog.Write("update at start: the tray icon is shown while the backup is taken.", TrayStartLog.FileName);
+            return tray;
+        }
+        catch (Exception ex)
+        {
+            HookLog.Write($"update at start: the tray icon could not be shown: {ex.Message}", TrayStartLog.FileName);
             return null;
         }
     }
@@ -123,7 +154,7 @@ internal sealed class FirstRunTray : IDisposable
                 _menu.Items.Add(item);
             }
 
-            _notify = new NotifyIcon { ContextMenuStrip = _menu, Text = FirstRunTrayModel.HoverText };
+            _notify = new NotifyIcon { ContextMenuStrip = _menu, Text = _hover };
             Draw();
             _notify.Visible = true;
             _notify.MouseClick += (_, e) =>
@@ -168,7 +199,7 @@ internal sealed class FirstRunTray : IDisposable
         => _notify?.ShowBalloonTip(
             TrayBalloons.InformationMilliseconds,
             FirstRunTrayModel.OpenNoticeTitle,
-            FirstRunTrayModel.OpenNotice,
+            _openNotice,
             ToolTipIcon.Info);
 
     private void Quit()

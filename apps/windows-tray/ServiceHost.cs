@@ -29,7 +29,21 @@ public static class ServiceHost
 {
     public static async Task RunAsync(string[] args)
     {
+        var log = new TrayStartLog();
+
+        // First of all, on its own thread (#1256): services installed by earlier builds have no restart-on-failure
+        // actions, and a first start that hangs must still leave them set. Its answer is kept for the Health row.
+        var failureActions = ServiceManager.EnsureFailureActionsEarlyAsync(message => log.Warning(message));
+
         var settings = AppSettings.Load();
+        var progress = StartProgress.ForThisProcess();
+        progress.BeginAttempt(1);
+        using var watchStop = new CancellationTokenSource();
+        // The service manager calls the service running as soon as the host's lifetime answers, before the databases
+        // are opened, so a hung start is invisible to it. Watch it here; a hang ends the process non-zero so the
+        // recovery actions act.
+        _ = ServiceStartGuard.WatchAsync(
+            progress, new StartWindows(), TimeProvider.System, log, StartDiagnostics.Capture, code => Environment.Exit(code), watchStop.Token);
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -59,6 +73,7 @@ public static class ServiceHost
             ExitProcess = code => Environment.Exit(code)
         };
         builder.Services.AddSingleton(safetyOptions);
+        builder.Services.AddSingleton<Deluno.Infrastructure.Storage.IStartupProgress>(progress);
         // The Health row for a failed restart-on-failure set-up gets a "Try again" (#1080).
         builder.Services.AddSingleton<Deluno.Contracts.IBackgroundProblemRetry>(provider =>
             new ServiceFailureActionsRetry(provider.GetRequiredService<Deluno.Contracts.IBackgroundProblemReporter>()));
@@ -89,18 +104,49 @@ public static class ServiceHost
             }
         };
 
-        // Services installed by earlier builds have no restart-on-failure actions; set
-        // them again on every start (sc failure is idempotent). Off the start path, once
-        // Deluno is up, so three slow sc.exe calls can never eat the service manager's
-        // 30 seconds to start; a refusal is logged and shown on Health (#1080).
-        app.Lifetime.ApplicationStarted.Register(() => _ = ServiceManager.EnsureFailureActionsInBackground(
-            message => app.Logger.LogWarning("{Message}", message),
-            app.Services.GetService<Deluno.Contracts.IBackgroundProblemReporter>()));
+        // The recovery settings were set at the top, before anything could hang; once Deluno is up, the Health row
+        // reports a refusal (or is cleared) from that answer (#1080, #1256).
+        app.Lifetime.ApplicationStarted.Register(() => progress.Enter(Deluno.Infrastructure.Storage.StartupPhase.Ready));
+        app.Lifetime.ApplicationStarted.Register(() => _ = ReportFailureActionsAsync(failureActions, app));
 
         // The request pipeline every Deluno host shares (#1176). The service ran
         // its own copy with no routing, no allowed hosts and no forwarded headers.
         app.UseDelunoRequestPipeline();
 
-        await app.RunAsync();
+        try
+        {
+            await app.RunAsync();
+        }
+        catch (Exception failure)
+        {
+            // A start that fails outright ends the process non-zero, with the reason in the log, so the service
+            // manager's recovery acts (#1256).
+            ServiceStartGuard.OnStartFailed(failure, log, code => Environment.Exit(code));
+        }
+        finally
+        {
+            watchStop.Cancel();
+        }
+    }
+
+    private static async Task ReportFailureActionsAsync(Task<string?> failureActions, WebApplication app)
+    {
+        try
+        {
+            var problem = await failureActions;
+            var reporter = app.Services.GetService<Deluno.Contracts.IBackgroundProblemReporter>();
+            if (problem is null)
+            {
+                reporter?.Clear(ServiceManager.FailureActionsProblemKey);
+            }
+            else
+            {
+                reporter?.Report(ServiceManager.FailureActionsProblemKey, "Deluno may not restart itself", ServiceManager.FailureActionsProblemMessage, problem);
+            }
+        }
+        catch
+        {
+            // Best effort: the log already has it.
+        }
     }
 }

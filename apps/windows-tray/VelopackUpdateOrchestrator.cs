@@ -115,7 +115,10 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
     /// the same "pre-update" backup (#1197). Tried once per version, so an update that cannot apply never loops; a
     /// failed backup installs nothing and the app starts normally. Returns true when the app is restarting.
     /// </summary>
-    public bool ApplyPendingAtStart(string attemptFolder)
+    public bool ApplyPendingAtStart(
+        string attemptFolder,
+        Deluno.Infrastructure.Storage.IStartupProgress? progress = null,
+        Action? backupStarting = null)
     {
         UpdateManager manager;
         VelopackAsset pending;
@@ -130,12 +133,26 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             pending = found;
         }
 
+        // The tray icon appears before the backup, which can take minutes (#1256).
+        backupStarting?.Invoke();
+        var log = (Action<string>)(line => HookLog.Write(line, TrayStartLog.FileName));
         return Task.Run(() => PreUpdateBackupGate.InstallAtStartAsync(
             pending.Version.ToString(),
             attemptFolder,
             BlockedUpdateNote.DefaultFolder(),
-            token => PreUpdateBackupGate.TakePreUpdateBackupAsync(null, token),
-            () => manager.ApplyUpdatesAndRestart(pending))).GetAwaiter().GetResult();
+            token => PreUpdateBackupGate.TakePreUpdateBackupAsync(
+                null,
+                token,
+                step =>
+                {
+                    // Each file is a step: moving on to the next counts as progress.
+                    progress?.Enter(Deluno.Infrastructure.Storage.StartupPhase.PreUpdateBackup, step);
+                    log($"Backup: {step}");
+                }),
+            () => manager.ApplyUpdatesAndRestart(pending),
+            progress,
+            null,
+            log)).GetAwaiter().GetResult();
     }
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)

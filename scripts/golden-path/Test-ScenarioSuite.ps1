@@ -58,6 +58,23 @@ foreach ($id in $allIds) {
 $topics = @(Get-ScenarioTopics)
 Check 'every group says what it proves' (@($plan | Where-Object { $_.Name -notin $topics.Group }).Count -eq 0)
 
+Write-Host 'The update scenario (#1256)'
+Check 'the plan has the update scenario' ($allIds -contains 'update.over-running-previous')
+Check 'the update group runs last, because it replaces the build the other groups ran on' ($plan[-1].Name -eq 'update')
+Check 'the existing scenario ids are unchanged' ((@('install-first-run', 'film.qbittorrent', 'film.extra-left-out', 'remove-copy.deluge.file', 'resend.during.sabnzbd', 'stuck.peers.transmission', 'outage.inflight', 'tryagain.nzbget', 'vanish.waiting.deluge', 'problems.dismiss-everywhere', 'activity.one-story') | Where-Object { $_ -notin $allIds }).Count -eq 0)
+$g10 = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G10-Update.ps1')
+Check 'the update scenario installs the previous release and runs the candidate''s Setup silently over it' ($g10 -match 'UpdatePreviousSetup' -and $g10 -match 'candidateSetup -ArgumentList ''--silent''')
+$afterUpdate = $g10.Substring($g10.IndexOf('# 2. The update'))
+Check 'nothing starts Deluno by hand after the update runs' ($afterUpdate -notmatch 'Start-DelunoInDesktop' -and $afterUpdate -notmatch 'Start-ScheduledTask' -and $afterUpdate -notmatch 'Start-Process\s+-FilePath\s+\$exe')
+Check 'it requires Deluno back as a new process, answering, as the candidate' ($afterUpdate -match 'notin \$oldPids' -and $afterUpdate -match 'candidateVersion')
+Check 'it reads the start marker and the start log and fails a retried start' ($afterUpdate -match 'Read-StartMarker' -and $afterUpdate -match 'phase -eq ''ready''' -and $afterUpdate -match 'Deluno started on try')
+Check 'it compares the download clients, libraries and Activity before and after' ($afterUpdate -match 'Clients' -and $afterUpdate -match 'Libraries' -and $afterUpdate -match 'Activity')
+$hostScript = Get-Content -Raw (Join-Path $root 'Invoke-ScenarioSuite.ps1')
+Check 'the host takes -PreviousInstallerPath and copies it into the VM' ($hostScript.Contains('[string] $PreviousInstallerPath') -and $hostScript.Contains('previous\Deluno-Setup.exe'))
+$g10Parsed = $null; $g10Errs = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $suite 'vm\scenarios\G10-Update.ps1'), [ref]$g10Parsed, [ref]$g10Errs)
+Check 'the update scenario parses on this PowerShell' ($g10Errs.Count -eq 0)
+
 Write-Host 'The host judges results and builds the status'
 $reported = @(
     [pscustomobject]@{ id = 'install-first-run'; title = 't'; status = 'pass'; seconds = 3; error = $null; checks = @([pscustomobject]@{ name = 'a'; ok = $true; detail = '' }); notes = @() }

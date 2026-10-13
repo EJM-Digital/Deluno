@@ -119,6 +119,14 @@ public sealed class PreUpdateBackupGateTests : IDisposable
         Assert.Contains(log, line => line.Contains("backup finished", StringComparison.OrdinalIgnoreCase));
     }
 
+    private static void AdvanceInline(FakeTimeProvider clock, TimeSpan span)
+    {
+        // With no synchronization context on this thread, the timers' continuations run in place.
+        var prior = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try { clock.Advance(span); } finally { SynchronizationContext.SetSynchronizationContext(prior); }
+    }
+
     [Fact]
     public async Task A_backup_that_ignores_its_time_limit_still_ends_the_wait_and_blocks_the_update_with_a_note()
     {
@@ -136,18 +144,24 @@ public sealed class PreUpdateBackupGateTests : IDisposable
             clock,
             log.Add);
 
+        // Just before the limit it is still waiting; a little after the limit and the grace it has stopped waiting.
         var passed = TimeSpan.Zero;
-        while (!running.IsCompleted)
+        var limit = PreUpdateBackupGate.BackupTimeout + PreUpdateBackupGate.HardLimitGrace;
+        while (passed < limit + TimeSpan.FromSeconds(10))
         {
-            Assert.True(passed < TimeSpan.FromHours(1), "the start was still waiting for the backup an hour later");
-            clock.Advance(TimeSpan.FromSeconds(10));
+            if (passed <= PreUpdateBackupGate.BackupTimeout)
+            {
+                Assert.False(running.IsCompleted, $"the start stopped waiting for the backup after {passed}, before its limit");
+            }
+
+            AdvanceInline(clock, TimeSpan.FromSeconds(10));
             passed += TimeSpan.FromSeconds(10);
             await Task.Yield();
         }
 
+        await running.WaitAsync(TimeSpan.FromSeconds(10)); // a real-time guard for a failing run only: the clock is not moved
         Assert.False(await running);
         Assert.False(applied);
-        Assert.InRange(passed, PreUpdateBackupGate.BackupTimeout, PreUpdateBackupGate.BackupTimeout + PreUpdateBackupGate.HardLimitGrace + TimeSpan.FromSeconds(30));
         var note = BlockedUpdateNote.TryTake(_folder);
         Assert.NotNull(note);
         Assert.Contains("took too long", note!.Reason);

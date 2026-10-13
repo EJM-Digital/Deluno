@@ -114,7 +114,7 @@ public static class PreUpdateBackupGate
         }
 
         // A blocked install is not an attempt: the next start tries again.
-        if (!await BackUpAsync(version, noteFolder, backup))
+        if (!await BackUpAsync(version, noteFolder, backup, progress, time, log))
         {
             return false;
         }
@@ -133,19 +133,33 @@ public static class PreUpdateBackupGate
         return true;
     }
 
-    private static async Task<bool> BackUpAsync(string version, string noteFolder, Func<CancellationToken, Task> backup)
+    private static async Task<bool> BackUpAsync(
+        string version,
+        string noteFolder,
+        Func<CancellationToken, Task> backup,
+        Deluno.Infrastructure.Storage.IStartupProgress? progress = null,
+        TimeProvider? time = null,
+        Action<string>? log = null)
     {
+        var clock = time ?? TimeProvider.System;
+        var began = clock.GetUtcNow();
         try
         {
-            using var timeout = new CancellationTokenSource(BackupTimeout);
-            await backup(timeout.Token);
+            // Before the step that can block (#1256): the log, the marker and the tray all say what is going on.
+            progress?.Enter(Deluno.Infrastructure.Storage.StartupPhase.PreUpdateBackup, $"backing up before installing {version}");
+            log?.Invoke($"Backing up Deluno's data before installing version {version} (it is cancelled after {BackupTimeout.TotalMinutes:0} minutes).");
+            using var timeout = new CancellationTokenSource(BackupTimeout, clock);
+            // A backup that is stuck in a read does not look at its token; the wait ends anyway, a little after the limit.
+            await Task.Run(() => backup(timeout.Token)).WaitAsync(BackupTimeout + HardLimitGrace, clock).ConfigureAwait(false);
+            log?.Invoke($"The backup finished in {(clock.GetUtcNow() - began).TotalSeconds:0} seconds.");
             return true;
         }
         catch (Exception ex)
         {
-            var reason = ex is OperationCanceledException ? "the backup took too long." : ex.Message;
-            BlockedUpdateNote.Write(noteFolder, new BlockedUpdateNote(version, reason, DateTimeOffset.UtcNow));
+            var reason = ex is OperationCanceledException or TimeoutException ? "the backup took too long." : ex.Message;
+            BlockedUpdateNote.Write(noteFolder, new BlockedUpdateNote(version, reason, clock.GetUtcNow()));
             HookLog.Write($"update {version} not installed, backup failed: {ex.Message}");
+            log?.Invoke($"The update to {version} was not installed because the backup failed: {reason}");
             return false;
         }
     }
@@ -154,13 +168,17 @@ public static class PreUpdateBackupGate
     /// The same "pre-update" backup the web page takes. With the host running it uses the host's own backup service;
     /// before the host runs (at start) it builds that one service on its own, over the same data folder.
     /// </summary>
-    public static Task TakePreUpdateBackupAsync(IServiceProvider? hostServices, CancellationToken cancellationToken)
+    public static Task TakePreUpdateBackupAsync(IServiceProvider? hostServices, CancellationToken cancellationToken, Action<string>? onFile = null)
     {
-        var service = hostServices?.GetService(typeof(IDelunoBackupService)) as IDelunoBackupService
-            ?? new DelunoBackupService(
-                Options.Create(new StoragePathOptions { DataRoot = AppSettings.Load().DataRoot }),
-                TimeProvider.System,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<DelunoBackupService>.Instance);
-        return service.CreateBackupAsync("pre-update", cancellationToken);
+        if (hostServices?.GetService(typeof(IDelunoBackupService)) is IDelunoBackupService running)
+        {
+            return running.CreateBackupAsync("pre-update", cancellationToken);
+        }
+
+        var service = new DelunoBackupService(
+            Options.Create(new StoragePathOptions { DataRoot = AppSettings.Load().DataRoot }),
+            TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DelunoBackupService>.Instance);
+        return service.CreateBackupAsync("pre-update", cancellationToken, onFile);
     }
 }

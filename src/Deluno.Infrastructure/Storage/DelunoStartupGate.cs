@@ -1,4 +1,3 @@
-#pragma warning disable CS9113 // stub: removed with the implementation
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -74,9 +73,10 @@ public sealed class DelunoStartupGate(IStartupProgress? progress = null) : IDelu
 
         failedDatabases.TryRemove(databaseName, out _);
         readyDatabases[databaseName] = 0;
-        if (readyDatabases.Count == ExpectedDatabases.Count && failedDatabases.IsEmpty)
+        if (readyDatabases.Count == ExpectedDatabases.Count && failedDatabases.IsEmpty && allReady.TrySetResult())
         {
-            allReady.TrySetResult();
+            // The databases are done; what is left is the remaining services and the web server (#1256).
+            progress?.Enter(StartupPhase.WebHost, "the databases are ready");
         }
     }
 

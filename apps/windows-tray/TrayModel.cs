@@ -231,7 +231,9 @@ public static class TrayHoverText
         }
         else if (status.IsStarting)
         {
-            parts.Add(status.RestartNote is { } note ? $"Stopped by itself - {note}" : "Starting...");
+            parts.Add(status.RestartNote is { } note
+                ? $"Stopped by itself - {note}"
+                : status.StartNote is { } doing ? $"Starting - {doing}..." : "Starting...");
         }
         else
         {

@@ -1,4 +1,3 @@
-#pragma warning disable CS9113 // stub: removed with the implementation
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -31,6 +30,9 @@ public sealed class DelunoStorageBootstrapService(
 
         foreach (var database in DelunoStorageLayout.Databases)
         {
+            // Before the step that can block (#1256): a start that stops here says which database it was opening.
+            progress?.Enter(StartupPhase.OpeningDatabases, database.Key);
+            logger.LogInformation("Opening the {Database} database.", database.Key);
             // A database another process holds locked is waited for, not a failed start (#1080).
             await SqliteLockRetry.RunAsync(
                 async () =>

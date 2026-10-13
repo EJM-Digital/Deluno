@@ -27,7 +27,12 @@ public sealed class HostSupervisorTests
         public Task WorkAsync(TimeSpan span) => Task.Delay(span, Time, Token);
 
         /// <summary>Never returns on its own; ends only when the supervisor cancels it.</summary>
-        public Task HangAsync() => Task.Delay(Timeout.InfiniteTimeSpan, Token);
+        public Task HangAsync()
+        {
+            var tcs = new TaskCompletionSource();
+            Token.Register(() => tcs.TrySetCanceled(Token));
+            return tcs.Task;
+        }
     }
 
     internal sealed class ScriptedHost : IStartableHost
@@ -102,13 +107,13 @@ public sealed class HostSupervisorTests
         public string Folder { get; } = Path.Combine(Path.GetTempPath(), "deluno-supervisor-" + Guid.NewGuid().ToString("N"));
         public string MarkerPath => Path.Combine(Folder, StartMarkerFile.FileName);
 
-        public Harness(HostSupervisorSettings? settings = null, IProcessRestarter? restarter = null, double random = 0.5, int pid = 4242)
+        public Harness(HostSupervisorSettings? settings = null, IProcessRestarter? restarter = null, double random = 0.5, int pid = 4242, bool offThread = false)
         {
             Directory.CreateDirectory(Folder);
             Progress = new StartProgress(Time, MarkerPath, pid, line => { lock (Lines) { Lines.Add("progress: " + line); } });
             Host.Progress = Progress;
             Host.Time = Time;
-            var log = new RecordingLog(Lines);
+            var log = new RecordingLog(Lines, Time);
             Supervisor = new HostSupervisor(
                 Host,
                 Progress,
@@ -126,7 +131,51 @@ public sealed class HostSupervisorTests
                 settings,
                 restarter,
                 diagnostics: () => "threads: 31 (diagnostics for the test)",
-                random: () => random);
+                random: () => random,
+                runOffThread: offThread ? null : InlineRun);
+        }
+
+        /// <summary>
+        /// Runs a try on the caller's thread so the fake clock and the script cannot race. The tests that are about the
+        /// thread pool use <c>offThread: true</c> and never move the clock while the script runs.
+        /// </summary>
+        public static Task InlineRun(Func<Task> work)
+        {
+            // No synchronization context, so the script's own awaits resume on whichever thread completes them (as
+            // they do on the thread pool) and never wait for the test's thread to come round.
+            var prior = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(null);
+            try
+            {
+                return work();
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException(ex);
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(prior);
+            }
+        }
+
+        /// <summary>
+        /// Moves the fake clock with no synchronization context on this thread. The timers fire here, and a continuation
+        /// is only run in place (rather than queued to the thread pool, where it can lose a race with this loop) when the
+        /// thread completing the task has none.
+        /// </summary>
+        public void AdvanceInline(TimeSpan span)
+        {
+            var prior = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(null);
+            try
+            {
+                Time.Advance(span);
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(prior);
+            }
         }
 
         public string Log => string.Join('\n', Lines.ToArray());
@@ -148,7 +197,7 @@ public sealed class HostSupervisorTests
             while (!task.IsCompleted)
             {
                 Assert.True(spent <= cap, "the supervisor did not finish within " + cap + " of fake time.\n" + Log);
-                Time.Advance(each);
+                AdvanceInline(each);
                 spent += each;
                 await Task.Yield();
                 Thread.Yield();
@@ -163,7 +212,7 @@ public sealed class HostSupervisorTests
             var each = step ?? TimeSpan.FromSeconds(1);
             for (var spent = TimeSpan.Zero; spent < span; spent += each)
             {
-                Time.Advance(each);
+                AdvanceInline(each);
                 await Task.Yield();
                 Thread.Yield();
             }
@@ -180,11 +229,12 @@ public sealed class HostSupervisorTests
         }
     }
 
-    private sealed class RecordingLog(List<string> lines) : ISupervisorLog
+    private sealed class RecordingLog(List<string> lines, FakeTimeProvider? time = null) : ISupervisorLog
     {
-        public void Info(string message) { lock (lines) { lines.Add("INFO " + message); } }
-        public void Warning(string message) { lock (lines) { lines.Add("WARN " + message); } }
-        public void Error(string message) { lock (lines) { lines.Add("ERROR " + message); } }
+        private string Stamp => time is null ? string.Empty : $"[+{(time.GetUtcNow() - Harness.Epoch).TotalSeconds:0}s] ";
+        public void Info(string message) { lock (lines) { lines.Add(Stamp + "INFO " + message); } }
+        public void Warning(string message) { lock (lines) { lines.Add(Stamp + "WARN " + message); } }
+        public void Error(string message) { lock (lines) { lines.Add(Stamp + "ERROR " + message); } }
     }
 
     private static readonly StartupPhase[] AllPhases =
@@ -231,12 +281,12 @@ public sealed class HostSupervisorTests
     [Fact]
     public async Task The_host_is_started_off_the_calling_thread()
     {
-        using var h = new Harness();
+        using var h = new Harness(offThread: true);
         h.Host.Script = call => { call.Enter(StartupPhase.Ready); return Task.CompletedTask; };
         var caller = Environment.CurrentManagedThreadId;
 
-        // A caller with a UI-like context must not be the thread that runs the host's start.
-        var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
+        // The caller (the tray's UI thread) must not be the thread that runs the host's start. The clock is not moved.
+        var result = await h.Supervisor.StartAsync(StartReason.FirstStart).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(StartOutcome.Started, result.Outcome);
         Assert.True(h.Host.StartedOnPoolThread, "the start must run on the thread pool, never on the caller's thread");
@@ -246,7 +296,7 @@ public sealed class HostSupervisorTests
     [Fact]
     public async Task A_start_that_blocks_its_thread_does_not_block_the_supervisor()
     {
-        using var h = new Harness();
+        using var h = new Harness(offThread: true);
         using var release = new ManualResetEventSlim();
         h.Host.Script = call =>
         {
@@ -261,7 +311,7 @@ public sealed class HostSupervisorTests
         Assert.False(running.IsCompleted);
         release.Set();
 
-        var result = await h.DriveAsync(running);
+        var result = await running.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(StartOutcome.Started, result.Outcome);
     }
 
@@ -370,11 +420,11 @@ public sealed class HostSupervisorTests
 
         var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
 
-        Assert.Equal(StartOutcome.Started, result.Outcome);
+        Assert.True(result.Outcome == StartOutcome.Started, result.Outcome + " " + h.Log);
         Assert.Equal(2, h.Host.Starts);
         var cancelledAfter = h.Host.CancelTimes[0] - entered;
         Assert.True(cancelledAfter >= window, $"cancelled after {cancelledAfter}, before the {window} window ended");
-        Assert.True(cancelledAfter <= window + TimeSpan.FromSeconds(3), $"cancelled after {cancelledAfter}, long after the {window} window");
+        Assert.True(cancelledAfter <= window + TimeSpan.FromSeconds(3), $"cancelled after {cancelledAfter}, long after the {window} window {h.Log}");
         Assert.Equal(1, h.Host.Frees);
         // The snapshot says where it was stuck.
         Assert.Contains("no progress", h.Log);
@@ -564,15 +614,15 @@ public sealed class HostSupervisorTests
         using var h = new Harness();
         h.Host.Script = _ => throw new InvalidOperationException("no");
 
-        // Four failed starts, one at a time, a few minutes apart: under the limit of five in fifteen minutes.
+        // Four failed starts, one at a time, six minutes apart: never five inside fifteen minutes.
         for (var i = 0; i < 4; i++)
         {
             var one = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.PortChange, retry: false));
             Assert.Equal(StartOutcome.Failed, one.Outcome);
-            await h.PassAsync(TimeSpan.FromMinutes(3.5), TimeSpan.FromSeconds(30));
+            await h.PassAsync(TimeSpan.FromMinutes(6), TimeSpan.FromSeconds(30));
         }
 
-        // The first two have now left the 15 minute window: a fifth failure is only the third inside it.
+        // The first has long left the 15 minute window: a fifth failure, at 24 minutes, is only the third inside it (12, 18 and 24).
         var fifth = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.PortChange, retry: false));
         Assert.Equal(StartOutcome.Failed, fifth.Outcome);
         Assert.Equal(3, h.Supervisor.FailuresInWindow);
@@ -824,7 +874,7 @@ public sealed class HostSupervisorTests
             await call.WorkAsync(TimeSpan.FromMinutes(3));
             call.Enter(StartupPhase.Ready);
         };
-        var supervisor = new HostSupervisor(host, progress, new HostRestartReporter(), new RecordingLog(h.Lines), h.Time, restarter: null, diagnostics: null, random: () => 0.5);
+        var supervisor = new HostSupervisor(host, progress, new HostRestartReporter(), new RecordingLog(h.Lines), h.Time, restarter: null, diagnostics: null, random: () => 0.5, runOffThread: Harness.InlineRun);
 
         var result = await h.DriveAsync(supervisor.StartAsync(StartReason.FirstStart));
 
@@ -844,7 +894,7 @@ public sealed class HostSupervisorTests
         var progress = new StartProgress(h.Time, h.MarkerPath, 4242);
         var host = new ScriptedHost { Progress = progress, Time = h.Time };
         host.Script = call => { call.Enter(StartupPhase.Ready); return Task.CompletedTask; };
-        var supervisor = new HostSupervisor(host, progress, new HostRestartReporter(), new RecordingLog(h.Lines), h.Time, random: () => 0.5);
+        var supervisor = new HostSupervisor(host, progress, new HostRestartReporter(), new RecordingLog(h.Lines), h.Time, random: () => 0.5, runOffThread: Harness.InlineRun);
 
         var result = await h.DriveAsync(supervisor.StartAsync(StartReason.FirstStart));
 
@@ -874,7 +924,7 @@ public sealed class HostSupervisorTests
 
         await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
 
-        Assert.Equal(StartupPhase.Starting, firstPhaseOfSecond);
+        Assert.True(firstPhaseOfSecond == StartupPhase.Starting, firstPhaseOfSecond + " " + h.Log);
         Assert.Equal(2, h.Progress.Current.Attempt);
     }
 
@@ -931,11 +981,9 @@ public sealed class HostSupervisorTests
             Assert.True(result.Outcome is StartOutcome.Started or StartOutcome.GaveUp, $"seed {seed}: {result.Outcome}");
             Assert.True(h.Host.Starts <= h.Supervisor.Settings.StartLimit, $"seed {seed}: {h.Host.Starts} starts");
             Assert.True(h.Supervisor.FailuresInWindow <= h.Supervisor.Settings.StartLimit, $"seed {seed}");
-            // Every attempt is numbered in the log, with its reason; every wait is inside its bounds.
-            for (var n = 1; n <= h.Host.Starts; n++)
-            {
-                Assert.Matches(new Regex($@"try {n} of 5 \(first start\)"), h.Log);
-            }
+            // Every attempt is numbered in the log, with its reason (a number counts the failures still inside the window, so a
+            // slow try that outlives the window can make it lower than the count of starts); every wait is inside its bounds.
+            Assert.Equal(h.Host.Starts, Regex.Matches(h.Log, @"Start try \d+ of 5 \(first start\)").Count);
 
             foreach (var attempt in h.Attempts.Skip(1))
             {
