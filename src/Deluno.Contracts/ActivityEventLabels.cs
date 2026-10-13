@@ -214,6 +214,7 @@ public static class ActivityEventLabels
             ["filesystem.import.held-by-file-check"] = "Import held by the file check",
             ["filesystem.import.restart-recovered"] = "Import finished after a restart",
             ["filesystem.import.restart-abandoned"] = "Import stopped by a restart",
+            ["filesystem.import.restart-media-kept"] = "Import file kept after a restart",
             ["filesystem.import.season-pack.completed"] = "Season pack imported",
             ["filesystem.import.season-pack.leftovers-deleted"] = "Deleted a season pack's leftover files",
             ["filesystem.import.unmatched-given-up"] = "Gave up matching a file to a title",
