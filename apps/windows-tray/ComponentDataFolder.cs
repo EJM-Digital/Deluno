@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -19,7 +20,7 @@ public static class ComponentPaths
     public const string DataToken = "%DelunoData%";
 
     /// <summary>The data root. Replaceable so a test never reads the real profile.</summary>
-    public static Func<string> DataRoot { get; set; } = () => AppSettings.Load().DataRoot;
+    public static Func<string> DataRoot { get; set; } = AppSettings.RequireDataRoot;
 
     /// <summary>Environment variables and the <see cref="DataToken"/> expanded.</summary>
     public static string Expand(string value)
@@ -45,35 +46,25 @@ public static class DownloadLayoutRecord
 
     public static string PathFor(string dataRoot) => Path.Combine(dataRoot, "config", "download-layout.json");
 
-    public static void Save(string dataRoot, DownloadLayout layout)
+    /// <summary>Remembers the folders. Null when it landed, else why not: not remembering only means a recovery asks the running client instead.</summary>
+    public static string? Save(string dataRoot, DownloadLayout layout, IStateFileSystem? io = null)
+        => StateFile.WriteJson(PathFor(dataRoot), new Stored(layout.CompletedRoot, layout.IncompleteRoot), null, io);
+
+    /// <summary>The remembered folders and how the read went (#1260): a busy or damaged record is not "no record", and a recovery must not fall back to default folders because of it.</summary>
+    public static StateFileRead<DownloadLayout> LoadChecked(string dataRoot, IStateFileSystem? io = null)
     {
-        try
+        var read = StateFile.Read<Stored>(PathFor(dataRoot), null, io);
+        if (read.Kind != StateFileKind.Ok)
         {
-            var path = PathFor(dataRoot);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new Stored(layout.CompletedRoot, layout.IncompleteRoot)));
+            return new(read.Kind, null, read.Detail);
         }
-        catch
-        {
-            // Not remembering it only means a recovery asks the running client instead.
-        }
+
+        return read.Value is { CompletedRoot.Length: > 0, IncompleteRoot.Length: > 0 } stored
+            ? new(StateFileKind.Ok, new DownloadLayout(stored.CompletedRoot, stored.IncompleteRoot))
+            : new(StateFileKind.Unreadable, null, "the folders are empty");
     }
 
-    public static DownloadLayout? Load(string dataRoot)
-    {
-        try
-        {
-            var path = PathFor(dataRoot);
-            var stored = File.Exists(path) ? JsonSerializer.Deserialize<Stored>(File.ReadAllText(path)) : null;
-            return stored is { CompletedRoot.Length: > 0, IncompleteRoot.Length: > 0 }
-                ? new DownloadLayout(stored.CompletedRoot, stored.IncompleteRoot)
-                : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    public static DownloadLayout? Load(string dataRoot, IStateFileSystem? io = null) => LoadChecked(dataRoot, io).Value;
 }
 
 /// <summary>One torrent read from the running client so it can be added back.</summary>
@@ -267,7 +258,16 @@ public static class ComponentStateMigration
             var running = await rpc.ReadFoldersAsync(cancellationToken).ConfigureAwait(false);
             var torrents = running is null ? null : await rpc.ReadTorrentsAsync(cancellationToken).ConfigureAwait(false);
 
-            var layout = DownloadLayoutRecord.Load(dataRoot) ?? DownloadLayout.Default();
+            var remembered = DownloadLayoutRecord.LoadChecked(dataRoot);
+            if (!remembered.CanBuildOn)
+            {
+                // A busy or damaged record is not "no record" (#1260): writing default folders (and possibly no sign-in) over a client that
+                // has custom ones is worse than leaving Transmission's folder missing until the next start.
+                log?.Write($"Transmission's folder is missing, but Deluno could not read its record of the download folders ({remembered.Detail}), so it did not write Transmission's settings again. It will try at the next start.");
+                return false;
+            }
+
+            var layout = remembered.Value ?? DownloadLayout.Default();
             var download = running?.DownloadDir is { Length: > 0 } d ? d : layout.CompletedRoot;
             var incomplete = running?.IncompleteDir is { Length: > 0 } i ? i : layout.IncompleteFolder("Transmission");
             var incompleteEnabled = running is null ? true : running.Value.IncompleteEnabled;
@@ -276,8 +276,19 @@ public static class ComponentStateMigration
             File.WriteAllText(Path.Combine(folder, "settings.json"), TransmissionSettings(download, incomplete, incompleteEnabled, port, login));
 
             var notice = new TransmissionReaddNotice(DateTimeOffset.UtcNow, running is not null, torrents ?? []);
-            File.WriteAllText(ReaddNoticePath(dataRoot), JsonSerializer.Serialize(notice));
-            startedRegistry?.Add(Transmission);
+            if (StateFile.WriteJson(ReaddNoticePath(dataRoot), notice) is { } noticeProblem)
+            {
+                log?.Write($"Deluno could not leave the note about adding Transmission's torrents back: {noticeProblem}");
+            }
+
+            try
+            {
+                startedRegistry?.Add(Transmission);
+            }
+            catch (IOException exception)
+            {
+                log?.Write($"Deluno could not note that Transmission should start at sign-in: {exception.Message}");
+            }
             log?.Write("Transmission's folder was missing (a reinstall removed it), so Deluno wrote its settings again. Torrents added before may need adding back.");
             return true;
         }
@@ -372,18 +383,11 @@ public static class ComponentStateMigration
 /// <summary>The one-click re-add that follows a recreated Transmission folder.</summary>
 public static class TransmissionReadd
 {
-    public static TransmissionReaddNotice? Pending(string dataRoot)
-    {
-        try
-        {
-            var path = ComponentStateMigration.ReaddNoticePath(dataRoot);
-            return File.Exists(path) ? JsonSerializer.Deserialize<TransmissionReaddNotice>(File.ReadAllText(path)) : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    public static TransmissionReaddNotice? Pending(string dataRoot, IStateFileSystem? io = null) => PendingChecked(dataRoot, io).Value;
+
+    /// <summary>The note and how the read went (#1260): a busy or damaged note is "do not know", not "nothing to add back".</summary>
+    public static StateFileRead<TransmissionReaddNotice> PendingChecked(string dataRoot, IStateFileSystem? io = null)
+        => StateFile.Read<TransmissionReaddNotice>(ComponentStateMigration.ReaddNoticePath(dataRoot), null, io);
 
     /// <summary>The notice in plain words.</summary>
     public const string NoticeText = "Transmission's settings were lost when Deluno was reinstalled, so Deluno wrote them again. Torrents added before may need adding back.";

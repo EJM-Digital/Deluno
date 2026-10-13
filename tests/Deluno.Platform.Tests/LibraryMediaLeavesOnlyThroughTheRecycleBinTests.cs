@@ -26,7 +26,7 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Api/System/SystemLogFilesEndpointRouteBuilderExtensions.cs"] = (1, "Deluno's own log files. " + OwnData),
         ["src/Deluno.Companions/CompanionDownloads.cs"] = (1, "A companion installer download. " + OwnData),
         ["src/Deluno.Companions/CompanionTools.cs"] = (2, "A companion installer download. " + OwnData),
-        ["src/Deluno.Contracts/PendingComponentInstalls.cs"] = (1, "A state file under the data root. " + OwnData),
+        ["src/Deluno.Contracts/StateFiles/StateFile.cs"] = (1, "The one shared state-file writer: the real disk behind it, deleting only the temporary file it wrote beside a state file, or a state file it was asked to clear. " + OwnData),
         ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (2, "Leftover files of a season pack, refused unless under a configured download path; and a write-probe file. " + DownloadArea),
         ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188)."),
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),

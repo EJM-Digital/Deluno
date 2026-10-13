@@ -107,7 +107,10 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
             if (result is null && string.Equals(spec.Kind, "transmission", StringComparison.OrdinalIgnoreCase))
             {
                 // Kept in the data root so a lost Transmission folder can be written again with these folders (#1177).
-                DownloadLayoutRecord.Save(ComponentPaths.DataRoot(), layout);
+                if (DownloadLayoutRecord.Save(ComponentPaths.DataRoot(), layout) is { } notKept)
+                {
+                    _log?.Write($"{spec.DisplayName}: Deluno could not remember the download folders, so a later recovery will ask the running client instead. {notKept}");
+                }
             }
 
             return result is null ? null : $"Deluno could not finish setting up {spec.DisplayName}: {result}";

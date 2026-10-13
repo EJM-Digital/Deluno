@@ -1291,6 +1291,15 @@ function BackupCard({
 
         <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
           <p className="text-sm font-semibold text-foreground">Automatic schedule</p>
+          {savedSettings.problem ? (
+            <div role="alert" className="mt-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
+              <p>{savedSettings.problem}</p>
+              <p className="mt-1 font-medium">Save the backup settings again to repair them.</p>
+              <Button type="button" className="mt-2" onClick={() => void saveSchedule()} disabled={busy === "schedule"}>
+                Repair backup settings
+              </Button>
+            </div>
+          ) : null}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <SwitchRow
               label="Enable scheduled backups"

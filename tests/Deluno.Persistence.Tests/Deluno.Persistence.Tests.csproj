@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../Support/ScriptedStateFileSystem.cs" Link="Support/ScriptedStateFileSystem.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.7" />

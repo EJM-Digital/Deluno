@@ -308,13 +308,18 @@ public sealed class TrayApplication : ApplicationContext
     {
         try
         {
-            var pending = Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot());
-            var readd = TransmissionReadd.Pending(ComponentPaths.DataRoot()) is { } transmission && (transmission.Summary is null || transmission.Torrents.Count > 0);
+            var dataRoot = ComponentPaths.DataRoot();
+            var pending = Deluno.Contracts.PendingComponentInstalls.ReadChecked(dataRoot);
+            var readd = TransmissionReadd.PendingChecked(dataRoot);
+            // A list that is busy or damaged is "do not know" (#1260), not "nothing waiting": the lines stay as they were rather than
+            // vanishing for a moment, or showing a false "not installed".
+            var pendingKnown = pending.CanBuildOn;
+            var readdKnown = readd.CanBuildOn;
             Change(s => s with
             {
                 StartsWithWindows = SafeSignInEnabled(),
-                InstallAppsText = pending is null ? null : PendingInstallRecorder.MenuText(pending, DateTimeOffset.UtcNow, DisplayNameOf),
-                TransmissionReaddPending = readd
+                InstallAppsText = !pendingKnown ? s.InstallAppsText : pending.Value is { Kinds.Count: > 0 } waiting ? PendingInstallRecorder.MenuText(waiting, DateTimeOffset.UtcNow, DisplayNameOf) : null,
+                TransmissionReaddPending = !readdKnown ? s.TransmissionReaddPending : readd.Value is { } transmission && (transmission.Summary is null || transmission.Torrents.Count > 0)
             });
         }
         catch
@@ -448,7 +453,17 @@ public sealed class TrayApplication : ApplicationContext
         try
         {
             var dataRoot = ComponentPaths.DataRoot();
-            var installed = new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(dataRoot)).Read().Select(entry => entry.Kind).ToList();
+            var installedRead = new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(dataRoot)).ReadChecked();
+            var credentialStore = BundledComponentCredentialStores.CreateForDataRoot(dataRoot);
+            if (!installedRead.CanBuildOn || credentialStore.Availability() is Deluno.Contracts.StateFileKind.Busy or Deluno.Contracts.StateFileKind.Unreadable)
+            {
+                // With the list of installed apps or the saved sign-ins unread, Transmission could be written again with its sign-in
+                // switched off (#1260). Leave it until they can be read; this runs again at the next start.
+                new FileInstallLog().Write("Deluno did not check the download clients' folders at start, because its list of installed apps or its saved sign-ins could not be read just now.");
+                return;
+            }
+
+            var installed = (installedRead.Value ?? []).Select(entry => entry.Kind).ToList();
             var spec = BundledComponents.Load().FirstOrDefault(s => s.Kind == ComponentStateMigration.Transmission);
             var daemonSummary = await RunningDaemonMigration.RunAsync(
                 ComponentPaths.InstallRoot(), dataRoot,
@@ -462,7 +477,7 @@ public sealed class TrayApplication : ApplicationContext
 
             var result = await ComponentStateMigration.RunAsync(
                 ComponentPaths.InstallRoot(), dataRoot, installed,
-                BundledComponentCredentialStores.CreateForDataRoot(dataRoot).TryGet(ComponentStateMigration.Transmission),
+                credentialStore.TryGet(ComponentStateMigration.Transmission),
                 new FileStartedComponentsRegistry(), spec?.DefaultPort ?? 9091, null, new FileInstallLog(), CancellationToken.None).ConfigureAwait(false);
             if (result.TransmissionFolderRecreated)
             {
@@ -513,9 +528,21 @@ public sealed class TrayApplication : ApplicationContext
 
     private void OnInstallApps(object? sender, EventArgs e)
     {
-        if (Deluno.Contracts.PendingComponentInstalls.Read(ComponentPaths.DataRoot()) is { } pending)
+        try
         {
-            ShowInstallPicker(pending.Kinds);
+            var pending = Deluno.Contracts.PendingComponentInstalls.ReadChecked(ComponentPaths.DataRoot());
+            if (!pending.CanBuildOn)
+            {
+                MessageBox.Show("Deluno could not read the list of apps waiting to be installed just now. Try again in a moment.", "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (pending.Value is { Kinds.Count: > 0 } waiting)
+            {
+                ShowInstallPicker(waiting.Kinds);
+            }
+        }
+        catch (Deluno.Contracts.StateFileException exception)
+        {
+            MessageBox.Show(exception.Message, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 
@@ -1008,9 +1035,12 @@ public sealed class TrayApplication : ApplicationContext
         }
 
         _supervisor.Cancel();
-        var settings = AppSettings.Load();
-        settings.Port = port;
-        settings.Save();
+        // Read again under the settings lock and written atomically; a settings file that cannot be read is never written from a guess (#1260).
+        if (AppSettings.Update(settings => settings.Port = port) is { } portProblem)
+        {
+            throw new InvalidOperationException(portProblem);
+        }
+
         // A --port start only lasted for one run; the person's choice here is the one that counts now.
         DelunoServer.PortOverride = null;
 
@@ -1100,9 +1130,12 @@ public sealed class TrayApplication : ApplicationContext
             return;
         }
 
-        var settings = AppSettings.Load();
-        settings.AllowedHostsForceDisabled = true;
-        settings.Save();
+        if (AppSettings.Update(settings => settings.AllowedHostsForceDisabled = true) is { } hostsProblem)
+        {
+            MessageBox.Show(hostsProblem, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
 
         await RestartHostAsync();
         InvokeOnUiThread(() => Balloon(

@@ -9,27 +9,47 @@ namespace Deluno.Tray;
 /// </summary>
 public static class PendingInstallRecorder
 {
-    public static void Record(IReadOnlyList<ComponentInstallResult> results, string? dataRoot = null)
+    /// <summary>
+    /// Returns the problems (in everyday words) of any change to the list that could not be kept, or none. A change that could
+    /// not be kept leaves the list as it was, and the problem goes to the install log: it is never dropped silently (#1260).
+    /// </summary>
+    public static IReadOnlyList<string> Record(IReadOnlyList<ComponentInstallResult> results, string? dataRoot = null, IStateFileSystem? io = null)
     {
         dataRoot ??= ComponentPaths.DataRoot();
+        var problems = new List<string>();
+        void Try(Action change)
+        {
+            try
+            {
+                change();
+            }
+            catch (StateFileException exception)
+            {
+                problems.Add(exception.Message);
+                HookLog.Write($"The list of apps waiting to be installed was not changed: {exception.Message}");
+            }
+        }
+
         var done = results
             .Where(r => r.Outcome is ComponentInstallOutcome.Installed or ComponentInstallOutcome.AlreadyInstalled or ComponentInstallOutcome.InstalledNeedsSetup)
             .Select(r => r.Kind)
             .ToArray();
         if (done.Length > 0)
         {
-            PendingComponentInstalls.Remove(dataRoot, done);
+            Try(() => PendingComponentInstalls.Remove(dataRoot, done, io));
         }
 
         // Whatever the person asked for and the picker has now run is no longer an unanswered ask.
-        PendingComponentInstalls.MarkAsked(dataRoot);
+        Try(() => PendingComponentInstalls.MarkAsked(dataRoot, io));
 
         var waiting = results.Where(r => r.RetryAfterUtc is not null).ToArray();
         if (waiting.Length > 0)
         {
-            PendingComponentInstalls.Add(dataRoot, waiting.Select(r => r.Kind), waiting.Max(r => r.RetryAfterUtc), askedByPerson: false,
-                reason: "GitHub's hourly limit on looking up releases was used up.");
+            Try(() => PendingComponentInstalls.Add(dataRoot, waiting.Select(r => r.Kind), waiting.Max(r => r.RetryAfterUtc), askedByPerson: false,
+                reason: "GitHub's hourly limit on looking up releases was used up.", io));
         }
+
+        return problems;
     }
 
     /// <summary>The words for the tray menu: what Try again would install, and whether it has to wait.</summary>

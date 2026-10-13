@@ -35,7 +35,19 @@ public static class ServiceHost
         // actions, and a first start that hangs must still leave them set. Its answer is kept for the Health row.
         var failureActions = ServiceManager.EnsureFailureActionsEarlyAsync(message => log.Warning(message));
 
-        var settings = AppSettings.Load();
+        AppSettings settings;
+        try
+        {
+            settings = AppSettings.LoadForStart();
+        }
+        catch (Deluno.Contracts.StateFileException failure)
+        {
+            // The settings could not be read (#1260): starting on the default folders could hide the person's data. Ending non-zero
+            // lets the service manager's recovery actions try again, and the reason is in the start log.
+            ServiceStartGuard.OnStartFailed(failure, log, code => Environment.Exit(code));
+            return;
+        }
+
         // So that a Setup over a running service starts it again afterwards (#1256).
         Program.MarkRunning(RunningKind.Service);
         var progress = StartProgress.ForThisProcess();

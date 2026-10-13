@@ -263,7 +263,7 @@ public sealed class SqliteJobStore(
         var conditions = new List<string>();
         if (token is not null)
         {
-            conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))");
+            conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND rowid < CAST(@id AS INTEGER)))");
         }
 
         if (failedOnly)
@@ -278,10 +278,10 @@ public sealed class SqliteJobStore(
             SELECT
                 id, job_type, source, status, {(includePayload ? "CASE WHEN octet_length(payload_json) <= 65536 THEN payload_json END" : "NULL")}, attempts, created_utc, scheduled_utc,
                 started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
-                idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+                idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc, rowid
             FROM job_queue
             {where}
-            ORDER BY created_utc DESC, id DESC
+            ORDER BY created_utc DESC, rowid DESC
             LIMIT @take;
             """;
 
@@ -293,10 +293,13 @@ public sealed class SqliteJobStore(
 
         AddParameter(command, "@take", pageSize + 1);
 
+        // The order of writing, not the random id, settles rows written in one instant; the page token carries it (#1260).
+        var rowids = new List<long>(pageSize + 1);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             jobs.Add(ReadJob(reader));
+            rowids.Add(reader.GetInt64(reader.FieldCount - 1));
         }
 
         var hasMore = jobs.Count > pageSize;
@@ -306,7 +309,7 @@ public sealed class SqliteJobStore(
         }
 
         var nextPageToken = hasMore
-            ? DelunoPageToken.Encode(jobs[^1].CreatedUtc.ToString("O"), jobs[^1].Id)
+            ? DelunoPageToken.Encode(jobs[^1].CreatedUtc.ToString("O"), rowids[jobs.Count - 1].ToString(System.Globalization.CultureInfo.InvariantCulture))
             : null;
         return Page<JobQueueItem>.Of(await NameEpisodeTargetsAsync(connection, jobs, cancellationToken), nextPageToken);
     }
@@ -505,7 +508,7 @@ public sealed class SqliteJobStore(
                           FROM job_queue AS inner_job
                           WHERE inner_job.dedupe_key = job_queue.dedupe_key
                             AND inner_job.status IN ('failed', 'dead-letter')
-                          ORDER BY inner_job.completed_utc DESC, inner_job.created_utc DESC, inner_job.id DESC
+                          ORDER BY inner_job.completed_utc DESC, inner_job.created_utc DESC, inner_job.rowid DESC
                           LIMIT 1
                       )
                   );
@@ -1814,11 +1817,11 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 id, library_id, library_name, media_type, trigger_kind, status,
-                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc, search_kind
+                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc, search_kind, rowid
             FROM search_cycle_runs
             WHERE (@libraryId IS NULL OR library_id = @libraryId)
-              AND (@startedUtc IS NULL OR started_utc < @startedUtc OR (started_utc = @startedUtc AND id < @id))
-            ORDER BY started_utc DESC, id DESC
+              AND (@startedUtc IS NULL OR started_utc < @startedUtc OR (started_utc = @startedUtc AND rowid < CAST(@id AS INTEGER)))
+            ORDER BY started_utc DESC, rowid DESC
             LIMIT @take;
             """;
 
@@ -1827,10 +1830,12 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@id", token?[1]);
         AddParameter(command, "@take", pageSize + 1);
 
+        var rowids = new List<long>(pageSize + 1);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             items.Add(ReadSearchCycleRun(reader));
+            rowids.Add(reader.GetInt64(reader.FieldCount - 1));
         }
 
         var hasMore = items.Count > pageSize;
@@ -1840,7 +1845,7 @@ public sealed class SqliteJobStore(
         }
 
         var nextPageToken = hasMore
-            ? DelunoPageToken.Encode(items[^1].StartedUtc.ToString("O"), items[^1].Id)
+            ? DelunoPageToken.Encode(items[^1].StartedUtc.ToString("O"), rowids[items.Count - 1].ToString(System.Globalization.CultureInfo.InvariantCulture))
             : null;
         return Page<SearchCycleRunItem>.Of(items, nextPageToken);
     }
@@ -3600,20 +3605,20 @@ public sealed class SqliteJobStore(
             if (keyed)
             {
                 var keyOp = descending ? "<" : ">";
-                conditions.Add($"(({sortKey}) COLLATE NOCASE {keyOp} @sortKey OR (({sortKey}) COLLATE NOCASE = @sortKey AND (created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))))");
+                conditions.Add($"(({sortKey}) COLLATE NOCASE {keyOp} @sortKey OR (({sortKey}) COLLATE NOCASE = @sortKey AND (created_utc < @createdUtc OR (created_utc = @createdUtc AND rowid < CAST(@id AS INTEGER)))))");
             }
             else
             {
                 var op = descending ? "<" : ">";
-                conditions.Add($"(created_utc {op} @createdUtc OR (created_utc = @createdUtc AND id {op} @id))");
+                conditions.Add($"(created_utc {op} @createdUtc OR (created_utc = @createdUtc AND rowid {op} CAST(@id AS INTEGER)))");
             }
         }
 
         var direction = descending ? "DESC" : "ASC";
         // Ties on a title or on what happened keep newest first, so the order is the same on every page.
         var orderBy = keyed
-            ? $"ORDER BY ({sortKey}) COLLATE NOCASE {direction}, created_utc DESC, id DESC"
-            : $"ORDER BY created_utc {direction}, id {direction}";
+            ? $"ORDER BY ({sortKey}) COLLATE NOCASE {direction}, created_utc DESC, rowid DESC"
+            : $"ORDER BY created_utc {direction}, rowid {direction}";
         var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
 
         using var command = connection.CreateCommand();
@@ -3621,7 +3626,7 @@ public sealed class SqliteJobStore(
             $"""
             SELECT
                 id, category, message, CASE WHEN octet_length(details_json) <= 65536 THEN details_json END, related_job_id, related_entity_type, related_entity_id, created_utc,
-                title, file_path, source_name, reason_group{(keyed ? $", {sortKey}" : string.Empty)}
+                title, file_path, source_name, reason_group{(keyed ? $", {sortKey}" : string.Empty)}, rowid
             FROM activity_events
             {where}
             {orderBy}
@@ -3642,10 +3647,12 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@id", token[at + 1]);
         }
 
+        var rowids = new List<long>(pageSize + 1);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             events.Add(ReadActivity(reader));
+            rowids.Add(reader.GetInt64(reader.FieldCount - 1));
             if (keyed) sortKeys.Add(reader.IsDBNull(12) ? string.Empty : reader.GetString(12));
         }
 
@@ -3657,8 +3664,8 @@ public sealed class SqliteJobStore(
 
         var nextPageToken = hasMore
             ? keyed
-                ? DelunoPageToken.Encode(sortKeys[events.Count - 1], events[^1].CreatedUtc.ToString("O"), events[^1].Id)
-                : DelunoPageToken.Encode(events[^1].CreatedUtc.ToString("O"), events[^1].Id)
+                ? DelunoPageToken.Encode(sortKeys[events.Count - 1], events[^1].CreatedUtc.ToString("O"), rowids[events.Count - 1].ToString(System.Globalization.CultureInfo.InvariantCulture))
+                : DelunoPageToken.Encode(events[^1].CreatedUtc.ToString("O"), rowids[events.Count - 1].ToString(System.Globalization.CultureInfo.InvariantCulture))
             : null;
         return Page<ActivityEventItem>.Of(events, nextPageToken);
     }
@@ -3754,7 +3761,7 @@ public sealed class SqliteJobStore(
                 WHERE category = @category
                   AND related_entity_type IS @relatedEntityType
                   AND related_entity_id IS @relatedEntityId
-                ORDER BY created_utc DESC, id DESC
+                ORDER BY created_utc DESC, rowid DESC
                 LIMIT 1;
                 """;
             AddParameter(latest, "@category", category);

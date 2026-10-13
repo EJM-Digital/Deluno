@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 
 namespace Deluno.Tray;
@@ -80,7 +81,8 @@ public sealed class ProcessRelaunch(
     IProcessLauncher launcher,
     int pid,
     string? exePath,
-    ISupervisorLog log) : IProcessRestarter
+    ISupervisorLog log,
+    IStateFileSystem? io = null) : IProcessRestarter
 {
     public const string AfterRestartArgument = "--after-restart";
     public const string GuardFileName = "restart-guard.json";
@@ -100,7 +102,21 @@ public sealed class ProcessRelaunch(
         }
 
         var now = time.GetUtcNow();
-        var recent = ReadRecent(now);
+        var guard = StateFile.Read<List<DateTimeOffset>>(GuardPath, Json, io);
+        if (guard.Kind == StateFileKind.Busy)
+        {
+            // Busy says nothing about how many times Deluno has started over (#1260): a loop guard that cannot be read is not a loop guard that is empty.
+            log.Error($"Deluno did not restart the program ({reason}): its record of earlier restarts was in use by something else, and starting over without it could repeat for ever.");
+            return false;
+        }
+
+        if (guard.Kind == StateFileKind.Unreadable)
+        {
+            var kept = StateFile.KeepUnreadableCopy(GuardPath, io);
+            log.Warning($"Deluno's record of earlier restarts was damaged and was counted as empty{(kept is null ? string.Empty : $"; a copy was kept as {Path.GetFileName(kept)}")}.");
+        }
+
+        var recent = (guard.Value ?? []).Where(at => now - at < GuardWindow && at <= now + TimeSpan.FromMinutes(1)).ToList();
         if (recent.Count >= MaxRelaunches)
         {
             log.Error(string.Create(
@@ -141,34 +157,12 @@ public sealed class ProcessRelaunch(
         return null;
     }
 
-    private List<DateTimeOffset> ReadRecent(DateTimeOffset now)
-    {
-        try
-        {
-            if (File.Exists(GuardPath))
-            {
-                var all = JsonSerializer.Deserialize<List<DateTimeOffset>>(File.ReadAllText(GuardPath), Json) ?? [];
-                return all.Where(at => now - at < GuardWindow && at <= now + TimeSpan.FromMinutes(1)).ToList();
-            }
-        }
-        catch
-        {
-            // A damaged guard file must not stop a restart; it is written fresh below.
-        }
-
-        return [];
-    }
-
     private void WriteRecent(List<DateTimeOffset> recent)
     {
-        try
+        // If the guard cannot be kept, the relaunch has already happened: say so, so the next one is not a silent surprise.
+        if (StateFile.Write(GuardPath, JsonSerializer.Serialize(recent, Json), io) is { } problem)
         {
-            Directory.CreateDirectory(guardFolder);
-            File.WriteAllText(GuardPath, JsonSerializer.Serialize(recent, Json));
-        }
-        catch
-        {
-            // If the guard cannot be kept, the relaunch has already happened.
+            log.Warning($"Deluno could not record this restart, so the loop guard may not count it: {problem}.");
         }
     }
 }

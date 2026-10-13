@@ -176,7 +176,7 @@ public static class PreUpdateBackupGate
         }
 
         var service = new DelunoBackupService(
-            Options.Create(new StoragePathOptions { DataRoot = AppSettings.Load().DataRoot }),
+            Options.Create(new StoragePathOptions { DataRoot = AppSettings.RequireDataRoot() }),
             TimeProvider.System,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<DelunoBackupService>.Instance);
         return service.CreateBackupAsync("pre-update", cancellationToken, onFile);

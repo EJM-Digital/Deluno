@@ -7,7 +7,8 @@ public sealed record BackupSettingsSnapshot(
     int RetentionCount,
     string BackupFolder,
     DateTimeOffset? LastRunUtc,
-    DateTimeOffset? NextRunUtc);
+    DateTimeOffset? NextRunUtc,
+    string? Problem = null);
 
 public sealed record UpdateBackupSettingsRequest(
     bool Enabled,

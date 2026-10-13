@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Text.Json.Nodes;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Migrations;
 
@@ -199,6 +200,28 @@ public sealed class SearchHistoryAndActivityRepeatTests
             await store.RecordActivityOnChangeAsync("processing.waiting", "The processor is slow to answer.", null, null, "download", "h1", CancellationToken.None);
         }
 
+        Assert.Equal(2, (await store.ListActivityAsync(100, "download", "h1", CancellationToken.None)).Count);
+    }
+
+    /// <summary>
+    /// Found in a full run (#1260): the test above failed once and passed alone. Activity rows written in the same instant
+    /// (a fixed test clock; in the product, two lines inside one tick) were ordered by their random ids, so "the latest line"
+    /// could be the older one, and the repeat check wrote another row. The latest line is the one written last.
+    /// </summary>
+    [Fact]
+    public async Task The_latest_line_is_the_one_written_last_even_when_rows_share_an_instant_and_an_older_row_has_the_higher_id()
+    {
+        using var storage = TestStorage.Create();
+        var store = await CreateStoreAsync(storage);
+        var at = DateTimeOffset.Parse("2026-09-30T12:00:00Z");
+        ActivityEventItem Row(string id, string message) => new(id, "processing.waiting", message, null, null, "download", "h1", at);
+        // Written in this order, in the same instant; the first has the higher id.
+        await store.RecordActivityBatchAsync([Row("ffffffffffffffffffffffffffffffff", "Waiting for a cleaned output.")], CancellationToken.None);
+        await store.RecordActivityBatchAsync([Row("00000000000000000000000000000001", "The processor is slow to answer.")], CancellationToken.None);
+
+        var again = await store.RecordActivityOnChangeAsync("processing.waiting", "The processor is slow to answer.", null, null, "download", "h1", CancellationToken.None);
+
+        Assert.Null(again);
         Assert.Equal(2, (await store.ListActivityAsync(100, "download", "h1", CancellationToken.None)).Count);
     }
 

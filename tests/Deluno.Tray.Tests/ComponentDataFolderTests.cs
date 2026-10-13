@@ -217,6 +217,33 @@ public sealed class ComponentDataFolderTests : IDisposable
         Assert.Empty(notice.Torrents);
     }
 
+    // ---- #1260: a record that cannot be read is not "no record"; Transmission's settings are not written from a guess.
+
+    [Theory]
+    [InlineData("{\"CompletedRoot\":\"E:\\Do")]
+    [InlineData("")]
+    public async Task A_damaged_download_layout_record_stops_Transmission_being_written_again_with_default_folders(string damaged)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(DownloadLayoutRecord.PathFor(DataRoot))!);
+        File.WriteAllText(DownloadLayoutRecord.PathFor(DataRoot), damaged);
+
+        var result = await Run(InstallRoot, DataRoot, ["transmission"], () => new FakeTransmission(running: false), login: new BundledComponentCredentials("deluno", "secret-pass"));
+
+        Assert.False(result.TransmissionFolderRecreated);
+        Assert.False(File.Exists(Path.Combine(ComponentPaths.ComponentFolder(DataRoot, "transmission"), "settings.json")));
+        Assert.Null(TransmissionReadd.Pending(DataRoot));
+        Assert.Equal(damaged, File.ReadAllText(DownloadLayoutRecord.PathFor(DataRoot)));
+    }
+
+    [Fact]
+    public async Task A_missing_download_layout_record_still_gets_the_default_folders_as_before()
+    {
+        var result = await Run(InstallRoot, DataRoot, ["transmission"], () => new FakeTransmission(running: false));
+
+        Assert.True(result.TransmissionFolderRecreated);
+        Assert.True(File.Exists(Path.Combine(ComponentPaths.ComponentFolder(DataRoot, "transmission"), "settings.json")));
+    }
+
     [Fact]
     public async Task A_component_that_was_never_installed_gets_no_folder_and_no_notice()
     {

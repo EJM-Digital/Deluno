@@ -52,7 +52,7 @@ public sealed class SqliteUnifiedExclusionRepository(
                    created_utc, updated_utc
             FROM media_exclusions
             WHERE {string.Join(" AND ", predicates)}
-            ORDER BY created_utc DESC, id ASC;
+            ORDER BY created_utc DESC, rowid DESC;
             """;
 
         var items = new List<MediaExclusionItem>();

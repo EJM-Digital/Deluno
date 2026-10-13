@@ -167,6 +167,22 @@ public sealed class InstalledComponentWirer(
         }
     }
 
+    /// <summary>
+    /// Notes that the app has been connected once. If the note cannot be kept (the list is busy or damaged), say so in Activity
+    /// instead of dropping it: the connection itself stands (#1260).
+    /// </summary>
+    private async Task MarkWiredAsync(string kind, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            record.MarkWired(kind);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await activity.RecordActivityAsync(ActivityCategory, $"{name} is connected, but Deluno could not note that in its list of installed apps. {exception.Message}", null, null, null, null, cancellationToken);
+        }
+    }
+
     private void ForgetSavedSignIn(string kind)
     {
         try
@@ -204,7 +220,7 @@ public sealed class InstalledComponentWirer(
         var (name, ok, problem) = await WireClientAsync(kind, entry, 3, TimeSpan.FromSeconds(2), cancellationToken, saveOnlyWhenHealthy: true);
         if (ok)
         {
-            record.MarkWired(kind);
+            await MarkWiredAsync(kind, name, cancellationToken);
             await realtime.PublishBundledComponentChangedAsync(kind, cancellationToken);
             await RefreshHealthAsync(cancellationToken);
             await activity.RecordActivityAsync(ActivityCategory, problem is null ? $"You connected {name} to Deluno from the apps you installed. Its connection test passed." : $"You connected {name} to Deluno from the apps you installed. It signed in, but it has no Usenet provider yet.", null, null, null, null, cancellationToken);
@@ -232,7 +248,7 @@ public sealed class InstalledComponentWirer(
         var outcome = await weir.ConnectAsync(username, password, delunoBaseUrl, cancellationToken);
         if (outcome.Healthy)
         {
-            record.MarkWired(CompanionToolIds.Weir);
+            await MarkWiredAsync(CompanionToolIds.Weir, "Weir", cancellationToken);
             await realtime.PublishBundledComponentChangedAsync(CompanionToolIds.Weir, cancellationToken);
             await activity.RecordActivityAsync(ActivityCategory, "You connected Weir to Deluno from the apps you installed, with your own Weir account. Deluno did not keep the account's password.", null, null, null, null, cancellationToken);
             await LinkRefiningLibrariesAsync(outcome.ProcessorConnectionId, outcome.ProcessorConnectionName, cancellationToken);
@@ -332,7 +348,15 @@ public sealed class InstalledComponentWirer(
             return 0;
         }
 
-        var recorded = record.Read().ToDictionary(entry => entry.Kind, StringComparer.OrdinalIgnoreCase);
+        // An unread list is not an empty one (#1260): with the installer's record or the saved sign-ins busy or damaged, the
+        // sweep cannot tell "gone" from "not readable just now", and forgetting a sign-in is not undoable. Try again next sweep.
+        var recordRead = record.ReadChecked();
+        if (!recordRead.CanBuildOn || credentials.Availability() is StateFileKind.Busy or StateFileKind.Unreadable)
+        {
+            return 0;
+        }
+
+        var recorded = (recordRead.Value ?? []).ToDictionary(entry => entry.Kind, StringComparer.OrdinalIgnoreCase);
         var found = detection is null
             ? null
             : (await detection.DetectAsync(cancellationToken)).ToDictionary(status => status.Kind, StringComparer.OrdinalIgnoreCase);

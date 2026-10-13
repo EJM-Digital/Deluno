@@ -214,11 +214,11 @@ public sealed class ComponentInstallService(
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
     private readonly ITextFileReader _templates = templates ?? new RealTextFileReader();
     private readonly Lazy<IBundledComponentCredentialStore> _credentials = new(
-        () => credentialStore ?? BundledComponentCredentialStores.CreateForDataRoot(AppSettings.Load().DataRoot));
+        () => credentialStore ?? BundledComponentCredentialStores.CreateForDataRoot(AppSettings.RequireDataRoot()));
     private readonly IStartedComponentsRegistry _startedComponents = startedComponents ?? new FileStartedComponentsRegistry();
     private readonly Lazy<IInstalledComponentRecord> _installedRecord = new(
         () => installedRecord ?? new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(
-            Environment.GetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA") is { Length: > 0 } testRoot ? testRoot : AppSettings.Load().DataRoot)));
+            Environment.GetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA") is { Length: > 0 } testRoot ? testRoot : AppSettings.RequireDataRoot())));
     private readonly TimeSpan _credentialCaptureWait = credentialCaptureWait ?? TimeSpan.FromSeconds(5);
 
     private readonly IInstalledProgramsReader _programs = programs ?? new RegistryInstalledProgramsReader();
@@ -511,10 +511,11 @@ public sealed class ComponentInstallService(
             {
                 Thread.Sleep(200);
             }
-            catch
+            catch (Exception exception)
             {
                 // Still not recorded: the connection is made with "Use X", and a kept
-                // sign-in is only removed for an app that is no longer installed.
+                // sign-in is only removed for an app that is no longer installed. Say so (#1260).
+                _log.Write($"{spec.DisplayName}: Deluno could not note the install in its list of installed apps. {exception.Message}");
             }
         }
     }
@@ -547,9 +548,10 @@ public sealed class ComponentInstallService(
                         var seededUser = chosenLogin?.Username ?? _credentials.Value.TryGet(spec.Kind)?.Username ?? string.Empty;
                         _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(seededUser, key));
                     }
-                    catch
+                    catch (Exception exception) when (exception is not OperationCanceledException)
                     {
-                        // The connection just has to be filled in by hand.
+                        // The connection just has to be filled in by hand; the reason is in the install log (#1260).
+                        _log.Write($"{spec.DisplayName}: Deluno could not keep the sign-in it captured. {exception.Message}");
                     }
 
                     return;
@@ -563,9 +565,9 @@ public sealed class ComponentInstallService(
                 {
                     _credentials.Value.Remove(spec.Kind);
                 }
-                catch
+                catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    // Best effort.
+                    _log.Write($"{spec.DisplayName}: Deluno could not forget the sign-in it no longer needs. {exception.Message}");
                 }
 
                 return;
@@ -655,9 +657,10 @@ public sealed class ComponentInstallService(
             {
                 _credentials.Value.Save(spec.Kind, credentials);
             }
-            catch
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // The client still works; the connection just has to be filled in by hand.
+                // The client still works; the connection just has to be filled in by hand, and the reason is in the install log (#1260).
+                _log.Write($"{spec.DisplayName}: Deluno could not keep the sign-in it generated. {exception.Message}");
             }
         }
 
@@ -708,7 +711,14 @@ public sealed class ComponentInstallService(
 
         if (spec.RestartsAtSignIn)
         {
-            _startedComponents.Add(spec.Kind);
+            try
+            {
+                _startedComponents.Add(spec.Kind);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _log.Write($"{spec.DisplayName}: Deluno could not note that it should start it at sign-in. {exception.Message}");
+            }
         }
 
         if (string.IsNullOrWhiteSpace(spec.ReadinessUrl))

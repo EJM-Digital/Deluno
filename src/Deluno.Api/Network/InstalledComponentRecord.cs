@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Deluno.Contracts;
 
 namespace Deluno.Api.Network;
 
@@ -21,6 +21,9 @@ public interface IInstalledComponentRecord
 {
     IReadOnlyList<InstalledComponentEntry> Read();
 
+    /// <summary>The entries and how the read went. A busy or damaged file is never reported as "nothing installed" (#1260); callers that forget things on an empty answer must check this.</summary>
+    StateFileRead<IReadOnlyList<InstalledComponentEntry>> ReadChecked() => new(StateFileKind.Ok, Read());
+
     /// <summary>Records that <paramref name="kind"/> was installed by the picker. An earlier wired mark is kept.</summary>
     void MarkInstalled(string kind, string host, int port);
 
@@ -34,74 +37,54 @@ public sealed class NoInstalledComponentRecord : IInstalledComponentRecord
     public void MarkWired(string kind) { }
 }
 
-public sealed class FileInstalledComponentRecord(string path, TimeProvider? clock = null) : IInstalledComponentRecord
+public sealed class FileInstalledComponentRecord(string path, TimeProvider? clock = null, IStateFileSystem? io = null) : IInstalledComponentRecord
 {
-    private static readonly object Gate = new();
+    private const string What = "The list of apps Deluno installed";
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
 
     public static string PathFor(string dataRoot) => Path.Combine(dataRoot, "config", "installed-components.json");
 
-    public IReadOnlyList<InstalledComponentEntry> Read()
+    public IReadOnlyList<InstalledComponentEntry> Read() => ReadChecked().Value ?? [];
+
+    /// <summary>The entries with how the read went: a busy or damaged file is not "no apps installed" (#1260).</summary>
+    public StateFileRead<IReadOnlyList<InstalledComponentEntry>> ReadChecked()
     {
-        lock (Gate)
-        {
-            return Load().Values.ToArray();
-        }
+        var read = StateFile.ReadLocked<List<InstalledComponentEntry>>(path, null, io);
+        return new(read.Kind, read.Value?.ToArray(), read.Detail);
     }
 
+    /// <summary>Throws <see cref="StateFileException"/> (in everyday words) when the list is busy or damaged: nothing is written then.</summary>
     public void MarkInstalled(string kind, string host, int port)
-    {
-        lock (Gate)
-        {
-            var entries = Load();
-            var wired = entries.TryGetValue(kind, out var existing) ? existing.WiredUtc : null;
-            entries[kind] = new InstalledComponentEntry(kind, host, port, _clock.GetUtcNow(), wired);
-            Save(entries);
-        }
-    }
+        => StateFile.UpdateOrThrow<List<InstalledComponentEntry>>(
+            path,
+            current =>
+            {
+                var entries = ToMap(current);
+                var wired = entries.TryGetValue(kind, out var existing) ? existing.WiredUtc : null;
+                entries[kind] = new InstalledComponentEntry(kind, host, port, _clock.GetUtcNow(), wired);
+                return entries.Values.ToList();
+            },
+            What,
+            io: io);
 
     public void MarkWired(string kind)
-    {
-        lock (Gate)
-        {
-            var entries = Load();
-            if (entries.TryGetValue(kind, out var existing) && existing.WiredUtc is null)
+        => StateFile.UpdateOrThrow<List<InstalledComponentEntry>>(
+            path,
+            current =>
             {
-                entries[kind] = existing with { WiredUtc = _clock.GetUtcNow() };
-                Save(entries);
-            }
-        }
-    }
-
-    private Dictionary<string, InstalledComponentEntry> Load()
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                var parsed = JsonSerializer.Deserialize<List<InstalledComponentEntry>>(File.ReadAllText(path));
-                if (parsed is not null)
+                var entries = ToMap(current);
+                if (!entries.TryGetValue(kind, out var existing) || existing.WiredUtc is not null)
                 {
-                    return parsed.ToDictionary(entry => entry.Kind, StringComparer.OrdinalIgnoreCase);
+                    return current;
                 }
-            }
-        }
-        catch
-        {
-            // An unreadable record reads as empty: nothing is wired from it.
-        }
 
-        return new Dictionary<string, InstalledComponentEntry>(StringComparer.OrdinalIgnoreCase);
-    }
+                entries[kind] = existing with { WiredUtc = _clock.GetUtcNow() };
+                return entries.Values.ToList();
+            },
+            What,
+            io: io);
 
-    private void Save(Dictionary<string, InstalledComponentEntry> entries)
-    {
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(path, JsonSerializer.Serialize(entries.Values.ToArray()));
-    }
+    private static Dictionary<string, InstalledComponentEntry> ToMap(List<InstalledComponentEntry>? list)
+        => (list ?? []).GroupBy(entry => entry.Kind, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
 }
