@@ -1,10 +1,8 @@
-using System.Globalization;
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -48,6 +46,16 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     public async Task Transmission_complete_torrent_with_a_tracker_error_is_finished_and_quiet()
         => AssertFinishedAndQuiet(await Transmission(status: 6, percentDone: 1.0, error: 2, errorString: "Could not connect to tracker"));
 
+    /// <summary>The reply exactly as Transmission 4.1.3 sent it for a complete torrent whose tracker is down: the failure is in the tracker report only.</summary>
+    [Fact]
+    public async Task Transmission_complete_torrent_exactly_as_recorded_with_its_tracker_down_is_finished_and_quiet()
+    {
+        var client = new TransmissionDownloadClient(new Factory(RecordedReplies.Handler("transmission", [RecordedReplies.Transmission("settings"), RecordedReplies.Transmission("finished-tracker-error")])));
+        var snapshot = await client.GetSnapshotAsync(Item("transmission", 9091), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        AssertFinishedAndQuiet(Assert.Single(snapshot!.Queue));
+    }
+
     [Fact]
     public async Task Transmission_complete_torrent_with_a_tracker_warning_is_finished_and_quiet()
         => AssertFinishedAndQuiet(await Transmission(status: 6, percentDone: 1.0, error: 1, errorString: "Tracker gave a warning"));
@@ -74,7 +82,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [InlineData("pausedUP")]
     public async Task Qbittorrent_complete_torrent_whose_tracker_is_not_working_is_finished_and_quiet(string state)
     {
-        var item = await Qbit(state, 1.0, "[{\"status\":4,\"msg\":\"The tracker is not answering\"}]");
+        var item = await Qbit(state, 1.0, "The tracker is not answering");
         AssertFinishedAndQuiet(item);
         Assert.NotEqual(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
     }
@@ -82,42 +90,43 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [Fact]
     public async Task Qbittorrent_incomplete_torrent_whose_tracker_is_not_working_keeps_its_behaviour()
     {
-        var item = await Qbit("stalledDL", 0.4, "[{\"status\":4,\"msg\":\"The tracker is not answering\"}]");
+        var item = await Qbit("stalledDL", 0.4, "The tracker is not answering");
         // #1193: stalledDL alone stays Downloading until Deluno's no-progress window finds no byte gain.
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
+    /// <summary>Deluge 2.2.0's recorded list of a finished torrent, in the state, progress and tracker status under test.</summary>
     private static async Task<DownloadQueueItem> Deluge(string state, double progress, string trackerStatus)
     {
-        var torrent = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"state\":\"" + state
-            + "\",\"progress\":" + progress.ToString(CultureInfo.InvariantCulture)
-            + ",\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,\"total_size\":5000000000,\"total_done\":5000000000,\"num_peers\":0,"
-            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":\"OK\",\"save_path\":\"/downloads\",\"tracker_status\":\""
-            + trackerStatus + "\"}}},\"error\":null,\"id\":2}";
-        var client = new DelugeDownloadClient(new Factory(new DelugeHandler(torrent)));
-        var snapshot = await client.GetSnapshotAsync(Item("deluge", 8112), DateTimeOffset.UtcNow, CancellationToken.None);
+        var handler = RecordedDelugeRig.Handler(RecordedDelugeRig.Finished(
+            ("state", state), ("progress", progress), ("label", "movies"), ("tracker_status", trackerStatus)));
+        var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Item("deluge", 8112), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
 
+    /// <summary>
+    /// Transmission 4.1.3's recorded list of a complete torrent whose tracker does not answer (its own tracker report, "Could not
+    /// connect to tracker", is in the reply), with the torrent's status, progress and error fields as under test.
+    /// </summary>
     private static async Task<DownloadQueueItem> Transmission(int status, double percentDone, int error, string errorString)
     {
-        var json = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
-            + $"\"status\":{status},\"percentDone\":{percentDone.ToString(CultureInfo.InvariantCulture)},"
-            + "\"totalSize\":5000000000,\"downloadedEver\":5000000000,\"peersConnected\":0,\"peersSendingToUs\":0,"
-            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
-            + $"\"isStalled\":false,\"error\":{error},\"errorString\":\"{errorString}\"}}]}}}}";
-        var client = new TransmissionDownloadClient(new Factory(new FixedHandler(json)));
+        var json = RecordedTransmissionRig.Reply(
+            RecordedTransmissionRig.FinishedTrackerError,
+            ("status", status), ("percentDone", percentDone), ("error", error), ("errorString", errorString));
+        var client = new TransmissionDownloadClient(new Factory(RecordedTransmissionRig.Handler(json)));
         var snapshot = await client.GetSnapshotAsync(Item("transmission", 9091), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
 
-    private static async Task<DownloadQueueItem> Qbit(string state, double progress, string trackersJson)
+    /// <summary>
+    /// qBittorrent 5.2.1's recorded list of a complete torrent whose tracker does not answer, in the state and progress under test.
+    /// The tracker list is the recorded one with its first entry a tracker that is not working (the nearest recorded reply).
+    /// </summary>
+    private static async Task<DownloadQueueItem> Qbit(string state, double progress, string trackerMessage)
     {
-        var info = "[{\"hash\":\"abc123\",\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"category\":\"movies\","
-            + $"\"state\":\"{state}\",\"progress\":{progress.ToString(CultureInfo.InvariantCulture)},"
-            + "\"dlspeed\":0,\"upspeed\":0,\"eta\":0,\"size\":5000000000,\"downloaded\":5000000000,\"num_seeds\":0,\"num_leechs\":0,"
-            + $"\"added_on\":{DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"}}]";
-        var handler = new QbitHandler(info, trackersJson);
+        var info = RecordedQbittorrentRig.Info(RecordedQbittorrentRig.FinishedTrackerError, ("state", state), ("progress", progress), ("category", "movies"));
+        var trackers = RecordedQbittorrentRig.Trackers(4, trackerMessage, "http://127.0.0.1:9/announce");
+        var handler = RecordedQbittorrentRig.Handler(info, trackers);
         var snapshot = await new QbittorrentDownloadClient(() => handler).GetSnapshotAsync(Item("qbittorrent", 8080), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
@@ -129,33 +138,5 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class DelugeHandler(string updateUi) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            var answer = body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi : "{\"result\":true,\"error\":null,\"id\":1}";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
-    }
-
-    private sealed class FixedHandler(string body) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
-    }
-
-    private sealed class QbitHandler(string torrentsInfo, string trackersJson) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal) ? "Ok."
-                : path.Contains("torrents/trackers", StringComparison.Ordinal) ? trackersJson
-                : path.Contains("torrents/info", StringComparison.Ordinal) ? torrentsInfo : "{}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") });
-        }
     }
 }
