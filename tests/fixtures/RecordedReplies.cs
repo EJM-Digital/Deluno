@@ -281,6 +281,18 @@ public sealed record Recording(string App, string Version, string State, IReadOn
     /// </summary>
     public HttpMessageHandler ReplayHandler(Action<HttpRequestMessage>? onRequest = null) => new Replay(this, onRequest);
 
+    /// <summary>
+    /// A handler for an app that does not answer at all, as this recording shows (the connection is refused): every request fails with
+    /// the recorded refusal, whatever it asks.
+    /// </summary>
+    public HttpMessageHandler NotAnswering() => new Refusing(Exchanges.FirstOrDefault(e => e.Reply.Status == 0)?.Reply.Error ?? "The connection was refused.");
+
+    private sealed class Refusing(string error) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException(error);
+    }
+
     private sealed class Replay(Recording recording, Action<HttpRequestMessage>? onRequest) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

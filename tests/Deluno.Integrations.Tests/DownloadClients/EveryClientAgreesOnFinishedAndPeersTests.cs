@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -64,8 +62,9 @@ public sealed class EveryClientAgreesOnFinishedAndPeersTests
     [Fact]
     public async Task Deluge_peers_include_its_seeds()
     {
-        var json = """{"result":{"torrents":{"abc123":{"name":"Sample.Film.2026.1080p","state":"Downloading","progress":40,"download_payload_rate":100000,"upload_payload_rate":0,"eta":60,"total_size":1000,"total_done":400,"num_peers":0,"num_seeds":1,"time_added":1700000000,"label":"movies","message":"OK","save_path":"/downloads"}}},"error":null,"id":2}""";
-        var snapshot = await new DelugeDownloadClient(new Factory(new DelugeHandler(json)))
+        // Deluge 2.2.0's recorded list of a download fed by seeders and no other peer, fed by one.
+        var handler = RecordedDelugeRig.Handler(RecordedDelugeRig.Downloading(("num_peers", 0), ("num_seeds", 1)));
+        var snapshot = await new DelugeDownloadClient(new Factory(handler))
             .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Equal(1, Assert.Single(snapshot!.Queue).Peers);
@@ -83,15 +82,5 @@ public sealed class EveryClientAgreesOnFinishedAndPeersTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class DelugeHandler(string updateUi) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            var answer = body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
     }
 }
