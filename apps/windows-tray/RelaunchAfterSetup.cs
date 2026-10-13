@@ -56,7 +56,7 @@ internal static class RelaunchAfterSetup
         Func<RunningMark, bool> isRunning,
         Func<bool> serviceInstalled,
         Func<int?> setupProcessId,
-        Func<int, RunningMark?> killedBySetup,
+        Func<TimeSpan?> heartbeatAge,
         string logPath,
         Action<ProcessStartInfo> start,
         Action<string> log)
@@ -73,13 +73,13 @@ internal static class RelaunchAfterSetup
 
         var kind = service is not null ? RelaunchKind.Service : tray is not null ? RelaunchKind.Tray : RelaunchKind.None;
         var target = (service ?? tray)?.Executable;
-        if (kind == RelaunchKind.None && setup is { } setupId && killedBySetup(setupId) is { } killed && !isRunning(killed))
+        if (kind == RelaunchKind.None && heartbeatAge() is { } age && HeartbeatEvidence.IsRecent(age))
         {
-            // The Deluno that was running did not leave a mark (it is a build from before the marks), but Velopack
-            // logged that this Setup ended it. That is the same fact, from the other side.
+            // No mark: a build from before the marks. Its job worker wrote to the jobs database a moment ago, which a
+            // Deluno that was running does and a stopped one does not.
             kind = serviceInstalled() ? RelaunchKind.Service : RelaunchKind.Tray;
-            target = killed.Executable;
-            log($"Velopack's log says Setup (pid {setupId.ToString(CultureInfo.InvariantCulture)}) ended Deluno (pid {killed.ProcessId.ToString(CultureInfo.InvariantCulture)}), which left no record that it was running.");
+            target = executable;
+            log($"No record that Deluno was running, but its jobs database was written {age.TotalSeconds:0} seconds before this hook ran (its worker writes every 15 seconds), so it is taken to have been running. If it was closed in the last {HeartbeatEvidence.Window.TotalSeconds:0} seconds it is started anyway.");
         }
 
         if (kind == RelaunchKind.None || target is null)
@@ -151,7 +151,7 @@ internal static class RelaunchAfterSetup
                 mark => mark.IsRunning(),
                 ServiceManager.IsInstalled,
                 ParentProcess.Id,
-                setup => VelopackKillEvidence.Find(VelopackKillEvidence.LogTails(executable), setup, executable),
+                HeartbeatEvidence.AgeOnThisMachine,
                 logPath,
                 info => Process.Start(info)?.Dispose(),
                 LogDecision),
@@ -343,76 +343,97 @@ internal static class ExistingInstall
 }
 
 /// <summary>
-/// What Velopack wrote down about the Deluno it ended. A Deluno from before the running marks leaves no mark, so on the
-/// first update from such a build the mark cannot say it was running. Setup and Update.exe log every process they end, in
-/// the shared Velopack log, as <c>[setup:7604] [22:34:05] [WARN] Killing process: C:\...\Deluno\current\Deluno.exe (3036)</c>
-/// (recorded from a real Setup over a running Deluno), and the first number is the id of the Setup that did it, which is
-/// the id the hook sees as its parent. So the line is tied to this very Setup, with no clock to compare.
+/// The other evidence that Deluno was running, for builds from before the running marks (every release until this one, and
+/// the previous release in the golden-path update scenario). Deluno's job worker writes a heartbeat row to jobs.db every
+/// 15 seconds (DelunoHeartbeatWorker, unchanged since long before rc.30.20), in WAL mode, so each beat is appended to
+/// jobs.db-wal; its last write time is the newest of the two files. Setup ends Deluno hard, which closes its handles, so
+/// the time is final by the time the hook runs.
+///
+/// The window is 90 seconds: a beat every 15 seconds, up to about 5 more for a lane that wakes late, and the rest for the
+/// time from Setup ending Deluno to the hook reading the file (Setup took 11 seconds in all in the rc.30.27 run, and a cold
+/// or busy PC is several times slower). Longer than that and a Deluno someone closed minutes ago would be started by a
+/// reinstall. A Deluno closed in the last 90 seconds is started too, which is harmless and is said in the log line.
 /// </summary>
-internal static partial class VelopackKillEvidence
+internal static class HeartbeatEvidence
 {
-    private const int TailBytes = 512 * 1024;
+    internal static readonly TimeSpan Window = TimeSpan.FromSeconds(90);
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^\[(?:setup|update):(?<setup>\d+)\] \[[^\]]*\] \[[A-Z]+\] Killing process: (?<path>.+) \((?<pid>\d+)\)\s*$")]
-    private static partial System.Text.RegularExpressions.Regex KillLine();
+    internal static readonly string[] FileNames = ["jobs.db", "jobs.db-wal"];
 
-    /// <summary>The last Deluno.exe of this install that the Setup with this id ended, from the lines of the log; null when none.</summary>
-    internal static RunningMark? Find(IEnumerable<string> lines, int setupProcessId, string executable)
+    /// <summary>
+    /// How long before now the newest of the jobs database files was written, over every folder Deluno may keep its data in;
+    /// null when none exists. A write time in the future (a clock that moved) counts as now.
+    /// </summary>
+    internal static TimeSpan? Age(IEnumerable<string> dataRoots, TimeProvider time, Func<string, DateTimeOffset?> lastWrite)
     {
-        RunningMark? found = null;
-        foreach (var line in lines)
+        DateTimeOffset? newest = null;
+        foreach (var root in dataRoots)
         {
-            var match = KillLine().Match(line);
-            if (!match.Success
-                || !int.TryParse(match.Groups["setup"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var setup)
-                || setup != setupProcessId
-                || !int.TryParse(match.Groups["pid"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var pid))
+            foreach (var name in FileNames)
             {
-                continue;
-            }
-
-            var path = match.Groups["path"].Value;
-            if (RunningMarks.SameInstall(path, executable))
-            {
-                found = new RunningMark(pid, 0, path);
+                if (lastWrite(Path.Combine(root, name)) is { } at && (newest is null || at > newest))
+                {
+                    newest = at;
+                }
             }
         }
 
-        return found;
-    }
-
-    /// <summary>The ends of the logs Velopack writes: the shared one in the local app data folder, and the install folder's own.</summary>
-    internal static IEnumerable<string> LogTails(string executable)
-    {
-        var lines = new List<string>();
-        var shared = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "velopack", "velopack.log");
-        var root = Path.GetDirectoryName(Path.GetDirectoryName(executable));
-        var candidates = root is null ? [shared] : new[] { shared, Path.Combine(root, "velopack.log") };
-        foreach (var path in candidates)
+        if (newest is null)
         {
-            lines.AddRange(Tail(path));
+            return null;
         }
 
-        return lines;
+        var age = time.GetUtcNow() - newest.Value;
+        return age < TimeSpan.Zero ? TimeSpan.Zero : age;
     }
 
-    private static IEnumerable<string> Tail(string path)
+    /// <summary>Whether that age is inside the window.</summary>
+    internal static bool IsRecent(TimeSpan? age) => age is { } a && a <= Window;
+
+    /// <summary>
+    /// The folders to look in: the data root the settings name (the tray's own, or a service run as this user), then the
+    /// default folders. A service run as LocalSystem keeps its data in a profile this user cannot read, but Setup cannot end
+    /// such a service either (the process is not its own), so it is still running and needs nothing.
+    /// </summary>
+    internal static IEnumerable<string> DataRoots(string? settingsDataRoot, AppSettingsPathState state)
+    {
+        var roots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(settingsDataRoot))
+        {
+            roots.Add(settingsDataRoot);
+        }
+
+        roots.Add(state.DefaultDataRoot);
+        roots.Add(state.LegacyDefaultDataRoot);
+        return roots.Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static DateTimeOffset? LastWriteOnDisk(string path)
     {
         try
         {
-            // Setup still holds the log open while the hook runs, so it is read shared.
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            if (stream.Length > TailBytes)
-            {
-                stream.Seek(-TailBytes, SeekOrigin.End);
-            }
-
-            using var reader = new StreamReader(stream);
-            return reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+            var info = new FileInfo(path);
+            return info.Exists ? new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero) : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return [];
+            return null;
         }
+    }
+
+    /// <summary>The age of the newest write on this machine, resolving the data root the way the tray does.</summary>
+    internal static TimeSpan? AgeOnThisMachine()
+    {
+        string? configured = null;
+        try
+        {
+            configured = AppSettings.Load().DataRoot;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            // Settings that cannot be read leave the default folders to look in.
+        }
+
+        return Age(DataRoots(configured, AppSettings.InspectPathState()), TimeProvider.System, LastWriteOnDisk);
     }
 }

@@ -17,16 +17,13 @@ internal readonly record struct RunningMark(int ProcessId, long StartedAtTicks, 
         return new RunningMark(self.Id, self.StartTime.ToUniversalTime().Ticks, Environment.ProcessPath ?? string.Empty);
     }
 
-    /// <summary>
-    /// Whether this very process, not a later one that was given its id, is still running. A mark with no start time
-    /// (one read from Velopack's log, which names only the id) is asked by id alone.
-    /// </summary>
+    /// <summary>Whether this very process, not a later one that was given its id, is still running.</summary>
     internal bool IsRunning()
     {
         try
         {
             using var process = Process.GetProcessById(ProcessId);
-            return !process.HasExited && (StartedAtTicks == 0 || process.StartTime.ToUniversalTime().Ticks == StartedAtTicks);
+            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == StartedAtTicks;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {

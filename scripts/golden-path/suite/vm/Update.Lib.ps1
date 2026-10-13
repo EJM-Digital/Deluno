@@ -7,8 +7,9 @@
     What it knows about Velopack (rc.30.27 run): Setup.exe --silent over a running app stops that app, replaces the install and
     starts nothing, because a silent Setup does not launch the app. So nothing in this scenario starts Deluno after Setup: the
     candidate's own install hook arranges it (RelaunchAfterSetup, #1256), a short helper that waits for Setup to exit (about
-    11 s here) and then starts Deluno. The previous release here (rc.30.25) predates Deluno's running marks, so the hook finds
-    out that Deluno was running from Velopack's own log line "Killing process: ...Deluno.exe", tied to this Setup's id. If it
+    11 s here) and then starts Deluno. The previous release here (rc.30.25)
+    predates Deluno's running marks, so the hook finds out that Deluno was running from the jobs database: its worker writes a
+    heartbeat every 15 seconds, and a write in the 90 seconds before the hook ran means Deluno was running. If it
     does not come back, the scenario says so, in these words, apart from a hung start:
       - "Deluno was never started again after Setup": no Deluno process other than the previous release's appeared within
         3 minutes. That is the installer not relaunching, not Deluno's start.
@@ -78,11 +79,11 @@ function Save-UpdateEvidence {
     param([string] $StartLog, [int] $FromLine)
     $text = if (Test-Path $StartLog) { (Get-Content $StartLog | Select-Object -Skip $FromLine) -join "`n" } else { 'no tray-startup.log' }
     Save-Evidence -Name 'update-start-log.txt' -Text $text
-    # What the install hook decided about bringing Deluno back (RelaunchAfterSetup, #1256), and what Velopack says it ended.
+    # What the install hook decided about bringing Deluno back (RelaunchAfterSetup, #1256), and when the jobs database was last written.
     $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
     Save-Evidence -Name 'update-install-hook-log.txt' -Text $(if (Test-Path $hook) { (Get-Content $hook -Tail 80) -join "`n" } else { 'no install-hook.log' })
-    $velo = Join-Path $env:LOCALAPPDATA 'velopackelopack.log'
-    Save-Evidence -Name 'update-velopack-kills.txt' -Text $(if (Test-Path $velo) { (Select-String -Path $velo -Pattern 'Killing process|install hook' | Select-Object -Last 20 | ForEach-Object { $_.Line }) -join "`n" } else { 'no velopack.log' })
+    $dataFiles = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'DelunoData') -Filter 'jobs.db*' -ErrorAction SilentlyContinue
+    Save-Evidence -Name 'update-jobs-db-times.txt' -Text $(if ($dataFiles) { ($dataFiles | ForEach-Object { "{0} last written {1:o}" -f $_.Name, $_.LastWriteTimeUtc }) -join "`n" } else { 'no jobs.db found' })
 }
 
 function Invoke-UpdateScenario {
