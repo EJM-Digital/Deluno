@@ -1,0 +1,182 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "config-error-paused",
+  "recordedAt": "2026-10-13T20:45:06Z",
+  "note": "One invalid line (AppBin=x) added to nzbget.conf, then reload: NZBGet logs \"Invalid option\" and pauses all activity (status DownloadPaused true; log with parameters 0 and 200).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "reload",
+          "params": [],
+          "id": 5
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 5,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "status",
+          "params": [],
+          "id": 27
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 27,
+          "result": {
+            "RemainingSizeLo": 0,
+            "RemainingSizeHi": 0,
+            "RemainingSizeMB": 0,
+            "ForcedSizeLo": 0,
+            "ForcedSizeHi": 0,
+            "ForcedSizeMB": 0,
+            "DownloadedSizeLo": 0,
+            "DownloadedSizeHi": 0,
+            "DownloadedSizeMB": 0,
+            "MonthSizeLo": 0,
+            "MonthSizeHi": 0,
+            "MonthSizeMB": 0,
+            "DaySizeLo": 0,
+            "DaySizeHi": 0,
+            "DaySizeMB": 0,
+            "ArticleCacheLo": 0,
+            "ArticleCacheHi": 0,
+            "ArticleCacheMB": 0,
+            "DownloadRate": 0,
+            "DownloadRateLo": 0,
+            "DownloadRateHi": 0,
+            "AverageDownloadRate": 0,
+            "AverageDownloadRateLo": 0,
+            "AverageDownloadRateHi": 0,
+            "DownloadLimit": 0,
+            "ThreadCount": 9,
+            "ParJobCount": 0,
+            "PostJobCount": 0,
+            "UrlCount": 0,
+            "UpTimeSec": 23,
+            "DownloadTimeSec": 0,
+            "ServerPaused": true,
+            "DownloadPaused": true,
+            "Download2Paused": true,
+            "ServerStandBy": true,
+            "PostPaused": true,
+            "ScanPaused": true,
+            "QuotaReached": false,
+            "FreeDiskSpaceLo": 299618304,
+            "FreeDiskSpaceHi": 19,
+            "FreeDiskSpaceMB": 78109,
+            "TotalDiskSpaceLo": 3018846208,
+            "TotalDiskSpaceHi": 24,
+            "TotalDiskSpaceMB": 101182,
+            "FreeInterDiskSpaceLo": 299618304,
+            "FreeInterDiskSpaceHi": 19,
+            "FreeInterDiskSpaceMB": 78109,
+            "TotalInterDiskSpaceLo": 3018846208,
+            "TotalInterDiskSpaceHi": 24,
+            "TotalInterDiskSpaceMB": 101182,
+            "ServerTime": 1791924306,
+            "ResumeTime": 0,
+            "FeedActive": false,
+            "QueueScriptCount": 0,
+            "NewsServers": [
+              {
+                "ID": 1,
+                "Active": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "log",
+          "params": [
+            0,
+            200
+          ],
+          "id": 28
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 28,
+          "result": [
+            {
+              "ID": 1,
+              "Kind": "ERROR",
+              "Time": 1791924283,
+              "Text": "nzbget.conf(1774): Invalid option \"AppBin\""
+            },
+            {
+              "ID": 2,
+              "Kind": "INFO",
+              "Time": 1791924283,
+              "Text": "Pausing all activities due to errors in configuration"
+            },
+            {
+              "ID": 3,
+              "Kind": "WARNING",
+              "Time": 1791924283,
+              "Text": "[NewsServers][Server1.Encryption]: TLS is disabled. Communication with this server will not be encrypted"
+            },
+            {
+              "ID": 4,
+              "Kind": "WARNING",
+              "Time": 1791924283,
+              "Text": "[NewsServers][Server1.Connections]: A low number of connections may impact download performance"
+            },
+            {
+              "ID": 5,
+              "Kind": "INFO",
+              "Time": 1791924283,
+              "Text": "nzbget 26.3 server-mode"
+            },
+            {
+              "ID": 6,
+              "Kind": "INFO",
+              "Time": 1791924283,
+              "Text": "using C:\\ProgramData\\NZBGet\\nzbget.conf"
+            },
+            {
+              "ID": 7,
+              "Kind": "INFO",
+              "Time": 1791924283,
+              "Text": "nzbget runs on 127.0.0.1:6789"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

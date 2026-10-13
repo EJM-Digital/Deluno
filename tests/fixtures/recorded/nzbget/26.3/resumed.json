@@ -1,0 +1,284 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "resumed",
+  "recordedAt": "2026-10-13T20:38:45Z",
+  "note": "A job paused by its id (the whole download was paused so it did not start), then resumed by its id (GroupResume): the groups before and after.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "append",
+          "params": [
+            "Recorded.Control.Nzbget.nzb",
+            "http://127.0.0.1:1180/api?t=get&id=golden6925692986&apikey=<scrubbed>",
+            "",
+            0,
+            false,
+            false,
+            "",
+            0,
+            "SCORE",
+            []
+          ],
+          "id": 4
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 4,
+          "result": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupPause",
+            "",
+            [
+              1
+            ]
+          ],
+          "id": 5
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 5,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 6
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 6,
+          "result": [
+            {
+              "FirstID": 1,
+              "LastID": 1,
+              "RemainingSizeLo": 99475625,
+              "RemainingSizeHi": 0,
+              "RemainingSizeMB": 94,
+              "PausedSizeLo": 99475625,
+              "PausedSizeHi": 0,
+              "PausedSizeMB": 94,
+              "RemainingFileCount": 1,
+              "RemainingParCount": 0,
+              "MinPriority": 0,
+              "MaxPriority": 0,
+              "ActiveDownloads": 0,
+              "Status": "PAUSED",
+              "NZBID": 1,
+              "NZBName": "Recorded.Control.Nzbget",
+              "NZBNicename": "Recorded.Control.Nzbget",
+              "Kind": "NZB",
+              "URL": "http://127.0.0.1:1180/api?t=get&id=golden6925692986&apikey=<scrubbed>",
+              "NZBFilename": "Recorded.Control.Nzbget.nzb",
+              "DestDir": "C:\\Downloads\\Incomplete\\NZBGet\\Recorded.Control.Nzbget.#2",
+              "FinalDir": "",
+              "Category": "",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 99475625,
+              "FileSizeHi": 0,
+              "FileSizeMB": 94,
+              "FileCount": 1,
+              "MinPostTime": 1791749756,
+              "MaxPostTime": 1791749756,
+              "TotalArticles": 134,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 2,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [],
+              "PostInfoText": "NONE",
+              "PostStageProgress": -390651904,
+              "PostStageTimeSec": 0,
+              "Log": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupResume",
+            "",
+            [
+              1
+            ]
+          ],
+          "id": 7
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 7,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 8
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 8,
+          "result": [
+            {
+              "FirstID": 1,
+              "LastID": 1,
+              "RemainingSizeLo": 99475625,
+              "RemainingSizeHi": 0,
+              "RemainingSizeMB": 94,
+              "PausedSizeLo": 0,
+              "PausedSizeHi": 0,
+              "PausedSizeMB": 0,
+              "RemainingFileCount": 1,
+              "RemainingParCount": 0,
+              "MinPriority": 0,
+              "MaxPriority": 0,
+              "ActiveDownloads": 0,
+              "Status": "QUEUED",
+              "NZBID": 1,
+              "NZBName": "Recorded.Control.Nzbget",
+              "NZBNicename": "Recorded.Control.Nzbget",
+              "Kind": "NZB",
+              "URL": "http://127.0.0.1:1180/api?t=get&id=golden6925692986&apikey=<scrubbed>",
+              "NZBFilename": "Recorded.Control.Nzbget.nzb",
+              "DestDir": "C:\\Downloads\\Incomplete\\NZBGet\\Recorded.Control.Nzbget.#2",
+              "FinalDir": "",
+              "Category": "",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 99475625,
+              "FileSizeHi": 0,
+              "FileSizeMB": 94,
+              "FileCount": 1,
+              "MinPostTime": 1791749756,
+              "MaxPostTime": 1791749756,
+              "TotalArticles": 134,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 2,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [],
+              "PostInfoText": "NONE",
+              "PostStageProgress": -390651904,
+              "PostStageTimeSec": 0,
+              "Log": []
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
