@@ -7,6 +7,7 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
 using Deluno.Series.Data;
 
 namespace Deluno.Worker.Services;
@@ -108,7 +109,7 @@ public sealed class ProcessorOutputSweep(
                 continue;
             }
 
-            var claiming = handoffs.Where(handoff => NamesOf(handoff).Contains(name)).ToArray();
+            var claiming = handoffs.Where(handoff => ProcessorOutputLayout.ClaimsTopLevelName(handoff.SourcePath, library.DownloadsPath, name)).ToArray();
             if (claiming.Length == 0)
             {
                 // Not recognisably a hand-off's: left to the safety net, which lists it.
@@ -216,9 +217,6 @@ public sealed class ProcessorOutputSweep(
             cancellationToken);
         return true;
     }
-
-    private static IReadOnlySet<string> NamesOf(ProcessorHandoffItem handoff)
-        => WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Nothing under the item is still being written or already queued to import.</summary>
     private static bool EverythingIsSettled(string entry, ISet<string> reserved)

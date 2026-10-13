@@ -1203,7 +1203,7 @@ public sealed class WorkPlanner(
                     // up here once, keeping any complete file #921's Health
                     // row still offers.
                     ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
-                        ExpectedOutputDirectoryNames(existing!.SourcePath),
+                        ExpectedOutputDirectoryNames(existing!.SourcePath, library.DownloadsPath),
                         library.ProcessorOutputPath,
                         ProcessorOutputReadiness.IsReady);
                 }
@@ -2032,7 +2032,7 @@ public sealed class WorkPlanner(
                 // is on its way and imports this very file, so it is not a stranger. Looked at again on the next pass;
                 // if the resend never imports it, the file is listed then.
                 handoffs ??= await processorRepository.ListProcessorHandoffsAsync(library.Id, 500, cancellationToken);
-                if (await IsOutputOfAReleaseSentAgainAsync(handoffs, jobQueueRepository, file, cancellationToken))
+                if (await IsOutputOfAReleaseSentAgainAsync(handoffs, jobQueueRepository, file, library.DownloadsPath, cancellationToken))
                 {
                     continue;
                 }
@@ -2081,13 +2081,15 @@ public sealed class WorkPlanner(
         IReadOnlyList<ProcessorHandoffItem> handoffs,
         IJobQueueRepository jobQueueRepository,
         string file,
+        string? watchedFolder,
         CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(file);
         var stem = Path.GetFileNameWithoutExtension(file);
-        foreach (var handoff in handoffs.Where(item => ExpectedOutputDirectoryNames(item.SourcePath)
+        foreach (var handoff in handoffs.Where(item => ExpectedOutputDirectoryNames(item.SourcePath, watchedFolder)
                      .Any(expected => string.Equals(expected, name, StringComparison.OrdinalIgnoreCase)
-                         || string.Equals(expected, stem, StringComparison.OrdinalIgnoreCase))))
+                         || string.Equals(expected, stem, StringComparison.OrdinalIgnoreCase))
+                     || ProcessorOutputLayout.ClaimsTopLevelName(item.SourcePath, watchedFolder, name)))
         {
             if (await ImportedDownloads.SentAgainSinceAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, handoff.CreatedUtc, cancellationToken))
             {
@@ -2203,7 +2205,7 @@ public sealed class WorkPlanner(
                 handoff.ReleaseName,
                 cancellationToken);
 
-            var candidates = FindCorrelatedProcessorOutputs(library.ProcessorOutputPath!, handoff.SourcePath)
+            var candidates = FindCorrelatedProcessorOutputs(library.ProcessorOutputPath!, handoff.SourcePath, library.DownloadsPath)
                 .Where(path => !queuedThisPass.Contains(NormalizeSourceKey(path)))
                 .Where(path => !HasImportReservation(existingJobs, NormalizeSourceKey(path), dispatch))
                 .Where(ProcessorOutputReadiness.IsReady)
@@ -2296,9 +2298,22 @@ public sealed class WorkPlanner(
                 return [];
             }
 
-            var directoryNames = ExpectedOutputDirectoryNames(sourcePath);
             var matches = new List<string>();
-            foreach (var directoryName in directoryNames)
+
+            // Where the processor puts it: the source's path below the watched folder, under the output folder (#1262).
+            foreach (var path in ProcessorOutputLayout.ExistingOutputPaths(root, sourcePath, watchedFolder))
+            {
+                matches.AddRange(VideosAt(path));
+            }
+
+            if (matches.Count > 0)
+            {
+                return matches.Distinct(StringComparer.OrdinalIgnoreCase).Take(2).ToArray();
+            }
+
+            // The older generic layout, for a processor that publishes no folder list or a library with no downloads
+            // folder: a folder named after the source, with or without its extension.
+            foreach (var directoryName in ExpectedOutputDirectoryNames(sourcePath))
             {
                 var expectedDirectory = Path.GetFullPath(Path.Combine(root, directoryName));
                 if (!expectedDirectory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
@@ -2307,11 +2322,7 @@ public sealed class WorkPlanner(
                     continue;
                 }
 
-                matches.AddRange(Directory.EnumerateFiles(expectedDirectory, "*.*", SearchOption.AllDirectories)
-                    .Where(IsImportableVideoFile)
-                    .Where(ProcessorOutputReadiness.IsReady)
-                    .OrderByDescending(File.GetLastWriteTimeUtc)
-                    .Take(2));
+                matches.AddRange(VideosAt(expectedDirectory));
             }
 
             return matches.Distinct(StringComparer.OrdinalIgnoreCase).Take(2).ToArray();
@@ -2321,6 +2332,16 @@ public sealed class WorkPlanner(
             return [];
         }
     }
+
+    /// <summary>The ready video files at a path inside the output folder: the file itself, or those below a folder, newest first.</summary>
+    private static IEnumerable<string> VideosAt(string path)
+        => File.Exists(path)
+            ? IsImportableVideoFile(path) && ProcessorOutputReadiness.IsReady(path) ? [path] : []
+            : Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories)
+                .Where(IsImportableVideoFile)
+                .Where(ProcessorOutputReadiness.IsReady)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .Take(2);
 
     internal static bool IsImportableVideoFile(string path)
         => SupportedVideoExtensions.Contains(path);
@@ -2350,11 +2371,14 @@ public sealed class WorkPlanner(
             return [];
         }
 
+        // The first folder or the file below the watched folder is what the processor's layout puts in the output folder
+        // (#1262): the release folder of a file inside one.
         return new[]
         {
             sourceLeaf,
             Path.GetFileNameWithoutExtension(sourceLeaf)
         }
+            .Concat(ProcessorOutputLayout.TopLevelNames(sourcePath, watchedFolder))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();

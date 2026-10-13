@@ -120,7 +120,11 @@ public static class ProcessorOutputPathPolicy
                 .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
                 .SelectMany(segment => new[] { segment, Path.GetFileNameWithoutExtension(segment) });
 
-            return segments.Any(segment => names.Contains(segment, StringComparer.OrdinalIgnoreCase));
+            // A name collision renames only the file, as "stem (n).ext" (#1262).
+            return segments.Any(segment => names.Contains(segment, StringComparer.OrdinalIgnoreCase))
+                || relative.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(segment => Path.GetFileNameWithoutExtension(segment))
+                    .Any(segment => names.Any(name => ProcessorOutputLayout.IsCollisionRenamedStem(segment, Path.GetFileNameWithoutExtension(name))));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
