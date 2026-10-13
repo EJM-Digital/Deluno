@@ -7,6 +7,8 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
@@ -57,9 +59,9 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         return new Scene(library!.Id, output, folder, film);
     }
 
-    private static Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId)
+    private static Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string? handoffReleaseName = null)
         => Repository(app).EnsureProcessorHandoffAsync(
-            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", clientId, queueItemId, Release, scene.DownloadFolder, "Weir", DateTimeOffset.UnixEpoch),
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", clientId, queueItemId, handoffReleaseName ?? Release, scene.DownloadFolder, "Weir", DateTimeOffset.UnixEpoch),
             CancellationToken.None);
 
     private static Task RecordSendAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId)
@@ -76,10 +78,10 @@ public sealed class ALateReportForARemovedSendIsSettledTests
     }
 
     /// <summary>Send, the processor starts it, "I do not want it" (the hand-off ends), then the release is sent again - but the new hand-off is not made yet.</summary>
-    private static async Task<ProcessorHandoffItem> RemovedAndAskedForAgainAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string endedAs)
+    private static async Task<ProcessorHandoffItem> RemovedAndAskedForAgainAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string endedAs, string? handoffReleaseName = null)
     {
         await RecordSendAsync(app, scene, clientId, queueItemId);
-        var first = await HandoffAsync(app, scene, clientId, queueItemId);
+        var first = await HandoffAsync(app, scene, clientId, queueItemId, handoffReleaseName);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, endedAs, null, null, "You said you do not want it.", CancellationToken.None);
         await Task.Delay(30);
@@ -130,6 +132,28 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         Assert.True(File.Exists(output), "the processor's file is left where it is for the resend to find");
     }
 
+    /// <summary>
+    /// The rc.30.29 golden run (resend.during.transmission 17:44:34Z, resend.during.deluge 17:47:11Z): the hand-off of a
+    /// single-file torrent carries the client's own name for it, "...-GOLDEN.mkv", while the send Deluno recorded is named
+    /// "...-GOLDEN". Usenet hand-offs carry the same name on both sides, so only the torrent clients answered 409.
+    /// </summary>
+    [Theory]
+    [InlineData("transmission-1", "hash-retthree")]
+    [InlineData("deluge-1", "hash-retthree")]
+    [InlineData("qbittorrent-1", "hash-retthree")]
+    public async Task The_first_sends_late_report_is_settled_when_the_client_names_the_file_with_its_extension(string clientId, string queueItemId)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var first = await RemovedAndAskedForAgainAsync(app, scene, clientId, queueItemId, ProcessorHandoffStatuses.Dismissed, Release + ".mkv");
+        var output = await WriteOutputAsync(scene);
+
+        var response = await WeirReportsAsync(app, scene, first.Id, output);
+
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task A_report_for_a_removed_send_that_nobody_asked_for_again_is_still_too_late()
     {
@@ -167,5 +191,86 @@ public sealed class ALateReportForARemovedSendIsSettledTests
 
         Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(first.Id, CancellationToken.None))?.Status);
+    }
+
+    /// <summary>Next door: the same report once the resend's hand-off exists (the "before" and "after" timings), torrent names and Usenet names alike.</summary>
+    [Theory]
+    [InlineData("transmission-1", "hash-retthree", Release + ".mkv")]
+    [InlineData("deluge-1", "hash-retthree", Release + ".mkv")]
+    [InlineData("sabnzbd-1", "SABnzbd_nzo_retthree", Release)]
+    [InlineData("nzbget-1", "42", Release)]
+    public async Task The_first_sends_report_after_the_resends_hand_off_exists_is_settled_and_never_a_409(string clientId, string queueItemId, string handoffReleaseName)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var first = await RemovedAndAskedForAgainAsync(app, scene, clientId, queueItemId, ProcessorHandoffStatuses.Dismissed, handoffReleaseName);
+        var second = await Repository(app).EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", clientId, queueItemId, handoffReleaseName, scene.DownloadFolder, "Weir", DateTimeOffset.UtcNow.AddMinutes(5)),
+            CancellationToken.None);
+        Assert.NotEqual(first.Id, second.Id);
+        var output = await WriteOutputAsync(scene);
+
+        var response = await WeirReportsAsync(app, scene, first.Id, output);
+
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task A_report_for_a_removed_torrent_send_named_with_its_extension_that_nobody_asked_for_again_is_still_too_late()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordSendAsync(app, scene, "transmission-1", "hash-retthree");
+        var first = await HandoffAsync(app, scene, "transmission-1", "hash-retthree", Release + ".mkv");
+        await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Dismissed, null, null, "You said you do not want it.", CancellationToken.None);
+        var output = await WriteOutputAsync(scene);
+
+        var response = await WeirReportsAsync(app, scene, first.Id, output);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    private sealed class Captured : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        public List<string> Lines { get; } = [];
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Sink(categoryName, Lines);
+        public void Dispose() { }
+
+        private sealed class Sink(string category, List<string> lines) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (category == ProcessorEventAnswerLog.Category && logLevel == Microsoft.Extensions.Logging.LogLevel.Information)
+                {
+                    lock (lines) lines.Add(formatter(state, exception));
+                }
+            }
+        }
+    }
+
+    /// <summary>#1242: Weir logged "returned HTTP 409" and Deluno's log said nothing. Every answer is now one Information line.</summary>
+    [Fact]
+    public async Task Every_answer_to_a_processor_report_is_written_to_the_log_with_its_status_hand_off_and_reason()
+    {
+        var captured = new Captured();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            services.AddLogging(logging => logging.AddProvider(captured)));
+        var scene = await SceneAsync(app);
+        var first = await RemovedAndAskedForAgainAsync(app, scene, "transmission-1", "hash-retthree", ProcessorHandoffStatuses.Dismissed, Release + ".mkv");
+        var output = await WriteOutputAsync(scene);
+        Assert.Equal(HttpStatusCode.Accepted, (await WeirReportsAsync(app, scene, first.Id, output)).StatusCode);
+
+        // A hand-off nobody sent again: the genuine "too late".
+        var lone = await RemovedAndAskedForAgainAsync(app, scene, "qbittorrent-1", "hash-lone", ProcessorHandoffStatuses.Dismissed);
+        await Repository(app).UpdateProcessorHandoffAsync(lone.Id, ProcessorHandoffStatuses.Dismissed, null, null, "x", CancellationToken.None);
+        var unknown = await WeirReportsAsync(app, scene, "no-such-handoff", output);
+        Assert.Equal(HttpStatusCode.Conflict, unknown.StatusCode);
+
+        string[] lines;
+        lock (captured.Lines) lines = [.. captured.Lines];
+        Assert.Contains(lines, line => line.Contains("processors/events answered 202 (already handled)") && line.Contains(first.Id));
+        Assert.Contains(lines, line => line.Contains("processors/events answered 409") && line.Contains("no-such-handoff") && line.Contains("could not match"));
     }
 }

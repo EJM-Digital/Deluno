@@ -9,6 +9,32 @@ namespace Deluno.Integrations.DownloadClients;
 /// </summary>
 public static class DownloadAttempts
 {
+    private static readonly string[] FileExtensions = [".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".nzb"];
+
+    /// <summary>
+    /// Whether two names are one release. A client names a single-file torrent after the file ("Film.2020.1080p-GRP.mkv")
+    /// while the send Deluno recorded is named after the release ("Film.2020.1080p-GRP"), and a Usenet client names both the
+    /// same way (rc.30.29: only the torrent clients' late reports were refused, #1242). Case and a trailing video or
+    /// ".nzb" extension are ignored; nothing else is.
+    /// </summary>
+    public static bool SameRelease(string? left, string? right)
+        => !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right)
+            && string.Equals(WithoutExtension(left), WithoutExtension(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string WithoutExtension(string name)
+    {
+        var trimmed = name.Trim();
+        foreach (var extension in FileExtensions)
+        {
+            if (trimmed.EndsWith(extension, StringComparison.OrdinalIgnoreCase) && trimmed.Length > extension.Length)
+            {
+                return trimmed[..^extension.Length];
+            }
+        }
+
+        return trimmed;
+    }
+
     /// <summary>
     /// True when the latest send of this release to this client was made after <paramref name="sinceUtc"/>, the
     /// client took it, and it has not been imported or refused. An earlier send that was imported, or one that
@@ -23,7 +49,7 @@ public static class DownloadAttempts
         var latest = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, clientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, releaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
