@@ -82,7 +82,7 @@ function Restore-FilmData {
     param([Parameter(Mandatory)] $Film)
     if ($Film.Protocol -ne 'torrent') { return }
     $src = Join-Path (Get-SuiteRoot) "films\$($Film.Release)"
-    $dest = $script:Fx.Incomplete[$Film.ClientKind]
+    $dest = Get-ClientDataFolder -Kind $Film.ClientKind
     $base = if ($Film.Layout -eq 'folder') { Join-Path $src $Film.Release } else { $src }
     Get-ChildItem -LiteralPath $base -Recurse -File | ForEach-Object {
         $rel = $_.FullName.Substring($base.Length + 1)
@@ -92,6 +92,9 @@ function Restore-FilmData {
             New-Item -ItemType HardLink -Path $to -Target $_.FullName | Out-Null
         }
     }
+    # The data is where the client keeps an unfinished torrent now, and nothing has told the client to check it yet.
+    $Film | Add-Member -NotePropertyName DataFolder -NotePropertyValue $dest -Force
+    $Film | Add-Member -NotePropertyName SettleKey -NotePropertyValue $null -Force
 }
 
 function Start-AutomationPause { Invoke-Deluno -Method PUT -Path '/api/settings/automation' -Body @{ isEnabled = $false } | Out-Null }
