@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -58,6 +58,10 @@ public sealed class QbittorrentKeepsItsSessionTests
             "movies", "tv", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
         with { Username = "user", Secret = "pw" };
 
+    /// <summary>
+    /// qBittorrent 5.2.1 as recorded: its sign-in, main data and tracker list, a refused session (the recorded 403), and a list of three
+    /// torrents made from the recorded one real torrent (one moving data, two idle), each changed only in the values that tell them apart.
+    /// </summary>
     private sealed class Handler : HttpMessageHandler
     {
         private int logins;
@@ -74,7 +78,13 @@ public sealed class QbittorrentKeepsItsSessionTests
             if (path.EndsWith("auth/login", StringComparison.Ordinal))
             {
                 Interlocked.Increment(ref logins);
-                return Task.FromResult(Text("Ok."));
+                return Task.FromResult(RecordedReplies.Qbittorrent("sign-in").Response("auth/login"));
+            }
+
+            // The recorded sign-in answers 204 and no text, so qBittorrent's session is checked with the version call, as it was recorded.
+            if (path.EndsWith("app/version", StringComparison.Ordinal))
+            {
+                return Task.FromResult(RecordedReplies.Qbittorrent("version").Response("app/version"));
             }
 
             if (path.EndsWith("torrents/info", StringComparison.Ordinal))
@@ -82,16 +92,15 @@ public sealed class QbittorrentKeepsItsSessionTests
                 if (RefuseNextListing)
                 {
                     RefuseNextListing = false;
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
+                    return Task.FromResult(RecordedReplies.Qbittorrent("api-key-refused").Response("torrents/info"));
                 }
 
-                return Task.FromResult(Json("""
-                [
-                  {"hash":"moving","name":"Moving.Release","state":"downloading","progress":0.5,"dlspeed":5000000,"upspeed":0,"size":100,"downloaded":50},
-                  {"hash":"idle1","name":"Idle.One","state":"stalledDL","progress":0.1,"dlspeed":0,"upspeed":0,"size":100,"downloaded":10},
-                  {"hash":"idle2","name":"Idle.Two","state":"stalledDL","progress":0.2,"dlspeed":0,"upspeed":0,"size":100,"downloaded":20}
-                ]
-                """));
+                return Task.FromResult(RecordedReplies.Json(RecordedReplies.Qbittorrent("downloading").Body(
+                    "torrents/info",
+                    ("+", 3),
+                    ("0.hash", "moving"), ("0.name", "Moving.Release"), ("0.state", "downloading"), ("0.dlspeed", 5000000),
+                    ("1.hash", "idle1"), ("1.name", "Idle.One"), ("1.state", "stalledDL"), ("1.dlspeed", 0),
+                    ("2.hash", "idle2"), ("2.name", "Idle.Two"), ("2.state", "stalledDL"), ("2.dlspeed", 0))));
             }
 
             if (path.EndsWith("torrents/trackers", StringComparison.Ordinal))
@@ -102,23 +111,17 @@ public sealed class QbittorrentKeepsItsSessionTests
                     TrackerRequests.Add(hash);
                 }
 
-                return Task.FromResult(Json(hash == "idle1"
-                    ? """[{"status":4,"msg":"Torrent not registered with this tracker"}]"""
-                    : """[{"status":2,"msg":""}]"""));
+                return Task.FromResult(RecordedReplies.Json(hash == "idle1"
+                    ? RecordedQbittorrentRig.Trackers(4, "Torrent not registered with this tracker")
+                    : RecordedQbittorrentRig.Trackers(2, string.Empty)));
             }
 
             if (path.EndsWith("sync/maindata", StringComparison.Ordinal))
             {
-                return Task.FromResult(Json("""{"server_state":{"free_space_on_disk":500000000000,"use_alt_speed_limits":false}}"""));
+                return Task.FromResult(RecordedReplies.Qbittorrent("settings").Response("sync/maindata"));
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
-
-        private static HttpResponseMessage Text(string body)
-            => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/plain") };
-
-        private static HttpResponseMessage Json(string body)
-            => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     }
 }

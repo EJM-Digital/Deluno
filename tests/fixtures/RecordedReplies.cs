@@ -13,6 +13,12 @@ namespace Deluno.Tests.Recorded;
 /// </summary>
 public static class RecordedReplies
 {
+    /// <summary>
+    /// A value for <see cref="RecordedReply.BodyWith"/> that sets a property to an explicit JSON null (a plain null value takes
+    /// the property out of the reply, which is a different thing to a processor that sends "null").
+    /// </summary>
+    public static readonly object JsonNull = new();
+
     // The newest recorded state of each app, by name: RecordedReplies.Qbittorrent("finished-single-file").
     public static Recording Sabnzbd(string state) => RecordedReplies.LoadLatest("sabnzbd", state);
     public static Recording Nzbget(string state) => RecordedReplies.LoadLatest("nzbget", state);
@@ -65,6 +71,10 @@ public static class RecordedReplies
                 {
                     return $"{method} {path} ?";
                 }
+
+            case "weir":
+                // A hand-off is named in the address by its id; the kind of question is the address without it.
+                return $"{method} {System.Text.RegularExpressions.Regex.Replace(path, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "{id}")}";
 
             default:
                 // qBittorrent and the rest: the path says what is asked.
@@ -291,6 +301,61 @@ public sealed record Recording(string App, string Version, string State, IReadOn
     /// </summary>
     public HttpMessageHandler ReplayHandler(Action<HttpRequestMessage>? onRequest = null) => new Replay(this, onRequest);
 
+    /// <summary>
+    /// A handler that replays the recording in the order it happened: each request is answered with the next recorded reply to the
+    /// same kind of call (the same method and path with ids left out, or the same JSON-RPC method), and once a kind of call has been
+    /// answered as many times as it was recorded, with its last recorded reply. Replays a sequence such as pause, list, resume, list
+    /// exactly as the app answered it. A call that was never recorded fails the test, unless one of the other recordings given answers it.
+    /// </summary>
+    public HttpMessageHandler Sequence(params Recording[] alsoAnswering) => new InOrder(this, alsoAnswering);
+
+    private sealed class InOrder(Recording recording, Recording[] alsoAnswering) : HttpMessageHandler
+    {
+        private readonly Dictionary<string, int> _answered = new();
+        private readonly HttpMessageInvoker? _others = alsoAnswering.Length == 0 ? null : new(RecordedReplies.Handler(recording.App, alsoAnswering), disposeHandler: false);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var kind = RecordedReplies.OperationOf(recording.App, request.Method.Method, request.RequestUri!.PathAndQuery, body);
+            var same = recording.Exchanges
+                .Where(e => RecordedReplies.OperationOf(recording.App, e.Request.Method, e.Request.Path, e.Request.Body) == kind)
+                .ToList();
+            if (same.Count == 0)
+            {
+                // A call the replayed recording never made (the sign-in before it, the version after) is answered by the other recordings given.
+                if (_others is not null && alsoAnswering.Any(r => r.Exchanges.Any(e => RecordedReplies.OperationOf(r.App, e.Request.Method, e.Request.Path, e.Request.Body) == kind)))
+                {
+                    return await _others.SendAsync(request, cancellationToken);
+                }
+
+                throw new InvalidOperationException($"{request.Method} {request.RequestUri!.PathAndQuery} was never recorded for {recording.App} {recording.Version} {recording.State} (as {kind}).");
+            }
+
+            var index = _answered.GetValueOrDefault(kind);
+            _answered[kind] = index + 1;
+            var chosen = same[Math.Min(index, same.Count - 1)];
+            if (chosen.Reply.Status == 0)
+            {
+                throw new HttpRequestException(chosen.Reply.Error ?? "The connection was refused.");
+            }
+
+            return chosen.Reply.ToResponse();
+        }
+    }
+
+    /// <summary>
+    /// A handler for an app that does not answer at all, as this recording shows (the connection is refused): every request fails with
+    /// the recorded refusal, whatever it asks.
+    /// </summary>
+    public HttpMessageHandler NotAnswering() => new Refusing(Exchanges.FirstOrDefault(e => e.Reply.Status == 0)?.Reply.Error ?? "The connection was refused.");
+
+    private sealed class Refusing(string error) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException(error);
+    }
+
     private sealed class Replay(Recording recording, Action<HttpRequestMessage>? onRequest) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -339,7 +404,8 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
     /// The recorded body with the values a test chooses changed, everything else exactly as the app sent it. Each path is
     /// dot-separated property names and array positions ("0.state", "result.abc123.progress", "arguments.torrents.0.percentDone");
     /// a null value removes the property. Use it to set the one thing a test is about (a state the VM cannot be put in, a
-    /// ratio); never to rebuild a reply, which a test of an external app must not do.
+    /// ratio); never to rebuild a reply, which a test of an external app must not do. A part in square brackets,
+    /// "[Name=InterDir]", picks the list element whose Name property is InterDir.
     /// </summary>
     public string BodyWith(params (string Path, object? Value)[] edits)
     {
@@ -371,17 +437,30 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
                 continue;
             }
 
-            var path = rawPath;
+            // ">result.<scrubbed>-movies" with a name renames that property: a recording scrubbed a name that is a person's own (a category
+            // Deluno made), and the test needs the name its code looks for.
+            var rename = rawPath.StartsWith('>');
+            var path = rename ? rawPath[1..] : rawPath;
             JsonNode? node = root;
-            var parts = path.Split('.');
+            var parts = SplitPath(path);
             for (var i = 0; i < parts.Length - 1; i++)
             {
                 node = Step(node, parts[i]) ?? throw new KeyNotFoundException($"The recorded reply has nothing at '{string.Join('.', parts[..(i + 1)])}' (while setting '{path}').");
             }
 
             var last = parts[^1];
+            if (rename)
+            {
+                var owner = node as JsonObject ?? throw new KeyNotFoundException($"Cannot rename '{path}' in the recorded reply.");
+                var moved = owner[last] ?? throw new KeyNotFoundException($"The recorded reply has nothing at '{path}' to rename.");
+                owner.Remove(last);
+                owner[value?.ToString() ?? throw new ArgumentException("A rename needs the new name.")] = moved;
+                continue;
+            }
+
             switch (node)
             {
+                case JsonObject obj when ReferenceEquals(value, RecordedReplies.JsonNull): obj[last] = null; break;
                 case JsonObject obj when value is null: obj.Remove(last); break;
                 case JsonObject obj: obj[last] = Wrap(value); break;
                 case JsonArray arr when int.TryParse(last, out var index): arr[index] = Wrap(value); break;
@@ -394,8 +473,13 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
 
     private static JsonNode? Json2(JsonNode root, string path)
     {
+        if (path.Length == 0)
+        {
+            return root;
+        }
+
         JsonNode? node = root;
-        foreach (var part in path.Split('.'))
+        foreach (var part in SplitPath(path))
         {
             node = Step(node, part);
         }
@@ -411,11 +495,39 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
             _ => JsonValue.Create(value)
         };
 
+    // "result.[Name=Category2.DestDir].Value": a part in square brackets names the list element whose property has that value, for a list
+    // of settings (NZBGet's config is a list of {Name, Value}). The dots inside the brackets belong to the name.
+    private static string[] SplitPath(string path)
+    {
+        var parts = new List<string>();
+        var current = new StringBuilder();
+        var depth = 0;
+        foreach (var c in path)
+        {
+            if (c == '[') depth++;
+            if (c == ']') depth--;
+            if (c == '.' && depth == 0)
+            {
+                parts.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        parts.Add(current.ToString());
+        return parts.ToArray();
+    }
+
     private static JsonNode? Step(JsonNode? node, string part)
         => node switch
         {
             JsonObject obj when part == "*" => obj.FirstOrDefault().Value,
             JsonObject obj => obj[part],
+            JsonArray arr when part.Length > 2 && part[0] == '[' && part[^1] == ']' && part.IndexOf('=') is var eq and > 1
+                => arr.FirstOrDefault(item => item is JsonObject o && o[part[1..eq]]?.ToString() == part[(eq + 1)..^1]),
             JsonArray arr when int.TryParse(part, out var index) && index < arr.Count => arr[index],
             _ => null
         };

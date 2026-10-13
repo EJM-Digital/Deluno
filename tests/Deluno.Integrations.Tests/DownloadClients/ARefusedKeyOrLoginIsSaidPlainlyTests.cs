@@ -18,9 +18,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 ///
 /// <para>Replies are recordings: SABnzbd 5.1.3 answers every call made with a wrong key 403 "API Key Incorrect"
 /// (api-key-refused); qBittorrent 5.2.1 answers a wrong sign-in 401 "Unauthorized" (login-refused); Deluge 2.2.0 answers
-/// auth.login false (login-refused). NZBGet and Transmission have no recording of a refused login (NZBGet's
-/// login-refused recording holds only its open version call), so they are answered with the bare HTTP 401 a client behind
-/// Basic authentication sends; that is the one place a status is used without a recording, and it carries no body.</para>
+/// auth.login false (login-refused); NZBGet 26.3 and Transmission 4.1.3 answer a wrong login (or none) 401 with a
+/// WWW-Authenticate header for Basic authentication (login-refused).</para>
 /// </summary>
 public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
 {
@@ -56,9 +55,6 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
     /// <summary>Every call is answered with this one reply: a client with a wrong key or login answers all of them alike.</summary>
     private static HttpMessageHandler AnsweringEverythingWith(RecordedReply reply)
         => RecordedReplies.Handler("none", [], (_, _) => reply.ToResponse());
-
-    private static HttpMessageHandler AnsweringEverythingWithStatus(HttpStatusCode status)
-        => RecordedReplies.Handler("none", [], (_, _) => new HttpResponseMessage(status));
 
     // ---------------------------------------------------------------- SABnzbd
 
@@ -155,7 +151,7 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
     [InlineData(DownloadClientActions.MoveToTop)]
     public async Task A_wrong_NZBGet_login_is_said_plainly_on_every_action(string action)
     {
-        var handler = AnsweringEverythingWithStatus(HttpStatusCode.Unauthorized);
+        var handler = AnsweringEverythingWith(RecordedReplies.Nzbget("login-refused").Find("listgroups").Reply);
 
         var result = await new NzbGetDownloadClient(new Factory(handler), removalSettle: TimeSpan.Zero)
             .ExecuteActionAsync(Client("nzbget", "nzbget"), action, "26", CancellationToken.None);
@@ -170,7 +166,7 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
     [InlineData(DownloadClientActions.MoveToTop)]
     public async Task A_wrong_Transmission_login_is_said_plainly_on_every_action(string action)
     {
-        var handler = AnsweringEverythingWithStatus(HttpStatusCode.Unauthorized);
+        var handler = AnsweringEverythingWith(RecordedReplies.Transmission("login-refused").Find("session-get").Reply);
 
         var result = await new TransmissionDownloadClient(new Factory(handler))
             .ExecuteActionAsync(Client("transmission", "transmission"), action, "ff7447384425ba526a3efb9efb792f7ba67a77dd", CancellationToken.None);
@@ -183,7 +179,9 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
     [InlineData("transmission", "Transmission")]
     public async Task A_wrong_login_is_said_plainly_by_the_connection_test(string protocol, string name)
     {
-        using var server = new RecordedServer(status: HttpStatusCode.Unauthorized);
+        using var server = new RecordedServer(protocol == "nzbget"
+            ? RecordedReplies.Nzbget("login-refused").Find("listgroups").Reply
+            : RecordedReplies.Transmission("login-refused").Find("session-get").Reply);
 
         var test = await ConnectionsEndpointRouteBuilderExtensions.TestDownloadClientAsync(server.Item(protocol, "login"), CancellationToken.None);
 
@@ -216,6 +214,11 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
                     catch { return; }
 
                     context.Response.StatusCode = reply?.Status ?? (int)status;
+                    foreach (var (name, value) in reply?.Headers ?? new Dictionary<string, string>())
+                    {
+                        if (name.Equals("www-authenticate", StringComparison.OrdinalIgnoreCase)) context.Response.AddHeader("WWW-Authenticate", value);
+                    }
+
                     if (reply?.Body is { } body)
                     {
                         context.Response.ContentType = reply.Headers.TryGetValue("content-type", out var type) ? type : "application/json";

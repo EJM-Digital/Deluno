@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
@@ -7,6 +6,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -86,7 +86,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
 
         using var pin = JsonDocument.Parse(sent[pinIndex]);
         var parameters = pin.RootElement.GetProperty("params");
-        Assert.Equal("abcd1234abcd1234abcd1234abcd1234abcd1234", Assert.Single(parameters[0].EnumerateArray()).GetString());
+        Assert.Equal("5422d19ec8580f2821a8ffa67236cf7ed86fc07d", Assert.Single(parameters[0].EnumerateArray()).GetString());
         Assert.True(parameters[1].GetProperty("move_completed").GetBoolean());
         Assert.Equal(LibraryFolder, parameters[1].GetProperty("move_completed_path").GetString());
     }
@@ -706,34 +706,37 @@ public sealed class LibraryDownloadFolderPerGrabTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
+    /// <summary>
+    /// Transmission 4.1.3 as recorded: the add (answered as it answered the recorded magnet) and its session settings, whose download
+    /// folder is the one these tests expect when the library names none.
+    /// </summary>
     private sealed class TransmissionHandler(List<string> sent) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             sent.Add(body);
-            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
-                ? """{"result":"success","arguments":{"torrent-added":{"id":7,"hashString":"abc"}}}"""
+            return body.Contains("\"torrent-add\"", StringComparison.Ordinal) ? RecordedReplies.Transmission("magnet-no-metadata").Response("torrent-add")
                 : body.Contains("\"session-get\"", StringComparison.Ordinal)
-                    ? """{"result":"success","arguments":{"download-dir":"C:\\Downloads"}}"""
-                    : """{"result":"success","arguments":{}}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+                    ? RecordedReplies.Json(RecordedReplies.Transmission("settings").Body("session-get", ("arguments.download-dir", @"C:\Downloads")))
+                    : throw new InvalidOperationException("Transmission was asked something no recording answers: " + body);
         }
     }
 
-    /// <summary>A Deluge whose Label plugin is on and already holds a "movies" label.</summary>
+    /// <summary>Deluge 2.2.0 as recorded, whose Label plugin is on and already holds a "movies" label.</summary>
     private sealed class DelugeHandler(List<string> sent) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             sent.Add(body);
-            var answer = body.Contains("core.add_torrent_", StringComparison.Ordinal)
-                ? """{"result":"abcd1234abcd1234abcd1234abcd1234abcd1234","error":null,"id":2}"""
-                : body.Contains("label.get_labels", StringComparison.Ordinal)
-                    ? """{"result":["movies"],"error":null,"id":5}"""
-                    : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
+            if (body.Contains("core.add_torrent_", StringComparison.Ordinal)) return RecordedReplies.Deluge("magnet-no-metadata").Response("core.add_torrent_magnet");
+            if (body.Contains("label.get_labels", StringComparison.Ordinal)) return RecordedReplies.Json(RecordedDelugeRig.Labels());
+            if (body.Contains("label.set_torrent", StringComparison.Ordinal)) return RecordedReplies.Deluge("label-set").Response("label.set_torrent");
+            if (body.Contains("core.set_torrent_options", StringComparison.Ordinal)) return RecordedReplies.Deluge("torrent-options").Response("core.set_torrent_options");
+            if (body.Contains("auth.login", StringComparison.Ordinal)) return RecordedReplies.Deluge("sign-in").Response("auth.login");
+            if (body.Contains("web.connected", StringComparison.Ordinal)) return RecordedReplies.Deluge("sign-in").Response("web.connected");
+            throw new InvalidOperationException("Deluge was asked something no recording answers: " + body);
         }
     }
 
