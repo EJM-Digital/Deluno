@@ -227,32 +227,41 @@ function Wait-KsAllStruck {
 # ---------------------------------------------------------------- the group
 
 function Invoke-GroupKeepSeeding {
+    # A run of chosen scenarios (-Scenarios) sets up only what they need: a film for each chosen client and kind, the private
+    # indexer and the keep-seeding choices only when a "moved" scenario is chosen, the rule when any is.
+    $movedKinds = @(Get-SelectedKinds -IdFormat 'keepseeding.moved.{0}' -Kinds $script:Kinds.torrent)
+    $publicKinds = @(Get-SelectedKinds -IdFormat 'keepseeding.public-removed.{0}' -Kinds $script:Kinds.torrent)
+    if ($movedKinds.Count + $publicKinds.Count -eq 0) { return }
     $category = $script:Ks.Category
-    $restore = @{ Rules = @(Invoke-Deluno -Path '/api/download-health/rules'); Settings = $null; PrivateIndexerId = $null }
+    $restore = @{ Rules = @(Invoke-Deluno -Path '/api/download-health/rules'); Settings = $null; ChoicesChanged = $false; PrivateIndexerId = $null }
     try {
         # ---------------- setup: a private indexer, the category in each client, Deluno told about it, and the rule
-        $view = Invoke-Deluno -Path '/api/download-health/keep-seeding'
-        $restore.Settings = $view
-        $private = Invoke-Deluno -Method POST -Path '/api/indexers' -Body @{
-            name = $script:Ks.PrivateName; protocol = 'torznab'; privacy = 'private'; baseUrl = "http://127.0.0.1:$($script:Fx.FeedPort)/private"; apiKey = 'golden'
-            priority = 26; categories = '2000,2040,5000,5040'; mediaScope = 'both'; isEnabled = $true; keepName = $true; routeToLibraries = $true
-            # Nothing automatic (#936): the suite sends each release itself.
-            rssEnabled = $false; automaticSearchEnabled = $false
-        }
-        $restore.PrivateIndexerId = $private.id
-        $script:Fx.IndexerIds.private = $private.id
-        Add-Note ("Private indexer {0} added; Deluno reads it as private: {1}" -f $script:Ks.PrivateName, $private.privacy)
-
-        $clientCategories = @{}
-        foreach ($kind in $script:Kinds.torrent) {
-            New-KsClientCategory -Kind $kind -Name $category
-            $clientCategories[(Get-ClientByKind -Kind $kind).id] = $category
-        }
-        $saved = Invoke-Deluno -Method PUT -Path '/api/download-health/keep-seeding' -Body @{ clientCategories = $clientCategories; indexers = @{}; tagCategories = @{} }
         $ready = @{}
-        foreach ($kind in $script:Kinds.torrent) {
-            $c = Get-ClientByKind -Kind $kind
-            $ready[$kind] = Invoke-Deluno -Method POST -Path '/api/download-health/keep-seeding/check' -Body @{ clientId = $c.id; category = $category }
+        $private = $null
+        if ($movedKinds.Count -gt 0) {
+            $view = Invoke-Deluno -Path '/api/download-health/keep-seeding'
+            $restore.Settings = $view
+            $private = Invoke-Deluno -Method POST -Path '/api/indexers' -Body @{
+                name = $script:Ks.PrivateName; protocol = 'torznab'; privacy = 'private'; baseUrl = "http://127.0.0.1:$($script:Fx.FeedPort)/private"; apiKey = 'golden'
+                priority = 26; categories = '2000,2040,5000,5040'; mediaScope = 'both'; isEnabled = $true; keepName = $true; routeToLibraries = $true
+                # Nothing automatic (#936): the suite sends each release itself.
+                rssEnabled = $false; automaticSearchEnabled = $false
+            }
+            $restore.PrivateIndexerId = $private.id
+            $script:Fx.IndexerIds.private = $private.id
+            Add-Note ("Private indexer {0} added; Deluno reads it as private: {1}" -f $script:Ks.PrivateName, $private.privacy)
+
+            $clientCategories = @{}
+            foreach ($kind in $movedKinds) {
+                New-KsClientCategory -Kind $kind -Name $category
+                $clientCategories[(Get-ClientByKind -Kind $kind).id] = $category
+            }
+            $restore.ChoicesChanged = $true
+            $saved = Invoke-Deluno -Method PUT -Path '/api/download-health/keep-seeding' -Body @{ clientCategories = $clientCategories; indexers = @{}; tagCategories = @{} }
+            foreach ($kind in $movedKinds) {
+                $c = Get-ClientByKind -Kind $kind
+                $ready[$kind] = Invoke-Deluno -Method POST -Path '/api/download-health/keep-seeding/check' -Body @{ clientId = $c.id; category = $category }
+            }
         }
 
         Set-HealthRules -On @{ 'no-progress' = @{ Strikes = 2 } } -CheckMinutes 1
@@ -265,11 +274,13 @@ function Invoke-GroupKeepSeeding {
 
         # ---------------- send both kinds of torrent to each client
         $films = @{}
-        foreach ($kind in $script:Kinds.torrent) {
+        foreach ($kind in $movedKinds) {
             $pf = New-FilmFor -Kind $kind -Layout 'file' -Variant 'short' -Label 'keepprivate'
             $pf | Add-Member -NotePropertyName IndexerId -NotePropertyValue $private.id -Force
             $pf | Add-Member -NotePropertyName IndexerName -NotePropertyValue $script:Ks.PrivateName -Force
             $films["private.$kind"] = Send-Film -Film $pf -Kind $kind
+        }
+        foreach ($kind in $publicKinds) {
             $films["public.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'short' -Label 'keeppublic') -Kind $kind
         }
         $seen = Wait-KsAllStruck -Films $films
@@ -328,11 +339,11 @@ function Invoke-GroupKeepSeeding {
         foreach ($rule in $restore.Rules) {
             try { Invoke-Deluno -Method PUT -Path "/api/download-health/rules/$($rule.id)" -Body $rule | Out-Null } catch { Write-SuiteLog "   could not restore rule $($rule.kind): $(Hide-Secrets $_.Exception.Message)" }
         }
-        try {
+        if ($restore.ChoicesChanged) { try {
             $before = @{}
             if ($restore.Settings) { foreach ($c in @($restore.Settings.clients)) { if ($c.category) { $before[$c.clientId] = $c.category } } }
             Invoke-Deluno -Method PUT -Path '/api/download-health/keep-seeding' -Body @{ clientCategories = $before; indexers = @{}; tagCategories = @{} } | Out-Null
-        } catch { Write-SuiteLog "   could not restore the keep-seeding choices: $(Hide-Secrets $_.Exception.Message)" }
+        } catch { Write-SuiteLog "   could not restore the keep-seeding choices: $(Hide-Secrets $_.Exception.Message)" } }
         if ($restore.PrivateIndexerId) {
             try { Invoke-Deluno -Method DELETE -Path "/api/indexers/$($restore.PrivateIndexerId)" | Out-Null } catch { Write-SuiteLog "   could not delete the private indexer: $(Hide-Secrets $_.Exception.Message)" }
         }
