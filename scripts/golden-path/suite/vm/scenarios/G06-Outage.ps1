@@ -76,9 +76,11 @@ function Invoke-OutageOnce {
     param([Parameter(Mandatory)] [string] $Label)
     $before = Read-WeirSignals
     Add-Check "$Label : before the outage every place reads green" ($before.TrayGreen -and $before.SystemGreen -and $before.DashboardGreen) ("tray '{0}' {1}; system green {2}; dashboard green {3}" -f $before.TrayHover, $before.TrayColour, $before.SystemGreen, $before.DashboardGreen)
-    $t0 = [DateTime]::UtcNow
+    $asked = [DateTime]::UtcNow
     $q = Stop-WeirApp
-    Add-Note ("$Label : Weir quit at T0 (via its tray menu: {0})." -f $q.ViaTray)
+    # "Within a minute" is counted from the moment Weir was gone, as the come-back is counted from the moment it answered.
+    $t0 = $q.GoneAt
+    Add-Note ("$Label : Weir quit at T0, {0:N1} s after it was asked (via its tray menu: {1})." -f ($t0 - $asked).TotalSeconds, $q.ViaTray)
     $amber = Watch-WeirSignals -Want amber -T0 $t0 -TimeoutSec 120
     Assert-Within "$Label : the tray goes amber within a minute" $amber.Tray
     Assert-Within "$Label : System goes amber within a minute" $amber.System
