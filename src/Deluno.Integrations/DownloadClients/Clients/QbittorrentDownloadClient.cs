@@ -398,7 +398,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("ratioLimit", (client.ShareRatioLimit ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 new KeyValuePair<string, string>("seedingTimeLimit", (client.ShareSeedingTimeLimitMinutes ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("inactiveSeedingTimeLimit", (client.ShareInactiveSeedingTimeLimitMinutes ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                new KeyValuePair<string, string>("inactiveSeedingTimeLimit", (client.ShareInactiveSeedingTimeLimitMinutes ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                // qBittorrent 5.2.1 refuses the call without this ("Missing required parameters: shareLimitAction", recorded), and the
+                // refusal below is swallowed, so the limits never applied. "Default" keeps qBittorrent's own action when a limit is
+                // reached; an older qBittorrent ignores a field it does not know.
+                new KeyValuePair<string, string>("shareLimitAction", "Default")
             };
             using var response = await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken);
             response.EnsureSuccessStatusCode();
