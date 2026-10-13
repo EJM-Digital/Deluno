@@ -33,7 +33,8 @@ public sealed class BundledComponentsTests
         Assert.Equal("http://127.0.0.1:9347/ready", weir.ReadinessUrl);
         Assert.Equal("ready", weir.ReadinessField);
         Assert.Equal("true", weir.ReadinessValue);
-        Assert.Equal(60, weir.ReadinessTimeoutSeconds);
+        // Weir's supervised start can back off from 2 s to 60 s and retry; it asks callers to allow about three minutes (#1258).
+        Assert.Equal(180, weir.ReadinessTimeoutSeconds);
 
         // Every download client also ends with its own Web UI/API started and
         // polled ready, the same start/poll shape as Weir, so Deluno's own

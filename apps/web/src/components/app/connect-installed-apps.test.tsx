@@ -160,6 +160,24 @@ describe("Weir account (#1061, #968)", () => {
     expect(container.innerHTML).not.toContain("s3cret-pass");
   });
 
+  it("says in plain words that Weir may still be starting while the connect waits (#1258)", async () => {
+    let finish: (value: unknown) => void = () => {};
+    fetchJson
+      .mockResolvedValueOnce([weirExisting])
+      .mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }))
+      .mockResolvedValueOnce([weirExisting]);
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Weir" }));
+    fireEvent.change(screen.getByLabelText("Weir username"), { target: { value: "james" } });
+    fireEvent.change(screen.getByLabelText("Weir password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to Weir and connect" }));
+
+    expect(await screen.findByText(/If Weir is still starting, this can take a few minutes after an update/)).toBeTruthy();
+    finish({ kind: "weir", name: "Weir", healthy: false, message: "Weir did not accept that." });
+    await screen.findByText("Weir did not accept that.");
+    expect(screen.queryByText(/If Weir is still starting/)).toBeNull();
+  });
+
   it("closes the account form and marks Weir connected after a good connect", async () => {
     fetchJson
       .mockResolvedValueOnce([weirExisting])

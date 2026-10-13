@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.ServiceProcess;
 using Deluno.Contracts;
+using Deluno.Infrastructure.Processes;
 
 namespace Deluno.Tray;
 
@@ -137,31 +138,9 @@ public static class ServiceManager
     {
         public int? Run(string arguments, TimeSpan timeout)
         {
-            using var p = Process.Start(new ProcessStartInfo
-            {
-                FileName = "sc.exe",
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (p is null)
-            {
-                return null;
-            }
-
-            // Both streams are drained on their own so a full pipe never holds sc.exe up.
-            var output = p.StandardOutput.ReadToEndAsync();
-            var error = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit((int)timeout.TotalMilliseconds))
-            {
-                try { p.Kill(); } catch { /* best effort */ }
-                return null;
-            }
-
-            Task.WaitAll([output, error], TimeSpan.FromSeconds(2));
-            return p.ExitCode;
+            // Both streams are read as they arrive so a full pipe never holds sc.exe up, and it is stopped if it does not finish.
+            var result = ChildProcess.Run(new ProcessStartInfo { FileName = "sc.exe", Arguments = arguments }, timeout);
+            return result.Started && !result.TimedOut ? result.ExitCode : null;
         }
     }
 
@@ -245,6 +224,8 @@ public static class ServiceManager
 
     private static void RemoveTrayStartup() => new RunKeySignInEntry(ExePath).Disable();
 
+    private static readonly TimeSpan ElevatedScLimit = TimeSpan.FromMinutes(2);
+
     private static void RunSc(string args)
     {
         using var p = Process.Start(new ProcessStartInfo
@@ -255,7 +236,8 @@ public static class ServiceManager
             Verb = "runas",     // UAC elevation
             CreateNoWindow = true
         });
-        p?.WaitForExit();
+        // No pipes (a shell start), but not an open-ended wait either (#1258).
+        p?.WaitForExit(ElevatedScLimit);
     }
 }
 

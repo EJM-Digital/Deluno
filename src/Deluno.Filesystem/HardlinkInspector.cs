@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Deluno.Infrastructure.Processes;
 using Microsoft.Win32.SafeHandles;
 
 namespace Deluno.Filesystem;
@@ -71,40 +72,20 @@ public sealed class FileIdentity : IFileIdentity
     /// syscall answers with, read through the external binary that every base
     /// image and every dev machine this runs on already carries.
     /// </summary>
+    private static readonly TimeSpan StatLimit = TimeSpan.FromSeconds(30);
+
     private static string? UnixIdentity(string path)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "stat",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = new ProcessStartInfo { FileName = "stat" };
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("%d:%i");
         startInfo.ArgumentList.Add(path);
 
-        Process? started;
-        try
-        {
-            started = Process.Start(startInfo);
-        }
-        catch (Win32Exception)
-        {
-            // No `stat` binary on this system. Deluno cannot tell, rather than guess.
-            return null;
-        }
+        // Read as it arrives and stopped if it does not finish: a stalled share cannot hold the caller up (#1258).
+        var result = ChildProcess.Run(startInfo, StatLimit);
 
-        using var process = started;
-        if (process is null)
-        {
-            return null;
-        }
-
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-        return process.ExitCode == 0 ? output.Trim() : null;
+        // No `stat` binary on this system, or it did not answer. Deluno cannot tell, rather than guess.
+        return result.Started && !result.TimedOut && result.ExitCode == 0 ? result.Output.Trim() : null;
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

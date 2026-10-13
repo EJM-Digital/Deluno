@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Deluno.Infrastructure.Processes;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -8,6 +9,9 @@ namespace Deluno.Filesystem;
 public sealed class FfprobeMediaProbeService : IMediaProbeService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>ffprobe reads a file's headers in seconds; this is for a share that stalls, not for a slow disk.</summary>
+    private static readonly TimeSpan ProbeLimit = TimeSpan.FromMinutes(5);
 
     public async Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
     {
@@ -35,14 +39,7 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
             return Unreadable(exception.Message);
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = new ProcessStartInfo { FileName = executable };
         startInfo.ArgumentList.Add("-v");
         startInfo.ArgumentList.Add("error");
         startInfo.ArgumentList.Add("-print_format");
@@ -51,41 +48,35 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         startInfo.ArgumentList.Add("-show_streams");
         startInfo.ArgumentList.Add(path);
 
-        Process? started;
         try
         {
-            started = Process.Start(startInfo);
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            // A missing binary is an environment state, not a bad file. The
-            // contract is "validate with ffprobe when available" — an install
-            // without it must import unvalidated, not fail every import.
-            return Unavailable(MissingFfprobe);
-        }
-
-        try
-        {
-            using var process = started;
-            if (process is null)
+            // Both streams are read as they arrive (a full pipe would hold ffprobe up), and ffprobe is stopped if it does
+            // not finish: a share that stalls mid-read can hold it forever (#1258).
+            var result = await ChildProcess.RunAsync(startInfo, ProbeLimit, cancellationToken);
+            if (!result.Started)
             {
-                return Unavailable("ffprobe could not be started.");
+                // A missing binary is an environment state, not a bad file. The
+                // contract is "validate with ffprobe when available" — an install
+                // without it must import unvalidated, not fail every import.
+                return Unavailable(MissingFfprobe);
             }
 
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            var output = await outputTask;
-            var error = await errorTask;
+            if (result.TimedOut)
+            {
+                return Unreadable("ffprobe did not finish reading this file in time, so the file could not be reached.");
+            }
 
-            if (process.ExitCode != 0)
+            var output = result.Output;
+            var error = result.Error;
+
+            if (result.ExitCode != 0)
             {
                 if (LooksLikeTheFileCouldNotBeReached(error))
                 {
                     return Unreadable(error.Trim());
                 }
 
-                return Failed(string.IsNullOrWhiteSpace(error) ? $"ffprobe exited with code {process.ExitCode}." : error.Trim());
+                return Failed(string.IsNullOrWhiteSpace(error) ? $"ffprobe exited with code {result.ExitCode}." : error.Trim());
             }
 
             var document = JsonSerializer.Deserialize<FfprobeDocument>(output, JsonOptions);
