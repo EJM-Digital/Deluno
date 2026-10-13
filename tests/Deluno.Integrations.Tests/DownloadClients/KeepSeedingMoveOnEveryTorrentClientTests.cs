@@ -1,10 +1,12 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -14,13 +16,10 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// the new category; a refusal is a plain failure with its reason, and not one of these paths ever removes, deletes
 /// or pauses anything.
 ///
-/// <para>TODO(#1237): every reply below is written from each client's documented API (qBittorrent Web API
-/// <c>torrents/info</c>, <c>setCategory</c>, <c>setAutoManagement</c>, <c>torrents/categories</c>; Deluge's Label plugin
-/// <c>label.get_labels</c>, <c>label.set_torrent</c> and <c>core.get_torrent_status</c>; Transmission's <c>torrent-get</c> and
-/// <c>torrent-set</c> with <c>labels</c>; rTorrent's <c>d.custom1</c> and <c>d.custom1.set</c>; the uTorrent WebUI
-/// <c>setprops</c> and <c>list=1</c>). Replace each fake reply with the recorded real reply once #1237 lands them
-/// under <c>tests/fixtures/recorded/&lt;app&gt;/&lt;version&gt;/</c>. Each one is marked
-/// <c>TODO(#1237): replace with the recorded reply</c>.</para>
+/// <para>Every qBittorrent, Deluge and Transmission reply below is that client's own recording (#1237): the stand-in keeps what
+/// the client would hold (a category, a label, a list of labels) and answers each call with the recorded reply to the same call, changed
+/// only in the value it keeps. rTorrent and uTorrent are not recorded yet, so their stand-ins keep the shapes their documentation gives
+/// and are marked <c>TODO(#1237)</c>.</para>
 /// </summary>
 public sealed class KeepSeedingMoveOnEveryTorrentClientTests
 {
@@ -97,13 +96,24 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
     }
 
     [Fact]
-    public async Task Qbittorrent_that_cannot_be_reached_is_a_failure_that_changes_nothing()
+    public async Task Qbittorrent_that_answers_with_an_error_status_is_a_failure_that_changes_nothing()
     {
         var qbit = new QbitFake { InfoStatus = HttpStatusCode.ServiceUnavailable };
 
         var result = await qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", null, CancellationToken.None);
 
         Assert.False(result.Succeeded);
+        Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setCategory", StringComparison.Ordinal));
+    }
+
+    /// <summary>qBittorrent 5.2.1 not answering at all (the recorded refusal): the client lets the connection error out, the caller (the telemetry service) turns it into a plain "unreachable" refusal, and nothing was set.</summary>
+    [Fact]
+    public async Task Qbittorrent_that_does_not_answer_at_all_sets_nothing()
+    {
+        var qbit = new QbitFake { NotAnswering = true };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => qbit.Client().SetCategoryAsync(Item("qbittorrent"), Hash, "keep-seeding", null, CancellationToken.None));
+
         Assert.DoesNotContain(qbit.Calls, c => c.Path.EndsWith("setCategory", StringComparison.Ordinal));
     }
 
@@ -415,13 +425,17 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
     private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented qBittorrent Web API shapes.</summary>
+    /// <summary>qBittorrent 5.2.1 as recorded: the list and category replies are the recorded ones, holding the category, management and category list this stand-in keeps.</summary>
     private sealed class QbitFake : HttpMessageHandler
     {
+        // The recorded category list names its categories like this (the two Deluno made are scrubbed in the recording).
+        private static readonly string[] RecordedCategoryNames = ["<scrubbed>-movies", "<scrubbed>-tv", "recorded-movies"];
+
         public string? Category { get; set; } = "";
         public bool AutoManaged { get; set; }
         public bool Has { get; set; } = true;
         public bool IgnoreSetCategory { get; set; }
+        public bool NotAnswering { get; set; }
         public HttpStatusCode InfoStatus { get; set; } = HttpStatusCode.OK;
         public string[] KnownCategories { get; set; } = ["deluno-movies", "keep-seeding"];
         public List<(string Path, string Body)> Calls { get; } = [];
@@ -436,23 +450,33 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             var path = request.RequestUri!.AbsolutePath;
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             Calls.Add((path + request.RequestUri.Query, body));
+            if (path.EndsWith("auth/login", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("sign-in").Response("auth/login");
+            if (path.EndsWith("app/version", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("version").Response("app/version");
             if (path.EndsWith("torrents/info", StringComparison.Ordinal))
             {
+                if (NotAnswering) throw new HttpRequestException("The connection was refused.");
                 if (InfoStatus != HttpStatusCode.OK) return new HttpResponseMessage(InfoStatus);
-                return Json(Has
-                    ? JsonSerializer.Serialize(new[] { new { hash = Hash, name = "Example.Movie.2026", category = Category, auto_tmm = AutoManaged } })
-                    : "[]");
+                return RecordedReplies.Json(Has
+                    ? RecordedQbittorrentRig.Info("category-moved", ("hash", Hash), ("name", "Example.Movie.2026"), ("category", Category), ("auto_tmm", AutoManaged))
+                    : RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"));
             }
 
             if (path.EndsWith("torrents/categories", StringComparison.Ordinal))
             {
-                return Json(JsonSerializer.Serialize(KnownCategories.ToDictionary(name => name, name => new { name, savePath = "" })));
+                var edits = new List<(string, object?)>();
+                for (var i = 0; i < RecordedCategoryNames.Length; i++)
+                {
+                    edits.Add(i < KnownCategories.Length ? (">" + RecordedCategoryNames[i], KnownCategories[i]) : (RecordedCategoryNames[i], null));
+                }
+
+                return RecordedReplies.Json(RecordedReplies.Qbittorrent("settings").Body("torrents/categories", edits.ToArray()));
             }
 
             if (path.EndsWith("setAutoManagement", StringComparison.Ordinal))
             {
                 AutoManaged = !body.Contains("enable=false", StringComparison.Ordinal);
-                return new HttpResponseMessage(HttpStatusCode.OK);
+                // The reply to this call is not recorded; qBittorrent answers its other changes with an empty 200, as for setCategory.
+                return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
             }
 
             if (path.EndsWith("torrents/setCategory", StringComparison.Ordinal))
@@ -460,18 +484,18 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
                 var wanted = Uri.UnescapeDataString(Regex.Match(body, "category=([^&]*)").Groups[1].Value);
                 if (!KnownCategories.Contains(wanted, StringComparer.OrdinalIgnoreCase))
                 {
-                    return new HttpResponseMessage(HttpStatusCode.Conflict) { Content = new StringContent("Category name does not exist") };
+                    return RecordedReplies.Qbittorrent("category-unknown").Response("torrents/setCategory");
                 }
 
                 if (!IgnoreSetCategory) Category = wanted;
-                return new HttpResponseMessage(HttpStatusCode.OK);
+                return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
             }
 
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Ok.") };
+            throw new InvalidOperationException("qBittorrent was asked something no recording answers: " + path);
         }
     }
 
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented Deluge web JSON-RPC and Label plugin shapes.</summary>
+    /// <summary>Deluge 2.2.0 as recorded: its sign-in, label list, torrent status and label change are the recorded replies, holding the label and label list this stand-in keeps.</summary>
     private sealed class DelugeFake : HttpMessageHandler
     {
         public string Label { get; set; } = "";
@@ -494,30 +518,34 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             {
                 case "auth.login":
                 case "web.connected":
-                    return Json("""{"result":true,"error":null,"id":1}""");
+                    return RecordedReplies.Deluge("sign-in").Response(method);
                 case "label.get_labels":
-                    return LabelPluginOn
-                        ? Json($$"""{"result":{{JsonSerializer.Serialize(Labels)}},"error":null,"id":1}""")
-                        : Json("""{"result":null,"error":{"message":"Unknown method"},"id":1}""");
+                    // The recorded list of labels with the labels this stand-in holds. A Deluge with its Label plugin off is not recorded:
+                    // the nearest recording is an error object, here with Deluge's words for a method it does not have.
+                    return RecordedReplies.Json(LabelPluginOn
+                        ? RecordedReplies.Deluge("settings").Body("label.get_labels", ("result", new JsonArray(Labels.Select(label => (JsonNode?)JsonValue.Create(label)).ToArray())))
+                        : RecordedReplies.Deluge("unauthenticated-call").Body("web.connected", ("error.message", "Unknown method")));
                 case "core.get_torrent_status":
-                    return Json(Has
-                        ? $$"""{"result":{"label":{{JsonSerializer.Serialize(Label)}}},"error":null,"id":1}"""
-                        : """{"result":{},"error":null,"id":1}""");
+                    // The recorded status call for a torrent Deluge holds, asked here for its label; a hash it never had is not recorded
+                    // (the nearest is the same reply with nothing in it).
+                    return RecordedReplies.Json(RecordedReplies.Deluge("location-moved").Body(
+                        "core.get_torrent_status",
+                        ("result", Has ? new JsonObject { ["label"] = Label } : new JsonObject())));
                 case "label.set_torrent":
                     if (RefuseSetWith is not null)
                     {
-                        return Json($$"""{"result":null,"error":{"message":{{JsonSerializer.Serialize(RefuseSetWith)}}},"id":1}""");
+                        return RecordedReplies.Json(RecordedReplies.Deluge("label-unknown").Body("label.set_torrent", ("error.message", RefuseSetWith)));
                     }
 
                     Label = parameters[1];
-                    return Json("""{"result":null,"error":null,"id":1}""");
+                    return RecordedReplies.Deluge("label-set").Response("label.set_torrent");
                 default:
-                    return Json("""{"result":null,"error":null,"id":1}""");
+                    throw new InvalidOperationException("Deluge was asked something no recording answers: " + method);
             }
         }
     }
 
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented Transmission RPC shapes.</summary>
+    /// <summary>Transmission 4.1.3 as recorded: its session, torrent list and label change are the recorded replies, holding the labels and RPC version this stand-in keeps.</summary>
     private sealed class TransmissionFake : HttpMessageHandler
     {
         public string[] Labels { get; set; } = [];
@@ -540,21 +568,25 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             switch (method)
             {
                 case "session-get":
-                    return Json($$"""{"arguments":{"rpc-version":{{RpcVersion}}},"result":"success"}""");
+                    return RecordedReplies.Json(RecordedReplies.Transmission("settings").Body("session-get", ("arguments.rpc-version", RpcVersion)));
                 case "torrent-get":
-                    return Json(Has
-                        ? $$"""{"arguments":{"torrents":[{"hashString":"{{Hash}}","labels":{{JsonSerializer.Serialize(Labels)}}}]},"result":"success"}"""
-                        : """{"arguments":{"torrents":[]},"result":"success"}""");
+                    return RecordedReplies.Json(Has
+                        ? RecordedReplies.Transmission("label-set").Body(
+                            "torrent-get",
+                            ("arguments.torrents.0.hashString", Hash),
+                            ("arguments.torrents.0.labels", new JsonArray(Labels.Select(label => (JsonNode?)JsonValue.Create(label)).ToArray())))
+                        : RecordedReplies.Transmission("idle").Body("torrent-get", ("^arguments.torrents", 0)));
                 case "torrent-set":
                     if (RefuseSetWith is not null)
                     {
-                        return Json($$"""{"arguments":{},"result":{{JsonSerializer.Serialize(RefuseSetWith)}}}""");
+                        // Transmission says why in the result; a refused torrent-set is not recorded, so this is the recorded success with that one word changed.
+                        return RecordedReplies.Json(RecordedReplies.Transmission("label-set").Body("torrent-set", ("result", RefuseSetWith)));
                     }
 
                     Labels = arguments.GetProperty("labels").EnumerateArray().Select(item => item.GetString()!).ToArray();
-                    return Json("""{"arguments":{},"result":"success"}""");
+                    return RecordedReplies.Transmission("label-set").Response("torrent-set");
                 default:
-                    return Json("""{"arguments":{},"result":"success"}""");
+                    throw new InvalidOperationException("Transmission was asked something no recording answers: " + method);
             }
         }
     }
