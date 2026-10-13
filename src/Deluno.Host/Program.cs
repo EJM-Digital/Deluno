@@ -37,6 +37,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
 });
 
+// Console logging stays (docker logs reads it), and a standard output nobody reads drops lines instead of stopping the host (#1258).
+builder.Services.MakeNonBlocking();
+
 // Keep the normal local port while allowing isolated browser tests and packaged
 // side-by-side diagnostics to select a different loopback endpoint.
 var listenPort = builder.Configuration.GetValue<int?>("Server:Port") ?? 5099;
