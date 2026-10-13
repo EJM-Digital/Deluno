@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 
 namespace Deluno.Infrastructure.Storage;
 
@@ -19,49 +20,31 @@ public static class DatabaseMaintenanceLog
 {
     public const string FileName = "database-maintenance.json";
 
-    private static readonly object Gate = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
-    public static DatabaseMaintenance Read(string dataRoot)
-    {
-        lock (Gate)
-        {
-            try
-            {
-                var path = Path.Combine(dataRoot, FileName);
-                return File.Exists(path)
-                    ? JsonSerializer.Deserialize<DatabaseMaintenance>(File.ReadAllText(path), Json) ?? Empty
-                    : Empty;
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-            {
-                return Empty;
-            }
-        }
-    }
+    /// <summary>What was last done; "never" for a note that is missing, busy or damaged. A change never starts from this: see <see cref="Update"/>.</summary>
+    public static DatabaseMaintenance Read(string dataRoot, IStateFileSystem? io = null)
+        => StateFile.Read<DatabaseMaintenance>(Path.Combine(dataRoot, FileName), Json, io).Value ?? Empty;
 
-    public static void RecordIntegrity(string dataRoot, DateTimeOffset checkedUtc, bool ok, string? note)
-        => Update(dataRoot, current => current with { IntegrityCheckedUtc = checkedUtc, IntegrityOk = ok, IntegrityNote = note });
+    public static string? RecordIntegrity(string dataRoot, DateTimeOffset checkedUtc, bool ok, string? note, IStateFileSystem? io = null)
+        => Update(dataRoot, current => current with { IntegrityCheckedUtc = checkedUtc, IntegrityOk = ok, IntegrityNote = note }, io);
 
-    public static void RecordCompaction(string dataRoot, DateTimeOffset compactedUtc)
-        => Update(dataRoot, current => current with { CompactedUtc = compactedUtc });
+    public static string? RecordCompaction(string dataRoot, DateTimeOffset compactedUtc, IStateFileSystem? io = null)
+        => Update(dataRoot, current => current with { CompactedUtc = compactedUtc }, io);
 
     private static DatabaseMaintenance Empty => new(null, null, null, null);
 
-    private static void Update(string dataRoot, Func<DatabaseMaintenance, DatabaseMaintenance> change)
-    {
-        lock (Gate)
-        {
-            try
-            {
-                Directory.CreateDirectory(dataRoot);
-                var next = change(Read(dataRoot));
-                File.WriteAllText(Path.Combine(dataRoot, FileName), JsonSerializer.Serialize(next, Json));
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // A note that could not be written costs only a line of text on a screen.
-            }
-        }
-    }
+    /// <summary>
+    /// Reads the note again under its lock and changes one part of it, so a busy read never turns the other parts into "never"
+    /// (#1260). A note that is busy is left as it is. One that is damaged has a copy kept and starts again: all it holds is when a
+    /// check last ran. Null when it landed, else why not, in everyday words; a note that was not kept costs only a line of text on a screen.
+    /// </summary>
+    private static string? Update(string dataRoot, Func<DatabaseMaintenance, DatabaseMaintenance> change, IStateFileSystem? io)
+        => StateFile.Update<DatabaseMaintenance>(
+            Path.Combine(dataRoot, FileName),
+            current => change(current ?? Empty),
+            "The note of when the databases were last checked",
+            Json,
+            io,
+            UnreadableBehavior.StartFresh).Problem;
 }

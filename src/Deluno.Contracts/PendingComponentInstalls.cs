@@ -1,4 +1,4 @@
-using System.Text.Json;
+
 
 namespace Deluno.Contracts;
 
@@ -16,88 +16,56 @@ public sealed record PendingComponentInstalls(IReadOnlyList<string> Kinds, DateT
 {
     public static string PathFor(string dataRoot) => Path.Combine(dataRoot, "config", "pending-component-installs.json");
 
-    public static PendingComponentInstalls? Read(string dataRoot)
-    {
-        try
-        {
-            var path = PathFor(dataRoot);
-            if (!File.Exists(path))
+    private const string What = "The list of apps waiting to be installed";
+
+    /// <summary>What is pending, or null when nothing is, or when the file is busy or damaged. Use <see cref="ReadChecked"/> where "unknown" must not look like "nothing".</summary>
+    public static PendingComponentInstalls? Read(string dataRoot, IStateFileSystem? io = null)
+        => ReadChecked(dataRoot, io) is { Kind: StateFileKind.Ok, Value: { Kinds.Count: > 0 } pending } ? pending : null;
+
+    /// <summary>The list and how the read went (#1260). Ok with an empty list is "nothing waiting"; Busy and Unreadable are "do not know".</summary>
+    public static StateFileRead<PendingComponentInstalls> ReadChecked(string dataRoot, IStateFileSystem? io = null)
+        => StateFile.ReadLocked<PendingComponentInstalls>(PathFor(dataRoot), null, io);
+
+    /// <summary>
+    /// Adds these apps to what is pending (an app already there keeps its place); a later retry time or a person's ask wins.
+    /// Throws <see cref="StateFileException"/>, with the reason in everyday words, when the ask could not be stored: nothing is written then.
+    /// </summary>
+    public static PendingComponentInstalls Add(string dataRoot, IEnumerable<string> kinds, DateTimeOffset? retryAfterUtc, bool askedByPerson, string? reason, IStateFileSystem? io = null)
+        => StateFile.UpdateOrThrow<PendingComponentInstalls>(
+            PathFor(dataRoot),
+            current => new PendingComponentInstalls(
+                (current?.Kinds ?? []).Concat(kinds).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                retryAfterUtc is null ? current?.RetryAfterUtc : current?.RetryAfterUtc is { } existing && existing > retryAfterUtc ? existing : retryAfterUtc,
+                askedByPerson || current?.AskedByPerson == true,
+                reason ?? current?.Reason),
+            What,
+            io: io)!;
+
+    /// <summary>Takes these apps off the list (installed, or no longer wanted); the file goes when the list is empty. Throws <see cref="StateFileException"/> when it could not be changed.</summary>
+    public static void Remove(string dataRoot, IEnumerable<string> kinds, IStateFileSystem? io = null)
+        => StateFile.UpdateOrThrow<PendingComponentInstalls>(
+            PathFor(dataRoot),
+            current =>
             {
-                return null;
-            }
+                if (current is null)
+                {
+                    return null;
+                }
 
-            var pending = JsonSerializer.Deserialize<PendingComponentInstalls>(File.ReadAllText(path));
-            return pending is { Kinds.Count: > 0 } ? pending : null;
-        }
-        catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
+                var left = current.Kinds.Where(kind => !kinds.Contains(kind, StringComparer.OrdinalIgnoreCase)).ToArray();
+                return left.Length == 0 ? null : current with { Kinds = left };
+            },
+            What,
+            io: io);
 
-    /// <summary>Adds these apps to what is pending (an app already there keeps its place); a later retry time or a person's ask wins.</summary>
-    public static PendingComponentInstalls Add(string dataRoot, IEnumerable<string> kinds, DateTimeOffset? retryAfterUtc, bool askedByPerson, string? reason)
-    {
-        var current = Read(dataRoot);
-        var merged = new PendingComponentInstalls(
-            (current?.Kinds ?? []).Concat(kinds).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-            retryAfterUtc is null ? current?.RetryAfterUtc : current?.RetryAfterUtc is { } existing && existing > retryAfterUtc ? existing : retryAfterUtc,
-            askedByPerson || current?.AskedByPerson == true,
-            reason ?? current?.Reason);
-        Write(dataRoot, merged);
-        return merged;
-    }
+    /// <summary>A person's ask has been acted on: the apps stay pending, but the picker is not opened again for them. Throws <see cref="StateFileException"/> when it could not be changed.</summary>
+    public static void MarkAsked(string dataRoot, IStateFileSystem? io = null)
+        => StateFile.UpdateOrThrow<PendingComponentInstalls>(
+            PathFor(dataRoot),
+            current => current is { AskedByPerson: true } ? current with { AskedByPerson = false } : current,
+            What,
+            io: io);
 
-    /// <summary>Takes these apps off the list (installed, or no longer wanted); the file goes when the list is empty.</summary>
-    public static void Remove(string dataRoot, IEnumerable<string> kinds)
-    {
-        if (Read(dataRoot) is not { } current)
-        {
-            return;
-        }
-
-        var left = current.Kinds.Where(kind => !kinds.Contains(kind, StringComparer.OrdinalIgnoreCase)).ToArray();
-        if (left.Length == 0)
-        {
-            Clear(dataRoot);
-            return;
-        }
-
-        Write(dataRoot, current with { Kinds = left });
-    }
-
-    /// <summary>A person's ask has been acted on: the apps stay pending, but the picker is not opened again for them.</summary>
-    public static void MarkAsked(string dataRoot)
-    {
-        if (Read(dataRoot) is { AskedByPerson: true } current)
-        {
-            Write(dataRoot, current with { AskedByPerson = false });
-        }
-    }
-
-    public static void Clear(string dataRoot)
-    {
-        try
-        {
-            File.Delete(PathFor(dataRoot));
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // Left in place: the next read still finds only apps that are not installed.
-        }
-    }
-
-    private static void Write(string dataRoot, PendingComponentInstalls value)
-    {
-        try
-        {
-            var path = PathFor(dataRoot);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(value));
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // Not remembering it only means the person presses Install again.
-        }
-    }
+    /// <summary>Clears the list. A file that could not be removed is left in place: the next read still finds only apps that are not installed.</summary>
+    public static void Clear(string dataRoot, IStateFileSystem? io = null) => StateFile.Delete(PathFor(dataRoot), io);
 }

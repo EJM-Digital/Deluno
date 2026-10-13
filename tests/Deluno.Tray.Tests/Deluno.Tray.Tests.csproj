@@ -17,6 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../Support/ScriptedStateFileSystem.cs" Link="Support/ScriptedStateFileSystem.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

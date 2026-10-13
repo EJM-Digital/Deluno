@@ -30,7 +30,8 @@ public sealed class DelunoBackupService(
     TimeProvider timeProvider,
     ILogger<DelunoBackupService> logger,
     IJobQueueRepository? jobQueueRepository = null,
-    IRealtimeEventPublisher? realtime = null)
+    IRealtimeEventPublisher? realtime = null,
+    IStateFileSystem? stateFiles = null)
     : BackgroundService, IDelunoBackupService, IMigrationBackupService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -52,16 +53,35 @@ public sealed class DelunoBackupService(
 
     public async Task<BackupSettingsSnapshot> SaveSettingsAsync(UpdateBackupSettingsRequest request, CancellationToken cancellationToken)
     {
-        var state = await ReadSettingsStateAsync(cancellationToken);
-        state.Enabled = request.Enabled;
-        state.Frequency = NormalizeFrequency(request.Frequency);
-        state.TimeOfDay = NormalizeTimeOfDay(request.TimeOfDay);
-        state.RetentionCount = Math.Clamp(request.RetentionCount ?? state.RetentionCount, 1, 10000);
-        state.BackupFolder = NormalizeBackupFolder(request.BackupFolder);
-        state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
-        await WriteSettingsStateAsync(state, cancellationToken);
-        await realtime.PublishBackupChangedAsync(cancellationToken);
-        return ToSnapshot(state);
+        // Under the backup gate (#1260): a backup that is running read the settings before this change and writes its run times
+        // when it ends, and must never put the old settings back. This waits for it, then changes the file as it now is.
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadSettingsStateAsync(cancellationToken);
+            if (state.Kind == StateFileKind.Busy)
+            {
+                // Nothing is known about what is saved, so a change could undo part of it: say so rather than guess.
+                throw new PlainFailureException(state.Problem ?? "The backup settings are in use by something else right now. Try again in a moment.");
+            }
+
+            state.Enabled = request.Enabled;
+            state.Frequency = NormalizeFrequency(request.Frequency);
+            state.TimeOfDay = NormalizeTimeOfDay(request.TimeOfDay);
+            state.RetentionCount = Math.Clamp(request.RetentionCount ?? state.RetentionCount, 1, 10000);
+            state.BackupFolder = NormalizeBackupFolder(request.BackupFolder);
+            state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
+            // A damaged file is replaced here on purpose: the person has just chosen new settings, and a copy of the old one was kept.
+            state.Kind = StateFileKind.Ok;
+            state.Problem = null;
+            await WriteSettingsStateAsync(state, cancellationToken);
+            await realtime.PublishBackupChangedAsync(cancellationToken);
+            return ToSnapshot(state);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async Task<IReadOnlyList<BackupItem>> ListBackupsAsync(CancellationToken cancellationToken)
@@ -128,7 +148,7 @@ public sealed class DelunoBackupService(
                         // copied as it is.
                         sourceStream = IsSqliteDatabase(file)
                             ? SnapshotDatabase(file, snapshotFolder)
-                            : new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                            : new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     }
                     catch (Exception exception) when (exception is FileNotFoundException
                                                           or DirectoryNotFoundException
@@ -181,9 +201,7 @@ public sealed class DelunoBackupService(
                 TryDeleteFolder(Path.Combine(DataRoot, SnapshotFolderName), onlyIfEmpty: true);
             }
 
-            state.LastRunUtc = now;
-            state.NextRunUtc = CalculateNextRun(state, now);
-            await WriteSettingsStateAsync(state, cancellationToken);
+            RecordRun(state, now);
             await EnforceRetentionAsync(state, cancellationToken);
 
             logger.LogInformation("Created Deluno backup {BackupPath}.", targetPath);
@@ -572,35 +590,50 @@ public sealed class DelunoBackupService(
         }
     }
 
+    /// <summary>
+    /// The backup settings. A missing file is a first run and is written with the standard settings. A file that is busy, or
+    /// damaged, gives the standard settings for this call only, with <see cref="BackupSettingsState.Problem"/> in everyday words:
+    /// a backup can still be taken, and nothing writes those standard settings over the file (#1260).
+    /// </summary>
     private async Task<BackupSettingsState> ReadSettingsStateAsync(CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(DefaultBackupFolder);
-        if (!File.Exists(SettingsPath))
+        var read = StateFile.ReadLocked<BackupSettingsState>(SettingsPath, JsonOptions, stateFiles);
+        switch (read.Kind)
         {
-            var initial = new BackupSettingsState
-            {
-                Enabled = false,
-                Frequency = "daily",
-                TimeOfDay = "03:00",
-                RetentionCount = 7,
+            case StateFileKind.Missing:
+                var initial = StandardSettings();
                 // Deliberately empty. Writing the computed default here turned
                 // "wherever the data root is" into a fixed absolute path the
                 // moment the file was first created - so a data directory
                 // copied, restored or moved to another machine kept sending
                 // backups to the old machine's path. This rig inherited
-                // C:\Projects\Deluno\src\Deluno.Host\dataackups from a
+                // C:\Projects\Deluno\src\Deluno.Host\dataackups from a
                 // developer's checkout and dutifully created it on a server.
                 // Empty means "the default, wherever that is now".
-                BackupFolder = string.Empty,
-                LastRunUtc = null,
-                NextRunUtc = null
-            };
-            await WriteSettingsStateAsync(initial, cancellationToken);
-            return initial;
+                await WriteSettingsStateAsync(initial, cancellationToken);
+                return initial;
+            case StateFileKind.Busy:
+                {
+                    var standard = StandardSettings();
+                    standard.Kind = StateFileKind.Busy;
+                    standard.Problem = "The backup settings were in use by something else just now, so the standard settings were used for this backup. Nothing was changed.";
+                    logger.LogWarning("The backup settings file was busy ({Detail}); the standard settings were used and nothing was written.", read.Detail);
+                    return standard;
+                }
+
+            case StateFileKind.Unreadable:
+                {
+                    var kept = StateFile.KeepUnreadableCopy(SettingsPath, stateFiles);
+                    var standard = StandardSettings();
+                    standard.Kind = StateFileKind.Unreadable;
+                    standard.Problem = $"The backup settings file is damaged, so the standard settings are in use and scheduled backups are off until you save the settings again.{(kept is null ? string.Empty : $" A copy of the damaged file was kept as {Path.GetFileName(kept)}.")}";
+                    logger.LogWarning("The backup settings file {Path} is damaged ({Detail}); the standard settings are in use. {Copy}", SettingsPath, read.Detail, kept);
+                    return standard;
+                }
         }
 
-        await using var stream = File.OpenRead(SettingsPath);
-        var state = await JsonSerializer.DeserializeAsync<BackupSettingsState>(stream, JsonOptions, cancellationToken) ?? new BackupSettingsState();
+        var state = read.Value!;
         state.Frequency = NormalizeFrequency(state.Frequency);
         state.TimeOfDay = NormalizeTimeOfDay(state.TimeOfDay);
         state.RetentionCount = Math.Clamp(state.RetentionCount, 1, 10000);
@@ -610,15 +643,72 @@ public sealed class DelunoBackupService(
             state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
             await WriteSettingsStateAsync(state, cancellationToken);
         }
+
         return state;
     }
 
-    private async Task WriteSettingsStateAsync(BackupSettingsState state, CancellationToken cancellationToken)
+    private static BackupSettingsState StandardSettings()
+        => new()
+        {
+            Enabled = false,
+            Frequency = "daily",
+            TimeOfDay = "03:00",
+            RetentionCount = 7,
+            BackupFolder = string.Empty,
+            LastRunUtc = null,
+            NextRunUtc = null
+        };
+
+    /// <summary>
+    /// Writes the settings atomically. Nothing is written for settings that stand in for a file that could not be read
+    /// (<see cref="BackupSettingsState.Kind"/> is Busy or Unreadable): that is how a good file was turned into defaults.
+    /// </summary>
+    private Task WriteSettingsStateAsync(BackupSettingsState state, CancellationToken cancellationToken)
     {
+        if (state.Kind is StateFileKind.Busy or StateFileKind.Unreadable)
+        {
+            return Task.CompletedTask;
+        }
+
         Directory.CreateDirectory(DefaultBackupFolder);
         Directory.CreateDirectory(EffectiveBackupFolder(state));
-        await using var stream = File.Create(SettingsPath);
-        await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
+        if (StateFile.WriteJson(SettingsPath, state, JsonOptions, stateFiles) is { } problem)
+        {
+            throw new StateFileException($"The backup settings could not be saved: {problem}.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A backup ended: record when, by reading the settings as they are now and changing only the run times, so a change made
+    /// while the backup ran is kept (#1260). A note that cannot be kept does not undo a backup that was taken; it is logged.
+    /// </summary>
+    private void RecordRun(BackupSettingsState state, DateTimeOffset now)
+    {
+        state.LastRunUtc = now;
+        state.NextRunUtc = CalculateNextRun(state, now);
+        if (state.Kind is StateFileKind.Busy or StateFileKind.Unreadable)
+        {
+            return;
+        }
+
+        var result = StateFile.Update<BackupSettingsState>(
+            SettingsPath,
+            current =>
+            {
+                var latest = current ?? state;
+                latest.LastRunUtc = now;
+                latest.NextRunUtc = CalculateNextRun(latest, now);
+                return latest;
+            },
+            "The backup settings",
+            JsonOptions,
+            stateFiles);
+        if (result.Problem is not null)
+        {
+            logger.LogWarning("The backup was taken, but when it ran was not recorded: {Reason}", result.Problem);
+        }
     }
 
     private BackupSettingsSnapshot ToSnapshot(BackupSettingsState state)
@@ -629,7 +719,8 @@ public sealed class DelunoBackupService(
             state.RetentionCount,
             EffectiveBackupFolder(state),
             state.LastRunUtc,
-            state.NextRunUtc);
+            state.NextRunUtc,
+            state.Problem);
 
     private DateTimeOffset? CalculateNextRun(BackupSettingsState state, DateTimeOffset now)
     {
@@ -759,5 +850,12 @@ public sealed class DelunoBackupService(
         public string BackupFolder { get; set; } = string.Empty;
         public DateTimeOffset? LastRunUtc { get; set; }
         public DateTimeOffset? NextRunUtc { get; set; }
+
+        /// <summary>How this was read. Busy and Unreadable mean these are the standard settings standing in for a file that could not be read.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public StateFileKind Kind { get; set; } = StateFileKind.Ok;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? Problem { get; set; }
     }
 }

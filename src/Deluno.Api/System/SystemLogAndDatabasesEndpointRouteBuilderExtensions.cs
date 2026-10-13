@@ -241,7 +241,10 @@ public sealed class DatabaseIntegrityService(
         var note = failure ?? (problems.Count == 0 ? null : $"Problem found in: {string.Join(", ", problems)}.");
         if (!string.IsNullOrEmpty(root) && failure is null)
         {
-            DatabaseMaintenanceLog.RecordIntegrity(root, completedUtc, ok, note);
+            if (DatabaseMaintenanceLog.RecordIntegrity(root, completedUtc, ok, note) is { } notKept)
+            {
+                logger.LogWarning("The integrity check ran, but its note was not kept: {Reason}", notKept);
+            }
         }
 
         if (failure is null && problems.Count == 0)

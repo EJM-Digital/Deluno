@@ -189,7 +189,8 @@ public sealed class RecycleBinService(
     TimeProvider timeProvider,
     ILogger<RecycleBinService> logger,
     IRealtimeEventPublisher? realtime = null,
-    IServiceScopeFactory? scopeFactory = null)
+    IServiceScopeFactory? scopeFactory = null,
+    IStateFileSystem? stateFiles = null)
     : IRecycleBinService
 {
     private const int DefaultRetentionDays = 30;
@@ -639,43 +640,42 @@ public sealed class RecycleBinService(
     private async Task<RecycleBinState> ReadStateAsync(CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(RecycleStateRoot);
-        if (!File.Exists(StatePath))
+        var read = StateFile.Read<RecycleBinState>(StatePath, JsonOptions, stateFiles);
+        switch (read.Kind)
         {
-            var initial = new RecycleBinState { Settings = DefaultSettings() };
-            await WriteStateAsync(initial, cancellationToken);
-            return initial;
+            case StateFileKind.Missing:
+                var initial = new RecycleBinState { Settings = DefaultSettings() };
+                await WriteStateAsync(initial, cancellationToken);
+                return initial;
+            case StateFileKind.Busy:
+                // Not "empty" (#1260): the next write would forget every item in the bin.
+                throw new StateFileException("The recycle bin's list is in use by something else right now, so nothing was changed. Try again in a moment.");
+            case StateFileKind.Unreadable:
+                var kept = StateFile.KeepUnreadableCopy(StatePath, stateFiles);
+                throw new StateFileException(StateFile.UnreadableWords("The recycle bin's list", kept));
         }
 
-        await using var stream = File.OpenRead(StatePath);
-        var state = await JsonSerializer.DeserializeAsync<RecycleBinState>(stream, JsonOptions, cancellationToken)
-            ?? new RecycleBinState();
+        var state = read.Value!;
         state.Settings = NormalizeSettings(state.Settings);
         state.Items ??= [];
         state.Titles ??= [];
         return state;
     }
 
+    /// <summary>
+    /// Writes the list atomically and waits out a busy file (a backup, a scanner, a reader holding the old one) for a couple of
+    /// seconds. The files have already been moved by the time this runs, so a list that is not recorded would lose items:
+    /// a failure throws, in everyday words, instead of being swallowed (#1260).
+    /// </summary>
     private async Task WriteStateAsync(RecycleBinState state, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(RecycleStateRoot);
-        var temporary = $"{StatePath}.{Guid.CreateVersion7():N}.tmp";
-        try
+        if (StateFile.WriteJson(StatePath, state, JsonOptions, stateFiles) is { } problem)
         {
-            await using (var stream = File.Create(temporary))
-            {
-                await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
-            }
+            throw new StateFileException($"The recycle bin's list could not be saved: {problem}.");
+        }
 
-            File.Move(temporary, StatePath, overwrite: true);
-            await realtime.PublishRecycleBinChangedAsync(cancellationToken);
-        }
-        finally
-        {
-            if (File.Exists(temporary))
-            {
-                TryDeleteFile(temporary);
-            }
-        }
+        await realtime.PublishRecycleBinChangedAsync(cancellationToken);
     }
 
     private async Task<int> EnforceRetentionUnsafeAsync(
