@@ -58,69 +58,92 @@ public sealed record StartMarkerRead(StartMarkerKind Kind, StartMarker? Marker);
 /// temporary file and renamed over the old one), so a reader sees the old marker or the new one, never half of either.
 /// Whoever looks later - the next start, a person with a text editor, the golden-path suite - can read where the
 /// last start stopped.
+///
+/// <para><b>Who reads what.</b> Nothing that judges a live start reads this file. The tray's supervisor and the Windows
+/// service's guard (<c>ServiceStartGuard</c>) both run in the same process as the start and watch the in-memory
+/// <see cref="StartProgress.Current"/>, so a marker that cannot be written never counts as "no progress". The file is for
+/// readers outside the process: the next start (the previous run, logged once), a person, and the golden-path scenario.</para>
+///
+/// <para><b>A busy disk.</b> Replacing the marker can make an open of it fail while the replace runs (a sharing violation,
+/// or access denied while the old file's delete is pending), and a scanner or a slow disk can hold the rename for a long
+/// time. A read that meets that waits up to about a quarter of a second and then says <see cref="StartMarkerKind.Busy"/>;
+/// <see cref="StartMarkerKind.Unreadable"/> is only for contents that cannot be parsed. A write keeps trying for about two
+/// seconds and then reports why it could not (<see cref="StartProgress"/> says so in the log, once).</para>
 /// </summary>
 public static class StartMarkerFile
 {
     public const string FileName = "start-progress.json";
 
+    /// <summary>A read tries this many times, 10 ms apart: about 250 ms of waiting at most.</summary>
+    internal const int ReadAttempts = 26;
+
+    internal static readonly TimeSpan ReadPause = TimeSpan.FromMilliseconds(10);
+
+    /// <summary>A write tries this many times, 50 ms apart: about 2 seconds of waiting at most.</summary>
+    internal const int WriteAttempts = 40;
+
+    internal static readonly TimeSpan WritePause = TimeSpan.FromMilliseconds(50);
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Writes the marker. Never throws: a marker that cannot be written must not stop a start.</summary>
-    public static void Write(string path, StartMarker marker)
-    {
-        try
-        {
-            var folder = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(folder))
-            {
-                Directory.CreateDirectory(folder);
-            }
+    /// <summary>Writes the marker. Never throws: a marker that cannot be written must not stop a start. Null when it landed, else why not.</summary>
+    public static string? Write(string path, StartMarker marker) => Write(path, marker, RealMarkerFileSystem.Instance);
 
-            // A fixed temporary name: one writer at a time (the progress holds a lock).
-            var temporary = path + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(marker, Json));
-            for (var attempt = 1; ; attempt++)
-            {
-                try
-                {
-                    File.Move(temporary, path, overwrite: true);
-                    return;
-                }
-                catch (IOException) when (attempt < 5)
-                {
-                    // A reader has the old marker open for a moment; the rename waits its turn.
-                    Thread.Sleep(10);
-                }
-            }
-        }
-        catch
-        {
-            // Best effort.
-        }
-    }
-
-    // STUB (tests first): replaced by the real seam-based versions.
+    /// <param name="quick">One try and no waiting: for the writes that follow one that already spent its whole budget.</param>
     internal static string? Write(string path, StartMarker marker, IMarkerFileSystem io, bool quick = false)
     {
-        Write(path, marker);
-        return null;
+        var attempts = quick ? 1 : WriteAttempts;
+        string? last = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                var folder = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(folder))
+                {
+                    io.CreateDirectory(folder);
+                }
+
+                // A fixed temporary name: one writer at a time (the progress holds a lock).
+                var temporary = path + ".tmp";
+                io.WriteAllText(temporary, JsonSerializer.Serialize(marker, Json));
+                io.Move(temporary, path);
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Held by a reader, a scanner or a pending delete: the rename waits its turn.
+                last = ex.Message;
+                if (attempt < attempts)
+                {
+                    io.Sleep(WritePause);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Not a busy file (a bad path, say): waiting will not help.
+                return ex.Message;
+            }
+        }
+
+        return last ?? "the marker could not be written";
     }
 
-    internal static StartMarkerRead Read(string path, int ownPid, IMarkerFileSystem io) => Read(path, ownPid);
+    public static StartMarkerRead Read(string path, int ownPid) => Read(path, ownPid, RealMarkerFileSystem.Instance);
 
-    public static StartMarkerRead Read(string path, int ownPid)
+    internal static StartMarkerRead Read(string path, int ownPid, IMarkerFileSystem io)
     {
         string text;
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                if (!File.Exists(path))
+                if (!io.Exists(path))
                 {
                     return new(StartMarkerKind.Missing, null);
                 }
 
-                text = File.ReadAllText(path);
+                text = io.ReadAllText(path);
                 break;
             }
             catch (FileNotFoundException)
@@ -131,10 +154,16 @@ public static class StartMarkerFile
             {
                 return new(StartMarkerKind.Missing, null);
             }
-            catch (IOException) when (attempt < 4)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // The writer is renaming the new marker over this one; look again.
-                Thread.Sleep(5);
+                // The writer is renaming the new marker over this one (sharing violation), or the old one is waiting to be
+                // deleted (access denied). Neither says anything about what is in it: look again, for a little while.
+                if (attempt >= ReadAttempts)
+                {
+                    return new(StartMarkerKind.Busy, null);
+                }
+
+                io.Sleep(ReadPause);
             }
             catch
             {
@@ -157,6 +186,23 @@ public static class StartMarkerFile
             return new(StartMarkerKind.Unreadable, null);
         }
     }
+}
+
+internal sealed class RealMarkerFileSystem : IMarkerFileSystem
+{
+    public static readonly RealMarkerFileSystem Instance = new();
+
+    public bool Exists(string path) => File.Exists(path);
+
+    public string ReadAllText(string path) => File.ReadAllText(path);
+
+    public void WriteAllText(string path, string text) => File.WriteAllText(path, text);
+
+    public void Move(string from, string to) => File.Move(from, to, overwrite: true);
+
+    public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+    public void Sleep(TimeSpan span) => Thread.Sleep(span);
 }
 
 /// <summary>
@@ -205,6 +251,9 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
     private readonly int _pid;
     private readonly Action<string>? _log;
     private readonly object _gate = new();
+    private readonly object _writeGate = new();
+    private readonly IMarkerFileSystem _io;
+    private bool _markerFailing;
     private StartProgressSnapshot _current;
 
     public StartProgress(TimeProvider time, string? markerPath, int pid, Action<string>? log = null)
@@ -214,7 +263,7 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
 
     internal StartProgress(TimeProvider time, string? markerPath, int pid, Action<string>? log, IMarkerFileSystem? fileSystem)
     {
-        _ = fileSystem; // STUB
+        _io = fileSystem ?? RealMarkerFileSystem.Instance;
         _time = time;
         _markerPath = markerPath;
         _pid = pid;
@@ -223,7 +272,7 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
 
         if (markerPath is not null)
         {
-            var previous = StartMarkerFile.Read(markerPath, pid);
+            var previous = StartMarkerFile.Read(markerPath, pid, _io);
             if (previous is { Kind: StartMarkerKind.OtherProcess, Marker: { } marker }
                 && StartupPhases.TryParse(marker.Phase, out var phase)
                 && phase != StartupPhase.Ready)
@@ -269,9 +318,9 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
         {
             _current = new StartProgressSnapshot(_pid, attempt, StartupPhase.Starting, null, _time.GetUtcNow());
             snapshot = _current;
-            WriteMarker(snapshot);
         }
 
+        WriteMarker();
         Say(string.Create(
             CultureInfo.InvariantCulture,
             $"Deluno {Deluno.Api.DelunoVersion.Running} is starting (process {_pid}, try {attempt})."));
@@ -285,9 +334,11 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
         {
             _current = _current with { Phase = phase, Detail = detail, AtUtc = _time.GetUtcNow() };
             snapshot = _current;
-            // Before the step, not after: a step that never returns leaves this line as the last word.
-            WriteMarker(snapshot);
         }
+
+        // Before the step, not after: a step that never returns leaves this line as the last word. Outside the snapshot's lock:
+        // a marker that is slow to land must never hold up what the supervisor reads.
+        WriteMarker();
 
         // Every database and every migration reports itself; only the changes of phase are worth a line of their own.
         if (phase != StartupPhase.Migrations || detail is null || detail.EndsWith("checking the changes to apply", StringComparison.Ordinal))
@@ -299,14 +350,40 @@ public sealed class StartProgress : IStartupProgress, IStartProgressSource
         Changed?.Invoke(snapshot);
     }
 
-    private void WriteMarker(StartProgressSnapshot snapshot)
+    /// <summary>
+    /// Writes the latest snapshot to the marker file. Waits out a busy disk for a while; if the marker still cannot land it
+    /// says so once and from then on tries once per step without waiting, and says so again once when it lands. Whatever
+    /// happens here, <see cref="Current"/> is already right: the supervisor never reads the file.
+    /// </summary>
+    private void WriteMarker()
     {
         if (_markerPath is null)
         {
             return;
         }
 
-        StartMarkerFile.Write(_markerPath, new StartMarker(snapshot.Pid, snapshot.Attempt, StartupPhases.Key(snapshot.Phase), snapshot.Detail, snapshot.AtUtc));
+        lock (_writeGate)
+        {
+            var snapshot = Current;
+            var problem = StartMarkerFile.Write(
+                _markerPath,
+                new StartMarker(snapshot.Pid, snapshot.Attempt, StartupPhases.Key(snapshot.Phase), snapshot.Detail, snapshot.AtUtc),
+                _io,
+                quick: _markerFailing);
+            if (problem is not null)
+            {
+                if (!_markerFailing)
+                {
+                    _markerFailing = true;
+                    Say($"The start marker ({_markerPath}) could not be written: {problem}. The start goes on and its progress is tracked in memory; the marker is tried again at every step.");
+                }
+            }
+            else if (_markerFailing)
+            {
+                _markerFailing = false;
+                Say("The start marker is being written again.");
+            }
+        }
     }
 
     private void Say(string line)

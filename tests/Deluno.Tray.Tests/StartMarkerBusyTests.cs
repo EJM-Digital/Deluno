@@ -40,7 +40,8 @@ public sealed class StartMarkerBusyTests : IDisposable
 
         public string ReadAllText(string path)
         {
-            if (OnRead?.Invoke(++Reads) is { } failure)
+            Reads++;
+            if (OnRead?.Invoke(Reads) is { } failure)
             {
                 throw failure;
             }
@@ -50,7 +51,8 @@ public sealed class StartMarkerBusyTests : IDisposable
 
         public void WriteAllText(string path, string text)
         {
-            if (OnWrite?.Invoke(++Writes) is { } failure)
+            Writes++;
+            if (OnWrite?.Invoke(Writes) is { } failure)
             {
                 throw failure;
             }
@@ -60,7 +62,8 @@ public sealed class StartMarkerBusyTests : IDisposable
 
         public void Move(string from, string to)
         {
-            if (OnMove?.Invoke(++Moves) is { } failure)
+            Moves++;
+            if (OnMove?.Invoke(Moves) is { } failure)
             {
                 throw failure;
             }
