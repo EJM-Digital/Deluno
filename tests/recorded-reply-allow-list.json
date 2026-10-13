@@ -2,11 +2,6 @@
   "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237).",
   "entries": [
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/AddPausedGrabTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/ADelugeHealthyStatusIsNotAnErrorTests.cs",
       "kind": "pending",
       "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
