@@ -162,6 +162,24 @@ public sealed class NzbGetSavesOnlyItsOwnFileOptionsTests
         Assert.Equal("other.example.com", nzbget.File.Single(o => o.Key == "Server1.Host").Value);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Running_the_provider_setup_twice_in_a_row_saves_the_same_list_and_changes_nothing_else(bool startsDamaged)
+    {
+        var nzbget = new Nzbget(damagedFile: startsDamaged);
+        var client = Client(nzbget);
+
+        await client.SetUsenetProviderAsync(NzbGetClient(), Provider, CancellationToken.None);
+        var second = await client.SetUsenetProviderAsync(NzbGetClient(), Provider, CancellationToken.None);
+
+        Assert.True(second!.Saved, second.Message);
+        Assert.Equal(2, nzbget.Saves.Count);
+        Assert.All(nzbget.Saves, save => Assert.DoesNotContain(save, o => RuntimeOnly.Contains(o.Key)));
+        Assert.Equal(nzbget.Saves[0], nzbget.Saves[1]);
+        Assert.Equal(["loadconfig", "saveconfig"], nzbget.Methods.Where(m => m is "loadconfig" or "saveconfig").Take(2));
+    }
+
     [Fact]
     public void The_plan_never_carries_a_runtime_only_value_whichever_list_it_is_given()
     {
