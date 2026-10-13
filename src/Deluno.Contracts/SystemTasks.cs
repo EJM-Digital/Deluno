@@ -175,11 +175,11 @@ public static class SystemTasks
         new(DispatchCleanup, "Housekeeping",
             "Clears finished download records and year-old completed jobs that nothing needs any more.",
             TimeSpan.FromHours(6)),
-        // A minute, whether or not a hand-off is waiting (#1227): with none in flight this pass is the only thing that
-        // hears a processor stop, and five minutes left the Dashboard, System and the tray green for two to four.
+        // Its own loop (#1261), not a step of the maintenance lane: 30 s while the processor is healthy, so an outage
+        // shows inside a minute, and 15 s while it is not, so its return does. It never waits on automatic jobs.
         new(ProcessorHealth, "Check the processor",
-            "Asks each processor whether it is answering, so one that stops is noticed within a minute, before a file is stuck behind it.",
-            TimeSpan.FromMinutes(1)),
+            "Asks each processor whether it is answering, every 30 seconds (every 15 while one is down), so a stop or a return shows within a minute whether or not automatic jobs are on.",
+            TimeSpan.FromSeconds(30)),
         // A minute, because each report carries its own next attempt and the
         // pass sends only what is due. A settled install sends nothing, so the
         // pass costs a query (#580).

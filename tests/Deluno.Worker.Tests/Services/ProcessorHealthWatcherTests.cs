@@ -58,14 +58,23 @@ public sealed class ProcessorHealthWatcherTests
                     Probes[item.Id]++;
                     if (Latency.TryGetValue(item.Id, out var latency))
                     {
-                        await Task.Delay(latency, Clock, token);
+                        var wait = new TaskCompletionSource();
+                        using var timer = Clock.CreateTimer(_ => wait.TrySetResult(), null, latency, Timeout.InfiniteTimeSpan);
+                        using (token.Register(() => wait.TrySetCanceled(token)))
+                        {
+                            await wait.Task;
+                        }
                     }
 
                     switch (Replies[item.Id])
                     {
                         case Reply.Hang:
-                            await Task.Delay(Timeout.Infinite, token);
-                            throw new InvalidOperationException();
+                            // Cancelled inline, so the fake clock decides exactly when the hang is cut off.
+                            var never = new TaskCompletionSource<ProcessorStatusSupport>();
+                            using (token.Register(() => never.TrySetCanceled(token)))
+                            {
+                                return await never.Task;
+                            }
                         case Reply.Unreachable:
                             return new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, $"Deluno could not reach {item.Name}.");
                         case Reply.Refused:
@@ -149,7 +158,7 @@ public sealed class ProcessorHealthWatcherTests
             rig.Replies["p1"] = now;
             var took = await rig.UntilAsync(() => rig.Items["p1"].HealthStatus == stored, TimeSpan.FromMinutes(2));
 
-            Assert.True(took is not null && took <= TargetDown, $"offset {offset}s: down took {took}");
+            Assert.True(took is not null && took <= TargetDown, $"offset {offset}s: down took {took}; probes {rig.Probes["p1"]}; status {rig.Items["p1"].HealthStatus}");
         }
     }
 
