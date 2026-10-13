@@ -353,12 +353,17 @@ function Stop-WeirApp {
         try { $quit = [bool](Invoke-TrayMenuItem -Icon 'Weir' -Item '^Quit Weir') } catch { $quit = $false }
     }
     $gone = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { -not (Get-Process -Name 'WeirServer' -ErrorAction SilentlyContinue) }
+    # GoneAt is the moment Weir's server was seen gone, so a quit that had to be forced is timed from when Weir really
+    # went down, not from the 15 s the tray menu was given (rc.30.28: amber "after 64 s" was 49 s after Weir stopped).
+    $goneAt = if ($gone.Ok) { [DateTime]::UtcNow } else { $null }
     if (-not $gone.Ok) {
         Get-Process -Name 'Weir', 'WeirServer' -ErrorAction SilentlyContinue | Stop-Process -Force
+        Wait-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition { -not (Get-Process -Name 'WeirServer' -ErrorAction SilentlyContinue) } | Out-Null
+        $goneAt = [DateTime]::UtcNow
         Add-Note 'Weir did not quit from its tray menu in 15 s; its processes were stopped.'
     }
     $script:S.WeirSession = $null
-    [pscustomobject]@{ ViaTray = $quit; At = [DateTime]::UtcNow }
+    [pscustomobject]@{ ViaTray = $quit; At = [DateTime]::UtcNow; GoneAt = $goneAt }
 }
 
 # Starts Weir again, in the signed-in desktop session (it is a tray app), as a person double-clicking it would.
