@@ -112,18 +112,18 @@ public sealed class MonitoringService(
         command.CommandText =
             """
             SELECT
-                id, category, message, details_json, related_entity_type, related_entity_id, created_utc
+                id, category, message, details_json, related_entity_type, related_entity_id, created_utc, rowid
             FROM activity_events
             WHERE (@category IS NULL OR category = @category)
               AND (@sinceUtc IS NULL OR created_utc >= @sinceUtc)
-              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND rowid < CAST(@id AS INTEGER)))
               AND (
                     @query IS NULL OR
                     category LIKE @likeQuery OR
                     message LIKE @likeQuery OR
                     COALESCE(details_json, '') LIKE @likeQuery
                   )
-            ORDER BY created_utc DESC, id DESC
+            ORDER BY created_utc DESC, rowid DESC
             LIMIT @take;
             """;
 
@@ -155,7 +155,7 @@ public sealed class MonitoringService(
             var category = reader.GetString(1);
             var severity = SeverityForCategory(category);
             cursorCreatedUtc = reader.GetString(6);
-            cursorId = reader.GetString(0);
+            cursorId = reader.GetInt64(7).ToString(CultureInfo.InvariantCulture);
             if (severityFilter is not null &&
                 !string.Equals(severity, severityFilter, StringComparison.OrdinalIgnoreCase))
             {

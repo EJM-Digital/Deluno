@@ -487,7 +487,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             whereConditions.Add(
                 """
                 (COALESCE(grab_attempted_utc, created_utc) < @sortUtc
-                 OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
+                 OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND rowid < CAST(@id AS INTEGER)))
                 """);
         }
 
@@ -500,10 +500,10 @@ public sealed class SqliteDownloadDispatchesRepository(
         command.CommandText =
             $$"""
             SELECT
-                {{(filter.OmitLargeJson ? DispatchListColumns : DispatchColumns)}}
+                {{(filter.OmitLargeJson ? DispatchListColumns : DispatchColumns)}}, rowid
             FROM download_dispatches
             {{whereClause}}
-            ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, id DESC
+            ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, rowid DESC
             LIMIT @limit
             """;
 
@@ -520,10 +520,12 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         var items = new List<DownloadDispatchItem>();
+        var rowids = new List<long>(fetchCount);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             items.Add(ReadDispatch(reader));
+            rowids.Add(reader.GetInt64(reader.FieldCount - 1));
         }
 
         string? nextPageToken = null;
@@ -533,7 +535,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             var last = items[^1];
             nextPageToken = DelunoPageToken.Encode(
                 (last.GrabAttemptedUtc ?? last.CreatedUtc).ToString("O"),
-                last.Id);
+                rowids[pageSize - 1].ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return (items, nextPageToken);
