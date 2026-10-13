@@ -345,7 +345,11 @@ public sealed class GrabAppearanceLookupPerClientTests
         => RecordedReplies.Handler(
             "nzbget",
             [RecordedReplies.Nzbget("idle"), RecordedReplies.Nzbget("settings"), RecordedReplies.Nzbget("version")],
-            (_, body) => body.Contains("\"history\"", StringComparison.Ordinal) ? RecordedReplies.Json(historyReply) : null);
+            (_, body) => body.Contains("\"history\"", StringComparison.Ordinal) ? RecordedReplies.Json(historyReply)
+                // The recorded settings say NZBGet is paused (a fresh one starts paused), so the client reads its log (#1257) for a
+                // configuration error. The recorded log reply, with its lines taken out, is a log with no such error.
+                : body.Contains("\"log\"", StringComparison.Ordinal) ? RecordedReplies.Json(RecordedReplies.Nzbget("config-error-paused").Body("log\"", ("^result", 0)))
+                : null);
 
     // ── shared fixtures ──────────────────────────────────────────────────────
 
