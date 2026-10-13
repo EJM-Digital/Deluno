@@ -6,6 +6,7 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
 using Deluno.Worker.Services;
 
 namespace Deluno.Worker.HealthChecks.Checks;
@@ -107,10 +108,10 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
                 continue;
             }
 
-            var activeNames = allHandoffs
+            var activeHandoffs = allHandoffs
                 .Where(handoff => string.Equals(handoff.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(handoff => WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                .ToArray();
+            var activeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var finished in finishedHandoffs.Where(handoff =>
                          string.Equals(handoff.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase)))
             {
@@ -133,7 +134,8 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             foreach (var entry in entries)
             {
                 var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(entry));
-                if (string.IsNullOrWhiteSpace(name) || activeNames.Contains(name))
+                if (string.IsNullOrWhiteSpace(name) || activeNames.Contains(name)
+                    || activeHandoffs.Any(handoff => ProcessorOutputLayout.ClaimsTopLevelName(handoff.SourcePath, library.DownloadsPath, name)))
                 {
                     continue;
                 }

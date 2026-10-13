@@ -486,6 +486,30 @@ public sealed class ProcessorHandoffWatcher(
     /// processor reported, or the ready folder's own folder for this download. Queued through the one way a
     /// processed file is imported, which checks it is this download's.
     /// </summary>
+    /// <summary>
+    /// The folder the processor watches for this library, in Deluno's path space: from its own library-folders list
+    /// through the path mapping, otherwise the library's downloads folder (#1262).
+    /// </summary>
+    private async Task<string?> WatchedFolderAsync(LibraryItem library, ProcessorConnectionItem? connection, CancellationToken cancellationToken)
+    {
+        if (connection is null)
+        {
+            return library.DownloadsPath;
+        }
+
+        try
+        {
+            var folders = await processorConnections.GetLibraryFoldersAsync(connection, cancellationToken);
+            var mappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+            return ProcessorOutputLayout.WatchedFolderFor(library.Id, library.DownloadsPath, folders, mappings);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A processor that cannot be asked leaves the downloads folder as the watched one.
+            return library.DownloadsPath;
+        }
+    }
+
     private async Task<bool> TryImportOutputAsync(
         ProcessorHandoffItem handoff,
         LibraryItem library,
@@ -509,7 +533,12 @@ public sealed class ProcessorHandoffWatcher(
             output = reportedOutput;
         }
 
-        output ??= WorkPlanner.FindCorrelatedProcessorOutputs(library.ProcessorOutputPath, handoff.SourcePath).FirstOrDefault();
+        // A completed reply with no path (a resend, or a hand-off settled as cancelled) still has its file where the
+        // processor's layout puts it: the source's path below the folder it watches (#1262).
+        output ??= WorkPlanner.FindCorrelatedProcessorOutputs(
+            library.ProcessorOutputPath,
+            handoff.SourcePath,
+            await WatchedFolderAsync(library, connection, cancellationToken)).FirstOrDefault();
         if (output is null)
         {
             return false;
@@ -940,7 +969,7 @@ public sealed class ProcessorHandoffWatcher(
         // own working folder -- clean those up too, but never a complete file
         // #921's Health row still offers.
         var scrapsRemoved = ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
-            WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath),
+            WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath, library.DownloadsPath),
             library.ProcessorOutputPath,
             ProcessorOutputReadiness.IsReady);
         if (scrapsRemoved > 0)
