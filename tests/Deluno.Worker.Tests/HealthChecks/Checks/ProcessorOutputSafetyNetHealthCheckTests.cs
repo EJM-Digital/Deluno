@@ -80,6 +80,32 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
     }
 
     [Fact]
+    public async Task A_file_a_hand_off_sent_from_inside_a_release_folder_is_not_listed_under_that_folder()
+    {
+        // #1262: the processor keeps the release folder, so the folder is named after the release, not the file.
+        Directory.CreateDirectory(Path.Combine(_root, "Sintel.2010.1080p.WEB-DL-GROUP"));
+        WriteReadyFile(Path.Combine(_root, "Sintel.2010.1080p.WEB-DL-GROUP", "sintel.mkv"));
+
+        var outcomes = await RunAsync(
+            handoffs: [Handoff(sourcePath: "/downloads/Sintel.2010.1080p.WEB-DL-GROUP/sintel.mkv")],
+            downloadsPath: "/downloads");
+
+        Assert.Empty(outcomes);
+    }
+
+    [Fact]
+    public async Task A_flat_file_renamed_for_a_name_collision_is_not_listed_while_its_hand_off_waits()
+    {
+        WriteReadyFile(Path.Combine(_root, "Sintel.2010.1080p (1).mkv"));
+
+        var outcomes = await RunAsync(
+            handoffs: [Handoff(sourcePath: "/downloads/Sintel.2010.1080p.mkv")],
+            downloadsPath: "/downloads");
+
+        Assert.Empty(outcomes);
+    }
+
+    [Fact]
     public async Task A_file_still_being_written_is_never_listed()
     {
         // No SetLastWriteTimeUtc: a file just created is inside the stable window.
@@ -153,10 +179,11 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
     private async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(
         IReadOnlyList<ProcessorHandoffItem>? handoffs = null,
         IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem>? jobs = null,
-        IReadOnlyList<MovieListItem>? films = null)
+        IReadOnlyList<MovieListItem>? films = null,
+        string? downloadsPath = null)
     {
         var library = new LibraryItem(
-            "library-1", "Movies", "movies", "main", "/library", null, null, null, null,
+            "library-1", "Movies", "movies", "main", "/library", downloadsPath, null, null, null,
             true, true, "refine-before-import", "Weir", _root, 360, "block",
             true, true, true, 6, 6, 10, null, null, "active", false, null, null, Now, Now);
 
