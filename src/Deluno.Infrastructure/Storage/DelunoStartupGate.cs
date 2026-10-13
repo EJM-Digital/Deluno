@@ -1,3 +1,4 @@
+#pragma warning disable CS9113 // stub: removed with the implementation
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -30,7 +31,7 @@ public interface IDelunoStartupGate
     void MarkFailed(string databaseName, Exception exception);
 }
 
-public sealed class DelunoStartupGate : IDelunoStartupGate
+public sealed class DelunoStartupGate(IStartupProgress? progress = null) : IDelunoStartupGate
 {
     private static readonly IReadOnlySet<string> ExpectedDatabases =
         DelunoStorageLayout.Databases

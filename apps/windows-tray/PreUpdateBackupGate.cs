@@ -64,6 +64,9 @@ public static class PreUpdateBackupGate
 {
     public static readonly TimeSpan BackupTimeout = TimeSpan.FromMinutes(10);
 
+    /// <summary>How long after the time limit a backup that ignores it is still waited for, before the update is stopped (#1256).</summary>
+    public static readonly TimeSpan HardLimitGrace = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// On Quit: backs up while the host is still running, then queues the install. Returns true when the install was
     /// queued; false when the backup failed (a note is left for the next start) and Deluno should just quit.
@@ -92,7 +95,10 @@ public static class PreUpdateBackupGate
         string attemptFolder,
         string noteFolder,
         Func<CancellationToken, Task> backup,
-        Action applyAndRestart)
+        Action applyAndRestart,
+        Deluno.Infrastructure.Storage.IStartupProgress? progress = null,
+        TimeProvider? time = null,
+        Action<string>? log = null)
     {
         var marker = Path.Combine(attemptFolder, "update-start-attempt.txt");
         try

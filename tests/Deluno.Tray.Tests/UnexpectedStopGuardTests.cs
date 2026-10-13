@@ -33,6 +33,20 @@ public sealed class UnexpectedStopGuardTests
         }
     }
 
+    private sealed class DelegateHost(Func<CancellationToken, Task> start) : IStartableHost
+    {
+        public Task StartAsync(CancellationToken cancellationToken) => start(cancellationToken);
+        public Task StopAsync() => Task.CompletedTask;
+        public Task FreeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class SilentLog : ISupervisorLog
+    {
+        public void Info(string message) { }
+        public void Warning(string message) { }
+        public void Error(string message) { }
+    }
+
     private sealed class TestHost
     {
         public required WebApplication App { get; init; }
@@ -99,12 +113,17 @@ public sealed class UnexpectedStopGuardTests
                 TimeSpan.FromSeconds(10));
         }
 
-        var supervisor = new HostRestartSupervisor(
-            StartAsync,
-            new HostRestartReporter { Recovered = () => recovered.TrySetResult() },
-            delay: (_, _) => Task.CompletedTask);
+        // The supervisor's own waits are tiny here; what takes real time is Kestrel and the failure monitor, which are
+        // the things this test is about. The supervisor's timing is tested on a fake clock in HostSupervisorTests.
+        var supervisor = new HostSupervisor(
+            new DelegateHost(StartAsync),
+            new StartProgress(TimeProvider.System, null, Environment.ProcessId),
+            new HostRestartReporter { Recovered = (_, _) => recovered.TrySetResult() },
+            new SilentLog(),
+            TimeProvider.System,
+            new HostSupervisorSettings { BaseBackoff = TimeSpan.FromMilliseconds(10), MaxBackoff = TimeSpan.FromMilliseconds(20) });
         // This is DelunoServer's wiring: the unexpected stop is handed to the supervisor.
-        var wired = stopped.Task.ContinueWith(_ => supervisor.HandleUnexpectedStopAsync(), TaskScheduler.Default).Unwrap();
+        var wired = stopped.Task.ContinueWith(_ => supervisor.StartAsync(StartReason.UnexpectedStop), TaskScheduler.Default).Unwrap();
 
         await StartAsync(CancellationToken.None);
         var first = current!;
