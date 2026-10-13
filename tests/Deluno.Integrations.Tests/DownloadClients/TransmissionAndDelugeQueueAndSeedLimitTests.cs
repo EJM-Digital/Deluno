@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -26,7 +26,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Transmission_asks_for_the_queue_and_seed_fields_and_counts_the_queue_from_one()
     {
         var sent = new List<string>();
-        var item = await TransmissionSnapshot("\"queuePosition\":0,\"seedRatioMode\":1,\"seedRatioLimit\":2.0,\"seedIdleMode\":0,\"seedIdleLimit\":30", sent);
+        var item = await TransmissionSnapshot(sent, ("queuePosition", 0), ("seedRatioMode", 1), ("seedRatioLimit", 2.0), ("seedIdleMode", 0), ("seedIdleLimit", 30));
 
         Assert.Equal(1, item.QueuePosition);
         var torrentGet = Assert.Single(sent, body => body.Contains("\"torrent-get\"", StringComparison.Ordinal));
@@ -46,7 +46,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Transmission_seed_limits_are_read_from_each_torrents_own_mode(int ratioMode, double ratio, int idleMode, int idle, string expected)
     {
         var item = await TransmissionSnapshot(
-            $"\"queuePosition\":4,\"seedRatioMode\":{ratioMode},\"seedRatioLimit\":{ratio.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"seedIdleMode\":{idleMode},\"seedIdleLimit\":{idle}", []);
+            [], ("queuePosition", 4), ("seedRatioMode", ratioMode), ("seedRatioLimit", ratio), ("seedIdleMode", idleMode), ("seedIdleLimit", idle));
 
         Assert.Equal(5, item.QueuePosition);
         Assert.Equal(expected, item.SeedLimit);
@@ -55,7 +55,8 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [Fact]
     public async Task Transmission_reports_neither_when_the_daemon_sends_neither()
     {
-        var item = await TransmissionSnapshot(string.Empty, []);
+        // The recorded torrent, whose field list had neither the queue place nor the seed limits.
+        var item = await TransmissionSnapshot([], ("queuePosition", null), ("seedRatioMode", null), ("seedRatioLimit", null), ("seedIdleMode", null), ("seedIdleLimit", null));
 
         Assert.Null(item.QueuePosition);
         Assert.Null(item.SeedLimit);
@@ -69,7 +70,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Transmission_reorder_actions_call_its_own_queue_move_methods_on_that_torrent(string action, string method)
     {
         var sent = new List<string>();
-        var result = await new TransmissionDownloadClient(new Factory(new RecordingHandler(sent, "{\"result\":\"success\",\"arguments\":{}}")))
+        var result = await new TransmissionDownloadClient(new Factory(new RecordingHandler(sent, RecordedReplies.Transmission("queue-moved").Find("queue-move-top").Reply.Body!)))
             .ExecuteActionAsync(TransmissionClient(), action, "7", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -84,7 +85,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Deluge_asks_for_the_queue_and_seed_fields()
     {
         var sent = new List<string>();
-        await DelugeSnapshot("\"queue\":0,\"stop_at_ratio\":true,\"stop_ratio\":2.0,\"remove_at_ratio\":false", sent);
+        await DelugeSnapshot(sent, ("queue", 0), ("stop_at_ratio", true), ("stop_ratio", 2.0), ("remove_at_ratio", false));
 
         var update = Assert.Single(sent, body => body.Contains("web.update_ui", StringComparison.Ordinal));
         foreach (var field in new[] { "queue", "stop_at_ratio", "stop_ratio", "remove_at_ratio" })
@@ -98,7 +99,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [InlineData(6, 7)]
     public async Task Deluge_counts_its_queue_from_one(int queue, int expected)
     {
-        var item = await DelugeSnapshot($"\"queue\":{queue}", []);
+        var item = await DelugeSnapshot([], ("queue", queue));
 
         Assert.Equal(expected, item.QueuePosition);
     }
@@ -106,7 +107,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [Fact]
     public async Task Deluge_reads_minus_one_as_not_queued()
     {
-        var item = await DelugeSnapshot("\"queue\":-1", []);
+        var item = await DelugeSnapshot([], ("queue", -1));
 
         Assert.Null(item.QueuePosition);
     }
@@ -117,8 +118,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [InlineData(false, 2.0, false, "Seeds with no ratio limit.")]
     public async Task Deluge_seed_limit_is_the_torrents_own_stop_at_ratio(bool stopAtRatio, double ratio, bool removeAtRatio, string expected)
     {
-        var item = await DelugeSnapshot(
-            $"\"queue\":2,\"stop_at_ratio\":{(stopAtRatio ? "true" : "false")},\"stop_ratio\":{ratio.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"remove_at_ratio\":{(removeAtRatio ? "true" : "false")}", []);
+        var item = await DelugeSnapshot([], ("queue", 2), ("stop_at_ratio", stopAtRatio), ("stop_ratio", ratio), ("remove_at_ratio", removeAtRatio));
 
         Assert.Equal(expected, item.SeedLimit);
     }
@@ -126,7 +126,8 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [Fact]
     public async Task Deluge_reports_no_seed_limit_when_it_sends_no_flag()
     {
-        var item = await DelugeSnapshot(string.Empty, []);
+        // The recorded torrent with the queue place and the seed flags taken out.
+        var item = await DelugeSnapshot([], ("queue", null), ("stop_at_ratio", null), ("stop_ratio", null), ("remove_at_ratio", null));
 
         Assert.Null(item.SeedLimit);
         Assert.Null(item.QueuePosition);
@@ -141,7 +142,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     {
         var sent = new List<string>();
         const string hash = "0123456789abcdef0123456789abcdef01234567";
-        var result = await new DelugeDownloadClient(new Factory(new RecordingHandler(sent, """{"result":true,"error":null,"id":3}""")))
+        var result = await new DelugeDownloadClient(new Factory(new DelugeQueueHandler(sent)))
             .ExecuteActionAsync(DelugeClient(), action, hash, CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -160,26 +161,24 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
 
     // ----------------------------------------------------------------- helpers
 
-    private static async Task<DownloadQueueItem> TransmissionSnapshot(string extraFields, List<string> sent)
+    /// <summary>Transmission 4.1.3's recorded list of a finished torrent, with the queue place and seed limits under test.</summary>
+    private static async Task<DownloadQueueItem> TransmissionSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
     {
-        var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
-            + "\"status\":6,\"percentDone\":1,\"totalSize\":5000000000,\"downloadedEver\":5000000000,\"peersConnected\":0,"
-            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,\"error\":0"
-            + (extraFields.Length > 0 ? "," + extraFields : string.Empty)
-            + "}]}}";
-        var snapshot = await new TransmissionDownloadClient(new Factory(new TransmissionGetHandler(sent, torrentGet)))
+        var torrentGet = RecordedTransmissionRig.Reply(RecordedTransmissionRig.Finished, edits);
+        var snapshot = await new TransmissionDownloadClient(new Factory(RecordedTransmissionRig.Handler(torrentGet, (_, body) =>
+            {
+                sent.Add(body);
+                return null;
+            })))
             .GetSnapshotAsync(TransmissionClient(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
 
-    private static async Task<DownloadQueueItem> DelugeSnapshot(string extraFields, List<string> sent)
+    /// <summary>Deluge 2.2.0's recorded list of a finished torrent, with the queue place and seed flags under test.</summary>
+    private static async Task<DownloadQueueItem> DelugeSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
     {
-        var updateUi = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"state\":\"Seeding\","
-            + "\"progress\":100.0,\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,\"total_size\":5000000000,\"total_done\":5000000000,\"num_peers\":2,"
-            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":\"OK\",\"save_path\":\"C:\\\\Deluno\\\\Downloads\\\\Deluge\",\"tracker_status\":\"Announce OK\""
-            + (extraFields.Length > 0 ? "," + extraFields : string.Empty)
-            + "}}},\"error\":null,\"id\":2}";
-        var snapshot = await new DelugeDownloadClient(new Factory(new DelugeUpdateHandler(sent, updateUi)))
+        var updateUi = RecordedDelugeRig.Finished(edits.Append(("label", "movies")).ToArray());
+        var snapshot = await new DelugeDownloadClient(new Factory(RecordedDelugeRig.Handler(updateUi, onCall: sent.Add)))
             .GetSnapshotAsync(DelugeClient(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
@@ -198,7 +197,23 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     }
 
     private static HttpResponseMessage Ok(string body)
-        => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        => new(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+
+    /// <summary>
+    /// Deluge 2.2.0 answering its sign-in with the recorded one and any queue move with the reply it recorded for a move to the top
+    /// (which says nothing: a null result and no error), writing down every request body.
+    /// </summary>
+    private sealed class DelugeQueueHandler(List<string> sent) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            sent.Add(body);
+            return body.Contains("auth.login", StringComparison.Ordinal) ? RecordedReplies.Deluge("sign-in").Response("auth.login")
+                : body.Contains("web.connected", StringComparison.Ordinal) ? RecordedReplies.Deluge("sign-in").Response("web.connected")
+                : RecordedReplies.Deluge("queue-moved").Response("core.queue_top");
+        }
+    }
 
     /// <summary>Writes down every request body and answers each with the same reply.</summary>
     private sealed class RecordingHandler(List<string> sent, string reply) : HttpMessageHandler
@@ -207,26 +222,6 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
         {
             sent.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
             return Ok(reply);
-        }
-    }
-
-    private sealed class TransmissionGetHandler(List<string> sent, string torrentGet) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            sent.Add(body);
-            return Ok(body.Contains("\"torrent-get\"", StringComparison.Ordinal) ? torrentGet : "{\"result\":\"success\",\"arguments\":{}}");
-        }
-    }
-
-    private sealed class DelugeUpdateHandler(List<string> sent, string updateUi) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            sent.Add(body);
-            return Ok(body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi : """{"result":true,"error":null,"id":1}""");
         }
     }
 }
