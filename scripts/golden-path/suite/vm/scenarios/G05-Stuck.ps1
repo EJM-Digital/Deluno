@@ -74,25 +74,33 @@ function Invoke-GroupStuck {
     $restore = @{ Rules = @(Invoke-Deluno -Path '/api/download-health/rules') }
     try {
         # ---------------- phase A: no progress, two strikes
-        Set-HealthRules -On @{ 'no-progress' = @{ Strikes = 2 } } -CheckMinutes 1
+        # Only what the chosen scenarios read is sent; the rules are the same as in a full run.
         $a = @{}
-        foreach ($kind in $script:Kinds.torrent) {
-            $a["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'dummy' -Label 'zero') -Kind $kind
-            $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'short' -Label 'short') -Kind $kind
+        $seenA = @{}
+        $zeroUsenetKinds = @($script:Kinds.usenet | Where-Object { Test-ScenarioSelected "stuck.zero.$_" })
+        $phaseA = Test-AnyScenarioSelected -Ids (@($script:Kinds.torrent + $script:Kinds.usenet | ForEach-Object { "stuck.zero.$_"; "stuck.short.$_" }))
+        if ($phaseA) {
+            Set-HealthRules -On @{ 'no-progress' = @{ Strikes = 2 } } -CheckMinutes 1
+            foreach ($kind in $script:Kinds.torrent) {
+                if (Test-ScenarioSelected "stuck.zero.$kind") { $a["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'dummy' -Label 'zero') -Kind $kind }
+                if (Test-ScenarioSelected "stuck.short.$kind") { $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'short' -Label 'short') -Kind $kind }
+            }
+            # A Usenet client works down its queue: a job whose every article is unanswered holds the connections and the jobs
+            # behind it wait at 0 bytes (rc.30.22: SABnzbd's "short" job read 0% behind the "zero" job). So the job that is
+            # stuck just short of the end goes first, and the one stuck at 0 bytes is sent once that one is struck and gone.
+            foreach ($kind in $script:Kinds.usenet) {
+                if (Test-ScenarioSelected "stuck.short.$kind") { $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'short' -HangLast) -Kind $kind }
+            }
+            if ($a.Count -gt 0) { $seenA = Wait-AllStruck -Films $a }
+            $zeroUsenet = @{}
+            foreach ($kind in $zeroUsenetKinds) {
+                $zeroUsenet["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'zero' -HangAll) -Kind $kind
+            }
+            if ($zeroUsenet.Count -gt 0) {
+                $seenZero = Wait-AllStruck -Films $zeroUsenet
+                foreach ($key in $zeroUsenet.Keys) { $a[$key] = $zeroUsenet[$key]; $seenA[$key] = $seenZero[$key] }
+            }
         }
-        # A Usenet client works down its queue: a job whose every article is unanswered holds the connections and the jobs
-        # behind it wait at 0 bytes (rc.30.22: SABnzbd's "short" job read 0% behind the "zero" job). So the job that is
-        # stuck just short of the end goes first, and the one stuck at 0 bytes is sent once that one is struck and gone.
-        foreach ($kind in $script:Kinds.usenet) {
-            $a["short.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'short' -HangLast) -Kind $kind
-        }
-        $seenA = Wait-AllStruck -Films $a
-        $zeroUsenet = @{}
-        foreach ($kind in $script:Kinds.usenet) {
-            $zeroUsenet["zero.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Label 'zero' -HangAll) -Kind $kind
-        }
-        $seenZero = Wait-AllStruck -Films $zeroUsenet
-        foreach ($key in $zeroUsenet.Keys) { $a[$key] = $zeroUsenet[$key]; $seenA[$key] = $seenZero[$key] }
         foreach ($key in $a.Keys | Sort-Object) {
             $parts = $key -split '\.'
             $what = if ($parts[0] -eq 'zero') { 'stuck at 0 bytes' } else { 'stuck just short of the end' }
@@ -102,11 +110,15 @@ function Invoke-GroupStuck {
         }
 
         # ---------------- phase B: too few peers (torrents) and too slow (Usenet)
-        Set-HealthRules -On @{ 'low-peers' = @{ Strikes = 2; Threshold = 5 }; 'too-slow' = @{ Strikes = 1; Threshold = 2048 } } -CheckMinutes 1
         $b = @{}
-        foreach ($kind in $script:Kinds.torrent) { $b["peers.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'dummy' -Label 'peers') -Kind $kind }
-        foreach ($kind in $script:Kinds.usenet) { $b["slow.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Size 'big' -Label 'slow' -Slow) -Kind $kind }
-        $seenB = Wait-AllStruck -Films $b
+        $seenB = @{}
+        $phaseB = Test-AnyScenarioSelected -Ids (@($script:Kinds.torrent | ForEach-Object { "stuck.peers.$_" }) + @($script:Kinds.usenet | ForEach-Object { "stuck.slow.$_" }))
+        if ($phaseB) {
+            Set-HealthRules -On @{ 'low-peers' = @{ Strikes = 2; Threshold = 5 }; 'too-slow' = @{ Strikes = 1; Threshold = 2048 } } -CheckMinutes 1
+            foreach ($kind in $script:Kinds.torrent) { if (Test-ScenarioSelected "stuck.peers.$kind") { $b["peers.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'file' -Variant 'dummy' -Label 'peers') -Kind $kind } }
+            foreach ($kind in $script:Kinds.usenet) { if (Test-ScenarioSelected "stuck.slow.$kind") { $b["slow.$kind"] = Send-Film -Film (New-FilmFor -Kind $kind -Size 'big' -Label 'slow' -Slow) -Kind $kind } }
+            $seenB = Wait-AllStruck -Films $b
+        }
         foreach ($key in $b.Keys | Sort-Object) {
             $parts = $key -split '\.'
             if ($parts[0] -eq 'peers') {

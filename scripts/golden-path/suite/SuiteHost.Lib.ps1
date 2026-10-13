@@ -5,15 +5,16 @@
 #>
 
 # The final status of every planned scenario: what the VM reported, or "error" with "never reported" when it did not.
-# Reported is the list from results.json; Plan comes from Get-ScenarioPlan; Groups limits the plan (empty = all).
+# Reported is the list from results.json; Plan comes from Get-ScenarioPlan; Groups or Scenarios limit the plan (empty = all).
 function Merge-SuiteResults {
-    param([object[]] $Plan, [object[]] $Reported, [string[]] $Groups = @())
+    param([object[]] $Plan, [object[]] $Reported, [string[]] $Groups = @(), [string[]] $Scenarios = @())
     $byId = @{}
     foreach ($r in @($Reported)) { if ($r -and $r.id) { $byId[[string]$r.id] = $r } }
     $out = New-Object System.Collections.ArrayList
     foreach ($g in $Plan) {
         if ($Groups.Count -gt 0 -and $g.Name -notin $Groups) { continue }
         foreach ($id in $g.Ids) {
+            if ($Scenarios.Count -gt 0 -and $id -notin $Scenarios) { continue }
             if ($byId.ContainsKey($id)) {
                 $r = $byId[$id]
                 $status = if ($r.status -in 'pass', 'fail', 'error') { [string]$r.status } else { 'error' }
@@ -99,7 +100,7 @@ function New-ResultsMarkdown {
     param(
         [Parameter(Mandatory)] $Verdict, [Parameter(Mandatory)] [object[]] $Merged, [object[]] $HarnessRows = @(),
         [string] $Version, [string] $Commit, [string] $InstallerSha256, [string] $InstalledBuild, [double] $Minutes, [bool] $DryRun,
-        [string] $RecordedStatus, [string[]] $Warnings = @()
+        [string] $RecordedStatus, [string[]] $Warnings = @(), [string[]] $Notes = @(), [string] $Coverage = ''
     )
     $l = New-Object System.Collections.Generic.List[string]
     $l.Add("# Golden path scenario suite $Version")
@@ -111,7 +112,8 @@ function New-ResultsMarkdown {
     $l.Add("- Installer SHA256: ``$InstallerSha256``")
     $l.Add("- Golden-path commit status: $RecordedStatus$(if ($DryRun) { ' (dry run: nothing was recorded)' })")
     if ($Verdict.Failed.Count -gt 0) { $l.Add("- Failed or not reported: $($Verdict.Failed -join ', ')") }
-    if (-not $Verdict.FullRun) { $l.Add('- This was not a full run (some groups were left out), so it can never record a pass.') }
+    if (-not $Verdict.FullRun) { $l.Add('- This was not a full run' + $(if ($Coverage) { " ($Coverage)" } else { ' (some groups or scenarios were left out)' }) + ', so it can never record a pass.') }
+    foreach ($n in $Notes) { $l.Add("- Note: $n") }
     foreach ($w in $Warnings) { $l.Add("- Warning: $w") }
     $l.Add('')
     $l.Add('## Scenarios')
@@ -144,4 +146,34 @@ function New-ResultsMarkdown {
         foreach ($h in $HarnessRows) { $l.Add("| $(ConvertTo-MdCell $h.Step) | $($h.Status) | $(ConvertTo-MdCell $h.Detail) |") }
     }
     $l -join "`n"
+}
+
+# ---------------------------------------------------------------- the "ready" checkpoint (fast start for partial runs)
+
+# Hyper-V checkpoint names: the version and the commit, so a rebuild of the same version on another commit never reuses it.
+function Get-ReadyCheckpointName {
+    param([Parameter(Mandatory)] [string] $Version, [Parameter(Mandatory)] [string] $Commit, [string] $Override = '')
+    if ($Override) { return $Override }
+    $short = $Commit.ToLowerInvariant()
+    if ($short.Length -gt 8) { $short = $short.Substring(0, 8) }
+    ("ready-{0}-{1}" -f $Version, $short) -replace '[^A-Za-z0-9._-]', '-'
+}
+
+# Why a ready checkpoint may not be used for this run, or $null when it may. A full run always installs from clean; the install
+# scenario reads the install itself; the after-setup hook runs on the machine as Setup left it; -SkipInstall uses the VM as it is.
+function Get-ReadyCheckpointProblem {
+    param([Parameter(Mandatory)] $Scope, [bool] $AfterSetupScript = $false, [bool] $SkipInstall = $false)
+    if ($Scope.FullRun) { return 'A full run always installs from the clean checkpoint, so the install scenario stays covered; -UseReadyCheckpoint is for runs of single scenarios or groups.' }
+    if ('install-first-run' -in @($Scope.ChosenIds)) { return 'install-first-run reads the install itself (the tray while the picker ran), so it needs a fresh install, not a ready checkpoint.' }
+    if ($AfterSetupScript) { return '-AfterSetupScript runs between the setup and the groups of a fresh install; it cannot be used with a ready checkpoint.' }
+    if ($SkipInstall) { return '-SkipInstall uses the VM as it is; it cannot be used with a ready checkpoint.' }
+    $null
+}
+
+# What the user is told about the run's coverage in the results file.
+function Get-RunCoverageText {
+    param([Parameter(Mandatory)] $Scope)
+    if ($Scope.FullRun) { return 'all scenarios' }
+    if (@($Scope.Selection).Count -gt 0) { return ('only these scenarios: ' + (@($Scope.Selection) -join ', ')) }
+    'only some groups'
 }

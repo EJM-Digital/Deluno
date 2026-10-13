@@ -91,9 +91,12 @@ release comment, every workflow has `permissions` and every job a timeout.
 - **A tag is made only after the scenario suite has passed on that exact commit** (James, 7 and 11 Oct 2026;
   `docs/golden-path.md`, issues 1158 and 1238). No waiver, release candidates included. Build the commit's installer with a manual
   `ci.yml` run (`windows-installer`), then run `./scripts/golden-path/Invoke-ScenarioSuite.ps1 -RigHost <host> -InstallerPath <Deluno-rc-Setup.exe> -Version <x.y.z[-rc.N]> -Commit <sha>`
-  (unattended, about 40 minutes). It keeps Deluno's and Weir's full logs and records the `golden-path` commit status itself: `success` on a
+  (unattended, about two hours: 124 minutes in the rc.30.29 run; the per-group times are in `docs/golden-path.md`). It keeps Deluno's and Weir's full logs and records the `golden-path` commit status itself: `success` on a
   full pass, `failure` naming the failed scenarios otherwise. The release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`)
   passes only when the newest `golden-path` status on the tagged commit is `success`, and does not wait.
+  After a fix, check only the scenario that needed it: `-Scenarios <id,id>` runs single scenarios, and `-UseReadyCheckpoint` skips the
+  install and setup of a commit already saved as a ready checkpoint. Such a run records no status and is never the run that gates a tag
+  (James, 14 Oct 2026).
 - **One workflow, `release.yml`, publishes, in two independent jobs.** Both need
   `ci-passed`, `golden-path` and `validate`, plus their own build, and neither
   waits for the other. `publish-windows` (needs `windows`) alone has

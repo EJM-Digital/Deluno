@@ -83,19 +83,22 @@ function Invoke-GroupResend {
     # ---- before: Weir paused, every client in one window.
     $films = @{}
     $firsts = @{}
+    # Only the clients whose "before" scenario was chosen share the window; each client's result reads its own film.
+    $beforeKinds = @(Get-SelectedKinds -IdFormat 'resend.before.{0}')
+    if ($beforeKinds.Count -gt 0) {
     try {
         Set-WeirPause -Paused $true
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $beforeKinds) {
             $f = New-FilmFor -Kind $kind -Layout 'file' -Label 'rebefore'
             $films[$kind] = Send-Film -Film $f -Kind $kind
         }
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $beforeKinds) {
             $f = $films[$kind]
             Wait-FilmFinished -Film $f -TimeoutSec 240 | Out-Null
             $w = Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { Get-FilmHandoff -Film $f }
             $firsts[$kind] = $w.Value
         }
-        foreach ($kind in Get-AllKinds) {
+        foreach ($kind in $beforeKinds) {
             $f = $films[$kind]
             if ($firsts[$kind]) {
                 Remove-FilmDownload -Film $f -Reason 'unwanted' | Out-Null
@@ -106,7 +109,7 @@ function Invoke-GroupResend {
         # Every client has its second hand-off before Weir is resumed.
         Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition {
             $missing = 0
-            foreach ($k in Get-AllKinds) {
+            foreach ($k in $beforeKinds) {
                 if (-not $firsts[$k]) { continue }
                 $firstId = $firsts[$k].id
                 $another = @(Find-Handoffs -Name $films[$k].Release) | Where-Object { $_.id -ne $firstId }
@@ -116,6 +119,7 @@ function Invoke-GroupResend {
         } | Out-Null
     }
     finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
+    }
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "resend.before.$kind" -Title "I don't want it, then a resend to $kind, before Weir starts the first send" -Body {
             if (-not $firsts[$kind]) { throw "The first hand-off for $kind never appeared." }
