@@ -42,6 +42,30 @@ public sealed class CompleteTorrentWithTrackerErrorTests
         Assert.NotNull(item.Failure);
     }
 
+    /// <summary>The reply exactly as Deluge 2.2.0 sent it for a complete torrent whose tracker does not answer.</summary>
+    [Fact]
+    public async Task Deluge_complete_torrent_exactly_as_recorded_with_its_tracker_down_is_finished_and_quiet()
+    {
+        var handler = RecordedDelugeRig.Handler(RecordedReplies.Deluge("finished-tracker-error").Body("web.update_ui"));
+        var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Item("deluge", 8112), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        AssertFinishedAndQuiet(Assert.Single(snapshot!.Queue));
+    }
+
+    /// <summary>The reply exactly as Deluge 2.2.0 sent it for a torrent with no peers whose tracker does not exist: nothing ever arrives, and it keeps the error.</summary>
+    [Fact]
+    public async Task Deluge_torrent_that_never_started_exactly_as_recorded_keeps_the_tracker_error()
+    {
+        var handler = RecordedDelugeRig.Handler(RecordedReplies.Deluge("stalled").Body("web.update_ui"));
+        var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Item("deluge", 8112), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var item = Assert.Single(snapshot!.Queue);
+        Assert.NotEqual(DownloadQueueStatuses.ImportReady, item.Status);
+        Assert.Equal(0, item.Progress);
+        Assert.NotNull(item.ErrorMessage);
+        Assert.NotNull(item.Failure);
+    }
+
     [Fact]
     public async Task Transmission_complete_torrent_with_a_tracker_error_is_finished_and_quiet()
         => AssertFinishedAndQuiet(await Transmission(status: 6, percentDone: 1.0, error: 2, errorString: "Could not connect to tracker"));

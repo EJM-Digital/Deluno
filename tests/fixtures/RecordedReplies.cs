@@ -295,13 +295,14 @@ public sealed record Recording(string App, string Version, string State, IReadOn
     /// A handler that replays the recording in the order it happened: each request is answered with the next recorded reply to the
     /// same kind of call (the same method and path with ids left out, or the same JSON-RPC method), and once a kind of call has been
     /// answered as many times as it was recorded, with its last recorded reply. Replays a sequence such as pause, list, resume, list
-    /// exactly as the app answered it. A call that was never recorded fails the test.
+    /// exactly as the app answered it. A call that was never recorded fails the test, unless one of the other recordings given answers it.
     /// </summary>
-    public HttpMessageHandler Sequence() => new InOrder(this);
+    public HttpMessageHandler Sequence(params Recording[] alsoAnswering) => new InOrder(this, alsoAnswering);
 
-    private sealed class InOrder(Recording recording) : HttpMessageHandler
+    private sealed class InOrder(Recording recording, Recording[] alsoAnswering) : HttpMessageHandler
     {
         private readonly Dictionary<string, int> _answered = new();
+        private readonly HttpMessageInvoker? _others = alsoAnswering.Length == 0 ? null : new(RecordedReplies.Handler(recording.App, alsoAnswering), disposeHandler: false);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -312,6 +313,12 @@ public sealed record Recording(string App, string Version, string State, IReadOn
                 .ToList();
             if (same.Count == 0)
             {
+                // A call the replayed recording never made (the sign-in before it, the version after) is answered by the other recordings given.
+                if (_others is not null && alsoAnswering.Any(r => r.Exchanges.Any(e => RecordedReplies.OperationOf(r.App, e.Request.Method, e.Request.Path, e.Request.Body) == kind)))
+                {
+                    return await _others.SendAsync(request, cancellationToken);
+                }
+
                 throw new InvalidOperationException($"{request.Method} {request.RequestUri!.PathAndQuery} was never recorded for {recording.App} {recording.Version} {recording.State} (as {kind}).");
             }
 
