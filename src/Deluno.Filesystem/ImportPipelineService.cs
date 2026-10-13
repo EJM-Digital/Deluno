@@ -4793,8 +4793,11 @@ public sealed partial class ImportPipelineService(
     {
         try
         {
+            // Told to recovery first, so a recovery pass never mistakes this running import for one a restart
+            // interrupted (#1259). Written whole or not at all: a crash cannot leave half a marker.
+            ImportRestartMarkerFile.MarkInFlight(stagingPath);
             var marker = new ImportRestartMarker(sourcePath, destinationPath, stagingPath, mediaType, title);
-            File.WriteAllText(RestartMarkerPath(stagingPath), JsonSerializer.Serialize(marker));
+            ImportRestartMarkerFile.WriteAtomic(RestartMarkerPath(stagingPath), marker);
         }
         catch
         {
@@ -4802,9 +4805,13 @@ public sealed partial class ImportPipelineService(
         }
     }
 
-    private static void DeleteRestartMarker(string stagingPath) => TryDelete(RestartMarkerPath(stagingPath));
+    private static void DeleteRestartMarker(string stagingPath)
+    {
+        TryDelete(RestartMarkerPath(stagingPath));
+        ImportRestartMarkerFile.ClearInFlight(stagingPath);
+    }
 
-    internal static string RestartMarkerPath(string stagingPath) => stagingPath + ".deluno-marker.json";
+    internal static string RestartMarkerPath(string stagingPath) => ImportRestartMarkerFile.PathFor(stagingPath);
 
     private static void RestoreMovedSourceIfNeeded(
         string sourcePath,
