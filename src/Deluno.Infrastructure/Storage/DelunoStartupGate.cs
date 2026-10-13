@@ -30,7 +30,7 @@ public interface IDelunoStartupGate
     void MarkFailed(string databaseName, Exception exception);
 }
 
-public sealed class DelunoStartupGate : IDelunoStartupGate
+public sealed class DelunoStartupGate(IStartupProgress? progress = null) : IDelunoStartupGate
 {
     private static readonly IReadOnlySet<string> ExpectedDatabases =
         DelunoStorageLayout.Databases
@@ -73,9 +73,10 @@ public sealed class DelunoStartupGate : IDelunoStartupGate
 
         failedDatabases.TryRemove(databaseName, out _);
         readyDatabases[databaseName] = 0;
-        if (readyDatabases.Count == ExpectedDatabases.Count && failedDatabases.IsEmpty)
+        if (readyDatabases.Count == ExpectedDatabases.Count && failedDatabases.IsEmpty && allReady.TrySetResult())
         {
-            allReady.TrySetResult();
+            // The databases are done; what is left is the remaining services and the web server (#1256).
+            progress?.Enter(StartupPhase.WebHost, "the databases are ready");
         }
     }
 

@@ -135,6 +135,13 @@ internal static class Program
                 return;
             }
 
+            // A copy started by the one that could not free its hung host waits for it to end first, so it can take the
+            // single-instance lock instead of telling the dying copy "already running" (#1256).
+            if (ProcessRelaunch.ParentToWaitFor(args) is { } parentPid)
+            {
+                WaitForProcessToEnd(parentPid, TimeSpan.FromSeconds(60));
+            }
+
             // Tray app mode with single-instance guard
             using var mutex = new Mutex(true, @"Global\DelunoTrayApplication", out bool isFirstInstance);
             if (!isFirstInstance)
@@ -144,14 +151,17 @@ internal static class Program
                 return;
             }
 
+            // Where this start has got to, from the first step: the backup below is the first one that can block.
+            var progress = StartProgress.ForThisProcess();
+
             // An update downloaded earlier is applied now, before the host runs, so Deluno starts clean on the new version.
-            if (TryApplyPendingUpdateAtStart())
+            if (TryApplyPendingUpdateAtStart(progress))
             {
                 return;
             }
 
             EnsureWinFormsBootstrap();
-            var tray = new TrayApplication();
+            var tray = new TrayApplication(progress);
             // The real icon is up (it is shown in its constructor), so the first-run one can go without a gap.
             _firstRunTray?.Dispose();
             _firstRunTray = null;
@@ -160,12 +170,29 @@ internal static class Program
     }
 
     /// <summary>True when a downloaded update was handed to Velopack and this copy is about to be replaced.</summary>
-    private static bool TryApplyPendingUpdateAtStart()
+    private static void WaitForProcessToEnd(int pid, TimeSpan limit)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            process.WaitForExit(limit);
+        }
+        catch
+        {
+            // Already gone, or not ours to look at.
+        }
+    }
+
+    private static bool TryApplyPendingUpdateAtStart(StartProgress progress)
     {
         try
         {
             var logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno", "logs");
-            return new VelopackUpdateOrchestrator(Microsoft.Extensions.Logging.Abstractions.NullLogger<VelopackUpdateOrchestrator>.Instance).ApplyPendingAtStart(logs);
+            return new VelopackUpdateOrchestrator(Microsoft.Extensions.Logging.Abstractions.NullLogger<VelopackUpdateOrchestrator>.Instance).ApplyPendingAtStart(
+                logs,
+                progress,
+                // The icon is up before the backup starts, so that wait is never a blank one.
+                () => _firstRunTray ??= FirstRunTray.StartForBackup());
         }
         catch (Exception ex)
         {

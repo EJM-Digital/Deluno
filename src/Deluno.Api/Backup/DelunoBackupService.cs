@@ -78,7 +78,14 @@ public sealed class DelunoBackupService(
             .ToArray();
     }
 
-    public async Task<BackupItem> CreateBackupAsync(string reason, CancellationToken cancellationToken)
+    public Task<BackupItem> CreateBackupAsync(string reason, CancellationToken cancellationToken)
+        => CreateBackupAsync(reason, cancellationToken, onFile: null);
+
+    /// <summary>
+    /// Takes the backup, saying before each file which one it is about to copy ("3 of 9: movies.db"), so a start that
+    /// waits for the backup can show how far it has got and tell a slow backup from a stuck one (#1256).
+    /// </summary>
+    public async Task<BackupItem> CreateBackupAsync(string reason, CancellationToken cancellationToken, Action<string>? onFile)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -99,8 +106,11 @@ public sealed class DelunoBackupService(
             using (var fileStream = File.Create(targetPath))
             using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create))
             {
+                var position = 0;
                 foreach (var file in dataFiles)
                 {
+                    // Before the file is copied: a start waiting on this backup shows how far it has got.
+                    onFile?.Invoke($"{++position} of {dataFiles.Length}: {Path.GetFileName(file)}");
                     // Opened first, because opening is the only honest test of
                     // whether the file is still there. A `-wal` belongs to a
                     // database that is still being served, and SQLite deletes it

@@ -11,8 +11,19 @@ Every `BackgroundService` and `IHostedService` in Deluno (`src` and `apps`), and
 5. **Two services are critical**: `DelunoHeartbeatWorker` (runs every job lane) and `HealthCheckHostedService` (the only thing that can put a problem on Health). If one ends, the monitor restarts it in-process with a growing pause, up to five times in a row. If it cannot be kept running, Deluno gives up, and what happens next depends on how it is hosted:
    - **Docker or console host**: the host stops with exit code 1 and Docker restarts it (`compose.yaml`).
    - **Installed Windows service**: `WindowsServiceLifetime` (a `ServiceBase`) reports the host stopping to the service manager with `ServiceBase.ExitCode`, default 0, which looks like a clean stop. So on a give-up Deluno first sets that exit code to 1067 (ERROR_PROCESS_ABORTED), then stops the host gracefully; with `failureflag 1` the service manager counts that as a failure and Windows restarts the service after one minute. `Environment.Exit(1)` remains only as a fallback if the host has not stopped in time. A normal stop never sets the code. Every start of the service also sets `sc failure ... restart/60000` and `failureflag 1`, so services installed by earlier builds get them.
-   - **Tray-hosted (the default on Windows)**: the tray icon and the web host are separate things in one process. `DelunoServer.StoppedUnexpectedly` fires when the host stops without being asked, and `HostRestartSupervisor` starts it again after 15 s, then 30 s, 60 s, 2 min and 4 min (five tries in a row; a host that then stays up for 10 minutes starts the count over). The tray icon says so in plain words while it does, and says "choose Restart" if it cannot.
+   - **Tray-hosted (the default on Windows)**: the tray icon and the web host are separate things in one process. Every start of the host goes through `HostSupervisor`, not only a stop nobody asked for: the first start (a normal start, the first run after Setup, the first start after an update, a pending update applied at start), Restart, Change port, and `DelunoServer.StoppedUnexpectedly`. See "Supervised starts" below.
 6. **Start-up steps that prepare the databases** (`StartAsync` of the schema initializers and the storage bootstrap) wait up to two minutes, with a log line, for a database that another process holds locked (`SqliteLockRetry`). A lock that never clears still fails start-up with the original error: Deluno must not run on a database it could not prepare. This is the one deliberate case where an exception at start-up stops the host.
+
+## Supervised starts (#1256)
+
+A start that failed or hung used to be final: the supervisor covered only a stop after a good start, and a start that blocked kept the icon blinking "Starting" for ever. The model follows systemd `Restart`/`StartLimit`, Windows service recovery and Kubernetes startup probes, and matches Weir's start-up wording.
+
+- **Phases.** `StartupPhase`: starting, backup, opening the databases, migrations, web host, ready. Before each step that can block, `IStartupProgress.Enter` is called (each database, each migration, each backup file), which writes `start-progress.json` beside the other start-up logs (pid, try, phase, step, time; replaced whole, never torn) and a line in `tray-startup.log`. A marker another process left, with a phase before ready, is reported as the previous run at the next start and never counts as progress.
+- **Hung start.** No step reported for the phase's window: starting 2 min, backup 12 min (the backup cancels itself at 10 and is abandoned 30 s later), opening the databases 4 min (one locked database is waited for up to 2 min), migrations 15 min (the longest single step), web host 3 min. A start that keeps reporting steps is never cut off.
+- **What happens.** The try is cancelled and given 20 s; the host is stopped and disposed (30 s) so its databases and port are free; the phase, step and thread list are logged. If the start still has not ended, the program starts itself again (`--after-restart <pid>`; at most 2 relaunches in 30 min, kept in `restart-guard.json`), else it gives up in plain words.
+- **Retries.** Capped exponential backoff with jitter (15 s doubling to 5 min, each wait between half and all of that), 5 failures inside 15 minutes before giving up, the count cleared after 10 minutes of steady running by the clock. Each try is logged with its number, reason and next wait; a start that needed a retry is a warning; giving up and recovering are logged.
+- **Not on the UI thread.** The supervisor runs each try on the thread pool. The tray shows what the start is doing ("Starting - opening the databases..."), and the icon that covers the backup at start is up before the backup begins.
+- **Giving up.** The balloon's click is Restart. In service mode `ServiceStartGuard` watches the same progress and ends a hung start with exit code 3 (a failed one with 1) so the service manager's recovery acts; the restart-on-failure settings are set before the host is built, so a service installed by an older build has them even when its first start hangs.
 
 ## Every service
 
@@ -58,7 +69,8 @@ Every `BackgroundService` and `IHostedService` in Deluno (`src` and `apps`), and
 - `HealthCheckHostedServiceTimeoutTests`: a `TaskCanceledException` that is not a shutdown does not end the service.
 - `StartupGateWaitTests`: waiting past the limit does not throw.
 - `MigrationLockRetryTests`: a busy or locked answer is retried, a lock that never clears still fails, and a real held write lock is waited out.
-- `HostRestartSupervisorTests` (tray): restart with growing pauses, the cap, plain-words reporting, cancel by hand.
+- `HostSupervisorTests`, `StartProgressTests`, `StartGuardTests` (tray, on a fake clock): see "Supervised starts".
+- `StartupProgressHookTests` (persistence): the migrator, the storage bootstrap and the start-up gate report each step.
 - `ServiceFailureActionsTests`: the `sc failure` and `failureflag` commands.
 
 ## What only the rig can prove

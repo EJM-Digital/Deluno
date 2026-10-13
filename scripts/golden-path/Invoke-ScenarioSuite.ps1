@@ -22,6 +22,17 @@
 .PARAMETER RigHost
     The Hyper-V host that holds the VM.
 
+.PARAMETER PreviousInstallerPath
+    The previous release's Setup.exe, required for a full run (and for -Groups update). The update phase (update.over-running-previous,
+    #1256) runs AFTER the groups, the log collection and -AfterSuiteScript: it restores the checkpoint, installs this previous release
+    silently, starts it, gives it state, then runs the candidate's Setup --silent over it while it runs, and requires Deluno back on
+    its own with its state. It never installs over the candidate the groups used (that would be a downgrade onto a newer schema).
+    Without it the phase fails and says so, and so does the verdict: nothing waives it.
+
+.PARAMETER PreviousVersion
+    The previous release's version (for example 1.0.0-rc.30.25), which the install step checks the installed build against. Read
+    from the installer's file name when it carries one.
+
 .PARAMETER InstallerPath
     The release candidate's Windows installer (Deluno-rc-Setup.exe, from a manual ci.yml run on the commit).
 
@@ -38,7 +49,7 @@
     Print the scenarios and what each proves, then stop. Touches nothing.
 
 .PARAMETER Groups
-    Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems). A partial run never records a pass.
+    Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems, update). A partial run never records a pass.
 
 .PARAMETER SkipInstall
     Use the VM as it is (already installed, for example after an earlier run); skips the checkpoint restore and the picker.
@@ -61,6 +72,8 @@
 param(
     [string] $RigHost,
     [string] $InstallerPath,
+    [string] $PreviousInstallerPath,
+    [string] $PreviousVersion,
     [string] $Version,
     [string] $Commit,
     [string] $VmName = 'Deluno-GoldenPath',
@@ -105,9 +118,7 @@ if ($ListOnly) {
 }
 
 foreach ($p in 'RigHost', 'InstallerPath', 'Version', 'Commit') { if (-not (Get-Variable $p -ValueOnly)) { throw "-$p is required." } }
-if (-not (Test-Path $InstallerPath)) { throw "Installer not found: $InstallerPath" }
-$InstallerPath = (Resolve-Path $InstallerPath).Path
-$installerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
+if ($PreviousInstallerPath -and -not (Test-Path $PreviousInstallerPath)) { throw "Previous installer not found: $PreviousInstallerPath" }
 
 # The full commit, so the status lands on the right one.
 $fullSha = $Commit
@@ -319,6 +330,123 @@ try {
 }
 finally { Remove-PSSession $rig -ErrorAction SilentlyContinue }
 
+# ------------------------------------------------------------------ Weir's phases, then the update phase
+
+# Weir's WithDeluno and Fresh phases follow on the VM as the groups left it (the run left Weir's login and the key again).
+if ($AfterSuiteScript -and -not ($harnessFailures.Count -gt 0 -or -not $buildMatches)) {
+    Write-Host "Running the after-suite script: $AfterSuiteScript" -ForegroundColor Cyan
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSuiteScript
+    Write-Host "The after-suite script exited $LASTEXITCODE." -ForegroundColor $(if ($LASTEXITCODE -eq 0) { 'Green' } else { 'Yellow' })
+}
+
+# The update phase (#1256) runs last of all, after the groups, the log collection and the after-suite script, and depends on nothing
+# before it: it restores the clean checkpoint itself and installs the PREVIOUS release on it. It never installs over the candidate
+# the groups used, which would be a downgrade onto a newer schema.
+$updateId = 'update.over-running-previous'
+$updateTitle = 'Deluno updated over a running previous release comes back on its own, as the new build, with its state, and its start goes cleanly'
+function New-UpdateFailureRecord([string] $Why) {
+    [pscustomobject]@{ id = $updateId; title = $updateTitle; status = 'fail'; seconds = 0; error = $null; notes = @()
+        checks = @([pscustomobject]@{ name = 'The update phase could run'; ok = $false; detail = $Why }) }
+}
+
+function Copy-FileToVm {
+    param($Session, [string] $LocalPath, [string] $VmFolder, [string] $VmName2, $Cred)
+    $staged = Invoke-Command -Session $Session -ScriptBlock { $d = Join-Path $env:TEMP ('golden-up-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $d | Out-Null; $d }
+    try {
+        Copy-Item -Path $LocalPath -Destination (Join-Path $staged 'Deluno-Setup.exe') -ToSession $Session
+        $hash = (Get-FileHash $LocalPath -Algorithm SHA256).Hash
+        $inVm = Invoke-Command -Session $Session -ArgumentList $staged, $VmFolder, $VmName2, $Cred -ScriptBlock {
+            param($dir, $dest, $n, $c)
+            $s = New-PSSession -VMName $n -Credential $c
+            try {
+                Invoke-Command -Session $s -ArgumentList $dest -ScriptBlock { param($d) New-Item -ItemType Directory -Force -Path $d | Out-Null }
+                Copy-Item -Path (Join-Path $dir 'Deluno-Setup.exe') -Destination (Join-Path $dest 'Deluno-Setup.exe') -ToSession $s -Force
+                Invoke-Command -Session $s -ArgumentList $dest -ScriptBlock { param($d) (Get-FileHash (Join-Path $d 'Deluno-Setup.exe') -Algorithm SHA256).Hash }
+            } finally { Remove-PSSession $s }
+        }
+        if ($inVm -ne $hash) { throw "Hash mismatch after copy to $VmFolder (local $hash, VM $inVm)." }
+    }
+    finally { Invoke-Command -Session $Session -ArgumentList $staged -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } }
+}
+
+function Invoke-UpdatePhase {
+    if (-not $PreviousInstallerPath) {
+        return (New-UpdateFailureRecord 'The previous release''s Setup.exe was not given (-PreviousInstallerPath), so the update over a running previous release was not proven. A full run needs it; nothing waives it.')
+    }
+    $prevVersion = $PreviousVersion
+    if (-not $prevVersion -and (Split-Path $PreviousInstallerPath -Leaf) -match '(\d+\.\d+\.\d+(?:-rc[\.\d]*)?)') { $prevVersion = $Matches[1] }
+    if (-not $prevVersion) {
+        return (New-UpdateFailureRecord 'The previous release''s version is not known (-PreviousVersion), so the install step could not check what it installed.')
+    }
+    $updateDir = Join-Path $OutDirectory 'update-phase'
+    New-Item -ItemType Directory -Force -Path $updateDir | Out-Null
+    try {
+        Write-Host "Update phase: restoring the clean checkpoint and installing the previous release ($prevVersion) silently..." -ForegroundColor Cyan
+        $updateHook = {
+            param($rigSession, $name, $cred)
+            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
+            Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
+                New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
+                Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
+                Get-Process ServerManager -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            } | Out-Null
+        }
+        $updateHarnessFile = Join-Path $updateDir ("golden-path-{0}-{1}.md" -f $prevVersion, (Get-Date -Format 'yyyy-MM-dd'))
+        # Silent (not -Interactive): Setup --silent, then Deluno started in the signed-in desktop session, as the harness always does.
+        & (Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1') -RigHost $RigHost -InstallerPath $PreviousInstallerPath -Version $prevVersion -VmName $VmName -Checkpoint $Checkpoint `
+            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $updateDir -AfterVmReady $updateHook
+        $rows = @(Read-HarnessRows -File $updateHarnessFile)
+        $bad = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
+        if ($rows.Count -eq 0) { return (New-UpdateFailureRecord "The previous release's install wrote no results file at $updateHarnessFile.") }
+        if ($bad.Count -gt 0) { return (New-UpdateFailureRecord "The previous release did not install and start cleanly: $($bad -join '; ').") }
+
+        $rigU = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile)
+        try {
+            $vmCredU = Import-Clixml $VmCredentialFile
+            Copy-FileToVm -Session $rigU -LocalPath $InstallerPath -VmFolder 'C:\golden\candidate' -VmName2 $VmName -Cred $vmCredU
+            $runArgs2 = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Update.ps1" -Root "C:\golden\update" -CandidateSetup "C:\golden\candidate\Deluno-Setup.exe" -CandidateVersion "' + $Version + '"'
+            Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -ArgumentList @('GoldenUpdateRun', $runArgs2) -Block $startTaskBlock | Out-Null
+            Write-Host 'Update phase: running in the VM (the previous release gets state, then the candidate''s Setup runs over it)...' -ForegroundColor Cyan
+            $deadline = (Get-Date).AddMinutes(30)
+            $done = $null
+            while ((Get-Date) -lt $deadline -and $null -eq $done) {
+                Start-Sleep -Seconds 15
+                $done = Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -Block { $f = 'C:\golden\update\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
+            }
+            $json = Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -Block { $f = 'C:\golden\update\results\results.json'; if (Test-Path $f) { Get-Content -Raw $f } else { $null } }
+            # Deluno's logs for this phase too.
+            try {
+                $sum = Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -Block { & 'C:\golden\suite\vm\Collect-Logs.ps1' -Root 'C:\golden\update' }
+                Write-Host "Update phase logs: $sum"
+                $st = Invoke-Command -Session $rigU -ScriptBlock { $d = Join-Path $env:TEMP ('golden-uplogs-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $d | Out-Null; $d }
+                try {
+                    Invoke-Command -Session $rigU -ArgumentList $st, $VmName, $vmCredU -ScriptBlock {
+                        param($dir, $n, $cred)
+                        $s = New-PSSession -VMName $n -Credential $cred
+                        try { Copy-Item -FromSession $s -Path 'C:\golden\update\collect.zip' -Destination $dir } finally { Remove-PSSession $s }
+                    }
+                    Copy-Item -FromSession $rigU -Path (Join-Path $st 'collect.zip') -Destination (Join-Path $updateDir 'vm-logs.zip') -Force
+                    Expand-Archive -Path (Join-Path $updateDir 'vm-logs.zip') -DestinationPath (Join-Path $updateDir 'vm-logs') -Force
+                }
+                finally { Invoke-Command -Session $rigU -ArgumentList $st -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } }
+            }
+            catch { [void]$warnings.Add("Collecting the update phase's logs failed: $($_.Exception.Message)") }
+            if ($null -eq $done) { return (New-UpdateFailureRecord 'The update phase did not finish within 30 minutes.') }
+            $parsed = $null
+            if ($json) { try { $parsed = $json | ConvertFrom-Json } catch { } }
+            $rec = @($parsed.scenarios) | Where-Object { $_.id -eq $updateId } | Select-Object -First 1
+            if (-not $rec) { return (New-UpdateFailureRecord "The update phase reported no result (it ended: $done).") }
+            return $rec
+        }
+        finally { Remove-PSSession $rigU -ErrorAction SilentlyContinue }
+    }
+    catch { return (New-UpdateFailureRecord "The update phase stopped: $($_.Exception.Message)") }
+}
+
+if ($Groups.Count -eq 0 -or $Groups -contains 'update') {
+    $reported = @($reported) + @(Invoke-UpdatePhase)
+}
+
 # ------------------------------------------------------------------ results and the status
 
 $fullRun = ($Groups.Count -eq 0)
@@ -354,11 +482,5 @@ elseif ($fullRun) {
     $out = & gh @statusArgs 2>&1
     if ($LASTEXITCODE -ne 0) { Write-Host "Recording the status failed: $out" -ForegroundColor Red; exit 2 }
     Write-Host "Recorded golden-path=$($verdict.State) on $fullSha." -ForegroundColor Green
-}
-# Weir's WithDeluno and Fresh phases follow on the VM as the groups left it (the run left Weir's login and the key again).
-if ($AfterSuiteScript -and -not $suiteDidNotRun) {
-    Write-Host "Running the after-suite script: $AfterSuiteScript" -ForegroundColor Cyan
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSuiteScript
-    Write-Host "The after-suite script exited $LASTEXITCODE." -ForegroundColor $(if ($LASTEXITCODE -eq 0) { 'Green' } else { 'Yellow' })
 }
 if ($verdict.State -eq 'success') { exit 0 } else { exit 1 }

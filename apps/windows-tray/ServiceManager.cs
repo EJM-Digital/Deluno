@@ -216,6 +216,24 @@ public static class ServiceManager
             reporter?.Report(FailureActionsProblemKey, "Deluno may not restart itself", FailureActionsProblemMessage, problem);
         });
 
+    /// <summary>
+    /// The same settings, set as the very first thing the service does (#1256), before the host is built: a service
+    /// installed by an older build has no restart-on-failure actions, and one whose first start then hangs would never
+    /// have got them from the "after a successful start" call. Returns the problem (null when set) so the Health row can
+    /// be raised or cleared once the host is up.
+    /// </summary>
+    internal static Task<string?> EnsureFailureActionsEarlyAsync(Action<string> logWarning, IScRunner? runner = null, TimeSpan? timeout = null)
+        => Task.Run(() =>
+        {
+            var problem = SetFailureActions(runner ?? new ProcessScRunner(), timeout ?? TimeSpan.FromSeconds(10));
+            if (problem is not null)
+            {
+                logWarning($"Deluno could not set the service's restart-on-failure settings: {problem}");
+            }
+
+            return problem;
+        });
+
     private static void RemoveService()
     {
         if (!IsInstalled()) return;
