@@ -1,8 +1,7 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -64,24 +63,22 @@ public sealed class TransmissionTrackerStatusTests
     private static async Task<Deluno.Integrations.DownloadClients.DownloadQueueItem> Snapshot(
         bool? hasAnnounced, bool? succeeded, string? result, bool includeTrackerStats = true)
     {
-        var trackerStats = includeTrackerStats
-            ? $",\"trackerStats\":[{{\"hasAnnounced\":{Bool(hasAnnounced)},\"lastAnnounceSucceeded\":{Bool(succeeded)},\"lastAnnounceResult\":{Json(result)}}}]"
-            : string.Empty;
-        var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
-            + "\"status\":4,\"percentDone\":0.4,"
-            + "\"totalSize\":5000000000,\"downloadedEver\":2000000000,\"peersConnected\":1,\"peersSendingToUs\":1,"
-            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
-            + "\"isStalled\":false,\"error\":0"
-            + trackerStats
-            + "}]}}";
-        var handler = new TransmissionHandler(torrentGet);
+        // Transmission 4.1.3's recorded list of a download in progress, with its one tracker report as under test (or none).
+        // The recorded tracker report is a working one; each value the test names is changed, and a torrent with no tracker has the report taken out.
+        var torrentGet = RecordedTransmissionRig.Reply(
+            RecordedTransmissionRig.Downloading,
+            includeTrackerStats
+                ? new (string, object?)[]
+                {
+                    ("trackerStats.0.hasAnnounced", hasAnnounced), ("trackerStats.0.lastAnnounceSucceeded", succeeded), ("trackerStats.0.lastAnnounceResult", result),
+                    ("rateDownload", 0), ("eta", 0)
+                }
+                : [("trackerStats", null), ("rateDownload", 0), ("eta", 0)]);
+        var handler = RecordedTransmissionRig.Handler(torrentGet);
         var client = new TransmissionDownloadClient(new Factory(handler));
         var snapshot = await client.GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
-
-    private static string Bool(bool? value) => value is null ? "null" : value.Value ? "true" : "false";
-    private static string Json(string? value) => value is null ? "null" : System.Text.Json.JsonSerializer.Serialize(value);
 
     private static DownloadClientItem Client()
         => new("transmission-1", "Transmission", "transmission", "localhost", 9091, null, null, "http://localhost:9091/", false, null, "movies", "tv", null, 1, true,
@@ -90,17 +87,5 @@ public sealed class TransmissionTrackerStatusTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class TransmissionHandler(string torrentGet) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            var reply = body.Contains("\"torrent-get\"", StringComparison.Ordinal)
-                ? torrentGet
-                : "{\"result\":\"success\",\"arguments\":{}}";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
     }
 }
