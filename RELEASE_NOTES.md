@@ -9,6 +9,36 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.31
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.30, plus:
+
+- A torrent from a private tracker that gets stuck is moved to your keep-seeding
+  category instead of being deleted, and Deluno looks for another copy.
+- When the same release is sent again while Weir is still working on the first
+  send, Weir's late report for that first send is now accepted, for every
+  client.
+- NZBGet paused because of errors in its settings now shows as a problem on
+  the client, the Dashboard and Transfers, with a Clear that resumes it.
+- Deluno now finds a file Weir has cleaned wherever Weir puts it: loose in its
+  output folder, inside the release folder, or renamed after a name clash.
+- qBittorrent: a bad torrent file is marked as a bad release instead of
+  looking like qBittorrent is down, and the share limits you set are now
+  really applied.
+- Deluge: a torrent Deluge already has is no longer mistaken for a dead
+  release.
+
 ## 1.0.0-rc.30.30
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
