@@ -1,4 +1,21 @@
 {
-  "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237).",
-  "entries": []
+  "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237). \"noBehaviour\" lists a recording no test replays because Deluno has no behaviour for the call it shows; scripts/check-recorded-replies.mjs fails for any other recording that no test names.",
+  "entries": [],
+  "noBehaviour": [
+    {
+      "app": "sabnzbd",
+      "state": "category-moved",
+      "reason": "SABnzbd's mode=change_cat on a queued job. Deluno sets a Usenet job's category only when it adds it; it never moves an existing Usenet job to another category (keep-seeding moves are for torrents)."
+    },
+    {
+      "app": "sabnzbd",
+      "state": "category-unknown",
+      "reason": "SABnzbd's mode=change_cat to a category it does not have. Deluno never moves an existing Usenet job to another category."
+    },
+    {
+      "app": "nzbget",
+      "state": "category-moved",
+      "reason": "NZBGet's editqueue GroupSetCategory on a queued job. Deluno never moves an existing Usenet job to another category."
+    }
+  ]
 }
