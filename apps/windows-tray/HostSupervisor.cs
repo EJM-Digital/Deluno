@@ -371,6 +371,13 @@ public sealed class HostSupervisor
                     return GiveUp(attempts, Math.Max(failures, 1), tried.Text);
 
                 default:
+                    if (token.IsCancellationRequested)
+                    {
+                        // Stop, Restart or Quit was chosen while this try was being judged a failure: it is the person's
+                        // choice, not a failed start, and Cancel() has just started the count over.
+                        return new StartResult(StartOutcome.Cancelled, attempts, null, null);
+                    }
+
                     RecordFailure(tried.Text);
                     lock (_gate)
                     {
@@ -443,6 +450,14 @@ public sealed class HostSupervisor
                 return await CompleteAsync(startTask, token).ConfigureAwait(false);
             }
 
+            if (!token.IsCancellationRequested)
+            {
+                // Nobody chose anything: the watch stopped because the start reported Ready, and the start did not return.
+                // That is a hung tail of the start, to be cut off and tried again like any other hang, never a quiet "cancelled"
+                // that would leave the host freed and the tray waiting for ever.
+                return await HandleHangAsync(info, _progress.Current, attemptCts, startTask).ConfigureAwait(false);
+            }
+
             await EndAsync(startTask, "the start was cancelled by the person", waitFirst: false).ConfigureAwait(false);
             return new Tried(TryKind.Cancelled, string.Empty, string.Empty, null);
         }
@@ -492,9 +507,9 @@ public sealed class HostSupervisor
         var window = Settings.Windows.For(hung.Phase);
         var words = StartupPhases.Words(hung.Phase);
         var detail = string.IsNullOrWhiteSpace(hung.Detail) ? "no step named" : hung.Detail;
-        var text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"made no progress for {Minutes(window)} while {words} (last step: {detail})");
+        var text = hung.Phase == StartupPhase.Ready
+            ? string.Create(CultureInfo.InvariantCulture, $"reported ready but its start did not return within {Minutes(Settings.CancelBudget)} (last step: {detail})")
+            : string.Create(CultureInfo.InvariantCulture, $"made no progress for {Minutes(window)} while {words} (last step: {detail})");
 
         _log.Warning(string.Create(
             CultureInfo.InvariantCulture,
