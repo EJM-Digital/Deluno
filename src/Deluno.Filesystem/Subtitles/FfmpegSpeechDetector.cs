@@ -51,6 +51,9 @@ public interface ISpeechDetector
 /// </summary>
 public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) : ISpeechDetector
 {
+    /// <summary>The longest one listen may take. Listening runs far faster than playing, so this is for a stalled share.</summary>
+    private static readonly TimeSpan ListenLimit = TimeSpan.FromHours(2);
+
     /// <summary>
     /// The level below which audio counts as silence, and how long it has to
     /// stay there.
@@ -149,14 +152,17 @@ public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) :
         // stdout is discarded but must still be drained: a full pipe buffer
         // deadlocks the child, and `-f null -` writes nothing only as long as
         // nothing changes about the arguments above.
-        var drain = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        // A listen that has not finished after a long time is stopped rather than waited on without end (#1258).
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(ListenLimit);
+        var drain = process.StandardOutput.ReadToEndAsync(limit.Token);
 
         var silences = 0;
         TimeSpan? openedAt = null;
 
         try
         {
-            while (await process.StandardError.ReadLineAsync(cancellationToken) is { } line)
+            while (await process.StandardError.ReadLineAsync(limit.Token) is { } line)
             {
                 if (TryRead(line, "silence_start:", out var silenceStart))
                 {
@@ -170,7 +176,7 @@ public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) :
                 }
             }
 
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitAsync(limit.Token);
             await drain;
         }
         catch (OperationCanceledException)
@@ -178,7 +184,13 @@ public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) :
             // A cancelled sync must not leave an ffmpeg running against a file
             // the rest of Deluno may be about to move.
             TryKill(process);
-            throw;
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            logger.LogWarning("ffmpeg did not finish listening to {Path} within {Limit} and was stopped.", videoPath, ListenLimit);
+            return null;
         }
 
         // A silence still open at the end of the file has no `silence_end` line,

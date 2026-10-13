@@ -458,7 +458,8 @@ public sealed class ComponentInstallService(
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
         }
 
-        Report(ComponentStage.Starting, "Starting it and waiting until it answers");
+        // Weir's supervised start can take a few minutes after an update; say so while the wait lasts (#1258).
+        Report(ComponentStage.Starting, string.Equals(spec.Kind, "weir", StringComparison.OrdinalIgnoreCase) ? Deluno.Contracts.WeirStartWait.Notice : "Starting it and waiting until it answers");
         var started = await StartAndWaitForReadyAsync(spec, cancellationToken);
         await CaptureGeneratedCredentialsAsync(spec, chosenLogin, cancellationToken);
         if (loginProblem is not null)

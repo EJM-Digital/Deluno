@@ -304,6 +304,11 @@ export function ConnectInstalledApps({
               </Field>
             ) : null}
             {weirError ? <p className="text-(length:--type-caption) text-destructive" role="alert">{weirError}</p> : null}
+            {busy === WEIR_KIND ? (
+              <p className="text-(length:--type-caption) text-muted-foreground" role="status">
+                Connecting to Weir. If Weir is still starting, this can take a few minutes after an update.
+              </p>
+            ) : null}
             <Button type="button" size="sm" className="w-max" disabled={busy !== null} onClick={() => void submitWeir()}>
               {creating ? "Create Weir account and connect" : "Sign in to Weir and connect"}
             </Button>

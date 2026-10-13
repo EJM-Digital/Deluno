@@ -341,6 +341,8 @@ public sealed class WindowsFirewall : IWindowsFirewall
         }
     }
 
+    private static readonly TimeSpan NetshLimit = TimeSpan.FromMinutes(2);
+
     public async Task<FirewallCommandResult> RunNetshAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
     {
         try
@@ -360,26 +362,34 @@ public sealed class WindowsFirewall : IWindowsFirewall
                     return new FirewallCommandResult(-1, "Windows did not start netsh.");
                 }
 
-                await elevated.WaitForExitAsync(cancellationToken);
+                // A shell start with no pipes, but not an open-ended wait (#1258).
+                using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                limit.CancelAfter(NetshLimit);
+                try
+                {
+                    await elevated.WaitForExitAsync(limit.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return new FirewallCommandResult(-1, "Windows did not finish the firewall change in time.");
+                }
+
                 return new FirewallCommandResult(elevated.ExitCode, string.Empty);
             }
 
-            using var process = Process.Start(new ProcessStartInfo("netsh", netshArguments)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is null)
+            // Both streams are read as they arrive and netsh is stopped if it does not finish (#1258).
+            var result = await Deluno.Infrastructure.Processes.ChildProcess.RunAsync(new ProcessStartInfo("netsh", netshArguments), NetshLimit, cancellationToken);
+            if (!result.Started)
             {
                 return new FirewallCommandResult(-1, "Windows did not start netsh.");
             }
 
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            return new FirewallCommandResult(process.ExitCode, (await output) + (await error));
+            if (result.TimedOut)
+            {
+                return new FirewallCommandResult(-1, "netsh did not finish in time.");
+            }
+
+            return new FirewallCommandResult(result.ExitCode ?? -1, result.Output + result.Error);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == PermissionDeclined)
         {

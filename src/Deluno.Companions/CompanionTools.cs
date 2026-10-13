@@ -383,9 +383,9 @@ public sealed class WeirCompanion(
             throw new CompanionStepException($"The {Name} installer finished with code {result.ExitCode}, so {Name} was not updated.");
         }
 
-        context.Progress.Report("start", $"Waiting for {Name} to start again.");
+        context.Progress.Report("start", Deluno.Contracts.WeirStartWait.Notice);
         _ = await FindRunningAsync(null, cancellationToken)
-            ?? throw new CompanionStepException($"{Name} was updated but did not start answering. Start it from the Start menu.");
+            ?? throw new CompanionStepException($"{Name} was updated but did not start answering after waiting {Deluno.Contracts.WeirStartWait.BudgetSeconds / 60} minutes. Start it from the Start menu.");
     }
 
     private string Executable => Path.Combine(system.LocalAppData, "Weir", "Weir.exe");
@@ -448,9 +448,9 @@ public sealed class WeirCompanion(
             context.Progress.Report("install", $"{Name} is already installed, so it is not installed again.");
         }
 
-        context.Progress.Report("start", $"Waiting for {Name} to start.");
+        context.Progress.Report("start", Deluno.Contracts.WeirStartWait.Notice);
         _ = await FindRunningAsync(firstStart, cancellationToken)
-            ?? throw new CompanionStepException($"{Name} is installed but did not start answering. Start it from the Start menu and run this again.");
+            ?? throw new CompanionStepException($"{Name} is installed but did not start answering after waiting {Deluno.Contracts.WeirStartWait.BudgetSeconds / 60} minutes. Start it from the Start menu and run this again.");
 
         context.Progress.Report("done", $"{Name} is installed and running. Create your own {Name} account and connect it from the setup guide or Connections.");
     }
@@ -513,7 +513,7 @@ public sealed class WeirCompanion(
         var baseUrl = await FindRunningAsync(null, cancellationToken);
         if (baseUrl is null)
         {
-            return new WeirConnectOutcome(false, $"{Name} is installed but did not start answering. Start it from the Start menu and try again.", false);
+            return new WeirConnectOutcome(false, $"{Name} is installed but did not start answering after waiting {Deluno.Contracts.WeirStartWait.BudgetSeconds / 60} minutes. Start it from the Start menu and try again.", false);
         }
 
         ProcessorConnectionItem? processor = null;
@@ -715,7 +715,9 @@ public sealed class WeirCompanion(
         using var probe = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(3) };
         var installFolder = Path.Combine(system.LocalAppData, "Weir");
         var started = false;
-        for (var attempt = 0; attempt < 40; attempt++)
+        // Weir's supervised start can retry with a back-off from 2 s to 60 s, so it is given three minutes (#1258).
+        var deadline = Time.GetUtcNow() + Deluno.Contracts.WeirStartWait.Budget;
+        for (var attempt = 0; ; attempt++)
         {
             var ports = system.ListeningPortsOf(installFolder);
             if (ports.Count == 0 && !started && (firstStart is not null || attempt >= 3))
@@ -742,10 +744,13 @@ public sealed class WeirCompanion(
                 }
             }
 
+            if (Time.GetUtcNow() >= deadline)
+            {
+                return null;
+            }
+
             await Delay(TimeSpan.FromSeconds(3), cancellationToken);
         }
-
-        return null;
     }
 
     /// <summary>Posts the person's account details. False when Weir refuses them; never keeps or reports what was sent or what Weir answered.</summary>

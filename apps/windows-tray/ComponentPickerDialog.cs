@@ -361,7 +361,7 @@ public sealed class ComponentPickerDialog : Form
         ComponentStage.Downloading => "Downloading…",
         ComponentStage.Checking => "Checking it is the genuine installer…",
         ComponentStage.Installing => "Installing…",
-        ComponentStage.Starting => "Started, waiting until it answers…",
+        ComponentStage.Starting => string.Equals(progress.Kind, "weir", StringComparison.OrdinalIgnoreCase) ? Deluno.Contracts.WeirStartWait.Notice : "Started, waiting until it answers…",
         ComponentStage.SettingUp => "Setting up its categories and folders…",
         ComponentStage.Done => string.IsNullOrWhiteSpace(progress.Detail) ? "Done" : progress.Detail!,
         _ => $"Failed: {progress.Detail}"
