@@ -1,9 +1,8 @@
-using System.Net;
-using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -20,11 +19,14 @@ public sealed class AddPausedGrabTests
     public async Task Qbittorrent_grab_sends_the_clients_AddPaused_flag(bool addPaused, string expected)
     {
         var bodies = new List<string>();
-        // The stub answers torrents/info with the same empty list before and
-        // after the add, so the grab itself is reported as not taken (#606's
-        // own before/after honesty check) — irrelevant here, since only the
-        // request body sent to torrents/add is under test.
-        await new QbittorrentDownloadClient(() => new QbittorrentHandler(bodies))
+        // qBittorrent's own recorded sign-in, add and list replies. Only the request body sent to torrents/add is under test.
+        var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("finished-single-file")],
+            (request, body) =>
+            {
+                if (request.RequestUri!.AbsolutePath.Contains("torrents/add", StringComparison.Ordinal)) bodies.Add(body);
+                return null;
+            });
+        await new QbittorrentDownloadClient(() => handler)
             .GrabAsync(Client(addPaused), Request(), CancellationToken.None);
 
         var body = Assert.Single(bodies);
@@ -37,7 +39,7 @@ public sealed class AddPausedGrabTests
     public async Task Transmission_grab_sends_the_clients_AddPaused_flag(bool addPaused)
     {
         var sent = new List<string>();
-        await new TransmissionDownloadClient(new StubFactory(new TransmissionHandler(sent)))
+        await new TransmissionDownloadClient(new StubFactory(Capture("transmission", sent, RecordedReplies.Transmission("settings"), RecordedReplies.Transmission("finished-single-file"))))
             .GrabAsync(Client(addPaused) with { Protocol = "transmission" }, Request(), CancellationToken.None);
 
         // A category also triggers a session-get lookup first (#629); only the
@@ -53,8 +55,8 @@ public sealed class AddPausedGrabTests
     public async Task Deluge_grab_sends_the_clients_AddPaused_flag(bool addPaused)
     {
         var sent = new List<string>();
-        await new DelugeDownloadClient(new StubFactory(new DelugeHandler(sent)))
-            .GrabAsync(Client(addPaused) with { Protocol = "deluge" }, Request(), CancellationToken.None);
+        await new DelugeDownloadClient(new StubFactory(Capture("deluge", sent, RecordedReplies.Deluge("sign-in"), RecordedReplies.Deluge("magnet-no-metadata"), RecordedReplies.Deluge("label-set"))))
+            .GrabAsync(Client(addPaused) with { Protocol = "deluge" }, Request() with { DownloadUrl = Magnet }, CancellationToken.None);
 
         // Two calls land here: the add itself and the follow-up label set.
         // The add is the JSON-RPC call naming one of Deluge's add methods.
@@ -70,7 +72,17 @@ public sealed class AddPausedGrabTests
     public async Task Sabnzbd_grab_with_AddPaused_uses_SABnzbds_own_paused_priority(bool addPaused)
     {
         string? query = null;
-        var handler = new SabHandler(request => query = request.RequestUri?.Query);
+        var handler = RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("queued")], (request, _) =>
+        {
+            if (request.RequestUri!.Query.Contains("mode=addurl", StringComparison.Ordinal))
+            {
+                query = request.RequestUri.Query;
+                // The recorded reply to an add by address; its address is the recording's own, so it is asked for by the mode.
+                return RecordedReplies.Sabnzbd("queued").Response("mode=addurl");
+            }
+
+            return null;
+        });
         await new SabnzbdDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(addPaused) with { Protocol = "sabnzbd", Secret = "api-key" }, Request(), CancellationToken.None);
 
@@ -90,7 +102,7 @@ public sealed class AddPausedGrabTests
     public async Task NzbGet_grab_sends_the_clients_AddPaused_flag(bool addPaused)
     {
         var sent = new List<string>();
-        await new NzbGetDownloadClient(new StubFactory(new NzbGetHandler(sent)))
+        await new NzbGetDownloadClient(new StubFactory(Capture("nzbget", sent, RecordedReplies.Nzbget("queued"))))
             .GrabAsync(Client(addPaused) with { Protocol = "nzbget" }, Request(), CancellationToken.None);
 
         using var document = JsonDocument.Parse(Assert.Single(sent));
@@ -100,6 +112,16 @@ public sealed class AddPausedGrabTests
     }
 
     // ------------------------------------------------------------------ fixtures
+
+    private const string Magnet = "magnet:?xt=urn:btih:8d878a21c3d4180ae08b4e044904667d9f30bec5&dn=Big.Buck.Bunny";
+
+    /// <summary>A client answering from the given recordings, keeping the body of every call it gets.</summary>
+    private static HttpMessageHandler Capture(string app, List<string> sent, params Recording[] recordings)
+        => RecordedReplies.Handler(app, recordings, (_, body) =>
+        {
+            sent.Add(body);
+            return null;
+        });
 
     private static DownloadClientGrabRequest Request()
         => new("Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO", "http://indexer.test/download/1", "movies", "movies", "Fixture indexer");
@@ -113,77 +135,5 @@ public sealed class AddPausedGrabTests
     private sealed class StubFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class QbittorrentHandler(List<string> addBodies) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            if (path.Contains("torrents/add", StringComparison.Ordinal))
-            {
-                addBodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
-                return Text("Ok.");
-            }
-
-            if (path.Contains("auth/login", StringComparison.Ordinal)) return Text("Ok.");
-            // Reads as "already added" (same hash list before/after) which is
-            // fine here: only the request body sent to torrents/add matters.
-            if (path.Contains("torrents/info", StringComparison.Ordinal)) return Json("[]");
-            return Text("Ok.");
-        }
-
-        private static HttpResponseMessage Text(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
-        private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-    }
-
-    private sealed class TransmissionHandler(List<string> sent) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            sent.Add(body);
-            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
-                ? """{"result":"success","arguments":{"torrent-added":{"id":7,"hashString":"abc"}}}"""
-                : """{"result":"success","arguments":{}}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
-        }
-    }
-
-    private sealed class DelugeHandler(List<string> sent) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            sent.Add(body);
-            var answer = body.Contains("core.add_torrent_", StringComparison.Ordinal)
-                ? """{"result":"abcd1234abcd1234abcd1234abcd1234abcd1234","error":null,"id":2}"""
-                : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
-    }
-
-    private sealed class SabHandler(Action<HttpRequestMessage> observe) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            observe(request);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"status":true,"nzo_ids":["nzo-1"]}""", Encoding.UTF8, "application/json")
-            });
-        }
-    }
-
-    private sealed class NzbGetHandler(List<string> sent) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            sent.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"version":"1.1","result":42}""", Encoding.UTF8, "application/json")
-            };
-        }
     }
 }
