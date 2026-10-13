@@ -1,0 +1,620 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "loadconfig",
+  "recordedAt": "2026-10-13T08:19:39Z",
+  "note": "NZBGet's loadconfig: the options as nzbget.conf holds them (what saveconfig writes back). This file was taken after Deluno had written ConfigFile, AppBin, AppDir and Version into it (#1257), so those four appear here as the file's own invalid lines.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "loadconfig",
+          "params": [],
+          "id": 11
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 11,
+          "result": [
+            {
+              "Name": "MainDir",
+              "Value": "C:\\ProgramData\\NZBGet"
+            },
+            {
+              "Name": "DestDir",
+              "Value": "C:\\Downloads\\Completed"
+            },
+            {
+              "Name": "InterDir",
+              "Value": "C:\\Downloads\\Incomplete\\NZBGet"
+            },
+            {
+              "Name": "NzbDir",
+              "Value": "C:\\ProgramData\\NZBGet/nzb"
+            },
+            {
+              "Name": "QueueDir",
+              "Value": "C:\\ProgramData\\NZBGet/queue"
+            },
+            {
+              "Name": "TempDir",
+              "Value": "C:\\ProgramData\\NZBGet/tmp"
+            },
+            {
+              "Name": "ScriptDir",
+              "Value": "C:\\ProgramData\\NZBGet\\scripts"
+            },
+            {
+              "Name": "LogFile",
+              "Value": "C:\\ProgramData\\NZBGet\\nzbget.log"
+            },
+            {
+              "Name": "RequiredDir",
+              "Value": ""
+            },
+            {
+              "Name": "CertStore",
+              "Value": "C:\\Program Files\\NZBGet\\cacert.pem"
+            },
+            {
+              "Name": "Server1.Active",
+              "Value": "yes"
+            },
+            {
+              "Name": "Server1.Name",
+              "Value": "Deluno Usenet provider"
+            },
+            {
+              "Name": "Server1.Level",
+              "Value": "0"
+            },
+            {
+              "Name": "Server1.Optional",
+              "Value": "no"
+            },
+            {
+              "Name": "Server1.Group",
+              "Value": "0"
+            },
+            {
+              "Name": "Server1.Host",
+              "Value": "127.0.0.1"
+            },
+            {
+              "Name": "Server1.Encryption",
+              "Value": "no"
+            },
+            {
+              "Name": "Server1.Port",
+              "Value": "1119"
+            },
+            {
+              "Name": "Server1.Username",
+              "Value": "<scrubbed>"
+            },
+            {
+              "Name": "Server1.Password",
+              "Value": "<scrubbed>"
+            },
+            {
+              "Name": "Server1.JoinGroup",
+              "Value": "no"
+            },
+            {
+              "Name": "Server1.Cipher",
+              "Value": ""
+            },
+            {
+              "Name": "Server1.Connections",
+              "Value": "2"
+            },
+            {
+              "Name": "Server1.Retention",
+              "Value": "0"
+            },
+            {
+              "Name": "Server1.CertVerification",
+              "Value": "strict"
+            },
+            {
+              "Name": "Server1.IpVersion",
+              "Value": "auto"
+            },
+            {
+              "Name": "Server1.Notes",
+              "Value": ""
+            },
+            {
+              "Name": "ControlIP",
+              "Value": "127.0.0.1"
+            },
+            {
+              "Name": "ControlPort",
+              "Value": "6789"
+            },
+            {
+              "Name": "ControlUsername",
+              "Value": "<scrubbed>"
+            },
+            {
+              "Name": "ControlPassword",
+              "Value": "<scrubbed>"
+            },
+            {
+              "Name": "RestrictedUsername",
+              "Value": ""
+            },
+            {
+              "Name": "RestrictedPassword",
+              "Value": ""
+            },
+            {
+              "Name": "AddUsername",
+              "Value": ""
+            },
+            {
+              "Name": "AddPassword",
+              "Value": ""
+            },
+            {
+              "Name": "FormAuth",
+              "Value": "no"
+            },
+            {
+              "Name": "SecureControl",
+              "Value": "no"
+            },
+            {
+              "Name": "SecurePort",
+              "Value": "6791"
+            },
+            {
+              "Name": "SecureCert",
+              "Value": ""
+            },
+            {
+              "Name": "SecureKey",
+              "Value": ""
+            },
+            {
+              "Name": "AuthorizedIP",
+              "Value": "127.0.0.1"
+            },
+            {
+              "Name": "CertCheck",
+              "Value": "yes"
+            },
+            {
+              "Name": "UpdateCheck",
+              "Value": "stable"
+            },
+            {
+              "Name": "Category1.Name",
+              "Value": "Movies"
+            },
+            {
+              "Name": "Category1.DestDir",
+              "Value": "C:\\Downloads\\Completed\\Movies"
+            },
+            {
+              "Name": "Category1.Unpack",
+              "Value": "yes"
+            },
+            {
+              "Name": "Category1.Extensions",
+              "Value": ""
+            },
+            {
+              "Name": "Category1.Aliases",
+              "Value": ""
+            },
+            {
+              "Name": "Category2.Name",
+              "Value": "TV"
+            },
+            {
+              "Name": "Category3.Name",
+              "Value": "Music"
+            },
+            {
+              "Name": "Category4.Name",
+              "Value": "Software"
+            },
+            {
+              "Name": "AppendCategoryDir",
+              "Value": "yes"
+            },
+            {
+              "Name": "NzbDirInterval",
+              "Value": "5"
+            },
+            {
+              "Name": "NzbDirFileAge",
+              "Value": "60"
+            },
+            {
+              "Name": "NzbDirArchiveScan",
+              "Value": "yes"
+            },
+            {
+              "Name": "NzbDirArchiveAction",
+              "Value": "delete"
+            },
+            {
+              "Name": "DupeCheck",
+              "Value": "yes"
+            },
+            {
+              "Name": "FlushQueue",
+              "Value": "yes"
+            },
+            {
+              "Name": "ContinuePartial",
+              "Value": "yes"
+            },
+            {
+              "Name": "PropagationDelay",
+              "Value": "0"
+            },
+            {
+              "Name": "ArticleCache",
+              "Value": "250"
+            },
+            {
+              "Name": "DirectWrite",
+              "Value": "yes"
+            },
+            {
+              "Name": "WriteBuffer",
+              "Value": "1024"
+            },
+            {
+              "Name": "FileNaming",
+              "Value": "auto"
+            },
+            {
+              "Name": "RenameAfterUnpack",
+              "Value": "yes"
+            },
+            {
+              "Name": "RenameIgnoreExt",
+              "Value": ".zip, .7z, .rar, .par2"
+            },
+            {
+              "Name": "ReorderFiles",
+              "Value": "yes"
+            },
+            {
+              "Name": "PostStrategy",
+              "Value": "balanced"
+            },
+            {
+              "Name": "DiskSpace",
+              "Value": "250"
+            },
+            {
+              "Name": "NzbCleanupDisk",
+              "Value": "yes"
+            },
+            {
+              "Name": "KeepHistory",
+              "Value": "30"
+            },
+            {
+              "Name": "FeedHistory",
+              "Value": "7"
+            },
+            {
+              "Name": "SkipWrite",
+              "Value": "no"
+            },
+            {
+              "Name": "RawArticle",
+              "Value": "no"
+            },
+            {
+              "Name": "ArticleRetries",
+              "Value": "3"
+            },
+            {
+              "Name": "ArticleInterval",
+              "Value": "10"
+            },
+            {
+              "Name": "ArticleTimeout",
+              "Value": "60"
+            },
+            {
+              "Name": "ArticleReadChunkSize",
+              "Value": "4"
+            },
+            {
+              "Name": "UrlRetries",
+              "Value": "3"
+            },
+            {
+              "Name": "UrlInterval",
+              "Value": "10"
+            },
+            {
+              "Name": "UrlTimeout",
+              "Value": "60"
+            },
+            {
+              "Name": "RemoteTimeout",
+              "Value": "90"
+            },
+            {
+              "Name": "DownloadRate",
+              "Value": "0"
+            },
+            {
+              "Name": "UrlConnections",
+              "Value": "4"
+            },
+            {
+              "Name": "UrlForce",
+              "Value": "yes"
+            },
+            {
+              "Name": "MonthlyQuota",
+              "Value": "0"
+            },
+            {
+              "Name": "QuotaStartDay",
+              "Value": "1"
+            },
+            {
+              "Name": "DailyQuota",
+              "Value": "0"
+            },
+            {
+              "Name": "SystemHealthCheck",
+              "Value": "yes"
+            },
+            {
+              "Name": "WriteLog",
+              "Value": "rotate"
+            },
+            {
+              "Name": "RotateLog",
+              "Value": "3"
+            },
+            {
+              "Name": "ErrorTarget",
+              "Value": "both"
+            },
+            {
+              "Name": "WarningTarget",
+              "Value": "both"
+            },
+            {
+              "Name": "InfoTarget",
+              "Value": "both"
+            },
+            {
+              "Name": "DetailTarget",
+              "Value": "log"
+            },
+            {
+              "Name": "DebugTarget",
+              "Value": "log"
+            },
+            {
+              "Name": "LogBuffer",
+              "Value": "1000"
+            },
+            {
+              "Name": "NzbLog",
+              "Value": "yes"
+            },
+            {
+              "Name": "CrashTrace",
+              "Value": "yes"
+            },
+            {
+              "Name": "CrashDump",
+              "Value": "no"
+            },
+            {
+              "Name": "TimeCorrection",
+              "Value": "0"
+            },
+            {
+              "Name": "OutputMode",
+              "Value": "ncurses"
+            },
+            {
+              "Name": "CursesNzbName",
+              "Value": "yes"
+            },
+            {
+              "Name": "CursesGroup",
+              "Value": "no"
+            },
+            {
+              "Name": "CursesTime",
+              "Value": "no"
+            },
+            {
+              "Name": "UpdateInterval",
+              "Value": "200"
+            },
+            {
+              "Name": "CrcCheck",
+              "Value": "yes"
+            },
+            {
+              "Name": "ParCheck",
+              "Value": "auto"
+            },
+            {
+              "Name": "ParRepair",
+              "Value": "yes"
+            },
+            {
+              "Name": "ParScan",
+              "Value": "extended"
+            },
+            {
+              "Name": "ParQuick",
+              "Value": "yes"
+            },
+            {
+              "Name": "ParBuffer",
+              "Value": "250"
+            },
+            {
+              "Name": "ParThreads",
+              "Value": "0"
+            },
+            {
+              "Name": "ParIgnoreExt",
+              "Value": ".sfv, .nzb, .nfo"
+            },
+            {
+              "Name": "ParRename",
+              "Value": "yes"
+            },
+            {
+              "Name": "RarRename",
+              "Value": "yes"
+            },
+            {
+              "Name": "DirectRename",
+              "Value": "yes"
+            },
+            {
+              "Name": "HardLinking",
+              "Value": "no"
+            },
+            {
+              "Name": "HardLinkingIgnoreExt",
+              "Value": ".zip, .7z, .rar, *.7z.###, *.r##"
+            },
+            {
+              "Name": "HealthCheck",
+              "Value": "park"
+            },
+            {
+              "Name": "ParTimeLimit",
+              "Value": "0"
+            },
+            {
+              "Name": "ParPauseQueue",
+              "Value": "no"
+            },
+            {
+              "Name": "Unpack",
+              "Value": "yes"
+            },
+            {
+              "Name": "DirectUnpack",
+              "Value": "yes"
+            },
+            {
+              "Name": "UseTempUnpackDir",
+              "Value": "yes"
+            },
+            {
+              "Name": "UnpackPauseQueue",
+              "Value": "no"
+            },
+            {
+              "Name": "UnpackCleanupDisk",
+              "Value": "yes"
+            },
+            {
+              "Name": "UnrarCmd",
+              "Value": "C:\\Program Files\\NZBGet\\unrar.exe"
+            },
+            {
+              "Name": "SevenZipCmd",
+              "Value": "C:\\Program Files\\NZBGet\\7za.exe"
+            },
+            {
+              "Name": "ExtCleanupDisk",
+              "Value": ".par2, .sfv"
+            },
+            {
+              "Name": "UnpackIgnoreExt",
+              "Value": ".cbr"
+            },
+            {
+              "Name": "UnpackPassFile",
+              "Value": ""
+            },
+            {
+              "Name": "Extensions",
+              "Value": ""
+            },
+            {
+              "Name": "ScriptOrder",
+              "Value": ""
+            },
+            {
+              "Name": "ScriptPauseQueue",
+              "Value": "no"
+            },
+            {
+              "Name": "ShellOverride",
+              "Value": ""
+            },
+            {
+              "Name": "EventInterval",
+              "Value": "0"
+            },
+            {
+              "Name": "ConfigFile",
+              "Value": "C:\\ProgramData\\NZBGet\\nzbget.conf"
+            },
+            {
+              "Name": "AppBin",
+              "Value": "C:\\Program Files\\NZBGet\\nzbget.exe"
+            },
+            {
+              "Name": "AppDir",
+              "Value": "C:\\Program Files\\NZBGet"
+            },
+            {
+              "Name": "Version",
+              "Value": "26.3"
+            },
+            {
+              "Name": "WebDir",
+              "Value": "C:\\Program Files\\NZBGet\\webui"
+            },
+            {
+              "Name": "ConfigTemplate",
+              "Value": "C:\\Program Files\\NZBGet\\nzbget.conf.template"
+            },
+            {
+              "Name": "LockFile",
+              "Value": "C:\\Program Files\\NZBGet/nzbget.lock"
+            },
+            {
+              "Name": "DaemonUsername",
+              "Value": "<scrubbed>"
+            },
+            {
+              "Name": "UMask",
+              "Value": "1000"
+            },
+            {
+              "Name": "Category2.DestDir",
+              "Value": "C:\\Downloads\\Completed\\TV"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
