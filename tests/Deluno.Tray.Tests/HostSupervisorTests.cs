@@ -97,7 +97,7 @@ public sealed class HostSupervisorTests
     {
         public static readonly DateTimeOffset Epoch = new(2026, 10, 13, 9, 0, 0, TimeSpan.Zero);
 
-        public FakeTimeProvider Time { get; } = new(Epoch);
+        public FakeTimeProvider Time { get; }
         public StartProgress Progress { get; }
         public ScriptedHost Host { get; } = new();
         public List<string> Lines { get; } = [];
@@ -107,8 +107,9 @@ public sealed class HostSupervisorTests
         public string Folder { get; } = Path.Combine(Path.GetTempPath(), "deluno-supervisor-" + Guid.NewGuid().ToString("N"));
         public string MarkerPath => Path.Combine(Folder, StartMarkerFile.FileName);
 
-        public Harness(HostSupervisorSettings? settings = null, IProcessRestarter? restarter = null, double random = 0.5, int pid = 4242, bool offThread = false)
+        public Harness(HostSupervisorSettings? settings = null, IProcessRestarter? restarter = null, double random = 0.5, int pid = 4242, bool offThread = false, FakeTimeProvider? time = null)
         {
+            Time = time ?? new FakeTimeProvider(Epoch);
             Directory.CreateDirectory(Folder);
             Progress = new StartProgress(Time, MarkerPath, pid, line => { lock (Lines) { Lines.Add("progress: " + line); } });
             Host.Progress = Progress;
@@ -930,75 +931,227 @@ public sealed class HostSupervisorTests
 
     // ------------------------------------------------------------------ stress
 
+    // ------------------------------------------------------------------ races found by reading the code (#1256)
+
+    /// <summary>A fake clock that keeps the timers it was asked for, so a test can run a callback "late", as the real clock can.</summary>
+    private sealed class CapturingTime(DateTimeOffset start) : FakeTimeProvider(start)
+    {
+        public List<(TimerCallback Callback, object? State, TimeSpan Due)> Timers { get; } = [];
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            lock (Timers)
+            {
+                Timers.Add((callback, state, dueTime));
+            }
+
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [Fact]
+    public async Task A_steady_timer_that_fired_just_before_a_failure_does_not_clear_that_failure()
+    {
+        var time = new CapturingTime(Harness.Epoch);
+        using var h = new Harness(time: time);
+        h.Host.Script = call =>
+        {
+            if (call.Attempt > 1)
+            {
+                throw new InvalidOperationException("no");
+            }
+
+            call.Enter(StartupPhase.Ready);
+            return Task.CompletedTask;
+        };
+        Assert.Equal(StartOutcome.Started, (await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart))).Outcome);
+        var steady = time.Timers.Last(t => t.Due == h.Supervisor.Settings.StableAfter);
+
+        // The host stops by itself. While the supervisor waits to try again, the steady timer's callback - which had already
+        // fired on another thread and was only waiting for the lock - gets its turn.
+        var second = h.Supervisor.StartAsync(StartReason.UnexpectedStop);
+        await h.PassAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(1, h.Supervisor.FailuresInWindow);
+        steady.Callback(steady.State);
+
+        Assert.Equal(1, h.Supervisor.FailuresInWindow);
+        Assert.DoesNotContain("stable", h.Events);
+        Assert.DoesNotContain("run steadily", h.Log);
+        h.Supervisor.Cancel();
+        await h.DriveAsync(second);
+    }
+
+    [Fact]
+    public async Task Choosing_Stop_while_a_hung_try_is_being_freed_leaves_no_failure_behind()
+    {
+        using var h = new Harness();
+        var freeing = new TaskCompletionSource();
+        h.Host.Script = async call =>
+        {
+            call.Enter(StartupPhase.Migrations, "platform: V0001");
+            await call.HangAsync();
+        };
+        h.Host.OnFree = _ => freeing.Task;
+
+        var running = h.Supervisor.StartAsync(StartReason.FirstStart);
+        var passed = TimeSpan.Zero;
+        while (h.Host.Frees == 0)
+        {
+            Assert.True(passed < TimeSpan.FromHours(1), "the hung try was never released");
+            h.AdvanceInline(TimeSpan.FromSeconds(5));
+            passed += TimeSpan.FromSeconds(5);
+            await Task.Yield();
+        }
+
+        // The person chooses Restart (which starts the count over) just as the hung try is judged a failure.
+        h.Supervisor.Cancel();
+        freeing.SetResult();
+        var result = await h.DriveAsync(running);
+
+        Assert.Equal(StartOutcome.Cancelled, result.Outcome);
+        Assert.Equal(0, h.Supervisor.FailuresInWindow);
+        Assert.DoesNotContain(h.Events, e => e.StartsWith("failed"));
+    }
+
+    [Fact]
+    public async Task A_start_that_reports_ready_and_then_does_not_return_is_a_failed_try_not_a_quiet_cancel()
+    {
+        using var h = new Harness();
+        h.Host.Script = async call =>
+        {
+            call.Enter(StartupPhase.WebHost, "binding the port");
+            await call.WorkAsync(TimeSpan.FromSeconds(5));
+            call.Enter(StartupPhase.Ready);
+            await call.HangAsync(); // the tail of the start never returns
+        };
+
+        var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.PortChange, retry: false));
+
+        Assert.Equal(StartOutcome.Failed, result.Outcome);
+        Assert.Contains("reported ready", result.Failure);
+        Assert.Equal(1, h.Host.Frees);
+    }
+
     [Fact]
     public async Task Stress_forty_runs_of_the_loop_with_mixed_failures_hangs_and_slow_steps_always_end_well()
     {
-        for (var seed = 1; seed <= 40; seed++)
+        // DELUNO_STRESS_SEEDS raises the count for a hunt (for example 2000); the default is the 40 the suite runs.
+        var seeds = int.TryParse(Environment.GetEnvironmentVariable("DELUNO_STRESS_SEEDS"), out var asked) && asked > 0 ? asked : 40;
+        var repeats = int.TryParse(Environment.GetEnvironmentVariable("DELUNO_STRESS_REPEAT"), out var times) && times > 0 ? times : 1;
+        for (var round = 1; round <= repeats; round++)
         {
-            var rng = new Random(seed);
-            using var h = new Harness(random: rng.NextDouble());
-            var script = new List<(string Kind, StartupPhase Phase)>();
-            var plan = Enumerable.Range(0, rng.Next(0, 7)).Select(_ =>
+            for (var seed = 1; seed <= seeds; seed++)
             {
-                var kind = rng.Next(4) switch { 0 => "fail", 1 => "hang", 2 => "slow", _ => "instant" };
-                return (kind, AllPhases[rng.Next(AllPhases.Length)]);
-            }).ToList();
-            h.Host.Script = async call =>
+                await RunStressSeedAsync(seed);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One seeded run. A failure reports the run, the assertion, the plan, the supervisor's own log and state, the host's
+    /// counters and the fake clock, so a single failure explains itself.
+    /// </summary>
+    private static async Task RunStressSeedAsync(int seed)
+    {
+        var rng = new Random(seed);
+        using var h = new Harness(random: rng.NextDouble());
+        var plan = Enumerable.Range(0, rng.Next(0, 7)).Select(_ =>
+        {
+            var kind = rng.Next(4) switch { 0 => "fail", 1 => "hang", 2 => "slow", _ => "instant" };
+            return (kind, AllPhases[rng.Next(AllPhases.Length)]);
+        }).ToList();
+        h.Host.Script = async call =>
+        {
+            if (call.Attempt > plan.Count)
             {
-                if (call.Attempt > plan.Count)
-                {
+                call.Enter(StartupPhase.Ready);
+                return;
+            }
+
+            var (kind, phase) = plan[call.Attempt - 1];
+            call.Enter(phase, "step " + call.Attempt);
+            switch (kind)
+            {
+                case "fail":
+                    throw new InvalidOperationException("failed in " + phase);
+                case "hang":
+                    await call.HangAsync();
+                    return;
+                case "slow":
+                    for (var i = 0; i < 20; i++)
+                    {
+                        call.Enter(phase, $"step {call.Attempt}.{i}");
+                        await call.WorkAsync(TimeSpan.FromMinutes(1));
+                    }
+
                     call.Enter(StartupPhase.Ready);
                     return;
-                }
+                default:
+                    call.Enter(StartupPhase.Ready);
+                    return;
+            }
+        };
 
-                var (kind, phase) = plan[call.Attempt - 1];
-                call.Enter(phase, "step " + call.Attempt);
-                switch (kind)
-                {
-                    case "fail":
-                        throw new InvalidOperationException("failed in " + phase);
-                    case "hang":
-                        await call.HangAsync();
-                        return;
-                    case "slow":
-                        for (var i = 0; i < 20; i++)
-                        {
-                            call.Enter(phase, $"step {call.Attempt}.{i}");
-                            await call.WorkAsync(TimeSpan.FromMinutes(1));
-                        }
-
-                        call.Enter(StartupPhase.Ready);
-                        return;
-                    default:
-                        call.Enter(StartupPhase.Ready);
-                        return;
-                }
-            };
-
-            var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart), step: TimeSpan.FromSeconds(5));
+        StartResult? result = null;
+        string where = "before the run ended";
+        try
+        {
+            result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart), step: TimeSpan.FromSeconds(5));
 
             // It always ends: started, or gave up after the limit; never a half-way state.
-            Assert.True(result.Outcome is StartOutcome.Started or StartOutcome.GaveUp, $"seed {seed}: {result.Outcome}");
-            Assert.True(h.Host.Starts <= h.Supervisor.Settings.StartLimit, $"seed {seed}: {h.Host.Starts} starts");
-            Assert.True(h.Supervisor.FailuresInWindow <= h.Supervisor.Settings.StartLimit, $"seed {seed}");
+            where = "the outcome is Started or GaveUp";
+            Assert.True(result.Outcome is StartOutcome.Started or StartOutcome.GaveUp, result.Outcome.ToString());
+            // The limit is on failures inside the window, not on starts: tries that each take minutes (a hang is cut off after its
+            // whole window) let the early failures age out, so more than five starts in all is correct then. Inside one window
+            // it is five at most.
+            where = "starts are within the limit while the whole run fits one failure window";
+            if (h.Time.GetUtcNow() - Harness.Epoch < h.Supervisor.Settings.FailureWindow)
+            {
+                Assert.True(h.Host.Starts <= h.Supervisor.Settings.StartLimit, $"{h.Host.Starts} starts");
+            }
+
+            where = "failures in the window are within the limit";
+            Assert.True(h.Supervisor.FailuresInWindow <= h.Supervisor.Settings.StartLimit, h.Supervisor.FailuresInWindow.ToString());
             // Every attempt is numbered in the log, with its reason (a number counts the failures still inside the window, so a
             // slow try that outlives the window can make it lower than the count of starts); every wait is inside its bounds.
+            where = "every start has a numbered line in the log";
             Assert.Equal(h.Host.Starts, Regex.Matches(h.Log, @"Start try \d+ of 5 \(first start\)").Count);
 
+            where = "every retry waited within its bounds";
             foreach (var attempt in h.Attempts.Skip(1))
             {
                 Assert.InRange(attempt.Delay, TimeSpan.Zero, h.Supervisor.Settings.MaxBackoff);
-                Assert.True(attempt.Delay >= TimeSpan.FromSeconds(7.4), $"seed {seed}: a retry with no wait");
+                Assert.True(attempt.Delay >= TimeSpan.FromSeconds(7.4), "a retry with no wait");
             }
 
+            where = "a start that needed a retry is a warning";
             if (result.Outcome == StartOutcome.Started && h.Host.Starts > 1)
             {
                 Assert.Contains("WARN", h.Log);
             }
 
             // The host is freed after every failed or hung try, and never twice for one try.
-            Assert.True(h.Host.Frees <= h.Host.Starts, $"seed {seed}");
+            where = "the host is freed at most once per start";
+            Assert.True(h.Host.Frees <= h.Host.Starts, $"{h.Host.Frees} frees, {h.Host.Starts} starts");
+            where = "the host is freed once for each start that did not succeed";
             Assert.Equal(h.Host.Starts - (result.Outcome == StartOutcome.Started ? 1 : 0), h.Host.Frees);
+        }
+        catch (Exception ex)
+        {
+            var report = new System.Text.StringBuilder();
+            report.AppendLine($"STRESS run (seed) {seed} failed at: {where}");
+            report.AppendLine($"  assertion: {ex.GetType().Name}: {ex.Message.Replace("\n", " | ")}");
+            report.AppendLine($"  plan (one entry per attempt): {string.Join(", ", plan.Select(p => p.kind + "@" + p.Item2))}");
+            report.AppendLine($"  outcome: {(result is null ? "(none)" : result.Outcome + " after " + result.Attempts + " attempts, failure: " + result.Failure)}");
+            report.AppendLine($"  fake clock: +{(h.Time.GetUtcNow() - Harness.Epoch).TotalSeconds:0}s");
+            report.AppendLine($"  supervisor: failuresInWindow={h.Supervisor.FailuresInWindow}");
+            report.AppendLine($"  host: starts={h.Host.Starts} stops={h.Host.Stops} frees={h.Host.Frees} cancels={h.Host.CancelTimes.Count}");
+            report.AppendLine($"  progress: {h.Progress.Current}");
+            report.AppendLine($"  threadpool: threads={ThreadPool.ThreadCount} pending={ThreadPool.PendingWorkItemCount}");
+            report.AppendLine($"  events: {string.Join(" / ", h.Events)}");
+            report.AppendLine("  supervisor log:");
+            report.AppendLine(h.Log);
+            throw new Xunit.Sdk.XunitException("STRESS " + report);
         }
     }
 }
