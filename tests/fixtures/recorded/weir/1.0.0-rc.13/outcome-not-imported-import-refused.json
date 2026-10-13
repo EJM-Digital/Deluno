@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "outcome-not-imported-import-refused",
+  "recordedAt": "2026-10-13T20:46:11Z",
+  "note": "A not-imported outcome for a finished hand-off, with a reason: Weir keeps its copy.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/73d52af9-f923-4f9d-a4ae-ca409e9ded9c/outcome",
+        "body": {
+          "outcome": "not-imported",
+          "occurredUtc": "2026-10-13T20:46:11.2567807Z",
+          "importedPath": null,
+          "reason": "Deluno could not match this file to a film in the library, so it will not import it."
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "73d52af9-f923-4f9d-a4ae-ca409e9ded9c",
+          "outcome": "not-imported",
+          "released": false,
+          "message": "Weir recorded that the file will not be imported, and kept its copy."
+        }
+      }
+    }
+  ]
+}

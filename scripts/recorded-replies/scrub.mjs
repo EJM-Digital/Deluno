@@ -33,7 +33,8 @@ export const extraPatterns = [
   // 10.x, 172.16-31.x, 192.168.x (192.168.1.10 is the placeholder and stays).
   { name: 'a private LAN address', regex: /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/g, replacement: '192.168.1.10', keep: (m) => m === '192.168.1.10' },
   // \\machine\share, as text (one backslash each) or as JSON text (two each).
-  { name: 'a share on a network machine', regex: /(?<=^|[\s"'=,(\[])(\\{2,4})(?![?<])[A-Za-z0-9._-]+(?=\\)/g, replacement: '$1<nas>' },
+  // A lone n, r, t, b or f after the slashes is a JSON-escaped newline, tab or the like (a Python traceback inside a reply's text), not a machine.
+  { name: 'a share on a network machine', regex: /(?<=^|[\s"'=,(\[])(\\{2,4})(?![?<])(?![nrtbf]\\)[A-Za-z0-9._-]+(?=\\)/g, replacement: '$1<nas>' },
   { name: "a user's profile folder", regex: /([A-Za-z]:\\{1,2}Users\\{1,2})(?!<|Public\b|Default\b|All Users\b)[^\\/"'\s]+/gi, replacement: '$1<user>' },
   { name: 'a home folder of a person', regex: /(\/home\/)(?!<)[A-Za-z0-9._-]+/g, replacement: '$1<user>' }
 ];

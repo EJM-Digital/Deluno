@@ -1,0 +1,111 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "unauthenticated-call",
+  "recordedAt": "2026-10-13T20:39:17Z",
+  "note": "Calls made after a failed login, so with no session: a connected check, a torrent list and a pause.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "auth.login",
+          "params": [
+            "not-the-password"
+          ],
+          "id": 1
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": false,
+          "error": null,
+          "id": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.connected",
+          "params": [],
+          "id": 2
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Not authenticated",
+            "code": 1
+          },
+          "id": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress"
+            ],
+            {}
+          ],
+          "id": 3
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Not authenticated",
+            "code": 1
+          },
+          "id": 3
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "bodyText": "{\"method\":\"core.pause_torrent\",\"params\":[[\"0000000000000000000000000000000000000000\"]],\"id\":4}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Not authenticated",
+            "code": 1
+          },
+          "id": 4
+        }
+      }
+    }
+  ]
+}

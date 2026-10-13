@@ -1,0 +1,46 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "handoff-cancel-working",
+  "recordedAt": "2026-10-13T20:45:57Z",
+  "note": "A cancel for a hand-off Weir is working on: refused with 409.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/intake/handoffs/deluno/ee0c2880-6801-4257-88f6-6034416c97a0"
+      },
+      "reply": {
+        "status": 409,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "This hand-off is working, so Weir did not cancel it."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/ee0c2880-6801-4257-88f6-6034416c97a0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "ee0c2880-6801-4257-88f6-6034416c97a0",
+          "state": "working",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-13T20:45:57.227104Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "Weir has claimed this file and is checking it now."
+        }
+      }
+    }
+  ]
+}

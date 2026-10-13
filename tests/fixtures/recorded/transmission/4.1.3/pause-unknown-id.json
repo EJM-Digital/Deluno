@@ -1,0 +1,73 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "pause-unknown-id",
+  "recordedAt": "2026-10-13T20:44:22Z",
+  "note": "A pause of a hash (and, for Transmission, a numeric id) the client never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "bodyText": "{\"method\":\"torrent-stop\",\"arguments\":{\"ids\":[\"0000000000000000000000000000000000000000\"]},\"tag\":9}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 9
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-stop",
+          "arguments": {
+            "ids": [
+              999999
+            ]
+          },
+          "tag": 11
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "success",
+          "tag": 11
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "bodyText": "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"id\",\"hashString\",\"name\",\"status\",\"percentDone\",\"rateDownload\",\"rateUpload\",\"error\",\"errorString\",\"downloadDir\",\"totalSize\",\"leftUntilDone\",\"peersConnected\",\"peersSendingToUs\",\"isStalled\",\"isFinished\",\"trackerStats\",\"files\",\"addedDate\",\"downloadedEver\",\"uploadedEver\",\"eta\",\"queuePosition\",\"labels\"],\"ids\":[\"0000000000000000000000000000000000000000\"]},\"tag\":10}"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": []
+          },
+          "result": "success",
+          "tag": 10
+        }
+      }
+    }
+  ]
+}

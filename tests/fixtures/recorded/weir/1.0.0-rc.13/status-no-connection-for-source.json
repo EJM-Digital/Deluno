@@ -1,0 +1,24 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "status-no-connection-for-source",
+  "recordedAt": "2026-10-13T21:26:23Z",
+  "note": "The status poll under a source key Weir knows (radarr) but has no connection for: 403.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/radarr/01a1371c38837e979272e31cd3ce6c3a"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Set a webhook secret in Weir so a media manager can ask about hand-offs."
+        }
+      }
+    }
+  ]
+}

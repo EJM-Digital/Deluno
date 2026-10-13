@@ -49,6 +49,10 @@ param(
     [int] $TransmissionPort = 9091,
     [int] $DelugePort = 8112,
     [string] $WeirUrl = 'http://127.0.0.1:9347', [string] $WeirVersion = 'rc.13', [string] $WeirSource = 'deluno',
+    # Records only these extra states and changes nothing else: 'controls' (resume of a known paused job, a pause of an unknown id, a wrong login, for the
+    # apps in -Apps), 'nzbget-config' (NZBGet paused over errors in its configuration, #1257) and 'weir-states' (the Weir states Record-Weir.ps1 does not reach).
+    # No MISSING.md is rewritten in this mode: the lines it prints are added to that file by hand.
+    [ValidateSet('controls', 'nzbget-config', 'weir-states')] [string[]] $Extra,
     [switch] $NoSwarm,   # skip the two-client transfers (about 20 of the 35 minutes)
     [switch] $DelunoSide, [string] $DelunoVersion = 'current', [int] $PerState = 3
 )
@@ -76,18 +80,25 @@ $texts = @{
 
 
 # The in-VM program: the helper library, the recorders, then the calls. It prints a JSON document on its last line.
-$libs = 'Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Collect-DelunoSide.ps1' |
+$libs = 'Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Record-WeirStates.ps1', 'Record-Controls.ps1', 'Collect-DelunoSide.ps1' |
     ForEach-Object { Get-Content -Raw -LiteralPath (Join-Path $here $_) }
 $calls = [System.Text.StringBuilder]::new()
 $map = [ordered]@{ sabnzbd = 'Invoke-RecordSabnzbd'; nzbget = 'Invoke-RecordNzbget'; weir = 'Invoke-RecordWeir' }
 foreach ($app in $map.Keys) {
-    if ($Apps -contains $app) {
+    if (-not $Extra -and $Apps -contains $app) {
         $null = $calls.AppendLine("Write-RunLog 'start $app'; try { $($map[$app]) `$p } catch { Add-Missing ('$app stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }")
     }
 }
-if ($Apps -contains 'sabnzbd' -or $Apps -contains 'nzbget') { $null = $calls.AppendLine('try { Remove-UsenetStubReleases } catch { }') }
+if (-not $Extra -and ($Apps -contains 'sabnzbd' -or $Apps -contains 'nzbget')) { $null = $calls.AppendLine('try { Remove-UsenetStubReleases } catch { }') }
 $torrentApps = @($Apps | Where-Object { $_ -in 'qbittorrent', 'transmission', 'deluge' })
-if ($torrentApps.Count -gt 0) {
+if ($Extra -contains 'controls') {
+    if ($Apps -contains 'sabnzbd') { $null = $calls.AppendLine("Write-RunLog 'start sabnzbd controls'; try { Invoke-RecordSabnzbdControls `$p } catch { Add-Missing ('sabnzbd controls stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+    if ($Apps -contains 'nzbget') { $null = $calls.AppendLine("Write-RunLog 'start nzbget controls'; try { Invoke-RecordNzbgetControls `$p } catch { Add-Missing ('nzbget controls stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+    if ($torrentApps.Count -gt 0) { $null = $calls.AppendLine("Write-RunLog 'start torrent controls'; try { Invoke-RecordTorrentControls `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent controls stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+}
+if ($Extra -contains 'nzbget-config') { $null = $calls.AppendLine("Write-RunLog 'start nzbget config error'; try { Invoke-RecordNzbgetRefusedLogin `$p; Invoke-RecordNzbgetConfigError `$p } catch { Add-Missing ('nzbget config error stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+if ($Extra -contains 'weir-states') { $null = $calls.AppendLine("Write-RunLog 'start weir states'; try { Invoke-RecordWeirStates `$p } catch { Add-Missing ('weir states stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+if (-not $Extra -and $torrentApps.Count -gt 0) {
     $null = $calls.AppendLine("Write-RunLog 'start torrent clients'; try { Invoke-RecordTorrentClients `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent clients stopped: ' + `$_.Exception.Message) }")
 }
 if ($DelunoSide) { $null = $calls.AppendLine('try { Invoke-CollectDelunoSide $p } catch { Add-Missing (''deluno side stopped: '' + $_.Exception.Message) }') }
@@ -121,6 +132,7 @@ $names = @($VmName, $vmCred.UserName.Split('\')[-1], $result.computerName, $resu
 $nameArgs = $names | ForEach-Object { '--name'; $_ }
 
 $written = 0
+$writtenFiles = [System.Collections.Generic.List[string]]::new()
 foreach ($recording in $result.recordings) {
     $folder = Join-Path $OutDirectory (Join-Path $recording.app $recording.version)
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
@@ -128,6 +140,7 @@ foreach ($recording in $result.recordings) {
     # UTF-8 without a byte-order mark: Set-Content -Encoding utf8 writes one in Windows PowerShell 5.1, which the JSON readers refuse.
     [IO.File]::WriteAllText($file, (($recording | ConvertTo-Json -Depth 30) + "`n"), (New-Object Text.UTF8Encoding($false)))
     $written++
+    $writtenFiles.Add($file)
 }
 $logNames = @($result.logs.PSObject.Properties.Name | Where-Object { $_ })
 if ($logNames.Count -gt 0) {
@@ -136,16 +149,24 @@ if ($logNames.Count -gt 0) {
     $logFolder = Join-Path $OutDirectory (Join-Path 'weir' (Join-Path $weirVersion 'logs'))
     New-Item -ItemType Directory -Force -Path $logFolder | Out-Null
     foreach ($name in $logNames) {
-        [IO.File]::WriteAllText((Join-Path $logFolder $name), ([string]$result.logs.$name + "`n"), (New-Object Text.UTF8Encoding($false)))
+        $logFile = Join-Path $logFolder $name
+        [IO.File]::WriteAllText($logFile, ([string]$result.logs.$name + "`n"), (New-Object Text.UTF8Encoding($false)))
+        $writtenFiles.Add($logFile)
     }
 }
 
 # Scrub, tidy (JSON text bodies become JSON), then check nothing private is left. The check fails the run, loudly.
-& node (Join-Path $here 'scrub.mjs') $OutDirectory @nameArgs
+# Only the files this run wrote: the recordings made earlier are not rewritten.
+& node (Join-Path $here 'scrub.mjs') @($writtenFiles) @nameArgs
 if ($LASTEXITCODE -ne 0) { throw 'scrub.mjs failed' }
-& node (Join-Path $here 'scrub.mjs') $OutDirectory @nameArgs --check
+& node (Join-Path $here 'scrub.mjs') @($writtenFiles) @nameArgs --check
 if ($LASTEXITCODE -ne 0) { throw 'A recording still carries something private after scrubbing. Nothing should be committed; see the list above.' }
 
+if ($Extra) {
+    Write-Host "Wrote $written recordings to $OutDirectory (extra states only; MISSING.md untouched)."
+    foreach ($line in @($result.missing | Sort-Object -Unique)) { Write-Host "MISSING $line" -ForegroundColor Yellow }
+    return
+}
 $missingFile = Join-Path $OutDirectory 'MISSING.md'
 $lines = @('# Recordings the golden VM could not produce', '', "Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on $((Get-Date).ToString('yyyy-MM-dd')). Each line says what is needed to record it.", '')
 $lines += @($result.missing | Sort-Object -Unique | ForEach-Object { "- $_" })
