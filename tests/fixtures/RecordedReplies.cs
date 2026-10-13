@@ -328,7 +328,8 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
     /// The recorded body with the values a test chooses changed, everything else exactly as the app sent it. Each path is
     /// dot-separated property names and array positions ("0.state", "result.abc123.progress", "arguments.torrents.0.percentDone");
     /// a null value removes the property. Use it to set the one thing a test is about (a state the VM cannot be put in, a
-    /// ratio); never to rebuild a reply, which a test of an external app must not do.
+    /// ratio); never to rebuild a reply, which a test of an external app must not do. A part in square brackets,
+    /// "[Name=InterDir]", picks the list element whose Name property is InterDir.
     /// </summary>
     public string BodyWith(params (string Path, object? Value)[] edits)
     {
@@ -360,15 +361,27 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
                 continue;
             }
 
-            var path = rawPath;
+            // ">result.<scrubbed>-movies" with a name renames that property: a recording scrubbed a name that is a person's own (a category
+            // Deluno made), and the test needs the name its code looks for.
+            var rename = rawPath.StartsWith('>');
+            var path = rename ? rawPath[1..] : rawPath;
             JsonNode? node = root;
-            var parts = path.Split('.');
+            var parts = SplitPath(path);
             for (var i = 0; i < parts.Length - 1; i++)
             {
                 node = Step(node, parts[i]) ?? throw new KeyNotFoundException($"The recorded reply has nothing at '{string.Join('.', parts[..(i + 1)])}' (while setting '{path}').");
             }
 
             var last = parts[^1];
+            if (rename)
+            {
+                var owner = node as JsonObject ?? throw new KeyNotFoundException($"Cannot rename '{path}' in the recorded reply.");
+                var moved = owner[last] ?? throw new KeyNotFoundException($"The recorded reply has nothing at '{path}' to rename.");
+                owner.Remove(last);
+                owner[value?.ToString() ?? throw new ArgumentException("A rename needs the new name.")] = moved;
+                continue;
+            }
+
             switch (node)
             {
                 case JsonObject obj when value is null: obj.Remove(last); break;
@@ -384,7 +397,7 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
     private static JsonNode? Json2(JsonNode root, string path)
     {
         JsonNode? node = root;
-        foreach (var part in path.Split('.'))
+        foreach (var part in SplitPath(path))
         {
             node = Step(node, part);
         }
@@ -400,11 +413,39 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
             _ => JsonValue.Create(value)
         };
 
+    // "result.[Name=Category2.DestDir].Value": a part in square brackets names the list element whose property has that value, for a list
+    // of settings (NZBGet's config is a list of {Name, Value}). The dots inside the brackets belong to the name.
+    private static string[] SplitPath(string path)
+    {
+        var parts = new List<string>();
+        var current = new StringBuilder();
+        var depth = 0;
+        foreach (var c in path)
+        {
+            if (c == '[') depth++;
+            if (c == ']') depth--;
+            if (c == '.' && depth == 0)
+            {
+                parts.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        parts.Add(current.ToString());
+        return parts.ToArray();
+    }
+
     private static JsonNode? Step(JsonNode? node, string part)
         => node switch
         {
             JsonObject obj when part == "*" => obj.FirstOrDefault().Value,
             JsonObject obj => obj[part],
+            JsonArray arr when part.Length > 2 && part[0] == '[' && part[^1] == ']' && part.IndexOf('=') is var eq and > 1
+                => arr.FirstOrDefault(item => item is JsonObject o && o[part[1..eq]]?.ToString() == part[(eq + 1)..^1]),
             JsonArray arr when int.TryParse(part, out var index) && index < arr.Count => arr[index],
             _ => null
         };
