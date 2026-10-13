@@ -37,8 +37,8 @@ public sealed class RelaunchAfterSetupTests : IDisposable
 
     private static RunningMark Mark(string exe = Exe, int pid = 4242) => new(pid, 638000000000000000, exe);
 
-    private RelaunchKind Schedule(bool stillRunning = false, bool serviceInstalled = false, int? setup = SetupId, Func<int, RunningMark?>? killed = null)
-        => RelaunchAfterSetup.Schedule(new RunningMarks(_store), Exe, _ => stillRunning, () => serviceInstalled, () => setup, killed ?? (_ => null), @"C:\logs\install-hook.log", _started.Add, _log.Add);
+    private RelaunchKind Schedule(bool stillRunning = false, bool serviceInstalled = false, int? setup = SetupId, Func<TimeSpan?>? heartbeat = null)
+        => RelaunchAfterSetup.Schedule(new RunningMarks(_store), Exe, _ => stillRunning, () => serviceInstalled, () => setup, heartbeat ?? (() => null), @"C:\logs\install-hook.log", _started.Add, _log.Add);
 
     [Fact]
     public void A_tray_that_was_running_is_started_again_once_Setup_has_exited()
@@ -104,7 +104,7 @@ public sealed class RelaunchAfterSetupTests : IDisposable
     {
         new RunningMarks(_store).Set(RunningKind.Tray, Mark(@"C:\Users\Example\AppData\Local\Deluno\current\Deluno.exe"));
 
-        var kind = RelaunchAfterSetup.Schedule(new RunningMarks(_store), @"C:\Users\Example\AppData\Local\Deluno\app-1.0.0-rc.30.27\Deluno.exe", _ => false, () => false, () => SetupId, _ => null, "x.log", _started.Add, _log.Add);
+        var kind = RelaunchAfterSetup.Schedule(new RunningMarks(_store), @"C:\Users\Example\AppData\Local\Deluno\app-1.0.0-rc.30.27\Deluno.exe", _ => false, () => false, () => SetupId, () => null, "x.log", _started.Add, _log.Add);
 
         Assert.Equal(RelaunchKind.Tray, kind);
         Assert.Contains(@"current\Deluno.exe", string.Join(' ', Assert.Single(_started).ArgumentList));
@@ -160,7 +160,7 @@ public sealed class RelaunchAfterSetupTests : IDisposable
     {
         new RunningMarks(_store).Set(RunningKind.Tray, Mark());
 
-        var kind = RelaunchAfterSetup.Schedule(new RunningMarks(_store), Exe, _ => false, () => false, () => SetupId, _ => null, "x.log",
+        var kind = RelaunchAfterSetup.Schedule(new RunningMarks(_store), Exe, _ => false, () => false, () => SetupId, () => null, "x.log",
             _ => throw new System.ComponentModel.Win32Exception("no PowerShell"), _log.Add);
 
         Assert.Equal(RelaunchKind.None, kind);
