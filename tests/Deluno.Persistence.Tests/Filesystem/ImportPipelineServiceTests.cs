@@ -2419,7 +2419,9 @@ public sealed class ImportPipelineServiceTests
         var destinationPath = Path.Combine(movieRootPath, "placed-destination.mkv");
         await File.WriteAllTextAsync(destinationPath, "already imported");
         var stagingPath = destinationPath + ".deluno-stage-restarttest.tmp";
-        await File.WriteAllTextAsync(stagingPath, "stray leftover");
+        // A leftover copy of the file that was placed (same size). A staging file of a different size next to a
+        // different library file is not disposable: see ImportRestartRecoveryVariationsTests (#1259).
+        await File.WriteAllTextAsync(stagingPath, "already imported");
         await File.WriteAllTextAsync(
             stagingPath + ".deluno-marker.json",
             JsonSerializer.Serialize(new ImportRestartMarker(sourcePath, destinationPath, stagingPath, "movies", "Placed (2024)")));
