@@ -369,8 +369,8 @@ public sealed partial class ComponentSetupTests
         var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), layout, null, CancellationToken.None);
 
         Assert.Null(problem);
-        Assert.Equal(new[] { "config", "saveconfig", "reload", "config", "resumedownload", "resumepost", "resumescan", "status", "resumedownload", "resumepost", "resumescan", "status" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
-        var saved = JsonDocument.Parse(client.Requests[1].Body).RootElement.GetProperty("params")[0].EnumerateArray()
+        Assert.Equal(new[] { "loadconfig", "config", "saveconfig", "reload", "config", "resumedownload", "resumepost", "resumescan", "status", "resumedownload", "resumepost", "resumescan", "status" }, client.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString()!).ToArray());
+        var saved = JsonDocument.Parse(client.Requests[2].Body).RootElement.GetProperty("params")[0].EnumerateArray()
             .ToDictionary(item => item.GetProperty("Name").GetString()!, item => item.GetProperty("Value").GetString()!);
         Assert.Equal(layout.CompletedRoot, saved["DestDir"]);
         Assert.Equal(layout.IncompleteFolder("NZBGet"), saved["InterDir"]);
@@ -381,6 +381,42 @@ public sealed partial class ComponentSetupTests
         Assert.Equal("Music", saved["Category3.Name"]);
         Assert.Equal(@"C:\ProgramData\NZBGet", saved["MainDir"]);
         Assert.True(client.Requests.All(r => r.Request.Headers.Authorization?.Scheme == "Basic"));
+    }
+
+    // #1257, from NZBGet 26.3's recorded replies: `config` adds ConfigFile, AppBin, AppDir and Version, and a save that carried
+    // them made NZBGet pause all downloads. The recorded file (loadconfig) was taken after the bug had damaged it.
+    private static readonly string[] NzbgetRuntimeOnly = ["ConfigFile", "AppBin", "AppDir", "Version"];
+
+    private static string NzbgetRecorded(string state, string method)
+        => Deluno.Tests.Recorded.RecordedReplies.Nzbget(state).Find(method).Reply.Body!;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Nzbget_is_saved_without_its_runtime_only_values_whether_or_not_loadconfig_answers(bool loadconfigFails)
+    {
+        var client = new ScriptedClient(seen =>
+        {
+            var method = JsonDocument.Parse(seen.Body).RootElement.GetProperty("method").GetString();
+            return (HttpStatusCode.OK, method switch
+            {
+                "loadconfig" when loadconfigFails => """{"error":{"name":"JSONRPCError","code":1,"message":"Invalid procedure"}}""",
+                "loadconfig" => NzbgetRecorded("loadconfig", "loadconfig"),
+                "config" => NzbgetRecorded("settings", "\"config\""),
+                "version" => """{"result":"26.3"}""",
+                "status" => """{"result":{"DownloadPaused":false,"PostPaused":false,"ScanPaused":false}}""",
+                _ => """{"result":true}"""
+            });
+        });
+
+        var problem = await ConfiguratorFor(client).ConfigureAsync(Load("nzbget"), TestLayout(), null, CancellationToken.None);
+
+        Assert.Null(problem);
+        var save = client.Requests.Single(r => JsonDocument.Parse(r.Body).RootElement.GetProperty("method").GetString() == "saveconfig");
+        var saved = JsonDocument.Parse(save.Body).RootElement.GetProperty("params")[0].EnumerateArray()
+            .Select(item => item.GetProperty("Name").GetString()!).ToArray();
+        Assert.Empty(saved.Intersect(NzbgetRuntimeOnly));
+        Assert.Equal(143, saved.Length);
     }
 
     [Fact]
