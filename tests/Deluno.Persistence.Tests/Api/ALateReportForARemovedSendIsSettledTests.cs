@@ -57,9 +57,9 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         return new Scene(library!.Id, output, folder, film);
     }
 
-    private static Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId)
+    private static Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string? handoffReleaseName = null)
         => Repository(app).EnsureProcessorHandoffAsync(
-            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", clientId, queueItemId, Release, scene.DownloadFolder, "Weir", DateTimeOffset.UnixEpoch),
+            new CreateProcessorHandoffRequest(scene.LibraryId, "movies", clientId, queueItemId, handoffReleaseName ?? Release, scene.DownloadFolder, "Weir", DateTimeOffset.UnixEpoch),
             CancellationToken.None);
 
     private static Task RecordSendAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId)
@@ -76,10 +76,10 @@ public sealed class ALateReportForARemovedSendIsSettledTests
     }
 
     /// <summary>Send, the processor starts it, "I do not want it" (the hand-off ends), then the release is sent again - but the new hand-off is not made yet.</summary>
-    private static async Task<ProcessorHandoffItem> RemovedAndAskedForAgainAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string endedAs)
+    private static async Task<ProcessorHandoffItem> RemovedAndAskedForAgainAsync(ApplicationTestHost app, Scene scene, string clientId, string queueItemId, string endedAs, string? handoffReleaseName = null)
     {
         await RecordSendAsync(app, scene, clientId, queueItemId);
-        var first = await HandoffAsync(app, scene, clientId, queueItemId);
+        var first = await HandoffAsync(app, scene, clientId, queueItemId, handoffReleaseName);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, endedAs, null, null, "You said you do not want it.", CancellationToken.None);
         await Task.Delay(30);
@@ -128,6 +128,28 @@ public sealed class ALateReportForARemovedSendIsSettledTests
             await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
             job => job.JobType == "filesystem.import.execute");
         Assert.True(File.Exists(output), "the processor's file is left where it is for the resend to find");
+    }
+
+    /// <summary>
+    /// The rc.30.29 golden run (resend.during.transmission 17:44:34Z, resend.during.deluge 17:47:11Z): the hand-off of a
+    /// single-file torrent carries the client's own name for it, "...-GOLDEN.mkv", while the send Deluno recorded is named
+    /// "...-GOLDEN". Usenet hand-offs carry the same name on both sides, so only the torrent clients answered 409.
+    /// </summary>
+    [Theory]
+    [InlineData("transmission-1", "hash-retthree")]
+    [InlineData("deluge-1", "hash-retthree")]
+    [InlineData("qbittorrent-1", "hash-retthree")]
+    public async Task The_first_sends_late_report_is_settled_when_the_client_names_the_file_with_its_extension(string clientId, string queueItemId)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var first = await RemovedAndAskedForAgainAsync(app, scene, clientId, queueItemId, ProcessorHandoffStatuses.Dismissed, Release + ".mkv");
+        var output = await WriteOutputAsync(scene);
+
+        var response = await WeirReportsAsync(app, scene, first.Id, output);
+
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
