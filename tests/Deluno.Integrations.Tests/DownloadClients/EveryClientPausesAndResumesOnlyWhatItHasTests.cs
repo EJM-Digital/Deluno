@@ -15,8 +15,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// <para>Every reply below is a recording of the real client: the list call is answered from the recording of a paused
 /// job (SABnzbd 5.1.3, NZBGet 26.3, qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0), changed in the one value that
 /// says whether it is paused (see <see cref="RecordedReply.BodyWith"/>), and from the recording of a job the client never
-/// had. The pause call's own reply is the recorded one; the resume call's reply was not recorded and is answered with the
-/// pause call's, which the client words the same way. Deluno never reads either reply as the answer.</para>
+/// had. The pause call's and the resume call's own replies are the recorded ones. Deluno never reads either reply as the answer.</para>
 /// </summary>
 public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
 {
@@ -84,7 +83,7 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
             var url = request.RequestUri!.PathAndQuery;
             var call = url + body;
 
-            // A pause or a resume call. The reply is the recorded pause reply: the resume reply was not recorded.
+            // A pause or a resume call. The reply is the recorded one of that call.
             var pause = call.Contains("name=pause", StringComparison.Ordinal) || call.Contains("GroupPause", StringComparison.Ordinal)
                 || call.Contains("torrents/stop", StringComparison.Ordinal) || call.Contains("torrent-stop", StringComparison.Ordinal)
                 || call.Contains("core.pause_torrent", StringComparison.Ordinal);
@@ -122,11 +121,11 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
         private HttpResponseMessage PauseReply(bool pause)
             => (_app switch
             {
-                "sabnzbd" => RecordedReplies.Sabnzbd("paused").Find("name=pause"),
-                "nzbget" => RecordedReplies.Nzbget("paused").Find("GroupPause"),
-                "qbittorrent" => RecordedReplies.Qbittorrent("paused").Find("torrents/stop"),
-                "transmission" => RecordedReplies.Transmission("paused").Find("torrent-stop"),
-                _ => RecordedReplies.Deluge("paused").Find("core.pause_torrent")
+                "sabnzbd" => pause ? RecordedReplies.Sabnzbd("paused").Find("name=pause") : RecordedReplies.Sabnzbd("resumed").Find("name=resume"),
+                "nzbget" => pause ? RecordedReplies.Nzbget("paused").Find("GroupPause") : RecordedReplies.Nzbget("resumed").Find("GroupResume"),
+                "qbittorrent" => pause ? RecordedReplies.Qbittorrent("paused").Find("torrents/stop") : RecordedReplies.Qbittorrent("resumed").Find("torrents/start"),
+                "transmission" => pause ? RecordedReplies.Transmission("paused").Find("torrent-stop") : RecordedReplies.Transmission("resumed").Find("torrent-start"),
+                _ => pause ? RecordedReplies.Deluge("paused").Find("core.pause_torrent") : RecordedReplies.Deluge("resumed").Find("core.resume_torrent")
             }).Reply.ToResponse();
 
         /// <summary>The recorded list, the paused one changed in the value that says whether it is paused, or the one for a job the client never had.</summary>
