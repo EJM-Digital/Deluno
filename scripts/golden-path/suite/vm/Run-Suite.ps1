@@ -58,6 +58,8 @@ try {
     }
     foreach ($group in Get-ScenarioPlan) {
         if ($Groups.Count -gt 0 -and $group.Name -notin $Groups) { continue }
+        # The update phase is run by the host after the groups, on a machine of its own (Invoke-ScenarioSuite.ps1, Run-Update.ps1).
+        if ($group.Host) { continue }
         Write-SuiteLog "=== group $($group.Name)"
         try { & $group.Function }
         catch {
