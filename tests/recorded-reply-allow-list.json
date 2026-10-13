@@ -12,26 +12,6 @@
       "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
     },
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentKeepsItsSessionTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentMetadataStallTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentStateMappingTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/QbittorrentTrackerStatusTests.cs",
-      "kind": "pending",
-      "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."
-    },
-    {
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/TheIgnoreListMatchesTagsAndTrackerDomainsTests.cs",
       "kind": "pending",
       "reason": "Still builds its reply inline; moves onto a recording once the capture has run (#1237, step 4). Remove this entry when it does."

@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -88,11 +86,10 @@ public sealed class QbittorrentMetadataStallTests
         DateTimeOffset addedUtc,
         DateTimeOffset capturedUtc)
     {
-        var torrentsInfo = "[{\"hash\":\"abc123\",\"name\":\"The.Last.of.Us.S01E07.2023.720p.WEB-DL\",\"category\":\"tv\","
-            + $"\"state\":\"{state}\",\"progress\":{progress.ToString(System.Globalization.CultureInfo.InvariantCulture)},"
-            + $"\"dlspeed\":0,\"upspeed\":0,\"eta\":8640000,\"size\":{size},\"downloaded\":0,\"num_seeds\":0,"
-            + $"\"added_on\":{addedUtc.ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"}}]";
-        var handler = new QbittorrentHandler(torrentsInfo);
+        // qBittorrent 5.2.1's recorded list of a magnet whose metadata never came, in the state, size and age under test.
+        var torrentsInfo = RecordedQbittorrentRig.Info(
+            RecordedQbittorrentRig.NoMetadata, ("category", "tv"), ("state", state), ("progress", progress), ("size", size), ("added_on", addedUtc.ToUnixTimeSeconds()));
+        var handler = RecordedQbittorrentRig.Handler(torrentsInfo);
         var client = new QbittorrentDownloadClient(() => handler);
         var snapshot = await client.GetSnapshotAsync(Client(), capturedUtc, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
@@ -101,18 +98,4 @@ public sealed class QbittorrentMetadataStallTests
     private static DownloadClientItem Client()
         => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-
-    private sealed class QbittorrentHandler(string torrentsInfo) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var reply = path.Contains("auth/login", StringComparison.Ordinal)
-                ? "Ok."
-                : path.Contains("torrents/info", StringComparison.Ordinal)
-                    ? torrentsInfo
-                    : "{}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") });
-        }
-    }
 }
