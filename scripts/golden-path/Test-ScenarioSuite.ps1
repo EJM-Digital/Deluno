@@ -198,7 +198,22 @@ function Send-Film { param($Film, [string] $Kind) [void]$script:Trace.Add("send:
 function Write-SuiteLog { param($Text) }
 function Hide-Secrets { param($Text) $Text }
 function Start-Sleep { param($Seconds, $Milliseconds) }
-function Invoke-Deluno { param($Method, $Path, $Body, $TimeoutSec) @() }
+function Invoke-Deluno {
+    param($Method, $Path, $Body, $TimeoutSec)
+    # The keep-seeding group's setup that reaches Deluno is written down, so a run of one scenario can be shown to do only its own.
+    if ($Method -eq 'POST' -and $Path -eq '/api/indexers') { [void]$script:Trace.Add('ks:private-indexer'); return [pscustomobject]@{ id = 'ix1'; privacy = 'private' } }
+    if ($Method -eq 'PUT' -and $Path -eq '/api/download-health/keep-seeding') { [void]$script:Trace.Add('ks:choices') }
+    if ($Method -eq 'POST' -and $Path -eq '/api/download-health/keep-seeding/check') { return [pscustomobject]@{ status = 'ready'; message = '' } }
+    if ($Method -eq 'PUT' -and $Path -like '/api/download-health/rules/*') { [void]$script:Trace.Add('ks:rules-put') }
+    @()
+}
+if ($null -eq $script:Fx) { $script:Fx = @{} }
+$script:Fx.FeedPort = 1; $script:Fx.IndexerIds = @{}
+function Add-Note { param($Text) }
+function Get-ClientByKind { param([string] $Kind) [pscustomobject]@{ id = "c-$Kind"; name = $Kind; kind = $Kind } }
+function New-KsClientCategory { param([string] $Kind, [string] $Name) [void]$script:Trace.Add("ks:category:$Kind") }
+function Get-ActivityText { param($PageSize, $MaxPages) @() }
+function Wait-KsAllStruck { param($Films, $TimeoutSec) $h = @{}; foreach ($k in $Films.Keys) { $h[$k] = @{ Message = 'x'; Seconds = 1 } }; $h }
 function Set-HealthRules { param($On, $CheckMinutes) [void]$script:Trace.Add('rules') }
 function Wait-AllStruck { param($Films, $TimeoutSec) $h = @{}; foreach ($k in $Films.Keys) { $h[$k] = @{ Line = 'x'; Seconds = 1; MaxProgress = 0.0; Statuses = @{}; LastRow = $null } }; $h }
 function Set-WeirPause { param($Paused) [void]$script:Trace.Add("pause:$Paused") }
@@ -226,6 +241,7 @@ function Restore-WeirAfterOutage { }
 
 function Get-ExpectedSetupKinds([string] $Id) {
     if ($Id -eq 'film.extra-left-out') { return @('qbittorrent') }
+    if ($Id -match '^keepseeding\.(moved|public-removed)\.(?<k>[a-z]+)$') { return @($Matches['k']) }
     if ($Id -match '^(film|resend\.before|stuck\.(zero|short|peers|slow)|tryagain|vanish\.(before|waiting))\.(?<k>[a-z]+)$') { return @($Matches['k']) }
     @()
 }
@@ -247,8 +263,31 @@ foreach ($g in $groupFunctions) {
 Set-ScenarioSelection -Ids @()
 Check "each of the $($vmIds.Count) scenarios, chosen alone, runs only itself" ($badRuns.Count -eq 0 -and $threw.Count -eq 0) (($badRuns + $threw) -join '; ')
 Check 'chosen alone, a scenario sends only the film(s) its own setup needs' ($badSetup.Count -eq 0) ($badSetup -join '; ')
+# The keep-seeding group (#1240): each id chosen alone runs only its own setup. A "moved" scenario adds the private indexer, makes the
+# category in its own client only and saves the keep-seeding choices; a "public-removed" one does none of that. Both set the rule.
+$ksBad = @()
+foreach ($id in @($allIds | Where-Object { $_ -like 'keepseeding.*' })) {
+    Set-ScenarioSelection -Ids @($id)
+    $script:Trace.Clear(); $script:Made.Clear()
+    try { Invoke-GroupKeepSeeding } catch { $ksBad += "$id threw $($_.Exception.Message)" }
+    $kind = ($id -split '\.')[-1]
+    $setup = @($script:Trace | Where-Object { $_ -like 'ks:*' -or $_ -eq 'rules' })
+    $wantSetup = if ($id -like 'keepseeding.moved.*') { @('ks:private-indexer', "ks:category:$kind", 'ks:choices', 'rules', 'ks:rules-put', 'ks:choices') } else { @('rules', 'ks:rules-put') }
+    # The restore at the end writes the choices back once more, so a moved run has 'ks:choices' twice.
+    $wantSetup = @($wantSetup | Sort-Object)
+    if ((@($setup | Sort-Object) -join ',') -ne ($wantSetup -join ',')) { $ksBad += "$id did [$($setup -join ',')] wanted [$($wantSetup -join ',')]" }
+}
+Set-ScenarioSelection -Ids @('keepseeding.moved.deluge', 'keepseeding.public-removed.qbittorrent')
+$script:Trace.Clear(); $script:Made.Clear(); Invoke-GroupKeepSeeding
+$ksTwo = @($script:Trace | Where-Object { $_ -like 'send:*' -or $_ -like 'ks:category:*' } | ForEach-Object { $_ } | Sort-Object)
+if (($ksTwo -join ',') -ne 'ks:category:deluge,send:deluge,send:qbittorrent') { $ksBad += "two chosen did [$($ksTwo -join ',')]" }
+Set-ScenarioSelection -Ids @('film.deluge')
+$script:Trace.Clear(); Invoke-GroupKeepSeeding
+if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen the group did [$($script:Trace -join ',')]" }
+Set-ScenarioSelection -Ids @()
+Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -297,7 +336,12 @@ Write-Host 'The events-request log is collected and says what is missing (#1238)
 $collect = Get-Content -Raw (Join-Path $suite 'vm\Collect-Logs.ps1')
 $pat = [regex]::Match($collect, '\$eventsPattern = ''([^'']+)''').Groups[1].Value
 Check 'the events pattern is in Collect-Logs' ($pat.Length -gt 0)
-foreach ($line in '{"message":"POST /api/integrations/processors/events answered 200"}', '2026-10-14 Processors events: answered 200 for handoff', '{"message":"processors-events reply"}', 'GET \/api\/integrations\/processors\/events') {
+# The exact line ProcessorEventAnswerLog writes (src/Deluno.Platform/Processing/ProcessorEventAnswerLog.cs, Describe): the first with a
+# reason, the second as the plain log file or the JSON log carries it, the third for a report already handled.
+$answerLine409 = 'POST /api/integrations/processors/events answered 409 for hand-off 7f3a9c, report completed: The download was removed.'
+$answerLineJson = (@{ category = 'Deluno.Platform.ProcessorEvents'; level = 'Information'; message = $answerLine409 } | ConvertTo-Json -Compress)
+$answerLineHandled = 'POST /api/integrations/processors/events answered 200 (already handled) for hand-off 7f3a9c, report completed'
+foreach ($line in $answerLine409, $answerLineJson, $answerLineHandled, '{"message":"POST /api/integrations/processors/events answered 200"}', '2026-10-14 Processors events: answered 200 for handoff', '{"message":"processors-events reply"}', 'GET \/api\/integrations\/processors\/events') {
     Check "the pattern finds: $line" ($line -match $pat)
 }
 Check 'the pattern does not take unrelated processor lines' (-not ('Processor connection test answered 200' -match $pat))
