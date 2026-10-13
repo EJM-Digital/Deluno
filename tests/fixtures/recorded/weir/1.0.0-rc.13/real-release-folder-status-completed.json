@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "real-release-folder-status-completed",
+  "recordedAt": "2026-10-13T21:41:32Z",
+  "note": "A release-folder download (Transmission): outputPath is inside a folder named after the release.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/01a1371d23b57a89bf279db3493ab745"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "01a1371d23b57a89bf279db3493ab745",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-13T21:13:44.461477Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Gprecfoldervpli02.2020.1080p.WEB-DL.x264-GOLDEN\\Gprecfoldervpli02.2020.1080p.WEB-DL.x264-GOLDEN.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Gprecfoldervpli02.2020.1080p.WEB-DL.x264-GOLDEN\\Gprecfoldervpli02.2020.1080p.WEB-DL.x264-GOLDEN.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

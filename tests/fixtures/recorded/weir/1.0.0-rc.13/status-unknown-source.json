@@ -1,0 +1,39 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.13",
+  "state": "status-unknown-source",
+  "recordedAt": "2026-10-13T21:26:22Z",
+  "note": "The status poll under a source key Weir does not know: 404, checked before the secret.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/nosuchsource/01a1371c38837e979272e31cd3ce6c3a"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Unknown media manager source 'nosuchsource'."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/nosuchsource/01a1371c38837e979272e31cd3ce6c3a"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "Unknown media manager source 'nosuchsource'."
+        }
+      }
+    }
+  ]
+}

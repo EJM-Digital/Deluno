@@ -23,7 +23,7 @@ function Invoke-CollectDelunoSide($p) {
         if ($hit.Count -eq 0) { Add-Missing "deluno $name : never crossed the proxies in this run"; continue }
         $exchanges = $hit | ForEach-Object {
             [pscustomobject]@{
-                request = [ordered]@{ method = $_.request.method; path = $_.request.path; bodyText = $_.request.bodyText }
+                request = [ordered]@{ method = $_.request.method; path = $_.request.path; headers = $_.request.headers; bodyText = $_.request.bodyText }
                 reply = [ordered]@{ status = $_.reply.status; headers = $_.reply.headers; bodyText = $_.reply.bodyText }
             }
         }

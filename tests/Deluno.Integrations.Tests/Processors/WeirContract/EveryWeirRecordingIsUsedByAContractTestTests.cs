@@ -62,12 +62,35 @@ public sealed class EveryWeirRecordingIsUsedByAContractTestTests
             .Where(state => state.Length > 0 && state.Contains('-'))
             .Distinct()
             .ToArray();
-        var recorded = RecordedReplies.States("weir", RecordedReplies.LatestVersion("weir"));
+        var recorded = RecordedReplies.States("weir", RecordedReplies.LatestVersion("weir"))
+            .Concat(RecordedReplies.States("deluno", RecordedReplies.LatestVersion("deluno")))
+            .ToArray();
         var neither = states.Where(state => !recorded.Contains(state)).ToArray();
 
         Assert.True(neither.Length == 0, "Named in a contract test but not recorded: " + string.Join(", ", neither));
     }
 
+
+    [Fact]
+    public void Every_Deluno_recording_is_named_by_a_test_and_has_a_row_in_the_contract_document()
+    {
+        // Deluno's own side of the talk (what it sends Weir, what Weir reports to it) was written down by the recording proxy.
+        var sources = ContractTestSources() + "\n" + PersistenceTestSources();
+        var document = File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "deluno-weir-contract.md"));
+        var version = RecordedReplies.LatestVersion("deluno");
+        var problems = RecordedReplies.States("deluno", version)
+            .Where(state => !sources.Contains($"\"{state}\"", StringComparison.Ordinal) || !document.Contains($"`{state}`", StringComparison.Ordinal))
+            .Select(state => $"deluno/{version}/{state}.json")
+            .ToArray();
+
+        Assert.True(problems.Length == 0, "Not named by a test (here or in tests/Deluno.Persistence.Tests/Api/WeirRealReportsTests.cs) or missing from docs/deluno-weir-contract.md: " + string.Join(", ", problems));
+    }
+
+    private static string PersistenceTestSources()
+    {
+        var file = Path.Combine(RepositoryRoot(), "tests", "Deluno.Persistence.Tests", "Api", "WeirRealReportsTests.cs");
+        return File.Exists(file) ? File.ReadAllText(file) : string.Empty;
+    }
 
     private static string ContractTestSources()
     {

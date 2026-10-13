@@ -202,7 +202,17 @@ public static class RecordedReplies
     {
         var method = request.TryGetProperty("method", out var m) && m.GetString() is { Length: > 0 } verb ? verb : throw new FormatException($"{source}: a request has no method.");
         var path = request.TryGetProperty("path", out var p) && p.GetString() is { } route ? route : throw new FormatException($"{source}: a request has no path.");
-        return new RecordedRequest(method.ToUpperInvariant(), path, BodyText(request));
+        Dictionary<string, string>? headers = null;
+        if (request.TryGetProperty("headers", out var h) && h.ValueKind == JsonValueKind.Object)
+        {
+            headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var header in h.EnumerateObject())
+            {
+                headers[header.Name] = header.Value.ToString();
+            }
+        }
+
+        return new RecordedRequest(method.ToUpperInvariant(), path, BodyText(request), headers);
     }
 
     private static RecordedReply ReadReply(JsonElement reply, string source)
@@ -313,7 +323,8 @@ public sealed record Recording(string App, string Version, string State, IReadOn
 
 public sealed record Exchange(RecordedRequest Request, RecordedReply Reply);
 
-public sealed record RecordedRequest(string Method, string Path, string? Body);
+/// <summary>A request. <c>Headers</c> are the ones the recording kept (the secret header, Idempotency-Key, content type), lower-cased names; null when none were recorded.</summary>
+public sealed record RecordedRequest(string Method, string Path, string? Body, IReadOnlyDictionary<string, string>? Headers = null);
 
 /// <summary>A reply. Status 0 is an app that did not answer (connection refused); <c>Error</c> says why.</summary>
 public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, string> Headers, string? Body, string? Error = null)

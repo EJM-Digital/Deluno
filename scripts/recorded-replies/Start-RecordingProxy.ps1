@@ -32,7 +32,11 @@ $listener.Start()
 $http = New-Object System.Net.Http.HttpClient
 $http.Timeout = [TimeSpan]::FromMinutes(5)
 Write-Host "Recording $Side on 127.0.0.1:$ListenPort -> $Target, writing $OutFile"
-$keep = @('content-type', 'x-webhook-secret')
+# Recorded request headers: the ones that are part of the contract. Credentials (authorization, x-api-key) are forwarded but never
+# written down; the webhook secret is written (the secret header is part of the contract) and scrub.mjs / the exact-match removal
+# in Invoke-RecordReplies.ps1 take its value out.
+$keep = @('content-type', 'x-webhook-secret', 'idempotency-key', 'accept')
+$skip = @('host', 'content-length', 'content-type', 'connection', 'expect', 'transfer-encoding', 'accept-encoding', 'keep-alive', 'proxy-connection')
 try {
     while ($listener.IsListening) {
         $context = $listener.GetContext()
@@ -41,7 +45,7 @@ try {
         $body = $reader.ReadToEnd()
         $forward = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::new($req.HttpMethod), ($Target.TrimEnd('/') + $req.Url.PathAndQuery))
         if ($body.Length -gt 0) { $forward.Content = New-Object System.Net.Http.StringContent($body, [Text.Encoding]::UTF8, $(if ($req.ContentType) { ($req.ContentType -split ';')[0] } else { 'application/json' })) }
-        foreach ($name in $req.Headers.AllKeys) { if ($name -match '^(x-|authorization)') { $null = $forward.Headers.TryAddWithoutValidation($name, $req.Headers[$name]) } }
+        foreach ($name in $req.Headers.AllKeys) { if ($skip -notcontains $name.ToLowerInvariant()) { $null = $forward.Headers.TryAddWithoutValidation($name, $req.Headers[$name]) } }
         $reqHeaders = [ordered]@{}
         foreach ($name in $req.Headers.AllKeys) { if ($keep -contains $name.ToLowerInvariant()) { $reqHeaders[$name.ToLowerInvariant()] = $req.Headers[$name] } }
         try {
