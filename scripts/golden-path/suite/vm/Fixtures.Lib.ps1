@@ -105,7 +105,8 @@ function Start-FeedAndStubs {
 function Initialize-Indexers {
     $feedUrl = "http://127.0.0.1:$($script:Fx.FeedPort)"
     $all = @(Invoke-Deluno -Path '/api/indexers')
-    $feed = $all | Where-Object { $_.baseUrl -like "$feedUrl*" } | Select-Object -First 1
+    # The public feed: a private one on the same address (the keep-seeding group adds one, #1240) is never the suite's feed.
+    $feed = $all | Where-Object { $_.baseUrl -like "$feedUrl*" -and $_.privacy -ne 'private' } | Select-Object -First 1
     if (-not $feed) {
         $feed = Invoke-Deluno -Method POST -Path '/api/indexers' -Body @{
             name = 'Golden feed'; protocol = 'torznab'; privacy = 'public'; baseUrl = $feedUrl; apiKey = 'golden'
@@ -204,7 +205,7 @@ function New-TorrentFilm {
     }
     [pscustomobject]@{
         Title = $title; Year = $year; Release = $release; Protocol = 'torrent'; Client = $Client; Layout = $Layout; Size = $rel.size
-        Url = "http://127.0.0.1:$($script:Fx.FeedPort)/dl/$($rel.torrent)"; IndexerId = $script:Fx.IndexerIds.torrent; Folder = $(if ($Layout -eq 'folder') { $release } else { $null })
+        Hash = $rel.infohash; Url = "http://127.0.0.1:$($script:Fx.FeedPort)/dl/$($rel.torrent)"; IndexerId = $script:Fx.IndexerIds.torrent; Folder = $(if ($Layout -eq 'folder') { $release } else { $null })
     }
 }
 
@@ -256,7 +257,7 @@ function Set-LibraryClient {
     $lib = Get-Library -MediaType $MediaType
     $client = Get-ClientByKind -Kind $Kind
     $sources = @()
-    foreach ($id in @($script:Fx.IndexerIds.torrent, $script:Fx.IndexerIds.usenet) | Where-Object { $_ }) { $sources += @{ indexerId = $id; priority = ($sources.Count + 1); requiredTags = ''; excludedTags = '' } }
+    foreach ($id in @($script:Fx.IndexerIds.torrent, $script:Fx.IndexerIds.usenet, $script:Fx.IndexerIds.private) | Where-Object { $_ }) { $sources += @{ indexerId = $id; priority = ($sources.Count + 1); requiredTags = ''; excludedTags = '' } }
     Invoke-Deluno -Method PUT -Path "/api/libraries/$($lib.id)/routing" -Body @{ sources = $sources; downloadClients = @(@{ downloadClientId = $client.id; priority = 1 }) } | Out-Null
     $client
 }
@@ -273,7 +274,7 @@ function Send-Film {
     $movie = Invoke-Deluno -Method POST -Path '/api/movies' -Body @{ title = $Film.Title; releaseYear = $Film.Year; imdbId = $null; monitored = $true }
     $sent = [DateTime]::UtcNow
     $r = Try-Deluno -Method POST -Path "/api/movies/$($movie.id)/grab" -Body @{
-        releaseName = $Film.Release; indexerId = $Film.IndexerId; indexerName = $(if ($Film.Protocol -eq 'usenet') { 'Golden Newznab stub' } else { 'Golden feed' })
+        releaseName = $Film.Release; indexerId = $Film.IndexerId; indexerName = $(if ($Film.IndexerName) { $Film.IndexerName } elseif ($Film.Protocol -eq 'usenet') { 'Golden Newznab stub' } else { 'Golden feed' })
         candidateQuality = $Quality; downloadUrl = $Film.Url; sizeBytes = $Film.Size; seeders = 50; force = $true
         overrideReason = 'Golden scenario suite: a controlled release'; duplicateAction = $null
     }
