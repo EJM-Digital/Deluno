@@ -209,6 +209,38 @@ public static class StateFile
             : Read<T>(path, json, io);
     }
 
+    /// <summary>Reads the file as text with the same four answers as <see cref="Read{T}"/>; empty or blank text is Unreadable.</summary>
+    public static StateFileRead<string> ReadText(string path, IStateFileSystem? io = null)
+    {
+        io ??= RealStateFileSystem.Instance;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (!io.Exists(path))
+                {
+                    return new(StateFileKind.Missing, null);
+                }
+
+                var text = io.ReadAllText(path);
+                return string.IsNullOrWhiteSpace(text) ? new(StateFileKind.Unreadable, null, "the file is empty") : new(StateFileKind.Ok, text.Trim());
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return new(StateFileKind.Missing, null);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= ReadAttempts)
+                {
+                    return new(StateFileKind.Busy, null, ex.Message);
+                }
+
+                io.Sleep(ReadPause);
+            }
+        }
+    }
+
     /// <summary>Writes the text beside the file and renames it over. Null when it landed, else why not. Never throws.</summary>
     public static string? Write(string path, string text, IStateFileSystem? io = null, bool quick = false)
     {
