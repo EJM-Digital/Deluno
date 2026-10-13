@@ -199,8 +199,8 @@ function Invoke-RecordSabnzbd($p) {
 # ---------------------------------------------------------------- NZBGet
 
 function Invoke-RecordNzbget($p) {
-    # NZBGet keeps the login it ships with (build-rules.md); it is a public default, not a secret of this install.
-    $cred = New-Object pscredential('nzbget', (ConvertTo-SecureString 'tegbzn6789' -AsPlainText -Force))
+    # NZBGet keeps the login it ships with unless Deluno wired it (Get-NzbgetLogin reads nzbget.conf inside the VM and registers the password for removal).
+    $cred = Get-NzbgetLogin
     $nzb = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.NzbgetPort)" -BasicAuth $cred
     $script:rpcId = 0
     function Rpc($method, $params = @()) { $script:rpcId++; Send-Recorded -Client $nzb -Method POST -Path '/jsonrpc' -Json ([ordered]@{ method = $method; params = @($params); id = $script:rpcId }) }
@@ -210,7 +210,7 @@ function Invoke-RecordNzbget($p) {
     $ver = (Get-ReplyJson $v).result
     if (-not $ver) { Add-Missing 'nzbget: it did not answer version'; return }
     Save-State nzbget $ver 'version' 'JSON-RPC version' @($v)
-    $badCred = New-Object pscredential('nzbget', (ConvertTo-SecureString 'not-the-password' -AsPlainText -Force))
+    $badCred = New-Object pscredential($cred.UserName, (ConvertTo-SecureString 'not-the-password' -AsPlainText -Force))
     $refused = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.NzbgetPort)" -BasicAuth $badCred
     Save-State nzbget $ver 'login-refused' 'A call made with a wrong login.' @((Send-Recorded -Client $refused -Method POST -Path '/jsonrpc' -Json ([ordered]@{ method = 'version'; params = @(); id = 1 })))
     Save-State nzbget $ver 'idle' 'Nothing queued: listgroups and history when empty.' @((Rpc 'listgroups'), (Rpc 'history' @($false)))

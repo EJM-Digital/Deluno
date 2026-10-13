@@ -170,6 +170,7 @@ function New-QbitAdapter($p) {
         Files = { param($h) Send-Recorded -Client $global:QbClient -Path "/api/v2/torrents/files?hash=$h" }
         Add = { param($t, $dir, $paused) Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/add' -Multipart @{ torrents = $t.Bytes; savepath = $dir; paused = "$paused".ToLower(); stopped = "$paused".ToLower() } }
         Pause = { param($h) $r = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/stop' -Form @{ hashes = $h }; if ($r.reply.status -eq 404) { $r = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/pause' -Form @{ hashes = $h } }; $r }
+        Resume = { param($h) $r = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/start' -Form @{ hashes = $h }; if ($r.reply.status -eq 404) { $r = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/resume' -Form @{ hashes = $h } }; $r }
         AddMagnet = { param($m, $dir) Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/add' -Form @{ urls = $m; savepath = $dir } }
         AddBroken = { param($dir) Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/add' -Multipart @{ torrents = [Text.Encoding]::UTF8.GetBytes('this is not a torrent'); savepath = $dir } }
         Remove = { param($h, $data) Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/delete' -Form @{ hashes = $h; deleteFiles = "$data".ToLower() } }
@@ -238,6 +239,7 @@ function New-TransmissionAdapter($p) {
         AddMagnet = { param($m, $dir) & $global:TrRpc 'torrent-add' @{ filename = $m; 'download-dir' = $dir; paused = $false } }
         AddBroken = { param($dir) & $global:TrRpc 'torrent-add' @{ metainfo = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('this is not a torrent')); 'download-dir' = $dir } }
         Pause = { param($h) & $global:TrRpc 'torrent-stop' @{ ids = @($h) } }
+        Resume = { param($h) & $global:TrRpc 'torrent-start' @{ ids = @($h) } }
         Remove = { param($h, $data) & $global:TrRpc 'torrent-remove' @{ ids = @($h); 'delete-local-data' = [bool]$data } }
         Recheck = { param($h) & $global:TrRpc 'torrent-verify' @{ ids = @($h) } }
         Queue = { param($on) $null = & $global:TrRpc 'session-set' @{ 'download-queue-enabled' = $true; 'download-queue-size' = $(if ($on) { 1 } else { 5 }) } }
@@ -289,6 +291,7 @@ function New-DelugeAdapter($p) {
         AddMagnet = { param($m, $dir) & $global:DlRpc 'core.add_torrent_magnet' @($m, @{ download_location = $dir; add_paused = $false }) }
         AddBroken = { param($dir) & $global:DlRpc 'core.add_torrent_file' @('broken.torrent', [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('this is not a torrent')), @{ download_location = $dir }) }
         Pause = { param($h) & $global:DlRpc 'core.pause_torrent' @(, @($h)) }
+        Resume = { param($h) & $global:DlRpc 'core.resume_torrent' @(, @($h)) }
         Remove = { param($h, $data) & $global:DlRpc 'core.remove_torrent' @($h, [bool]$data) }
         Recheck = { param($h) & $global:DlRpc 'core.force_recheck' @(, @($h)) }
         Queue = { param($on) $null = & $global:DlRpc 'core.set_config' @(@{ max_active_downloading = $(if ($on) { 1 } else { 5 }); queue_new_to_top = $false }) }
