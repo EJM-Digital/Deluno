@@ -47,6 +47,8 @@ internal static class Program
         if (IsFastExitInstallHook(args))
         {
             HookLog.Write("after install/update: done; the firewall step and the picker run on first start.");
+            // A silent Setup over a running Deluno leaves it stopped: bring it back once Setup has exited (#1256).
+            RelaunchAfterSetup.OnInstallOrUpdateHook();
             return 0;
         }
 
@@ -146,6 +148,14 @@ internal static class Program
             using var mutex = new Mutex(true, @"Global\DelunoTrayApplication", out bool isFirstInstance);
             if (!isFirstInstance)
             {
+                // The start that follows Setup (RelaunchAfterSetup) finds Deluno already running when Setup started it:
+                // there is nothing to tell the person, and nothing to do.
+                if (RelaunchAfterSetup.ShouldStepAside(args, () => true))
+                {
+                    HookLog.Write("Start after Setup: Deluno is already running, so this start has nothing to do.", TrayStartLog.FileName);
+                    return;
+                }
+
                 // The copy that is running shows a balloon, "Deluno is already running", with the address.
                 SecondLaunchSignal.Notify();
                 return;
@@ -160,6 +170,10 @@ internal static class Program
                 return;
             }
 
+            // Left behind only when something other than an orderly exit ends this Deluno (Setup stops it before any hook of
+            // the new version runs), which is how the install hook knows it was running (#1256).
+            MarkRunning(RunningKind.Tray);
+
             EnsureWinFormsBootstrap();
             var tray = new TrayApplication(progress);
             // The real icon is up (it is shown in its constructor), so the first-run one can go without a gap.
@@ -169,7 +183,21 @@ internal static class Program
         }
     }
 
-    /// <summary>True when a downloaded update was handed to Velopack and this copy is about to be replaced.</summary>
+    /// <summary>Records that this process is the running Deluno, and clears the record when it exits in order.</summary>
+    internal static void MarkRunning(RunningKind kind)
+    {
+        try
+        {
+            var marks = RunningMarks.ForThisMachine();
+            marks.Set(kind, RunningMark.ThisProcess());
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => marks.Clear(kind, Environment.ProcessId);
+        }
+        catch (Exception ex)
+        {
+            HookLog.Write($"Could not record that Deluno is running: {ex.Message}", TrayStartLog.FileName);
+        }
+    }
+
     private static void WaitForProcessToEnd(int pid, TimeSpan limit)
     {
         try

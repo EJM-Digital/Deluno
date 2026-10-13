@@ -87,13 +87,18 @@ internal static class InstallHooks
     /// </summary>
     public static void OnFirstRun()
     {
-        // Before ComponentPickerDialog (#640) -- a Form -- can be created.
-        // See Program.EnsureWinFormsBootstrap for why this cannot just run
-        // unconditionally at the top of Main instead.
-        Program.EnsureWinFormsBootstrap();
-        Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
-        AskStartWithWindows();
-        RunComponentPicker();
+        // A reinstall over an existing Deluno asks nothing again (#1256): it is a first run only when no settings and
+        // no data exist.
+        ExistingInstall.RunFirstRunSteps(ExistingInstall.DetectThisMachine(), () =>
+        {
+            // Before ComponentPickerDialog (#640) -- a Form -- can be created.
+            // See Program.EnsureWinFormsBootstrap for why this cannot just run
+            // unconditionally at the top of Main instead.
+            Program.EnsureWinFormsBootstrap();
+            Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
+            AskStartWithWindows();
+            RunComponentPicker();
+        }, LogHook);
     }
 
     /// <summary>Test seam: how the question is put to the person. Null means it could not be shown.</summary>

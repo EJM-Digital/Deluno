@@ -36,6 +36,8 @@ public static class ServiceHost
         var failureActions = ServiceManager.EnsureFailureActionsEarlyAsync(message => log.Warning(message));
 
         var settings = AppSettings.Load();
+        // So that a Setup over a running service starts it again afterwards (#1256).
+        Program.MarkRunning(RunningKind.Service);
         var progress = StartProgress.ForThisProcess();
         progress.BeginAttempt(1);
         using var watchStop = new CancellationTokenSource();
