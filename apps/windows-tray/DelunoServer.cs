@@ -130,7 +130,7 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         var settings = AppSettings.Load();
         var port = PortOverride ?? settings.Port;
 
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        var builder = TrayLogging.CreateBuilder(new WebApplicationOptions
         {
             WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
         });
