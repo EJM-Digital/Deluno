@@ -57,6 +57,13 @@ test('profile folders and network shares are anonymised', () => {
   assert.equal(scrubText('C:\\\\Users\\\\james\\\\x'), 'C:\\\\Users\\\\<user>\\\\x');
 });
 
+test('a JSON-escaped newline after a quote is not a network share', () => {
+  const traceback = String.raw`KeyError: '0000'\\n\\n]`;
+  assert.equal(scrubText(traceback), traceback);
+  assert.deepEqual(findLeaks(traceback), []);
+  assert.equal(scrubText(String.raw`\\box\share`), String.raw`\\<nas>\share`);
+});
+
 test('a name passed in is removed, and JSON text in a body is scrubbed by key', () => {
   const recording = {
     app: 'x', version: '1', state: 's',

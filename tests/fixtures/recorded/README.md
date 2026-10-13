@@ -71,3 +71,22 @@ any of them.
 A test that needs a reply no real app would send (truncated JSON, the wrong type) may build it inline
 only if it is listed, with a reason, in `tests/recorded-reply-allow-list.json`. `npm run ci:check` runs
 `scripts/check-recorded-replies.mjs`, which fails on any other test that builds an external app's reply.
+
+## Controls, wrong logins, configuration errors and Weir's states (recorded 13 Oct 2026)
+
+Recorded with `Invoke-RecordReplies.ps1 -Extra controls | nzbget-config | weir-states` (`scripts/recorded-replies/README.md`).
+
+| App | States |
+|---|---|
+| SABnzbd 5.1.3, NZBGet 26.3 | `resumed`: a job paused by its id and resumed by its id, with the queue before and after. |
+| qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0 | `resumed` (pause, list, resume, list) and `pause-unknown-id` (a hash no client ever had; Transmission also a numeric id). qBittorrent answers 200 and nothing; Transmission answers success; Deluge answers an error with a Python traceback. |
+| qBittorrent | `api-key-refused`: a bad API key sent as a bearer token is a 403 "Forbidden". |
+| Transmission | `login-refused`: the 401, its `WWW-Authenticate: Basic realm="Transmission"` and body. The VM's Transmission has RPC authentication off, so this came from a second copy of the same daemon started for a few seconds with a throwaway login. |
+| Deluge | `unauthenticated-call`: after a failed `auth.login` (result false), every call answers `Not authenticated` (code 1). |
+| NZBGet | `login-refused` (replaced: it held only the open `version` call): `listgroups`, `status` and `version` with a wrong login, and with none, all answer 401 with `WWW-Authenticate: Basic realm="NZBGet"`. NZBGet lets `AuthorizedIP` (127.0.0.1) in without a login, so this was recorded with that option emptied for a few seconds. |
+| NZBGet | `loadconfig-clean`, `config-error-paused` (`reload` after an invalid `AppBin=x` line, then `status` with `DownloadPaused` true and `log` [0, 200] with "Invalid option" and "Pausing all activities due to errors in configuration"), `config-error-cleared` (the line gone, `reload`, `DownloadPaused` false with no `resumedownload` needed). `loadconfig` is the older file taken from a config that already carried the four invalid lines (#1257). |
+| Weir 1.0.0-rc.13 | `handoff-release-folder-accepted` and `release-folder-status-working/completed`; `handoff-source-files-accepted` and `source-files-status-working/completed` (Weir treats `sourceFiles` like the folder: it answers the same); `status-queued` (with `queuePosition`), `status-working`, `status-cancelled`, `status-failed` (a file under the 50 MB minimum); `outcome-handoff-not-finished-queued` and `-working` (409 `handoff_not_finished`); `outcome-handoff-ended` (after a cancel) and `outcome-handoff-ended-after-failed` (409 `handoff_ended`); `handoff-cancelled` (204 for a queued hand-off), `handoff-cancel-working` (409 "is working") and `handoff-cancel-too-late` (409 "is completed"); `outcome-not-imported-no-reason`, `-default-reason` and `-import-refused`, and `outcome-imported-with-reason`; `outcome-superseded` and `outcome-superseded-newer`. |
+
+Weir accepts any `reason` text on a `not-imported` outcome and answers every one the same (`released` false, "kept its copy"), so the reasons recorded are the three kinds Deluno sends: none, the default words of a closed hand-off, and an import refusal. Weir has no separate "superseded" answer either: the same source sent again gets a new hand-off, and the outcome of the older one is answered like any other (200).
+
+Two older Weir recordings were misnamed and were renamed to what they hold: `outcome-before-finished-200` is `outcome-finished-in-burst-200` (a 200 for a hand-off that had already finished), and `handoff-cancel-too-late` is `handoff-cancelled-in-burst-204` (a 204 for a hand-off still queued). The true "before finished" and "too late" replies are the `outcome-handoff-not-finished-*` and `handoff-cancel-too-late` states above.
