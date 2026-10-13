@@ -474,8 +474,28 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
             return document.RootElement.Clone();
         }
 
-        var current = await Call("config");
-        if (!current.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array)
+        // The save starts from what nzbget.conf holds (loadconfig), never from `config`, which adds NZBGet's runtime-only
+        // values (ConfigFile, AppBin, AppDir, Version): saved back, they make NZBGet pause all downloads (#1257). When
+        // loadconfig cannot be answered, `config` stands in for it, and either way the runtime-only values are dropped.
+        JsonElement result = default;
+        foreach (var method in new[] { "loadconfig", "config" })
+        {
+            try
+            {
+                var current = await Call(method);
+                if (current.TryGetProperty("result", out var found) && found.ValueKind == JsonValueKind.Array)
+                {
+                    result = found;
+                    break;
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or JsonException)
+            {
+                // Try the other call.
+            }
+        }
+
+        if (result.ValueKind != JsonValueKind.Array)
         {
             return "NZBGet did not return its settings.";
         }
@@ -584,6 +604,9 @@ public sealed class DownloadClientConfigurator(Func<HttpMessageHandler>? handler
 /// <summary>What NZBGet's settings become: its completed and in-progress folders, and a Movies and a TV category with a folder each.</summary>
 public static class NzbgetSettings
 {
+    /// <summary>What NZBGet's <c>config</c> call adds to the settings (#1257). They are not options of nzbget.conf and are never saved.</summary>
+    public static readonly string[] RuntimeOnlyOptions = ["ConfigFile", "AppBin", "AppDir", "Version"];
+
     /// <summary>True when the settings NZBGet has loaded in memory carry the folders just saved: the reload has taken effect.</summary>
     public static bool Applied(JsonElement loaded, IReadOnlyList<KeyValuePair<string, string>> saved)
     {
@@ -621,7 +644,7 @@ public static class NzbgetSettings
     /// </summary>
     public static IReadOnlyList<KeyValuePair<string, string>> Plan(IReadOnlyList<KeyValuePair<string, string>> current, DownloadLayout layout, string incompleteFolder)
     {
-        var values = new List<KeyValuePair<string, string>>(current);
+        var values = current.Where(item => !RuntimeOnlyOptions.Contains(item.Key, StringComparer.OrdinalIgnoreCase)).ToList();
 
         void Set(string name, string value)
         {
