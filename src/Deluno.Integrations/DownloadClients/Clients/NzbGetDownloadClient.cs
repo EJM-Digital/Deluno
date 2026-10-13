@@ -137,10 +137,53 @@ public sealed class NzbGetDownloadClient(
             clientPaused = false;
         }
 
+        // #1257: NZBGet pauses everything when nzbget.conf has errors. The pause looks the same as one the person chose, so
+        // the log is read, but only while downloads are paused, to keep the normal poll cheap.
+        IReadOnlyList<string>? clientWarnings = null;
+        if (status?.DownloadPaused == true && await ReadConfigurationErrorAsync(http, baseUri, cancellationToken) is { } configurationError)
+        {
+            health = "degraded";
+            message = configurationError;
+            clientPaused = true;
+            clientWarnings = [configurationError];
+        }
+
         return CreateSnapshot(
             client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
-            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion);
+            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion, clientWarnings: clientWarnings);
     }
+
+    /// <summary>
+    /// #1257: the plain sentence for a NZBGet that paused itself over errors in its settings, or null when its log holds no
+    /// such pause (a pause the person chose). NZBGet logs "Pausing all activities due to errors in configuration" and, before
+    /// it, an ERROR line for each fault ("Invalid option ..."); the first ERROR line is named.
+    /// </summary>
+    private static async Task<string?> ReadConfigurationErrorAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetLogEntry>>>(
+                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("log", [0, 200]), cancellationToken);
+            var entries = response?.Result;
+            if (entries is null || !entries.Any(entry => entry.Text?.Contains("errors in configuration", StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return null;
+            }
+
+            var first = entries.OrderBy(entry => entry.Id).FirstOrDefault(entry => string.Equals(entry.Kind, "ERROR", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(entry.Text))?.Text;
+            return first is null
+                ? "NZBGet paused all downloads because its settings have errors. Fix them in NZBGet's settings, then resume."
+                : $"NZBGet paused all downloads because its settings have errors: {first.Trim()}. Fix them in NZBGet's settings, then resume.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>#1257: Clear on a configuration-error warning is NZBGet's own "resume" (the errors are fixed in NZBGet's settings).</summary>
+    public override async Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => (await ResumeClientAsync(client, cancellationToken)).Succeeded;
 
     public override async Task<bool?> HasUsenetProviderAsync(DownloadClientItem client, CancellationToken cancellationToken)
     {
@@ -890,6 +933,8 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
+    private sealed record NzbGetLogEntry([property: JsonPropertyName("ID")] int Id, [property: JsonPropertyName("Kind")] string? Kind, [property: JsonPropertyName("Text")] string? Text);
+
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null, [property: JsonPropertyName("PausedSizeMB")] long? PausedSizeMb = null);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses, [property: JsonPropertyName("FinalDir")] string? FinalDir = null);
 
