@@ -398,6 +398,40 @@ public sealed class DelunoBackupServiceTests
         command.ExecuteNonQuery();
     }
 
+    /// <summary>#1256: a backup taken while Deluno starts says which file it is on, before it copies it.</summary>
+    [Fact]
+    public async Task A_backup_says_which_file_it_is_about_to_copy_before_each_one()
+    {
+        using var storage = TempDataRoot.Create();
+        SeedDataRoot(storage.Path, new Dictionary<string, string>
+        {
+            ["a-settings.json"] = "{}",
+            ["b-keys.json"] = "{}",
+            ["c-notes.txt"] = "x"
+        });
+        var service = CreateService(storage.Path, "2026-10-13T01:00:00Z");
+        var steps = new List<string>();
+
+        await service.CreateBackupAsync("pre-update", CancellationToken.None, steps.Add);
+
+        Assert.Equal(3, steps.Count);
+        Assert.StartsWith("1 of 3: ", steps[0]);
+        Assert.StartsWith("3 of 3: ", steps[2]);
+        Assert.All(steps, step => Assert.Contains(" of 3: ", step));
+    }
+
+    [Fact]
+    public async Task A_backup_without_a_step_callback_behaves_as_before()
+    {
+        using var storage = TempDataRoot.Create();
+        SeedDataRoot(storage.Path, new Dictionary<string, string> { ["a-settings.json"] = "{}" });
+        var service = CreateService(storage.Path, "2026-10-13T01:00:00Z");
+
+        var item = await service.CreateBackupAsync("manual", CancellationToken.None);
+
+        Assert.True(File.Exists(item.FullPath));
+    }
+
     private static DelunoBackupService CreateService(string dataRoot, string utcNowIso)
     {
         return new DelunoBackupService(

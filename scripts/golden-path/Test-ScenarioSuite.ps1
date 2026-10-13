@@ -47,16 +47,60 @@ $allIds = @($plan | ForEach-Object { $_.Ids })
 Check 'scenario ids are unique' (($allIds | Select-Object -Unique).Count -eq $allIds.Count)
 Check 'there are scenarios for every client in the issue' (@($allIds | Where-Object { $_ -like 'film.*' }).Count -ge 5)
 $groupText = (Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | ForEach-Object { Get-Content -Raw $_.FullName }) -join "`n"
-foreach ($g in $plan) {
+foreach ($g in @($plan | Where-Object { -not $_.Host })) {
     Check "group function $($g.Function) is defined" ($groupText -match ('function\s+' + [regex]::Escape($g.Function) + '\b'))
 }
-foreach ($id in $allIds) {
+foreach ($id in @($plan | Where-Object { -not $_.Host } | ForEach-Object { $_.Ids })) {
     $prefix = ($id -replace '\.(qbittorrent|transmission|deluge|sabnzbd|nzbget)', '.$kind' -replace '\.(qbittorrent|transmission|deluge|sabnzbd|nzbget)$', '')
     $stem = ($id -split '\.')[0]
     Check "an Invoke-Scenario for '$id' exists in the group files" ($groupText -match ("-Id\s+[`"']" + [regex]::Escape($stem))) $stem
 }
 $topics = @(Get-ScenarioTopics)
 Check 'every group says what it proves' (@($plan | Where-Object { $_.Name -notin $topics.Group }).Count -eq 0)
+
+Write-Host 'The update phase (#1256)'
+$updateGroup = @($plan | Where-Object { $_.Name -eq 'update' })[0]
+Check 'the plan has the update scenario, run by the host' ($allIds -contains 'update.over-running-previous' -and $updateGroup.Host)
+Check 'the update group is the last one in the plan' ($plan[-1].Name -eq 'update')
+Check 'the existing scenario ids are unchanged' ((@('install-first-run', 'film.qbittorrent', 'film.extra-left-out', 'remove-copy.deluge.file', 'resend.during.sabnzbd', 'stuck.peers.transmission', 'outage.inflight', 'tryagain.nzbget', 'vanish.waiting.deluge', 'problems.dismiss-everywhere', 'activity.one-story') | Where-Object { $_ -notin $allIds }).Count -eq 0)
+$runSuiteText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
+Check 'the VM runner leaves host groups to the host' ($runSuiteText -match '\$group\.Host')
+$hostScript = Get-Content -Raw (Join-Path $root 'Invoke-ScenarioSuite.ps1')
+$iAfterSuite = $hostScript.IndexOf('& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSuiteScript')
+$iPhaseCall = $hostScript.IndexOf('Invoke-UpdatePhase)')
+$iVerdict = $hostScript.IndexOf('$verdict = Get-SuiteVerdict')
+$iLogs = $hostScript.IndexOf('Collecting the logs failed')
+Check 'the update phase runs after the groups, the log collection and the -AfterSuiteScript hook' ($iLogs -gt 0 -and $iAfterSuite -gt $iLogs -and $iPhaseCall -gt $iAfterSuite)
+Check 'the update phase is recorded before the verdict, so the full-run verdict includes it' ($iPhaseCall -gt 0 -and $iVerdict -gt $iPhaseCall)
+$phaseBody = $hostScript.Substring($hostScript.IndexOf('function Invoke-UpdatePhase'))
+$phaseBody = $phaseBody.Substring(0, $phaseBody.IndexOf("`nif (`$Groups.Count -eq 0 -or `$Groups -contains 'update')"))
+$iHarness = $phaseBody.IndexOf('Invoke-GoldenPath.ps1')
+Check 'the update phase restores the checkpoint first, through the harness, with the PREVIOUS release''s installer' ($iHarness -gt 0 -and $phaseBody -match '-InstallerPath \$PreviousInstallerPath' -and $phaseBody -match '-Checkpoint \$Checkpoint')
+Check 'the harness installs the previous release silently (not interactively)' ($phaseBody.Substring($iHarness, 700) -notmatch '-Interactive')
+Check 'the candidate''s Setup is copied only after that, to a folder of its own' ($phaseBody.IndexOf('Copy-FileToVm -Session $rigU -LocalPath $InstallerPath') -gt $iHarness -and $phaseBody -match 'C:\\golden\\candidate')
+Check 'the update phase never installs the candidate or the previous release over the other from the host' (@([regex]::Matches($phaseBody, 'Invoke-GoldenPath\.ps1')).Count -eq 1 -and $phaseBody -notmatch '-InstallerPath \$InstallerPath')
+Check 'a missing previous installer fails the phase plainly (and so the verdict)' ($phaseBody -match 'if \(-not \$PreviousInstallerPath\)' -and $phaseBody -match 'nothing waives it')
+Check 'the host takes -PreviousInstallerPath and -PreviousVersion' ($hostScript.Contains('[string] $PreviousInstallerPath') -and $hostScript.Contains('[string] $PreviousVersion'))
+$updateLib = Get-Content -Raw (Join-Path $suite 'vm\Update.Lib.ps1')
+$runUpdate = Get-Content -Raw (Join-Path $suite 'vm\Run-Update.ps1')
+Check 'the VM side runs the candidate''s Setup silently over the running previous release' ($updateLib -match "Start-Process -FilePath \`$CandidateSetup -ArgumentList '--silent'")
+$afterSetup = $updateLib.Substring($updateLib.IndexOf('# The update: the candidate'))
+Check 'nothing starts Deluno by hand after Setup runs' ($afterSetup -notmatch 'Start-ScheduledTask' -and $afterSetup -notmatch 'Register-ScheduledTask' -and $afterSetup -notmatch 'Start-Process\s+-FilePath\s+\$(exe|installed|nowExe)' -and $updateLib -notmatch 'Start-DelunoInDesktop')
+Check 'the VM side holds no previous installer: it cannot install it over anything' ($updateLib -notmatch 'previous\\Deluno-Setup' -and $runUpdate -notmatch 'previous\\Deluno-Setup')
+Check 'it tells "never started again" from "started again but never answered"' ($afterSetup -match 'never started again after Setup' -and $afterSetup -match 'started again but never answered')
+Check 'it requires a new process, answering, as the candidate' ($afterSetup -match 'notin \$oldPids' -and $afterSetup -match 'CandidateVersion')
+Check 'it reads the start marker and the start log and fails a retried start' ($afterSetup -match 'Read-StartMarker' -and $afterSetup -match "phase -eq 'ready'" -and $afterSetup -match 'Deluno started on try')
+Check 'it gives the previous release a library, a download client and Activity, and compares them after' ($updateLib -match '/api/libraries' -and $updateLib -match '/api/download-clients' -and $afterSetup -match 'Clients' -and $afterSetup -match 'Libraries' -and $afterSetup -match 'Activity')
+foreach ($f in 'Update.Lib.ps1', 'Run-Update.ps1') {
+    $perr = $null; $ptok = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $suite "vm\$f"), [ref]$ptok, [ref]$perr)
+    Check "$f parses on this PowerShell" ($perr.Count -eq 0)
+}
+$noUpdate = @(Merge-SuiteResults -Plan $plan -Reported @() -Groups @('update'))
+Check 'an update phase that never reported is an error in the merged results' ($noUpdate.Count -eq 1 -and $noUpdate[0].Status -eq 'error')
+$updateFailed = [pscustomobject]@{ id = 'update.over-running-previous'; title = 't'; status = 'fail'; seconds = 0; error = $null; checks = @([pscustomobject]@{ name = 'x'; ok = $false; detail = 'd' }); notes = @() }
+$withUpdate = @(Merge-SuiteResults -Plan $plan -Reported @($updateFailed))
+Check 'a failed update phase fails the full-run verdict' ((Get-SuiteVerdict -Merged $withUpdate -FullRun $true).State -eq 'failure' -and ((Get-SuiteVerdict -Merged $withUpdate -FullRun $true).Failed -contains 'update.over-running-previous'))
 
 Write-Host 'The host judges results and builds the status'
 $reported = @(
@@ -266,7 +310,7 @@ finally {
 Write-Host 'The runner loads every library and group'
 foreach ($lib in 'Tray.Lib.ps1', 'Cdp.Lib.ps1', 'Fixtures.Lib.ps1', 'Initialize-Environment.ps1', 'scenarios\Common.ps1') { . (Join-Path (Join-Path $suite 'vm') $lib) }
 foreach ($f in Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | Sort-Object Name) { . $f.FullName }
-foreach ($g in $plan) { Check "the runner can call $($g.Function)" ($null -ne (Get-Command $g.Function -CommandType Function -ErrorAction SilentlyContinue)) }
+foreach ($g in @($plan | Where-Object { -not $_.Host })) { Check "the runner can call $($g.Function)" ($null -ne (Get-Command $g.Function -CommandType Function -ErrorAction SilentlyContinue)) }
 foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', 'New-TorrentFilm', 'New-UsenetFilm', 'Wait-FilmFinished', 'Open-DelunoPage', 'Get-TrayDot', 'Invoke-TrayMenuItem', 'Stop-WeirApp', 'Start-WeirApp', 'Set-WeirPause', 'Get-WeirLogText', 'Test-OneStory') {
     Check "$fn is defined" ($null -ne (Get-Command $fn -ErrorAction SilentlyContinue))
 }

@@ -1,4 +1,6 @@
+using Deluno.Infrastructure.Storage;
 using Deluno.Tray;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Deluno.Tray.Tests;
 
@@ -88,5 +90,87 @@ public sealed class PreUpdateBackupGateTests : IDisposable
             "2.0.0", _folder, _folder, _ => Task.CompletedTask, () => installs++);
         Assert.True(next);
         Assert.Equal(1, installs);
+    }
+
+    // ------------------------------------------------------------------ #1256: the backup at start is watched
+
+    private sealed class Steps : IStartupProgress
+    {
+        public List<(StartupPhase Phase, string? Detail)> Entered { get; } = [];
+        public void Enter(StartupPhase phase, string? detail = null) => Entered.Add((phase, detail));
+    }
+
+    [Fact]
+    public async Task Start_says_that_it_is_backing_up_and_records_the_phase_before_the_backup_runs()
+    {
+        var progress = new Steps();
+        var log = new List<string>();
+        var phaseWhenBackupRan = (StartupPhase?)null;
+
+        await PreUpdateBackupGate.InstallAtStartAsync(
+            "2.0.0", _folder, _folder,
+            _ => { phaseWhenBackupRan = progress.Entered.LastOrDefault().Phase; return Task.CompletedTask; },
+            () => { },
+            progress,
+            log: log.Add);
+
+        Assert.Equal(StartupPhase.PreUpdateBackup, phaseWhenBackupRan);
+        Assert.Contains(log, line => line.Contains("backing up", StringComparison.OrdinalIgnoreCase) && line.Contains("2.0.0"));
+        Assert.Contains(log, line => line.Contains("backup finished", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AdvanceInline(FakeTimeProvider clock, TimeSpan span)
+    {
+        // With no synchronization context on this thread, the timers' continuations run in place.
+        var prior = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try { clock.Advance(span); } finally { SynchronizationContext.SetSynchronizationContext(prior); }
+    }
+
+    [Fact]
+    public async Task A_backup_that_ignores_its_time_limit_still_ends_the_wait_and_blocks_the_update_with_a_note()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.Zero));
+        var applied = false;
+        var neverEnds = new TaskCompletionSource();
+        var log = new List<string>();
+
+        // A backup stuck in a read that never returns and never looks at its token.
+        var running = PreUpdateBackupGate.InstallAtStartAsync(
+            "2.0.0", _folder, _folder,
+            _ => neverEnds.Task,
+            () => applied = true,
+            new Steps(),
+            clock,
+            log.Add);
+
+        // Just before the limit it is still waiting; a little after the limit and the grace it has stopped waiting.
+        var passed = TimeSpan.Zero;
+        var limit = PreUpdateBackupGate.BackupTimeout + PreUpdateBackupGate.HardLimitGrace;
+        while (passed < limit + TimeSpan.FromSeconds(10))
+        {
+            if (passed <= PreUpdateBackupGate.BackupTimeout)
+            {
+                Assert.False(running.IsCompleted, $"the start stopped waiting for the backup after {passed}, before its limit");
+            }
+
+            AdvanceInline(clock, TimeSpan.FromSeconds(10));
+            passed += TimeSpan.FromSeconds(10);
+            await Task.Yield();
+        }
+
+        await running.WaitAsync(TimeSpan.FromSeconds(10)); // a real-time guard for a failing run only: the clock is not moved
+        Assert.False(await running);
+        Assert.False(applied);
+        var note = BlockedUpdateNote.TryTake(_folder);
+        Assert.NotNull(note);
+        Assert.Contains("took too long", note!.Reason);
+        Assert.False(File.Exists(Path.Combine(_folder, "update-start-attempt.txt")), "a blocked install is not an attempt: the next start tries again");
+    }
+
+    [Fact]
+    public void The_start_window_for_the_backup_outlasts_the_backup_s_hard_limit()
+    {
+        Assert.True(new StartWindows().PreUpdateBackup > PreUpdateBackupGate.BackupTimeout + PreUpdateBackupGate.HardLimitGrace);
     }
 }

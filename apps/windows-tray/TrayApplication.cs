@@ -1,4 +1,5 @@
 using Deluno.Api.Network;
+using Deluno.Infrastructure.Storage;
 using Deluno.Api.Updates;
 using Deluno.Platform.Data;
 using Deluno.Realtime;
@@ -24,7 +25,11 @@ public sealed class TrayApplication : ApplicationContext
     private readonly OpenClickGate _openGate = new(TimeSpan.FromMilliseconds(SystemInformation.DoubleClickTime));
     private readonly ISignInEntry _signIn = new RunKeySignInEntry();
     private readonly DelunoServer _server;
-    private readonly HostRestartSupervisor _supervisor;
+    private readonly HostSupervisor _supervisor;
+    private readonly StartProgress _progress;
+    private readonly ProcessRelaunch _relaunch;
+    private string? _lastStartNote;
+    private bool _exitingForRestart;
     private readonly IDisposable? _secondLaunch;
     private TrayStatus _status;
     private OwnedIcon? _icon;
@@ -41,9 +46,10 @@ public sealed class TrayApplication : ApplicationContext
     private VelopackUpdateOrchestrator? _updates;
     private string? _announcedUpdate;
 
-    public TrayApplication()
+    public TrayApplication(StartProgress progress)
     {
-        _server = new DelunoServer();
+        _progress = progress;
+        _server = new DelunoServer(progress);
         _ui.CreateControl();
         _ = _ui.Handle;
 
@@ -86,32 +92,61 @@ public sealed class TrayApplication : ApplicationContext
 
         VelopackUpdateOrchestrator.CleanStopBeforeApply = StopHostForUpdateAsync;
 
-        _supervisor = new HostRestartSupervisor(
-            _ => _server.StartAsync(),
+        var log = new TrayStartLog();
+        _relaunch = new ProcessRelaunch(
+            BlockedUpdateNote.DefaultFolder(),
+            TimeProvider.System,
+            new RealProcessLauncher(),
+            Environment.ProcessId,
+            Environment.ProcessPath,
+            log);
+        _supervisor = new HostSupervisor(
+            new ServerHost(_server),
+            _progress,
             new HostRestartReporter
             {
-                Restarting = (attempt, max, pause) => InvokeOnUiThread(() =>
+                Attempting = info => InvokeOnUiThread(() =>
                 {
-                    Change(s => s with { State = TrayState.Starting, RestartNote = $"starting again (try {attempt} of {max})" });
-                    Balloon("Deluno stopped by itself", HostRestartReporter.RestartingMessage(attempt, max, pause), ToolTipIcon.Warning, problem: false);
+                    var retrying = info.Attempt > 1 || info.Reason == StartReason.UnexpectedStop;
+                    Change(s => s with
+                    {
+                        State = TrayState.Starting,
+                        RestartNote = retrying ? $"starting again (try {info.Attempt} of {info.Limit})" : null
+                    });
+                    if (retrying)
+                    {
+                        Balloon(
+                            info.Reason == StartReason.UnexpectedStop ? "Deluno stopped by itself" : "Deluno did not start",
+                            HostRestartReporter.RetryingMessage(info),
+                            ToolTipIcon.Warning,
+                            problem: false);
+                    }
                 }),
-                Recovered = () => InvokeOnUiThread(() =>
+                Recovered = (reason, attempts) =>
                 {
-                    OnHostStarted(announce: false);
-                    Balloon("Deluno is running again", "Deluno stopped by itself and has been started again.", ToolTipIcon.Info, OpenDeluno);
+                    if (reason == StartReason.UnexpectedStop)
+                    {
+                        InvokeOnUiThread(() => Balloon("Deluno is running again", "Deluno stopped by itself and has been started again.", ToolTipIcon.Info, OpenDeluno));
+                    }
+                },
+                GaveUp = (failures, window, last) => InvokeOnUiThread(() =>
+                {
+                    Change(s => s with { State = TrayState.Error, RestartNote = null, StartNote = null });
+                    // The click is Restart: the one thing the person can do about it.
+                    Balloon("Deluno could not start", HostRestartReporter.GaveUpMessage(failures, window, last), ToolTipIcon.Error, () => _ = RestartHostAsync());
                 }),
-                AttemptFailed = (_, ex) => TryWriteStartupLog(ex),
-                GaveUp = max => InvokeOnUiThread(() =>
-                {
-                    Change(s => s with { State = TrayState.Error, RestartNote = null });
-                    Balloon("Deluno stopped", HostRestartReporter.GaveUpMessage(max), ToolTipIcon.Error, () => _ = RestartHostAsync());
-                })
+                ProcessRestarting = reason => InvokeOnUiThread(() =>
+                    Balloon("Deluno is restarting itself", "Deluno could not be stopped cleanly, so it is starting over. This takes a moment.", ToolTipIcon.Warning, problem: false))
             },
-            stopHost: () => _server.StopAsync());
-        _server.StoppedUnexpectedly += () => _ = _supervisor.HandleUnexpectedStopAsync();
+            log,
+            TimeProvider.System,
+            restarter: _relaunch,
+            diagnostics: StartDiagnostics.Capture);
+        _server.StoppedUnexpectedly += () => _ = HandleUnexpectedStopAsync();
+        _progress.Changed += OnStartProgress;
 
         // A downloaded update is applied at the next start, before the host runs, so it starts clean.
-        _ = StartServerAsync();
+        _ = StartServerAsync(StartReason.FirstStart);
         _ = StartInstalledComponentsAsync();
     }
 
@@ -521,36 +556,105 @@ public sealed class TrayApplication : ApplicationContext
         MessageBox.Show(message, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
-    /// <summary>Starts the web host, or throws. The supervisor, a restart and a port change all start it this way.</summary>
-    private async Task StartHostAsync()
+    /// <summary>
+    /// Every start of the web host goes through the one supervisor (#1256): the first start, Restart, Change port and a
+    /// stop nobody asked for. It runs the start off the UI thread, watches its progress, and retries with a growing,
+    /// jittered wait up to the start limit.
+    /// </summary>
+    private async Task StartServerAsync(StartReason reason)
     {
-        await _server.StartAsync();
-        _supervisor.NoteStarted();
+        Change(s => s with { State = TrayState.Starting, RestartNote = null, StartNote = null });
+        var result = await _supervisor.StartAsync(reason);
+        await HandleStartResultAsync(result, announce: reason == StartReason.FirstStart);
     }
 
-    private async Task StartServerAsync()
+    private async Task HandleUnexpectedStopAsync()
+        => await HandleStartResultAsync(await _supervisor.StartAsync(StartReason.UnexpectedStop), announce: false);
+
+    private async Task HandleStartResultAsync(StartResult result, bool announce)
+    {
+        switch (result.Outcome)
+        {
+            case StartOutcome.Started:
+                InvokeOnUiThread(() => OnHostStarted(announce));
+                await ReportBlockedUpdateAsync();
+                break;
+            case StartOutcome.ProcessRestarting:
+                ExitForRestart();
+                break;
+            default:
+                // Giving up has already been said (icon, menu and a balloon whose click is Restart); a cancelled
+                // start is the person choosing Stop, Restart or Quit.
+                break;
+        }
+    }
+
+    /// <summary>The host could not be freed and the process was started again: let this one go.</summary>
+    private void ExitForRestart()
+    {
+        _exitingForRestart = true;
+        InvokeOnUiThread(() =>
+        {
+            try { _notify.Visible = false; } catch { /* the process is ending */ }
+            Application.Exit();
+        });
+    }
+
+    /// <summary>The tray's words for the phase a start is in ("opening the databases"), once per change of words.</summary>
+    private void OnStartProgress(StartProgressSnapshot snapshot)
+    {
+        var note = snapshot.Phase == StartupPhase.Ready ? null : StartupPhases.Words(snapshot.Phase);
+        if (string.Equals(note, _lastStartNote, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastStartNote = note;
+        InvokeOnUiThread(() =>
+        {
+            if (_status.State == TrayState.Starting)
+            {
+                Change(s => s with { StartNote = note });
+            }
+        });
+    }
+
+    /// <summary>
+    /// Stops the host within a time limit. A stop that does not finish is forced (stop and dispose with a budget), and a
+    /// host that still cannot be released restarts the process, so Restart can never wait for ever (#1256).
+    /// </summary>
+    private async Task StopHostAsync(string why)
     {
         try
         {
-            Change(s => s with { State = TrayState.Starting, RestartNote = null });
-            await StartHostAsync();
-            InvokeOnUiThread(() =>
-            {
-                OnHostStarted(announce: true);
-            });
-            await ReportBlockedUpdateAsync();
+            await Task.Run(() => _server.StopAsync()).WaitAsync(StopBudget);
+            return;
         }
-        catch (Exception ex)
+        catch (TimeoutException)
         {
-            InvokeOnUiThread(() =>
+        }
+        catch
+        {
+            return;
+        }
+
+        HookLog.Write($"stopping Deluno for {why} took longer than {StopBudget.TotalSeconds:0} seconds; releasing it.", "tray-startup.log");
+        try
+        {
+            using var budget = new CancellationTokenSource(StopBudget);
+            await Task.Run(() => _server.FreeAsync(budget.Token), budget.Token);
+        }
+        catch
+        {
+            HookLog.Write("Deluno could not be released; starting the program again.", "tray-startup.log");
+            if (_relaunch.TryRestart($"stopping for {why} did not finish"))
             {
-                Change(s => s with { State = TrayState.Error, RestartNote = null });
-                // Persistent (~30s) so the person has time to read it. The full stack trace goes to the startup log.
-                Balloon("Deluno failed to start", ex.Message + "  (see the logs folder: choose Open logs folder)", ToolTipIcon.Error, () => OpenFolder(LogsFolder()));
-                TryWriteStartupLog(ex);
-            });
+                ExitForRestart();
+            }
         }
     }
+
+    private static readonly TimeSpan StopBudget = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// An automatic install on Quit or at start that a failed backup stopped (#1197) is said now, once: in Activity, in
@@ -596,6 +700,7 @@ public sealed class TrayApplication : ApplicationContext
         {
             State = TrayState.Running,
             RestartNote = null,
+            StartNote = null,
             // The dot blinks until the server has said how its connections are.
             HealthKnown = false,
             Down = [],
@@ -730,9 +835,14 @@ public sealed class TrayApplication : ApplicationContext
     private async Task RestartHostAsync()
     {
         _supervisor.Cancel();
-        Change(s => s with { State = TrayState.Starting, RestartNote = null });
-        await _server.StopAsync();
-        await StartServerAsync();
+        Change(s => s with { State = TrayState.Starting, RestartNote = null, StartNote = null });
+        await StopHostAsync("Restart");
+        if (_exitingForRestart)
+        {
+            return;
+        }
+
+        await StartServerAsync(StartReason.Restart);
     }
 
     /// <summary>Stops the host cleanly before an update restarts the app, and keeps the supervisor from starting it again.</summary>
@@ -740,7 +850,7 @@ public sealed class TrayApplication : ApplicationContext
     {
         _supervisor.Cancel();
         InvokeOnUiThread(() => Change(s => s with { State = TrayState.Updating }));
-        await _server.StopAsync();
+        await StopHostAsync("an update");
     }
 
     // ------------------------------------------------------------------ menu actions
@@ -892,6 +1002,11 @@ public sealed class TrayApplication : ApplicationContext
     /// <summary>Saves the port and starts the host on it. Throws when it cannot start, so the change can roll back.</summary>
     private async Task RestartOnPortAsync(int port)
     {
+        if (_exitingForRestart)
+        {
+            throw new InvalidOperationException("Deluno is starting the program again.");
+        }
+
         _supervisor.Cancel();
         var settings = AppSettings.Load();
         settings.Port = port;
@@ -900,10 +1015,21 @@ public sealed class TrayApplication : ApplicationContext
         DelunoServer.PortOverride = null;
 
         // A rollback continues off the UI thread, so the icon is only touched through the UI thread.
-        InvokeOnUiThread(() => Change(s => s with { State = TrayState.Starting, RestartNote = null }));
-        await _server.StopAsync();
-        await StartHostAsync();
-        InvokeOnUiThread(() => OnHostStarted(announce: false));
+        InvokeOnUiThread(() => Change(s => s with { State = TrayState.Starting, RestartNote = null, StartNote = null }));
+        await StopHostAsync("a new port");
+        // One try, no waiting: the change rolls back to the old port if this fails. A hang is still cut off.
+        var result = await _supervisor.StartAsync(StartReason.PortChange, retry: false);
+        switch (result.Outcome)
+        {
+            case StartOutcome.Started:
+                InvokeOnUiThread(() => OnHostStarted(announce: false));
+                break;
+            case StartOutcome.ProcessRestarting:
+                ExitForRestart();
+                throw new InvalidOperationException("Deluno is starting the program again.");
+            default:
+                throw result.Exception ?? new InvalidOperationException(result.Failure ?? "Deluno could not start.");
+        }
     }
 
     private void OnStartWithWindows(object? sender, EventArgs e)
@@ -995,7 +1121,7 @@ public sealed class TrayApplication : ApplicationContext
 
         Change(s => s with { State = TrayState.Updating });
         _supervisor.Cancel();
-        await _server.StopAsync();
+        await StopHostAsync("running as a service");
         ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
         Application.Exit();
     }
@@ -1026,7 +1152,7 @@ public sealed class TrayApplication : ApplicationContext
 
         try
         {
-            await Task.Run(() => _server.StopAsync()).WaitAsync(TimeSpan.FromSeconds(30));
+            await Task.Run(() => _server.StopAsync()).WaitAsync(StopBudget);
         }
         catch
         {
@@ -1038,24 +1164,6 @@ public sealed class TrayApplication : ApplicationContext
     }
 
     // ------------------------------------------------------------------ plumbing
-
-    private static void TryWriteStartupLog(Exception ex)
-    {
-        try
-        {
-            var logDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Deluno", "logs");
-            Directory.CreateDirectory(logDir);
-            var logPath = Path.Combine(logDir, "tray-startup.log");
-            File.AppendAllText(logPath,
-                $"{DateTimeOffset.Now:O} server start failure{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Best-effort.
-        }
-    }
 
     private void InvokeOnUiThread(Action action)
     {
