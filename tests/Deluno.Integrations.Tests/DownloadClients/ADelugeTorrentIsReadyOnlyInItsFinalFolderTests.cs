@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -46,20 +44,15 @@ public sealed class ADelugeTorrentIsReadyOnlyInItsFinalFolderTests
 
     private static async Task<DownloadQueueItem> Snapshot(string savePath, bool labelMoves)
     {
-        var torrent = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Oppenheimer.2023.1080p\",\"state\":\"Seeding\""
-            + ",\"progress\":100.0,\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,\"total_size\":5000000000,\"total_done\":5000000000,\"num_peers\":0,"
-            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":\"OK\",\"save_path\":" + Json(savePath)
-            + ",\"move_completed\":false,\"move_completed_path\":\"\"}}},\"error\":null,\"id\":2}";
-        var options = labelMoves
-            ? "{\"result\":{\"apply_move_completed\":true,\"move_completed\":true,\"move_completed_path\":" + Json(Completed) + "},\"error\":null,\"id\":21}"
-            : "{\"result\":{\"apply_move_completed\":false,\"move_completed\":false,\"move_completed_path\":\"\"},\"error\":null,\"id\":21}";
-        var core = "{\"result\":{\"move_completed\":false,\"move_completed_path\":\"\"},\"error\":null,\"id\":20}";
-        var handler = new DelugeHandler(torrent, options, core);
+        // Deluge 2.2.0's recorded list of a finished torrent that carries a label, saved where the test says; the label's options and
+        // the core settings are the recorded ones with the move-on-completion switch (and its folder) set as the test says.
+        var handler = RecordedDelugeRig.Handler(
+            RecordedDelugeRig.Finished(("label", "movies"), ("save_path", savePath), ("move_completed", false), ("move_completed_path", string.Empty)),
+            RecordedDelugeRig.LabelOptions(labelMoves, Completed),
+            RecordedDelugeRig.CoreConfig(false, string.Empty));
         var snapshot = await new DelugeDownloadClient(new Factory(handler)).GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
         return Assert.Single(snapshot!.Queue);
     }
-
-    private static string Json(string value) => System.Text.Json.JsonSerializer.Serialize(value);
 
     private static DownloadClientItem Client()
         => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", false, null, "movies", "tv", null, 1, true,
@@ -68,18 +61,5 @@ public sealed class ADelugeTorrentIsReadyOnlyInItsFinalFolderTests
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class DelugeHandler(string updateUi, string labelOptions, string coreConfig) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            var answer = body.Contains("web.update_ui", StringComparison.Ordinal) ? updateUi
-                : body.Contains("label.get_options", StringComparison.Ordinal) ? labelOptions
-                : body.Contains("core.get_config_values", StringComparison.Ordinal) ? coreConfig
-                : """{"result":true,"error":null,"id":1}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
-        }
     }
 }
