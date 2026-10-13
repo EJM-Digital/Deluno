@@ -17,6 +17,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `deluno-frontend-backend-map.md`: user-facing IA and backend ownership map.
 - `deluno-ui-api-contract.md`: implemented UI-facing API contract and active gaps.
 - `external-integration-api.md`: external automation and refine-before-import surface.
+- `deluno-weir-contract.md`: every call and report between Deluno and Weir, each reply and what Deluno does with it, with the recording and test that prove each row (#1239).
 - `RELEASE_PREFERENCE_SPEC.md`: typed release-preference semantics, truth tables, comparison order, and invariants.
 - `guide-packages.md`: backend-owned guide package contract, provenance, mapping safety, and update procedure.
 - `metadata-broker-contract.md`: managed TMDb gateway contract, deployment endpoint, and privacy boundary.
