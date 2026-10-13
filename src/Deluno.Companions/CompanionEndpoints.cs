@@ -98,7 +98,16 @@ public static class CompanionModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["toolIds"] = ["Tick at least one app."] });
             }
 
-            Deluno.Contracts.PendingComponentInstalls.Add(storage.Value.DataRoot, ids, retryAfterUtc: null, askedByPerson: true, reason: "You asked for it on the Companion Tools page.");
+            try
+            {
+                Deluno.Contracts.PendingComponentInstalls.Add(storage.Value.DataRoot, ids, retryAfterUtc: null, askedByPerson: true, reason: "You asked for it on the Companion Tools page.");
+            }
+            catch (Deluno.Contracts.StateFileException exception)
+            {
+                // The ask was not stored (#1260): never answer "accepted" for something the tray will never see.
+                return Results.Conflict(new { message = exception.Message });
+            }
+
             return Results.Accepted("/api/companion-tools");
         });
 

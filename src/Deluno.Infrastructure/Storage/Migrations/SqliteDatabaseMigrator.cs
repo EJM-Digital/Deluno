@@ -129,7 +129,10 @@ public sealed class SqliteDatabaseMigrator(
             var dataRoot = Path.GetDirectoryName(databaseConnectionFactory.GetDatabasePath(databaseName));
             if (!string.IsNullOrEmpty(dataRoot))
             {
-                DatabaseMaintenanceLog.RecordCompaction(dataRoot, timeProvider.GetUtcNow());
+                if (DatabaseMaintenanceLog.RecordCompaction(dataRoot, timeProvider.GetUtcNow()) is { } notKept)
+                {
+                    logger?.LogWarning("The {Database} database was compacted, but the note of it was not kept: {Reason}", databaseName, notKept);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

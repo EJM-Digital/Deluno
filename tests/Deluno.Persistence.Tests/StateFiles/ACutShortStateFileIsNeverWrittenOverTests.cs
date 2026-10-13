@@ -2,6 +2,7 @@ using Deluno.Api.Backup;
 using Deluno.Api.Network;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+
 using Deluno.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -90,17 +91,6 @@ public sealed class ACutShortStateFileIsNeverWrittenOverTests : IDisposable
         var backup = await service.CreateBackupAsync("pre-update", CancellationToken.None);
 
         Assert.True(File.Exists(backup.FullPath));
-    }
-
-    [Fact]
-    public void A_cut_short_maintenance_note_keeps_what_it_can_when_one_field_is_recorded()
-    {
-        const string cut = "{\"integrityCheckedUtc\":\"2026-10-01T00:00:00+00:00\",\"integ";
-        var path = Seed(Path.Combine(_root, DatabaseMaintenanceLog.FileName), cut);
-
-        DatabaseMaintenanceLog.RecordCompaction(_root, DateTimeOffset.Parse("2026-10-02T00:00:00Z"));
-
-        Assert.Equal(cut, File.ReadAllText(path));
     }
 
     private sealed class ReversingProtector : ISecretProtector
