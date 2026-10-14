@@ -35,8 +35,11 @@ function Install-Jellyfin($p) {
     $service = Get-Service -Name 'JellyfinServer' -ErrorAction SilentlyContinue
     if (-not $service) {
         Write-RunLog 'installing Jellyfin (silent)'
-        $proc = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru -Wait
-        $service = Get-Service -Name 'JellyfinServer' -ErrorAction SilentlyContinue
+        # Not -Wait: the installer starts the service as its own child, so waiting on it never ends. The service appearing is the sign.
+        $proc = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru
+        $service = Wait-Until -Seconds 300 -EverySeconds 5 { Get-Service -Name 'JellyfinServer' -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 10
+        if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
         if (-not $service) { throw "The Jellyfin installer finished (exit code $($proc.ExitCode)) but there is no JellyfinServer service; install it by hand in the VM and run this again." }
     }
     Stop-Service -Name 'JellyfinServer' -Force -ErrorAction SilentlyContinue

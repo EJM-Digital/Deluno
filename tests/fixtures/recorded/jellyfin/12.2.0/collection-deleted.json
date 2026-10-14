@@ -1,0 +1,38 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "collection-deleted",
+  "recordedAt": "2026-10-14T08:31:41Z",
+  "note": "The collection deleted (DELETE /Items/{id}), and again (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/18da5b93435bf32b1375cc6efe0ca347"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/18da5b93435bf32b1375cc6efe0ca347"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+          "title": "Not Found",
+          "status": 404,
+          "traceId": "00-ed5c2add2fd0fcf218a92bb368839c27-0f0af82293536051-00"
+        }
+      }
+    }
+  ]
+}
