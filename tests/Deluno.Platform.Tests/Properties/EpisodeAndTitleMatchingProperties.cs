@@ -134,6 +134,23 @@ public sealed class EpisodeAndTitleMatchingProperties
             new ReleaseTitleExpectation("Blade", null, IsTv: true, 16, 65)));
 
     [Fact]
+    public void A_version_suffix_or_a_separated_tag_after_the_episode_reads_the_same_episode_and_other_glued_text_does_not()
+        => Prop.ForAll(Shows(), show =>
+        {
+            string[] same = ["v2", "v3", ".REPACK", "-PROPER"];
+            var episode = $"S{show.Season:D2}E{show.Episode:D2}";
+            var accepted = same.All(suffix =>
+                ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode)) is null
+                && ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode + 1)) is not null
+                && FeedReleaseNames.Parse($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}") is { Season: { } s, Episode: { } e } && s == show.Season && e == show.Episode);
+            var multi = ReleaseTitleMatch.Mismatch(
+                $"{show.Prefix}{show.Separator}{episode}E{show.Episode + show.Extra:D2}v2{show.Tail}", Expect(show, show.Season, show.Episode + show.Extra)) is null;
+            var refused = new[] { "vx", "abc" }.All(suffix =>
+                ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode)) is not null);
+            return accepted && multi && refused;
+        }).QuickCheckThrowOnFailure();
+
+    [Fact]
     public void The_NxNN_form_means_the_same_as_SxxEyy()
         => Prop.ForAll(Shows(), show =>
             ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{show.Season}x{show.Episode:D2}{show.Tail}", Expect(show, show.Season, show.Episode)) is null

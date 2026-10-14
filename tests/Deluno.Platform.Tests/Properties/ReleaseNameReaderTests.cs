@@ -46,4 +46,47 @@ public sealed class ReleaseNameReaderTests
     [InlineData("Title 1899")]
     public void A_number_outside_1900_to_2199_is_not_a_year(string name)
         => Assert.Null(ReleaseNameReader.ReadYear(name));
+
+    [Theory]
+    [InlineData("Show.S01E01v2.720p", 1, 1, 1)]
+    [InlineData("Show.S01E01E02v2.720p", 1, 1, 2)]
+    [InlineData("Show_S01E01v3_720p", 1, 1, 1)]
+    [InlineData("Show.S01E01.REPACK.720p", 1, 1, 1)]
+    [InlineData("Show.S01E01-PROPER.720p", 1, 1, 1)]
+    [InlineData("Show.S01E01E02.REPACK.720p", 1, 1, 2)]
+    [InlineData("Show.1x01v2.720p", 1, 1, 1)]
+    public void A_version_suffix_or_a_separated_tag_after_the_marker_still_reads_that_episode(string name, int season, int first, int last)
+    {
+        var marker = ReleaseNameReader.ReadEpisode(name);
+        Assert.NotNull(marker);
+        Assert.Equal((season, first, last), (marker.Season, marker.FirstEpisode, marker.LastEpisode));
+    }
+
+    [Theory]
+    [InlineData("Show.S01E01vx.720p")]
+    [InlineData("Show.S01E01abc.720p")]
+    [InlineData("Show.S01E01v22.720p")]
+    [InlineData("Show.S01E01v.720p")]
+    public void Anything_else_glued_to_the_marker_is_not_an_episode(string name)
+        => Assert.Null(ReleaseNameReader.ReadEpisode(name));
+
+    [Theory]
+    [InlineData("Show - 01v2 [1080p]", 1)]
+    [InlineData("Show - 12v3", 12)]
+    public void An_absolute_number_with_a_version_suffix_is_that_number(string name, int number)
+        => Assert.Null(ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation("Show", null, IsTv: true, AbsoluteNumber: number)));
+
+    [Theory]
+    [InlineData("Show - 01vx [1080p]")]
+    [InlineData("Show - 01abc [1080p]")]
+    public void An_absolute_number_with_anything_else_glued_on_is_refused(string name)
+        => Assert.NotNull(ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation("Show", null, IsTv: true, AbsoluteNumber: 1)));
+
+    [Fact]
+    public void The_feed_reads_a_versioned_episode_and_not_a_glued_word()
+    {
+        var versioned = FeedReleaseNames.Parse("Show.Name.S01E01v2.720p.WEB-DL-GRP");
+        Assert.Equal((1, 1), (versioned?.Season, versioned?.Episode));
+        Assert.Null(FeedReleaseNames.Parse("Show.Name.S01E01abc.720p.WEB-DL-GRP")?.Episode);
+    }
 }
