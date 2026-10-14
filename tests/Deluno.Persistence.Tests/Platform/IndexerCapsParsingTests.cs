@@ -22,9 +22,9 @@ public sealed class IndexerCapsParsingTests
         var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Jackett("caps-all").Single.Reply.Body!);
 
         Assert.NotNull(result);
-        Assert.Contains("2000", result!.Categories.Split(','));
-        Assert.Contains("5000", result!.Categories.Split(','));
-        Assert.Contains("2040", result!.Categories.Split(','));
+        Assert.Contains("2000", result!.Categories!.Split(','));
+        Assert.Contains("5000", result!.Categories!.Split(','));
+        Assert.Contains("2040", result!.Categories!.Split(','));
         Assert.Equal("both", result.MediaScope);
     }
 
@@ -34,8 +34,8 @@ public sealed class IndexerCapsParsingTests
         var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Nzbhydra2("caps").Single.Reply.Body!);
 
         Assert.NotNull(result);
-        Assert.Contains("2040", result!.Categories.Split(','));
-        Assert.Contains("5040", result!.Categories.Split(','));
+        Assert.Contains("2040", result!.Categories!.Split(','));
+        Assert.Contains("5040", result!.Categories!.Split(','));
         Assert.Equal("both", result.MediaScope);
     }
 
