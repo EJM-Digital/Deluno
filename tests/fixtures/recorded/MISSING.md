@@ -35,3 +35,16 @@ Recorded on 13 October 2026 (Deluno 1.0.0-rc.30.30, Weir 1.0.0-rc.13): Deluno's 
 - weir `scheduled` and `passed-through` states on the status poll: Weir 1.0.0-rc.13 was never seen giving them. A scheduled workflow run would give `scheduled`; `passed-through` may be a state Weir no longer uses (ask the Weir session).
 - weir capabilities carrying `watchedPath`: rc.13 does not send it.
 - weir `outcome` for a hand-off Weir finished but whose stored note belongs to another send of the same release (#1232): the reply carried an ordinary message; a reply whose message contradicts the outcome has not been seen from the real Weir.
+
+## GitHub (`github/2022-11-28`, #1237, #1263)
+
+Every state is a real unauthenticated GET from the public internet, on 14 October 2026, with the user agent `Deluno-test-recording`; a recording's own note says what was asked and how it was shortened (release-note bodies and most of a long list removed). About 14 calls to `api.github.com` were spent in all, and the hourly limit was never reached.
+
+- `weir-newest-release-has-no-files`, `nzbget-latest-release`, `release-feed-not-found`: recorded for #1263 (Weir's rc.17 was a published pre-release with no files).
+- `sabnzbd-latest-release`: `api.github.com/repos/sabnzbd/sabnzbd/releases/latest`.
+- `qbittorrent-tags`, `deluge-tags`: the tags API (`?per_page=100`) and `tags.atom` of two projects that tag and do not publish releases; Deluge's list carries development tags such as `deluge-2.2.1.dev0`.
+- `nzbget-release-feed`: NZBGet's `releases.atom`, whose newest entry is the rolling tag `testing`, not a version.
+- `weir-velopack-feed`: the `releases.win.json` file that Weir (built with Velopack) publishes beside its installer, rc.13.
+- `api-not-found`: the API's own 404 body for a repository that does not exist (a private repository answers the same).
+- not recorded: the anonymous rate-limit reply (a 403 or 429 with `X-RateLimit-Remaining: 0`) and a bare 503. Recording the limit would mean using the whole hourly allowance of a shared address, so tests of those states build the status and its `X-RateLimit-*` / `Retry-After` headers by hand (no body of an app's shape is involved). `jampat000/Deluno` has no public release feed yet, so Deluno's own update feed is tested with Weir's, which is built the same way.
+- states a test needs that GitHub was not in (the newest release a draft, a release changed into a stable one, the feed listed oldest first) are the nearest recorded reply with only that value changed, and each test says so.

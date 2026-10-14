@@ -1,0 +1,136 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "sabnzbd-latest-release",
+  "recordedAt": "2026-10-14T03:00:00Z",
+  "note": "Real unauthenticated GETs on 14 Oct 2026 (about 03:00Z). SABnzbd's releases/latest. Shortened for size: the release-note body and reactions removed, the asset list keeps the first two.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/sabnzbd/sabnzbd/releases/latest",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "url": "https://api.github.com/repos/sabnzbd/sabnzbd/releases/384618329",
+          "assets_url": "https://api.github.com/repos/sabnzbd/sabnzbd/releases/384618329/assets",
+          "upload_url": "https://uploads.github.com/repos/sabnzbd/sabnzbd/releases/384618329/assets{?name,label}",
+          "html_url": "https://github.com/sabnzbd/sabnzbd/releases/tag/5.1.3",
+          "id": 384618329,
+          "author": {
+            "login": "sabnzbd-automation",
+            "id": 16778130,
+            "node_id": "MDQ6VXNlcjE2Nzc4MTMw",
+            "avatar_url": "https://avatars.githubusercontent.com/u/16778130?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/sabnzbd-automation",
+            "html_url": "https://github.com/sabnzbd-automation",
+            "followers_url": "https://api.github.com/users/sabnzbd-automation/followers",
+            "following_url": "https://api.github.com/users/sabnzbd-automation/following{/other_user}",
+            "gists_url": "https://api.github.com/users/sabnzbd-automation/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/sabnzbd-automation/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/sabnzbd-automation/subscriptions",
+            "organizations_url": "https://api.github.com/users/sabnzbd-automation/orgs",
+            "repos_url": "https://api.github.com/users/sabnzbd-automation/repos",
+            "events_url": "https://api.github.com/users/sabnzbd-automation/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/sabnzbd-automation/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "node_id": "RE_kwDOACFguM4W7M9Z",
+          "tag_name": "5.1.3",
+          "target_commitish": "develop",
+          "name": "SABnzbd 5.1.3",
+          "draft": false,
+          "immutable": false,
+          "prerelease": false,
+          "created_at": "2026-09-08T09:19:17Z",
+          "updated_at": "2026-09-08T10:02:10Z",
+          "published_at": "2026-09-08T10:02:10Z",
+          "assets": [
+            {
+              "url": "https://api.github.com/repos/sabnzbd/sabnzbd/releases/assets/550266427",
+              "id": 550266427,
+              "node_id": "RA_kwDOACFguM4gzGY7",
+              "name": "README.mkd",
+              "label": "",
+              "uploader": {
+                "login": "sabnzbd-automation",
+                "id": 16778130,
+                "node_id": "MDQ6VXNlcjE2Nzc4MTMw",
+                "avatar_url": "https://avatars.githubusercontent.com/u/16778130?v=4",
+                "gravatar_id": "",
+                "url": "https://api.github.com/users/sabnzbd-automation",
+                "html_url": "https://github.com/sabnzbd-automation",
+                "followers_url": "https://api.github.com/users/sabnzbd-automation/followers",
+                "following_url": "https://api.github.com/users/sabnzbd-automation/following{/other_user}",
+                "gists_url": "https://api.github.com/users/sabnzbd-automation/gists{/gist_id}",
+                "starred_url": "https://api.github.com/users/sabnzbd-automation/starred{/owner}{/repo}",
+                "subscriptions_url": "https://api.github.com/users/sabnzbd-automation/subscriptions",
+                "organizations_url": "https://api.github.com/users/sabnzbd-automation/orgs",
+                "repos_url": "https://api.github.com/users/sabnzbd-automation/repos",
+                "events_url": "https://api.github.com/users/sabnzbd-automation/events{/privacy}",
+                "received_events_url": "https://api.github.com/users/sabnzbd-automation/received_events",
+                "type": "User",
+                "user_view_type": "public",
+                "site_admin": false
+              },
+              "content_type": "application/octet-stream",
+              "state": "uploaded",
+              "size": 6231,
+              "digest": "sha256:880aba92290c8c07b9a032ab3998859ef7c79b5edc5a6a0f5eca79c1fe53e43d",
+              "download_count": 147,
+              "created_at": "2026-09-08T10:02:09Z",
+              "updated_at": "2026-09-08T10:02:09Z",
+              "browser_download_url": "https://github.com/sabnzbd/sabnzbd/releases/download/5.1.3/README.mkd"
+            },
+            {
+              "url": "https://api.github.com/repos/sabnzbd/sabnzbd/releases/assets/550266370",
+              "id": 550266370,
+              "node_id": "RA_kwDOACFguM4gzGYC",
+              "name": "SABnzbd-5.1.3-macos.dmg",
+              "label": "",
+              "uploader": {
+                "login": "sabnzbd-automation",
+                "id": 16778130,
+                "node_id": "MDQ6VXNlcjE2Nzc4MTMw",
+                "avatar_url": "https://avatars.githubusercontent.com/u/16778130?v=4",
+                "gravatar_id": "",
+                "url": "https://api.github.com/users/sabnzbd-automation",
+                "html_url": "https://github.com/sabnzbd-automation",
+                "followers_url": "https://api.github.com/users/sabnzbd-automation/followers",
+                "following_url": "https://api.github.com/users/sabnzbd-automation/following{/other_user}",
+                "gists_url": "https://api.github.com/users/sabnzbd-automation/gists{/gist_id}",
+                "starred_url": "https://api.github.com/users/sabnzbd-automation/starred{/owner}{/repo}",
+                "subscriptions_url": "https://api.github.com/users/sabnzbd-automation/subscriptions",
+                "organizations_url": "https://api.github.com/users/sabnzbd-automation/orgs",
+                "repos_url": "https://api.github.com/users/sabnzbd-automation/repos",
+                "events_url": "https://api.github.com/users/sabnzbd-automation/events{/privacy}",
+                "received_events_url": "https://api.github.com/users/sabnzbd-automation/received_events",
+                "type": "User",
+                "user_view_type": "public",
+                "site_admin": false
+              },
+              "content_type": "application/x-apple-diskimage",
+              "state": "uploaded",
+              "size": 38985641,
+              "digest": "sha256:a6ec86a423206a0780b8e204ac35aae6ada43d23c35fd0291f4b239e94446c5a",
+              "download_count": 52920,
+              "created_at": "2026-09-08T10:02:06Z",
+              "updated_at": "2026-09-08T10:02:07Z",
+              "browser_download_url": "https://github.com/sabnzbd/sabnzbd/releases/download/5.1.3/SABnzbd-5.1.3-macos.dmg"
+            }
+          ],
+          "tarball_url": "https://api.github.com/repos/sabnzbd/sabnzbd/tarball/5.1.3",
+          "zipball_url": "https://api.github.com/repos/sabnzbd/sabnzbd/zipball/5.1.3"
+        }
+      }
+    }
+  ]
+}
