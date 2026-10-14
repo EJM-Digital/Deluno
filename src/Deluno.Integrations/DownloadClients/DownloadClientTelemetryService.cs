@@ -2801,10 +2801,8 @@ public sealed class DownloadClientTelemetryService(
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) return false;
         try
         {
-            var fullPath = Path.GetFullPath(path);
-            var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-            return fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                fullPath.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            return !Deluno.Contracts.SafePath.HasDotSegments(path)
+                && Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(root), Path.GetFullPath(path), comparison: StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception)
         {
@@ -4542,15 +4540,15 @@ public sealed class DownloadClientTelemetryService(
                 string.Equals(item.DownloadClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase) ||
                 (clientHost is not null && item.Host is not null && string.Equals(item.Host, clientHost, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
-        if (clientMappings.Length == 0) return snapshot;
-
+        // Whatever the client, and with or without a mapping, a reported path that climbs out ("..") is dropped
+        // here, once, before the queue, the cleanup or an import can see it (#1306).
         return snapshot with
         {
             Queue = snapshot.Queue
-                .Select(item => item with { SourcePath = TranslateRemotePath(item.SourcePath, clientMappings) })
+                .Select(item => item with { SourcePath = TranslateRemotePath(Deluno.Contracts.SafePath.ReportedPath(item.SourcePath), clientMappings) })
                 .ToArray(),
             History = snapshot.History
-                .Select(item => item with { SourcePath = TranslateRemotePath(item.SourcePath, clientMappings) })
+                .Select(item => item with { SourcePath = TranslateRemotePath(Deluno.Contracts.SafePath.ReportedPath(item.SourcePath), clientMappings) })
                 .ToArray()
         };
     }

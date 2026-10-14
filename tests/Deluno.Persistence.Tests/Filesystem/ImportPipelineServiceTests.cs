@@ -114,6 +114,69 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1306: a source path with ".." in it is never imported, copied, moved or deleted from, though the file it
+    /// reaches is real and inside the downloads folder once resolved. A clean path to the same file imports.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_refuses_a_source_path_that_climbs_out_with_dot_dot()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(Path.Combine(downloadsPath, "sub"));
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, new byte[4096]);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest("Movies", "movies", "Main", movieRootPath, downloadsPath, null, "standard", null, null, null, null, true, true, true, 6, 24, 25),
+            CancellationToken.None);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: Path.Combine(downloadsPath, "sub", "..", "Arrival.2016.WEB.1080p.mkv"),
+                    FileName: null, MediaType: "movies", Title: "Arrival", Year: 2016, Genres: [], Tags: [],
+                    Studio: null, OriginalLanguage: "en", ImdbId: "tt2543164"),
+                TransferMode: "move",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.True(File.Exists(sourcePath), "a refused path must not touch the file");
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+        Assert.Empty(Directory.GetFiles(movieRootPath, "*", SearchOption.AllDirectories));
+    }
+
+    /// <summary>
+    /// #1306, decided: the root of a processor output folder counts as "within" itself. Each caller (the hand-off
+    /// leftover cleanup and the empty-folder walk) steps over the root on its own before asking, so a folder above
+    /// the root is never reached; a sibling that only shares the root's text, and a path that climbs out, are not within.
+    /// </summary>
+    [Fact]
+    public void The_processor_output_root_counts_as_within_itself_and_a_sibling_or_climbing_path_does_not()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "deluno-output");
+
+        Assert.True(ImportPipelineService.IsWithinPath(root, root));
+        Assert.True(ImportPipelineService.IsWithinPath(root, root + Path.DirectorySeparatorChar));
+        Assert.True(ImportPipelineService.IsWithinPath(root, Path.Combine(root, "Some.Release", "file.mkv")));
+        Assert.False(ImportPipelineService.IsWithinPath(root, root + "-other"));
+        Assert.False(ImportPipelineService.IsWithinPath(root, Path.Combine(root, "..", "elsewhere")));
+        Assert.False(ImportPipelineService.IsWithinPath(root, Path.Combine(root, "x", "..", "..", "deluno-output-2")));
+    }
+
+    /// <summary>
     /// #852: once a title Deluno acquired through a Seerr approval (#851)
     /// finishes importing, Deluno reports it available back to that Seerr
     /// server, the same call Overseerr's own scanners make.

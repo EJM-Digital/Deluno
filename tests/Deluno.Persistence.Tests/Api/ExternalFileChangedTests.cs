@@ -80,6 +80,29 @@ public sealed class ExternalFileChangedTests
         Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
     }
 
+    /// <summary>#1306: a path with ".." in it, though the file it reaches exists, and a relative path are both refused before the disk or the library is touched.</summary>
+    [Fact]
+    public async Task A_path_that_climbs_out_or_is_not_a_full_path_is_refused()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var folder = Path.Combine(app.DataRoot, "movies", "Some Film (2020)");
+        Directory.CreateDirectory(folder);
+        var real = Path.Combine(folder, "Some Film.mkv");
+        await File.WriteAllBytesAsync(real, new byte[10]);
+
+        var climbing = Path.Combine(folder, "..", "Some Film (2020)", "Some Film.mkv");
+        var climbingBackslashes = climbing.Replace('/', '\\');
+        var relative = Path.Combine("movies", "Some Film (2020)", "Some Film.mkv");
+
+        foreach (var path in new[] { climbing, climbingBackslashes, relative, real + "/." })
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/integrations/external/file-changed", new { path, tool = "Weir" });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains(SafePath.OutsideRootReason, await response.Content.ReadAsStringAsync());
+        }
+    }
+
     [Fact]
     public async Task The_manifest_advertises_it()
     {

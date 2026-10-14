@@ -179,7 +179,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 (long)(size * (progress / 100d)), (item.Count > 12 ? Convert.ToInt32(AsDouble(item[12])) : 0) + (item.Count > 14 ? Convert.ToInt32(AsDouble(item[14])) : 0), "uTorrent",
                 errored && !string.IsNullOrWhiteSpace(statusMessage) ? statusMessage : null,
                 item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc,
-                SourcePath: string.IsNullOrWhiteSpace(savePath) ? null : savePath,
+                SourcePath: Deluno.Contracts.SafePath.ReportedPath(savePath),
                 UploadSpeedMbps: (uploadSpeed),
                 Ratio: ratioPerMille is null ? null : Math.Round(ratioPerMille.Value / 1000d, 3),
                 SeedingMinutes: seedingMinutesByHash.TryGetValue(hash, out var minutes) ? minutes : null,

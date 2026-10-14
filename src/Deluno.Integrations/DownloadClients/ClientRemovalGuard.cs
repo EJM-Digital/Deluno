@@ -105,6 +105,12 @@ internal static class DownloadFolderRemoval
             return false;
         }
 
+        // A path from a client that climbs out ("..") is never one to delete under, however it resolves.
+        if (Deluno.Contracts.SafePath.HasDotSegments(path))
+        {
+            return false;
+        }
+
         string resolved;
         try
         {
