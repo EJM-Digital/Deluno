@@ -1,0 +1,27 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "api-not-found",
+  "recordedAt": "2026-10-14T03:00:00Z",
+  "note": "A real unauthenticated GET on 14 Oct 2026 of the REST API's latest release of a repository that does not exist (a private repository answers the same, and the call still counts against the hourly limit).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/jampat000/no-such-repo-1263/releases/latest",
+        "body": null
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "Not Found",
+          "documentation_url": "https://docs.github.com/rest/releases/releases#get-the-latest-release",
+          "status": "404"
+        }
+      }
+    }
+  ]
+}
