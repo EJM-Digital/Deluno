@@ -55,6 +55,31 @@
       "file": "tests/Deluno.Persistence.Tests/Integrations/ARemovalReasonDoesExactlyWhatItSaysTests.cs",
       "kind": "pending",
       "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Versions/LatestReleaseServiceTests.cs",
+      "kind": "pending",
+      "reason": "Still builds GitHub's feed or API replies inline (#1263 added the github recordings and the guard that finds them; the real replies are in tests/fixtures/recorded/github). To move this file onto recordings, load them with RecordedReplies.Github(...) as tests/Deluno.Tray.Tests/GithubReleaseFallbackTests.cs does."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Versions/ReleaseAtomFeedTests.cs",
+      "kind": "pending",
+      "reason": "Still builds GitHub's feed or API replies inline (#1263 added the github recordings and the guard that finds them; the real replies are in tests/fixtures/recorded/github). To move this file onto recordings, load them with RecordedReplies.Github(...) as tests/Deluno.Tray.Tests/GithubReleaseFallbackTests.cs does."
+    },
+    {
+      "file": "tests/Deluno.Tray.Tests/GithubLatestReleaseTests.cs",
+      "kind": "pending",
+      "reason": "Still builds GitHub's feed or API replies inline (#1263 added the github recordings and the guard that finds them; the real replies are in tests/fixtures/recorded/github). To move this file onto recordings, load them with RecordedReplies.Github(...) as tests/Deluno.Tray.Tests/GithubReleaseFallbackTests.cs does."
+    },
+    {
+      "file": "tests/Deluno.Tray.Tests/ReleaseFeedUpdateSourceTests.cs",
+      "kind": "pending",
+      "reason": "Still builds GitHub's feed or API replies inline (#1263 added the github recordings and the guard that finds them; the real replies are in tests/fixtures/recorded/github). To move this file onto recordings, load them with RecordedReplies.Github(...) as tests/Deluno.Tray.Tests/GithubReleaseFallbackTests.cs does."
+    },
+    {
+      "file": "tests/Deluno.Worker.Tests/Companions/ConnectionUpdateTests.cs",
+      "kind": "pending",
+      "reason": "Still builds GitHub's feed or API replies inline (#1263 added the github recordings and the guard that finds them; the real replies are in tests/fixtures/recorded/github). To move this file onto recordings, load them with RecordedReplies.Github(...) as tests/Deluno.Tray.Tests/GithubReleaseFallbackTests.cs does."
     }
   ],
   "noBehaviour": [

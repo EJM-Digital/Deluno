@@ -10,7 +10,18 @@ public sealed record ResolvedGithubAsset(string AssetUrl, string? Sha256);
 /// What a lookup found. <see cref="RateLimited"/> is GitHub's own limit on anonymous calls (60 an hour for
 /// everything behind one public address): not a missing release, so it is told apart and says when it resets.
 /// </summary>
-public sealed record GithubLookup(ResolvedGithubAsset? Asset, bool RateLimited = false, DateTimeOffset? LimitResetsUtc = null, bool FeedNotFound = false);
+public sealed record GithubLookup(
+    ResolvedGithubAsset? Asset,
+    bool RateLimited = false,
+    DateTimeOffset? LimitResetsUtc = null,
+    bool FeedNotFound = false,
+    string? Tag = null,
+    IReadOnlyList<string>? Skipped = null,
+    bool NoInstallerYet = false)
+{
+    /// <summary>The install-log line naming the release used and why newer ones were skipped; null when the newest was used.</summary>
+    public string? ChoiceLogLine(string displayName) => null;
+}
 
 /// <summary>
 /// Resolves Weir's latest Windows installer straight from its own GitHub
@@ -44,6 +55,10 @@ public static class GithubLatestRelease
     /// <summary>Plain words for a repository whose release feed answers 404.</summary>
     public static string FeedNotFoundMessage(string displayName)
         => $"Couldn't check for {displayName}'s latest release: the release feed isn't reachable (GitHub says it isn't there, so the repository may be private).";
+
+    /// <summary>Plain words for a repository whose newest releases have no installer (or no checksum for it) uploaded yet.</summary>
+    public static string NoInstallerYetMessage(string displayName)
+        => string.Empty;
 
     private static async Task<string> GetJsonAsync(HttpClient http, string url, CancellationToken cancellationToken)
     {

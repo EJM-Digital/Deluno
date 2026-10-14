@@ -1,0 +1,23 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "release-feed-not-found",
+  "recordedAt": "2026-10-14T00:41:00Z",
+  "note": "A real unauthenticated GET of the release feed of a repository that does not exist (a private repository answers the same).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "github.com/jampat000/no-such-repo-1263/releases.atom",
+        "body": null
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "bodyText": "Not Found"
+      }
+    }
+  ]
+}

@@ -32,6 +32,8 @@ export const signatures = [
   // uTorrent and rTorrent are not installed in the golden VM, so nothing of theirs is recorded yet: their tests are listed "pending".
   { app: 'uTorrent', any: ['build'], text: ["id='token'", 'id=\\"token\\"'] },
   { app: 'rTorrent', text: ['<methodResponse>', '<methodResponse'] },
+  // GitHub's release replies: the REST API's asset list, and the release feed's links to a release page.
+  { app: 'Github', any: ['browser_download_url'], text: ['/releases/tag/', '<feed'] },
   { app: 'Weir', any: ['watched_folder', 'manager_library_key', 'folders_from_manager', 'queuePosition', 'watchedPath', 'handoff_ended', 'handoff_not_finished', 'outcome_already_recorded', 'handoff-status', 'handoff-outcome', 'library-folders'] }
 ];
 
