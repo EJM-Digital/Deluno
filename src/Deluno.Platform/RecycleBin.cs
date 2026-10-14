@@ -164,6 +164,28 @@ public interface IRecycleBinService
         => Task.FromResult<RecycleBinItem?>(null);
 
     /// <summary>
+    /// Moves one leftover download file to the bin instead of deleting it
+    /// (#1318). The caller has already established that the file is download
+    /// data. Null, and nothing touched, when the file is inside the library root: a
+    /// file in the root is a person's media and leaves only through
+    /// <see cref="StoreRemovedFileAsync"/>.
+    /// </summary>
+    Task<RecycleBinItem?> StoreDownloadFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same for a whole folder inside a library's downloads folder (a finished
+    /// download Deluno no longer needs). A folder on another disk than the bin
+    /// cannot be moved and is left where it is: null, nothing touched.
+    /// </summary>
+    Task<RecycleBinItem?> StoreDownloadFolderAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Keeps a removed title's catalogue record with the items its files
     /// became, so a restore can bring the title back too (#1161).
     /// </summary>
@@ -371,6 +393,102 @@ public sealed class RecycleBinService(
         string existingPath,
         CancellationToken cancellationToken)
         => StoreFileAsync(library, originalPath, existingPath, owner: null, cancellationToken);
+
+    public async Task<RecycleBinItem?> StoreDownloadFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var full = DownloadPathOrNull(library, path);
+        return full is null ? null : await StoreFileAsync(library, full, full, owner: null, cancellationToken);
+    }
+
+    public async Task<RecycleBinItem?> StoreDownloadFolderAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var full = DownloadPathOrNull(library, path);
+        if (full is null)
+        {
+            return null;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!Directory.Exists(full))
+            {
+                return null;
+            }
+
+            var state = await ReadStateAsync(cancellationToken);
+            var id = Guid.CreateVersion7().ToString("N");
+            var itemRoot = Path.Combine(HoldingRoot(library.RootPath!), id);
+            var destination = Path.Combine(itemRoot, Path.GetFileName(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            try
+            {
+                Directory.CreateDirectory(itemRoot);
+                var sizeBytes = CalculateSize(full, isDirectory: true);
+                Directory.Move(full, destination);
+                var now = timeProvider.GetUtcNow();
+                var item = new RecycleBinItem(
+                    Id: id,
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    OriginalPath: full,
+                    RecyclePath: destination,
+                    IsDirectory: true,
+                    SizeBytes: sizeBytes,
+                    CreatedUtc: now,
+                    ExpiresUtc: now.AddDays(state.Settings.RetentionDays),
+                    FileOwner: null);
+                state.Items.Add(item);
+                await EnforceRetentionUnsafeAsync(state, cancellationToken);
+                await WriteStateAsync(state, cancellationToken);
+                return item;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                TryDeleteEmptyDirectory(itemRoot);
+                logger.LogWarning(exception, "Could not move the download folder {Path} to the recycle bin.", full);
+                return null;
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>The full path when it is inside the library's downloads folder and not inside its root, else null.</summary>
+    private static bool SafePathHasDots(string path) => Deluno.Contracts.SafePath.HasDotSegments(path);
+
+    private static string? DownloadPathOrNull(Libraries.Contracts.LibraryItem library, string path)
+    {
+        if (string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        string full;
+        try
+        {
+            var root = Path.GetFullPath(library.RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            full = Path.GetFullPath(path);
+            if (SafePathHasDots(path) || full.Equals(root, StringComparison.OrdinalIgnoreCase) || IsInsideRoot(full, root))
+            {
+                return null;
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        return full;
+    }
 
     public async Task<RecycleBinItem?> StoreRemovedFileAsync(
         Libraries.Contracts.LibraryItem library,

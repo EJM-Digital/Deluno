@@ -125,7 +125,7 @@ public sealed class UnmatchedImportGiveUpServiceTests
         var handled = await service.RunAsync(CancellationToken.None);
 
         Assert.Equal(1, handled);
-        Assert.False(File.Exists(sourcePath), "the leftover unmatched file is deleted once Deluno gives up on it");
+        Assert.False(File.Exists(sourcePath), "the leftover unmatched file leaves the download folder once Deluno gives up on it");
         Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), await blockedReleases.ListKeysAsync(CancellationToken.None));
         Assert.Equal("client-1", gateway.LastClientId);
         Assert.Empty((await series.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
@@ -345,9 +345,14 @@ public sealed class UnmatchedImportGiveUpServiceTests
             timeProvider,
             NullLogger<UnmatchedImportGiveUpService>.Instance,
             jobScheduler: jobStore,
-            librariesRepository: libraries,
+            // #1318/#1319: a file only ever leaves through the bin, and only when Deluno can tell where it is.
+            librariesRepository: libraries ?? new SqliteLibrariesRepository(storage.Factory, timeProvider),
             outboundNotificationService: outboundNotificationService,
-            notificationPreferences: notificationPreferences);
+            notificationPreferences: notificationPreferences,
+            recycleBinService: new Deluno.Platform.RecycleBinService(
+                Microsoft.Extensions.Options.Options.Create(new Deluno.Infrastructure.Storage.StoragePathOptions { DataRoot = storage.DataRoot }),
+                timeProvider,
+                NullLogger<Deluno.Platform.RecycleBinService>.Instance));
 
     private sealed class RecordingGateway : IDownloadClientActionGateway
     {

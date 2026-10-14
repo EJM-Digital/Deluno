@@ -64,7 +64,9 @@ public sealed class OrphanedDownloadService(
     INotificationService? notificationPreferences = null,
     OrphanedDownloadCache? cache = null,
     LeftoverScanMemory? scanMemory = null,
-    IRealtimeEventPublisher? realtimeEventPublisher = null)
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    // #1318: an orphaned download leaves through the recycle bin, never off the disk.
+    Deluno.Platform.IRecycleBinService? recycleBinService = null)
     : IOrphanedDownloadService
 {
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
@@ -209,26 +211,27 @@ public sealed class OrphanedDownloadService(
             return new OrphanedDownloadAction(false, $"{item.Name} is inside a library, or holds one, so Deluno will not remove it.");
         }
 
-        try
+        var owner = libraries.FirstOrDefault(library => string.Equals(library.Id, item.LibraryId, StringComparison.OrdinalIgnoreCase));
+        if (recycleBinService is null || owner is null)
         {
-            if (Directory.Exists(item.Path))
-            {
-                Directory.Delete(item.Path, recursive: true);
-            }
-            else if (File.Exists(item.Path))
-            {
-                File.Delete(item.Path);
-            }
+            return new OrphanedDownloadAction(false, $"Deluno has no recycle bin to move {item.Name} to, so it was left where it is.");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+
+        if (Directory.Exists(item.Path) || File.Exists(item.Path))
         {
-            logger.LogWarning(exception, "Could not remove orphaned download {Path}.", item.Path);
-            return new OrphanedDownloadAction(false, $"Deluno could not remove {item.Name}: {exception.Message}");
+            var stored = Directory.Exists(item.Path)
+                ? await recycleBinService.StoreDownloadFolderAsync(owner, item.Path, cancellationToken)
+                : await recycleBinService.StoreDownloadFileAsync(owner, item.Path, cancellationToken);
+            if (stored is null)
+            {
+                logger.LogWarning("Could not move orphaned download {Path} to the recycle bin.", item.Path);
+                return new OrphanedDownloadAction(false, $"Deluno could not move {item.Name} to the recycle bin, so it was left where it is.");
+            }
         }
 
         cache?.Forget(item.Path);
         var noticeSuffix = reason is { Length: > 0 } ? $", {reason}." : ".";
-        var message = $"{item.Name} was removed from the {item.LibraryName} library's download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}";
+        var message = $"{item.Name} was moved to the recycle bin from the {item.LibraryName} library's download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}";
         await activityFeedRepository.RecordActivityAsync(
             "download.orphan.removed",
             message,

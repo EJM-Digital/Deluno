@@ -185,6 +185,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
             [FromBody] DeleteSeasonPackLeftoversRequest request,
             ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
+            Deluno.Platform.IRecycleBinService recycleBinService,
             CancellationToken cancellationToken) =>
         {
             if (request?.Paths is not { Count: > 0 })
@@ -196,6 +197,12 @@ public static class FilesystemEndpointRouteBuilderExtensions
             }
 
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            // #1318/#1325: while any library folder overlaps another, nothing is cleaned up at all.
+            if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is { } blocked)
+            {
+                return Results.Conflict(new { message = blocked });
+            }
+
             var downloadRoots = libraries
                 .Select(library => library.DownloadsPath)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -230,28 +237,40 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     continue;
                 }
 
+                // #1318: a path that is, holds or sits inside any library root is a person's media.
+                if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, fullPath))
+                {
+                    refused.Add(rawPath);
+                    continue;
+                }
+
                 if (!File.Exists(fullPath))
                 {
                     // Already gone - nothing to confirm, and not a refusal.
                     continue;
                 }
 
-                try
-                {
-                    File.Delete(fullPath);
-                    deleted.Add(fullPath);
-                }
-                catch (IOException)
+                // #1318: a leftover leaves through the recycle bin, never off the disk.
+                var owner = libraries.FirstOrDefault(library =>
+                    !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
+                    Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(library.DownloadsPath), fullPath));
+                var stored = owner is null
+                    ? null
+                    : await recycleBinService.StoreDownloadFileAsync(owner, fullPath, cancellationToken);
+                if (stored is null)
                 {
                     refused.Add(rawPath);
+                    continue;
                 }
+
+                deleted.Add(fullPath);
             }
 
             if (deleted.Count > 0)
             {
                 await activityFeedRepository.RecordActivityAsync(
                     "filesystem.import.season-pack.leftovers-deleted",
-                    $"Deleted {deleted.Count} leftover file(s) from a season pack that never matched a canonical episode: {string.Join(", ", deleted.Select(Path.GetFileName))}.",
+                    $"Moved {deleted.Count} leftover file(s) to the recycle bin from a season pack that never matched a canonical episode: {string.Join(", ", deleted.Select(Path.GetFileName))}.",
                     System.Text.Json.JsonSerializer.Serialize(new { Deleted = deleted, Refused = refused }),
                     null,
                     null,

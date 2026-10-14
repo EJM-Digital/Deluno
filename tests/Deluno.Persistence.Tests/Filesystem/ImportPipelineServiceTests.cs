@@ -7411,7 +7411,7 @@ public sealed class ImportPipelineServiceTests
         // The activity message says what happened to the old file.
         Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[WEB 720p].mkv", secondResult.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
 
         var trackedAfterSecond = new List<MovieTrackedFileItem>();
         await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
@@ -7853,7 +7853,7 @@ public sealed class ImportPipelineServiceTests
         Assert.True(File.Exists(newFilePath));
         Assert.False(File.Exists(originalFilePath!));
         Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
 
         var detailAfterSecond = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
         var episodeAfterSecond = Assert.Single(detailAfterSecond!.Episodes, item => item.HasFile);
@@ -7955,7 +7955,7 @@ public sealed class ImportPipelineServiceTests
         Assert.EndsWith("[Bluray 1080p].mkv", newFilePath, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(newFilePath));
         Assert.False(File.Exists(originalFilePath));
-        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -9006,7 +9006,8 @@ public sealed class ImportPipelineServiceTests
             connectionsRepository,
             NullLogger<ImportPipelineService>.Instance,
             null,
-            null,
+            // #1318: a replaced file only ever leaves through the bin, so the service is built with the real one.
+            new Deluno.Platform.RecycleBinService(Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }), timeProvider, NullLogger<Deluno.Platform.RecycleBinService>.Instance),
             qualityRepository,
             blockedReleases: blockedReleases,
             failureRules: failureRules,
