@@ -208,7 +208,7 @@ function Restore-RwLibraries {
 
 function Get-RwLibrary([string] $MediaType) {
     $all = Invoke-RwWeir 'GET' '/processing/libraries'
-    $list = if ($all.libraries) { @($all.libraries) } elseif ($all.items) { @($all.items) } else { @($all) }
+    $list = if ($all.value) { @($all.value) } elseif ($all.libraries) { @($all.libraries) } elseif ($all.items) { @($all.items) } else { @($all) }
     $list | Where-Object { $_.media_type -eq $MediaType -and $_.enabled } | Select-Object -First 1
 }
 
@@ -517,7 +517,7 @@ function Invoke-RecordWeirReports($p) {
     $connection = $null; $original = $null
     try {
         $all = Invoke-RwWeir 'GET' '/media-managers/connections'
-        $list = if ($all.connections) { @($all.connections) } elseif ($all.items) { @($all.items) } else { @($all) }
+        $list = if ($all.value) { @($all.value) } elseif ($all.connections) { @($all.connections) } elseif ($all.items) { @($all.items) } else { @($all) }
         $connection = $list | Where-Object { $_.kind -match 'deluno' -or $_.base_url -match ":$($p.DelunoPort)" } | Select-Object -First 1
         if (-not $connection) { Add-Missing 'weir reports: Weir has no connection to Deluno to point at the proxy'; return }
         $original = [string]$connection.base_url

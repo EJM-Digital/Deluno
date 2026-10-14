@@ -121,6 +121,17 @@ function Initialize-SuiteEnvironment {
     }
     else { throw 'The Usenet stub scripts are not in the VM (run the harness with -UsenetStub).' }
 
+    # 4b. Weir takes each library's watched folder from Deluno on its own schedule (about a minute after the workflow is saved). A hand-off
+    # sent before that is refused with "No Weir workflow watches the folder" (rc.18: seen on a scenario run alone from a fresh setup).
+    $synced = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition {
+        $r = Invoke-Weir -Path '/processing/libraries'
+        $list = if ($r.PSObject.Properties.Name -contains 'value') { @($r.value) } else { @($r) }
+        $enabled = @($list | Where-Object { $_.enabled })
+        if ($enabled.Count -ge 2 -and @($enabled | Where-Object { -not $_.watched_folder }).Count -eq 0) { $true }
+    }
+    if (-not $synced.Ok) { throw 'Weir still had a workflow with no watched folder 240 s after Deluno saved them.' }
+    Write-SuiteLog ('Weir: every workflow has its watched folder after {0:0} s.' -f $synced.Seconds)
+
     # 5. Automation on, and each download client's own folders answered.
     Invoke-Deluno -Method PUT -Path '/api/settings/automation' -Body @{ isEnabled = $true } | Out-Null
     $clients = Get-DownloadClients
