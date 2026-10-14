@@ -79,6 +79,19 @@ internal sealed class RecordedAppServer : IAsyncDisposable
             return answers.FirstOrDefault(answer => string.Equals(answer.Value, value, StringComparison.Ordinal)).Reply?.Reply.ToResponse();
         };
 
+    /// <summary>
+    /// For a call whose address carries an id of the test's own (a hand-off Deluno made) that the recording's own id cannot match:
+    /// a call of this method whose address contains <paramref name="pathContains"/> is answered with that recorded exchange's reply.
+    /// </summary>
+    public static Func<HttpRequestMessage, string, HttpResponseMessage?> Answering(string method, string pathContains, Exchange reply)
+        => (request, _) => request.Method.Method == method && request.RequestUri is not null && request.RequestUri.PathAndQuery.Contains(pathContains, StringComparison.Ordinal)
+            ? reply.Reply.ToResponse()
+            : null;
+
+    /// <summary>The first of these that answers a call answers it.</summary>
+    public static Func<HttpRequestMessage, string, HttpResponseMessage?> Chain(params Func<HttpRequestMessage, string, HttpResponseMessage?>[] answerers)
+        => (request, body) => answerers.Select(answerer => answerer(request, body)).FirstOrDefault(answer => answer is not null);
+
     public static async Task<RecordedAppServer> StartAsync(
         string app,
         IEnumerable<Recording> recordings,
