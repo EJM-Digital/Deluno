@@ -235,7 +235,7 @@ public sealed partial class DelunoRepliesToWeirTests
                 async rig => await rig.EveryRouteAsync(Credential.ReadOnlyKey)),
 
             new("reply-key-with-imports-scope-only",
-                "Each of the four routes called with a valid API key that carries the imports scope and no read scope: the two writes are accepted past the scope check, and the two reads are refused by the authorization policy, which asks a GET for the read scope (docs/external-integration-api.md says imports is enough; see the contract document).",
+                "Each of the four routes called with a valid API key that carries the imports scope and no read scope: the two reads answer 200 (a GET asks for read, except these two hand-off reads, which the imports scope also opens, #1265) and the two writes are accepted past the scope check.",
                 async rig => await rig.EveryRouteAsync(Credential.ImportsOnly))
         };
 

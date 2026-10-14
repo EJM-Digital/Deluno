@@ -215,12 +215,18 @@ The routes: `GET /api/integrations/processors/handoffs[?libraryId=&take=]`, `GET
 | `200`, Weir cannot be reached: still owed | `reply-send-again-weir-unreachable` | same |
 | `401` (no body) on each of the four routes, with no credential | `reply-no-sign-in` | same |
 | a key with only the `read` scope: `403 { message }` on the two reads (the route's own scope check, "This API key does not include the required scope: imports.") and `403 { error, required, granted }` on the two writes (the authorization policy) | `reply-key-without-imports-scope` | same |
-| a key with only the `imports` scope: the two writes pass the scope check (`404` for an unknown id), the two reads are `403 { error, required, granted }` | `reply-key-with-imports-scope-only` | same |
+| a key with only the `imports` scope: the two reads answer `200` and the two writes pass the scope check (`404` for an unknown id) | `reply-key-with-imports-scope-only` | same |
 
-**The key Weir needs.** The scenarios call with a key holding `read` and `imports` (the first recording of every route). The two last
-rows show why: the authorization policy asks a `GET` for the `read` scope whatever the route's own scope is, so a key with `imports` alone
-is refused on the two reads (`granted: ["imports"]`). `docs/external-integration-api.md` says the `imports` scope is enough for those two
-reads; the recordings say it is not. Until one of the two changes, the Weir session must give its Deluno key `read` and `imports`.
+**The scopes, per route (#1265).** A `GET` asks the authorization policy for `read`, except the two reads Weir makes, which the policy also opens to `imports`; each route then checks `imports` itself:
+
+| Route | Scopes that pass |
+|---|---|
+| `GET /api/integrations/processors/handoffs` | `imports` |
+| `GET /api/integrations/processors/download-destinations` | `imports` |
+| `POST /api/integrations/processors/handoffs/{id}/import-original` | `imports` |
+| `POST /api/integrations/processors/handoffs/{id}/outcome/send-again` | `imports` |
+
+A key with `imports` alone is the key for Weir's work. A key with `read` alone is refused on all four: the route checks `imports` itself after the policy. The opening of the two reads is metadata on those two routes (`DelunoImportsScopeMayReadAttribute`), never a wildcard; `AnImportsKeyReadsOnlyTheHandOffRoutesTests` walks every `GET` route in the endpoint map and fails if an `imports`-only key gets through anywhere else.
 
 Guards: `EveryWeirRecordingIsUsedByAContractTestTests` fails on a recording no test names or this document does not list;
 `DelunoRepliesToWeirTests.Every_scenario_has_its_recording_and_every_reply_recording_has_its_scenario` fails on a scenario with no recording

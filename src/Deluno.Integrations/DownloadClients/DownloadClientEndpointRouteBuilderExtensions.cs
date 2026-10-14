@@ -615,7 +615,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
 
             var libraries = await folderChain.ListDestinationsAsync(libraryId, cancellationToken);
             return libraries is null ? Results.NotFound() : Results.Ok(new { libraries });
-        });
+        }).WithMetadata(new DelunoImportsScopeMayReadAttribute());
 
         endpoints.MapPost("/api/download-clients/{clientId}/categories/check", async (
             string clientId,
