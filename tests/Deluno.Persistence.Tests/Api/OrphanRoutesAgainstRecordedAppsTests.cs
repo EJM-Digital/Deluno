@@ -98,7 +98,7 @@ public sealed class OrphanRoutesAgainstRecordedAppsTests
             var removed = await PostPathAsync(scene.App, "remove", scene.Stray2);
             Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
             Assert.False(Directory.Exists(scene.Stray2), "the folder is gone from the disk");
-            Assert.Contains("Stray.Two.2018 was removed", await scene.App.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+            Assert.Contains("Stray.Two.2018 was moved to the recycle bin", await scene.App.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
 
             var held = await PostPathAsync(scene.App, "remove", scene.Held);
             Assert.Equal(HttpStatusCode.Conflict, held.StatusCode);

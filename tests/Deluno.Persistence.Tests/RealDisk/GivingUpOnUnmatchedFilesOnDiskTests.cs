@@ -20,7 +20,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// <summary>
 /// Giving up on an unmatched import, run on real files in a real temp folder with the real recycle bin and the
 /// real catalogue, blocklist and job queue. A person's media inside a library only ever leaves through the bin; a file
-/// in a download area is deleted; a delete that fails does not stop the rest; and only unmatched cases are touched.
+/// in a download area is moved to the bin; a delete that fails does not stop the rest; and only unmatched cases are touched.
 /// </summary>
 public sealed class GivingUpOnUnmatchedFilesOnDiskTests
 {
@@ -98,7 +98,7 @@ public sealed class GivingUpOnUnmatchedFilesOnDiskTests
     }
 
     [Fact]
-    public async Task A_file_in_a_download_area_is_deleted_and_the_release_is_blocklisted_and_a_new_search_is_queued()
+    public async Task A_file_in_a_download_area_goes_to_the_recycle_bin_and_the_release_is_blocklisted_and_a_new_search_is_queued()
     {
         await using var world = await StartWorldAsync();
         var movie = await world.AddMovieAsync("Sintel", 2010);
@@ -110,8 +110,9 @@ public sealed class GivingUpOnUnmatchedFilesOnDiskTests
         var handled = await ServiceFor(world, scope).RunAsync(CancellationToken.None);
 
         Assert.Equal(1, handled);
-        Assert.False(File.Exists(leftover), "a file in a download area is deleted outright");
-        Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
+        Assert.False(File.Exists(leftover), "the file left the download area");
+        var item = Assert.Single(await world.Bin.ListAsync(CancellationToken.None));
+        Assert.Equal(leftover, item.OriginalPath);
         Assert.Contains(await scope.ServiceProvider.GetRequiredService<IBlockedReleaseRepository>().ListAsync(CancellationToken.None), blocked => blocked.ReleaseName == "Sintel 2010 WEB 1080p");
         Assert.False(await IsOpenAsync(world, caseId));
     }
@@ -160,10 +161,8 @@ public sealed class GivingUpOnUnmatchedFilesOnDiskTests
         Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
     }
 
-    // Possible defect, written down as the row says: with no library list to ask, no file can be known to be a person's
-    // media, so the file inside a library is deleted outright. The host always supplies the list, so this is only reachable by a
-    // hand-built service; it is kept here, skipped, so the day the guard is added the test can be turned on.
-    [Fact(Skip = "Defect: with no libraries repository wired, GiveUpAsync treats owner null as 'delete', so a file inside a library is deleted outright instead of binned.")]
+    // #1319: with no library list to ask, no file can be known not to be a person's media, so none is touched.
+    [Fact]
     public async Task A_file_inside_a_library_is_not_deleted_even_when_the_service_has_no_library_list()
     {
         await using var world = await StartWorldAsync();
@@ -173,6 +172,25 @@ public sealed class GivingUpOnUnmatchedFilesOnDiskTests
 
         await ServiceFor(world, scope, withLibraries: false).RunAsync(CancellationToken.None);
 
-        Assert.True(File.Exists(stray) || (await world.Bin.ListAsync(CancellationToken.None)).Count == 1, "the file must still exist, in the library or in the bin");
+        Assert.True(File.Exists(stray), "the file is left exactly where it was");
+        Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
+        var activity = await scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(activity, entry => entry.Message.Contains("left the file where it is because Deluno could not tell which folder the file is in"));
+    }
+
+    [Fact]
+    public async Task A_file_in_no_known_folder_is_left_alone_and_the_activity_says_why()
+    {
+        await using var world = await StartWorldAsync();
+        var elsewhere = Write(Path.Combine(world.App.DataRoot, "elsewhere", "Sintel.2010.mkv"));
+        await OpenCaseAsync(world, ImportFailurePolicy.Unmatched, elsewhere);
+        using var scope = world.App.Services.CreateScope();
+
+        await ServiceFor(world, scope).RunAsync(CancellationToken.None);
+
+        Assert.True(File.Exists(elsewhere));
+        Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
+        var activity = await scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Contains(activity, entry => entry.Message.Contains("it is not in a library or a downloads folder Deluno knows"));
     }
 }

@@ -70,11 +70,13 @@ public sealed class RecoveryCleanupNotificationCategoryTests
             TimeProvider.System,
             NullLogger<OrphanedDownloadService>.Instance,
             world.Outbound,
-            world.Preferences);
+            world.Preferences,
+            recycleBinService: new Deluno.Platform.RecycleBinService(Microsoft.Extensions.Options.Options.Create(new Deluno.Infrastructure.Storage.StoragePathOptions { DataRoot = storage.DataRoot }), TimeProvider.System, NullLogger<Deluno.Platform.RecycleBinService>.Instance));
 
         var action = await orphanedService.RemoveAsync(path, CancellationToken.None);
 
         Assert.True(action.Done, action.Message);
+        Assert.False(Directory.Exists(path), "the folder left the download folder");
         Assert.Contains("download.orphan.removed", world.Outbound.DispatchedCategories);
     }
 
@@ -97,7 +99,8 @@ public sealed class RecoveryCleanupNotificationCategoryTests
             TimeProvider.System,
             NullLogger<OrphanedDownloadService>.Instance,
             world.Outbound,
-            world.Preferences);
+            world.Preferences,
+            recycleBinService: new Deluno.Platform.RecycleBinService(Microsoft.Extensions.Options.Options.Create(new Deluno.Infrastructure.Storage.StoragePathOptions { DataRoot = storage.DataRoot }), TimeProvider.System, NullLogger<Deluno.Platform.RecycleBinService>.Instance));
 
         var action = await orphanedService.RemoveAsync(path, CancellationToken.None);
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -29,7 +30,7 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
         Assert.True(File.Exists(world.Episode), "the episode that did match is not a leftover");
         Assert.True(File.Exists(world.OtherPack), "another download's file is not touched");
         var activity = await app.Client.GetStringAsync("/api/activity?take=100");
-        Assert.Contains("Deleted 2 leftover file(s) from a season pack", activity);
+        Assert.Contains("Moved 2 leftover file(s) to the recycle bin from a season pack", activity);
         Assert.Contains(Path.GetFileName(world.Sample), activity);
         Assert.Contains(Path.GetFileName(world.Extra), activity);
     }
@@ -80,13 +81,13 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
     }
 
     /// <summary>
-    /// DEFECT, found by this test and not fixed: <c>/api/filesystem/import/season-pack/leftovers/delete</c> trusts every library's
+    /// Was a defect (#1318), now fixed: <c>/api/filesystem/import/season-pack/leftovers/delete</c> trusts every library's
     /// download folder as safe to delete from, and nothing stops a download folder from holding another library's root. Library
     /// creation accepts it (200), and the leftovers route then deletes a film straight out of the other library: the answer was
     /// <c>{"deleted":1,"refused":[]}</c> and the file was gone from disk, not in the recycle bin. The orphan-folder remover refuses
     /// anything inside a library root; this route does not.
     /// </summary>
-    [Fact(Skip = "DEFECT: the season-pack leftovers route deletes a film inside another library's root when a library's download folder contains that root (answer deleted:1, file gone, not in the recycle bin). Needs the same inside-a-library refusal OrphanedDownloadService.RemoveAsync has.")]
+    [Fact]
     public async Task A_download_folder_that_holds_a_library_cannot_be_used_to_delete_that_librarys_media()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -97,13 +98,22 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
         Directory.CreateDirectory(tv);
         await File.WriteAllTextAsync(film, "the only copy of a film");
         await CreateLibraryAsync(app, "Films", "movies", movies, downloadsPath: null);
-        await CreateLibraryAsync(app, "Shows", "tv", tv, downloadsPath: Path.Combine(app.DataRoot, "media"));
+
+        // #1325: that layout can no longer be saved ...
+        using var refused = await CreateRawAsync(app, "Shows", "tv", tv, downloadsPath: Path.Combine(app.DataRoot, "media"));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, refused.StatusCode);
+
+        // ... but an install that saved it before still has it, written straight into the database.
+        await CreateLibraryAsync(app, "Shows", "tv", tv, downloadsPath: null);
+        var libraries = app.Services.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>();
+        var shows = (await libraries.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Name == "Shows");
+        await libraries.UpdateLibraryDetailsAsync(shows.Id, new Deluno.Libraries.Contracts.UpdateLibraryDetailsRequest(null, null, Path.Combine(app.DataRoot, "media")), CancellationToken.None);
 
         using var response = await app.Client.PostAsJsonAsync("/api/filesystem/import/season-pack/leftovers/delete", new { paths = new[] { film } });
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(0, body.GetProperty("deleted").GetInt32());
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, response.StatusCode);
         Assert.True(File.Exists(film), "library media never leaves through a leftovers delete");
+        Assert.Empty(await app.Services.GetRequiredService<Deluno.Platform.IRecycleBinService>().ListAsync(CancellationToken.None));
     }
 
     // ---------------------------------------------------------------- helpers
@@ -112,7 +122,13 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
 
     private static async Task CreateLibraryAsync(ApplicationTestHost app, string name, string mediaType, string rootPath, string? downloadsPath)
     {
-        var created = await app.Client.PostAsJsonAsync("/api/libraries/", new
+        using var created = await CreateRawAsync(app, name, mediaType, rootPath, downloadsPath);
+        created.EnsureSuccessStatusCode();
+    }
+
+    private static Task<HttpResponseMessage> CreateRawAsync(ApplicationTestHost app, string name, string mediaType, string rootPath, string? downloadsPath)
+    {
+        return app.Client.PostAsJsonAsync("/api/libraries/", new
         {
             name,
             mediaType,
@@ -132,7 +148,6 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
             retryDelayHours = (int?)null,
             maxItemsPerRun = (int?)null
         });
-        created.EnsureSuccessStatusCode();
     }
 
     private static async Task<World> WorldAsync(ApplicationTestHost app)
