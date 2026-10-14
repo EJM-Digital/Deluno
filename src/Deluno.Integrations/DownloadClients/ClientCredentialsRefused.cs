@@ -1,6 +1,7 @@
 using System.Net;
 using Deluno.Connections;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -84,4 +85,11 @@ internal static class ClientCredentials
 
     public static DownloadClientActionResult Failure(DownloadClientItem client, string queueItemId, string action, ClientCredentialsRefusedException refused)
         => Failure(client, queueItemId, action, refused.Message);
+
+    /// <summary>#1312: a grab the client refused for its key or login, as a failed result rather than an exception.</summary>
+    public static DownloadClientGrabResult GrabFailure(DownloadClientItem client, DownloadClientGrabRequest request, string message)
+        => new(client.Id, request.ReleaseName, false, "failed", message)
+        {
+            Failure = IntegrationFailureFactory.FromLegacy("download-client", client.Id, client.Name, "grab", "auth", message)
+        };
 }

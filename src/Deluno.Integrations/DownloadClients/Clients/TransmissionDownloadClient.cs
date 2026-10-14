@@ -17,6 +17,19 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await GrabCoreAsync(client, request, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.GrabFailure(client, request, message);
+        }
+    }
+
+    private async Task<DownloadClientGrabResult> GrabCoreAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         // A .torrent Deluno fetched goes as metainfo; a URL or magnet as a
@@ -446,6 +459,20 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// download folder is not touched. Labels need RPC 16 (Transmission 2.40); an older daemon says so.
     /// </summary>
     public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await SetCategoryCoreAsync(client, queueItemId, category, currentCategory, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.Failure(client, queueItemId, DownloadClientActions.SetCategory, message);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> SetCategoryCoreAsync(
         DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
     {
         var action = DownloadClientActions.SetCategory;
