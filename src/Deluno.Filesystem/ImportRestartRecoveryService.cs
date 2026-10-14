@@ -61,6 +61,14 @@ public sealed class ImportRestartRecoveryService(
         var busy = new List<(LibraryItem Library, string MarkerPath)>();
 
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+
+        // #1325: recovery removes staging files and markers, so it waits while a folder overlaps a library. The markers stay on disk
+        // and are picked up on the first pass after the layout is fixed.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is not null)
+        {
+            return new ImportRestartRecoveryReport(0, 0);
+        }
+
         foreach (var library in libraries.Where(item => !string.IsNullOrWhiteSpace(item.RootPath)))
         {
             cancellationToken.ThrowIfCancellationRequested();

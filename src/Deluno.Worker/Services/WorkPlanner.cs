@@ -1014,6 +1014,7 @@ public sealed class WorkPlanner(
             movieCatalogRepository,
             seriesCatalogRepository,
             libraries,
+            allLibraries,
             existingJobs,
             cancellationToken);
         await RecordUnmatchedProcessorOutputsAsync(
@@ -1205,7 +1206,8 @@ public sealed class WorkPlanner(
                     ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
                         ExpectedOutputDirectoryNames(existing!.SourcePath, library.DownloadsPath),
                         library.ProcessorOutputPath,
-                        ProcessorOutputReadiness.IsReady);
+                        ProcessorOutputReadiness.IsReady,
+                        allLibraries);
                 }
             }
 
@@ -2156,6 +2158,7 @@ public sealed class WorkPlanner(
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         IReadOnlyList<LibraryItem> libraries,
+        IReadOnlyList<LibraryItem> allLibraries,
         IReadOnlyList<JobQueueItem> existingJobs,
         CancellationToken cancellationToken)
     {
@@ -2221,7 +2224,7 @@ public sealed class WorkPlanner(
             if (importJob.AlreadyImported)
             {
                 // A second copy of a download Deluno already imported (#1155).
-                var deleted = Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(outputPath, library.ProcessorOutputPath, handoff.SourcePath);
+                var deleted = Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(outputPath, library.ProcessorOutputPath, handoff.SourcePath, allLibraries);
                 await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, "completed", outputPath, null, null, cancellationToken);
                 queuedThisPass.Add(NormalizeSourceKey(outputPath));
                 await activityFeedRepository.RecordActivityAsync(

@@ -154,6 +154,16 @@ public interface IRecycleBinService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Moves one stray file or folder out of a library's processor output folder into the bin (#1325), kept beside that output folder
+    /// (so the move stays on one disk) and restored to the same place. Never deletes. Null when the item is gone or cannot be moved.
+    /// </summary>
+    Task<RecycleBinItem?> StoreStrayOutputAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+        => Task.FromResult<RecycleBinItem?>(null);
+
+    /// <summary>
     /// Keeps a removed title's catalogue record with the items its files
     /// became, so a restore can bring the title back too (#1161).
     /// </summary>
@@ -389,6 +399,88 @@ public sealed class RecycleBinService(
         }
 
         return await StoreFileAsync(library, full, full, owner, cancellationToken);
+    }
+
+    public async Task<RecycleBinItem?> StoreStrayOutputAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
+        {
+            return null;
+        }
+
+        string output;
+        string full;
+        try
+        {
+            output = Path.GetFullPath(library.ProcessorOutputPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            full = Path.GetFullPath(path);
+            if (!IsInsideRoot(full, output) || Path.GetDirectoryName(output) is null)
+            {
+                return null;
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        var isDirectory = Directory.Exists(full);
+        if (!isDirectory && !File.Exists(full))
+        {
+            return null;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadStateAsync(cancellationToken);
+            var id = Guid.CreateVersion7().ToString("N");
+            var itemRoot = Path.Combine(HoldingRoot(output), id);
+            var destination = Path.Combine(itemRoot, Path.GetFileName(full));
+            try
+            {
+                Directory.CreateDirectory(itemRoot);
+                var sizeBytes = CalculateSize(full, isDirectory);
+                if (isDirectory)
+                {
+                    Directory.Move(full, destination);
+                }
+                else
+                {
+                    File.Move(full, destination);
+                }
+
+                var now = timeProvider.GetUtcNow();
+                var item = new RecycleBinItem(
+                    Id: id,
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    OriginalPath: full,
+                    RecyclePath: destination,
+                    IsDirectory: isDirectory,
+                    SizeBytes: sizeBytes,
+                    CreatedUtc: now,
+                    ExpiresUtc: now.AddDays(state.Settings.RetentionDays));
+                state.Items.Add(item);
+                await EnforceRetentionUnsafeAsync(state, cancellationToken);
+                await WriteStateAsync(state, cancellationToken);
+                return item;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                TryDeleteEmptyDirectory(itemRoot);
+                logger.LogWarning(exception, "Could not move {Path} out of the processor output folder into the recycle bin.", full);
+                return null;
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private async Task<RecycleBinFileOwner?> FindOwnerAsync(

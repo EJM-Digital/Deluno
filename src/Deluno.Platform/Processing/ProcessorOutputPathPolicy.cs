@@ -141,9 +141,21 @@ public static class ProcessorOutputPathPolicy
     /// download (<see cref="IsOutputAbout"/>) and inside the library's own output
     /// folder is ever touched. Returns whether anything was deleted.
     /// </summary>
-    public static bool DeleteSecondCopy(string? outputPath, string? configuredOutputPath, string? sourcePath)
+    public static bool DeleteSecondCopy(
+        string? outputPath,
+        string? configuredOutputPath,
+        string? sourcePath,
+        IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries)
     {
         if (!IsOutputAbout(outputPath, configuredOutputPath, sourcePath))
+        {
+            return false;
+        }
+
+        // #1325: nothing is deleted while a folder overlaps a library, and never a library's root, anything inside one, or a folder that holds one.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is not null
+            || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, outputPath)
+            || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, configuredOutputPath))
         {
             return false;
         }
