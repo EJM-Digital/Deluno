@@ -1,6 +1,7 @@
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform;
+using Deluno.Security;
 using Deluno.Security.Contracts;
 using Deluno.Security.Data;
 using Deluno.Worker;
@@ -126,6 +127,8 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     app.UseRouting();
                     app.UseAuthentication();
                     app.UseAuthorization();
+                    // The bad-request answers are the shared pipeline's own, so a test sees what a caller sees (#1280).
+                    app.UseDelunoBadRequestAnswers();
                     app.UseDelunoRequestBodyLimits();
                     app.UseEndpoints(endpoints => endpoints.MapDelunoApplicationEndpoints());
                 }))
