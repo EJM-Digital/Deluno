@@ -150,6 +150,104 @@ public sealed class RetentionCollectionServiceTests
         Assert.Equal("Deluno could not update the Leaving soon collection on Rig jellyfin.", _store.Collections[("jf", "movies")].Problem);
     }
 
+    // ---- #1301: the same service with the real Jellyfin client, answered by Jellyfin 12.2.0's recorded replies ----
+
+    private sealed class RecordedFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    /// <summary>A Jellyfin that holds (or does not hold) the Leaving soon collection, answering with its recorded replies and noting every call.</summary>
+    private HttpMessageHandler RecordedJellyfin(List<string> calls, bool collectionExists)
+        => Deluno.Tests.Recorded.RecordedReplies.Handler("jellyfin", [], (request, body) =>
+        {
+            calls.Add($"{request.Method} {request.RequestUri!.PathAndQuery}");
+            var recorded = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("collection-sync");
+            var path = request.RequestUri.AbsolutePath;
+            var query = request.RequestUri.Query;
+            if (path == "/Users") return Deluno.Tests.Recorded.RecordedReplies.Jellyfin("libraries").Exchanges[1].Reply.ToResponse();
+            if (path == "/Items" && query.Contains("IncludeItemTypes=BoxSet"))
+            {
+                return collectionExists
+                    ? Deluno.Tests.Recorded.RecordedReplies.Json(recorded.Body("IncludeItemTypes=BoxSet", ("Items.0.Name", "Leaving soon")))
+                    : Deluno.Tests.Recorded.RecordedReplies.Jellyfin("library-empty").Exchanges[2].Reply.ToResponse();
+            }
+
+            if (path == "/Collections" && request.Method == HttpMethod.Post) return recorded.Exchanges[0].Reply.ToResponse();
+            if (path == "/Items" && query.Contains("Ids=")) return recorded.Exchanges[1].Reply.ToResponse();
+            if (path.StartsWith("/Items/", StringComparison.Ordinal) && request.Method == HttpMethod.Post) return recorded.Exchanges[2].Reply.ToResponse();
+            if (path.Contains("/FavoriteItems/", StringComparison.Ordinal)) return recorded.Exchanges[3].Reply.ToResponse();
+            if (path.EndsWith("/Items", StringComparison.Ordinal) && query.Contains("ParentId")) return recorded.Exchanges[7].Reply.ToResponse();
+            if (path.StartsWith("/Collections/", StringComparison.Ordinal)) return recorded.Exchanges[request.Method == HttpMethod.Delete ? 5 : 4].Reply.ToResponse();
+            if (path.StartsWith("/Items/", StringComparison.Ordinal) && request.Method == HttpMethod.Delete)
+                return Deluno.Tests.Recorded.RecordedReplies.Jellyfin("collection-deleted").Exchanges[0].Reply.ToResponse();
+            return null;
+        });
+
+    private RetentionCollectionService RealJellyfinService(HttpMessageHandler handler)
+    {
+        var servers = new Mock<IMediaServerRepository>();
+        servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Server("jf", MediaServerKinds.Jellyfin)]);
+        return new RetentionCollectionService(
+            _store,
+            servers.Object,
+            new MediaServerClientRegistry([new JellyfinMediaServerClient(new RecordedFactory(handler))]),
+            new FixedClock(Now),
+            NullLogger<RetentionCollectionService>.Instance);
+    }
+
+    [Fact]
+    public async Task What_a_rule_marks_goes_into_a_real_jellyfins_collection_by_the_calls_it_recorded_taking()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
+        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        var calls = new List<string>();
+
+        await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
+
+        Assert.Contains(calls, call => call == "POST /Collections?Name=Leaving%20soon&Ids=3df4dba3fab3ef172511446b46f3e8a0");
+        var synced = _store.Collections[("jf", "movies")];
+        Assert.Null(synced.Problem);
+        Assert.Equal(1, synced.Members);
+    }
+
+    [Fact]
+    public async Task Turning_the_rule_off_asks_a_real_jellyfin_to_delete_its_emptied_collection_and_nothing_else()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
+        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        var calls = new List<string>();
+        await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
+        calls.Clear();
+
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf") with { IsEnabled = false });
+        await RealJellyfinService(RecordedJellyfin(calls, collectionExists: true)).SyncAsync(CancellationToken.None);
+
+        Assert.Equal(["DELETE /Items/18da5b93435bf32b1375cc6efe0ca347"], calls.Where(call => call.StartsWith("DELETE", StringComparison.Ordinal)));
+        Assert.Equal(0, _store.Collections[("jf", "movies")].Members);
+        Assert.Null(_store.Collections[("jf", "movies")].Problem);
+    }
+
+    [Fact]
+    public async Task A_jellyfin_that_does_not_answer_is_recorded_against_the_server_and_caught_up_when_it_does()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
+        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        var down = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("not-answering").NotAnswering();
+
+        await RealJellyfinService(down).SyncAsync(CancellationToken.None);
+
+        var failed = _store.Collections[("jf", "movies")];
+        Assert.NotNull(failed.Problem);
+        Assert.Null(failed.SyncedUtc);
+
+        await RealJellyfinService(RecordedJellyfin([], collectionExists: false)).SyncAsync(CancellationToken.None);
+
+        var caughtUp = _store.Collections[("jf", "movies")];
+        Assert.Null(caughtUp.Problem);
+        Assert.Equal(Now, caughtUp.SyncedUtc);
+    }
+
     private RetentionCollectionService Service()
     {
         var servers = new Mock<IMediaServerRepository>();
