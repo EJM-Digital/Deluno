@@ -152,6 +152,24 @@ public sealed class FlareSolverrCloudflareHelperTests
         Assert.Null(request.Proxy.Username);
     }
 
+    /// <summary>#1301: the proxy parameter against FlareSolverr 3.5.2's own recorded reply to a request that carries one.</summary>
+    [Fact]
+    public async Task The_assigned_proxy_travels_with_the_request_and_the_page_FlareSolverr_solved_is_what_comes_back()
+    {
+        var recorded = RecordedReplies.Flaresolverr("request-get-ok").Single.Reply.Json()["solution"]!;
+        var recorder = new RecordingHandler();
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        var solution = await helper.FetchAsync(TargetUrl, CancellationToken.None, new CloudflareHelperProxy("http://192.168.1.1:8080", "user", "pass"));
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.Equal(new RecordedProxy("http://192.168.1.1:8080", "user", "pass"), request.Proxy);
+        Assert.NotNull(solution);
+        Assert.Equal(recorded["response"]!.GetValue<string>(), solution!.Html);
+        Assert.Equal((int)solution.Status, recorded["status"]!.GetValue<int>());
+        Assert.Equal(recorded["userAgent"]!.GetValue<string>(), solution.UserAgent);
+    }
+
     [Fact]
     public async Task No_helper_configured_returns_null_and_sends_nothing()
     {
