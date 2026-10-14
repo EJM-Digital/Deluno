@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -168,8 +170,9 @@ public sealed class BulkTitleRoutesDoWhatTheySayTests
 
         Assert.Equal(1, result.GetProperty("searchesTriggered").GetInt32());
         Assert.Equal(1, result.GetProperty("libraryCount").GetInt32());
-        Assert.Equal(1, await ApiScenes.ScalarAsync(app, "jobs", $"SELECT search_requested FROM library_automation_state WHERE library_id = '{libraryId}';"));
-        Assert.Contains("Deluno will check", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+        var queued = Assert.Single(await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(100, CancellationToken.None), job => job.RelatedEntityId == titleId && job.JobType.EndsWith(".search.manual", StringComparison.Ordinal));
+        Assert.Contains(libraryId, queued.PayloadJson, StringComparison.Ordinal);
+        Assert.Equal(0, await ApiScenes.ScalarAsync(app, "jobs", "SELECT COUNT(*) FROM library_automation_state WHERE search_requested = 1;"));
 
         var refused = await app.Client.PostAsJsonAsync($"/api/{kind}/bulk/search", new Dictionary<string, object?> { [IdsKey(kind)] = Array.Empty<string>() });
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
