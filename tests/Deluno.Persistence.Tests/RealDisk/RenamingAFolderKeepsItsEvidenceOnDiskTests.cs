@@ -10,10 +10,8 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// </summary>
 public sealed class RenamingAFolderKeepsItsEvidenceOnDiskTests
 {
-    // DEFECT (the register's "suspected defect", now shown on a real library): the bulk rename moves the folder and rewrites the
-    // title's tracked path, but media_preference_evaluations keeps the old file_path, so the stored release name and matched rules
-    // no longer belong to any file. Observed: tracked path is the new one, evidence path is still ...\Sintel (2010)\Sintel.2010...mkv.
-    [Fact(Skip = "Defect: renaming a film's folder (bulk rename-apply) leaves media_preference_evaluations.file_path on the old path, so the stored release evidence is orphaned.")]
+    // #1323: the bulk rename moves the folder and the title's tracked path, and the stored release evidence follows it.
+    [Fact]
     public async Task Renaming_a_films_folder_leaves_the_stored_evidence_pointing_at_the_file_where_it_now_is()
     {
         var app = await ApplicationTestHost.StartAsync(replaceServices: RealDiskLibrary.UseProbe(new ScriptedProbe(_ => ScriptedProbe.Good())));

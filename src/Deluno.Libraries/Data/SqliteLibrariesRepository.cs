@@ -1274,23 +1274,13 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    // A blank kind means the default (genre). Any other kind is stored as itself; an unknown
+    // one is refused by the endpoint with a 400 and never reaches here (#1322).
     private static string NormalizeDestinationMatchKind(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "tag" => "tag",
-            "language" => "language",
-            "quality" => "quality",
-            "anime" => "anime",
-            "certification" => "certification",
-            "library" => "library",
-            // #1033: whether Seerr marked the request 4K, so #985's per-connection
-            // 4K mapping becomes an ordinary routing rule condition.
-            "requested4k" => "requested4k",
-            _ => "genre"
-        };
-    }
+        => string.IsNullOrWhiteSpace(value)
+            ? "genre"
+            : DestinationRuleKinds.Normalize(value)
+                ?? throw new ArgumentException($"'{value}' is not a destination rule kind.", nameof(value));
 
 
     private static string NormalizeImportWorkflow(string? value)
