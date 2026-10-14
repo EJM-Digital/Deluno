@@ -27,8 +27,8 @@ public sealed class ProcessorOutputClearOnRealFilesTests
         Assert.True(File.Exists(world.Sibling), "another item in the output folder stays");
         Assert.True(File.Exists(world.LibraryFilm), "the library's film stays");
         var activity = await app.Client.GetStringAsync("/api/activity?take=100");
-        Assert.Contains("Deleted stray.mkv from the Films library's processor output folder.", activity);
-        Assert.Contains("Deleted the folder Stray.Folder from the Films library's processor output folder.", activity);
+        Assert.Contains("Moved stray.mkv from the Films library's processor output folder to the recycle bin.", activity);
+        Assert.Contains("Moved the folder Stray.Folder from the Films library's processor output folder to the recycle bin.", activity);
     }
 
     [Fact]
@@ -85,13 +85,13 @@ public sealed class ProcessorOutputClearOnRealFilesTests
     }
 
     /// <summary>
-    /// DEFECT, found by this test and not fixed: a library's processor output folder may be set to the folder that holds the
+    /// Was a defect (#1318), now fixed: a library's processor output folder may be set to the folder that holds the
     /// library itself (nothing checks the two folders against each other when the library is saved), and Clear then accepts the
     /// library's own folder as "an item directly inside the output folder" and deletes it with everything in it, bypassing the
     /// recycle bin. Probed on this build: the answer was 200 "Deleted the folder movies ..." and the library folder, with its films,
     /// was gone from disk.
     /// </summary>
-    [Fact(Skip = "DEFECT: Clear deletes a library's whole root folder (recursively, no recycle bin) when the library's processor output folder is the folder that holds the library root. Needs the same inside-a-library refusal the orphan remover has.")]
+    [Fact]
     public async Task Clear_cannot_delete_a_library_root_even_when_the_output_folder_is_set_to_its_parent()
     {
         await using var app = await ApplicationTestHost.StartAsync();
