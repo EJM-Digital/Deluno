@@ -109,6 +109,14 @@ public sealed class ProcessorOutputSweep(
                 continue;
             }
 
+            // #1318: never a library's media, even when an output folder is set above or around a library.
+            if (allLibraries.Any(other => !string.IsNullOrWhiteSpace(other.RootPath)
+                && (Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(other.RootPath), entry, allowEqual: true)
+                    || Deluno.Contracts.SafePath.IsInside(entry, Path.GetFullPath(other.RootPath)))))
+            {
+                continue;
+            }
+
             var claiming = handoffs.Where(handoff => ProcessorOutputLayout.ClaimsTopLevelName(handoff.SourcePath, library.DownloadsPath, name)).ToArray();
             if (claiming.Length == 0)
             {
