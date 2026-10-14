@@ -15,6 +15,7 @@
 # Jellyfin administrator this run made in the VM.
 
 function Install-SeerrBuild($p) {
+    $ErrorActionPreference = 'Continue'   # npm and pnpm write notices to stderr; their exit codes are what is checked
     $dir = Get-AppFolder 'seerr'
     $nodeSums = (Invoke-WebRequest -Uri 'https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt' -UseBasicParsing).Content
     if ($nodeSums -is [byte[]]) { $nodeSums = [Text.Encoding]::ASCII.GetString($nodeSums) }
@@ -26,13 +27,15 @@ function Install-SeerrBuild($p) {
     $nodeHome = (Get-ChildItem -Path $node -Directory | Select-Object -First 1).FullName
     $env:Path = "$nodeHome;$nodeHome\node_modules\.bin;$env:Path"
 
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/seerr-team/seerr/releases/latest' -Headers @{ 'User-Agent' = 'deluno-recorder' } -UseBasicParsing
-    $tag = [string]$release.tag_name
+    # The newest release tag from the project's own release page redirect (no API call, so no rate limit), and its source archive from the same site.
+    $req = [Net.HttpWebRequest]::Create('https://github.com/seerr-team/seerr/releases/latest'); $req.AllowAutoRedirect = $false; $req.UserAgent = 'deluno-recorder'
+    $res = $req.GetResponse(); $tag = ([string]$res.Headers['Location'] -split '/')[-1]; $res.Close()
+    if ($tag -notmatch '^v[0-9.]+') { throw "Could not read Seerr's newest release tag ($tag)" }
     $src = Join-Path $dir "src-$tag"
     if (-not (Test-Path (Join-Path $src 'package.json'))) {
         $zip = Join-Path $dir "seerr-$tag.zip"
-        if (-not (Test-Path $zip)) { Invoke-WebRequest -Uri $release.zipball_url -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'deluno-recorder' } }
-        $script:Downloads.Add("seerr-$tag.zip from api.github.com: the project publishes no checksum for a source archive; SHA-256 $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())")
+        if (-not (Test-Path $zip)) { Invoke-WebRequest -Uri "https://github.com/seerr-team/seerr/archive/refs/tags/$tag.zip" -OutFile $zip -UseBasicParsing }
+        $script:Downloads.Add("seerr-$tag.zip from github.com: the project publishes no checksum for a source archive; SHA-256 $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())")
         $tmp = Join-Path $dir "unpack-$tag"; Expand-Fresh $zip $tmp
         Move-Item -LiteralPath (Get-ChildItem -Path $tmp -Directory | Select-Object -First 1).FullName -Destination $src
     }
