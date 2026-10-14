@@ -33,6 +33,9 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
 {
     private const string Release = "Example.Movie.2026.1080p.WEB-DL-GROUP";
 
+    /// <summary>A real data folder with the real databases in it: every test here runs on one, and its download folder holds a real file.</summary>
+    private static TestStorage NewStorage() => TestStorage.Create();
+
     [Fact]
     public async Task A_dangerous_file_inside_an_otherwise_clean_release_is_removed_deleted_blocklisted_and_searched_again()
     {
@@ -141,6 +144,55 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
     }
 
 
+    /// <summary>
+    /// "Just tell me" is the rule action that only says so: a download struck out under it is not removed, its files are not
+    /// deleted, nothing is blocklisted and no search is queued, even with every cleanup switch on.
+    /// </summary>
+    [Fact]
+    public async Task A_slow_download_struck_out_under_a_just_tell_me_rule_is_only_reported_and_nothing_is_touched()
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(
+            files: ["Example.Movie.2026.mkv"],
+            kind: DownloadHealthRuleKinds.TooSlow,
+            actionPreset: DownloadHealthActionPresets.JustTellMe,
+            speedMbps: 0.001);
+
+        Assert.Equal(0, report.ClientEntriesRemoved);
+        Assert.Equal(0, report.PayloadsPurged);
+        Assert.Equal(0, report.ReplacementSearchesQueued);
+        Assert.Null(world.FakeDownloadClient.LastAction);
+        Assert.True(File.Exists(world.PayloadPath), "just tell me never deletes a file");
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// "Retry elsewhere, keep files": the release is refused and another is searched for, but the struck download stays in the
+    /// client with its files, so a person (or the client) can still use what was fetched.
+    /// </summary>
+    [Fact]
+    public async Task A_slow_download_struck_out_under_a_retry_elsewhere_rule_is_blocklisted_and_searched_again_but_left_in_the_client_with_its_files()
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(
+            files: ["Example.Movie.2026.mkv"],
+            kind: DownloadHealthRuleKinds.TooSlow,
+            actionPreset: DownloadHealthActionPresets.RetryElsewhere,
+            speedMbps: 0.001);
+
+        var refused = Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal(BlockedReleaseStates.Refused, refused.State);
+        Assert.Equal(1, report.ReplacementSearchesQueued);
+        Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
+        Assert.Equal(0, report.ClientEntriesRemoved);
+        Assert.Equal(0, report.PayloadsPurged);
+        Assert.Null(world.FakeDownloadClient.LastAction);
+        Assert.True(File.Exists(world.PayloadPath), "keep files means the download is left exactly where it is");
+    }
+
     /// <summary>Records the last action asked of it, without touching any real client.</summary>
     private sealed class FakeClient(string protocol) : IDownloadClient
     {
@@ -235,7 +287,7 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
 
         public static async Task<World> CreateAsync(bool isOutage, bool cleanupSwitchesOn = true)
         {
-            var storage = TestStorage.Create();
+            var storage = NewStorage();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T10:00:00Z"));
             var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
             await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
@@ -284,11 +336,17 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
             return new World(storage, time, service, client, library, jobs, blocklist, fakeClient, payloadPath, connectivity);
         }
 
-        public async Task<DownloadHealthRemediationReport> RemediateAsync(IReadOnlyList<string> files, bool isSetupProblem = false, IReadOnlyList<string>? blocked = null)
+        public async Task<DownloadHealthRemediationReport> RemediateAsync(
+            IReadOnlyList<string> files,
+            bool isSetupProblem = false,
+            IReadOnlyList<string>? blocked = null,
+            string kind = DownloadHealthRuleKinds.DangerousFile,
+            string actionPreset = DownloadHealthActionPresets.Replace,
+            double speedMbps = 5)
         {
             var rules = DownloadHealthRules.Defaults.Append(new DownloadHealthRule(
-                Id: "test-dangerous-file",
-                Kind: DownloadHealthRuleKinds.DangerousFile,
+                Id: "test-rule",
+                Kind: kind,
                 Enabled: true,
                 StrikeLimit: 1,
                 TimerMinutes: 1,
@@ -301,9 +359,11 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
                 // remove, delete, blocklist and search again - still gated by
                 // the #879 override below, which requires the platform's own
                 // cleanup switches independently of this preset.
-                ActionPreset: DownloadHealthActionPresets.Replace,
+                ActionPreset: actionPreset,
                 CreatedUtc: _time.GetUtcNow(),
-                UpdatedUtc: _time.GetUtcNow())).ToArray();
+                UpdatedUtc: _time.GetUtcNow(),
+                // The speed floor a too-slow rule reads, in KB/s; unused by the other kinds.
+                Threshold: 500)).ToArray();
 
             var contentBlocklist = new ContentBlocklistSettings(
                 Enabled: true,
@@ -322,7 +382,7 @@ public sealed class ADangerousFileIsRemovedDeletedBlocklistedAndSearchedAgainTes
                 Status: "downloading",
                 ErrorMessage: null,
                 SourcePath: PayloadPath,
-                SpeedMbps: 5,
+                SpeedMbps: speedMbps,
                 AddedUtc: _time.GetUtcNow().AddMinutes(-10),
                 EtaSeconds: 60,
                 ReleaseName: Release,
