@@ -20,6 +20,19 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await GrabCoreAsync(client, request, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.GrabFailure(client, request, message);
+        }
+    }
+
+    private async Task<DownloadClientGrabResult> GrabCoreAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         var http = CreateHttp();
@@ -231,6 +244,19 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// when the address is missing or the call fails.
     /// </summary>
     public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetFilesCoreAsync(client, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<string>?> GetFilesCoreAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
@@ -575,6 +601,20 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// keep-seeding label should not have one.
     /// </summary>
     public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await SetCategoryCoreAsync(client, queueItemId, category, currentCategory, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.Failure(client, queueItemId, DownloadClientActions.SetCategory, message);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> SetCategoryCoreAsync(
         DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
     {
         var action = DownloadClientActions.SetCategory;

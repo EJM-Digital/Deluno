@@ -39,6 +39,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await GrabCoreAsync(client, request, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.GrabFailure(client, request, message);
+        }
+    }
+
+    private async Task<DownloadClientGrabResult> GrabCoreAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
 
@@ -1010,6 +1023,20 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// qBittorrent refuses a category it does not have (409), and Deluno never creates one.
     /// </summary>
     public override async Task<DownloadClientActionResult> SetCategoryAsync(
+        DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await SetCategoryCoreAsync(client, queueItemId, category, currentCategory, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.Failure(client, queueItemId, DownloadClientActions.SetCategory, message);
+        }
+    }
+
+    private async Task<DownloadClientActionResult> SetCategoryCoreAsync(
         DownloadClientItem client, string queueItemId, string category, string? currentCategory, CancellationToken cancellationToken)
     {
         var action = DownloadClientActions.SetCategory;
