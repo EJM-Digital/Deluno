@@ -192,3 +192,60 @@ Smoke proofs: **889**; unstubbed (can reach `real` for a screen behaviour) **532
 | tray | 20 |
 | scenario | 77 |
 <!-- coverage:generated:end -->
+
+## Measured line and branch coverage (issue 1268)
+
+The register above says what Deluno does and which test proves it. This section says how much of the code runs under a test.
+CI's `coverage` job measures every production file and writes the table below from the merged report; the target is 100% line and
+100% branch for every file.
+
+<!-- coverage:measured:start -->
+No measured report yet. CI's `coverage` job writes the first one (issue 1268); until then this block is a placeholder.
+
+| Area | Line | Branch | Lines | Branches | Files |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| not measured yet | n/a | n/a | 0/0 | 0/0 | 0 |
+<!-- coverage:measured:end -->
+
+What is measured, and by what:
+
+| Code | Tool | Where it is configured |
+| --- | --- | --- |
+| Every Deluno .NET assembly (the seven test projects, merged per file) | coverlet (`XPlat Code Coverage`, cobertura), merged by ReportGenerator | `tests/coverage.runsettings`, `scripts/test-dotnet-serial.ps1 -Coverage`, `.config/dotnet-tools.json` |
+| `apps/web/src` | vitest with v8 (lcov) | the `test.coverage` block of `apps/web/vite.config.ts`, `npm run test:unit:web:coverage` |
+| `scripts/**/*.mjs` and `services/metadata-gateway/src` | `node --test --experimental-test-coverage` (lcov) | the `coverage-node` job of `.github/workflows/ci.yml` |
+
+`sdk/typescript` has no tests yet, so it has no coverage; PowerShell scripts are not measured by any tool yet. Both are gaps to close, not exclusions.
+
+The merge is `scripts/coverage/merge-coverage.mjs` (self-test: `node --test scripts/coverage/merge-coverage.test.mjs`). It writes one row per
+production file with line %, branch % and covered/total, as `coverage-report.json` and `coverage-report.md` in the `coverage-report` CI
+artifact (also on the run's summary page), next to an HTML report of the .NET code.
+
+### The ratchet
+
+`docs/testing/coverage-baseline.json` holds, per file, the line and branch percent last reached (rounded down to two places).
+`node scripts/check-coverage-ratchet.mjs --report <coverage-report.json>` fails when any file measures below its baseline. With
+`--update` it raises the baseline to the report and never lowers a number (add `--prune` to drop files that no longer exist).
+The `coverage` job runs only when both the backend and the web tests run (any change touching both, or a manual run), so the numbers
+are always whole-repository. Self-test: `node --test scripts/check-coverage-ratchet.test.mjs`.
+
+### Exclusions
+
+`docs/testing/coverage-exclusions.json` is the only place a file may be left out. Each entry is a path or glob with a reason of at least
+one plain sentence; the ratchet fails on an exclusion without one. Excluded files are still listed, with their reasons, in the report.
+Nothing is excluded by an attribute in source: `tests/coverage.runsettings` drops only compiler-generated code (`GeneratedCode`,
+`CompilerGenerated`, the `obj` folder), not `[ExcludeFromCodeCoverage]` or `[Obsolete]`.
+
+### How the baseline is filled
+
+The checked-in baseline is an empty placeholder, which holds nothing back. The first time:
+
+1. Run `ci.yml` by hand (`gh workflow run ci.yml`); a manual run runs every job, including `coverage`.
+2. When it finishes, download the artifact: `gh run download <run-id> -n coverage-report -D coverage-report`.
+3. Review `coverage-report/coverage-report.md` (the per-file table). Decide which files, if any, belong in `coverage-exclusions.json`
+   (with reasons) and re-run if you add some.
+4. Copy `coverage-report/coverage-baseline.json` over `docs/testing/coverage-baseline.json` (this is the `--update` step, run by CI on a
+   copy), optionally copy `coverage-report/COVERAGE.md`'s measured block into this page, and commit both.
+
+From then on every run holds each file to its baseline. After a push raises coverage, repeat steps 2 to 4 with that run's artifact to
+raise the baseline; the `--update` step cannot lower it.

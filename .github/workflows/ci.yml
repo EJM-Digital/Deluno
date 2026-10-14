@@ -56,6 +56,7 @@ jobs:
       run_e2e_smoke: ${{ steps.flags.outputs.run_e2e_smoke }}
       run_docker: ${{ steps.flags.outputs.run_docker }}
       run_windows_installer: ${{ steps.flags.outputs.run_windows_installer }}
+      run_coverage: ${{ steps.flags.outputs.run_coverage }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -110,7 +111,7 @@ jobs:
           WORKFLOWS: ${{ steps.filter.outputs.workflows }}
         run: |
           set -euo pipefail
-          backend=false; web=false; smoke=false; docker=false; installer=false
+          backend=false; web=false; smoke=false; docker=false; installer=false; coverage=false
           if [ "$EVENT" = "workflow_dispatch" ]; then
             backend=true; web=true; smoke=true; docker=true; installer=true
           else
@@ -121,6 +122,9 @@ jobs:
             if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then smoke=true; fi
             if [ "$DOCKER" = "true" ] || [ "$WORKFLOWS" = "true" ]; then docker=true; fi
           fi
+          # Coverage is measured and held to its baseline only when both the backend and the web tests ran: the
+          # ratchet compares whole-repository numbers, and a half report would look like a drop.
+          if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
           # The smoke shards and the web checks both want the production web build.
           web_dist=false
           if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
@@ -131,6 +135,7 @@ jobs:
             echo "run_e2e_smoke=$smoke"
             echo "run_docker=$docker"
             echo "run_windows_installer=$installer"
+            echo "run_coverage=$coverage"
           } | tee -a "$GITHUB_OUTPUT"
 
   # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
@@ -177,6 +182,11 @@ jobs:
           node scripts/check-coverage-register.mjs
           node --test scripts/check-coverage-register.test.mjs
 
+      - name: Coverage exclusions have reasons, and the coverage merge and ratchet work
+        run: |
+          node scripts/check-coverage-ratchet.mjs
+          node --test scripts/check-coverage-ratchet.test.mjs scripts/coverage/merge-coverage.test.mjs
+
       - name: The Windows icon is built from the current logo
         run: node scripts/check-windows-icon.mjs
 
@@ -201,11 +211,18 @@ jobs:
         run: dotnet build Deluno.slnx --configuration Release --no-restore
 
       - name: Run backend tests
+        if: ${{ needs.changes.outputs.run_coverage != 'true' }}
         shell: pwsh
         # The Timing tests hold an endpoint to a time budget; beside the rest of the suite a
         # busy runner made a 12 ms call take 633 ms (10 Oct 2026). They run on their own next,
         # exactly as scripts/gate.ps1 runs them.
         run: ./scripts/test-dotnet-serial.ps1 -Filter "Category!=Timing"
+
+      # The same run, collecting line and branch coverage (coverlet) for every Deluno production assembly.
+      - name: Run backend tests with coverage
+        if: ${{ needs.changes.outputs.run_coverage == 'true' }}
+        shell: pwsh
+        run: ./scripts/test-dotnet-serial.ps1 -Filter "Category!=Timing" -Coverage
 
       - name: Run timing tests alone
         shell: pwsh
@@ -222,6 +239,15 @@ jobs:
           name: backend-test-results
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
+
+      - name: Upload backend coverage
+        if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-dotnet
+          path: tests/**/TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 7
 
   # The production web build, made once: the web checks and both smoke shards use this one (the smoke suite used to
   # build it again on every shard, and its web server built it a third time).
@@ -282,7 +308,26 @@ jobs:
         run: npm run typecheck:sdk
 
       - name: Run frontend unit tests
+        if: ${{ needs.changes.outputs.run_coverage != 'true' }}
         run: npm run test:unit:web
+
+      # The same run with v8 coverage. The provider package is installed here, unsaved and at vitest's own
+      # version, because package-lock.json does not carry it yet; add it to apps/web devDependencies with
+      # `npm install -D @vitest/coverage-v8` (a local install, by the owner) and delete the install line.
+      - name: Run frontend unit tests with coverage
+        if: ${{ needs.changes.outputs.run_coverage == 'true' }}
+        run: |
+          npm install --no-save --no-audit --no-fund --workspace apps/web @vitest/coverage-v8@4.1.11
+          npm run test:unit:web:coverage
+
+      - name: Upload frontend coverage
+        if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-web
+          path: apps/web/coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 7
 
   e2e-smoke:
     # Two shards, not four: each shard repeats about 75 seconds of setup, and the suite is two-thirds of a pull
@@ -548,9 +593,118 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Coverage of the Node code (the scripts and the metadata gateway), by node --test's own v8 coverage.
+  coverage-node:
+    name: Node coverage
+    needs: changes
+    if: ${{ needs.changes.outputs.run_coverage == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Run the scripts' tests with coverage
+        run: |
+          mkdir -p coverage-node
+          node --test --experimental-test-coverage \
+            --test-coverage-include="scripts/**/*.mjs" --test-coverage-exclude="**/*.test.mjs" \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=coverage-node/scripts.lcov \
+            "scripts/**/*.test.mjs"
+
+      - name: Run the metadata gateway's tests with coverage
+        working-directory: services/metadata-gateway
+        run: |
+          node --test --experimental-test-coverage \
+            --test-coverage-include="src/**/*.js" \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=../../coverage-node/metadata-gateway.lcov
+
+      - name: Upload Node coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-node
+          path: coverage-node/*.lcov
+          if-no-files-found: error
+          retention-days: 7
+
+  # Merges the three coverage reports into one per-file table, holds every file to its baseline
+  # (docs/testing/coverage-baseline.json) and publishes the table. Issue 1268; the standard is docs/testing/STRATEGY.md.
+  coverage:
+    name: Coverage report and ratchet
+    needs: [changes, backend, web, coverage-node]
+    if: ${{ needs.changes.outputs.run_coverage == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Download the coverage reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-*
+          path: coverage-in
+
+      # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file.
+      - name: Merge the .NET reports
+        run: |
+          dotnet tool restore
+          dotnet tool run reportgenerator \
+            "-reports:coverage-in/coverage-dotnet/**/coverage.cobertura.xml" \
+            "-targetdir:coverage-out/dotnet" \
+            "-reporttypes:Cobertura;HtmlInline" \
+            "-assemblyfilters:+Deluno.*;-Deluno.*.Tests"
+
+      - name: One per-file table for .NET, web and Node
+        run: |
+          node scripts/coverage/merge-coverage.mjs \
+            --cobertura coverage-out/dotnet/Cobertura.xml \
+            --lcov coverage-in/coverage-web/lcov.info=apps/web \
+            --lcov coverage-in/coverage-node/scripts.lcov \
+            --lcov coverage-in/coverage-node/metadata-gateway.lcov \
+            --exclusions docs/testing/coverage-exclusions.json \
+            --out-json coverage-out/coverage-report.json \
+            --out-md coverage-out/coverage-report.md \
+            --write-doc docs/testing/COVERAGE.md
+          cat coverage-out/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No file is below its baseline, and every exclusion has a reason
+        run: node scripts/check-coverage-ratchet.mjs --report coverage-out/coverage-report.json
+
+      # The baseline this run would write, for the owner to review and commit (docs/testing/COVERAGE.md, "How the
+      # baseline is filled"). CI itself never commits it.
+      - name: Propose the raised baseline
+        if: ${{ !cancelled() }}
+        run: |
+          cp docs/testing/coverage-baseline.json coverage-out/coverage-baseline.json
+          cp docs/testing/COVERAGE.md coverage-out/COVERAGE.md
+          node scripts/check-coverage-ratchet.mjs --report coverage-out/coverage-report.json --baseline coverage-out/coverage-baseline.json --update
+
+      - name: Upload the coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage-out/
+          if-no-files-found: error
+          retention-days: 30
+
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, coverage-node, coverage]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

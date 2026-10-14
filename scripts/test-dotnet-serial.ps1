@@ -6,7 +6,10 @@ param(
     # it off: the build below is what keeps a local run honest.
     [switch]$NoBuild,
     # A dotnet test filter applied to every project, e.g. "Category!=Timing".
-    [string]$Filter = ""
+    [string]$Filter = "",
+    # Collect line and branch coverage (coverlet, cobertura) for every Deluno production assembly, written next to the
+    # TRX files (tests/<project>/TestResults/<guid>/coverage.cobertura.xml). CI's coverage job merges them (docs/testing/COVERAGE.md).
+    [switch]$Coverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,8 +92,15 @@ foreach ($project in $projects) {
     # their files with SqliteConnection.ClearAllPools() closed other parallel
     # tests' connections mid-query (ObjectDisposedException on sqlite3). They
     # now use SqliteDatabaseConnectionFactory.ClearPools() for their own files.
+    $coverageArguments = @()
+    if ($Coverage) {
+        $coverageArguments = @(
+            "--collect:XPlat Code Coverage",
+            "--settings", (Join-Path $Root "tests/coverage.runsettings"),
+            "--results-directory", (Join-Path $Root "artifacts/coverage/dotnet/$($project.BaseName)"))
+    }
     & $dotnet.Source test $project.FullName --configuration Release --no-build --no-restore `
-        --logger "trx;LogFileName=backend-tests.trx" @filterArguments
+        --logger "trx;LogFileName=backend-tests.trx" @filterArguments @coverageArguments
     if ($LASTEXITCODE -ne 0) {
         $failed.Add($project.Name)
     }
