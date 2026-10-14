@@ -253,7 +253,7 @@ function Remove-RigReadyCheckpoints {
         foreach ($s in @(Get-VMSnapshot -VMName $vm | Where-Object { $_.Name -like $like })) { Remove-VMSnapshot -VMSnapshot $s -Confirm:$false }
         # The disks of a removed checkpoint are merged in the background; the next checkpoint waits for that to finish.
         $deadline = (Get-Date).AddMinutes(10)
-        while ((Get-Date) -lt $deadline -and ((Get-VM -Name $vm).Status -match 'Merging')) { Start-Sleep -Seconds 5 }
+        while ((Get-Date) -lt $deadline -and ((Get-VM -Name $vm).Status -match 'Merging')) { Start-Sleep -Seconds 5 } # reason: poll interval inside a loop bounded by its deadline
     }
 }
 
@@ -341,7 +341,7 @@ try {
         $vmUp = $false
         $vmDeadline = (Get-Date).AddMinutes(15)
         while ((Get-Date) -lt $vmDeadline -and -not $vmUp) {
-            try { Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $env:COMPUTERNAME } | Out-Null; $vmUp = $true } catch { Start-Sleep -Seconds 5 }
+            try { Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $env:COMPUTERNAME } | Out-Null; $vmUp = $true } catch { Start-Sleep -Seconds 5 } # reason: poll interval inside a loop bounded by its deadline
         }
         if (-not $vmUp) { throw "The VM restored from the ready checkpoint '$readyName' did not answer within 15 minutes. Delete that checkpoint and run again to make a new one." }
         Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { try { & w32tm.exe /resync /force | Out-Null } catch { } } | Out-Null
@@ -373,7 +373,7 @@ try {
             $setupDone = $null
             $setupDeadline = (Get-Date).AddMinutes(30)
             while ((Get-Date) -lt $setupDeadline -and $null -eq $setupDone) {
-                Start-Sleep -Seconds 15
+                Start-Sleep -Seconds 15 # reason: poll interval inside a loop bounded by its deadline
                 $setupDone = Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
             }
             if ($setupDone -ne 'ok') { throw "Setting Deluno up before the scenarios did not finish: $(if ($setupDone) { $setupDone } else { 'no done flag in 30 minutes' })" }
@@ -407,7 +407,7 @@ try {
         $finished = $false
         $quietSince = $null
         while ((Get-Date) -lt $deadline -and -not $finished) {
-            Start-Sleep -Seconds 20
+            Start-Sleep -Seconds 20 # reason: poll interval inside a loop bounded by its deadline
             $state = Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block {
                 $o = [ordered]@{ Done = $null; Json = $null; Running = $false }
                 $flag = 'C:\golden\suite\results\done.flag'
@@ -630,7 +630,7 @@ function Invoke-UpdatePhase {
             $deadline = (Get-Date).AddMinutes(30)
             $done = $null
             while ((Get-Date) -lt $deadline -and $null -eq $done) {
-                Start-Sleep -Seconds 15
+                Start-Sleep -Seconds 15 # reason: poll interval inside a loop bounded by its deadline
                 $done = Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -Block { $f = 'C:\golden\update\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
             }
             $json = Invoke-InVmVia -Session $rigU -Name $VmName -Credential $vmCredU -Block { $f = 'C:\golden\update\results\results.json'; if (Test-Path $f) { Get-Content -Raw $f } else { $null } }

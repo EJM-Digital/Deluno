@@ -263,7 +263,7 @@ try {
     $deadline = (Get-Date).AddMinutes(15)
     $ready = $false
     while ((Get-Date) -lt $deadline -and -not $ready) {
-        try { $null = Invoke-InVm { $env:COMPUTERNAME }; $ready = $true } catch { $lastErr = $_.Exception.Message; Start-Sleep -Seconds 5 }
+        try { $null = Invoke-InVm { $env:COMPUTERNAME }; $ready = $true } catch { $lastErr = $_.Exception.Message; Start-Sleep -Seconds 5 } # reason: poll interval inside a loop bounded by its deadline
     }
     if (-not $ready) { Add-Result 'VM answers over PowerShell Direct' 'failed' "No answer within 15 minutes (last error: $lastErr)."; throw 'VM did not come up.' }
     $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
@@ -369,7 +369,7 @@ try {
                 $http = [int]$r.StatusCode; $body = $r.Content
             } catch {
                 $resp = $_.Exception.Response
-                if ($resp) { $http = [int]$resp.StatusCode; $body = $_.ErrorDetails.Message } else { Start-Sleep -Seconds 3 }
+                if ($resp) { $http = [int]$resp.StatusCode; $body = $_.ErrorDetails.Message } else { Start-Sleep -Seconds 3 } # reason: poll interval inside a loop bounded by its deadline
             }
         }
         $listen = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 7879, 8081, 9091, 8112, 8080, 6789, 9347 } |

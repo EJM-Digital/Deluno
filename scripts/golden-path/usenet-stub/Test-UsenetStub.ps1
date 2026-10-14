@@ -117,7 +117,7 @@ try {
         $argLine = "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $here $spec[0])`" -Root `"$rel`" -Port $($spec[1]) -ReadyFile `"$ready`""
         $procs += Start-Process -FilePath 'powershell.exe' -ArgumentList $argLine -PassThru -WindowStyle Hidden
         $deadline = (Get-Date).AddSeconds(60)
-        while (-not (Test-Path $ready) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+        while (-not (Test-Path $ready) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 } # reason: poll interval inside a loop bounded by its deadline
         Check "$($spec[0]) is listening" (Test-Path $ready)
     }
 

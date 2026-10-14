@@ -195,7 +195,7 @@ function Invoke-GroupKeepSeeding {
         }
         $seen = Wait-KsAllStruck -Films $films
         # One more check interval, so "stays gone" and "is not struck again" are read after a further pass, not at the moment of the move.
-        Start-Sleep -Seconds 75
+        Start-Sleep -Seconds 75 # reason: one more real check interval, so 'stays gone' is read after a further pass
         $lines = @(Get-ActivityText -PageSize 500 -MaxPages 2)
         $afterView = Invoke-Deluno -Path '/api/download-health/keep-seeding'
 

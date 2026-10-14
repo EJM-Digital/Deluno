@@ -31,7 +31,7 @@ function Invoke-GroupTryAgain {
     finally { Start-WeirApp }
     $up = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition { Test-WeirAnswering }
     # Give Deluno one check to notice Weir is back before the first press (a person would not press at once).
-    Start-Sleep -Seconds 20
+    Start-Sleep -Seconds 20 # reason: a person would not press the instant Weir is back: Deluno's own check interval is the behaviour being allowed for
 
     Start-Edge
     $page = New-CdpPage 'about:blank'
@@ -76,7 +76,7 @@ function Invoke-GroupTryAgain {
                     if (-not $sawSending -and $t -match 'Sending to .* again') { $sawSending = $now }
                     if ($serverMoved -and -not $headerMoved -and $t -notmatch 'Sending to .* again') { $headerMoved = $now }
                     if ($cur -and $cur.status -eq 'completed' -and $cur.importJobId -and (Find-Imported -Title $f.Title)) { $imported = $true; Start-Sleep -Seconds 2; break }
-                    Start-Sleep -Milliseconds 200
+                    Start-Sleep -Milliseconds 200 # reason: poll interval inside a loop bounded by its deadline
                 }
                 Add-Check 'The film was imported after Try again' $imported ''
                 $bad = @($samples | Where-Object { $_.Text -match $script:OldFailure })
