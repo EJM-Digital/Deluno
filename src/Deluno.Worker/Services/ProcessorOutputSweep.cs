@@ -248,7 +248,7 @@ public sealed class ProcessorOutputSweep(
         => string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(entry))), root, PathComparison);
 
     private static bool IsInside(string root, string path)
-        => Path.GetFullPath(path).StartsWith(root + Path.DirectorySeparatorChar, PathComparison);
+        => Deluno.Contracts.SafePath.IsInside(root, Path.GetFullPath(path));
 
     private static StringComparison PathComparison
         => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

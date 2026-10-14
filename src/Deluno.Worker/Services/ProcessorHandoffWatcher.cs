@@ -442,7 +442,7 @@ public sealed class ProcessorHandoffWatcher(
 
         var mappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
         var reported = answer?.OutputPath is { Length: > 0 } said
-            ? mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(said, mappings) ?? said : said
+            ? mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(said, mappings) : said
             : null;
         if (await TryImportOutputAsync(handoff, library, connection, reported, cancellationToken))
         {

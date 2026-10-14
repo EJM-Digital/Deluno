@@ -7,7 +7,10 @@ namespace Deluno.Contracts;
 /// processor connections in the same position (#962). The longest matching
 /// root wins so a specific mapping can safely sit beside a broader one; ties
 /// are broken by the mapping's own priority. With no mappings, or none that
-/// match, the path passes through unchanged.
+/// match, the path passes through unchanged. A path is normalised before and
+/// after mapping (<see cref="SafePath"/>): one that climbs out of its source
+/// root, or whose mapped result would land outside the target root, is refused
+/// (<c>Translate</c> returns null, <c>TryTranslate</c> says why) and never used.
 /// </summary>
 public static class PathMappingTranslator
 {
@@ -18,7 +21,19 @@ public static class PathMappingTranslator
         Func<TMapping, string> sourceRoot,
         Func<TMapping, string> targetRoot,
         Func<TMapping, int> priority)
+        => TryTranslate(reportedPath, mappings, isEnabled, sourceRoot, targetRoot, priority, out _);
+
+    /// <summary>As <c>Translate</c>, with the plain reason a path was refused (null when it was not).</summary>
+    public static string? TryTranslate<TMapping>(
+        string? reportedPath,
+        IEnumerable<TMapping> mappings,
+        Func<TMapping, bool> isEnabled,
+        Func<TMapping, string> sourceRoot,
+        Func<TMapping, string> targetRoot,
+        Func<TMapping, int> priority,
+        out string? refusedReason)
     {
+        refusedReason = null;
         if (string.IsNullOrWhiteSpace(reportedPath))
         {
             return reportedPath;
@@ -46,8 +61,17 @@ public static class PathMappingTranslator
             return target;
         }
 
-        var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return segments.Aggregate(target, Path.Combine);
+        // Resolved lexically against the target root: a ".." that climbs out of the source root, or a result
+        // that lands outside the target root, is refused rather than handed to the file system.
+        if (!SafePath.TryResolveUnder(target, relative, out var mapped, out var reason))
+        {
+            refusedReason = reason;
+            return null;
+        }
+
+        // Same spelling of the target root and platform separators as before, over the now-clean segments.
+        var cleanRelative = mapped[(SafePath.Normalize(target)!.TrimEnd('/').Length)..];
+        return cleanRelative.Split('/', StringSplitOptions.RemoveEmptyEntries).Aggregate(target, Path.Combine);
     }
 
     public static string NormalizeKey(string value)

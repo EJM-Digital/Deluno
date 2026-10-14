@@ -186,6 +186,48 @@ public sealed class RtorrentDownloadClientTests
     }
 
     /// <summary>
+    /// #1306: a path rTorrent reports that climbs out ("..") is never deleted, even when it resolves to a real
+    /// folder. No rTorrent reply is recorded yet (tests/recorded-reply-allow-list.json, kind "pending"), so this uses
+    /// the hand-built reply of the test above with the one value, the base path, swapped for a climbing path.
+    /// </summary>
+    [Fact]
+    public async Task DeleteWithData_never_deletes_a_base_path_that_climbs_out_even_if_it_resolves_to_a_real_folder()
+    {
+        var scratch = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rtorrent-{Guid.NewGuid():N}"));
+        try
+        {
+            var victim = Directory.CreateDirectory(Path.Combine(scratch.FullName, "victim"));
+            await File.WriteAllTextAsync(Path.Combine(victim.FullName, "keep.mkv"), "mine");
+            Directory.CreateDirectory(Path.Combine(scratch.FullName, "downloads"));
+            var handler = new RtorrentDeleteWithDataHandler(Path.Combine(scratch.FullName, "downloads", "..", "victim"));
+
+            var result = await new RtorrentDownloadClient(new StubFactory(handler))
+                .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(victim.FullName, "keep.mkv")));
+            Assert.Contains("d.erase", handler.Methods);
+            Assert.Contains("could not safely find its files", result.Message);
+        }
+        finally
+        {
+            Directory.Delete(scratch.FullName, recursive: true);
+        }
+    }
+
+    /// <summary>#1306: the folder rTorrent lists for a download is dropped when it climbs out (hand-built reply, one value swapped).</summary>
+    [Fact]
+    public async Task A_listed_download_folder_that_climbs_out_is_not_used()
+    {
+        var clean = await new RtorrentDownloadClient(new StubFactory(new RtorrentSnapshotHandler()))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+        var climbing = await new RtorrentDownloadClient(new StubFactory(new RtorrentSnapshotHandler(directory: "/downloads/../etc")))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("/downloads/Example.Movie.2024.1080p", Assert.Single(clean!.Queue).SourcePath);
+        Assert.Null(Assert.Single(climbing!.Queue).SourcePath);
+    }
+
+    /// <summary>
     /// A path rTorrent cannot be trusted on -- here, one that simply does not
     /// exist on this machine, the same as a remote rTorrent Deluno cannot see
     /// the files of -- is never deleted. rTorrent's own hold is still
@@ -460,7 +502,7 @@ public sealed class RtorrentDownloadClientTests
     /// tracker's own enabled flag and message -- or a failure, when asked to
     /// simulate a tracker rTorrent cannot reach at all.
     /// </summary>
-    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false, int peers = 0) : HttpMessageHandler
+    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false, int peers = 0, string directory = "/downloads/Example.Movie.2024.1080p") : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -491,7 +533,7 @@ public sealed class RtorrentDownloadClientTests
                 AsValue(TypedInt(0)), // up.rate
                 AsValue(TypedInt(1500)), // ratio (x1000)
                 AsValue(TypedString(message ?? string.Empty)),
-                AsValue(TypedString("/downloads/Example.Movie.2024.1080p")),
+                AsValue(TypedString(directory)),
                 AsValue(TypedInt(peers)) // peers_connected (seeds included)
             };
             var row = AsValue(ArrayOf(fields));

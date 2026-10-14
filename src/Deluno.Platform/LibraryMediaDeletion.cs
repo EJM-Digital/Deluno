@@ -79,10 +79,7 @@ public static class LibraryMediaDeletion
 
     private static bool IsInsideRoot(string path, string rootPath)
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var root = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return path.StartsWith(root + Path.DirectorySeparatorChar, comparison) ||
-               string.Equals(path, root, comparison);
+        return Deluno.Contracts.SafePath.IsInside(rootPath, path, allowEqual: true);
     }
 }
 

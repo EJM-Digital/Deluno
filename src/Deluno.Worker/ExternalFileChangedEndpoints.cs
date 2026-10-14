@@ -61,6 +61,12 @@ public static class ExternalFileChangedEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["path"] = ["Give the full path of the library file that changed."] });
             }
 
+            // A path that climbs ("..") or is not a full path is refused before it touches the disk or the library.
+            if (!SafePath.IsPlainFullPath(path))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["path"] = [SafePath.OutsideRootReason] });
+            }
+
             FileInfo file;
             try
             {

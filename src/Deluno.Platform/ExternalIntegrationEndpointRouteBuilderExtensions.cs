@@ -1093,7 +1093,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     SourcePath = ProcessorPathMappingTranslator.ToDeluno(request.SourcePath, pathMappings),
                     OutputPath = ProcessorPathMappingTranslator.ToDeluno(request.OutputPath, pathMappings),
                     OutputFiles = request.OutputFiles?
-                        .Select(file => ProcessorPathMappingTranslator.ToDeluno(file, pathMappings) ?? file)
+                        .Select(file => ProcessorPathMappingTranslator.ToDeluno(file, pathMappings))
+                        .OfType<string>()
                         .ToArray()
                 };
             }

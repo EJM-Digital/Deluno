@@ -827,13 +827,7 @@ public sealed class RecycleBinService(
         return separator > 0 ? Path.Combine(root, relative[..separator]) : null;
     }
 
-    private static bool IsInsideRoot(string path, string root)
-    {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison) ||
-               path.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, comparison);
-    }
+    private static bool IsInsideRoot(string path, string root) => Deluno.Contracts.SafePath.IsInside(root, path);
 
     private static bool Exists(string path, bool isDirectory)
         => isDirectory ? Directory.Exists(path) : File.Exists(path);

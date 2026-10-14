@@ -38,7 +38,7 @@ public static class ProcessorOutputLayout
         var reported = ProcessorLibraryFolder.ForLibrary(folders, libraryId)?.WatchedFolder;
         if (!string.IsNullOrWhiteSpace(reported))
         {
-            var translated = mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(reported, mappings) ?? reported : reported;
+            var translated = mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(reported, mappings) : reported;
             if (!string.IsNullOrWhiteSpace(translated))
             {
                 return translated;
@@ -183,6 +183,5 @@ public static class ProcessorOutputLayout
     private static string[] Split(string path)
         => path.Trim().Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
 
-    private static bool IsInside(string root, string path)
-        => path.StartsWith(root + Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    private static bool IsInside(string root, string path) => Deluno.Contracts.SafePath.IsInside(root, path);
 }

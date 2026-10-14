@@ -291,7 +291,7 @@ public sealed class DelunoBackupService(
                 foreach (var entry in archive.Entries.Where(entry => entry.FullName.StartsWith("data/", StringComparison.OrdinalIgnoreCase)))
                 {
                     var relative = entry.FullName["data/".Length..].Replace('/', Path.DirectorySeparatorChar);
-                    if (string.IsNullOrWhiteSpace(relative) || relative.Contains("..", StringComparison.Ordinal))
+                    if (string.IsNullOrWhiteSpace(relative))
                     {
                         continue;
                     }
@@ -300,13 +300,14 @@ public sealed class DelunoBackupService(
                     // folder: what matters is where this file will eventually
                     // land, and a traversal that escapes there escapes whether
                     // it is staged first or not.
-                    var eventualTarget = Path.GetFullPath(Path.Combine(DataRoot, relative));
-                    if (!eventualTarget.StartsWith(DataRoot, StringComparison.OrdinalIgnoreCase))
+                    if (!Deluno.Contracts.SafePath.TryResolveUnder(DataRoot, relative, out var resolved, out _))
                     {
                         continue;
                     }
 
-                    var staged = Path.Combine(restoreRoot, relative);
+                    var eventualTarget = Path.GetFullPath(Path.Combine(DataRoot, relative));
+
+                    var staged = Path.Combine(restoreRoot, Path.GetRelativePath(DataRoot, resolved));
                     Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
                     entry.ExtractToFile(staged, overwrite: true);
                     restored.Add(Path.GetRelativePath(DataRoot, eventualTarget));
@@ -782,7 +783,7 @@ public sealed class DelunoBackupService(
         }
 
         var path = Path.GetFullPath(Path.Combine(backupFolder, $"{safeId}.zip"));
-        return path.StartsWith(Path.GetFullPath(backupFolder), StringComparison.OrdinalIgnoreCase) ? path : null;
+        return Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(backupFolder), path) ? path : null;
     }
 
     private static string GetVersion()
