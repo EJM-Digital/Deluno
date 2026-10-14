@@ -46,6 +46,7 @@ $suiteDir = Split-Path $here -Parent
 . (Join-Path $here 'Tray.Lib.ps1')
 . (Join-Path $here 'Cdp.Lib.ps1')
 . (Join-Path $here 'Fixtures.Lib.ps1')
+. (Join-Path $here 'DelunoSecrets.Lib.ps1')
 . (Join-Path $here 'GithubLimit.Lib.ps1')
 . (Join-Path $here 'Initialize-Environment.ps1')
 . (Join-Path $suiteDir 'ScenarioPlan.ps1')

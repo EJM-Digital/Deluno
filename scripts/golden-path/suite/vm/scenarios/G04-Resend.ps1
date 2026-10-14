@@ -122,6 +122,99 @@ function Assert-ResendSettled {
     Assert-NoReport409 -Film $Film -First $First -SinceUtc $Film.FirstSentUtc -What $What
 }
 
+# Sends a single-file film and holds its first send at one moment: 'during' (Weir is working on it) or 'after' (Weir has put the
+# cleaned file in its output and Deluno has not queued the import). The first send is held at Weir (paused) until Weir is let go, so
+# the moment is made, not waited for. Up to three films are tried; the moment is missed when Weir is quicker than the check.
+function Get-OpenFirstSend {
+    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [ValidateSet('during', 'after')] [string] $Timing, [string] $Label = $null)
+    if (-not $Label) { $Label = "re$Timing" }
+    $reached = $null; $film = $null; $first = $null; $what = ''
+    for ($try = 1; $try -le 3 -and -not $reached; $try++) {
+        $film = New-FilmFor -Kind $Kind -Layout 'file' -Label $Label -Size $(if ($Timing -eq 'during') { 'big' } else { 'small' })
+        try {
+            Set-WeirPause -Paused $true
+            Send-Film -Film $film -Kind $Kind | Out-Null
+            Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
+            $queued = Wait-Until -TimeoutSec 120 -IntervalSec 0.5 -Condition { Get-FilmHandoff -Film $film }
+            if (-not $queued.Ok) { $what = 'the first hand-off never appeared'; Add-Note "Attempt ${try}: $what."; continue }
+            # Weir takes the first send now. During: removed and sent again straight away, while it works. After: once its
+            # cleaned file is in its output, before Deluno has queued the import.
+            Set-WeirPause -Paused $false
+            if ($Timing -eq 'after') {
+                Wait-Until -TimeoutSec 60 -IntervalSec 0.05 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($film.Title) }).Count -gt 0 } | Out-Null
+            }
+            $h = Get-FilmHandoff -Film $film
+            $open = $h -and -not $h.importJobId -and ($Timing -eq 'after' -or $h.status -ne 'completed')
+            if ($open) { $reached = $true; $first = $h }
+            else { $what = "status '$($h.status)', import $(if ($h.importJobId) { 'queued' } else { 'not queued' })"; Add-Note "Attempt ${try}: the $Timing moment was missed ($what); trying a new film." }
+        }
+        finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
+    }
+    [pscustomobject]@{ Reached = [bool]$reached; Film = $film; First = $first; What = $what }
+}
+
+# Weir's own answer for one hand-off (its intake status route, which only the secret Deluno shares with Weir opens). Null when Weir
+# does not answer or the secret cannot be read.
+function Get-WeirIntakeStatus {
+    param([Parameter(Mandatory)] [string] $HandoffId)
+    if (-not $script:S.Secrets.ContainsKey('weir-intake-secret')) {
+        $secret = Get-WeirWebhookSecret
+        if (-not $secret) { return $null }
+        # Held in memory only, so Hide-Secrets masks it in everything the suite writes; it is not written to secrets.json.
+        $script:S.Secrets['weir-intake-secret'] = $secret
+    }
+    try {
+        $r = Invoke-WebRequest -Uri "$($script:S.WeirUrl)/api/v1/intake/handoffs/deluno/$HandoffId" -Headers @{ 'X-Webhook-Secret' = $script:S.Secrets['weir-intake-secret'] } -UseBasicParsing -TimeoutSec 15
+        $r.Content | ConvertFrom-Json
+    }
+    catch { $null }
+}
+
+# The path at which a processor that watches a folder and writes under an output folder leaves a source: the source's path below the
+# watched folder, under the output folder (#1262).
+function Get-ExpectedProcessorOutput {
+    param([Parameter(Mandatory)] [string] $SourcePath, [Parameter(Mandatory)] [string] $WatchedFolder, [Parameter(Mandatory)] [string] $OutputFolder)
+    $watched = $WatchedFolder.TrimEnd('\', '/')
+    if (-not $SourcePath.StartsWith($watched + '\', [StringComparison]::OrdinalIgnoreCase) -and -not $SourcePath.StartsWith($watched + '/', [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    Join-Path $OutputFolder $SourcePath.Substring($watched.Length + 1)
+}
+
+function Invoke-ResendTakeover {
+    Invoke-Scenario -Id 'resend.single-file.takeover' -Title "A single file is sent again while Weir works on it: Weir's completed answer for the resend names no output path, and Deluno imports from where Weir puts it" -Body {
+        $kind = 'qbittorrent'
+        $moment = Get-OpenFirstSend -Kind $kind -Timing 'during' -Label 'retakeover'
+        $film = $moment.Film; $first = $moment.First
+        Add-Check 'The during moment was reached with the first send still open' $moment.Reached $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($($moment.What))" })
+        if (-not $moment.Reached) { return }
+        Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
+        Start-Sleep -Seconds 1
+        $firstWasImported = (Wait-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { Find-Imported -Title $film.Title }).Ok
+        if ($firstWasImported) { Add-Note "takeover/$kind : the first send was imported before the removal landed." }
+        Start-AgainDownload -Film $film
+
+        # What Weir itself says of the resend, read as soon as it is completed (before Deluno reports its outcome and Weir lets the hand-off go).
+        $weir = Wait-Until -TimeoutSec 180 -IntervalSec 0.5 -Condition {
+            $second = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $first.id } | Select-Object -First 1
+            if ($second) { $s = Get-WeirIntakeStatus -HandoffId $second.id; if ($s -and $s.state -in 'completed', 'cancelled', 'failed') { [pscustomobject]@{ Id = $second.id; Status = $s } } }
+        }
+        $answer = if ($weir.Ok) { $weir.Value.Status } else { $null }
+        Add-Check "Weir's final answer for the resend is 'completed' and names no output path" ([bool]$answer -and $answer.state -eq 'completed' -and -not $answer.outputPath) $(if ($answer) { "state '$($answer.state)', outputPath '$($answer.outputPath)'" } else { "Weir gave no final answer for the resend in 180 s (or its secret could not be read)" })
+
+        Assert-ResendSettled -Film $film -First $first -What "takeover/$kind" -FirstWasImported:$firstWasImported
+
+        # Deluno found the cleaned file where Weir puts it: the source's path below the watched folder, under the output folder.
+        $lib = Get-Library -MediaType movies
+        $watched = if ($lib.downloadsPath) { [string]$lib.downloadsPath } else { 'C:\Downloads\Completed\Movies' }
+        $output = if ($lib.processorOutputPath) { [string]$lib.processorOutputPath } else { 'C:\Weir\Ready\Movies' }
+        $second = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $first.id } | Select-Object -First 1
+        $expected = if ($second) { Get-ExpectedProcessorOutput -SourcePath ([string]$second.sourcePath) -WatchedFolder $watched -OutputFolder $output } else { $null }
+        Add-Check "Deluno imported the file from <output folder>\<source path relative to the watched folder>" ([bool]$expected -and [bool]$second -and [string]$second.outputPath -ieq $expected) $(if ($second) { "source '$($second.sourcePath)', expected '$expected', hand-off output '$($second.outputPath)'" } else { 'there is no second hand-off' })
+        # Deluno's own record of what it did (its Activity feed): it names the cleaned file it found without being told where it was.
+        $fallback = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) -and $_ -match 'found the cleaned file|matched processed output|Found the processed file' })
+        Add-Check "Deluno's log names that it found the cleaned file itself" ($fallback.Count -gt 0) "$($fallback.Count) Activity rows"
+    }
+}
+
 function Invoke-GroupResend {
     # ---- before: Weir paused, every client in one window.
     $films = @{}
@@ -176,30 +269,10 @@ function Invoke-GroupResend {
     foreach ($timing in 'during', 'after') {
         foreach ($kind in Get-AllKinds) {
             Invoke-Scenario -Id "resend.$timing.$kind" -Title "I don't want it, then a resend to $kind, while Weir is $(if ($timing -eq 'during') { 'working on' } else { 'done with' }) the first send" -Body {
-                $reached = $null; $film = $null; $first = $null; $what = ''
-                for ($try = 1; $try -le 3 -and -not $reached; $try++) {
-                    $film = New-FilmFor -Kind $kind -Layout 'file' -Label "re$timing" -Size $(if ($timing -eq 'during') { 'big' } else { 'small' })
-                    try {
-                        Set-WeirPause -Paused $true
-                        Send-Film -Film $film -Kind $kind | Out-Null
-                        Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
-                        $queued = Wait-Until -TimeoutSec 120 -IntervalSec 0.5 -Condition { Get-FilmHandoff -Film $film }
-                        if (-not $queued.Ok) { $what = 'the first hand-off never appeared'; Add-Note "Attempt ${try}: $what."; continue }
-                        # Weir takes the first send now. During: removed and sent again straight away, while it works. After: once its
-                        # cleaned file is in its output, before Deluno has queued the import.
-                        Set-WeirPause -Paused $false
-                        if ($timing -eq 'after') {
-                            Wait-Until -TimeoutSec 60 -IntervalSec 0.05 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($film.Title) }).Count -gt 0 } | Out-Null
-                        }
-                        $h = Get-FilmHandoff -Film $film
-                        $open = $h -and -not $h.importJobId -and ($timing -eq 'after' -or $h.status -ne 'completed')
-                        if ($open) { $reached = $true; $first = $h }
-                        else { $what = "status '$($h.status)', import $(if ($h.importJobId) { 'queued' } else { 'not queued' })"; Add-Note "Attempt ${try}: the $timing moment was missed ($what); trying a new film." }
-                    }
-                    finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
-                }
-                Add-Check "The $timing moment was reached with the first send still open" ([bool]$reached) $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($what)" })
-                if (-not $reached) { return }
+                $moment = Get-OpenFirstSend -Kind $kind -Timing $timing
+                $film = $moment.Film; $first = $moment.First
+                Add-Check "The $timing moment was reached with the first send still open" $moment.Reached $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($($moment.What))" })
+                if (-not $moment.Reached) { return }
                 Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
                 Start-Sleep -Seconds 1
                 # Whether the first send reached the library before the removal (Deluno imports a cleaned film within a second or two).
@@ -210,4 +283,7 @@ function Invoke-GroupResend {
             }
         }
     }
+
+    # ---- a single file taken over: Weir's answer for the resend has no output path, and Deluno finds the file where Weir puts it (#1262).
+    Invoke-ResendTakeover
 }

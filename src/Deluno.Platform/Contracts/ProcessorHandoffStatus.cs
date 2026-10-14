@@ -40,6 +40,9 @@ public sealed record ProcessorStatusSupport(
     bool CanCancel,
     string? Message)
 {
+    /// <summary>How long the processor asked Deluno to wait before asking again (<see cref="ProcessorRetryAfter"/>), or null.</summary>
+    public TimeSpan? RetryAfter { get; init; }
+
     /// <summary>
     /// Whether the processor wants to be told what became of a file it handed
     /// back (#578). A processor that does not advertise this is told nothing
@@ -101,7 +104,8 @@ public enum ProcessorHandoffOutcome
 }
 
 /// <param name="Released">Whether the processor let go of its copy.</param>
-public sealed record ProcessorOutcomeResult(ProcessorAnswer Answer, bool Released, string? Message);
+/// <param name="RetryAfter">How long the processor asked Deluno to wait before asking again (<see cref="ProcessorRetryAfter"/>), or null.</param>
+public sealed record ProcessorOutcomeResult(ProcessorAnswer Answer, bool Released, string? Message, TimeSpan? RetryAfter = null);
 
 /// <summary>
 /// What Deluno has to tell a processor about one hand-off, and how far it has
@@ -254,9 +258,10 @@ public sealed record ProcessorHandoffStatusResult(
     DateTimeOffset? ScheduledForUtc = null,
     DateTimeOffset? LastChangedUtc = null,
     string? OutputPath = null,
-    string? Message = null);
+    string? Message = null,
+    TimeSpan? RetryAfter = null);
 
-public sealed record ProcessorHandoffCancelResult(ProcessorAnswer Answer, string? Message);
+public sealed record ProcessorHandoffCancelResult(ProcessorAnswer Answer, string? Message, TimeSpan? RetryAfter = null);
 
 public static class ProcessorHandoffStates
 {
