@@ -91,6 +91,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateIntakeSourceRequest request,
             [FromServices] IIntakeRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -108,6 +109,13 @@ public static class IntakeEndpointRouteBuilderExtensions
                 request.MinimumYear,
                 request.MaximumAgeDays,
                 request.SyncIntervalHours);
+            var intakeMediaType = string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "tv" : "movies";
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, intakeMediaType, cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, intakeMediaType, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -123,6 +131,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateIntakeSourceRequest request,
             [FromServices] IIntakeRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -140,6 +149,13 @@ public static class IntakeEndpointRouteBuilderExtensions
                 request.MinimumYear,
                 request.MaximumAgeDays,
                 request.SyncIntervalHours);
+            var intakeMediaType = string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "tv" : "movies";
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, intakeMediaType, cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, intakeMediaType, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
