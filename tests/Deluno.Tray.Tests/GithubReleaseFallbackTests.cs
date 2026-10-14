@@ -170,6 +170,76 @@ public sealed class GithubReleaseFallbackTests
         Assert.Empty(Deluno.Contracts.ReleaseVersions.GitHubReleasesNewestFirst(WeirRecording().Find("api.github.com").Reply.Body!, includePreReleases: false));
     }
 
+    // ---- The checksum file arrived before the installer ----
+
+    /// <summary>A downloader that answers 404 for the installer of the listed tags (the recorded 404 GitHub gives for a file not uploaded), and fails any other download plainly.</summary>
+    private sealed class MissingInstallerDownloader(params string[] missingTags) : IComponentDownloader
+    {
+        public List<string> Urls { get; } = [];
+
+        public Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        {
+            Urls.Add(url);
+            return Task.FromResult<string?>(null);
+        }
+
+        public Task<ComponentDownload> DownloadWithStatusAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        {
+            Urls.Add(url);
+            var notThere = missingTags.Any(tag => url.Contains($"/{tag}/", StringComparison.Ordinal))
+                && NoFile().StatusCode == System.Net.HttpStatusCode.NotFound;
+            return Task.FromResult(new ComponentDownload(null, notThere));
+        }
+    }
+
+    private sealed class CapturingLog : IInstallLog
+    {
+        public List<string> Lines { get; } = [];
+
+        public void Write(string line) => Lines.Add(line);
+    }
+
+    [Fact]
+    public async Task An_installer_that_answers_404_after_its_checksum_file_arrived_falls_back_to_the_next_release_and_the_log_says_why()
+    {
+        // rc.17's checksum file is there (rc.13's recorded file answers for it), but its installer is not: the real 404 shape.
+        var recording = WeirRecording();
+        var replay = new Replay(recording, request => Is(request, $"{Rc17}/SHA256SUMS.txt") ? recording.Find($"{Rc13}/SHA256SUMS.txt").Reply.ToResponse() : null);
+        var downloader = new MissingInstallerDownloader(Rc17);
+        var log = new CapturingLog();
+        var service = new ComponentInstallService(downloader: downloader, installLog: log, githubHandler: replay.Handler, localBuild: _ => null);
+
+        var result = await service.InstallAsync(Weir(), CancellationToken.None);
+
+        // rc.17's installer, then rc.13's: the next release that has its files.
+        Assert.Equal(
+            [$"https://github.com/jampat000/Weir/releases/download/{Rc17}/Weir-win-Setup.exe", $"https://github.com/jampat000/Weir/releases/download/{Rc13}/Weir-win-Setup.exe"],
+            downloader.Urls);
+        Assert.Equal(ComponentInstallOutcome.DownloadFailed, result.Outcome);
+        Assert.Contains(log.Lines, line => line.Contains($"using {Rc13}", StringComparison.Ordinal)
+            && line.Contains(Rc17, StringComparison.Ordinal)
+            && line.Contains("download was not there", StringComparison.Ordinal));
+        Assert.Equal(0, replay.ApiCalls);
+        // Within the cap: the feed twice, rc.17's and rc.13's checksum files once each (the retry does not fetch rc.17's again).
+        Assert.Equal(5, replay.Requests.Count);
+    }
+
+    [Fact]
+    public async Task When_every_installer_answers_404_the_walk_stays_within_the_cap_and_says_the_installer_is_not_ready()
+    {
+        var recording = WeirRecording();
+        var replay = new Replay(recording, request => Is(request, "/SHA256SUMS.txt") ? recording.Find($"{Rc13}/SHA256SUMS.txt").Reply.ToResponse() : null);
+        var tags = Deluno.Contracts.ReleaseAtomFeed.TagsNewestFirst(recording.Find("releases.atom").Reply.Body!, true).Take(GithubLatestRelease.MaxReleasesLooked).ToArray();
+        var downloader = new MissingInstallerDownloader(tags);
+        var service = new ComponentInstallService(downloader: downloader, installLog: new CapturingLog(), githubHandler: replay.Handler, localBuild: _ => null);
+
+        var result = await service.InstallAsync(Weir(), CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.DownloadFailed, result.Outcome);
+        Assert.Equal(GithubLatestRelease.NoInstallerYetMessage("Weir"), result.Message);
+        Assert.Equal(GithubLatestRelease.MaxReleasesLooked, downloader.Urls.Count);
+    }
+
     // ---- The API route (when the feed cannot be read) ----
 
     private static Func<HttpRequestMessage, HttpResponseMessage?> FeedDown(Func<HttpRequestMessage, HttpResponseMessage?>? then = null)
