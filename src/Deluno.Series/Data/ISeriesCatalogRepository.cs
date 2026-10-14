@@ -551,6 +551,17 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string toLibraryId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reassigns a batch of shows and, in the same transaction, records the new location of every episode file
+    /// whose folder the caller has already moved, with every other stored path that follows it (#1327).
+    /// </summary>
+    Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> seriesIds,
+        string fromLibraryId,
+        string toLibraryId,
+        IReadOnlyList<(string EpisodeId, string PreviousFilePath, string NewFilePath)> movedEpisodeFiles,
+        CancellationToken cancellationToken);
+
     /// <summary>List episodes eligible for search in a library</summary>
     /// <summary>
     /// The episodes a library owes you: aired, monitored, still short, and past

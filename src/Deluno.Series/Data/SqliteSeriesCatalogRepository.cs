@@ -5235,6 +5235,47 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> seriesIds,
+        string fromLibraryId,
+        string toLibraryId,
+        IReadOnlyList<(string EpisodeId, string PreviousFilePath, string NewFilePath)> movedEpisodeFiles,
+        CancellationToken cancellationToken)
+    {
+        if (seriesIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // The library and every stored path of the moved shows change together or not at all (#1327).
+        await ApplyEpisodeFileLocationsAsync(connection, transaction, movedEpisodeFiles, cancellationToken);
+
+        var updated = 0;
+        foreach (var seriesId in seriesIds)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                UPDATE series_wanted_state
+                SET library_id = @toLibraryId
+                WHERE library_id = @fromLibraryId AND series_id = @seriesId;
+                """;
+            AddParameter(command, "@fromLibraryId", fromLibraryId);
+            AddParameter(command, "@toLibraryId", toLibraryId);
+            AddParameter(command, "@seriesId", seriesId);
+            updated += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
+    }
+
     public async Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
         string libraryId,
         int take,
@@ -5483,6 +5524,18 @@ public sealed class SqliteSeriesCatalogRepository(
             DelunoDatabaseNames.Series,
             cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await ApplyEpisodeFileLocationsAsync(connection, transaction, changes, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    // The path rewrite behind a rename and behind a library move: every stored path of the episodes follows, on the
+    // caller's transaction, so it commits or rolls back together with whatever else the caller is changing (#1327).
+    private static async Task ApplyEpisodeFileLocationsAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        IReadOnlyList<(string EpisodeId, string PreviousFilePath, string NewFilePath)> changes,
+        CancellationToken cancellationToken)
+    {
         foreach (var (episodeId, previousFilePath, newFilePath) in changes)
         {
             using var command = connection.CreateCommand();
@@ -5562,8 +5615,6 @@ public sealed class SqliteSeriesCatalogRepository(
                 }
             }
         }
-
-        await transaction.CommitAsync(cancellationToken);
     }
 
     private static string DirectoryOf(string path)
