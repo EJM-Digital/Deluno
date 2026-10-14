@@ -255,14 +255,19 @@ public sealed class DeletingFilesAndTitlesFromDiskTests
     // DEFECT: TitleRemovalService.MoveAsync moves the first folder under the library root. In a library laid out in group
     // folders (/movies/A/Dune (2021)/Dune.mkv) that is the group folder, so every other title in it goes to the bin too.
     // Observed: Arrival's file leaves the library with Dune's and Arrival is left with a missing file.
-    [Fact(Skip = "Defect: removing a film in a group-folder library (A/Dune (2021)/Dune.mkv) moves the whole group folder, so another title's file leaves with it.")]
+    [Fact]
     public async Task Removing_a_film_with_its_files_takes_only_its_own_folder_when_another_title_lives_in_a_sibling_folder_of_the_same_group()
     {
         await using var world = await StartWorldAsync();
         var dune = Write(Path.Combine(world.Root, "A", "Dune (2021)", "Dune.2021.1080p.BluRay.x264-GRP.mkv"));
         var other = Write(Path.Combine(world.Root, "A", "Arrival (2016)", "Arrival.2016.1080p.BluRay.x264-GRP.mkv"));
-        var duneId = await AddMovieAsync(world, "Dune", 2021);
-        var arrivalId = await AddMovieAsync(world, "Arrival", 2016);
+        // Files in a group folder are not matched on add, so they are recorded the way a library import records them.
+        var duneMovie = await world.AddMovieAsync("Dune", 2021);
+        var arrivalMovie = await world.AddMovieAsync("Arrival", 2016);
+        await world.Movies.ImportExistingAsync(world.Library.Id, "Dune", 2021, "covered", "test", "BluRay-1080p", null, true, dune, 17, CancellationToken.None, movieId: duneMovie.Id);
+        await world.Movies.ImportExistingAsync(world.Library.Id, "Arrival", 2016, "covered", "test", "BluRay-1080p", null, true, other, 17, CancellationToken.None, movieId: arrivalMovie.Id);
+        var duneId = duneMovie.Id;
+        var arrivalId = arrivalMovie.Id;
         Assert.True((await world.Movies.GetByIdAsync(duneId, CancellationToken.None))!.HasFile);
         Assert.True((await world.Movies.GetByIdAsync(arrivalId, CancellationToken.None))!.HasFile);
 
@@ -275,7 +280,7 @@ public sealed class DeletingFilesAndTitlesFromDiskTests
     }
 
     // DEFECT: the same unit rule moves the whole title folder, so a second title whose tracked file sits in that folder loses its file.
-    [Fact(Skip = "Defect: removing a film moves its whole folder, so another title's tracked file in the same folder leaves with it.")]
+    [Fact]
     public async Task Removing_a_film_with_its_files_leaves_another_titles_file_that_sits_in_the_same_folder()
     {
         await using var world = await StartWorldAsync();
