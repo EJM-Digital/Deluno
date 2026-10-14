@@ -197,15 +197,14 @@ public static class FilesystemEndpointRouteBuilderExtensions
             }
 
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            // #1318/#1325: while any library folder overlaps another, nothing is cleaned up at all.
+            if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is { } blocked)
+            {
+                return Results.Conflict(new { message = blocked });
+            }
+
             var downloadRoots = libraries
                 .Select(library => library.DownloadsPath)
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => Path.GetFullPath(path!))
-                .ToArray();
-            // #1318: a file inside any library root is a person's media. This route never
-            // reaches it, whatever a library's downloads folder is set to.
-            var libraryRoots = libraries
-                .Select(library => library.RootPath)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => Path.GetFullPath(path!))
                 .ToArray();
@@ -238,7 +237,8 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                if (libraryRoots.Any(root => Deluno.Contracts.SafePath.IsInside(root, fullPath)))
+                // #1318: a path that is, holds or sits inside any library root is a person's media.
+                if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, fullPath))
                 {
                     refused.Add(rawPath);
                     continue;

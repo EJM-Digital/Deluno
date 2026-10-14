@@ -125,6 +125,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, IndexerHealthCheck>();
         services.AddScoped<IHealthCheck, TrackerSiteHealthCheck>();
         services.AddScoped<IHealthCheck, LibraryRootHealthCheck>();
+        services.AddScoped<IHealthCheck, LibraryFolderOverlapHealthCheck>();
         services.AddScoped<IHealthCheck, LibraryFolderChainHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHandoffHoldHealthCheck>();

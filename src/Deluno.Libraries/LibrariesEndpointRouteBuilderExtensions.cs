@@ -270,6 +270,17 @@ public static class LibrariesEndpointRouteBuilderExtensions
             await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
                 connectionFactory, errors, "processorConnectionId", Deluno.Infrastructure.Storage.ReferenceKind.ProcessorConnection,
                 request.ProcessorConnectionId, null, cancellationToken);
+            if (errors.Count == 0)
+            {
+                var refusal = LibraryFolderLayout.RefuseSave(
+                    (await repository.ListLibrariesAsync(cancellationToken)).Select(LibraryFolders.From),
+                    new LibraryFolders(Guid.NewGuid().ToString("N"), request.Name?.Trim() ?? "New", request.RootPath, request.DownloadsPath, request.ProcessorOutputPath));
+                if (refusal is not null)
+                {
+                    errors["folders"] = [refusal];
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -340,6 +351,22 @@ public static class LibrariesEndpointRouteBuilderExtensions
 
             RequireExistingFolder(errors, "rootPath", request.RootPath, "this library lives in");
             RequireExistingFolder(errors, "downloadsPath", request.DownloadsPath, "downloads arrive in");
+
+            if (errors.Count == 0)
+            {
+                var all = await repository.ListLibrariesAsync(cancellationToken);
+                var current = all.FirstOrDefault(library => library.Id == id);
+                if (current is not null)
+                {
+                    var refusal = LibraryFolderLayout.RefuseSave(
+                        all.Select(LibraryFolders.From),
+                        new LibraryFolders(id, string.IsNullOrWhiteSpace(request.Name) ? current.Name : request.Name.Trim(), request.RootPath, request.DownloadsPath, current.ProcessorOutputPath));
+                    if (refusal is not null)
+                    {
+                        errors["folders"] = [refusal];
+                    }
+                }
+            }
 
             if (errors.Count > 0)
             {
@@ -568,6 +595,22 @@ public static class LibrariesEndpointRouteBuilderExtensions
             await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
                 connectionFactory, errors, "processorConnectionId", Deluno.Infrastructure.Storage.ReferenceKind.ProcessorConnection,
                 request.ProcessorConnectionId, null, cancellationToken);
+            if (errors.Count == 0)
+            {
+                var all = await repository.ListLibrariesAsync(cancellationToken);
+                var current = all.FirstOrDefault(library => library.Id == id);
+                if (current is not null)
+                {
+                    var refusal = LibraryFolderLayout.RefuseSave(
+                        all.Select(LibraryFolders.From),
+                        new LibraryFolders(id, current.Name, current.RootPath, current.DownloadsPath, request.ProcessorOutputPath));
+                    if (refusal is not null)
+                    {
+                        errors["folders"] = [refusal];
+                    }
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
