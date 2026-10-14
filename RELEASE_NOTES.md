@@ -27,6 +27,12 @@ Everything in 1.0.0-rc.30.31, plus:
 - Installing Weir (or NZBGet) from the app picker no longer fails when its
   newest release on GitHub has just been published and its files are not
   uploaded yet. Deluno uses the newest release that has them, and says which.
+- Deluno's own "update Weir" step does the same: when Weir's newest release
+  has no files yet, it updates to the newest one that has them, and when none
+  of the last few have them it says so in one sentence instead of failing.
+- A processor's API key with only the imports permission can now read the
+  hand-offs and download destinations it works on, as the integration guide
+  always said. It still can't read anything else.
 
 ## 1.0.0-rc.30.31
 
