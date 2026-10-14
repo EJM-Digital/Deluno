@@ -61,7 +61,16 @@ public static class ExternalFileChangedEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["path"] = ["Give the full path of the library file that changed."] });
             }
 
-            var file = new FileInfo(path);
+            FileInfo file;
+            try
+            {
+                file = new FileInfo(path);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["path"] = ["That is not a valid file path."] });
+            }
+
             if (!file.Exists)
             {
                 return Results.NotFound(new { message = $"There is no file at {path}. Deluno re-reads a file that exists; a removed file is noticed by the library's own checks." });

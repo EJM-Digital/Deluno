@@ -126,6 +126,7 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     app.UseRouting();
                     app.UseAuthentication();
                     app.UseAuthorization();
+                    app.UseDelunoRequestBodyLimits();
                     app.UseEndpoints(endpoints => endpoints.MapDelunoApplicationEndpoints());
                 }))
             .Build();
