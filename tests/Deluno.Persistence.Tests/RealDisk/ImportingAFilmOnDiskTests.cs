@@ -240,9 +240,8 @@ public sealed class ImportingAFilmOnDiskTests
         Assert.Equal("Special " + kind, preview.MatchedRuleName);
     }
 
-    // DEFECT: the library repository saves a "studio" or "title" rule as a "genre" rule (NormalizeDestinationMatchKind in
-    // SqliteLibrariesRepository maps every kind it does not list to "genre"), so those rules can never match what they name.
-    [Theory(Skip = "Defect: a destination rule of kind studio or title is saved as a genre rule, so it never matches by studio or title.")]
+    // #1322: a "studio" or "title" rule is stored as itself, so it matches what it names.
+    [Theory]
     [InlineData("studio", "Blender", "Blender Foundation")]
     [InlineData("title", "sintel", "Sintel")]
     public async Task A_destination_rule_places_the_file_by_studio_or_title_ignoring_case(string kind, string ruleValue, string requestValue)

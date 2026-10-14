@@ -5508,9 +5508,68 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@previousFilePath", previousFilePath);
             AddParameter(wanted, "@newFilePath", newFilePath);
             await wanted.ExecuteNonQueryAsync(cancellationToken);
+
+            // Everything else that remembers this file's path follows in the same transaction (#1323): the episode's
+            // subtitle scan, and the show's stored release evidence for the file.
+            foreach (var (table, keyColumn, keySql) in new[]
+            {
+                ("episode_subtitle_scan", "episode_id", "@episodeId"),
+                ("media_preference_evaluations", "media_id", "(SELECT series_id FROM episode_entries WHERE id = @episodeId)")
+            })
+            {
+                using var related = connection.CreateCommand();
+                related.Transaction = transaction;
+                related.CommandText =
+                    $"UPDATE {table} SET file_path = @newFilePath WHERE {keyColumn} = {keySql} AND file_path = @previousFilePath COLLATE NOCASE;";
+                AddParameter(related, "@episodeId", episodeId);
+                AddParameter(related, "@previousFilePath", previousFilePath);
+                AddParameter(related, "@newFilePath", newFilePath);
+                await related.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // The subtitle files beside the episode keep their own names and move with its folder.
+            var oldDirectory = DirectoryOf(previousFilePath);
+            var newDirectory = DirectoryOf(newFilePath);
+            if (oldDirectory.Length > 0 && newDirectory.Length > 0 && !string.Equals(oldDirectory, newDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                var sidecars = new List<(long RowId, string Path)>();
+                using (var select = connection.CreateCommand())
+                {
+                    select.Transaction = transaction;
+                    select.CommandText = "SELECT rowid, file_path FROM episode_subtitle_state WHERE episode_id = @episodeId AND file_path IS NOT NULL;";
+                    AddParameter(select, "@episodeId", episodeId);
+                    await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                    {
+                        var path = reader.GetString(1);
+                        if (path.Length > oldDirectory.Length
+                            && path.StartsWith(oldDirectory, StringComparison.OrdinalIgnoreCase)
+                            && (path[oldDirectory.Length] == '/' || path[oldDirectory.Length] == '\\'))
+                        {
+                            sidecars.Add((reader.GetInt64(0), path));
+                        }
+                    }
+                }
+
+                foreach (var (rowId, path) in sidecars)
+                {
+                    using var update = connection.CreateCommand();
+                    update.Transaction = transaction;
+                    update.CommandText = "UPDATE episode_subtitle_state SET file_path = @filePath WHERE rowid = @rowId;";
+                    AddParameter(update, "@filePath", newDirectory + path[oldDirectory.Length..]);
+                    AddParameter(update, "@rowId", rowId);
+                    await update.ExecuteNonQueryAsync(cancellationToken);
+                }
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static string DirectoryOf(string path)
+    {
+        var cut = path.LastIndexOfAny(['/', '\\']);
+        return cut <= 0 ? string.Empty : path[..cut];
     }
 
     /// <summary>The scores a page row carries, read straight from their columns.</summary>
