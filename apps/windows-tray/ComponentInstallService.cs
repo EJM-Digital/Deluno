@@ -57,10 +57,20 @@ public enum ComponentStage
 /// <param name="Detail">For a failed component, why; otherwise a short note on the stage.</param>
 public sealed record ComponentProgress(string Kind, string DisplayName, ComponentStage Stage, string? Detail = null);
 
+/// <summary>What a download came to: the file, or why there is none. <paramref name="NotFound"/> is the server saying the file is not there (a 404).</summary>
+public sealed record ComponentDownload(string? Path, bool NotFound = false);
+
 public interface IComponentDownloader
 {
     /// <summary>Downloads <paramref name="url"/> to a local file and returns its path, or null on failure.</summary>
     Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same download, saying whether the failure was "not found". The picker uses it to tell a release whose installer
+    /// has not been uploaded yet (#1263) from any other failure. A downloader that cannot tell reports no "not found".
+    /// </summary>
+    async Task<ComponentDownload> DownloadWithStatusAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        => new(await DownloadAsync(url, suggestedFileName, cancellationToken));
 }
 
 /// <summary>Where the installer records what it checked for each component (#1061).</summary>
@@ -204,7 +214,8 @@ public sealed class ComponentInstallService(
     TimeSpan? credentialCaptureWait = null,
     IInstallLog? installLog = null,
     Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null,
-    IDownloadClientConfigurator? clientConfigurator = null)
+    IDownloadClientConfigurator? clientConfigurator = null,
+    HttpMessageHandler? githubHandler = null)
 {
     private readonly IDownloadClientConfigurator _clientConfigurator = clientConfigurator ?? new DownloadClientConfigurator(log: installLog ?? new FileInstallLog());
     private readonly IInstallLog _log = installLog ?? new FileInstallLog();
@@ -293,7 +304,7 @@ public sealed class ComponentInstallService(
         }
         else if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.GithubRepo))
         {
-            var lookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken);
+            var lookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken, githubHandler);
             var resolved = lookup.Asset;
             if (resolved is null)
             {

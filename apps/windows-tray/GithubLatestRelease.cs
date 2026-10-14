@@ -76,7 +76,7 @@ public static class GithubLatestRelease
     /// </summary>
     public const int MaxReleasesLooked = 5;
 
-    public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null)
+    public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null, IReadOnlyCollection<string>? excludeTags = null)
     {
         var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
         if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
