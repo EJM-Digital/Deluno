@@ -203,6 +203,8 @@ public sealed class ImportRoutesOnDiskTests
         Assert.Equal(1, body.GetProperty("deleted").GetInt32());
         Assert.Empty(body.GetProperty("refused").EnumerateArray());
         Assert.False(File.Exists(leftover));
+        var item = Assert.Single(await world.Bin.ListAsync(CancellationToken.None));
+        Assert.Equal(leftover, item.OriginalPath);
     }
 
     [Fact]
@@ -233,7 +235,7 @@ public sealed class ImportRoutesOnDiskTests
     // DEFECT (the register row says so): this route deletes with File.Delete, not the recycle bin, and trusts the library's
     // downloads folder. A library whose downloads folder is inside (or is) its own root therefore lets this route delete a
     // film outright. A file inside a library root should only ever leave through the recycle bin.
-    [Fact(Skip = "Defect: the season-pack leftovers route File.Deletes anything under a library's downloads folder, so with a downloads folder inside the library root it deletes library media outright instead of binning it.")]
+    [Fact]
     public async Task Deleting_season_pack_leftovers_never_deletes_a_file_that_is_inside_a_library_root()
     {
         await using var world = await StartWorldAsync();
@@ -247,5 +249,25 @@ public sealed class ImportRoutesOnDiskTests
         await DeleteLeftoversAsync(world, inside);
 
         Assert.True(File.Exists(inside) || (await world.Bin.ListAsync(CancellationToken.None)).Count == 1, "library media must still exist, in the library or in the bin");
+    }
+
+    [Fact]
+    public async Task Deleting_season_pack_leftovers_refuses_a_file_in_a_downloads_folder_that_sits_inside_the_library_root()
+    {
+        await using var world = await StartWorldAsync();
+        var downloadsInside = Path.Combine(world.Root, "_downloads");
+        var inside = Path.Combine(downloadsInside, "Show.S01.extras.mkv");
+        Directory.CreateDirectory(downloadsInside);
+        File.WriteAllText(inside, "a person's file");
+        var update = await world.App.Client.PutAsJsonAsync($"/api/libraries/{world.Library.Id}", new { name = world.Library.Name, rootPath = world.Root, downloadsPath = downloadsInside });
+        Assert.True(update.IsSuccessStatusCode, await update.Content.ReadAsStringAsync());
+
+        var response = await DeleteLeftoversAsync(world, inside);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(0, body.GetProperty("deleted").GetInt32());
+        Assert.Single(body.GetProperty("refused").EnumerateArray());
+        Assert.True(File.Exists(inside));
+        Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
     }
 }

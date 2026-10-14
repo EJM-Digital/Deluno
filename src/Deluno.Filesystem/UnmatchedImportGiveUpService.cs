@@ -88,40 +88,57 @@ public sealed class UnmatchedImportGiveUpService(
     private async Task<bool> GiveUpAsync(string caseId, string title, string? detailsJson, string entityKind, CancellationToken cancellationToken)
     {
         var (dispatchId, sourcePath) = ParseDetails(detailsJson);
-        var deletedFile = false;
         var recycledFile = false;
+        string? leftAloneReason = null;
         if (!string.IsNullOrWhiteSpace(sourcePath))
         {
             try
             {
                 if (File.Exists(sourcePath))
                 {
-                    // #1188: an untracked file the library check found INSIDE a library is a
-                    // person's media until they say otherwise. It leaves through the recycle
-                    // bin or not at all. Only a file in a download area is deleted outright.
-                    var owner = librariesRepository is null
-                        ? null
-                        : (await librariesRepository.ListLibrariesAsync(cancellationToken))
-                            .FirstOrDefault(item => IsInsideLibrary(sourcePath, item.RootPath));
-                    if (owner is null)
+                    // #1318/#1319: no file is ever deleted outright here. A file inside a library
+                    // is a person's media (#1188); one in a library's downloads folder is
+                    // leftover download data. Both leave through the recycle bin or not at all,
+                    // and a file whose place Deluno cannot tell is left exactly where it is.
+                    if (librariesRepository is null)
                     {
-                        File.Delete(sourcePath);
-                        deletedFile = true;
+                        leftAloneReason = "Deluno could not tell which folder the file is in";
                     }
-                    else if (recycleBinService is not null
-                             && await recycleBinService.StoreRemovedFileAsync(
-                                 owner,
-                                 sourcePath,
-                                 null,
-                                 cancellationToken) is not null)
+                    else if (recycleBinService is null)
                     {
-                        recycledFile = true;
+                        leftAloneReason = "there is no recycle bin to move it to";
+                    }
+                    else
+                    {
+                        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+                        var libraryOwner = libraries.FirstOrDefault(item => IsInsideLibrary(sourcePath, item.RootPath));
+                        if (libraryOwner is not null)
+                        {
+                            recycledFile = await recycleBinService.StoreRemovedFileAsync(libraryOwner, sourcePath, null, cancellationToken) is not null;
+                        }
+                        else
+                        {
+                            var downloadOwner = libraries.FirstOrDefault(item => IsInsideLibrary(sourcePath, item.DownloadsPath));
+                            if (downloadOwner is not null)
+                            {
+                                recycledFile = await recycleBinService.StoreDownloadFileAsync(downloadOwner, sourcePath, cancellationToken) is not null;
+                            }
+                            else
+                            {
+                                leftAloneReason = "it is not in a library or a downloads folder Deluno knows";
+                            }
+                        }
+
+                        if (!recycledFile && leftAloneReason is null)
+                        {
+                            leftAloneReason = "it could not be moved to the recycle bin";
+                        }
                     }
                 }
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "Could not delete the unmatched file for {Title} while giving up on it.", title);
+                logger.LogWarning(exception, "Could not move the unmatched file for {Title} while giving up on it.", title);
             }
         }
 
@@ -186,7 +203,7 @@ public sealed class UnmatchedImportGiveUpService(
 
         var summary = string.Join(", ", new[]
         {
-            deletedFile ? "deleted the file" : null,
+            leftAloneReason is not null ? $"left the file where it is because {leftAloneReason}" : null,
             recycledFile ? "moved the file to the recycle bin" : null,
             removedFromClient ? "removed it from the download client" : null,
             blocklisted ? "blocklisted the release" : null,
@@ -198,7 +215,7 @@ public sealed class UnmatchedImportGiveUpService(
                 ? $"Gave up waiting to match {title} by hand: {summary}."
                 : $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
             : $"Gave up waiting to match {title} by hand, but nothing was left to clean up.";
-        var giveUpDetails = JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RecycledFile = recycledFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted });
+        var giveUpDetails = JsonSerializer.Serialize(new { CaseId = caseId, Title = title, LeftFileAlone = leftAloneReason is not null, RecycledFile = recycledFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted });
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.unmatched-given-up",
             giveUpMessage,
