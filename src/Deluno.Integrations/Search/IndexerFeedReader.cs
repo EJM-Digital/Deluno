@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Integrations.Search.Trackers;
 using Microsoft.Extensions.Logging;
@@ -108,6 +109,12 @@ public sealed class IndexerFeedReader(
 
                 await using var stream = await response.Content.ReadAsStreamAsync(token);
                 var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
+                if (IndexerApiError.TryRead(document) is { } apiError)
+                {
+                    // HTTP 200 with an <error> element is a refusal, not an empty feed (#1311).
+                    return new IndexerFeedResult(false, [], apiError.PlainMessage(indexer.Name));
+                }
+
                 return new IndexerFeedResult(true, ReadReleases(document));
             },
             _ => IntegrationResilienceOutcome.Success,

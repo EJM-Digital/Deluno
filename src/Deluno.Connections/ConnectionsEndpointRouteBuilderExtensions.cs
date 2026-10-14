@@ -1368,9 +1368,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
                 // Torznab and Newznab report a rejected key as an <error> element
                 // with HTTP 200, so the status code alone cannot be trusted here.
-                if (TryReadIndexerError(body, out var indexerError))
+                if (Deluno.Contracts.IndexerApiError.TryRead(body) is { } indexerError)
                 {
-                    return ("degraded", $"Reached {uri.Host}, but it refused the request: {indexerError}", "auth");
+                    return ("degraded", $"Reached {uri.Host}, but it refused the request: {indexerError.Description}", indexerError.IsCredentialFailure ? "auth" : "protocol");
                 }
 
                 if (LooksLikeIndexerResponse(item.Protocol, body))
@@ -1517,7 +1517,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            return TryReadIndexerError(body, out _) ? null : ParseIndexerCaps(body);
+            return Deluno.Contracts.IndexerApiError.TryRead(body) is not null ? null : ParseIndexerCaps(body);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Xml.XmlException)
         {
@@ -1575,34 +1575,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                     : null;
 
         return new IndexerCapsResult(string.Join(",", categoryIds), mediaScope);
-    }
-
-    /// <summary>
-    /// The description out of a Torznab/Newznab <c>&lt;error&gt;</c> element, if
-    /// the body is one.
-    ///
-    /// <para>These arrive with HTTP 200, which is why a rejected API key used to
-    /// read as a healthy indexer: the status said fine and nothing looked at
-    /// what was actually returned.</para>
-    /// </summary>
-    private static bool TryReadIndexerError(string body, out string description)
-    {
-        description = string.Empty;
-        if (string.IsNullOrWhiteSpace(body) || !body.Contains("<error", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var match = Regex.Match(
-            body,
-            "<error[^>]*?description=\"(?<description>[^\"]*)\"",
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromSeconds(1));
-
-        description = match.Success && !string.IsNullOrWhiteSpace(match.Groups["description"].Value)
-            ? match.Groups["description"].Value
-            : "the indexer returned an error rather than results.";
-        return true;
     }
 
     private static bool LooksLikeIndexerResponse(string protocol, string body)
