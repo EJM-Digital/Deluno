@@ -39,7 +39,7 @@ public sealed class DelugeOperationsOnRecordingsTests
         Assert.True(calls.Sent(Finished));
     }
 
-    [Fact(Skip = "Defect (#1301): DelugeDownloadClient.GetFilesAsync lets ClientCredentialsRefusedException escape on a wrong password (login-refused recording, auth.login false), though IDownloadClient.GetFilesAsync promises null and DownloadClientTelemetryService calls it with no try. qBittorrent's equivalent returns null.")]
+    [Fact]
     public async Task A_wrong_password_gives_no_file_list_so_the_check_uses_the_release_name()
     {
         var handler = RecordedReplies.Handler("deluge", [RecordedReplies.Deluge("login-refused")]);

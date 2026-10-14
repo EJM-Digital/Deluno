@@ -1735,6 +1735,26 @@ public sealed class DownloadClientTelemetryService(
         return ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName, item.Tags, item.TrackerHosts, delunoTags));
     }
 
+    /// <summary>
+    /// #1312: one client failing its file list (a refused login, a dropped connection) is "unknown" for that download, not a
+    /// broken pass for every client. A refused login is already said once, by that client's snapshot.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>?> TryGetFilesAsync(
+        IDownloadClient downloadClient,
+        DownloadClientItem client,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await downloadClient.GetFilesAsync(client, queueItemId, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
@@ -1809,7 +1829,7 @@ public sealed class DownloadClientTelemetryService(
                 // one word about it) means "unknown", not "empty" - Evaluate
                 // then falls back to matching the release name itself.
                 var files = downloadClient is not null && contentBlocklist.Enabled
-                    ? await downloadClient.GetFilesAsync(client, item.Id, cancellationToken)
+                    ? await TryGetFilesAsync(downloadClient, client, item.Id, cancellationToken)
                     : null;
                 var findings = healthEvaluator.Evaluate(
                     new RecoveryQueueSnapshot(

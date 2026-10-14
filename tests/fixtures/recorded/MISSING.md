@@ -117,3 +117,10 @@ Found while proving each integration operation on recordings. Each line is a sta
 - weir: `HEAD` on the hand-off address and `GET` on a health address (the connection Test; w1), and a processor whose hand-off address redirects to another host (w14).
 - jellyfin: an API key that is not an administrator's (the recorded `/Users` 401 is a key Jellyfin does not know at all, and the key-cannot-list-users test uses it), a collection taken off the home screen (un-favourite), and `Library/Media/Updated` answered with an error.
 - github: the vendor installer download itself (a 20 MB binary; the downloader tests use the real `SHA256SUMS.txt` of a Weir release as the downloaded file).
+
+## Refused-login states for #1312
+
+Every method of qBittorrent, Transmission, Deluge, NZBGet and SABnzbd is replayed against that client's recorded refused login (`EveryClientMethodKeepsItsContractOnARefusedLoginTests`). Not recorded, so not tested:
+
+- uTorrent and rTorrent: no recording of any state exists for either client, so a refused login on them is not replayed.
+- qbittorrent: the API-key variant of a refused sign-in is recorded (`api-key-refused`) but only the username and password refusal is replayed; the banned-address 403 is listed above.
