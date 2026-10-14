@@ -161,6 +161,17 @@ internal sealed class RealDiskLibrary : IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>Reads one value from one of Deluno's real SQLite files.</summary>
+    public async Task<object?> ScalarAsync(string database, string sql)
+    {
+        var factory = App.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
+        await using var connection = await factory.OpenConnectionAsync(database, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        var value = await command.ExecuteScalarAsync();
+        return value is DBNull ? null : value;
+    }
+
     public static string[] FilesUnder(string folder)
         => Directory.Exists(folder) ? Directory.GetFiles(folder, "*", SearchOption.AllDirectories) : [];
 
