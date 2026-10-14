@@ -49,7 +49,9 @@ public sealed class ConnectionVersionParserTests
     [Fact]
     public void Jellyfin_and_emby_read_the_version_field()
     {
-        Assert.Equal("10.10.7", ConnectionVersionParsers.FromEmbyFamily("""{"LocalAddress":"http://x:8096","ServerName":"jf","Version":"10.10.7","ProductName":"Jellyfin Server","Id":"abc"}"""));
+        // Jellyfin 12.2.0's real replies (#1237): the public identity and the full system info both carry the Version.
+        Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[0].Reply.Body));
+        Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[1].Reply.Body));
         Assert.Equal("4.9.1.0", ConnectionVersionParsers.FromEmbyFamily("""{"ServerName":"emby","Version":"4.9.1.0","Id":"abc"}"""));
     }
 

@@ -52,9 +52,89 @@
       "reason": "The uTorrent part still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
     },
     {
+      "file": "tests/Deluno.Integrations.Tests/MediaServers/LeavingSoonCollectionClientTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Plex replies are still built inline. Plex is not recorded (the record VM run was stopped before Plex was installed); see tests/fixtures/recorded/MISSING.md for how to record it."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/MediaServers/MediaServerClientTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Emby and Jellyfin replies are still built inline. Jellyfin 12.2.0 is recorded (tests/fixtures/recorded/jellyfin: identity, libraries, movie and series catalogue, watched, sessions, refresh, collections, user and item calls); Emby and Plex are NOT recorded yet (not run on the record VM), so the Emby and Plex parts need those recordings first."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/MediaServers/MediaServerVersionTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Emby and Jellyfin replies are still built inline. Jellyfin 12.2.0 is recorded (tests/fixtures/recorded/jellyfin: identity, libraries, movie and series catalogue, watched, sessions, refresh, collections, user and item calls); Emby and Plex are NOT recorded yet (not run on the record VM), so the Emby and Plex parts need those recordings first."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Search/FeedMediaSearchPlannerReasonTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Search/Trackers/TorznabFeedTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Seerr/SeerrClientTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Seerr replies are still built inline. Seerr is not recorded (its build from source in the record VM did not finish); see tests/fixtures/recorded/MISSING.md."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Versions/ConnectionVersionParserTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Jellyfin version is now read from Jellyfin 12.2.0's recorded identity; the Emby, Plex and Seerr version replies are still inline because those apps are not recorded (see tests/fixtures/recorded/MISSING.md)."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/AHandSendForSomethingAlreadyDownloadingAsksFirstTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/AnIndexerIsTestedWhereItIsSearchedTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/AWholeShowPreviewChecksEachReleaseAgainstItsOwnEpisodeTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/HealthRestoredNotificationTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/ManualSearchEndpointTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Api/ResetCircuitClosesTheRealCircuitTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/EndToEnd/ReferenceSearchFlowTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
       "file": "tests/Deluno.Persistence.Tests/Integrations/ARemovalReasonDoesExactlyWhatItSaysTests.cs",
       "kind": "pending",
       "reason": "The uTorrent and rTorrent parts still build their replies inline (#1237, the owner will have them tested properly later). uTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401). rTorrent is not installed on the golden VM, so no reply of its is recorded. To move this file onto recordings, record from the real rTorrent XML-RPC mount: system.client_version; d.multicall2 with a running download, a paused one, a finished one, a stalled one and none; d.is_active, d.pause, d.resume and d.erase for a known hash and the fault for an unknown one (\"Could not find info-hash.\"); load.raw_start, load.raw, load.start and load.normal for a new torrent and one it already holds; d.custom1 and d.custom1.set; d.directory and d.base_path; f.multicall for a one-file and a many-file torrent; t.multicall (trackers); d.check_hash; the free-space call; and a wrong login (HTTP 401)."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Platform/ConnectionNamesTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
+    },
+    {
+      "file": "tests/Deluno.Persistence.Tests/Platform/MigrationAssistantServiceTests.cs",
+      "kind": "pending",
+      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Seerr replies are still built inline. Seerr is not recorded (its build from source in the record VM did not finish); see tests/fixtures/recorded/MISSING.md."
     }
   ],
   "noBehaviour": [
