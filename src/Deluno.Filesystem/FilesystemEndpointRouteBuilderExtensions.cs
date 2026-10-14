@@ -1,3 +1,4 @@
+using System.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -276,7 +277,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
             {
                 fullPath = Path.GetFullPath(request.FolderPath.Trim());
             }
-            catch (ArgumentException)
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or SecurityException)
             {
                 return Results.BadRequest(new { message = "That folder path is not valid." });
             }
@@ -333,6 +334,11 @@ public static class FilesystemEndpointRouteBuilderExtensions
             IImportPipelineService importPipeline,
             CancellationToken cancellationToken) =>
         {
+            if (request?.Items is null)
+            {
+                return Results.BadRequest(new { message = "Give the list of files to import." });
+            }
+
             var results = new List<ImportBatchExecuteResult>(request.Items.Count);
             var imported = 0;
 

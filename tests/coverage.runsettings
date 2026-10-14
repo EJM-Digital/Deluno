@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverage for every .NET test project (docs/testing/STRATEGY.md, issue 1268). Used by
+  `scripts/test-dotnet-serial.ps1 -Coverage`, which adds `--collect:"XPlat Code Coverage"`.
+
+  What is measured is every Deluno production assembly. Test assemblies are left out here.
+  Nothing else is excluded here: a source file leaves the report only through
+  docs/testing/coverage-exclusions.json, with a reason. That is why ExcludeByAttribute names only the
+  compiler's own marks: coverlet's default also drops [Obsolete] and [ExcludeFromCodeCoverage], which
+  would hide code from the report with no reason written down.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Include>[Deluno.*]*</Include>
+          <Exclude>[*.Tests]*,[Deluno.Tests.*]*,[xunit*]*</Exclude>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <ExcludeByFile>**/obj/**/*</ExcludeByFile>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>false</UseSourceLink>
+          <DeterministicReport>false</DeterministicReport>
+          <SkipAutoProps>false</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
