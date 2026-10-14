@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -25,6 +26,9 @@ namespace Deluno.Persistence.Tests.Api;
 /// under the right name. A report could also reopen a hand-off that had already
 /// ended, replay itself into a second import, or use a word Deluno did not
 /// understand and be recorded as "accepted".</para>
+///
+/// <para>#1239: a report Weir really sent (tests/fixtures/recorded/deluno/*/events-*) is posted from its recording wherever one matches the case; a case with no real report stays
+/// inline on purpose, and tests/fixtures/recorded/MISSING.md lists it with the Weir state that would produce it.</para>
 /// </summary>
 public sealed class AProcessorIsNotTakenAtItsWordTests
 {
@@ -115,13 +119,14 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Contains("outside", told.Message);
     }
 
+    /// <summary>Weir's real report of a finished Usenet job (events-completed: the film inside a folder named for the job, #1239).</summary>
     [Fact]
     public async Task A_file_in_the_downloads_own_folder_is_accepted()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
 
-        var response = await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.mkv"));
+        var (_, response) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
@@ -143,6 +148,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
 
+    /// <summary>Weir's real report for a hand-off Deluno had stopped waiting for (events-too-late, #1239).</summary>
     [Fact]
     public async Task A_report_for_a_hand_off_that_already_ended_is_too_late()
     {
@@ -152,7 +158,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         await Repository(app).UpdateProcessorHandoffAsync(
             handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, "You stopped waiting.", CancellationToken.None);
 
-        var response = await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.mkv"));
+        var response = await RecordedPostAsync(app, scene, handoff, "events-too-late", 0, Ours);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("too late", await response.Content.ReadAsStringAsync());
@@ -163,12 +169,10 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
-        var output = Path.Combine(scene.Output, Ours, $"{Ours}.mkv");
-
-        var first = await ReportAsync(app, scene, Ours, "completed", output);
+        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
         Assert.True(first.IsSuccessStatusCode, await first.Content.ReadAsStringAsync());
 
-        var second = await ReportAsync(app, scene, Ours, "completed", output);
+        var second = await RecordedPostAsync(app, scene, handoff, "events-completed", 2, Ours);
 
         Assert.Equal(HttpStatusCode.Accepted, second.StatusCode);
         Assert.Contains("alreadyHandled", await second.Content.ReadAsStringAsync());
@@ -184,9 +188,15 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
-        Assert.True((await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.mkv"))).IsSuccessStatusCode);
+        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
+        Assert.True(first.IsSuccessStatusCode);
 
-        var second = await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.part2.mkv"));
+        // The same report again, naming another file: Weir's real body with its output changed to a second part.
+        var again = RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-completed", 2), scene.LibraryId, handoff.Id, scene.Output, Ours);
+        var part2 = Path.Combine(scene.Output, Ours, $"{Ours}.part2.mkv");
+        again["outputPath"] = part2;
+        again["outputFiles"] = new JsonArray(JsonValue.Create(part2));
+        var second = await RecordedWeirReports.PostAsync(app.Client, again);
 
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         var body = await second.Content.ReadAsStringAsync();
@@ -261,25 +271,13 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Equal(folder, payload.Preview.SourcePath);
     }
 
-    /// <summary>#619: a single-file hand-off also carries OutputFiles, with one item, and still works.</summary>
+    /// <summary>#619: a single-file hand-off also carries OutputFiles, with one item, and still works. Weir's real report (events-completed: the file flat in its output folder, #1239).</summary>
     [Fact]
     public async Task A_single_file_hand_off_with_one_output_file_still_works()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
-        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, Ours)).FullName;
-        var file = Path.Combine(folder, $"{Ours}.mkv");
-        await File.WriteAllBytesAsync(file, new byte[1024]);
-        var handoff = await HandoffAsync(app, scene, Ours);
-
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            libraryId = scene.LibraryId,
-            handoffId = handoff.Id,
-            status = "completed",
-            outputPath = file,
-            outputFiles = new[] { file }
-        });
+        var (handoff, response) = await RecordedReportAsync(app, scene, "events-completed", 0, Ours, writeFiles: true);
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
@@ -545,6 +543,33 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
                 Path.Combine(scene.Downloads, releaseName),
                 "Weir"),
             CancellationToken.None);
+
+    /// <summary>
+    /// The hand-off for <paramref name="release"/> and Weir's recorded report (#1239) for it: the recorded body with this test's
+    /// library, hand-off, output folder and release name, everything else as Weir sent it.
+    /// </summary>
+    private static async Task<(ProcessorHandoffItem Handoff, HttpResponseMessage Response)> RecordedReportAsync(
+        ApplicationTestHost app, Scene scene, string state, int exchange, string release, bool writeFiles = false)
+    {
+        var handoff = await HandoffAsync(app, scene, release);
+        return (handoff, await RecordedPostAsync(app, scene, handoff, state, exchange, release, writeFiles));
+    }
+
+    private static Task<HttpResponseMessage> RecordedPostAsync(
+        ApplicationTestHost app, Scene scene, ProcessorHandoffItem handoff, string state, int exchange, string release, bool writeFiles = false)
+    {
+        var body = RecordedWeirReports.Body(RecordedWeirReports.Exchange(state, exchange), scene.LibraryId, handoff.Id, scene.Output, release);
+        if (writeFiles)
+        {
+            foreach (var file in RecordedWeirReports.OutputFilesOf(body))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, new byte[1024]);
+            }
+        }
+
+        return RecordedWeirReports.PostAsync(app.Client, body);
+    }
 
     private static async Task<HttpResponseMessage> ReportAsync(
         ApplicationTestHost app,

@@ -1,0 +1,89 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.32",
+  "state": "reply-key-with-imports-scope-only",
+  "recordedAt": "2026-10-14T06:07:05Z",
+  "note": "Each of the four routes called with a valid API key that carries the imports scope and no read scope: the two writes are accepted past the scope check, and the two reads are refused by the authorization policy, which asks a GET for the read scope (docs/external-integration-api.md says imports is enough; see the contract document). Recorded from the real server code through the in-process test host (ApplicationTestHost), by DelunoRepliesToWeirTests; generated ids, times and the data folder are replaced by <id>, <utc> and <data-root>.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/integrations/processors/handoffs",
+        "headers": {
+          "x-api-key": "<api key with the imports scope and no read scope>"
+        }
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "This credential does not have the 'imports' or 'queue' scope.",
+          "required": [
+            "imports",
+            "queue"
+          ],
+          "granted": [
+            "imports"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/integrations/processors/download-destinations",
+        "headers": {
+          "x-api-key": "<api key with the imports scope and no read scope>"
+        }
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "This credential does not have the 'queue' scope.",
+          "required": [
+            "queue"
+          ],
+          "granted": [
+            "imports"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/integrations/processors/handoffs/no-such-handoff/import-original",
+        "headers": {
+          "x-api-key": "<api key with the imports scope and no read scope>"
+        }
+      },
+      "reply": {
+        "status": 404,
+        "headers": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/integrations/processors/handoffs/no-such-handoff/outcome/send-again",
+        "headers": {
+          "x-api-key": "<api key with the imports scope and no read scope>"
+        }
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "Deluno has nothing recorded to tell the processor about this hand-off. An outcome is recorded when its import finishes."
+        }
+      }
+    }
+  ]
+}
