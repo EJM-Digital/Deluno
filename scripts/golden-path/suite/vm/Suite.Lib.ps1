@@ -149,7 +149,7 @@ function Wait-Until {
         try { $value = & $Condition } catch { $value = $null }
         if ($value) { return [pscustomobject]@{ Ok = $true; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); Value = $value } }
         if ($sw.Elapsed.TotalSeconds -ge $TimeoutSec) { return [pscustomobject]@{ Ok = $false; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); Value = $null } }
-        Start-Sleep -Milliseconds ([int]($IntervalSec * 1000))
+        Start-Sleep -Milliseconds ([int]($IntervalSec * 1000)) # reason: poll interval inside a loop bounded by its deadline
     }
 }
 
