@@ -131,9 +131,18 @@ function Invoke-RecordNzbhydra($p) {
     $proc = Start-AppProcess -File $core -Arguments @('directstart', '--datafolder', $data, '--host', '127.0.0.1', '--port', "$port", '--nobrowser') -WorkingDirectory (Split-Path $core) -LogName 'nzbhydra2.log'
     try {
         if (-not (Wait-Http -Url "http://127.0.0.1:$port/" -Seconds 240)) { Add-Missing "nzbhydra2: it did not answer on 127.0.0.1:$port after 4 minutes (see $(Get-AppFolder 'logs'))"; return }
+        # The configuration stores its API key obfuscated ({OBF}...), so a key of this run's own is written in its place: stop, edit, start again.
         $yml = Get-ChildItem -Path $data -Filter 'nzbhydra.yml' -Recurse | Select-Object -First 1
-        $key = if ($yml) { [regex]::Match((Get-Content -Raw $yml.FullName), '(?m)^\s*apiKey:\s*"?([^\s"]+)"?').Groups[1].Value } else { $null }
-        if (-not $key) { Add-Missing 'nzbhydra2: no API key in nzbhydra.yml'; return }
+        if (-not $yml) { Add-Missing 'nzbhydra2: no nzbhydra.yml after the first start'; return }
+        $key = (New-VmSecret 16)
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue; Stop-AppByName 'core'; Start-Sleep -Seconds 5
+        $lines = Get-Content -LiteralPath $yml.FullName
+        $mainAt = [array]::IndexOf($lines, 'main:')
+        for ($i = $mainAt + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s+apiKey:') { $lines[$i] = '  apiKey: "' + $key + '"'; break } }
+        [IO.File]::WriteAllLines($yml.FullName, $lines, (New-Object Text.UTF8Encoding($false)))
+        $proc = Start-AppProcess -File $core -Arguments @('directstart', '--datafolder', $data, '--host', '127.0.0.1', '--port', "$port", '--nobrowser') -WorkingDirectory (Split-Path $core) -LogName 'nzbhydra2-2.log'
+        if (-not (Wait-Http -Url "http://127.0.0.1:$port/" -Seconds 240)) { Add-Missing 'nzbhydra2: it did not come back after its API key was set'; return }
+
         Register-Secret $key
         $c = New-RecordedClient -BaseUrl "http://127.0.0.1:$port" -KeepHeaders @('content-type')
         $version = $asset.Tag.TrimStart('v')

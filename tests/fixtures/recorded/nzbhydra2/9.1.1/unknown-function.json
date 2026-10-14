@@ -2,7 +2,7 @@
   "app": "nzbhydra2",
   "version": "9.1.1",
   "state": "unknown-function",
-  "recordedAt": "2026-10-14T08:18:38Z",
+  "recordedAt": "2026-10-14T08:20:06Z",
   "note": "A function that does not exist (t=bogus): NZBHydra2 9.1.1's own Newznab API with no indexer configured (every Usenet indexer needs an account). Installed from: nzbhydra2-9.1.1-windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
   "exchanges": [
     {
