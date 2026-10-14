@@ -124,3 +124,19 @@ Every method of qBittorrent, Transmission, Deluge, NZBGet and SABnzbd is replaye
 
 - uTorrent and rTorrent: no recording of any state exists for either client, so a refused login on them is not replayed.
 - qbittorrent: the API-key variant of a refused sign-in is recorded (`api-key-refused`) but only the username and password refusal is replayed; the banned-address 403 is listed above.
+
+## Engines rows that need a recording nobody has made yet (#1296, coverage register, area `engines`)
+
+Each line is a register row group that cannot be proven by a recording-replay test until the reply below is recorded from the real app. None of them was built from a hand-written shape.
+
+- seerr (Overseerr and Jellyseerr): the webhook delivery they send on approval (the agent's JSON body, with its Authorization header), for a movie and for a TV request, from a stock webhook template and from a custom one; and their API replies Deluno reads (`/api/v1/status`, `/api/v1/request`, a media record by TMDb id, a delete of a media record, a refused key). Rows: the whole `webhook-ingestion-seerr-outb` Seerr group (secret handling, media id read, tv/movie mapping, availability reports, "the payload shape is an assumption").
+- plex: `GET /library/sections`, a section refresh, `emptyTrash`, the identity reply, an unreachable server and a wrong token. Row: Plex trash is emptied after a Deleted change; "a real Plex, Jellyfin or Emby is told about an imported film".
+- emby: the same library refresh and library list calls Jellyfin has (jellyfin is recorded; Emby is not).
+- tmdb (api.themoviedb.org v3): search/movie, search/tv, movie/{id}, tv/{id}, tv/{id}/season/{n}, movie/{id}/release_dates, collection/{id}, a deleted id (404), a 5xx and a connection refused. Rows: the TMDb broker/direct/hybrid group (`metadata-broker-monitoring-e`).
+- tvdb (api4.thetvdb.com): login, search, series extended, an expired token. Rows: TV search asks TMDb and TheTVDB together; the TVDB routes of the gateway.
+- the metadata gateway's own replies (services/metadata-broker): its search card, detail, catalogue, release dates, collection, popular and trending replies, recorded from the gateway code run over a recorded TMDb reply, so `MetadataSearchResult` can be deserialized from them. Row: the cross-language contract.
+- download clients' own completion webhooks (qBittorrent's "run on finished" call, SABnzbd's and NZBGet's scripts): the body each posts. Rows: a failed event records import outcome failed; a dispatchId that belongs to another client is not matched.
+- deluno (Deluno's own replies to Weir): `GET /api/integrations/external/manifest` and `GET /api/integrations/external/health`, as scenarios of `DelunoRepliesToWeirTests` (with `DELUNO_RECORD_REPLIES=1`), then the manifest and the contract document. Rows: manifest capabilities, manifest libraries, external health.
+- jackett / nzbhydra2 search replies through a running Deluno host: a search of a movie and of an episode with the release the test then grabs, and a download link that answers dead. Rows: search against a real indexer; the RSS feed watch; a dead link ends up blocklisted.
+- a download client's reply to a grab of a duplicate and of a dead link per client, taken through the whole grab service: SABnzbd's duplicate-add (see the SABnzbd line above) is the one still missing. Row: Force against a real download client, the same release is accepted again.
+- rTorrent and uTorrent removal replies (see the allow-list entries): the five-kinds row for queue removal names five clients and these two are not recorded.

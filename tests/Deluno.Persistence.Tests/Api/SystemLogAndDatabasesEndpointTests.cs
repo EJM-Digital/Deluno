@@ -146,6 +146,66 @@ public sealed class SystemLogAndDatabasesEndpointTests
     }
 
     [Fact]
+    public async Task A_damaged_database_is_named_in_plain_words_in_the_note_and_the_pass_is_recorded_as_failed()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var path = factory.GetDatabasePath("movies");
+        // A real copy of the database file with a stretch of its second page overwritten: what a bad disk or a half-copied backup does.
+        await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+        {
+            stream.Position = 4096;
+            await stream.WriteAsync(Enumerable.Repeat((byte)0xFF, 3000).ToArray());
+        }
+
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        await jobs.TryClaimScheduledPassAsync(SystemTasks.DatabaseIntegrity, TimeSpan.FromDays(1), CancellationToken.None);
+        var problems = await app.Services.GetRequiredService<DatabaseIntegrityService>().RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(["Movies"], problems);
+        var maintenance = DatabaseMaintenanceLog.Read(app.DataRoot);
+        Assert.False(maintenance.IntegrityOk);
+        Assert.Equal("Problem found in: Movies.", maintenance.IntegrityNote);
+        var state = (await jobs.ListSystemTaskStatesAsync(CancellationToken.None)).Single(item => item.ScheduleKey == SystemTasks.DatabaseIntegrity);
+        Assert.Equal("failed", state.LastResult);
+        Assert.Equal("Problem found in: Movies.", state.LastError);
+    }
+
+    [Fact]
+    public async Task A_daily_check_that_cannot_read_a_database_is_recorded_failed_with_a_plain_reason_not_as_a_damaged_file()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var service = new DatabaseIntegrityService(
+            new CannotOpenForReading(app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>()),
+            jobs,
+            TimeProvider.System,
+            NullLogger<DatabaseIntegrityService>.Instance);
+        await jobs.TryClaimScheduledPassAsync(SystemTasks.DatabaseIntegrity, TimeSpan.FromDays(1), CancellationToken.None);
+
+        var problems = await service.RunOnceAsync(CancellationToken.None);
+
+        Assert.Empty(problems);
+        var state = (await jobs.ListSystemTaskStatesAsync(CancellationToken.None)).Single(item => item.ScheduleKey == SystemTasks.DatabaseIntegrity);
+        Assert.Equal("failed", state.LastResult);
+        Assert.False(string.IsNullOrWhiteSpace(state.LastError));
+        Assert.DoesNotContain("InvalidOperationException", state.LastError);
+    }
+
+    private sealed class CannotOpenForReading(IDelunoDatabaseConnectionFactory real) : IDelunoDatabaseConnectionFactory
+    {
+        public string GetDatabasePath(string databaseName) => real.GetDatabasePath(databaseName);
+
+        public ValueTask<System.Data.Common.DbConnection> OpenConnectionAsync(string databaseName, CancellationToken cancellationToken = default)
+            => real.OpenConnectionAsync(databaseName, cancellationToken);
+
+        public ValueTask<System.Data.Common.DbConnection> OpenReadOnlyConnectionAsync(string databaseName, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("the disk went away");
+
+        public long GetWriteGeneration(string databaseName) => real.GetWriteGeneration(databaseName);
+    }
+
+    [Fact]
     public async Task A_failed_task_keeps_its_reason_in_plain_words_and_a_later_success_clears_it()
     {
         await using var app = await ApplicationTestHost.StartAsync();

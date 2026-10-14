@@ -209,6 +209,17 @@ public sealed class RealtimeResumeTests
         Assert.Empty(noHistory.Envelopes);
     }
 
+    [Fact(Skip = "DEFECT: after a server restart the sequence starts again at 0, and Resume treats a page holding an older, higher sequence as CaughtUp (lastSeq >= current) instead of ResyncRequired, so a page left open across a restart is never told to refetch. SignalRRealtimeEventPublisher.Resume.")]
+    public async Task A_page_holding_a_sequence_from_before_a_restart_is_told_to_resync_not_caught_up()
+    {
+        await using var fixture = await StartAsync();
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "first after restart", CancellationToken.None);
+
+        var openAcrossTheRestart = fixture.ResumeSource.Resume(500, new[] { RealtimeGroups.Dashboard });
+
+        Assert.Equal(RealtimeResumeStatus.ResyncRequired, openAcrossTheRestart.Status);
+    }
+
     [Fact]
     public async Task Resume_requires_resync_once_the_gap_exceeds_the_resume_window()
     {
