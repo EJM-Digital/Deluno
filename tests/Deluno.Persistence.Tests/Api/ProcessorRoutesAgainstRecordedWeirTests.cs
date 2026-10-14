@@ -317,4 +317,50 @@ public sealed class ProcessorRoutesAgainstRecordedWeirTests
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsJsonAsync("/api/integrations/processors/output/delete", new { libraryId = scene.LibraryId, path = stray })).StatusCode);
         Assert.Contains(strayName, await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Saving_a_librarys_workflow_makes_it_hand_downloads_to_the_processor_so_a_real_Weir_report_is_accepted_only_after_it()
+    {
+        await using var weir = await WeirAsync(null, "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var connection = await ConnectAsync(app, weir);
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var output = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Refined")).FullName;
+        var scene = new Scene(libraryId, Directory.CreateDirectory(Path.Combine(app.DataRoot, "Downloads")).FullName, output);
+        var release = ReleaseOf("events-failed-under-minimum");
+        var handoff = await HandoffAsync(app, scene, release, connection.GetProperty("name").GetString());
+
+        // A library that imports in the standard way does not take a processor's report.
+        var body = JsonNode.Parse(RecordedReplies.Deluno("events-failed-under-minimum").Exchanges[0].Request.Body!)!.AsObject();
+        body["libraryId"] = libraryId;
+        body["handoffId"] = handoff.Id;
+        var before = await app.Client.PostAsync("/api/integrations/processors/events", new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.Conflict, before.StatusCode);
+        Assert.Contains("configured for standard import", await before.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var saved = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/workflow", new
+        {
+            importWorkflow = "refine-before-import",
+            processorConnectionId = connection.GetProperty("id").GetString(),
+            processorName = connection.GetProperty("name").GetString(),
+            processorOutputPath = output,
+            processorTimeoutMinutes = 2880,
+            processorFailureMode = "block",
+            cleanupMode = "keep-source"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var library = await saved.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("refine-before-import", library.GetProperty("importWorkflow").GetString());
+        Assert.Equal(output, library.GetProperty("processorOutputPath").GetString());
+        Assert.Equal(connection.GetProperty("id").GetString(), library.GetProperty("processorConnectionId").GetString());
+        var after = await app.Client.PostAsync("/api/integrations/processors/events", new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
+        Assert.True(after.IsSuccessStatusCode, await after.Content.ReadAsStringAsync());
+        Assert.Equal(ProcessorHandoffStatuses.Failed, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+
+        var missingFolder = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/workflow", new { importWorkflow = "refine-before-import", processorOutputPath = Path.Combine(app.DataRoot, "not-there") });
+        Assert.Equal(HttpStatusCode.BadRequest, missingFolder.StatusCode);
+        Assert.Equal(output, (await (await app.Client.GetAsync("/api/libraries")).Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().Single().GetProperty("processorOutputPath").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PutAsJsonAsync("/api/libraries/no-such-library/workflow", new { importWorkflow = "standard" })).StatusCode);
+    }
 }
