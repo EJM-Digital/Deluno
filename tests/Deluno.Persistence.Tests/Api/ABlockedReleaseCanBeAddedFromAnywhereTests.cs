@@ -22,6 +22,15 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class ABlockedReleaseCanBeAddedFromAnywhereTests
 {
+    private static long BlockedRowsOnDisk(ApplicationTestHost app)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(app.DataRoot, "jobs.db")};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM blocked_releases;";
+        return (long)command.ExecuteScalar()!;
+    }
+
     [Fact]
     public async Task A_release_never_downloaded_can_still_be_blocked()
     {
@@ -99,12 +108,14 @@ public sealed class ABlockedReleaseCanBeAddedFromAnywhereTests
         var id = blocked.GetProperty("id").GetString()!;
 
         var jobsBefore = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        Assert.Equal(1L, BlockedRowsOnDisk(app));
 
         var liftResponse = await app.Client.DeleteAsync($"/api/blocked-releases/{id}");
         Assert.True(liftResponse.IsSuccessStatusCode, await liftResponse.Content.ReadAsStringAsync());
 
         var blocklist = app.Services.GetRequiredService<IBlockedReleaseRepository>();
         Assert.Empty(await blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal(0L, BlockedRowsOnDisk(app));
 
         // DESIGN-007 decision 8: lifting never starts a search by itself.
         var jobsAfter = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
@@ -126,9 +137,13 @@ public sealed class ABlockedReleaseCanBeAddedFromAnywhereTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
+        using var block = await app.Client.PostAsJsonAsync("/api/blocked-releases", new BlockReleaseRequest("Arrival.2016.2160p.UHD.BluRay", "Nebula", MediaType: "movie", EntityId: "movie-1", Title: "Arrival"));
+        block.EnsureSuccessStatusCode();
+
         var response = await app.Client.DeleteAsync("/api/blocked-releases/does-not-exist");
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(1L, BlockedRowsOnDisk(app));
     }
 
     [Fact]
