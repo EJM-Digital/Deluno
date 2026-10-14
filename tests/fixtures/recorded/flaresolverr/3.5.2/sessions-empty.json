@@ -1,0 +1,32 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "sessions-empty",
+  "recordedAt": "2026-10-14T08:05:28Z",
+  "note": "sessions.list with no session (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.list"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "",
+          "sessions": [],
+          "startTimestamp": 1791965128018,
+          "endTimestamp": 1791965128019,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

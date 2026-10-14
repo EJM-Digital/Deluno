@@ -63,8 +63,10 @@ export function scrubText(text, extraNames = []) {
       return p.replacement.replace(/\$(\d)/g, (_, n) => groups[Number(n) - 1] ?? '');
     });
   }
+  // Inside an XML or HTML document the marker is written escaped, so the document still parses.
+  const marker = /^\s*<[?!a-zA-Z]/.test(out) ? '&lt;scrubbed&gt;' : scrubbedValue;
   // key=value pairs in a query string or a form body.
-  out = out.replace(/(^|[?&;,\s])(apikey|api_key|password|token|sid|key|username|user|nzbkey|ma_username|ma_password|rpc-password)=([^&\s"']+)/gi, (_, lead, key) => `${lead}${key}=${scrubbedValue}`);
+  out = out.replace(/(^|[?&;,\s])(apikey|api_key|password|token|x-plex-token|x-emby-token|sid|key|username|user|nzbkey|ma_username|ma_password|rpc-password)=([^&\s"']+)/gi, (_, lead, key) => `${lead}${key}=${marker}`);
   // Cookie and token text that is not under a key we recognise.
   out = out.replace(/\b(SID|_session_id|session_id)=([^;\s"']+)/g, (_, key) => `${key}=${scrubbedValue}`);
   out = out.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, `Bearer ${scrubbedValue}`);

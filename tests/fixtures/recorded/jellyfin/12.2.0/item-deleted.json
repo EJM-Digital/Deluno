@@ -1,0 +1,135 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "item-deleted",
+  "recordedAt": "2026-10-14T08:31:47Z",
+  "note": "A film deleted by its id (the server removes the item and its file), then the list; and a delete of an id it does not have (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Items?Recursive=true&IncludeItemTypes=Movie"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded collection",
+              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+              "Id": "18da5b93435bf32b1375cc6efe0ca347",
+              "PremiereDate": "2010-09-30T07:00:00.0000000Z",
+              "OfficialRating": "PG",
+              "ChannelId": null,
+              "ProductionYear": 2010,
+              "IsFolder": true,
+              "Type": "BoxSet",
+              "DisplayOrder": "PremiereDate",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {},
+              "LocationType": "FileSystem",
+              "MediaType": "Unknown"
+            },
+            {
+              "Name": "Recorded Delete (2021)",
+              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+              "Id": "15c9af56706b77eda1561e52ed708e20",
+              "ChannelId": null,
+              "ProductionYear": 2021,
+              "IsFolder": false,
+              "Type": "Movie",
+              "VideoType": "VideoFile",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {},
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 2,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/15c9af56706b77eda1561e52ed708e20"
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Error processing request."
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Items?Recursive=true&IncludeItemTypes=Movie"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded collection",
+              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+              "Id": "18da5b93435bf32b1375cc6efe0ca347",
+              "PremiereDate": "2010-09-30T07:00:00.0000000Z",
+              "OfficialRating": "PG",
+              "ChannelId": null,
+              "ProductionYear": 2010,
+              "IsFolder": true,
+              "Type": "BoxSet",
+              "DisplayOrder": "PremiereDate",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {},
+              "LocationType": "FileSystem",
+              "MediaType": "Unknown"
+            },
+            {
+              "Name": "Recorded Delete (2021)",
+              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+              "Id": "15c9af56706b77eda1561e52ed708e20",
+              "ChannelId": null,
+              "ProductionYear": 2021,
+              "IsFolder": false,
+              "Type": "Movie",
+              "VideoType": "VideoFile",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {},
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 2,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/00000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Error processing request."
+      }
+    }
+  ]
+}

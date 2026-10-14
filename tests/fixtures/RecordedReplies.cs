@@ -25,6 +25,19 @@ public static class RecordedReplies
     public static Recording Qbittorrent(string state) => RecordedReplies.LoadLatest("qbittorrent", state);
     public static Recording Transmission(string state) => RecordedReplies.LoadLatest("transmission", state);
     public static Recording Deluge(string state) => RecordedReplies.LoadLatest("deluge", state);
+    /// <summary>uTorrent Classic's Web UI (`/gui/`), recorded from the real app.</summary>
+    public static Recording Utorrent(string state) => RecordedReplies.LoadLatest("utorrent", state);
+    /// <summary>rTorrent's XML-RPC mount, recorded from the real app (the `methodName` of the call is the operation).</summary>
+    public static Recording Rtorrent(string state) => RecordedReplies.LoadLatest("rtorrent", state);
+    /// <summary>Jackett's Torznab endpoint over public trackers.</summary>
+    public static Recording Jackett(string state) => RecordedReplies.LoadLatest("jackett", state);
+    /// <summary>NZBHydra2's Newznab API (no indexer behind it).</summary>
+    public static Recording Nzbhydra2(string state) => RecordedReplies.LoadLatest("nzbhydra2", state);
+    public static Recording Jellyfin(string state) => RecordedReplies.LoadLatest("jellyfin", state);
+    public static Recording Emby(string state) => RecordedReplies.LoadLatest("emby", state);
+    public static Recording Plex(string state) => RecordedReplies.LoadLatest("plex", state);
+    public static Recording Seerr(string state) => RecordedReplies.LoadLatest("seerr", state);
+    public static Recording Flaresolverr(string state) => RecordedReplies.LoadLatest("flaresolverr", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
     /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>
@@ -74,6 +87,14 @@ public static class RecordedReplies
                     return $"{method} {path} ?";
                 }
 
+            case "utorrent":
+                // The Web UI's action (or list=1, or the token page) says what is asked; the token and the hash are the test's own.
+                return $"{method} {path} {(query["action"] ?? (query["list"] is not null ? "list" : ""))}";
+            case "rtorrent":
+                // XML-RPC: one address, and the methodName in the body is the call.
+                return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "<methodName>([^<]+)</methodName>").Groups[1].Value}";
+            case "flaresolverr":
+                return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "\"cmd\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value}";
             case "weir":
                 // A hand-off is named in the address by its id; the kind of question is the address without it.
                 return $"{method} {System.Text.RegularExpressions.Regex.Replace(path, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "{id}")}";

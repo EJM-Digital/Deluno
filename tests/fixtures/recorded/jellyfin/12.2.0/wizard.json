@@ -1,0 +1,293 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "wizard",
+  "recordedAt": "2026-10-14T08:31:09Z",
+  "note": "The first-run setup wizard, step by step, and the <host>'s sign-in (the login and its token are removed) (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/System/Info/Public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "LocalAddress": "http://127.0.0.1:8096",
+          "ServerName": "<host>",
+          "Version": "12.2.0",
+          "ProductName": "Jellyfin Server",
+          "OperatingSystem": "",
+          "Id": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+          "StartupWizardCompleted": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/System/Info/Public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "LocalAddress": "http://127.0.0.1:8096",
+          "ServerName": "<host>",
+          "Version": "12.2.0",
+          "ProductName": "Jellyfin Server",
+          "OperatingSystem": "",
+          "Id": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+          "StartupWizardCompleted": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Startup/Configuration"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "ServerName": "",
+          "UICulture": "en-US",
+          "MetadataCountryCode": "US",
+          "PreferredMetadataLanguage": "en"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Startup/Configuration",
+        "body": {
+          "UICulture": "en-US",
+          "MetadataCountryCode": "US",
+          "PreferredMetadataLanguage": "en"
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Startup/User"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Name": "MyJellyfinUser"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Startup/User",
+        "body": {
+          "Name": "rec<scrubbed>",
+          "Password": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Startup/RemoteAccess",
+        "body": {
+          "EnableRemoteAccess": false,
+          "EnableAutomaticPortMapping": false
+        }
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Error processing request."
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Startup/Complete"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Users/AuthenticateByName",
+        "body": {
+          "Username": "<scrubbed>",
+          "Pw": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "User": {
+            "Name": "rec<scrubbed>",
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "Id": "03d927573b5e4cd9942b61f120b5f9a4",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "LastLoginDate": "2026-10-14T08:31:08.5859447Z",
+            "LastActivityDate": "2026-10-14T08:31:08.5859447Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "Is<host>": true,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": false,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": true,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          },
+          "SessionInfo": {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "127.0.0.1",
+            "PlayableMediaTypes": [],
+            "Id": "f8719b35e25f36bf1559cb0619b68049",
+            "UserId": "03d927573b5e4cd9942b61f120b5f9a4",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-14T08:31:09.2062488Z",
+            "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+            "DeviceName": "Recorder",
+            "DeviceId": "<host>er-1",
+            "ApplicationVersion": "1.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "SupportedCommands": []
+          },
+          "AccessToken": "<scrubbed>",
+          "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Auth/Keys?app=Deluno"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Auth/Keys"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Id\":0,\"AccessToken\":\"<scrubbed>\",\"DeviceId\":\"\",\"AppName\":\"Deluno\",\"AppVersion\":\"\",\"DeviceName\":\"\",\"UserId\":\"00000000000000000000000000000000\",\"IsActive\":false,\"DateCreated\":\"2026-10-14T08:31:09.6205148Z\",\"DateLastActivity\":\"0001-01-01T00:00:00.0000000Z\"}],\"TotalRecordCount\":1,\"StartIndex\":0}"
+      }
+    }
+  ]
+}

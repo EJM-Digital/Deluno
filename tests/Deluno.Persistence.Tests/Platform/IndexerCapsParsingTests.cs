@@ -1,4 +1,5 @@
 using Deluno.Connections;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Persistence.Tests.Platform;
 
@@ -7,54 +8,43 @@ namespace Deluno.Persistence.Tests.Platform;
 /// adding it (#755): its response is parsed into supported categories and
 /// search modes, and anything that doesn't look like a caps response
 /// yields nothing to pre-fill rather than an error.
+///
+/// The caps documents are the real ones (#1237): Jackett's Torznab caps for a
+/// movies-only tracker and for the aggregate "all" indexer, and NZBHydra2's
+/// Newznab caps. A tv-only indexer has not been recorded, so that test is the
+/// real movies-only document with the one value it is about turned round.
 /// </summary>
 public sealed class IndexerCapsParsingTests
 {
-    private const string FullCapsResponse =
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <caps>
-          <categories>
-            <category id="2000" name="Movies">
-              <subcat id="2010" name="Foreign"/>
-              <subcat id="2040" name="HD"/>
-            </category>
-            <category id="5000" name="TV">
-              <subcat id="5040" name="HD"/>
-            </category>
-          </categories>
-          <searching>
-            <search available="yes" supportedParams="q"/>
-            <movie-search available="yes" supportedParams="q,imdbid"/>
-            <tv-search available="yes" supportedParams="q,season,ep"/>
-          </searching>
-        </caps>
-        """;
-
     [Fact]
     public void Parses_categories_and_both_search_modes_from_a_full_caps_response()
     {
-        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(FullCapsResponse);
+        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Jackett("caps-all").Single.Reply.Body!);
 
         Assert.NotNull(result);
-        Assert.Equal("2000,2010,2040,5000,5040", result.Categories);
+        Assert.Contains("2000", result!.Categories.Split(','));
+        Assert.Contains("5000", result!.Categories.Split(','));
+        Assert.Contains("2040", result!.Categories.Split(','));
+        Assert.Equal("both", result.MediaScope);
+    }
+
+    [Fact]
+    public void Parses_a_newznab_servers_caps_the_same_way()
+    {
+        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Nzbhydra2("caps").Single.Reply.Body!);
+
+        Assert.NotNull(result);
+        Assert.Contains("2040", result!.Categories.Split(','));
+        Assert.Contains("5040", result!.Categories.Split(','));
         Assert.Equal("both", result.MediaScope);
     }
 
     [Fact]
     public void Reports_movies_only_when_tv_search_is_not_available()
     {
-        var body =
-            """
-            <caps>
-              <categories><category id="2000" name="Movies"/></categories>
-              <searching>
-                <search available="yes"/>
-                <movie-search available="yes"/>
-                <tv-search available="no"/>
-              </searching>
-            </caps>
-            """;
+        // The real caps of a movies-only tracker (YTS): <tv-search available="no" ...>.
+        var body = RecordedReplies.Jackett("caps").Single.Reply.Body!;
+        Assert.Contains("<tv-search available=\"no\"", body);
 
         var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(body);
 
@@ -65,16 +55,10 @@ public sealed class IndexerCapsParsingTests
     [Fact]
     public void Reports_tv_only_when_movie_search_is_not_available()
     {
-        var body =
-            """
-            <caps>
-              <categories><category id="5000" name="TV"/></categories>
-              <searching>
-                <movie-search available="no"/>
-                <tv-search available="yes"/>
-              </searching>
-            </caps>
-            """;
+        // No tv-only indexer is recorded: the real movies-only document with its two searches swapped round.
+        var body = RecordedReplies.Jackett("caps").Single.Reply.Body!
+            .Replace("<tv-search available=\"no\"", "<tv-search available=\"yes\"")
+            .Replace("<movie-search available=\"yes\"", "<movie-search available=\"no\"");
 
         var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(body);
 
@@ -85,7 +69,11 @@ public sealed class IndexerCapsParsingTests
     [Fact]
     public void Falls_back_to_nothing_when_the_body_has_no_categories()
     {
-        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps("<caps><searching><search available=\"yes\"/></searching></caps>");
+        var body = RecordedReplies.Jackett("caps").Single.Reply.Body!;
+        var start = body.IndexOf("<categories>", StringComparison.Ordinal);
+        var end = body.IndexOf("</categories>", StringComparison.Ordinal) + "</categories>".Length;
+
+        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(body.Remove(start, end - start));
 
         Assert.Null(result);
     }
@@ -100,15 +88,11 @@ public sealed class IndexerCapsParsingTests
     [Fact]
     public void Falls_back_to_nothing_when_the_indexer_returns_a_torznab_error_element_instead_of_caps()
     {
-        // FetchIndexerCapsAsync checks for a Torznab/Newznab <error> element
-        // (t=caps not implemented, or refused) before ever calling this
-        // parser; fed one directly it still finds no categories and yields
-        // nothing to pre-fill rather than an error - a caps failure never
-        // blocks the add, and the existing t=search-only path still governs
-        // whether the indexer itself is healthy.
-        var result = ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(
-            "<error code=\"203\" description=\"Function Not Available\"/>");
-
-        Assert.Null(result);
+        // FetchIndexerCapsAsync checks for a Torznab/Newznab <error> element (t=caps not implemented, or refused)
+        // before ever calling this parser; fed one directly it still finds no categories and yields nothing to
+        // pre-fill rather than an error. These are the real refusals of a wrong key (Jackett and NZBHydra2).
+        Assert.Null(ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Jackett("caps-wrong-api-key").Single.Reply.Body!));
+        Assert.Null(ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Nzbhydra2("caps-wrong-api-key").Single.Reply.Body!));
+        Assert.Null(ConnectionsEndpointRouteBuilderExtensions.ParseIndexerCaps(RecordedReplies.Jackett("unknown-function").Single.Reply.Body!));
     }
 }

@@ -1,0 +1,31 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "unknown-command",
+  "recordedAt": "2026-10-14T08:05:36Z",
+  "note": "A command FlareSolverr does not have (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "request.bogus"
+        }
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "error",
+          "message": "Error: Request parameter 'cmd' = 'request.bogus' is invalid.",
+          "startTimestamp": 1791965136868,
+          "endTimestamp": 1791965136871,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

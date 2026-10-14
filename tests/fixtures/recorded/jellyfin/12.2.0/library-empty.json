@@ -1,0 +1,173 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "library-empty",
+  "recordedAt": "2026-10-14T08:31:10Z",
+  "note": "Before any library exists: the virtual folders, the users and an empty catalogue (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": []
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "rec<scrubbed>",
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "Id": "03d927573b5e4cd9942b61f120b5f9a4",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "LastLoginDate": "2026-10-14T08:31:08.5859447Z",
+            "LastActivityDate": "2026-10-14T08:31:08.5859447Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "Is<host>": true,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": false,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": true,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Fields=ProviderIds,Path,DateCreated,ProductionYear,PremiereDate,Genres,People,Tags,TagItems,CommunityRating,CriticRating,MediaSources,SeriesId,SeasonId,ParentIndexNumber,IndexNumber&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "127.0.0.1",
+            "PlayableMediaTypes": [],
+            "Id": "f8719b35e25f36bf1559cb0619b68049",
+            "UserId": "03d927573b5e4cd9942b61f120b5f9a4",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-14T08:31:09.2062488Z",
+            "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+            "DeviceName": "Recorder",
+            "DeviceId": "<host>er-1",
+            "ApplicationVersion": "1.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "SupportedCommands": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "index",
+  "recordedAt": "2026-10-14T08:05:27Z",
+  "note": "GET /: the page that says FlareSolverr is ready, with its version and the browser's user agent (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "msg": "FlareSolverr is ready!",
+          "version": "3.5.2",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+        }
+      }
+    }
+  ]
+}

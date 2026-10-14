@@ -1,0 +1,22 @@
+{
+  "app": "nzbhydra2",
+  "version": "9.1.1",
+  "state": "search-movie-imdb",
+  "recordedAt": "2026-10-14T08:20:06Z",
+  "note": "A movie search by IMDb id: NZBHydra2 9.1.1's own Newznab API with no indexer configured (every Usenet indexer needs an account). Installed from: nzbhydra2-9.1.1-windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?t=movie&imdbid=tt1727587&cat=2000&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/xml; charset=UTF-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<rss xmlns:atom=\"http://www.w3.org/2005/Atom\"  xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\" version=\"2.0\">\n    \n    <channel>\n        <title>NZBHydra 2</title>\n        <link>https://www.github.com/theotherp/nzbhydra2</link>\n        <webMaster>user@example.test</webMaster>\n        <generator>NZBHydra2</generator>\n        <newznab:response offset=\"0\" total=\"0\"/>\n    </channel>\n</rss>\n"
+      }
+    }
+  ]
+}
