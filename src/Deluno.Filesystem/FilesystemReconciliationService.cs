@@ -1329,18 +1329,13 @@ public sealed class FilesystemReconciliationService(
         string? episodeId,
         string path,
         string? title = null)
-        => WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new IssueToken(
-            kind,
-            mediaType,
-            libraryId,
-            entityId,
-            episodeId,
-            path,
-            title))));
+        => FilesystemIssueIds.Encode(kind, mediaType, libraryId, entityId, episodeId, path, title);
 
     private static IssueToken DecodeIssueToken(string issueId)
-        => JsonSerializer.Deserialize<IssueToken>(Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(issueId)))
-           ?? throw new InvalidOperationException("Invalid reconciliation issue id.");
+    {
+        var token = FilesystemIssueIds.Decode(issueId);
+        return new IssueToken(token.Kind, token.MediaType, token.LibraryId, token.EntityId, token.EpisodeId, token.Path, token.Title);
+    }
 
     private sealed record TrackedFile(
         string MediaType,
