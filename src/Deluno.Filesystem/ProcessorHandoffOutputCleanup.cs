@@ -28,9 +28,18 @@ public static class ProcessorHandoffOutputCleanup
     public static int CleanupAbandonedHandoffOutput(
         IReadOnlyList<string> candidateFolderNames,
         string? processorOutputRoot,
-        Func<string, bool> isReady)
+        Func<string, bool> isReady,
+        IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries = null)
     {
         if (string.IsNullOrWhiteSpace(processorOutputRoot) || !Directory.Exists(processorOutputRoot) || candidateFolderNames.Count == 0)
+        {
+            return 0;
+        }
+
+        // #1325: nothing is removed while a folder overlaps a library, and never a library's root, anything inside one, or a folder that holds one.
+        if (libraries is not null
+            && (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is not null
+                || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, processorOutputRoot)))
         {
             return 0;
         }
@@ -46,7 +55,8 @@ public static class ProcessorHandoffOutputCleanup
             }
 
             var candidatePath = Path.GetFullPath(Path.Combine(root, name));
-            if (!IsWithinPath(root, candidatePath) || !Directory.Exists(candidatePath))
+            if (!IsWithinPath(root, candidatePath) || !Directory.Exists(candidatePath)
+                || (libraries is not null && Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, candidatePath)))
             {
                 continue;
             }
