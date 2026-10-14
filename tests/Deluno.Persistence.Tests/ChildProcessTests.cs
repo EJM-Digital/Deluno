@@ -26,13 +26,30 @@ public sealed class ChildProcessTests
         return new ProcessStartInfo("sh") { ArgumentList = { script } };
     }
 
+    /// <summary>A 3 MB text file of 60,000 lines of one letter, made once per letter.</summary>
+    private static string BigFile(char letter)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "deluno-1258-scripts");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, $"big-{letter}.txt");
+        var line = new string(letter, 49);
+        if (!File.Exists(path) || new FileInfo(path).Length < 60000L * 50)
+        {
+            File.WriteAllText(path, string.Concat(Enumerable.Repeat(line + "\n", 60000)));
+        }
+
+        return path;
+    }
+
     [Fact]
     public async Task Output_far_larger_than_a_pipe_holds_is_drained_and_the_program_finishes()
     {
         // About 3 MB on standard output and 3 MB on standard error: a pipe holds a few KB (Windows) or 64 KB (Linux).
-        var info = Shell(
-            "for /l %%i in (1,1,60000) do (echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx& echo yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy 1>&2)",
-            "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -n 60000; yes yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy | head -n 60000 1>&2");
+        // The output is written from files in one go (type, cat), so the program's own speed never decides the test: a
+        // cmd echo loop of 120,000 lines took more than the 60 s limit under the gate's parallel load (rc.30.32).
+        var x = BigFile('x');
+        var y = BigFile('y');
+        var info = Shell($"type \"{x}\"& type \"{y}\" 1>&2", $"cat '{x}'; cat '{y}' 1>&2");
 
         var result = await ChildProcess.RunAsync(info, TimeSpan.FromSeconds(60), CancellationToken.None);
 
@@ -46,9 +63,8 @@ public sealed class ChildProcessTests
     [Fact]
     public async Task What_is_kept_is_limited_but_all_of_it_is_still_read()
     {
-        var info = Shell(
-            "for /l %%i in (1,1,60000) do echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -n 60000");
+        var x = BigFile('x');
+        var info = Shell($"type \"{x}\"", $"cat '{x}'");
 
         var result = await ChildProcess.RunAsync(info, TimeSpan.FromSeconds(60), CancellationToken.None);
 
