@@ -90,7 +90,7 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
         var wrong = new List<string>();
         foreach (var route in BodyRoutes(app).Where(route => !OpensAWindowOnTheMachine.Contains(route.Label)))
         {
-            using var request = new HttpRequestMessage(new HttpMethod(route.Method), route.Path) { Content = Json(Oversized(route.JsonBodyType!)) };
+            using var request = new HttpRequestMessage(new HttpMethod(route.Method), route.Path) { Content = Json(Oversized(route.JsonBodyType!, route.Path)) };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             try
             {
@@ -510,11 +510,11 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
     }
 
     /// <summary>A valid-looking body with one string member just over 1 MB long (the first text member, else "name").</summary>
-    private static string Oversized(Type body)
+    private static string Oversized(Type body, string path)
     {
         var text = Properties(body).FirstOrDefault(property => property.PropertyType == typeof(string));
         var name = text is null ? "name" : JsonNamingPolicy.CamelCase.ConvertName(text.Name);
-        return "{\"" + name + "\":\"" + new string('A', OverOneMegabyte) + "\"}";
+        return "{\"" + name + "\":\"" + new string('A', (int)Math.Max(OverOneMegabyte, Deluno.Worker.RequestBodyLimits.LimitFor(path) + 1_024)) + "\"}";
     }
 
     private static IEnumerable<PropertyInfo> Properties(Type body)

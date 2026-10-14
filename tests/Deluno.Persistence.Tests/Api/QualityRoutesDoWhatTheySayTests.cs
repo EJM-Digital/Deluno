@@ -159,7 +159,7 @@ public sealed class QualityRoutesDoWhatTheySayTests
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsync($"/api/v1/guides/trash/versions/9999/activate?packageId={second.Id}", content: null)).StatusCode);
     }
 
-    [Fact(Skip = "Defect: POST /api/v1/guides/trash/apply cannot apply the shipped guide package. With its pinned source inventory the package is 2,049,644 bytes, over the route's 1 MB body limit (413 'That request is too large. The most this can take is 1 MB.'); without the inventory the store refuses it ('A newly applied guide package must carry the pinned upstream source inventory'); and GET /api/v1/guides/trash/package returns enums as strings that the route's JSON then cannot read back ('The \"package.customFormats[0].mappingStatus\" field must be an id').")]
+    [Fact]
     public async Task Applying_a_guide_package_through_the_route_makes_it_the_active_version()
     {
         await using var app = await ApplicationTestHost.StartAsync();

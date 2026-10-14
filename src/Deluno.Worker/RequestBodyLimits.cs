@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Filesystem;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -31,6 +32,18 @@ public static class RequestBodyLimits
     public const int PatternLength = 2_000;
     public const int SecretLength = 1_000;
     public const int OtherTextLength = 4_000;
+
+    /// <summary>
+    /// #1326: an issue id carries the issue's path and title, so it is as long as they can be. Worked out from how the id is
+    /// built (<see cref="FilesystemIssueIds.MaxLength"/>), never guessed from the member name.
+    /// </summary>
+    public static readonly int IssueIdLength = FilesystemIssueIds.MaxLength(PathLength, DescriptionLength);
+
+    /// <summary>
+    /// #1326: the guide package is sent whole to apply or preview. The shipped package with its pinned source inventory is about
+    /// 2 MB, so this leaves room for four times that; a test holds the headroom.
+    /// </summary>
+    public const long GuidePackageBytes = 8L * 1024 * 1024;
 
     /// <summary>A release name: the quality routes check these at 500 themselves, so the general name limit must not be lower.</summary>
     public const int ReleaseNameLength = 500;
@@ -71,6 +84,8 @@ public static class RequestBodyLimits
         ("/api/filesystem/import/", null, LongListBytes),
         ("/api/integrations/external/import-preview", null, LongListBytes),
         ("/api/custom-formats/import", null, LongListBytes),
+        ("/api/v1/guides/trash/apply", null, GuidePackageBytes),
+        ("/api/v1/guides/trash/preview", null, GuidePackageBytes),
         ("/api/v1/guides/trash/", null, LongListBytes),
         ("/api/setup/", null, LongListBytes),
         ("/api/migration/", null, LongListBytes),
@@ -103,6 +118,11 @@ public static class RequestBodyLimits
             || name is "body" or "raw" or "content" or "text" or "sql" or "data" or "payload" or "document" or "lines")
         {
             return null;
+        }
+
+        if (name is "issueid" or "issueids")
+        {
+            return IssueIdLength;
         }
 
         if (name.Contains("password", StringComparison.Ordinal) || name.Contains("secret", StringComparison.Ordinal)
