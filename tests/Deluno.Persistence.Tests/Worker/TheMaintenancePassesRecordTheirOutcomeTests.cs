@@ -1,6 +1,9 @@
 using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.Metadata;
+using Deluno.Movies.Data;
+using Deluno.Series.Data;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Persistence.Tests.Support;
@@ -109,6 +112,81 @@ public sealed class TheMaintenancePassesRecordTheirOutcomeTests
         await planner.RunRecycleBinCleanupAsync(service.AsRecycleBin(), stopping.Token);
 
         Assert.Equal("cancelled", (await StateAsync(jobs, SystemTasks.RecycleBinCleanup)).LastResult);
+    }
+
+    [Fact]
+    public async Task An_artwork_cleanup_whose_catalogue_cannot_be_read_is_recorded_failed_in_plain_words_and_the_next_interval_tries_again()
+    {
+        var (app, planner, clock, _) = await StartAsync();
+        await using var _ = app;
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var movies = ThrowingOn<IMovieCatalogRepository>(nameof(IMovieCatalogRepository.ListReferencedArtworkCacheKeysAsync));
+
+        await planner.RunArtworkCacheCleanupAsync(
+            app.Services.GetRequiredService<TmdbMetadataProvider>(), movies, app.Services.GetRequiredService<ISeriesCatalogRepository>(),
+            clock, app.Services.GetRequiredService<IActivityFeedRepository>(), CancellationToken.None);
+
+        var failed = await StateAsync(jobs, SystemTasks.ArtworkCacheCleanup);
+        Assert.Equal("failed", failed.LastResult);
+        Assert.False(string.IsNullOrWhiteSpace(failed.LastError));
+        Assert.DoesNotContain("InvalidOperationException", failed.LastError);
+
+        clock.Advance(PastEveryInterval);
+        await planner.RunArtworkCacheCleanupAsync(
+            app.Services.GetRequiredService<TmdbMetadataProvider>(), app.Services.GetRequiredService<IMovieCatalogRepository>(), app.Services.GetRequiredService<ISeriesCatalogRepository>(),
+            clock, app.Services.GetRequiredService<IActivityFeedRepository>(), CancellationToken.None);
+        var recovered = await StateAsync(jobs, SystemTasks.ArtworkCacheCleanup);
+        Assert.Equal("completed", recovered.LastResult);
+        Assert.Null(recovered.LastError);
+    }
+
+    [Fact]
+    public async Task An_artwork_cleanup_stopped_by_shutdown_is_recorded_cancelled()
+    {
+        var (app, planner, clock, _) = await StartAsync();
+        await using var _ = app;
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        using var stopping = new CancellationTokenSource();
+        var movies = ThrowingOn<IMovieCatalogRepository>(nameof(IMovieCatalogRepository.ListReferencedArtworkCacheKeysAsync), () => new OperationCanceledException(stopping.Token), stopping.Cancel);
+
+        await planner.RunArtworkCacheCleanupAsync(
+            app.Services.GetRequiredService<TmdbMetadataProvider>(), movies, app.Services.GetRequiredService<ISeriesCatalogRepository>(),
+            clock, app.Services.GetRequiredService<IActivityFeedRepository>(), stopping.Token);
+
+        Assert.Equal("cancelled", (await StateAsync(jobs, SystemTasks.ArtworkCacheCleanup)).LastResult);
+    }
+
+    /// <summary>A stand-in for a big repository interface: the one method named throws (as a faulted task), anything else is not used by the pass.</summary>
+    private static T ThrowingOn<T>(string method, Func<Exception>? exception = null, Action? beforeThrowing = null) where T : class
+    {
+        var proxy = System.Reflection.DispatchProxy.Create<T, ThrowingProxy>();
+        var typed = (ThrowingProxy)(object)proxy;
+        typed.Method = method;
+        typed.Exception = exception ?? (() => new InvalidOperationException("the catalogue could not be read"));
+        typed.BeforeThrowing = beforeThrowing;
+        return proxy;
+    }
+
+    internal class ThrowingProxy : System.Reflection.DispatchProxy
+    {
+        public string Method { get; set; } = string.Empty;
+
+        public Func<Exception> Exception { get; set; } = () => new InvalidOperationException();
+
+        public Action? BeforeThrowing { get; set; }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name != Method)
+            {
+                throw new NotSupportedException(targetMethod?.Name);
+            }
+
+            BeforeThrowing?.Invoke();
+            var result = targetMethod.ReturnType.GenericTypeArguments[0];
+            var fromException = typeof(Task).GetMethod(nameof(Task.FromException), 1, [typeof(Exception)])!.MakeGenericMethod(result);
+            return fromException.Invoke(null, [Exception()]);
+        }
     }
 
     private static async Task<(ApplicationTestHost App, WorkPlanner Planner, FixedTimeProvider Clock, CountingService Service)> StartAsync()
