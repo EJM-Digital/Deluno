@@ -5,6 +5,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Tests.Recorded;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -14,32 +15,47 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// "Search now" on a film, over the real route and databases, against a real (local) Torznab server and with only the download
+/// "Search now" on a film, over the real route and databases, against a local server replaying Jackett 0.24.2850's recorded YTS replies for Sintel (2010) and with only the download
 /// client's reply stood in for: the best acceptable release is sent once and recorded, a second search while it downloads sends
 /// nothing, and a search that finds nothing says so and sends nothing.
 /// </summary>
 public sealed class AnAutomaticFilmSearchTests
 {
-    private const string Release = "Big.Buck.Bunny.2008.1080p.BluRay.x264-GRP";
+    private const string JackettPath = "/api/v2.0/indexers/yts/results/torznab/api";
+
+    // The titles in the recorded YTS reply for Sintel (2010); the release sent must be one of them.
+    private static string[] RecordedTitles()
+        => RecordedReplies.Jackett("search-movie-imdb").Exchanges
+            .SelectMany(e => System.Text.RegularExpressions.Regex.Matches(
+                e.Reply.Body ?? string.Empty, @"<item>.*?<title>(.*?)</title>", System.Text.RegularExpressions.RegexOptions.Singleline))
+            .Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value))
+            .Distinct()
+            .ToArray();
 
     [Fact]
     public async Task Search_now_sends_the_best_acceptable_release_once_records_it_and_a_second_search_sends_nothing_more()
     {
-        await using var indexer = await TorznabServerAsync(Release);
+        var titles = RecordedTitles();
+        Assert.NotEmpty(titles);
+        await using var indexer = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-movie-imdb"), RecordedReplies.Jackett("search-text"));
         var grabs = new CountingGrabService();
         await using var app = await StartAsync(grabs);
-        var filmId = await SeedAsync(app, indexer.BaseUrl);
+        var filmId = await SeedAsync(app, indexer.BaseUrl + JackettPath);
 
         var first = await SearchAsync(app, filmId);
 
-        Assert.Equal(Release, first.GetProperty("releaseName").GetString());
+        // The recording holds one release (the same YTS 720p BRRip answers both the IMDb id and the title search), so the
+        // release Deluno's ranking prefers is that one; it is read from the recording, not written here.
+        var preferred = first.GetProperty("releaseName").GetString();
+        Assert.Equal(Assert.Single(titles), preferred);
+        Assert.NotNull(preferred);
         Assert.Equal("sent", first.GetProperty("dispatchStatus").GetString());
         Assert.False(string.IsNullOrWhiteSpace(first.GetProperty("outcome").GetString()));
         Assert.Equal(1, grabs.Count);
-        Assert.Contains(Release, await app.Client.GetStringAsync("/api/download-dispatches"));
+        Assert.Contains(preferred!, await app.Client.GetStringAsync("/api/download-dispatches"));
         var history = await app.Client.GetStringAsync("/api/movies/search-history");
         Assert.Contains(filmId, history);
-        Assert.Contains(Release, history);
+        Assert.Contains(preferred!, history);
         Assert.Empty(Directory.GetFiles(app.DataRoot, "*.mkv", SearchOption.AllDirectories));
 
         var second = await SearchAsync(app, filmId);
@@ -51,10 +67,11 @@ public sealed class AnAutomaticFilmSearchTests
     [Fact]
     public async Task A_search_that_finds_nothing_says_so_and_sends_nothing()
     {
-        await using var indexer = await TorznabServerAsync(releaseName: null);
+        await using var indexer = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-no-results"));
+        indexer.AnswerEverythingWith = RecordedReplies.Jackett("search-no-results").Single.Reply;
         var grabs = new CountingGrabService();
         await using var app = await StartAsync(grabs);
-        var filmId = await SeedAsync(app, indexer.BaseUrl);
+        var filmId = await SeedAsync(app, indexer.BaseUrl + JackettPath);
 
         var result = await SearchAsync(app, filmId);
 
@@ -102,7 +119,7 @@ public sealed class AnAutomaticFilmSearchTests
             new CreateDownloadClientRequest("Fake", "qbittorrent", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true),
             CancellationToken.None);
         var indexer = await connections.CreateIndexerAsync(
-            new CreateIndexerRequest("Fixture torznab", "torznab", "public", indexerUrl, "fixture-key", 10, "2000", "", "movies", true),
+            new CreateIndexerRequest("Jackett YTS", "torznab", "public", indexerUrl, "k-secret-1", 10, "2000", "", "movies", true),
             CancellationToken.None);
         await connections.UpdateIndexerHealthAsync(indexer.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
         await connections.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
@@ -112,51 +129,24 @@ public sealed class AnAutomaticFilmSearchTests
             downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
         });
         Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
-        var added = await app.Client.PostAsJsonAsync("/api/movies/", new { title = "Big Buck Bunny", releaseYear = 2008, monitored = true, libraryId, searchForMissingNow = false });
+        // The default film profile refuses every real YTS release: they are small 720p encodes (0.1 GB here), under its
+        // size floor and below its 1080p cutoff. So the film gets a profile, made through the real API, that accepts them.
+        var profileResponse = await app.Client.PostAsJsonAsync("/api/quality-profiles", new
+        {
+            name = "Small 720p films",
+            mediaType = "movies",
+            cutoffQuality = "Bluray 720p",
+            allowedQualities = "Bluray 720p",
+            customFormatIds = string.Empty,
+            upgradeUntilCutoff = false,
+            upgradeUnknownItems = false,
+            sizeRules = new[] { new { quality = "Bluray 720p", minGb = 0.0, maxGb = 0.0, minMb = 0.0, maxMb = 0.0 } }
+        });
+        Assert.True(profileResponse.IsSuccessStatusCode, await profileResponse.Content.ReadAsStringAsync());
+        var qualityProfileId = (await profileResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var added = await app.Client.PostAsJsonAsync("/api/movies/", new { title = "Sintel", releaseYear = 2010, imdbId = "tt1727587", monitored = true, libraryId, searchForMissingNow = false, qualityProfileId });
         Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
         return (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
-    }
-
-    private sealed class FakeServer(WebApplication app, string baseUrl) : IAsyncDisposable
-    {
-        public string BaseUrl => baseUrl;
-
-        public ValueTask DisposeAsync() => app.DisposeAsync();
-    }
-
-    private static async Task<FakeServer> TorznabServerAsync(string? releaseName)
-    {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var app = builder.Build();
-        app.Run(async context =>
-        {
-            context.Response.ContentType = "application/rss+xml";
-            var item = releaseName is null
-                ? string.Empty
-                : $"""
-                    <item>
-                      <title>{releaseName}</title>
-                      <link>https://fixture.invalid/bunny.torrent</link>
-                      <size>8000000000</size>
-                      <torznab:attr name="seeders" value="40" />
-                      <torznab:attr name="peers" value="3" />
-                    </item>
-                    """;
-            await context.Response.WriteAsync(
-                $"""
-                <?xml version="1.0"?>
-                <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-                  <channel>
-                    {item}
-                  </channel>
-                </rss>
-                """);
-        });
-        await app.StartAsync();
-        var address = app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>().Features
-            .Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>()!.Addresses.First();
-        return new FakeServer(app, address);
     }
 
     private sealed class CountingGrabService : IDownloadClientGrabService
