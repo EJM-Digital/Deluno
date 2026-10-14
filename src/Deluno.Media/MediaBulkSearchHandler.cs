@@ -1,7 +1,7 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
-using Deluno.Libraries.Data;
 
 namespace Deluno.Media;
 
@@ -11,9 +11,33 @@ public sealed record MediaBulkSearchResult(
     int LibraryCount);
 
 /// <summary>
-/// Queues one search cycle per library represented by an explicit selection.
+/// The job kinds and payload of a search for one chosen title, queued by a
+/// bulk search and run by the worker's title-search handlers.
+/// </summary>
+public static class TitleSearchJobs
+{
+    public const string Movie = "movies.search.manual";
+    public const string Series = "series.search.manual";
+
+    public static string JobTypeFor(MediaKind kind) => kind == MediaKind.Movie ? Movie : Series;
+
+    /// <summary>Said in Activity beside the result, so a search says what started it.</summary>
+    public const string FromBulkSearch = "the Search button on the library";
+    public const string FromBulkEditor = "the bulk editor";
+
+    public static string Payload(string id, string title, string? libraryId, string startedBy)
+        => JsonSerializer.Serialize(new { id, title, libraryId, startedBy });
+
+    /// <summary>One per title and library, so asking twice does not search twice.</summary>
+    public static string DedupeKey(MediaKind kind, string id, string? libraryId)
+        => $"bulk-search:{JobTypeFor(kind)}:{id}:{libraryId}";
+}
+
+/// <summary>
+/// Queues one search for each chosen title (and the library it is wanted in).
 /// The selected wanted rows are resolved by ID in SQL rather than through the
-/// bounded recent-summary list.
+/// bounded recent-summary list. Only the chosen titles are searched: nothing
+/// flags a whole library, so the rest of it is left alone.
 /// </summary>
 public static class MediaBulkSearchHandler
 {
@@ -21,8 +45,7 @@ public static class MediaBulkSearchHandler
         MediaKind kind,
         IReadOnlyList<string>? mediaIds,
         IMediaStateRepository mediaStateRepository,
-        ILibrariesRepository librariesRepository,
-        IJobQueueRepository jobQueueRepository,
+        IJobScheduler jobScheduler,
         CancellationToken cancellationToken)
     {
         var entityName = kind == MediaKind.Movie ? "movie" : "series";
@@ -38,49 +61,25 @@ public static class MediaBulkSearchHandler
                 LibraryCount: 0);
         }
 
-        var wantedItems = await mediaStateRepository.ListWantedByIdsAsync(
-            kind,
-            mediaIds,
-            cancellationToken);
-        var libraryIds = wantedItems
+        var wantedItems = (await mediaStateRepository.ListWantedByIdsAsync(kind, mediaIds, cancellationToken))
             .Where(item => !string.IsNullOrWhiteSpace(item.LibraryId))
-            .Select(item => item.LibraryId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var triggered = 0;
-        foreach (var libraryId in libraryIds)
+        foreach (var item in wantedItems)
         {
-            var library = libraries.FirstOrDefault(candidate =>
-                string.Equals(candidate.Id, libraryId, StringComparison.OrdinalIgnoreCase));
-            if (library is null)
-            {
-                continue;
-            }
-
-            await jobQueueRepository.RequestLibrarySearchAsync(
-                new LibraryAutomationPlanItem(
-                    LibraryId: library.Id,
-                    LibraryName: library.Name,
-                    MediaType: library.MediaType,
-                    AutoSearchEnabled: library.AutoSearchEnabled,
-                    MissingSearchEnabled: library.MissingSearchEnabled,
-                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-                    SearchIntervalMinutes: library.SearchIntervalMinutes,
-                    RetryDelayHours: library.RetryDelayHours,
-                    MaxItemsPerRun: library.MaxItemsPerRun,
-                    MaxMissingItemsPerRun: library.MaxMissingItemsPerRun,
-                    MaxUpgradeItemsPerRun: library.MaxUpgradeItemsPerRun,
-                    SearchWindowDays: library.SearchWindowDays,
-                    SearchWindowStartHour: library.SearchWindowStartHour,
-                    SearchWindowEndHour: library.SearchWindowEndHour),
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: TitleSearchJobs.JobTypeFor(kind),
+                    Source: "bulk",
+                    PayloadJson: TitleSearchJobs.Payload(item.Id, item.Title, item.LibraryId, TitleSearchJobs.FromBulkSearch),
+                    RelatedEntityType: entityName,
+                    RelatedEntityId: item.Id,
+                    DedupeKey: TitleSearchJobs.DedupeKey(kind, item.Id, item.LibraryId)),
                 cancellationToken);
-            triggered++;
         }
 
         return new MediaBulkSearchResult(
             ValidationErrors: null,
-            SearchesTriggered: triggered,
-            LibraryCount: libraryIds.Length);
+            SearchesTriggered: wantedItems.Length,
+            LibraryCount: wantedItems.Select(item => item.LibraryId).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 }

@@ -2231,11 +2231,12 @@ public static class SeriesEndpointRouteBuilderExtensions
                         case "search":
                             var job = await jobScheduler.EnqueueAsync(
                                 new EnqueueJobRequest(
-                                    JobType: "series.search.manual",
+                                    JobType: TitleSearchJobs.Series,
                                     Source: "bulk",
-                                    PayloadJson: JsonSerializer.Serialize(new { series.Id, series.Title, series.StartYear }),
+                                    PayloadJson: TitleSearchJobs.Payload(series.Id, series.Title, null, TitleSearchJobs.FromBulkEditor),
                                     RelatedEntityType: "series",
-                                    RelatedEntityId: series.Id),
+                                    RelatedEntityId: series.Id,
+                                    DedupeKey: TitleSearchJobs.DedupeKey(MediaKind.Series, series.Id, null)),
                                 cancellationToken);
                             successCount++;
                             results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null,
@@ -2757,8 +2758,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
             IMediaStateRepository mediaStateRepository,
-            ILibrariesRepository platformSettingsRepository,
-            IJobQueueRepository jobQueueRepository,
+            IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2771,8 +2771,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 MediaKind.Series,
                 request.SeriesIds,
                 mediaStateRepository,
-                platformSettingsRepository,
-                jobQueueRepository,
+                jobScheduler,
                 cancellationToken);
 
             if (result.ValidationErrors is not null)

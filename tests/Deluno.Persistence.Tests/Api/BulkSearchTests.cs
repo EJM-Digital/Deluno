@@ -10,14 +10,14 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// Searching a chosen set of films or shows at once: the chosen titles are found by id, the libraries they are wanted in each
-/// get one search, a choice of nothing is refused in plain words, and the per-title "search" operation of the bulk editor queues
-/// one search job per title. Real host and databases.
+/// Searching a chosen set of films or shows at once: the chosen titles are found by id, each chosen title is searched (and no
+/// other title of its library), a choice of nothing is refused in plain words, and the per-title "search" operation of the
+/// bulk editor queues one search job per title. Real host and databases.
 /// </summary>
 public sealed class BulkSearchTests
 {
     [Fact]
-    public async Task Chosen_films_in_two_libraries_ask_one_search_in_each_and_say_how_many()
+    public async Task Chosen_films_in_two_libraries_each_get_their_own_search_and_no_library_is_flagged()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var first = await LibraryAsync(app, "Films", "movies");
@@ -30,11 +30,13 @@ public sealed class BulkSearchTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(2, body.GetProperty("searchesTriggered").GetInt32());
+        Assert.Equal(3, body.GetProperty("searchesTriggered").GetInt32());
         Assert.Equal(2, body.GetProperty("libraryCount").GetInt32());
-        var asked = (await app.Services.GetRequiredService<IJobQueueRepository>().ListLibraryAutomationStatesAsync(CancellationToken.None))
-            .Values.Where(state => state.SearchRequested).Select(state => state.LibraryId).Order().ToArray();
-        Assert.Equal(new[] { first, second }.Order().ToArray(), asked);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var queued = (await jobs.ListAsync(100, CancellationToken.None)).Where(job => job.JobType == "movies.search.manual").ToArray();
+        Assert.Equal(new[] { inFirst, alsoInFirst, inSecond }.Order().ToArray(), queued.Select(job => job.RelatedEntityId!).Order().ToArray());
+        // Nothing flags a whole library for a search: only the chosen titles are searched.
+        Assert.DoesNotContain((await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values, state => state.SearchRequested);
     }
 
     [Fact]
@@ -53,9 +55,9 @@ public sealed class BulkSearchTests
         Assert.Contains("Choose at least one series to search for.", await shows.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
         Assert.Equal(0, (await unknown.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("searchesTriggered").GetInt32());
-        Assert.DoesNotContain(
-            (await app.Services.GetRequiredService<IJobQueueRepository>().ListLibraryAutomationStatesAsync(CancellationToken.None)).Values,
-            state => state.SearchRequested);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        Assert.DoesNotContain(await jobs.ListAsync(100, CancellationToken.None), job => job.JobType == "movies.search.manual");
+        Assert.DoesNotContain((await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values, state => state.SearchRequested);
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public sealed class BulkSearchTests
         Assert.All(jobIds, jobId => Assert.Equal("series.search.manual", queued.Single(job => job.Id == jobId).JobType));
     }
 
-    [Fact(Skip = "DEFECT: POST /api/movies/bulk with operation \"search\" answers success and queues a 'movies.search.manual' job, but no job handler is registered for that job type (JobHandlerRegistry.RegisteredJobTypes has none), so the search is never run. 'series.search.manual' (POST /api/series/bulk) is the same.")]
+    [Fact]
     public async Task Every_search_job_the_bulk_editor_queues_has_a_handler_that_runs_it()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -119,28 +121,90 @@ public sealed class BulkSearchTests
 
         Assert.Contains("movies.search.manual", registry.RegisteredJobTypes);
         Assert.Contains("series.search.manual", registry.RegisteredJobTypes);
+        Assert.Contains(Deluno.Worker.Services.JobLanes.All, lane => lane.JobTypes.Contains("movies.search.manual"));
+        Assert.Contains(Deluno.Worker.Services.JobLanes.All, lane => lane.JobTypes.Contains("series.search.manual"));
         await Task.CompletedTask;
     }
 
-    [Fact(Skip = "DEFECT: bulk search of chosen titles only flags their library for a search (the request carries library settings, not the titles), so the cycle that runs searches the whole library, not the selection. Evidence: the search job the planner then queues has no target ids in its payload.")]
+    [Fact]
     public async Task The_search_that_runs_after_a_bulk_search_is_about_the_chosen_titles_and_not_the_whole_library()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var library = await LibraryAsync(app, "Films", "movies");
         var chosen = await FilmAsync(app, "Chosen Only", 2020, library);
-        await FilmAsync(app, "Not Chosen", 2021, library);
-        await FilmAsync(app, "Also Not Chosen", 2022, library);
+        var other = await FilmAsync(app, "Not Chosen", 2021, library);
+        var another = await FilmAsync(app, "Also Not Chosen", 2022, library);
         using var asked = await app.Client.PostAsJsonAsync("/api/movies/bulk/search", new { movieIds = new[] { chosen } });
         Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
         var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
-        var states = await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None);
+
+        // Exactly one search is queued, for the chosen film in its library, and it says what started it.
+        var queued = Assert.Single(await jobs.ListAsync(100, CancellationToken.None), item => item.JobType == "movies.search.manual");
+        Assert.Equal(chosen, queued.RelatedEntityId);
+        Assert.Contains(library, queued.PayloadJson);
+        Assert.DoesNotContain(other, queued.PayloadJson);
+        Assert.DoesNotContain(another, queued.PayloadJson);
+
+        // The library cycle finds nothing flagged, so it queues no search of the whole library.
+        Assert.DoesNotContain((await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values, state => state.SearchRequested);
         var plan = new LibraryAutomationPlanItem(library, "Films", "movies", false, true, true, 360, 24, 25, null, null);
-
         await jobs.PlanLibrarySearchesAsync([plan], CancellationToken.None);
+        Assert.DoesNotContain(await jobs.ListAsync(100, CancellationToken.None), item => item.JobType == Deluno.Contracts.LibrarySearchJobTypes.Movies);
 
-        var job = Assert.Single(await jobs.ListAsync(100, CancellationToken.None), item => item.JobType == Deluno.Contracts.LibrarySearchJobTypes.Movies);
-        Assert.Contains(chosen, job.PayloadJson);
-        Assert.True(states.ContainsKey(library));
+        // Running it searches the chosen film and no other, and Activity says what started it.
+        var registry = new JobHandlerRegistry(app.Services.GetServices<IJobHandler>());
+        await registry.Resolve(queued.JobType).HandleAsync(queued, CancellationToken.None);
+        var activity = app.Services.GetRequiredService<IActivityFeedRepository>();
+        var line = Assert.Single(await activity.ListActivityAsync(100, "movie", chosen, CancellationToken.None), item => item.Category == "movie.search.bulk");
+        Assert.Contains("Chosen Only", line.Message);
+        Assert.Contains("started from the Search button on the library", line.Message);
+        Assert.DoesNotContain(await activity.ListActivityAsync(100, "movie", other, CancellationToken.None), item => item.Category == "movie.search.bulk");
+        Assert.DoesNotContain(await activity.ListActivityAsync(100, "movie", another, CancellationToken.None), item => item.Category == "movie.search.bulk");
+    }
+
+    [Fact]
+    public async Task Chosen_shows_are_searched_one_by_one_and_each_search_says_the_bulk_search_started_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var library = await LibraryAsync(app, "Shows", "tv");
+        var ids = new List<string>();
+        foreach (var title in new[] { "Chosen Show", "Left Alone Show" })
+        {
+            using var added = await app.Client.PostAsJsonAsync("/api/series", new { title, startYear = 2020, monitored = true, libraryId = library });
+            Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
+            ids.Add((await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!);
+        }
+
+        using var asked = await app.Client.PostAsJsonAsync("/api/series/bulk/search", new { seriesIds = new[] { ids[0] } });
+
+        Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var queued = Assert.Single(await jobs.ListAsync(100, CancellationToken.None), item => item.JobType == "series.search.manual");
+        Assert.Equal(ids[0], queued.RelatedEntityId);
+        Assert.DoesNotContain((await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values, state => state.SearchRequested);
+        var registry = new JobHandlerRegistry(app.Services.GetServices<IJobHandler>());
+        await registry.Resolve(queued.JobType).HandleAsync(queued, CancellationToken.None);
+        var activity = app.Services.GetRequiredService<IActivityFeedRepository>();
+        var line = Assert.Single(await activity.ListActivityAsync(100, "series", ids[0], CancellationToken.None), item => item.Category == "series.search.bulk");
+        Assert.Contains("Chosen Show", line.Message);
+        Assert.Contains("started from the Search button on the library", line.Message);
+        Assert.DoesNotContain(await activity.ListActivityAsync(100, "series", ids[1], CancellationToken.None), item => item.Category == "series.search.bulk");
+    }
+
+    [Fact]
+    public async Task A_search_the_bulk_editor_queued_says_it_came_from_the_bulk_editor()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var library = await LibraryAsync(app, "Films", "movies");
+        var film = await FilmAsync(app, "Editor Film", 2020, library);
+        using var asked = await app.Client.PostAsJsonAsync("/api/movies/bulk", new { movieIds = new[] { film }, operation = "search" });
+        Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
+        var queued = Assert.Single(await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(100, CancellationToken.None), item => item.JobType == "movies.search.manual");
+
+        await new JobHandlerRegistry(app.Services.GetServices<IJobHandler>()).Resolve(queued.JobType).HandleAsync(queued, CancellationToken.None);
+
+        var line = Assert.Single(await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(100, "movie", film, CancellationToken.None), item => item.Category == "movie.search.bulk");
+        Assert.Contains("started from the bulk editor", line.Message);
     }
 
     private static async Task<string> LibraryAsync(ApplicationTestHost app, string name, string mediaType)
