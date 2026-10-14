@@ -13,8 +13,14 @@
 //     (name "*" means the whole file); a scenario proof names an id in ScenarioPlan.ps1;
 // (c) every row's proofs reach its required level. A high row that touches another app, files on disk or install/update/tray (its
 //     `touches` is other-app, disk or install) needs "real": a golden-VM scenario, a test that replays the other app's recorded real reply,
-//     or, for a screen behaviour, a Playwright smoke spec whose API calls are not stubbed (decided statically; undecidable counts as stubbed).
+//     a "real-fs" test (disk and install rows
+//     only, never a row marked "vm": true; see below), or, for a screen behaviour, a Playwright smoke spec whose API calls are not stubbed (decided statically; undecidable counts as stubbed).
 //     Every other row needs at least "inproc". Reported as a total; only --strict fails on it.
+//     real-fs: a backend test that runs Deluno's real code against real files in a real temp folder (real hard links, moves, deletes, permissions)
+//     or a real SQLite database file, with no fake or in-memory file system or store. The checker decides it statically (the class setup or the test
+//     creates the temp folder or database, does file or database work, and names no fake); if it cannot decide, the claim is refused: it counts as
+//     inproc and is counted in the totals. A row marked "vm": true can only be proven by a real install (NTFS-specific behaviour, network shares,
+//     cross-volume moves and links, the installer, the update, the tray, Windows service mode): it needs a scenario proof, nothing else reaches real.
 // Only (a) and (b) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
 // Determinism rules, reported with counts and failing under --strict: no fixed sleep in a test without a `reason:` comment on its line;
 // every golden-path scenario runnable alone; every external-app test on a recording or in tests/recorded-reply-allow-list.json.
@@ -24,10 +30,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TestIndex, read, walk, slash } from './coverage/testindex.mjs';
 import { buildInventory, countsOf, scenarioPlan } from './coverage/inventory.mjs';
 
-export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay'];
+export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay', 'real-fs'];
 export const KINDS = ['screen action', 'state', 'API route', 'job', 'integration-operation', 'failure-mode', 'migration', 'install-update', 'tray'];
 export const SEVERITIES = ['high', 'medium', 'low'];
 export const REAL_TYPES = new Set(['scenario', 'recording-replay']);
+/** real-fs satisfies "real" only for these rows, and never for a row marked "vm": true. */
+export const REAL_FS_TOUCHES = new Set(['disk', 'install']);
 export const TOUCHES = ['other-app', 'disk', 'install', 'none'];
 /** Areas whose rows are behaviours of a screen: a smoke spec against the real host may reach "real" for these. */
 export const SCREEN_AREAS = new Set(['shell', 'dashboard', 'guided-setup', 'library', 'movie-detail', 'show-detail', 'search-grab', 'queue', 'activity', 'connections', 'settings-library', 'settings-lists', 'automation', 'system', 'web']);
@@ -42,8 +50,18 @@ export function smokeState(proof, index) {
   if (!index || typeof index.stubInfo !== 'function') return { stubbed: true, decided: false };
   return index.stubInfo(proof.file, proof.name);
 }
-/** scenario and recording-replay are real; a smoke spec is real only for a screen behaviour and only when its API calls are not stubbed. */
+/** Does a real-fs proof count for this row? Only for a disk or install row that is not "vm", and only when the checker verifies the claim statically. */
+export function realFsCounts(proof, row, index) {
+  if (proof.type !== 'real-fs' || !row || row.vm === true || !REAL_FS_TOUCHES.has(row.touches)) return false;
+  return !!index && typeof index.realFs === 'function' && index.realFs(proof.file, proof.name).real;
+}
+/**
+ * scenario and recording-replay are real; real-fs is real for a verified disk or install row that is not "vm"; a smoke spec is real only for a
+ * screen behaviour and only when its API calls are not stubbed. A "vm" row (only a real install can prove it) is real by a scenario alone.
+ */
 export function proofLevel(proof, row, index) {
+  if (row && row.vm === true) return proof.type === 'scenario' ? 2 : 1;
+  if (proof.type === 'real-fs') return realFsCounts(proof, row, index) ? 2 : 1;
   if (REAL_TYPES.has(proof.type)) return 2;
   if (proof.type === 'smoke' && row && SCREEN_AREAS.has(row.area) && !smokeState(proof, index).stubbed) return 2;
   return 1;
@@ -67,6 +85,8 @@ export function validateShape(register) {
     if (!SEVERITIES.includes(row.severity)) problems.push(`${where}: severity "${row.severity}" is not high, medium or low`);
     if (!TOUCHES.includes(row.touches)) problems.push(`${where}: touches "${row.touches}" is not one of ${TOUCHES.join(', ')}`);
     else if (row.required !== requiredFor(row)) problems.push(`${where}: required must be "${requiredFor(row)}" for a ${row.severity} row that touches ${row.touches}`);
+    if (row.vm != null && row.vm !== true) problems.push(`${where}: vm may only be true (leave it out otherwise)`);
+    if (row.vm === true && !REAL_FS_TOUCHES.has(row.touches)) problems.push(`${where}: vm is for a row that touches disk or install, not ${row.touches}`);
     if (row.issue != null && !(Number.isInteger(row.issue) && row.issue > 0)) problems.push(`${where}: issue must be the number of an open coverage issue`);
     if (!Array.isArray(row.proofs)) problems.push(`${where}: proofs must be a list (empty when it is a gap)`);
     for (const p of [...(row.proofs ?? []), ...(row.partial ?? [])]) {
@@ -94,6 +114,11 @@ function typeMismatch(p, index) {
     case 'scenario': return p.file.endsWith('.ps1') ? null : `a scenario proof must be a .ps1 scenario script, not ${p.file}`;
     case 'smoke': return /^apps\/web\/tests\/.+\.spec\.ts$/.test(p.file) ? null : `a smoke proof must be a Playwright spec in apps/web/tests, not ${p.file}`;
     case 'vitest': return /\.test\.tsx?$/.test(p.file) ? null : `a vitest proof must be a .test.ts(x) file, not ${p.file}`;
+    case 'real-fs': {
+      if (!p.file.endsWith('.cs')) return `a real-fs proof must be a C# backend test, not ${p.file}`;
+      const r = index.realFs(p.file, p.name);
+      return r.real ? null : `real-fs refused (counts as inproc): ${r.why}`;
+    }
     case 'recording-replay': return index.replaysRecording(p.file, p.name) ? null : `"${p.name}" in ${p.file} does not load a recorded real reply (RecordedReplies / the Weir contract helper)`;
     default: return p.file.endsWith('.ps1') ? `a backend proof cannot be a PowerShell script (${p.file}); use type "scenario"` : null;
   }
@@ -127,11 +152,19 @@ export function totals(register, index) {
   const gaps = [];
   const highByTouches = Object.fromEntries(TOUCHES.map((t) => [t, { rows: 0, gaps: 0 }]));
   const smoke = { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 };
+  const realFs = { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 };
   function blank() { return { rows: 0, proven: 0, gaps: 0 }; }
   for (const row of register.rows) {
     const gap = isGap(row, index);
     if (row.severity === 'high' && highByTouches[row.touches]) { highByTouches[row.touches].rows++; if (gap) highByTouches[row.touches].gaps++; }
     for (const pr of row.proofs ?? []) if (pr.type === 'smoke') { const st = smokeState(pr, index); smoke.proofs++; if (!st.stubbed) smoke.unstubbed++; else if (st.decided) smoke.stubbed++; else smoke.undecided++; }
+    if (row.vm === true) { realFs.vmRows++; if (gap) realFs.vmRowGaps++; }
+    for (const pr of row.proofs ?? []) if (pr.type === 'real-fs') {
+      realFs.claims++;
+      if (!(index && typeof index.realFs === 'function' && index.realFs(pr.file, pr.name).real)) realFs.refused++;
+      else if (realFsCounts(pr, row, index)) realFs.counted++;
+      else realFs.noEffect++;
+    }
     const a = (byArea[row.area] ??= { ...blank(), high: 0, highGaps: 0, level: { none: 0, inproc: 0, real: 0 } });
     for (const t of [a, bySeverity[row.severity], all]) { t.rows++; if (gap) t.gaps++; else t.proven++; }
     a.high += row.severity === 'high' ? 1 : 0;
@@ -141,7 +174,7 @@ export function totals(register, index) {
     byLevel[lv]++;
     if (gap) gaps.push(row);
   }
-  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
+  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, realFs, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
 }
 
 // ------------------------------------------------------------------------------------------------ determinism rules
@@ -201,7 +234,7 @@ export function evaluate({ register, inventory, index, plan, root }) {
   const proofProblems = missingProofs(register, index, planIds);
   const missing = proofProblems.filter((m) => m.kind === 'missing');
   const typeProblems = proofProblems.filter((m) => m.kind === 'type');
-  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, gaps: [], highGaps: 0 });
+  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, gaps: [], highGaps: 0 });
   const sleeps = safe('sleep rule', () => sleepViolations(index), []);
   const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
   return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal };
@@ -234,6 +267,7 @@ export function generatedSection(register, inventory, t) {
   lines.push('', '### By best proof a row has', '', '| Best proof | Rows |', '| --- | ---: |');
   for (const l of LEVEL_NAMES) lines.push(`| ${l === 'none' ? 'none (a gap)' : l} | ${t.byLevel[l]} |`);
   lines.push('', `Smoke proofs: **${t.smoke.proofs}**; unstubbed (can reach \`real\` for a screen behaviour) **${t.smoke.unstubbed}**; stubbed **${t.smoke.stubbed}**; not decidable statically, counted as stubbed **${t.smoke.undecided}**.`);
+  lines.push('', `Real-fs proofs: **${t.realFs.claims}** claimed; **${t.realFs.counted}** verified and counted as real; **${t.realFs.refused}** refused (the checker could not verify a real temp folder or database file with no fake, so they count as inproc); **${t.realFs.noEffect}** verified but without effect (the row is "vm", or does not touch disk or install). **${t.realFs.vmRows}** rows are "vm" (only a real install can prove them, so they need a scenario); **${t.realFs.vmRowGaps}** of them are still gaps.`);
   lines.push('', '### By area', '', '| Area | What | Rows | Reach their level | Gaps | High rows | High gaps | No proof | Inproc | Real |', '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const [area, a] of Object.entries(t.byArea).sort()) {
     lines.push(`| ${area} | ${register.areas[area]?.name ?? ''} | ${a.rows} | ${a.proven} | ${a.gaps} | ${a.high} | ${a.highGaps} | ${a.level.none} | ${a.level.inproc} | ${a.level.real} |`);
@@ -318,7 +352,7 @@ async function main() {
     return;
   }
   if (args.includes('--json')) {
-    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, highByTouches: t.highByTouches, smoke: t.smoke, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
+    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, highByTouches: t.highByTouches, smoke: t.smoke, realFs: t.realFs, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
     return;
   }
   if (args.includes('--list-gaps')) {
@@ -356,6 +390,7 @@ async function main() {
   lines.push(`  ${t.gaps.length ? '!!' : 'OK'}  ${levelLine}`);
   lines.push(`      by severity: ${SEVERITIES.map((s) => `${s} ${t.bySeverity[s].gaps}/${t.bySeverity[s].rows}`).join(', ')} gaps; high gaps by touches: ${TOUCHES.map((k) => `${k} ${t.highByTouches[k]?.gaps ?? 0}/${t.highByTouches[k]?.rows ?? 0}`).join(', ')}.`);
   lines.push(`      best proof: ${LEVEL_NAMES.map((l) => `${l} ${t.byLevel[l]}`).join(', ')}. smoke proofs ${t.smoke.proofs}: ${t.smoke.unstubbed} unstubbed, ${t.smoke.stubbed} stubbed, ${t.smoke.undecided} not decidable (counted stubbed).`);
+  lines.push(`      real-fs proofs ${t.realFs.claims}: ${t.realFs.counted} counted, ${t.realFs.refused} refused (counted inproc), ${t.realFs.noEffect} without effect. vm rows (need a scenario): ${t.realFs.vmRows}, ${t.realFs.vmRowGaps} still gaps.`);
   if (t.gaps.length) warn.push(levelLine);
 
   const rules = [
