@@ -50,6 +50,28 @@ public sealed class ProcessorHandoffOutputCleanupTests
         Assert.True(Directory.Exists(handoffFolder), "the folder holding a kept file must stay");
     }
 
+    /// <summary>#1306: a hand-off folder name that climbs ("..") or names the output root itself is never cleaned.</summary>
+    [Fact]
+    public void A_folder_name_that_climbs_out_of_the_output_root_is_never_touched()
+    {
+        using var parent = TempRoot.Create();
+        var outputRoot = Directory.CreateDirectory(Path.Combine(parent.Path, "output")).FullName;
+        var elsewhere = Directory.CreateDirectory(Path.Combine(parent.Path, "elsewhere")).FullName;
+        var elsewhereFile = Path.Combine(elsewhere, "keep.mkv.partial");
+        File.WriteAllText(elsewhereFile, "not ours");
+        var rootFile = Path.Combine(outputRoot, "root.mkv.partial");
+        File.WriteAllText(rootFile, "the output root itself");
+
+        var removed = ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
+            ["../elsewhere", "..\elsewhere", "..", "."],
+            outputRoot,
+            path => false);
+
+        Assert.Equal(0, removed);
+        Assert.True(File.Exists(elsewhereFile));
+        Assert.True(File.Exists(rootFile));
+    }
+
     [Fact]
     public void A_sibling_hand_offs_folder_is_never_touched()
     {

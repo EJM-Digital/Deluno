@@ -133,10 +133,7 @@ public static class EpisodeFilesEndpointRouteBuilderExtensions
     {
         try
         {
-            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var normalized = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return path.StartsWith(normalized + Path.DirectorySeparatorChar, comparison)
-                   || path.StartsWith(normalized + Path.AltDirectorySeparatorChar, comparison);
+            return Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(root), path);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
