@@ -129,6 +129,17 @@ internal sealed class RealDiskLibrary : IAsyncDisposable
         return await scope.ServiceProvider.GetRequiredService<IImportPipelineService>().ExecuteAsync(request, CancellationToken.None);
     }
 
+    public async Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request)
+    {
+        using var scope = App.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IImportPipelineService>().PreviewAsync(request, CancellationToken.None);
+    }
+
+    public async Task CreateRuleAsync(string name, string matchKind, string matchValue, string rootPath, int priority, bool enabled = true)
+        => await App.Services.GetRequiredService<ILibrariesRepository>().CreateDestinationRuleAsync(
+            new CreateDestinationRuleRequest(name, "movies", matchKind, matchValue, rootPath, null, priority, enabled),
+            CancellationToken.None);
+
     /// <summary>The first import of a film, by copy, so the title holds a real tracked file.</summary>
     public async Task<(MovieListItem Movie, string LibraryFile)> ImportFirstCopyAsync(string title, int year, string release, byte fill = 0x11)
     {
