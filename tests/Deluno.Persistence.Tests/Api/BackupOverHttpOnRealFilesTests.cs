@@ -239,6 +239,28 @@ public sealed class BackupOverHttpOnRealFilesTests
     }
 
     [Fact]
+    public async Task Saving_a_schedule_for_a_folder_that_cannot_be_used_is_refused_at_once_and_the_old_schedule_stays()
+    {
+        using var storage = new TempFolder();
+        var service = Service(storage, "2026-05-14T01:00:00Z");
+        var good = Path.Combine(storage, "good-backups");
+        await service.SaveSettingsAsync(new UpdateBackupSettingsRequest(true, "weekly", "04:00", 5, good), CancellationToken.None);
+        var aFile = Path.Combine(storage, "not-a-folder.txt");
+        File.WriteAllText(aFile, "x");
+
+        // A path that is a file, and a path under a file: neither can hold backups, and the person is told when saving, not at 3 a.m.
+        await Assert.ThrowsAnyAsync<Exception>(() => service.SaveSettingsAsync(new UpdateBackupSettingsRequest(true, "daily", "02:00", 7, aFile), CancellationToken.None));
+        await Assert.ThrowsAnyAsync<Exception>(() => service.SaveSettingsAsync(new UpdateBackupSettingsRequest(true, "daily", "02:00", 7, Path.Combine(aFile, "inside")), CancellationToken.None));
+
+        var kept = await service.GetSettingsAsync(CancellationToken.None);
+        Assert.Equal(good, kept.BackupFolder);
+        Assert.Equal("weekly", kept.Frequency);
+        Assert.Equal(5, kept.RetentionCount);
+        Assert.True(Directory.Exists(good));
+        Assert.True(File.Exists(aFile));
+    }
+
+    [Fact]
     public async Task The_scheduled_backup_runs_once_the_next_run_time_has_passed_and_moves_the_next_run_on()
     {
         using var storage = new TempFolder();
