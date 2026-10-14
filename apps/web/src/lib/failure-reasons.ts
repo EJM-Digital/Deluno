@@ -46,7 +46,8 @@ const REASON_WORDS: Record<string, string> = {
   clientReportedFailure: "Your download client said the download failed",
   deadOrBrokenLink: "The download client could not open the link",
   insufficientFreeSpace: "Not enough free space on the drive",
-  downloadIntegrityFailed: "Deluno opened the file and it was wrong"
+  downloadIntegrityFailed: "Deluno opened the file and it was wrong",
+  unsafeSourcePath: "The file's path climbs out of its folder, so Deluno left it alone"
 };
 
 export function reasonWords(reasonCode: string): string {
@@ -82,7 +83,8 @@ export const KNOWN_IMPORT_FAILURE_REASONS = [
   "clientReportedFailure",
   "deadOrBrokenLink",
   "insufficientFreeSpace",
-  "downloadIntegrityFailed"
+  "downloadIntegrityFailed",
+  "unsafeSourcePath"
 ] as const;
 
 /**

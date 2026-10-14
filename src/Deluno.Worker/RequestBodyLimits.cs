@@ -32,6 +32,36 @@ public static class RequestBodyLimits
     public const int SecretLength = 1_000;
     public const int OtherTextLength = 4_000;
 
+    /// <summary>A release name: the quality routes check these at 500 themselves, so the general name limit must not be lower.</summary>
+    public const int ReleaseNameLength = 500;
+
+    /// <summary>
+    /// Routes whose handler checks the length of a member itself and answers in its own words (the contract says exactly how).
+    /// The middleware leaves those members to the route, so the route's answer is the one the caller sees. The route's limit must
+    /// still be no higher than the member's limit here; a test pins it.
+    /// </summary>
+    internal static readonly (string Path, string Member)[] RouteOwnedLengths =
+    [
+        // #1023: ProcessorEventLimits.Check answers with the contract's own message and the outputFiles problem key.
+        ("/api/integrations/processors/events", "outputFiles")
+    ];
+
+    /// <summary>
+    /// Whether a member holds a file or folder path: any name with "path" in it, or ending in Path(s), File(s), Folder(s),
+    /// Directory/Directories or Root(s) (matched on the capital so "profile" is not a file).
+    /// </summary>
+    public static bool IsPathShaped(string member)
+    {
+        if (member.Contains("path", StringComparison.OrdinalIgnoreCase)) return true;
+        if (member.ToLowerInvariant() is "file" or "files" or "folder" or "folders" or "directory" or "directories" or "root" or "roots" or "dataroot" or "from" or "to") return true;
+        foreach (var suffix in new[] { "Files", "File", "Folders", "Folder", "Directories", "Directory", "Roots", "Root" })
+        {
+            if (member.EndsWith(suffix, StringComparison.Ordinal)) return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Routes that need more than the default, matched by the start (and, for uploads, the end) of the path. First match wins.</summary>
     private static readonly (string Prefix, string? Suffix, long Bytes)[] Rules =
     [
@@ -87,10 +117,14 @@ public static class RequestBodyLimits
             return UrlLength;
         }
 
-        if (name.Contains("path", StringComparison.Ordinal) || name.EndsWith("folder", StringComparison.Ordinal)
-            || name.EndsWith("directory", StringComparison.Ordinal) || name is "root" or "dataroot" or "file" or "from" or "to")
+        if (IsPathShaped(member))
         {
             return PathLength;
+        }
+
+        if (name.Contains("releasename", StringComparison.Ordinal))
+        {
+            return ReleaseNameLength;
         }
 
         if (name.Contains("pattern", StringComparison.Ordinal) || name.Contains("regex", StringComparison.Ordinal)
@@ -122,22 +156,38 @@ public static class RequestBodyLimits
 
     /// <summary>Walks a JSON value and returns a plain sentence for the first text member that is too long, or null.</summary>
     public static string? FirstTooLong(JsonElement element, string member = "")
+        => FindTooLong(element, member, inList: false, skip: null) is { } found ? found.Message : null;
+
+    /// <summary>The same walk for one route: members the route checks itself (<see cref="RouteOwnedLengths"/>) are left to it.</summary>
+    internal static string? FirstTooLong(JsonElement element, PathString path)
+        => FindTooLong(element, "", inList: false, OwnedBy(path)) is { } found ? found.Message : null;
+
+    private static string[]? OwnedBy(PathString path)
+    {
+        var owned = RouteOwnedLengths
+            .Where(rule => string.Equals(rule.Path, path.Value?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            .Select(rule => rule.Member)
+            .ToArray();
+        return owned.Length == 0 ? null : owned;
+    }
+
+    private static (string Message, string Member)? FindTooLong(JsonElement element, string member, bool inList, string[]? skip)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.String:
                 var limit = TextLimit(member);
-                if (limit is { } max && element.GetString() is { } text && text.Length > max)
+                if (limit is { } max && element.GetString() is { } text && text.Length > max
+                    && skip?.Contains(member, StringComparer.OrdinalIgnoreCase) != true)
                 {
-                    var shown = member.Length == 0 ? "That text" : $"The {Spaced(member)}";
-                    return $"{shown} is too long. It can be at most {max:N0} characters.";
+                    return (TooLongMessage(member, max, inList), member);
                 }
 
                 return null;
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
-                    var problem = FirstTooLong(property.Value, property.Name);
+                    var problem = FindTooLong(property.Value, property.Name, inList: false, skip);
                     if (problem is not null) return problem;
                 }
 
@@ -145,7 +195,7 @@ public static class RequestBodyLimits
             case JsonValueKind.Array:
                 foreach (var item in element.EnumerateArray())
                 {
-                    var problem = FirstTooLong(item, member);
+                    var problem = FindTooLong(item, member, inList: true, skip);
                     if (problem is not null) return problem;
                 }
 
@@ -155,32 +205,26 @@ public static class RequestBodyLimits
         }
     }
 
-    /// <summary>The name of the member <see cref="FirstTooLong"/> found too long, so the refusal can name it (#1280).</summary>
-    private static string? FirstTooLongMember(JsonElement element, string member = "")
+    /// <summary>
+    /// "The output path is too long. It can be at most 4096 characters." for one value; for a list member
+    /// (outputFiles) "One of the output files is too long. Each output file can be at most 4096 characters."
+    /// </summary>
+    private static string TooLongMessage(string member, int max, bool inList)
     {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String:
-                return TextLimit(member) is { } max && element.GetString() is { } text && text.Length > max && member.Length > 0 ? member : null;
-            case JsonValueKind.Object:
-                foreach (var property in element.EnumerateObject())
-                {
-                    var found = FirstTooLongMember(property.Value, property.Name);
-                    if (found is not null) return found;
-                }
+        if (member.Length == 0) return $"That text is too long. It can be at most {max} characters.";
+        var spaced = Spaced(member);
+        return inList
+            ? $"One of the {spaced} is too long. Each {Singular(spaced)} can be at most {max} characters."
+            : $"The {spaced} is too long. It can be at most {max} characters.";
+    }
 
-                return null;
-            case JsonValueKind.Array:
-                foreach (var item in element.EnumerateArray())
-                {
-                    var found = FirstTooLongMember(item, member);
-                    if (found is not null) return found;
-                }
-
-                return null;
-            default:
-                return null;
-        }
+    private static string Singular(string spaced)
+    {
+        var cut = spaced.LastIndexOf(' ') + 1;
+        var head = spaced[..cut];
+        var word = spaced[cut..];
+        if (word.EndsWith("ies", StringComparison.Ordinal)) return head + word[..^3] + "y";
+        return word.EndsWith('s') ? head + word[..^1] : spaced;
     }
 
     private static string Spaced(string member)
@@ -247,8 +291,9 @@ public static class RequestBodyLimits
             try
             {
                 using var document = JsonDocument.Parse(buffer);
-                tooLong = FirstTooLong(document.RootElement);
-                tooLongMember = tooLong is null ? null : FirstTooLongMember(document.RootElement);
+                var found = FindTooLong(document.RootElement, "", inList: false, OwnedBy(request.Path));
+                tooLong = found?.Message;
+                tooLongMember = found is { Member.Length: > 0 } ? found.Value.Member : null;
             }
             catch (JsonException)
             {

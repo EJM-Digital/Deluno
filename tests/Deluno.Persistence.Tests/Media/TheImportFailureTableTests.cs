@@ -65,6 +65,7 @@ public sealed class TheImportFailureTableTests
     [InlineData(ImportFailurePolicy.ReplacementOwnershipMismatch)]
     [InlineData(ImportFailurePolicy.Unmatched)]
     [InlineData(ImportFailurePolicy.IoError)]
+    [InlineData(ImportFailurePolicy.UnsafeSourcePath)]
     public void An_environment_or_naming_problem_never_refuses_the_release(string reason)
     {
         Assert.Equal(BlockDecision.Never, ImportFailurePolicy.BlockFor(reason));

@@ -267,7 +267,7 @@ public sealed partial class ImportPipelineService(
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
-                "unsafeSourcePath",
+                ImportFailurePolicy.UnsafeSourcePath,
                 unsafeMessage,
                 "Check the path the download client or processor reported, then retry the import.",
                 cancellationToken);
