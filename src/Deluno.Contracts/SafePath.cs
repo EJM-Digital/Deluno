@@ -54,6 +54,17 @@ public static class SafePath
         return unc ? "//" + joined : rooted ? "/" + joined : joined;
     }
 
+    /// <summary>True when any segment of the path (either separator) is <c>.</c> or <c>..</c>.</summary>
+    public static bool HasDotSegments(string? path)
+        => !string.IsNullOrWhiteSpace(path) && path.Split('/', '\\').Any(segment => segment.Trim() is "." or "..");
+
+    /// <summary>
+    /// A path as a download client or processor reported it, trimmed, or null when it is blank or climbs or
+    /// wanders with <c>.</c> or <c>..</c> segments: such a path is never used, however a client came to say it.
+    /// </summary>
+    public static string? ReportedPath(string? path)
+        => string.IsNullOrWhiteSpace(path) || HasDotSegments(path) ? null : path.Trim();
+
     /// <summary>
     /// True when the path is a full path (a drive, a share or a leading separator) with no <c>.</c> or <c>..</c>
     /// segment, for a caller that must use the text as given (it is matched against stored paths).

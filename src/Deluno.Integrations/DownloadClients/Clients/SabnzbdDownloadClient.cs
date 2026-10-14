@@ -592,7 +592,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                     // `path` is the old incomplete folder and the finished files are under `storage`. So the folder
                     // goes here, or Deluno says plainly that it is still there.
                     var problem = withFiles && finished is not null
-                        ? DownloadFolderRemoval.Remove(finished.Storage, finished.Name, ClientSaveFolders.IsSameMachine(client))
+                        ? DownloadFolderRemoval.Remove(Deluno.Contracts.SafePath.ReportedPath(finished.Storage), finished.Name, ClientSaveFolders.IsSameMachine(client))
                         : null;
                     var message = withFiles
                         ? problem is null
@@ -939,7 +939,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown SABnzbd history item"),
                 item.Name ?? "Unknown SABnzbd history item", item.Category ?? string.Empty, outcome, "SABnzbd",
                 ParseHistorySize(item.Bytes), item.Completed is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.Completed.Value) : capturedUtc,
-                errorMessage, item.Storage,
+                errorMessage, Deluno.Contracts.SafePath.ReportedPath(item.Storage),
                 HistorySource: "native",
                 ExternalId: item.NzoId);
         }).ToArray();
