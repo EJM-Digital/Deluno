@@ -11,7 +11,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task SaveSettings_persists_retention_above_the_old_ceiling()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         var service = CreateService(storage.Path, "2026-05-14T01:00:00Z");
 
         var saved = await service.SaveSettingsAsync(
@@ -44,7 +44,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task An_unchosen_backup_folder_follows_the_data_root_rather_than_being_frozen()
     {
-        using var first = TempDataRoot.Create();
+        using var first = new TempDataRoot();
         var service = CreateService(first.Path, "2026-09-16T05:00:00Z");
 
         // Nothing chosen: the settings file must not record a folder.
@@ -57,7 +57,7 @@ public sealed class DelunoBackupServiceTests
         Assert.StartsWith(Path.Combine(first.Path, "backups"), created.FullPath, StringComparison.OrdinalIgnoreCase);
 
         // The same settings, carried to a different data root, follow it.
-        using var second = TempDataRoot.Create();
+        using var second = new TempDataRoot();
         Directory.CreateDirectory(Path.Combine(second.Path, "backups"));
         File.Copy(settingsFile, Path.Combine(second.Path, "backups", "backup-settings.json"), overwrite: true);
 
@@ -75,8 +75,8 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_chosen_backup_folder_is_kept()
     {
-        using var storage = TempDataRoot.Create();
-        using var chosen = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
+        using var chosen = new TempDataRoot();
         var service = CreateService(storage.Path, "2026-09-16T05:00:00Z");
 
         await service.SaveSettingsAsync(
@@ -91,8 +91,8 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task RestoreAsync_restores_backup_into_second_machine_profile_and_keeps_pre_restore_copy()
     {
-        using var sourceRoot = TempDataRoot.Create();
-        using var targetRoot = TempDataRoot.Create();
+        using var sourceRoot = new TempDataRoot();
+        using var targetRoot = new TempDataRoot();
 
         var sourceDataFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -181,7 +181,7 @@ public sealed class DelunoBackupServiceTests
     [InlineData(1975, 6, 1)]
     public async Task A_timestamp_a_zip_cannot_hold_does_not_lose_the_backup(int year, int month, int day)
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         SeedDataRoot(storage.Path, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["platform.db"] = "platform",
@@ -218,7 +218,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_file_it_cannot_read_is_left_out_rather_than_taking_the_backup_with_it()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         SeedDataRoot(storage.Path, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["platform.db"] = "platform",
@@ -262,7 +262,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task The_application_log_is_not_part_of_a_backup()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         SeedDataRoot(storage.Path, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["platform.db"] = "platform",
@@ -283,7 +283,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_backup_taken_during_writes_restores_to_databases_that_pass_integrity_check()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         var dbPath = Path.Combine(storage.Path, "movies.db");
         var connectionString = $"Data Source={dbPath};Pooling=False";
         using (var setup = new Microsoft.Data.Sqlite.SqliteConnection(connectionString))
@@ -334,7 +334,7 @@ public sealed class DelunoBackupServiceTests
         // Nothing is left behind in the data root.
         Assert.False(Directory.Exists(Path.Combine(storage.Path, "backup-snapshots")));
 
-        using var target = TempDataRoot.Create();
+        using var target = new TempDataRoot();
         var restoreService = CreateService(target.Path, "2026-09-30T03:00:00Z");
         await using (var zip = File.OpenRead(zipPath))
         {
@@ -357,7 +357,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task An_older_backup_that_holds_a_wal_file_still_restores()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         var zipPath = Path.Combine(storage.Path, "old.zip");
         var dbBytes = MakeDatabaseBytes(storage.Path);
         using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
@@ -367,7 +367,7 @@ public sealed class DelunoBackupServiceTests
             using (var s = zip.CreateEntry("deluno-backup.json").Open()) { s.Write("{\"app\":\"Deluno\",\"version\":\"1\",\"createdUtc\":\"2026-01-01T00:00:00Z\",\"reason\":\"manual\",\"files\":[\"movies.db\",\"movies.db-wal\"]}"u8); }
         }
 
-        using var target = TempDataRoot.Create();
+        using var target = new TempDataRoot();
         var service = CreateService(target.Path, "2026-09-30T03:00:00Z");
         await using var stream = File.OpenRead(zipPath);
         var result = await service.RestoreAsync(stream, CancellationToken.None);
@@ -404,7 +404,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_backup_says_which_file_it_is_about_to_copy_before_each_one()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         SeedDataRoot(storage.Path, new Dictionary<string, string>
         {
             ["a-settings.json"] = "{}",
@@ -425,7 +425,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_backup_without_a_step_callback_behaves_as_before()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         SeedDataRoot(storage.Path, new Dictionary<string, string> { ["a-settings.json"] = "{}" });
         var service = CreateService(storage.Path, "2026-10-13T01:00:00Z");
 
@@ -438,7 +438,7 @@ public sealed class DelunoBackupServiceTests
     [Fact]
     public async Task A_restore_entry_that_climbs_out_of_the_data_folder_is_skipped()
     {
-        using var storage = TempDataRoot.Create();
+        using var storage = new TempDataRoot();
         var dataRoot = Path.Combine(storage.Path, "data");
         Directory.CreateDirectory(dataRoot);
         var service = CreateService(dataRoot, "2026-10-13T01:00:00Z");
@@ -494,16 +494,13 @@ public sealed class DelunoBackupServiceTests
 
     private sealed class TempDataRoot : IDisposable
     {
-        private TempDataRoot(string path)
+        public TempDataRoot()
         {
-            Path = path;
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "deluno-backup-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path);
         }
 
         public string Path { get; }
-
-        public static TempDataRoot Create()
-            => new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "deluno-backup-tests", Guid.NewGuid().ToString("N")));
 
         public void Dispose()
         {

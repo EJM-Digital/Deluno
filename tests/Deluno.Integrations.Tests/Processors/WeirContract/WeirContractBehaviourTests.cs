@@ -244,6 +244,35 @@ public sealed class WeirContractBehaviourTests
         Assert.EndsWith(weirSaid, stopped.Message);
     }
 
+    // The same two answers as the two theories above, each loaded by its own recording name.
+    [Fact]
+    public async Task A_cancel_Weir_answered_204_to_ends_the_hand_off_as_stopped_and_says_Weir_was_asked_to_drop_it()
+    {
+        var recording = Rec("handoff-cancelled");
+
+        var stopped = await StopAsync(recording);
+
+        Assert.False(stopped.Busy);
+        Assert.NotNull(stopped.Ended);
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Cancelled, update.Status);
+        Assert.Contains("and it was asked to drop", update.Message);
+    }
+
+    [Fact]
+    public async Task A_cancel_Weir_answered_409_working_to_leaves_the_hand_off_open_and_says_it_will_not_interrupt()
+    {
+        var recording = Rec("handoff-cancel-working");
+
+        var stopped = await StopAsync(recording);
+
+        Assert.True(stopped.Busy);
+        Assert.Null(stopped.Ended);
+        Assert.Empty(_updates);
+        Assert.Contains("will not interrupt it", stopped.Message);
+        Assert.EndsWith("This hand-off is working, so Weir did not cancel it.", stopped.Message);
+    }
+
     [Fact]
     public async Task A_cancel_Weir_refuses_for_a_title_that_was_removed_ends_the_hand_off_anyway_and_does_not_import_its_output()
     {
