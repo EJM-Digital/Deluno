@@ -96,7 +96,7 @@ import type {
 } from "./api/types/live-events";
 import type { ConnectionCheckedEvent, SystemOverviewChangedEvent } from "./api/types/system-overview";
 import type { SystemLogEntry } from "./api/types/system-log";
-import { firstRealtimePosition, forgetRealtimePosition } from "./realtime-position";
+import { firstRealtimeInstance, firstRealtimePosition, forgetRealtimePosition } from "./realtime-position";
 
 export { useRealtimeConnected } from "./realtime-state";
 export type * from "./api/types/live-events";
@@ -339,6 +339,8 @@ type ResumeStatus = "CaughtUp" | "Replayed" | "ResyncRequired";
 interface ResumeResult {
   status: ResumeStatus;
   envelopes: RealtimeEnvelope[];
+  /** The server run that answered; the sequence restarts at 0 on every restart, so a number is only valid with it (#1315). */
+  instanceId?: string;
 }
 
 /* ── Connection state ────────────────────────────────────────────── */
@@ -393,6 +395,8 @@ export function SignalRProvider({
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
+  /** The server run lastSeqRef came from. Sent with every resume: another run always answers resync-required (#1315). */
+  const instanceIdRef = useRef("");
 
   /**
    * Brings the hub's subjects in line with what screens want, whenever either changes (#1178).
@@ -536,10 +540,14 @@ export function SignalRProvider({
       // ...except for what was published after the page read its first data and before this join (#1191): ask the hub to
       // replay from where the stream stood at that first read. If its buffer no longer reaches back that far, it says resync.
       const since = firstConnect && lastSeqRef.current === 0 ? firstRealtimePosition() : 0;
-      if (since > 0) lastSeqRef.current = since;
+      if (since > 0) {
+        lastSeqRef.current = since;
+        instanceIdRef.current = firstRealtimeInstance();
+      }
       if (firstConnect) forgetRealtimePosition();
       try {
-        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()]);
+        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()], instanceIdRef.current);
+        if (result.instanceId) instanceIdRef.current = result.instanceId;
         if (result.status === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
         } else if (result.status === "ResyncRequired") {

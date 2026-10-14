@@ -180,7 +180,7 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
 
         await connection.StartAsync();
         await connection.InvokeAsync("Subscribe", new[] { "dashboard", "queue", "activity", "live" });
-        await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", 0L, new[] { "dashboard", "queue", "activity", "live" });
+        await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", 0L, new[] { "dashboard", "queue", "activity", "live" }, (string?)null);
 
         var watchers = _app.Services.GetRequiredService<Deluno.Contracts.IRealtimeWatchers>();
         Assert.Equal(1, watchers.Count("live"));
