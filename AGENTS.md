@@ -33,10 +33,8 @@ This file is the small entry point for agent work. It is a map, not the full man
 - Deluno-Weir contract (every call, reply and report, with its recording and test): `docs/deluno-weir-contract.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
-- **The testing bar: `docs/testing/STRATEGY.md`** (owner, 14 Oct 2026): every screen, menu, line and function tested and proven, in seven measures each enforced in CI. Builders run only the tests they write until the owner says go.
-- Coverage register (every behaviour and the tests that prove it; add a row with every new route, job, migration or screen): `docs/testing/COVERAGE.md`
-- CI and release standard (shared with Weir): `docs/ci-standard.md`
-- GA release checklist and sign-off flow: `docs/ga-release-checklist.md`
+- **Testing: `docs/testing/STRATEGY.md`** (the bar: every screen, menu, line and function proven, seven measures each enforced in CI) and `docs/testing/COVERAGE.md` (the register; add a row with every new route, job, migration or screen). Builders run only the tests they write until the owner says go.
+- CI and release standard (shared with Weir): `docs/ci-standard.md`; GA checklist and sign-off: `docs/ga-release-checklist.md`
 - Active execution plans: `docs/exec-plans/active/`
 
 ## Current Product Direction
