@@ -20,11 +20,11 @@ $script:Fx = @{
     NewznabPort = 1180
     Hang     = 'C:\golden\suite\hang.txt'
     Slow     = 'C:\golden\suite\slow.txt'
-    # Where each client looks for a torrent's data while it is still "incomplete". qBittorrent, with automatic management on and
-    # an incomplete folder, keeps a torrent of a category in a folder named for the category inside it (rc.30.22: the queue row's
-    # sourcePath read ...\qBittorrent\deluno-movies\<release>, and data put one level up was never found, so no qBittorrent film
-    # ever finished). The others use the folder itself.
-    Incomplete = @{ qbittorrent = 'C:\Downloads\Incomplete\qBittorrent\deluno-movies'; transmission = 'C:\Downloads\Incomplete\Transmission'; deluge = 'C:\Downloads\Incomplete\Deluge' }
+    # The category Deluno puts every film's torrent in (movies). Where a client keeps the data of an unfinished torrent is asked of
+    # the client itself (Get-ClientDataFolder, Get-ClientTorrent), never written down here: qBittorrent keeps a torrent of a category in
+    # a folder named for the category inside its incomplete folder, and which folder it has is its own to say (rc.30.22, rc.30.30).
+    Category = 'deluno-movies'
+    Sessions = @{}
     Base     = @{}
     IndexerIds = @{}
     Counter  = 0
@@ -167,6 +167,10 @@ function New-TorrentFilm {
     New-Item -ItemType Directory -Force -Path $source | Out-Null
     $base = $script:Fx.Base[$Size]
     $rel = $null
+    # The data goes where the client itself says it keeps the data of an unfinished torrent, before Deluno sends the torrent. A
+    # dummy film has no data, so the client is not asked.
+    $placeIn = $null
+    if ($Variant -ne 'dummy') { $placeIn = Get-ClientDataFolder -Kind $Client }
     if ($Variant -eq 'dummy') {
         $rel = Add-SuiteTorrentRelease -Title $release -DummyMb 40
     }
@@ -175,7 +179,7 @@ function New-TorrentFilm {
             $good = Join-Path $source "$release.mkv"
             New-Item -ItemType HardLink -Path $good -Target $base | Out-Null
             $rel = Add-SuiteTorrentRelease -Title $release -File $good
-            $placeAt = $script:Fx.Incomplete[$Client]
+            $placeAt = $placeIn
             New-Item -ItemType Directory -Force -Path $placeAt | Out-Null
             if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $good -To (Join-Path $placeAt "$release.mkv") -Truncate:($Client -eq 'transmission') }
             else { New-Item -ItemType HardLink -Path (Join-Path $placeAt "$release.mkv") -Target $base | Out-Null }
@@ -191,7 +195,7 @@ function New-TorrentFilm {
                 Copy-Item -LiteralPath $script:Fx.Base['extra'] -Destination (Join-Path $folder 'Featurettes\featurette.mkv')
             }
             $rel = Add-SuiteTorrentRelease -Title $release -Folder $folder
-            $dest = Join-Path $script:Fx.Incomplete[$Client] $release
+            $dest = Join-Path $placeIn $release
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
             Get-ChildItem -LiteralPath $folder -Recurse -File | ForEach-Object {
                 $rp = $_.FullName.Substring($folder.Length + 1)
@@ -203,8 +207,14 @@ function New-TorrentFilm {
             }
         }
     }
+    # What was placed: the item the client looks for by name, and every file in it with its size, so a later check can say whether
+    # the files are there and whole.
+    $item = $(if ($Layout -eq 'file') { "$release.mkv" } else { $release })
+    $files = @()
+    if ($placeIn) { $files = @(Get-FilmFilesIn -Folder $placeIn -Item $item) }
     [pscustomobject]@{
         Title = $title; Year = $year; Release = $release; Protocol = 'torrent'; Client = $Client; Layout = $Layout; Size = $rel.size
+        DataFolder = $placeIn; DataItem = $item; DataFiles = $files; SettleKey = $null
         Hash = $rel.infohash; Url = "http://127.0.0.1:$($script:Fx.FeedPort)/dl/$($rel.torrent)"; IndexerId = $script:Fx.IndexerIds.torrent; Folder = $(if ($Layout -eq 'folder') { $release } else { $null })
     }
 }
@@ -284,66 +294,282 @@ function Send-Film {
     $Film | Add-Member -NotePropertyName ClientId -NotePropertyValue $client.id -Force
     $Film | Add-Member -NotePropertyName ClientKind -NotePropertyValue $Kind -Force
     Write-SuiteLog ("   sent {0} to {1}" -f $Film.Release, $Kind)
-    # qBittorrent and Deluge do not pick up data placed in their Incomplete folder on their own: ask them to check it now.
+    # The data was put where the client said it keeps an unfinished torrent. Once the client holds the torrent its own answer is read
+    # again, the files are checked there (and moved if the client looks elsewhere), and only then is the client told to check them.
     if (Test-ClientNeedsSettle -Kind $Kind) { Invoke-FilmSettle -Film $Film -WaitForRowSec 60 | Out-Null }
     $Film
 }
 
-# The two torrent clients that must be told to look at data already in place (qBittorrent: Deluno's Re-check; Deluge: its web
-# API). Transmission checks on its own.
+# Every torrent client has its data placement confirmed against the client's own answer once it holds the torrent; qBittorrent and
+# Deluge are then also told to check it (Transmission checks on its own, and is told to verify only when the data had to move).
 function Test-ClientNeedsSettle {
     param([Parameter(Mandatory)] [string] $Kind)
-    $Kind -in 'qbittorrent', 'deluge'
+    $Kind -in 'qbittorrent', 'transmission', 'deluge'
 }
 
-# Presses the right action for the film's client once its queue row exists: Re-check for qBittorrent, force_recheck plus
-# move_storage for Deluge. Returns whether the action was sent.
-function Invoke-FilmSettle {
-    param([Parameter(Mandatory)] $Film, [int] $WaitForRowSec = 0)
-    if (-not (Test-ClientNeedsSettle -Kind $Film.ClientKind)) { return $false }
-    if ($WaitForRowSec -gt 0) {
-        $w = Wait-Until -TimeoutSec $WaitForRowSec -IntervalSec 2 -Condition { Find-QueueRow -Name $Film.Release }
-        if (-not $w.Ok) { Write-SuiteLog ("   {0}: no queue row to re-check after {1} s" -f $Film.Release, $WaitForRowSec); return $false }
+# ---------------------------------------------------------------- asking the clients themselves
+
+function ConvertTo-FxPath {
+    param([string] $Path)
+    if (-not $Path) { return $null }
+    $p = $Path.Replace('/', [string][char]92)
+    if ($p.Length -gt 3) { $p = $p.TrimEnd([char]92) }
+    $p
+}
+
+# The client's logged-in session (qBittorrent's cookie, Deluge's caller); kept, and made again when -Fresh is asked for.
+function Get-FxClientSession {
+    param([Parameter(Mandatory)] [string] $Kind, [switch] $Fresh)
+    if ($Fresh) { $script:Fx.Sessions.Remove($Kind) }
+    if (-not $script:Fx.Sessions.ContainsKey($Kind)) {
+        $script:Fx.Sessions[$Kind] = switch ($Kind) { 'qbittorrent' { Open-KsQbit } 'deluge' { Open-KsDeluge } default { $null } }
     }
-    $ok = $false
-    try { Move-FilmDataToClientPath -Film $Film | Out-Null } catch { Write-SuiteLog ("   {0}: could not move the data to where the client looks: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
-    try { $ok = if ($Film.ClientKind -eq 'deluge') { [bool](Invoke-DelugeSettle -Film $Film) } else { [bool](Invoke-Recheck -Film $Film) } }
-    catch { Write-SuiteLog ("   {0}: the settle step failed: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
-    Write-SuiteLog ("   {0}: {1} sent={2}" -f $Film.Release, $(if ($Film.ClientKind -eq 'deluge') { 'force_recheck + move_storage' } else { 'Re-check' }), $ok)
-    $ok
+    $script:Fx.Sessions[$Kind]
 }
 
-# The client says where it looks for the film's data (its queue row's sourcePath). When that is not the folder the suite put the
-# data in, the data is moved there, and the log says so, so a wrong guess about a client's layout never again looks like a film that
-# "never finishes". Returns $true when something was moved.
-function Move-FilmDataToClientPath {
-    param([Parameter(Mandatory)] $Film)
-    if ($Film.Protocol -ne 'torrent' -or -not $script:Fx.Incomplete.ContainsKey($Film.ClientKind)) { return $false }
-    $row = Find-QueueRow -Name $Film.Release
-    if (-not $row -or -not $row.sourcePath) { return $false }
-    $name = if ($Film.Layout -eq 'file') { "$($Film.Release).mkv" } else { $Film.Release }
-    $placedIn = $script:Fx.Incomplete[$Film.ClientKind].TrimEnd([char]92)
-    $lookIn = (Split-Path -Path ([string]$row.sourcePath).TrimEnd([char]92) -Parent).TrimEnd([char]92)
-    if ($lookIn -ieq $placedIn) { return $false }
-    $placed = Join-Path $placedIn $name
+# Runs a read against a client; a session the client no longer knows is made again once.
+function Invoke-FxClientRead {
+    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [scriptblock] $Read)
+    try { return (& $Read (Get-FxClientSession -Kind $Kind)) }
+    catch { return (& $Read (Get-FxClientSession -Kind $Kind -Fresh)) }
+}
+
+# Where the client keeps the data of an unfinished torrent of the films' category, from the client's own settings, to put a film's
+# data there before Deluno sends the torrent. Throws when the client will not say.
+function Get-ClientDataFolder {
+    param([Parameter(Mandatory)] [string] $Kind)
+    $folder = $null
+    switch ($Kind) {
+        'qbittorrent' {
+            $folder = Invoke-FxClientRead -Kind $Kind -Read {
+                param($q)
+                $h = @{ Referer = $q.Base }
+                $prefs = Invoke-RestMethod -Uri "$($q.Base)/api/v2/app/preferences" -Headers $h -WebSession $q.Session -UseBasicParsing -TimeoutSec 20
+                $cats = Invoke-RestMethod -Uri "$($q.Base)/api/v2/torrents/categories" -Headers $h -WebSession $q.Session -UseBasicParsing -TimeoutSec 20
+                $cat = $cats.PSObject.Properties | Where-Object { $_.Name -eq $script:Fx.Category } | ForEach-Object { $_.Value } | Select-Object -First 1
+                # The category's own incomplete folder if it has one; else the incomplete folder with the category's name inside it
+                # (automatic management); else the folder the category saves to.
+                if ($cat -and $cat.download_path -is [string] -and $cat.download_path.Trim()) { $cat.download_path }
+                elseif ($prefs.temp_path_enabled -and $prefs.temp_path) { Join-Path (ConvertTo-FxPath $prefs.temp_path) $script:Fx.Category }
+                elseif ($cat -and $cat.savePath) { $cat.savePath }
+                else { $prefs.save_path }
+            }
+        }
+        'deluge' {
+            $folder = Invoke-FxClientRead -Kind $Kind -Read {
+                param($call)
+                $r = & $call 'core.get_config_value' @('download_location')
+                if ($r.error) { throw "Deluge answered $($r.error.message)" }
+                [string]$r.result
+            }
+        }
+        'transmission' {
+            $s = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled', 'download-dir') }).arguments
+            $folder = if ($s.'incomplete-dir-enabled' -and $s.'incomplete-dir') { $s.'incomplete-dir' } else { $s.'download-dir' }
+        }
+        default { throw "$Kind is not a torrent client." }
+    }
+    $folder = ConvertTo-FxPath ([string]$folder)
+    if (-not $folder) { throw "$Kind did not say where it keeps the data of an unfinished torrent." }
+    $folder
+}
+
+# What the client itself says about a torrent right now: whether it holds it, whether it is checking its files, how far it is, and the
+# folder it is looking in for the data. Never asks Deluno.
+function Get-ClientTorrent {
+    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [string] $Hash)
+    $none = [pscustomobject]@{ Kind = $Kind; Present = $false; State = $null; Progress = 0.0; Checking = $false; DataFolder = $null; SavePath = $null; DownloadPath = $null; ContentPath = $null }
+    $hash = $Hash.ToLowerInvariant()
+    switch ($Kind) {
+        'qbittorrent' {
+            $row = Invoke-FxClientRead -Kind $Kind -Read {
+                param($q)
+                @(Invoke-RestMethod -Uri "$($q.Base)/api/v2/torrents/info?hashes=$hash" -Headers @{ Referer = $q.Base } -WebSession $q.Session -UseBasicParsing -TimeoutSec 20) | Where-Object { $_ } | Select-Object -First 1
+            }
+            if (-not $row) { return $none }
+            $progress = [double]$row.progress
+            $dl = $(if ($row.download_path -is [string]) { ConvertTo-FxPath $row.download_path } else { $null })
+            $save = ConvertTo-FxPath ([string]$row.save_path)
+            # An unfinished torrent is kept in its incomplete folder when it has one; a finished one is in its save path.
+            $folder = $(if ($progress -lt 1 -and $dl) { $dl } else { $save })
+            [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$row.state; Progress = $progress; Checking = ([string]$row.state -like 'checking*'); DataFolder = $folder; SavePath = $save; DownloadPath = $dl; ContentPath = (ConvertTo-FxPath ([string]$row.content_path)) }
+        }
+        'deluge' {
+            $s = Invoke-FxClientRead -Kind $Kind -Read {
+                param($call)
+                $r = & $call 'core.get_torrent_status' @($hash, @('state', 'progress', 'save_path', 'name'))
+                if ($r.error) { throw "Deluge answered $($r.error.message)" }
+                $r.result
+            }
+            $has = $s -and @($s.PSObject.Properties).Count -gt 0 -and $s.state
+            if (-not $has) { return $none }
+            $save = ConvertTo-FxPath ([string]$s.save_path)
+            [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$s.state; Progress = ([double]$s.progress / 100); Checking = ([string]$s.state -eq 'Checking'); DataFolder = $save; SavePath = $save; DownloadPath = $null; ContentPath = $null }
+        }
+        'transmission' {
+            $r = Invoke-KsTransmission -Method 'torrent-get' -Arguments @{ ids = @($hash); fields = @('hashString', 'status', 'percentDone', 'downloadDir', 'name') }
+            $t = @($r.arguments.torrents) | Where-Object { $_ } | Select-Object -First 1
+            if (-not $t) { return $none }
+            $ses = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled') }).arguments
+            $progress = [double]$t.percentDone
+            $dl = $(if ($ses.'incomplete-dir-enabled' -and $ses.'incomplete-dir') { ConvertTo-FxPath ([string]$ses.'incomplete-dir') } else { $null })
+            $save = ConvertTo-FxPath ([string]$t.downloadDir)
+            $folder = $(if ($progress -lt 1 -and $dl) { $dl } else { $save })
+            [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$t.status; Progress = $progress; Checking = ([int]$t.status -in 1, 2); DataFolder = $folder; SavePath = $save; DownloadPath = $dl; ContentPath = $null }
+        }
+        default { throw "$Kind is not a torrent client." }
+    }
+}
+
+# ---------------------------------------------------------------- the data on disk
+
+# Every file of an item (a single file, or a folder with everything in it) under a folder, as relative path and size.
+function Get-FilmFilesIn {
+    param([Parameter(Mandatory)] [string] $Folder, [Parameter(Mandatory)] [string] $Item)
+    $p = Join-Path $Folder $Item
+    if (-not (Test-Path -LiteralPath $p)) { return @() }
+    $it = Get-Item -LiteralPath $p
+    if (-not $it.PSIsContainer) { return @([pscustomobject]@{ Rel = $Item; Length = [long]$it.Length }) }
+    $root = $Folder.TrimEnd([char]92)
+    @(Get-ChildItem -LiteralPath $p -Recurse -File | ForEach-Object { [pscustomobject]@{ Rel = $_.FullName.Substring($root.Length + 1); Length = [long]$_.Length } })
+}
+
+# Whether every file the suite placed for a film is in a folder, and whole (the size it was placed at). A film with no data (a
+# dummy) expects nothing.
+function Test-FilmDataAt {
+    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] [string] $Folder)
+    $expected = @($Film.DataFiles | Where-Object { $_ })
+    $missing = @(); $wrong = @()
+    foreach ($f in $expected) {
+        $p = Join-Path $Folder $f.Rel
+        if (-not (Test-Path -LiteralPath $p)) { $missing += $f.Rel; continue }
+        $len = (Get-Item -LiteralPath $p).Length
+        if ($len -ne $f.Length) { $wrong += ('{0} is {1} bytes, not {2}' -f $f.Rel, $len, $f.Length) }
+    }
+    $problems = @()
+    if ($missing) { $problems += 'missing ' + ($missing -join ', ') }
+    if ($wrong) { $problems += 'wrong size: ' + ($wrong -join '; ') }
+    $text = $(if ($expected.Count -eq 0) { "nothing is expected in $Folder" }
+        elseif (-not $problems) { "all $($expected.Count) file(s) are in $Folder and whole" }
+        else { "in ${Folder}: " + ($problems -join '; ') })
+    [pscustomobject]@{ Ok = (-not $problems); Folder = $Folder; Expected = $expected.Count; Missing = $missing; WrongSize = $wrong; Text = $text }
+}
+
+# Moves the film's data (the item the client looks for) from the folder it was last put in to another. Returns whether it moved.
+function Move-FilmDataToFolder {
+    param([Parameter(Mandatory)] $Film, [Parameter(Mandatory)] [string] $Folder)
+    $from = ConvertTo-FxPath $Film.DataFolder
+    $to = ConvertTo-FxPath $Folder
+    if (-not $from -or $from -ieq $to -or -not $Film.DataItem) { return $false }
+    $placed = Join-Path $from $Film.DataItem
     if (-not (Test-Path -LiteralPath $placed)) { return $false }
-    New-Item -ItemType Directory -Force -Path $lookIn | Out-Null
-    $to = Join-Path $lookIn $name
-    if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force }
-    Move-Item -LiteralPath $placed -Destination $to
-    Write-SuiteLog ("   {0}: the client looks in {1}, not {2}; the data was moved there." -f $Film.Release, $lookIn, $placedIn)
+    New-Item -ItemType Directory -Force -Path $to | Out-Null
+    $target = Join-Path $to $Film.DataItem
+    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+    Move-Item -LiteralPath $placed -Destination $target
+    $Film | Add-Member -NotePropertyName DataFolder -NotePropertyValue $to -Force
+    Write-SuiteLog ("   {0}: the client looks in {1}, not {2}; the data was moved there." -f $Film.Release, $to, $from)
     $true
 }
 
-# What a failed film needs in its evidence: the client's queue row and what is in the client's folders.
+# Waits until the client holds the torrent and says where it looks, checks the film's files are there whole and moves them when
+# they are not, and says what it found. -WaitSec 0 reads the client once. Ok is true only when the files are verified at the
+# folder the client names, and then Key names that verified state (folder and result), so a later look can tell whether anything
+# changed since the client was last told to check.
+function Resolve-FilmPlacement {
+    param([Parameter(Mandatory)] $Film, [int] $WaitSec = 60)
+    $w = Wait-Until -TimeoutSec $WaitSec -IntervalSec 1 -Condition {
+        $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash
+        if ($i.Present -and $i.DataFolder) { $i }
+    }
+    if (-not $w.Ok) {
+        return [pscustomobject]@{ Ok = $false; Moved = $false; Key = $null; Info = $null; Check = $null; Text = "$($Film.ClientKind) does not hold $($Film.Release) (or does not say where it looks) after $WaitSec s" }
+    }
+    $info = $w.Value
+    $check = Test-FilmDataAt -Film $Film -Folder $info.DataFolder
+    $moved = $false
+    if (-not $check.Ok) {
+        # Files the client is reading cannot be moved: wait for its check to end, on its own word (a single look leaves them alone).
+        if ($info.Checking -and $WaitSec -le 0) {
+            return [pscustomobject]@{ Ok = $false; Moved = $false; Key = $null; Info = $info; Check = $check; Text = "$($Film.ClientKind) is checking its files; they are left where they are ($($check.Text))" }
+        }
+        if ($info.Checking) {
+            $idle = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { -not (Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash).Checking }
+            if ($idle.Ok) { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash }
+        }
+        try { $moved = Move-FilmDataToFolder -Film $Film -Folder $info.DataFolder }
+        catch { Write-SuiteLog ("   {0}: could not move the data to where the client looks: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
+        $check = Test-FilmDataAt -Film $Film -Folder $info.DataFolder
+    }
+    [pscustomobject]@{
+        Ok = $check.Ok; Moved = $moved; Info = $info; Check = $check
+        Key = $(if ($check.Ok) { '{0}|verified' -f $info.DataFolder.ToLowerInvariant() } else { $null })
+        Text = $check.Text
+    }
+}
+
+# Puts a film's data where its client looks, verifies it, and then tells the client to check it: Re-check for qBittorrent,
+# force_recheck plus move_storage for Deluge, torrent-verify for Transmission (only when the data had to move; it checks on its
+# own otherwise). Nothing is sent until the files are verified at the client's own folder. With -IfChanged nothing is sent unless
+# that verified state differs from the one the client was last told to check, and not while the client is checking. Returns
+# whether the client was told to check.
+function Invoke-FilmSettle {
+    param([Parameter(Mandatory)] $Film, [int] $WaitForRowSec = 0, [switch] $IfChanged)
+    if (-not (Test-ClientNeedsSettle -Kind $Film.ClientKind)) { return $false }
+    if ($WaitForRowSec -gt 0 -and $Film.ClientKind -eq 'qbittorrent') {
+        $w = Wait-Until -TimeoutSec $WaitForRowSec -IntervalSec 2 -Condition { Find-QueueRow -Name $Film.Release }
+        if (-not $w.Ok) { Write-SuiteLog ("   {0}: no queue row to re-check after {1} s" -f $Film.Release, $WaitForRowSec); return $false }
+    }
+    $p = Resolve-FilmPlacement -Film $Film -WaitSec $(if ($IfChanged) { 0 } else { 60 })
+    if (-not $p.Ok) {
+        if (-not $IfChanged) { Write-SuiteLog ("   {0}: the client is not told to check yet: {1}" -f $Film.Release, $p.Text) }
+        return $false
+    }
+    if ($IfChanged -and ($p.Info.Checking -or $p.Key -eq $Film.SettleKey)) { return $false }
+    $ok = $false
+    try {
+        switch ($Film.ClientKind) {
+            'deluge' { $ok = [bool](Invoke-DelugeSettle -Film $Film) }
+            'qbittorrent' { $ok = [bool](Invoke-Recheck -Film $Film) }
+            'transmission' { if ($p.Moved) { $ok = [bool](Invoke-TransmissionVerify -Film $Film) } }
+        }
+    }
+    catch { Write-SuiteLog ("   {0}: the settle step failed: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
+    # Only a check that was sent counts as "told": a failed send is tried again on the next look. Transmission checks on its own, so
+    # the verified state is remembered whether or not it was told.
+    if ($ok -or $Film.ClientKind -eq 'transmission') { $Film | Add-Member -NotePropertyName SettleKey -NotePropertyValue $p.Key -Force }
+    Write-SuiteLog ("   {0}: {1} sent={2}; {3}" -f $Film.Release, $(if ($Film.ClientKind -eq 'deluge') { 'force_recheck + move_storage' } elseif ($Film.ClientKind -eq 'transmission') { 'verify' } else { 'Re-check' }), $ok, $p.Text)
+    $ok
+}
+
+# What a film that did not finish needs said: where the client looks, where the data was last put, and whether the files are there
+# and whole in each.
+function Get-FilmPlacementReport {
+    param([Parameter(Mandatory)] $Film)
+    $lines = New-Object System.Collections.ArrayList
+    $info = $null
+    if ($Film.Hash) { try { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash } catch { [void]$lines.Add("The client could not be asked: $(Hide-Secrets $_.Exception.Message)") } }
+    if ($info -and $info.Present) {
+        [void]$lines.Add(("{0} looks for the data in {1} (save path {2}, incomplete path {3}, content path {4}); it is {5} at {6:N1}%." -f $Film.ClientKind, $info.DataFolder, $info.SavePath, $info.DownloadPath, $info.ContentPath, $info.State, ($info.Progress * 100)))
+        [void]$lines.Add('At the folder the client looks in: ' + (Test-FilmDataAt -Film $Film -Folder $info.DataFolder).Text)
+    }
+    elseif ($info) { [void]$lines.Add("$($Film.ClientKind) does not hold the torrent.") }
+    if ($Film.DataFolder) { [void]$lines.Add('Where the suite last put the data: ' + (Test-FilmDataAt -Film $Film -Folder $Film.DataFolder).Text) }
+    [void]$lines.Add("Last told to check at: $(if ($Film.SettleKey) { $Film.SettleKey } else { 'never' })")
+    @($lines) -join "`n"
+}
+
+# What a failed film needs in its evidence: the client's queue row, where the client looks and where the data is, and what is in the
+# client's folders.
 function Save-FilmClientEvidence {
     param([Parameter(Mandatory)] $Film)
     try {
         $row = Find-QueueRow -Name $Film.Release -IncludeHistory
+        $report = $(try { Get-FilmPlacementReport -Film $Film } catch { "placement could not be read: $($_.Exception.Message)" })
         $folders = foreach ($root in 'C:\Downloads\Incomplete', 'C:\Downloads\Completed') {
             if (Test-Path $root) { Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 200 | ForEach-Object { '{0}  {1}' -f $_.FullName, $(if ($_.PSIsContainer) { '<dir>' } else { "$($_.Length) bytes" }) } }
         }
-        Save-Evidence -Name ("film-client-{0}-{1}.txt" -f $Film.ClientKind, $Film.Title) -Text ("queue row:`n{0}`n`nfolders:`n{1}" -f ($row | ConvertTo-Json -Depth 4), ($folders -join "`n"))
+        Save-Evidence -Name ("film-client-{0}-{1}.txt" -f $Film.ClientKind, $Film.Title) -Text ("placement:`n{0}`n`nqueue row:`n{1}`n`nfolders:`n{2}" -f $report, ($row | ConvertTo-Json -Depth 4), ($folders -join "`n"))
     } catch { }
 }
 
@@ -356,34 +582,49 @@ function Invoke-Recheck {
     $r.Status -ge 200 -and $r.Status -lt 300
 }
 
-# Deluge only moves a finished torrent on a completion event, so a torrent that finds its data already there is rechecked and
-# moved by hand, which is what its Label plugin would have done (core.force_recheck, core.move_storage).
-function Invoke-DelugeSettle {
-    param([Parameter(Mandatory)] $Film, [string] $Category = 'deluno-movies', [string] $Destination = 'C:\Downloads\Completed\Movies')
-    $row = Find-QueueRow -Name $Film.Release
-    if (-not $row) { return $false }
-    $hash = $row.id
-    $base = 'http://127.0.0.1:8112/json'
-    $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-    function Call($method, $params) {
-        (Invoke-RestMethod -Uri $base -Method Post -ContentType 'application/json' -WebSession $sess -UseBasicParsing -TimeoutSec 20 -Body (@{ method = $method; params = $params; id = 1 } | ConvertTo-Json -Depth 5 -Compress))
-    }
-    Call 'auth.login' @('deluge') | Out-Null
-    # The web UI must be connected to the daemon before it answers core calls.
-    if (-not (Call 'web.connected' @()).result) {
-        $hosts = (Call 'web.get_hosts' @()).result
-        if ($hosts) { Call 'web.connect' @($hosts[0][0]) | Out-Null; Start-Sleep -Seconds 2 }
-    }
-    Call 'core.force_recheck' @(, @($hash)) | Out-Null
-    Start-Sleep -Seconds 3
-    Call 'core.move_storage' @(@($hash), $Destination) | Out-Null
+# Transmission checks its files on its own; when the data had to be moved to where it looks, it is told to verify.
+function Invoke-TransmissionVerify {
+    param([Parameter(Mandatory)] $Film)
+    Invoke-KsTransmission -Method 'torrent-verify' -Arguments @{ ids = @($Film.Hash.ToLowerInvariant()) } | Out-Null
     $true
 }
 
-# Waits until the client reports the film finished (nudging a client that needs it) and returns the queue/history row.
+# Waits until a client's check of a torrent has ended, on the client's own word: it was seen checking and no longer is, or the
+# torrent is whole. Returns the client's last reading ($null when it never held the torrent).
+function Wait-ClientCheckDone {
+    param([Parameter(Mandatory)] $Film, [int] $TimeoutSec = 30)
+    $state = @{ Seen = $false; Last = $null }
+    $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Condition {
+        $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash
+        $state.Last = $i
+        if (-not $i.Present) { return $null }
+        if ($i.Checking) { $state.Seen = $true; return $null }
+        if ($state.Seen -or $i.Progress -ge 1) { $i }
+    }
+    if ($w.Ok) { $w.Value } else { $state.Last }
+}
+
+# Deluge only moves a finished torrent on a completion event, so a torrent that finds its data already there is rechecked and
+# moved by hand, which is what its Label plugin would have done (core.force_recheck, core.move_storage). The move waits for the
+# check to end on Deluge's own word.
+function Invoke-DelugeSettle {
+    param([Parameter(Mandatory)] $Film, [string] $Destination = 'C:\Downloads\Completed\Movies')
+    $hash = $Film.Hash.ToLowerInvariant()
+    $call = Get-FxClientSession -Kind 'deluge'
+    $r = & $call 'core.force_recheck' @(, @($hash))
+    if ($r.error) { throw "Deluge would not check $($Film.Release): $($r.error.message)" }
+    $done = Wait-ClientCheckDone -Film $Film
+    Write-SuiteLog ("   {0}: Deluge's check ended: {1}" -f $Film.Release, $(if ($done) { "$($done.State) at $([math]::Round($done.Progress * 100, 1))%" } else { 'it no longer holds the torrent' }))
+    $r = & $call 'core.move_storage' @(@($hash), $Destination)
+    if ($r.error) { throw "Deluge would not move $($Film.Release): $($r.error.message)" }
+    $true
+}
+
+# Waits until the client reports the film finished and returns the queue/history row. A torrent that is not finishing is looked at
+# again when what the client says changes (it names another folder, or the files are not where it looks), never on a timer: the
+# client is told to check only once the files are verified at the folder it names.
 function Wait-FilmFinished {
     param([Parameter(Mandatory)] $Film, [int] $TimeoutSec = 180)
-    $state = @{ Nudged = 0 }
     $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 2 -Condition {
         $row = Find-QueueRow -Name $Film.Release -IncludeHistory
         if (-not $row) {
@@ -394,12 +635,18 @@ function Wait-FilmFinished {
         }
         if ($row.isHistory) { return $row }
         if ($row.status -in 'completed', 'processing', 'processed', 'waitingForProcessor', 'importReady', 'importQueued', 'imported' -or [double]$row.progress -ge 100) { return $row }
-        if ($Film.Protocol -eq 'torrent' -and (Test-ClientNeedsSettle -Kind $Film.ClientKind) -and ([DateTime]::UtcNow - $Film.SentUtc).TotalSeconds -gt (20 * ($state.Nudged + 1))) {
-            $state.Nudged++
-            Invoke-FilmSettle -Film $Film | Out-Null
+        if ($Film.Protocol -eq 'torrent' -and (Test-ClientNeedsSettle -Kind $Film.ClientKind)) {
+            Invoke-FilmSettle -Film $Film -IfChanged | Out-Null
         }
         $null
     }
-    if (-not $w.Ok) { Save-FilmClientEvidence -Film $Film }
+    if (-not $w.Ok) {
+        Save-FilmClientEvidence -Film $Film
+        if ($Film.Protocol -eq 'torrent') {
+            $explain = $(try { Get-FilmPlacementReport -Film $Film } catch { "placement could not be read: $($_.Exception.Message)" })
+            Add-Note ("$($Film.Release) did not finish in $($Film.ClientKind) in $TimeoutSec s. " + ($explain -replace "`n", ' '))
+            $w | Add-Member -NotePropertyName Explain -NotePropertyValue $explain -Force
+        }
+    }
     $w
 }
