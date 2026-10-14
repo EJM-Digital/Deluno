@@ -39,7 +39,7 @@ public sealed class HostConsoleLoggingTests
                 }
             });
 
-            Assert.True(await Task.WhenAny(logging, Task.Delay(TimeSpan.FromSeconds(20))) == logging, "Logging waited on the unread standard output.");
+            Assert.True(await Task.WhenAny(logging, Task.Delay(TimeSpan.FromSeconds(20))) == logging, "Logging waited on the unread standard output."); // reason: the 20 s is the ceiling that proves logging did not block on unread output, not a measured wait
         }
         finally
         {

@@ -99,7 +99,7 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
                 break;
             }
 
-            await Task.Delay(5);
+            await Task.Delay(5); // reason: poll interval inside a bounded wait (the deadline above)
         }
 
         return found;
@@ -119,7 +119,7 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
 
             _clock.Advance(TimeSpan.FromMilliseconds(10));
             advanced += TimeSpan.FromMilliseconds(10);
-            await Task.Delay(5);
+            await Task.Delay(5); // reason: lets the publisher's background loop run between fake-clock steps; it exposes no signal to await; bounded by the 8 s deadline above
         }
 
         return advanced;
@@ -154,13 +154,13 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
         }
 
         await _publisher.PublishActivityEventAddedAsync("a1", "Something happened", "search", "info", "2026-10-01T12:00:00Z", CancellationToken.None);
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: the fake clock has not moved, so nothing can be pushed; this gives the loop real time to wrongly push before the assertion
         Assert.Empty(_sections.Calls);
 
         await AdvanceUntilPushedAsync(1);
         // Let anything further settle: the burst must not have produced a second push.
         _clock.Advance(TimeSpan.FromMilliseconds(500));
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: shows no second push follows; absence needs the loop given real time to wrongly push
 
         var call = Assert.Single(_sections.Calls);
         Assert.Equal(["activity", "downloads", "health", "indexers", "system"], call);
@@ -191,9 +191,9 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
 
         await _publisher.PublishHealthChangedAsync("indexer", "problem", "Down", CancellationToken.None);
         _clock.Advance(TimeSpan.FromSeconds(1));
-        await Task.Delay(200);
+        await Task.Delay(200); // reason: shows nothing is built with no watchers; absence needs the loop given real time to wrongly build
         _clock.Advance(TimeSpan.FromSeconds(1));
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: shows nothing is built with no watchers; absence needs the loop given real time to wrongly build
 
         Assert.Empty(_sections.Calls);
     }
@@ -205,7 +205,7 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
 
         await _publisher.PublishEntityChangedAsync("QualityProfile", "q1", CancellationToken.None);
         _clock.Advance(TimeSpan.FromSeconds(1));
-        await Task.Delay(200);
+        await Task.Delay(200); // reason: shows no sections are pushed for an event the dashboard does not read; absence needs the loop given real time
         _clock.Advance(TimeSpan.FromSeconds(1));
 
         Assert.Empty(_sections.Calls);
@@ -345,7 +345,7 @@ public sealed class RealtimeWatcherTests
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
         while (DateTimeOffset.UtcNow < deadline && !condition())
         {
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: poll interval inside a bounded wait (5 s above)
         }
     }
 

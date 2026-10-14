@@ -396,7 +396,7 @@ public sealed class MetadataRefreshJobHandlerTests
         health.Setup(repository => repository.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(async (string id, CancellationToken _) =>
             {
-                await Task.Delay(30);
+                await Task.Delay(30); // reason: a slow read, so an unguarded read-modify-write would have both start from the same empty list
                 lock (rows)
                 {
                     return rows.GetValueOrDefault(id);

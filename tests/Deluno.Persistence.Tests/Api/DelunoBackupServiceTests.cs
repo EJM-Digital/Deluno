@@ -294,6 +294,7 @@ public sealed class DelunoBackupServiceTests
         }
 
         using var stop = new CancellationTokenSource();
+        var rowsWritten = 0;
         var writer = Task.Run(() =>
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString + ";Default Timeout=30");
@@ -303,11 +304,12 @@ public sealed class DelunoBackupServiceTests
             {
                 Exec(connection, $"INSERT INTO t (a, b) VALUES ('a{i}', '{new string('x', 200)}'); UPDATE t SET b = 'u{i}' WHERE id % 7 = 0;");
                 i++;
+                Volatile.Write(ref rowsWritten, i);
             }
         });
 
         // Let the writer get going, so the -wal is live.
-        await Task.Delay(300);
+        await Wait.UntilAsync(() => Volatile.Read(ref rowsWritten) >= 50, "the writer to have written 50 rows");
         var service = CreateService(storage.Path, "2026-09-30T02:00:00Z");
         BackupItem backup;
         try

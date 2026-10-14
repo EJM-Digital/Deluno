@@ -219,7 +219,7 @@ public sealed class OutboundRequestThrottleTests
             while (Volatile.Read(ref _timers) < atLeast)
             {
                 Assert.True(DateTime.UtcNow < deadline, $"Only {_timers} caller(s) started waiting; expected {atLeast}.");
-                await Task.Delay(5);
+                await Task.Delay(5); // reason: poll interval inside a bounded wait (10 s above)
             }
         }
     }
@@ -237,7 +237,7 @@ public sealed class OutboundRequestThrottleTests
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (calls.Count(call => call.IsCompletedSuccessfully) < expected && DateTime.UtcNow < deadline)
         {
-            await Task.Delay(5);
+            await Task.Delay(5); // reason: poll interval inside a bounded wait (10 s above)
         }
     }
 

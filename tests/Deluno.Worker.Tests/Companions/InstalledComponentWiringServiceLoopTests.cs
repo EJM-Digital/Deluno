@@ -40,7 +40,7 @@ public sealed class InstalledComponentWiringServiceLoopTests
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (Volatile.Read(ref passes) < 3 && DateTime.UtcNow < deadline)
         {
-            await Task.Delay(20);
+            await Task.Delay(20); // reason: poll interval inside a bounded wait (10 s above)
         }
 
         Assert.True(Volatile.Read(ref passes) >= 3, "the loop should have kept trying after a timed-out pass");

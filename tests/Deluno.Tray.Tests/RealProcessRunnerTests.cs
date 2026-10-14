@@ -26,9 +26,14 @@ public sealed class RealProcessRunnerTests
 
         Assert.Null(result);
 
-        // Give Windows a moment to finish tearing the tree down, then confirm
-        // nothing named "PING" from this test is still running.
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // Windows finishes tearing the tree down a moment later: wait until no "PING"
+        // is left, up to 10 s (ten times what teardown takes), then confirm.
+        SpinWait.SpinUntil(() =>
+        {
+            var left = Process.GetProcessesByName("PING");
+            try { return left.Length == 0; }
+            finally { foreach (var p in left) p.Dispose(); }
+        }, TimeSpan.FromSeconds(10));
         var survivors = Process.GetProcessesByName("PING");
         try
         {

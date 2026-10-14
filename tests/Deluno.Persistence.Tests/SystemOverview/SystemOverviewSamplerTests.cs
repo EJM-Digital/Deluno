@@ -169,7 +169,7 @@ public sealed class SystemOverviewSamplerTests
         for (var attempt = 0; attempt < 200 && envelopes.Count < 2; attempt++)
         {
             envelopes = publisher.Resume(1, [RealtimeGroups.Dashboard, RealtimeGroups.Live]).Envelopes.ToList();
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: poll interval inside a bounded wait (200 tries above)
         }
 
         await publisher.StopAsync(CancellationToken.None);

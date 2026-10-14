@@ -194,7 +194,7 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline && !(received.Contains("DownloadProgress") && received.Contains("ActivityEventAdded")))
         {
-            await Task.Delay(100);
+            await Task.Delay(100); // reason: poll interval inside a bounded wait (10 s above) for pushes arriving over a real socket
         }
 
         Assert.Contains("DownloadProgress", received);

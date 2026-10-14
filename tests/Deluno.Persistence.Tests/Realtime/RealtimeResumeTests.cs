@@ -254,7 +254,7 @@ public sealed class RealtimeResumeTests
             CancellationToken.None);
 
         await WaitUntilAsync(() => queueEvents.Count == 1);
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: shows nothing else arrives; absence needs the publisher given real time to wrongly send
 
         Assert.Single(queueEvents);
         Assert.Empty(activityEvents);
@@ -290,7 +290,7 @@ public sealed class RealtimeResumeTests
             {
                 return result;
             }
-            await Task.Delay(25);
+            await Task.Delay(25); // reason: poll interval inside a bounded wait (deadline above)
         } while (DateTime.UtcNow < deadline);
 
         Assert.Fail($"Resume did not converge within the timeout. Last status: {result.Status}, envelopes: {result.Envelopes.Count}.");
@@ -306,7 +306,7 @@ public sealed class RealtimeResumeTests
             {
                 return;
             }
-            await Task.Delay(25);
+            await Task.Delay(25); // reason: poll interval inside a bounded wait (deadline above)
         }
         Assert.Fail("Condition was not met within the timeout.");
     }

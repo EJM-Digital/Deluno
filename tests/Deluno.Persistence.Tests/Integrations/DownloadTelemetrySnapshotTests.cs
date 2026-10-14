@@ -444,7 +444,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
             calls.AddOrUpdate(requested.Id, 1, (_, count) => count + 1);
             if (delay > TimeSpan.Zero)
             {
-                await Task.Delay(delay, cancellationToken);
+                await Task.Delay(delay, cancellationToken); // reason: a fake client that takes this long to answer, so the polling under test sees a slow client
             }
 
             if (hold is not null)
