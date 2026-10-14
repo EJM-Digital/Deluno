@@ -44,6 +44,30 @@ public sealed class WeirRealReportsTests
         Assert.Equal(handoff.Id, said["handoffId"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task A_finished_report_queues_the_import_into_the_library_that_grabbed_it_from_the_file_Weir_made_and_names_the_download_it_was_given()
+    {
+        var recorded = RecordedReplies.Deluno("events-completed").Exchanges[0];
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene, recorded);
+
+        var response = await PostAsync(app, scene, handoff, recorded, createOutput: true);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var jobId = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["importJobId"]!.GetValue<string>();
+        var job = await app.Services.GetRequiredService<Deluno.Jobs.Data.IJobQueueRepository>().GetAsync(jobId, CancellationToken.None);
+        var queued = System.Text.Json.JsonSerializer.Deserialize<Deluno.Filesystem.ImportExecuteRequest>(
+            job!.PayloadJson!, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal("filesystem.import.execute", job.JobType);
+        Assert.Equal(scene.LibraryId, queued.Preview.LibraryId);
+        Assert.StartsWith(scene.Output, queued.Preview.SourcePath);
+        Assert.Contains("processed", queued.Preview.Tags ?? []);
+        Assert.Equal(handoff.SourcePath, queued.ProcessedFromPath);
+        Assert.Equal(handoff.Id, queued.HandoffId);
+        Assert.Equal("auto", queued.TransferMode, ignoreCase: true);
+    }
+
     [Theory]
     [InlineData("events-too-late", 0)]
     [InlineData("events-too-late", 1)]
