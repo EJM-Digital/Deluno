@@ -64,7 +64,7 @@ import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
 import { TitleActionGrid } from "../components/app/title-action-grid";
 import { authedFetch } from "../lib/use-auth";
-import { cn } from "../lib/utils";
+import { cn, formatBytes } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
@@ -2138,9 +2138,3 @@ function formatTriggerKind(value: string) {
 }
 
 
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}

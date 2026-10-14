@@ -16,7 +16,7 @@ import { ArtworkImage } from "../../../components/ui/artwork-image";
 import { FilterChips } from "../../../components/ui/filter-chips";
 import type { DashboardLibrarySection } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
-import { formatSize } from "../downloads-kit";
+import { formatBytes } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import "./shelf.css";
@@ -53,7 +53,7 @@ export function arrivedHeading(titles: number): string {
 export function arrivedDetail(titles: number, upgraded: number, bytes: number): string {
   const parts = [`${titles.toLocaleString("en-AU")} ${titles === 1 ? "title" : "titles"}`];
   if (upgraded > 0) parts.push(`${upgraded.toLocaleString("en-AU")} upgraded`);
-  if (bytes > 0) parts.push(`${formatSize(bytes).replace(/.0 /, " ")} added`);
+  if (bytes > 0) parts.push(`${formatBytes(bytes).replace(/.0 /, " ")} added`);
   return parts.join(" · ");
 }
 
@@ -97,7 +97,7 @@ function Poster({ group, isNew, caption, tag, small, width, measure }: { group: 
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
   // The upgrade is said in the status line; the tooltip and the name say it in full.
   const upgradeSaid = upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : group.previousQuality ? `upgraded from ${group.previousQuality}` : "an upgrade") : null;
-  const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgradeSaid, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
+  const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatBytes(group.sizeBytes) : null, upgradeSaid, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   const page = group.library === "tv" ? "/tv" : "/movies";
   return (
     <li className="lsh-poster" {...{ [TILE_KEY_ATTRIBUTE]: group.key }} data-size={small ? "small" : "full"} data-caption={caption} data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
