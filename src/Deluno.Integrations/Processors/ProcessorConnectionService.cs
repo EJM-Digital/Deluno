@@ -18,8 +18,11 @@ public sealed class ProcessorConnectionService(
     IHttpClientFactory httpClientFactory,
     IProcessorHandoffTitleResolver? titleResolver = null,
     ILogger<ProcessorConnectionService>? logger = null,
-    Deluno.Contracts.IConnectionVersionStore? versions = null) : IProcessorConnectionService
+    Deluno.Contracts.IConnectionVersionStore? versions = null,
+    TimeProvider? time = null) : IProcessorConnectionService
 {
+    private readonly TimeProvider clock = time ?? TimeProvider.System;
+
     /// <summary>
     /// Reads the processor's health. A processor that answers also has its version read and stored (#1200), so the
     /// stored version follows an upgrade without anyone pressing a check, from every place that reads its health.
