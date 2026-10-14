@@ -93,8 +93,8 @@ public static partial class ReleaseTitleMatch
         }
 
         var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
-        var marker = SeasonEpisode().Match(name);
-        return marker.Success && TitleAfterMarker(name[(marker.Index + marker.Length)..]) is { Length: > 0 } carried
+        var marker = ReleaseNameReader.ReadEpisode(name);
+        return marker is not null && TitleAfterMarker(name[(marker.Index + marker.Length)..]) is { Length: > 0 } carried
             && TitlesAgree(carried, Clean(wantedTitle));
     }
 
@@ -131,22 +131,22 @@ public static partial class ReleaseTitleMatch
 
     private static int? NameYearBeforeEpisode(string text)
     {
-        var marker = SeasonEpisode().Match(text);
-        var pack = SeasonPack().Match(text);
-        var end = marker.Success ? marker.Index : pack.Success ? pack.Index : -1;
+        var marker = ReleaseNameReader.ReadEpisode(text);
+        var pack = ReleaseNameReader.ReadSeasonPack(text);
+        var end = marker is not null ? marker.Index : pack is { } p ? p.Index : -1;
         if (end < 0)
         {
             return null;
         }
 
-        var found = Year().Match(text[..end]);
-        if (!found.Success)
+        var before = text[..end];
+        if (ReleaseNameReader.ReadYear(before) is not { } found)
         {
             return null;
         }
 
         // 2024.05.01 is an air date, not a year.
-        return DateTail().IsMatch(text[found.Index..end]) ? null : int.Parse(found.Value, CultureInfo.InvariantCulture);
+        return ReleaseNameReader.ReadDailyDate(before[found.Index..]) is { Index: 0 } ? null : found.Year;
     }
 
     /// <summary>The words between the episode marker and the first quality/source word, cleaned for comparison.</summary>
@@ -224,8 +224,8 @@ public static partial class ReleaseTitleMatch
         }
 
         var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
-        var marker = SeasonEpisode().Match(name);
-        if (!marker.Success)
+        var marker = ReleaseNameReader.ReadEpisode(name);
+        if (marker is null)
         {
             return null;
         }
@@ -249,9 +249,7 @@ public static partial class ReleaseTitleMatch
         var title = TitleSeparators().Replace(name[..cut], " ").Trim(' ', '-', '(', '[');
         // The first year after the title: "The Kid 1921", or "House on Haunted
         // Hill (1959)" as a tracker lists it.
-        var year = Year().Match(name, cut) is { Success: true } found
-            ? int.Parse(found.Value, CultureInfo.InvariantCulture)
-            : (int?)null;
+        var year = ReleaseNameReader.ReadYear(name, cut)?.Year;
         return (title.Length > 0 ? title : releaseName, year);
     }
 
@@ -306,13 +304,12 @@ public static partial class ReleaseTitleMatch
             return null;
         }
 
-        var found = Year().Match(rest);
-        if (!found.Success)
+        if (ReleaseNameReader.ReadYear(rest) is not { } found)
         {
             return null;
         }
 
-        var releaseYear = int.Parse(found.Value, CultureInfo.InvariantCulture);
+        var releaseYear = found.Year;
         return Math.Abs(releaseYear - year) <= 1
             ? null
             : $"This release is from {releaseYear}; {expected.Title} is from {year}.";
@@ -329,16 +326,14 @@ public static partial class ReleaseTitleMatch
             return null;
         }
 
-        var marker = SeasonEpisode().Match(rest);
-        if (!marker.Success || marker.Groups["last"].Success)
+        var marker = ReleaseNameReader.ReadEpisode(rest);
+        if (marker is null || marker.LastEpisode != marker.FirstEpisode)
         {
             return null;
         }
 
-        var season = int.Parse(marker.Groups["season"].Value, CultureInfo.InvariantCulture);
-        var episode = int.Parse(marker.Groups["episode"].Value, CultureInfo.InvariantCulture);
-        return bySeason.TryGetValue(season, out var titles)
-            ? EpisodeTitleMismatch(rest[(marker.Index + marker.Length)..], season, episode, expected with { EpisodeTitles = titles })
+        return bySeason.TryGetValue(marker.Season, out var titles)
+            ? EpisodeTitleMismatch(rest[(marker.Index + marker.Length)..], marker.Season, marker.FirstEpisode, expected with { EpisodeTitles = titles })
             : null;
     }
 
@@ -349,12 +344,11 @@ public static partial class ReleaseTitleMatch
             return WholeShowTitleMismatch(rest, expected);
         }
 
-        var episode = SeasonEpisode().Match(rest);
-        if (episode.Success)
+        if (ReleaseNameReader.ReadEpisode(rest) is { } episode)
         {
-            var season = int.Parse(episode.Groups["season"].Value, CultureInfo.InvariantCulture);
-            var first = int.Parse(episode.Groups["episode"].Value, CultureInfo.InvariantCulture);
-            var last = episode.Groups["last"].Success ? int.Parse(episode.Groups["last"].Value, CultureInfo.InvariantCulture) : first;
+            var season = episode.Season;
+            var first = episode.FirstEpisode;
+            var last = episode.LastEpisode;
             if (expected.Season is { } wantedSeason && season != wantedSeason)
             {
                 return $"This release is season {season}; the search was for season {wantedSeason}.";
@@ -372,10 +366,9 @@ public static partial class ReleaseTitleMatch
                 : null;
         }
 
-        var pack = SeasonPack().Match(rest);
-        if (pack.Success)
+        if (ReleaseNameReader.ReadSeasonPack(rest) is { } pack)
         {
-            var season = int.Parse(pack.Groups["season"].Value, CultureInfo.InvariantCulture);
+            var season = pack.Season;
             if (expected.Season is { } wantedSeason && season != wantedSeason)
             {
                 return $"This release is season {season}; the search was for season {wantedSeason}.";
@@ -386,9 +379,12 @@ public static partial class ReleaseTitleMatch
                 : null;
         }
 
-        if (expected.AirDate is { } airDate && rest.Contains(airDate.ToString("yyyy", CultureInfo.InvariantCulture), StringComparison.Ordinal))
+        // A daily name carries its whole date, and only that date is the episode asked for.
+        if (expected.AirDate is { } airDate && ReleaseNameReader.ReadDailyDate(rest) is { } daily)
         {
-            return null;
+            return daily.Date == airDate
+                ? null
+                : $"This release is dated {daily.Date:yyyy-MM-dd}; the search was for {airDate:yyyy-MM-dd}.";
         }
 
         if (expected.AbsoluteNumber is { } absolute && Absolute().Match(rest) is { Success: true } numbered)
@@ -405,7 +401,7 @@ public static partial class ReleaseTitleMatch
     }
 
     // Where a title ends in a release name.
-    [GeneratedRegex(@"(?<![0-9])(19|20)\d{2}(?![0-9])|[\(\[]|\bS\d{1,2}(E\d{1,3})?\b|\b\d{1,2}x\d{2,3}\b|\b(season|series|complete|temporada|saison)\b|\s-\s\d{1,4}\b|(?<![a-z0-9])(480|576|720|1080|2160)[pi]\b|\b(4k|uhd|bluray|blu-ray|bdrip|brrip|bd|web|web-?dl|webrip|hdtv|hdrip|dvdrip|dvd|remux|x264|x265|h\.?264|h\.?265|hevc|xvid|proper|repack|remastered|extended|unrated|internal|multi|dual)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"" + ReleaseNameReader.YearToken + @"|[\(\[]|" + ReleaseNameReader.StartsToken + @"(?:S\d{1,2}(?:[ ._-]?E\d{1,3})*|\d{1,2}x\d{2,3}|season|series|complete|temporada|saison)" + ReleaseNameReader.EndsToken + @"|\s-\s\d{1,4}\b|" + ReleaseNameReader.StartsToken + @"(?:(?:480|576|720|1080|2160)[pi]|4k|uhd|bluray|blu-ray|bdrip|brrip|bd|web|web-?dl|webrip|hdtv|hdrip|dvdrip|dvd|remux|x264|x265|h\.?264|h\.?265|hevc|xvid|proper|repack|remastered|extended|unrated|internal|multi|dual)" + ReleaseNameReader.EndsToken, RegexOptions.IgnoreCase)]
     private static partial Regex Boundary();
 
     [GeneratedRegex(@"^\s*(?:(?:\[[^\]]*\]|【[^】]*】)\s*)+")]
@@ -417,22 +413,8 @@ public static partial class ReleaseTitleMatch
     [GeneratedRegex(@"\s+a\.?k\.?a\.?\s+", RegexOptions.IgnoreCase)]
     private static partial Regex AkaSplit();
 
-    [GeneratedRegex(@"(?<![0-9])(19|20)\d{2}(?![0-9])")]
-    private static partial Regex Year();
-
-    // A dash stuck to a separator is one too ("house.on.-haunted"); a hyphen
-    // inside a word ("Spider-Man") is not.
-    [GeneratedRegex(@"^(?:19|20)\d{2}[ ._-]\d{2}[ ._-]\d{2}")]
-    private static partial Regex DateTail();
-
     [GeneratedRegex(@"[._\s]+(?:-[._\s]*)?")]
     private static partial Regex TitleSeparators();
-
-    [GeneratedRegex(@"\bS(?<season>\d{1,2})[ ._-]?E(?<episode>\d{1,3})(?:-?E(?<last>\d{1,3})|-(?<last>\d{1,3}))?\b|\b(?<season>\d{1,2})x(?<episode>\d{2,3})\b", RegexOptions.IgnoreCase)]
-    private static partial Regex SeasonEpisode();
-
-    [GeneratedRegex(@"\bS(?<season>\d{1,2})\b|\b(?:season|series|saison|temporada)[ ._-]?(?<season>\d{1,2})\b", RegexOptions.IgnoreCase)]
-    private static partial Regex SeasonPack();
 
     [GeneratedRegex(@"(?:\s-\s|\bE|#)(?<number>\d{1,4})\b", RegexOptions.IgnoreCase)]
     private static partial Regex Absolute();

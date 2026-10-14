@@ -195,7 +195,7 @@ public sealed class PathMappingAndNamingProperties
                 return readTitle == title && readYear == item.year;
             }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT: the year 2100 is a year to one parser and not to another. ReleaseNameParser.InferYear accepts 1900 to 2100, while ReleaseTitleMatch.ParseTitleAndYear and FeedReleaseNames only know 19xx and 20xx, so a folder named \"Title (2100)\" reads back with no year. Harmless today; owner to decide.")]
+    [Fact]
     public void A_title_rendered_with_the_year_2100_reads_back_with_that_year_shrunk_case()
         => Assert.Equal(2100, ReleaseTitleMatch.ParseTitleAndYear(NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "House", 2100)).Year);
 
