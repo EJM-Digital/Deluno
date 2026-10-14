@@ -1287,11 +1287,12 @@ public static class MoviesEndpointRouteBuilderExtensions
                         case "search":
                             var job = await jobScheduler.EnqueueAsync(
                                 new EnqueueJobRequest(
-                                    JobType: "movies.search.manual",
+                                    JobType: TitleSearchJobs.Movie,
                                     Source: "bulk",
-                                    PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear }),
+                                    PayloadJson: TitleSearchJobs.Payload(movie.Id, movie.Title, null, TitleSearchJobs.FromBulkEditor),
                                     RelatedEntityType: "movie",
-                                    RelatedEntityId: movie.Id),
+                                    RelatedEntityId: movie.Id,
+                                    DedupeKey: TitleSearchJobs.DedupeKey(MediaKind.Movie, movie.Id, null)),
                                 cancellationToken);
                             successCount++;
                             results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true, null,
@@ -2760,8 +2761,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
             IMediaStateRepository mediaStateRepository,
-            ILibrariesRepository platformSettingsRepository,
-            IJobQueueRepository jobQueueRepository,
+            IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2774,8 +2774,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 MediaKind.Movie,
                 request.MovieIds,
                 mediaStateRepository,
-                platformSettingsRepository,
-                jobQueueRepository,
+                jobScheduler,
                 cancellationToken);
 
             if (result.ValidationErrors is not null)

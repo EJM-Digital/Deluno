@@ -86,6 +86,8 @@ public static class ActivityEventLabels
             ["series.search.season"] = "Searched for a season",
             ["movie.search.manual"] = "Searched for a film by hand",
             ["series.search.manual"] = "Searched for a show by hand",
+            ["movie.search.bulk"] = "Searched for a film from a bulk search",
+            ["series.search.bulk"] = "Searched for a show from a bulk search",
             ["rss.sync"] = "Checked indexer feeds for new releases",
             ["acquisition.override"] = "Search rules overridden by hand",
 
