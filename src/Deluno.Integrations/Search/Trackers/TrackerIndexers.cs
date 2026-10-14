@@ -211,16 +211,45 @@ public static class TorznabFeed
 {
     private static readonly XNamespace Torznab = "http://torznab.com/schemas/2015/feed";
 
+    /// <summary>
+    /// Text XML 1.0 can hold: a character it cannot (a stray backspace or other control
+    /// character from scraped HTML, a lone surrogate) is removed, so one bad row never
+    /// throws and loses the tracker's whole page.
+    /// </summary>
+    internal static string Clean(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder(text.Length);
+        for (var index = 0; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (char.IsHighSurrogate(character) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1]))
+            {
+                builder.Append(character).Append(text[++index]);
+            }
+            else if (!char.IsSurrogate(character) && System.Xml.XmlConvert.IsXmlChar(character))
+            {
+                builder.Append(character);
+            }
+        }
+
+        return builder.ToString();
+    }
+
     public static XDocument Write(IEnumerable<TrackerRelease> releases)
     {
         var channel = new XElement("channel", new XElement("title", "Deluno tracker search"));
         foreach (var release in releases)
         {
-            var link = release.Link!;
+            var link = Clean(release.Link);
             var item = new XElement(
                 "item",
-                new XElement("title", release.Title),
-                new XElement("guid", release.DetailsUrl ?? link),
+                new XElement("title", Clean(release.Title)),
+                new XElement("guid", release.DetailsUrl is null ? link : Clean(release.DetailsUrl)),
                 new XElement("link", link),
                 new XElement("enclosure",
                     new XAttribute("url", link),
@@ -229,7 +258,7 @@ public static class TorznabFeed
 
             if (release.DetailsUrl is not null)
             {
-                item.Add(new XElement("comments", release.DetailsUrl));
+                item.Add(new XElement("comments", Clean(release.DetailsUrl)));
             }
 
             if (release.PublishDate is { } published)
@@ -244,7 +273,7 @@ public static class TorznabFeed
 
             void Attr(string name, object? value)
             {
-                if (value is not null && Convert.ToString(value, CultureInfo.InvariantCulture) is { Length: > 0 } text)
+                if (value is not null && Clean(Convert.ToString(value, CultureInfo.InvariantCulture)) is { Length: > 0 } text)
                 {
                     item.Add(new XElement(Torznab + "attr", new XAttribute("name", name), new XAttribute("value", text)));
                 }

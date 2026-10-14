@@ -5592,7 +5592,8 @@ public sealed partial class ImportPipelineService(
                 request.Network,
                 decision,
                 settings.ReplaceIllegalCharacters,
-                settings.ColonReplacementMode);
+                settings.ColonReplacementMode,
+                reserveBytes: FileNameSanitizer.ByteCount(extension));
             return new ResolvedDestinationFileName($"{movieName}{extension}", null);
         }
 
@@ -5703,7 +5704,7 @@ public sealed partial class ImportPipelineService(
             .Replace("{Episode Title}", episodeTitle, StringComparison.OrdinalIgnoreCase)
             .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
         return new ResolvedDestinationFileName(
-            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: episodeDecision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode)}{extension}",
+            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: episodeDecision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode, reserveBytes: FileNameSanitizer.ByteCount(extension))}{extension}",
             null,
             seasonNumber);
     }

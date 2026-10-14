@@ -206,35 +206,109 @@ public sealed class PathMappingAndNamingProperties
             && NamingTemplateRenderer.RenderSegment("{" + text + "!}", "Title", 2001) == "{" + text + "!}")
             .QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT: a long title makes a folder or file name longer than the 255 characters every common file system allows. The renderer applies no length limit, so a 300-character title is written as a 300-character name and the import fails at the disk. Owner to decide.")]
-    public void A_rendered_segment_is_never_longer_than_255_characters()
-        => Prop.ForAll(Gen.Choose(1, 600).ToArbitrary(), length =>
-            NamingTemplateRenderer.RenderSegment("{Title} ({Year})", new string('a', length), 2001).Length <= 255)
-            .QuickCheckThrowOnFailure();
+    private static int Bytes(string text) => System.Text.Encoding.UTF8.GetByteCount(text);
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_rendered_segment_is_never_longer_than_255_characters.")]
+    /// <summary>Plain letters, accented letters, CJK and emoji (a surrogate pair), so a cut can land inside a character.</summary>
+    private static Gen<string> LongText()
+        => from length in Gen.Choose(1, 400)
+           from parts in Gen.Elements("a", "b", "c", "X", " ", "é", "ü", "中", "文", "🎬").ArrayOf(length)
+           select string.Concat(parts);
+
+    [Fact]
+    public void A_rendered_segment_is_never_longer_than_255_bytes_and_keeps_its_year()
+        => Prop.ForAll(LongText().ToArbitrary(), text =>
+        {
+            var rendered = NamingTemplateRenderer.RenderSegment("{Title} ({Year}) {Quality}", text, 2001, decision: new NamingDecision(Quality: "WEBDL-1080p"));
+            return Bytes(rendered) <= 255 && rendered.EndsWith("(2001) WEBDL-1080p", StringComparison.Ordinal) && !rendered.Contains('�');
+        }).QuickCheckThrowOnFailure();
+
+    [Fact]
     public void A_300_character_title_is_cut_to_a_name_the_disk_accepts_shrunk_case()
-        => Assert.True(NamingTemplateRenderer.RenderSegment("{Title} ({Year})", new string('a', 300), 2001).Length <= 255);
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment("{Title} ({Year})", new string('a', 300), 2001);
+        Assert.True(Bytes(rendered) <= 255);
+        Assert.EndsWith(" (2001)", rendered);
+    }
 
-    [Fact(Skip = "DEFECT: a title ending in a dot (\"Mr.\") is written as a folder name ending in a dot with the year after it, which is fine, but a template with only {Title} writes \"Mr.\" and Windows silently drops the dot, so the name Deluno records is not the name on disk. Owner to decide.")]
+    [Fact]
+    public void A_title_of_two_byte_characters_is_cut_by_bytes_not_by_characters()
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment("{Title} ({Year})", new string('é', 200), 2001);
+        Assert.True(Bytes(rendered) <= 255);
+        Assert.EndsWith(" (2001)", rendered);
+    }
+
+    [Fact]
+    public void A_cut_never_splits_a_surrogate_pair()
+    {
+        for (var pairs = 40; pairs < 80; pairs++)
+        {
+            var rendered = NamingTemplateRenderer.RenderSegment("a{Title}", string.Concat(Enumerable.Repeat("🎬", pairs)), 2001);
+            Assert.True(Bytes(rendered) <= 255);
+            Assert.DoesNotContain('�', rendered);
+            Assert.Equal(0, rendered.Count(char.IsSurrogate) % 2);
+        }
+    }
+
+    [Fact]
+    public void A_file_name_keeps_its_extension_when_the_title_is_cut()
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment("{Title} ({Year})", new string('a', 400), 2001, reserveBytes: Bytes(".mkv"));
+        Assert.True(Bytes(rendered + ".mkv") <= 255);
+        Assert.EndsWith(" (2001)", rendered);
+    }
+
+    [Fact]
+    public void A_template_without_the_title_token_is_still_cut_and_keeps_a_trailing_year()
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment(new string('b', 300) + " ({Year})", null, 2001);
+        Assert.True(Bytes(rendered) <= 255);
+        Assert.EndsWith(" (2001)", rendered);
+    }
+
+    [Fact]
+    public void A_rendered_folder_is_cut_per_segment()
+    {
+        var folder = NamingTemplateRenderer.RenderFolder("{Genre}\\{Title} ({Year})", new string('a', 400), 2001, genre: new string('g', 400));
+        var segments = SegmentsOf(folder).ToArray();
+        Assert.Equal(2, segments.Length);
+        Assert.All(segments, segment => Assert.True(Bytes(segment) <= 255));
+        Assert.EndsWith(" (2001)", segments[1]);
+    }
+
+    [Fact]
     public void A_rendered_segment_never_ends_in_a_dot_or_a_space()
         => Prop.ForAll(Segment().ToArbitrary(), word =>
         {
-            var rendered = NamingTemplateRenderer.RenderSegment("{Title}", word + ".", 2001);
-            return !rendered.EndsWith('.') && !rendered.EndsWith(' ');
+            var rendered = NamingTemplateRenderer.RenderSegment("{Title}", word + ". .  ", 2001);
+            return rendered.Length > 0 && !rendered.EndsWith('.') && !rendered.EndsWith(' ');
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_rendered_segment_never_ends_in_a_dot_or_a_space.")]
+    [Fact]
     public void A_title_ending_in_a_dot_is_not_rendered_ending_in_a_dot_shrunk_case()
-        => Assert.False(NamingTemplateRenderer.RenderSegment("{Title}", "Mr.", 2001).EndsWith('.'));
+    {
+        Assert.Equal("Mr", NamingTemplateRenderer.RenderSegment("{Title}", "Mr.", 2001));
+        Assert.Equal("Mr (2001)", NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "Mr.", 2001));
+        Assert.Equal("Mr", Path.GetFileName(NamingTemplateRenderer.RenderFolder("{Title}", "Mr.", 2001)));
+    }
 
-    [Fact(Skip = "DEFECT: a control character in a title (a line break from a pasted description) survives into the file name on Linux, where Path.GetInvalidFileNameChars is only NUL and slash. The sanitizer's own fixed list stops at the nine printable characters. Windows rejects it at the disk. Owner to decide.")]
+    [Fact]
+    public void A_name_made_only_of_dots_and_spaces_does_not_come_out_empty()
+        => Assert.Equal("Untitled", NamingTemplateRenderer.RenderFolder("{Title}", ". . .", 2001));
+
+    [Fact]
     public void A_rendered_segment_holds_no_control_character()
-        => Prop.ForAll(Gen.Choose(1, 31).ToArbitrary(), code =>
-            NamingTemplateRenderer.RenderSegment("{Title}", "A" + (char)code + "B", 2001).All(c => !char.IsControl(c)))
-            .QuickCheckThrowOnFailure();
+        => Prop.ForAll(Gen.Elements(Enumerable.Range(0, 32).Concat(Enumerable.Range(0x7f, 0x21)).ToArray()).ToArbitrary(), code =>
+        {
+            var rendered = NamingTemplateRenderer.RenderSegment("{Title}", "A" + (char)code + "B", 2001);
+            return rendered.All(c => !char.IsControl(c)) && rendered.Contains('A') && rendered.Contains('B');
+        }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_rendered_segment_holds_no_control_character.")]
+    [Fact]
     public void A_title_with_a_line_break_is_not_rendered_with_the_line_break_shrunk_case()
-        => Assert.DoesNotContain('\n', NamingTemplateRenderer.RenderSegment("{Title}", "A\nB", 2001));
+    {
+        Assert.DoesNotContain('\n', NamingTemplateRenderer.RenderSegment("{Title}", "A\nB", 2001));
+        Assert.DoesNotContain('\n', NamingTemplateRenderer.RenderSegment("{Title}", "A\nB", 2001, replaceIllegalCharacters: false));
+        Assert.DoesNotContain('\n', NamingTemplateRenderer.RenderFolder("{Title}", "A\r\nB", 2001));
+    }
 }

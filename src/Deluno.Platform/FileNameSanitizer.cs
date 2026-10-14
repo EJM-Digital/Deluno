@@ -94,6 +94,19 @@ public static class FileNameSanitizer
                 continue;
             }
 
+            // A control character (a line break from a pasted description, a stray
+            // backspace) is illegal on every platform. Linux's own invalid set is
+            // only NUL and '/', so the host list alone lets it through.
+            if (char.IsControl(character))
+            {
+                if (replaceIllegalCharacters)
+                {
+                    builder.Append(' ');
+                }
+
+                continue;
+            }
+
             var isIllegal = invalid.Contains(character) ||
                 character is '/' or '\\' or '<' or '>' or '"' or '|' or '?' or '*';
             if (!isIllegal)
@@ -106,6 +119,52 @@ public static class FileNameSanitizer
             }
         }
 
-        return builder.ToString().Trim();
+        return TrimEnd(builder.ToString().Trim());
+    }
+
+    /// <summary>The longest a single file or folder name may be, in UTF-8 bytes, on the common file systems.</summary>
+    public const int MaxNameBytes = 255;
+
+    /// <summary>
+    /// Windows drops a trailing dot or space, so the name Deluno records would
+    /// not be the name on disk. Both are removed here, on every platform.
+    /// </summary>
+    public static string TrimEnd(string value) => value.TrimEnd('.', ' ');
+
+    public static int ByteCount(string value) => System.Text.Encoding.UTF8.GetByteCount(value);
+
+    /// <summary>
+    /// Cuts <paramref name="value"/> to at most <paramref name="maxBytes"/> UTF-8
+    /// bytes at a character boundary (a surrogate pair is never split) and
+    /// removes any trailing dot or space the cut leaves.
+    /// </summary>
+    public static string LimitBytes(string value, int maxBytes)
+    {
+        if (maxBytes <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (ByteCount(value) <= maxBytes)
+        {
+            return value;
+        }
+
+        var bytes = 0;
+        var end = 0;
+        while (end < value.Length)
+        {
+            var width = char.IsHighSurrogate(value[end]) && end + 1 < value.Length && char.IsLowSurrogate(value[end + 1]) ? 2 : 1;
+            var size = System.Text.Encoding.UTF8.GetByteCount(value.AsSpan(end, width));
+            if (bytes + size > maxBytes)
+            {
+                break;
+            }
+
+            bytes += size;
+            end += width;
+        }
+
+        return TrimEnd(value[..end]);
     }
 }

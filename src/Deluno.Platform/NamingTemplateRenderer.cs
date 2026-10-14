@@ -79,16 +79,35 @@ public static partial class NamingTemplateRenderer
         bool replaceIllegalCharacters = true,
         string colonReplacementMode = ColonReplacementModes.SmartReplace)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters, colonReplacementMode);
-        var segments = resolved
-            .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(RemoveEmptyWrappers)
-            .Select(segment => SanitizeSegment(segment, replaceIllegalCharacters, colonReplacementMode))
+        string[] Build(int? titleMaxBytes)
+        {
+            var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters, colonReplacementMode, titleMaxBytes);
+            return resolved
+                .Split(['/', '\\'],StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(RemoveEmptyWrappers)
+                .Select(segment => SanitizeSegment(segment, replaceIllegalCharacters, colonReplacementMode))
+                .Where(segment => !string.IsNullOrWhiteSpace(segment))
+                .ToArray();
+        }
+
+        var segments = Build(null);
+        var overflow = segments.Length == 0 ? 0 : segments.Max(FileNameSanitizer.ByteCount) - FileNameSanitizer.MaxNameBytes;
+        if (overflow > 0)
+        {
+            // Shorten the title first, so the year and everything after it stay.
+            var titleBytes = FileNameSanitizer.ByteCount(SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode));
+            segments = Build(Math.Max(0, titleBytes - overflow));
+        }
+
+        segments = segments
+            .Select(segment => FitSegment(segment, FileNameSanitizer.MaxNameBytes))
             .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToArray();
 
         return segments.Length == 0
-            ? SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode) is { Length: > 0 } fallback ? fallback : "Untitled"
+            ? SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode) is { Length: > 0 } fallback
+                ? FitSegment(fallback, FileNameSanitizer.MaxNameBytes)
+                : "Untitled"
             : Path.Combine(segments);
     }
 
@@ -104,10 +123,46 @@ public static partial class NamingTemplateRenderer
         string? network = null,
         NamingDecision? decision = null,
         bool replaceIllegalCharacters = true,
-        string colonReplacementMode = ColonReplacementModes.SmartReplace)
+        string colonReplacementMode = ColonReplacementModes.SmartReplace,
+        int reserveBytes = 0)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters, colonReplacementMode);
-        return SanitizeSegment(RemoveEmptyWrappers(resolved), replaceIllegalCharacters, colonReplacementMode);
+        // reserveBytes: what the caller appends after the segment (a file extension),
+        // so the whole name stays within the limit and the extension is kept.
+        var limit = FileNameSanitizer.MaxNameBytes - Math.Max(0, reserveBytes);
+        string Build(int? titleMaxBytes)
+            => SanitizeSegment(
+                RemoveEmptyWrappers(ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters, colonReplacementMode, titleMaxBytes)),
+                replaceIllegalCharacters,
+                colonReplacementMode);
+
+        var rendered = Build(null);
+        var overflow = FileNameSanitizer.ByteCount(rendered) - limit;
+        if (overflow > 0)
+        {
+            // Shorten the title first, so the year and everything after it stay.
+            var titleBytes = FileNameSanitizer.ByteCount(SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode));
+            rendered = Build(Math.Max(0, titleBytes - overflow));
+        }
+
+        return FitSegment(rendered, limit);
+    }
+
+    /// <summary>
+    /// The last resort when no title was left to shorten: cut the name, keeping
+    /// a trailing year, and never split a character.
+    /// </summary>
+    private static string FitSegment(string segment, int maxBytes)
+    {
+        if (FileNameSanitizer.ByteCount(segment) <= maxBytes)
+        {
+            return segment;
+        }
+
+        var tail = TrailingYearPattern().Match(segment);
+        var tailText = tail.Success && FileNameSanitizer.ByteCount(tail.Value) < maxBytes ? tail.Value : string.Empty;
+        var head = segment[..(segment.Length - tailText.Length)];
+        var cut = FileNameSanitizer.LimitBytes(head, maxBytes - FileNameSanitizer.ByteCount(tailText));
+        return FileNameSanitizer.TrimEnd((cut + tailText).Trim());
     }
 
     private static string ReplaceTokens(
@@ -122,7 +177,8 @@ public static partial class NamingTemplateRenderer
         string? network,
         NamingDecision? decision,
         bool replaceIllegalCharacters = true,
-        string colonReplacementMode = ColonReplacementModes.SmartReplace)
+        string colonReplacementMode = ColonReplacementModes.SmartReplace,
+        int? titleMaxBytes = null)
     {
         decision ??= NamingDecision.None;
         var source = string.IsNullOrWhiteSpace(template) ? "{Title} ({Year})" : template;
@@ -132,7 +188,9 @@ public static partial class NamingTemplateRenderer
             "{release group}" => SanitizeSegment(decision.ReleaseGroup, replaceIllegalCharacters, colonReplacementMode),
             "{custom formats}" => SanitizeSegment(decision.CustomFormatText, replaceIllegalCharacters, colonReplacementMode),
             "{edition}" => SanitizeSegment(decision.EditionText, replaceIllegalCharacters, colonReplacementMode),
-            "{movie title}" or "{series title}" or "{title}" => SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode),
+            "{movie title}" or "{series title}" or "{title}" => titleMaxBytes is { } max
+                ? FileNameSanitizer.LimitBytes(SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode), max)
+                : SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode),
             "{release year}" or "{series year}" or "{year}" => year?.ToString() ?? "Unknown Year",
             "{imdb id}" => SanitizeSegment(imdbId, replaceIllegalCharacters, colonReplacementMode),
             "{tvdb id}" => SanitizeSegment(tvDbId, replaceIllegalCharacters, colonReplacementMode),
@@ -181,8 +239,11 @@ public static partial class NamingTemplateRenderer
         // A user-entered template must not escape the selected library root.
         // Separators have already been split, so these are the only traversal
         // segments that can remain.
-        return cleaned is "." or ".." ? string.Empty : cleaned;
+        return cleaned is "." or ".." ? string.Empty : FileNameSanitizer.TrimEnd(cleaned);
     }
+
+    [GeneratedRegex(@"\s*[\(\[]\s*(?:19|20|21)\d{2}\s*[\)\]]\s*$", RegexOptions.CultureInvariant)]
+    private static partial Regex TrailingYearPattern();
 
     [GeneratedRegex(@"\{[^{}]+\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TokenPattern();
