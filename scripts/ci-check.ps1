@@ -390,6 +390,16 @@ if ($trackedFiles.ExitCode -eq 0) {
     Write-Fail "No databases, keys, Python scripts or .env files tracked"
 }
 
+# Every tracked XML file parses: a comment holding "--" in tests/coverage.runsettings stopped every .NET test
+# project from starting in CI (Refs #1268).
+$xmlFiles = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-xml-files.ps1")
+if ($xmlFiles.ExitCode -eq 0) {
+    Write-Ok "Every tracked XML file (projects, props, runsettings) parses"
+} else {
+    if ($xmlFiles.Output) { Write-Host $xmlFiles.Output }
+    Write-Fail "Every tracked XML file (projects, props, runsettings) parses"
+}
+
 # The Windows icon (installer, tray, taskbar, Start menu) is built from the brand logo; it may never fall behind it
 # again (#1129: the installer kept the old logo for five months after the brand changed).
 $windowsIcon = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("scripts/check-windows-icon.mjs")

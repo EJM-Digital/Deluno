@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Coverage for every .NET test project (docs/testing/STRATEGY.md, issue 1268). Used by
-  `scripts/test-dotnet-serial.ps1 -Coverage`, which adds `--collect:"XPlat Code Coverage"`.
+  `scripts/test-dotnet-serial.ps1 -Coverage`, which adds the "XPlat Code Coverage" collector.
 
   What is measured is every Deluno production assembly. Test assemblies are left out here.
   Nothing else is excluded here: a source file leaves the report only through
