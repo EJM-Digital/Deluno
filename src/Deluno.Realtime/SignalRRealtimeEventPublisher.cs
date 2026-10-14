@@ -39,6 +39,8 @@ public sealed class SignalRRealtimeEventPublisher(
     private readonly Queue<RealtimeEnvelope> _ring = new();
     private long _seq;
 
+    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+
     public Task PublishHealthChangedAsync(
         string source,
         string status,
@@ -649,30 +651,34 @@ public sealed class SignalRRealtimeEventPublisher(
 
     public long CurrentSequence => Interlocked.Read(ref _seq);
 
-    public RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects)
+    public RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects, string? instanceId = null)
     {
         lock (_ringLock)
         {
-            if (lastSeq <= 0)
+            // A sequence from another run, or one ahead of anything this run has published, cannot be compared with
+            // this run's stream: the page must refetch (#1315).
+            if (lastSeq <= 0
+                || (instanceId is not null && !string.Equals(instanceId, InstanceId, StringComparison.Ordinal))
+                || lastSeq > Interlocked.Read(ref _seq))
             {
-                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, []);
+                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, [], InstanceId);
             }
 
-            if (lastSeq >= Interlocked.Read(ref _seq))
+            if (lastSeq == Interlocked.Read(ref _seq))
             {
-                return new RealtimeResumeResult(RealtimeResumeStatus.CaughtUp, []);
+                return new RealtimeResumeResult(RealtimeResumeStatus.CaughtUp, [], InstanceId);
             }
 
             var oldestBuffered = _ring.Count > 0 ? _ring.Peek().Seq : long.MaxValue;
             if (lastSeq < oldestBuffered - 1)
             {
-                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, []);
+                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, [], InstanceId);
             }
 
             var missed = _ring
                 .Where(envelope => envelope.Seq > lastSeq && subjects.Contains(envelope.Subject, StringComparer.Ordinal))
                 .ToArray();
-            return new RealtimeResumeResult(RealtimeResumeStatus.Replayed, missed);
+            return new RealtimeResumeResult(RealtimeResumeStatus.Replayed, missed, InstanceId);
         }
     }
 }

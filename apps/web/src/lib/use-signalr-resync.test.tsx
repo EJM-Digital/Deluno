@@ -15,7 +15,8 @@ const hub = vi.hoisted(() => ({
   deliver: null as null | ((payload: unknown) => void),
   resumeArgs: [] as unknown[][],
   answer: "ResyncRequired" as string,
-  envelopes: [] as unknown[]
+  envelopes: [] as unknown[],
+  instanceId: "run-a"
 }));
 
 vi.mock("@microsoft/signalr", () => {
@@ -33,7 +34,7 @@ vi.mock("@microsoft/signalr", () => {
       if (method === "Resume") {
         hub.resumes += 1;
         hub.resumeArgs.push(args);
-        return { status: hub.answer, envelopes: hub.envelopes };
+        return { status: hub.answer, envelopes: hub.envelopes, instanceId: hub.instanceId };
       }
       return undefined;
     }
@@ -62,6 +63,7 @@ beforeEach(() => {
   hub.resumeArgs = [];
   hub.answer = "ResyncRequired";
   hub.envelopes = [];
+  hub.instanceId = "run-a";
   forgetRealtimePosition();
 });
 
@@ -88,7 +90,7 @@ describe("resync (#1179)", () => {
 
   // #1191: a change made between the page's first read and its first join must reach the screen.
   it("on the first connect asks for what was published since the page's first read, and delivers it", async () => {
-    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "41" }) });
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "41", "X-Deluno-Event-Instance": "run-a" }) });
     noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "99" }) }); // a later read does not move it
     hub.answer = "Replayed";
     hub.envelopes = [{ seq: 42, name: "MovieChanged", subject: "dashboard", at: "", data: { id: "m1" } }];
@@ -101,6 +103,7 @@ describe("resync (#1179)", () => {
 
     await waitFor(() => expect(hub.resumes).toBe(1));
     expect(hub.resumeArgs[0][0]).toBe(41);
+    expect(hub.resumeArgs[0][2]).toBe("run-a");
     await waitFor(() => expect(seen).toHaveBeenCalledTimes(1));
     expect(resync).not.toHaveBeenCalled();
   });
@@ -115,5 +118,41 @@ describe("resync (#1179)", () => {
     }, { wrapper });
 
     await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+  });
+
+  // #1315: the sequence restarts at 0 on every server restart, so it travels with the run it came from.
+  it("sends the server run its sequence came from, and the hub's resync after a restart refetches", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "41", "X-Deluno-Event-Instance": "run-a" }) });
+    hub.answer = "Replayed";
+    const resync = vi.fn();
+    renderHook(() => {
+      useSignalRResync(resync);
+      useSignalREvent("DownloadProgress", "queue", () => {});
+    }, { wrapper });
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    expect(hub.resumeArgs[0][2]).toBe("run-a");
+
+    // Deluno restarted: the reconnect still names run-a, and the new run answers resync-required.
+    hub.answer = "ResyncRequired";
+    hub.instanceId = "run-b";
+    await act(async () => {
+      hub.state = "Reconnecting";
+      hub.onreconnecting?.();
+      hub.state = "Connected";
+      hub.onreconnected?.();
+    });
+    await waitFor(() => expect(hub.resumes).toBe(2));
+    expect(hub.resumeArgs[1][2]).toBe("run-a");
+    await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+
+    // The next reconnect names the new run.
+    await act(async () => {
+      hub.state = "Reconnecting";
+      hub.onreconnecting?.();
+      hub.state = "Connected";
+      hub.onreconnected?.();
+    });
+    await waitFor(() => expect(hub.resumes).toBe(3));
+    expect(hub.resumeArgs[2][2]).toBe("run-b");
   });
 });
