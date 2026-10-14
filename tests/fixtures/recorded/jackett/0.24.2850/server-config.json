@@ -1,0 +1,20 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "server-config",
+  "recordedAt": "2026-10-14T07:58:57Z",
+  "note": "Jackett's own configuration reply (the API key and any secret in it are removed). Installed from: Jackett.Binaries.Windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/server/config"
+      },
+      "reply": {
+        "status": 302,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}
