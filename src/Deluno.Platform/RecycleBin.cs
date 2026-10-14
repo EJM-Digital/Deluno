@@ -154,6 +154,18 @@ public interface IRecycleBinService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Moves one leftover file from a library's downloads folder to the bin
+    /// instead of deleting it (#1318). Null, and nothing touched, when the file
+    /// is not inside that downloads folder or is inside the library root: a
+    /// file in the root is a person's media and leaves only through
+    /// <see cref="StoreRemovedFileAsync"/>.
+    /// </summary>
+    Task<RecycleBinItem?> StoreDownloadFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Keeps a removed title's catalogue record with the items its files
     /// became, so a restore can bring the title back too (#1161).
     /// </summary>
@@ -361,6 +373,35 @@ public sealed class RecycleBinService(
         string existingPath,
         CancellationToken cancellationToken)
         => StoreFileAsync(library, originalPath, existingPath, owner: null, cancellationToken);
+
+    public async Task<RecycleBinItem?> StoreDownloadFileAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(library.DownloadsPath))
+        {
+            return null;
+        }
+
+        string full;
+        try
+        {
+            var root = Path.GetFullPath(library.RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var downloads = Path.GetFullPath(library.DownloadsPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            full = Path.GetFullPath(path);
+            if (IsInsideRoot(full, root) || !IsInsideRoot(full, downloads))
+            {
+                return null;
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        return await StoreFileAsync(library, full, full, owner: null, cancellationToken);
+    }
 
     public async Task<RecycleBinItem?> StoreRemovedFileAsync(
         Libraries.Contracts.LibraryItem library,
