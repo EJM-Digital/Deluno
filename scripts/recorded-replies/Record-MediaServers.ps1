@@ -137,10 +137,10 @@ function Invoke-RecordEmbyFamily($p, [string] $Kind) {
         $kh = if ($Kind -eq 'jellyfin') { @{ Authorization = "MediaBrowser Token=`"$key`"" } } else { @{ 'X-Emby-Token' = $key } }
         $bad = if ($Kind -eq 'jellyfin') { @{ Authorization = 'MediaBrowser Token="not-the-key"' } } else { @{ 'X-Emby-Token' = 'not-the-key' } }
         $c = New-RecordedClient -BaseUrl $base -DefaultHeaders @{ Accept = 'application/json' }
-        $get = { param($path) Send-Recorded -Client $c -Path "$($S.Prefix)$path" -Headers $kh }
-        $send = { param($method, $path, $json = $null) if ($null -ne $json) { Send-Recorded -Client $c -Method $method -Path "$($S.Prefix)$path" -Headers $kh -Json $json } else { Send-Recorded -Client $c -Method $method -Path "$($S.Prefix)$path" -Headers $kh } }
+        $get = { param($path) Send-Recorded -Client $c -Path "$($S.Prefix)$path" -Headers $kh }.GetNewClosure()
+        $send = { param($method, $path, $json = $null) if ($null -ne $json) { Send-Recorded -Client $c -Method $method -Path "$($S.Prefix)$path" -Headers $kh -Json $json } else { Send-Recorded -Client $c -Method $method -Path "$($S.Prefix)$path" -Headers $kh } }.GetNewClosure()
         $dl = Get-DownloadNote
-        $n = { param($what) "$what ($Kind $version, a library of one film and a two-episode series, the film being the suite's base video)." + $dl }
+        $n = { param($what) "$what ($Kind $version, a library of one film and a two-episode series, the film being the suite's base video)." + $dl }.GetNewClosure()
         $fields = 'ProviderIds,Path,DateCreated,ProductionYear,PremiereDate,Genres,People,Tags,TagItems,CommunityRating,CriticRating,MediaSources,SeriesId,SeasonId,ParentIndexNumber,IndexNumber'
 
         Save-State $Kind $version 'wizard' (& $n 'The first-run setup wizard, step by step, and the administrator''s sign-in (the login and its token are removed)') @(@($pub, $wiz.StateBefore) + $wiz.Wizard + @($login.Exchange, $mk, $keys))
@@ -273,7 +273,7 @@ function Invoke-RecordPlex($p) {
         $version = [string](Get-ReplyJson $identity).MediaContainer.version
         if (-not $version) { $version = $installed }
         $dl = Get-DownloadNote
-        $n = { param($what) "$what (Plex Media Server $version, UNCLAIMED: no account is made, so every call is local and carries no token)." + $dl }
+        $n = { param($what) "$what (Plex Media Server $version, UNCLAIMED: no account is made, so every call is local and carries no token)." + $dl }.GetNewClosure()
         Save-State plex $version 'identity' (& $n '/identity: the unauthenticated identity reply that carries the version and whether the server is claimed (ConnectionVersionParserTests)') @($identity)
         $root = Send-Recorded -Client $c -Path '/'
         if ($root.reply.status -ne 200) {
@@ -285,7 +285,7 @@ function Invoke-RecordPlex($p) {
         $mk = {
             param($name, $type, $agent, $scanner, $path)
             Send-Recorded -Client $c -Method POST -Path "/library/sections?name=$([Uri]::EscapeDataString($name))&type=$type&agent=$agent&scanner=$([Uri]::EscapeDataString($scanner))&language=en-US&location=$([Uri]::EscapeDataString($path))"
-        }
+        }.GetNewClosure()
         $empty = Send-Recorded -Client $c -Path '/library/sections'
         $mkM = & $mk 'Movies' 'movie' 'tv.plex.agents.movie' 'Plex Movie' $media.Movies
         $mkS = & $mk 'Shows' 'show' 'tv.plex.agents.series' 'Plex TV Series' $media.Shows

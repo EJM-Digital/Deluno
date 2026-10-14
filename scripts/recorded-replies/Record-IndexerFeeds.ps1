@@ -65,11 +65,11 @@ function Invoke-RecordJackett($p) {
         }
         if ($usable.Count -eq 0) { Add-Missing ('jackett: none of the public trackers (' + (($script:PublicMovieIndexers + $script:PublicTvIndexers | Select-Object -Unique) -join ', ') + ') passed its own test from the VM, so no search was recorded'); return }
 
-        $torznab = { param($id, $query) Send-Recorded -Client $c -Path "/api/v2.0/indexers/$id/results/torznab/api?apikey=$key&$query" }
+        $torznab = { param($id, $query) Send-Recorded -Client $c -Path "/api/v2.0/indexers/$id/results/torznab/api?apikey=$key&$query" }.GetNewClosure()
         $movieId = @($script:PublicMovieIndexers | Where-Object { $usable.ContainsKey($_) })[0]
         $tvId = @($script:PublicTvIndexers | Where-Object { $usable.ContainsKey($_) })[0]
         $firstId = if ($movieId) { $movieId } else { $tvId }
-        $note = { param($what, $id) "$what, from Jackett's Torznab endpoint for the public tracker '$id' (no account). Jackett $version." }
+        $note = { param($what, $id) "$what, from Jackett's Torznab endpoint for the public tracker '$id' (no account). Jackett $version." }.GetNewClosure()
 
         Save-State jackett $version 'caps' (& $note 'The capabilities (t=caps): server title, limits, search modes with their parameters, and the category tree' $firstId) @((& $torznab $firstId 't=caps'))
         if ($movieId -and $tvId -and $tvId -ne $movieId) { Save-State jackett $version 'caps-tv' (& $note 'The capabilities of a second tracker' $tvId) @((& $torznab $tvId 't=caps')) }
@@ -141,7 +141,7 @@ function Invoke-RecordNzbhydra($p) {
         $c = New-RecordedClient -BaseUrl "http://127.0.0.1:$port" -KeepHeaders @('content-type')
         $version = $asset.Tag.TrimStart('v')
         $dl = Get-DownloadNote
-        $note = { param($what) "${what}: NZBHydra2 $version's own Newznab API with no indexer configured (every Usenet indexer needs an account)." + $dl }
+        $note = { param($what) "${what}: NZBHydra2 $version's own Newznab API with no indexer configured (every Usenet indexer needs an account)." + $dl }.GetNewClosure()
         Save-State nzbhydra2 $version 'caps' (& $note 't=caps') @((Send-Recorded -Client $c -Path "/api?t=caps&apikey=$key"))
         Save-State nzbhydra2 $version 'caps-wrong-api-key' (& $note 't=caps with a wrong API key') @((Send-Recorded -Client $c -Path '/api?t=caps&apikey=not-the-key'))
         Save-State nzbhydra2 $version 'caps-no-api-key' (& $note 't=caps with no API key') @((Send-Recorded -Client $c -Path '/api?t=caps'))

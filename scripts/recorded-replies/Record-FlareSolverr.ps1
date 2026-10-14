@@ -30,8 +30,8 @@ function Invoke-RecordFlareSolverr($p) {
         $version = [string](Get-ReplyJson $index).version
         if (-not $version) { $version = $asset.Tag.TrimStart('v') }
         $dl = Get-DownloadNote
-        $n = { param($what) "$what (FlareSolverr $version for Windows, its own Chrome, public pages only)." + $dl }
-        $v1 = { param($body) Send-Recorded -Client $c -Method POST -Path '/v1' -Json $body }
+        $n = { param($what) "$what (FlareSolverr $version for Windows, its own Chrome, public pages only)." + $dl }.GetNewClosure()
+        $v1 = { param($body) Send-Recorded -Client $c -Method POST -Path '/v1' -Json $body }.GetNewClosure()
         $session = 'recorder-' + (New-VmSecret 3)
 
         Save-State flaresolverr $version 'index' (& $n 'GET /: the page that says FlareSolverr is ready, with its version and the browser''s user agent') @($index)
