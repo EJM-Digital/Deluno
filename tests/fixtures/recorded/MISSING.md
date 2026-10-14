@@ -140,3 +140,7 @@ Each line is a register row group that cannot be proven by a recording-replay te
 - jackett / nzbhydra2 search replies through a running Deluno host: a search of a movie and of an episode with the release the test then grabs, and a download link that answers dead. Rows: search against a real indexer; the RSS feed watch; a dead link ends up blocklisted.
 - a download client's reply to a grab of a duplicate and of a dead link per client, taken through the whole grab service: SABnzbd's duplicate-add (see the SABnzbd line above) is the one still missing. Row: Force against a real download client, the same release is accepted again.
 - rTorrent and uTorrent removal replies (see the allow-list entries): the five-kinds row for queue removal names five clients and these two are not recorded.
+
+## Needed by the route proofs (coverage register, area api)
+
+- sabnzbd whole-client resume: `GET /api?mode=resume&output=json` (what `POST /api/download-clients/{clientId}/resume` sends) with SABnzbd paused as a whole (queue.paused true before, false after). Only the per-job `mode=queue&name=resume` is recorded.
