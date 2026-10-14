@@ -166,6 +166,16 @@ public interface IRecycleBinService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same for a whole folder inside a library's downloads folder (a finished
+    /// download Deluno no longer needs). A folder on another disk than the bin
+    /// cannot be moved and is left where it is: null, nothing touched.
+    /// </summary>
+    Task<RecycleBinItem?> StoreDownloadFolderAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Keeps a removed title's catalogue record with the items its files
     /// became, so a restore can bring the title back too (#1161).
     /// </summary>
@@ -379,6 +389,72 @@ public sealed class RecycleBinService(
         string path,
         CancellationToken cancellationToken)
     {
+        var full = DownloadPathOrNull(library, path);
+        return full is null ? null : await StoreFileAsync(library, full, full, owner: null, cancellationToken);
+    }
+
+    public async Task<RecycleBinItem?> StoreDownloadFolderAsync(
+        Libraries.Contracts.LibraryItem library,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var full = DownloadPathOrNull(library, path);
+        if (full is null)
+        {
+            return null;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!Directory.Exists(full))
+            {
+                return null;
+            }
+
+            var state = await ReadStateAsync(cancellationToken);
+            var id = Guid.CreateVersion7().ToString("N");
+            var itemRoot = Path.Combine(HoldingRoot(library.RootPath!), id);
+            var destination = Path.Combine(itemRoot, Path.GetFileName(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            try
+            {
+                Directory.CreateDirectory(itemRoot);
+                var sizeBytes = CalculateSize(full, isDirectory: true);
+                Directory.Move(full, destination);
+                var now = timeProvider.GetUtcNow();
+                var item = new RecycleBinItem(
+                    Id: id,
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    OriginalPath: full,
+                    RecyclePath: destination,
+                    IsDirectory: true,
+                    SizeBytes: sizeBytes,
+                    CreatedUtc: now,
+                    ExpiresUtc: now.AddDays(state.Settings.RetentionDays),
+                    FileOwner: null);
+                state.Items.Add(item);
+                await EnforceRetentionUnsafeAsync(state, cancellationToken);
+                await WriteStateAsync(state, cancellationToken);
+                return item;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                TryDeleteEmptyDirectory(itemRoot);
+                logger.LogWarning(exception, "Could not move the download folder {Path} to the recycle bin.", full);
+                return null;
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>The full path when it is inside the library's downloads folder and not inside its root, else null.</summary>
+    private static string? DownloadPathOrNull(Libraries.Contracts.LibraryItem library, string path)
+    {
         if (string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(library.DownloadsPath))
         {
             return null;
@@ -400,7 +476,7 @@ public sealed class RecycleBinService(
             return null;
         }
 
-        return await StoreFileAsync(library, full, full, owner: null, cancellationToken);
+        return full;
     }
 
     public async Task<RecycleBinItem?> StoreRemovedFileAsync(
