@@ -29,7 +29,7 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
         Assert.True(File.Exists(world.Episode), "the episode that did match is not a leftover");
         Assert.True(File.Exists(world.OtherPack), "another download's file is not touched");
         var activity = await app.Client.GetStringAsync("/api/activity?take=100");
-        Assert.Contains("Deleted 2 leftover file(s) from a season pack", activity);
+        Assert.Contains("Moved 2 leftover file(s) to the recycle bin from a season pack", activity);
         Assert.Contains(Path.GetFileName(world.Sample), activity);
         Assert.Contains(Path.GetFileName(world.Extra), activity);
     }
@@ -80,13 +80,13 @@ public sealed class SeasonPackLeftoversOnRealFilesTests
     }
 
     /// <summary>
-    /// DEFECT, found by this test and not fixed: <c>/api/filesystem/import/season-pack/leftovers/delete</c> trusts every library's
+    /// Was a defect (#1318), now fixed: <c>/api/filesystem/import/season-pack/leftovers/delete</c> trusts every library's
     /// download folder as safe to delete from, and nothing stops a download folder from holding another library's root. Library
     /// creation accepts it (200), and the leftovers route then deletes a film straight out of the other library: the answer was
     /// <c>{"deleted":1,"refused":[]}</c> and the file was gone from disk, not in the recycle bin. The orphan-folder remover refuses
     /// anything inside a library root; this route does not.
     /// </summary>
-    [Fact(Skip = "DEFECT: the season-pack leftovers route deletes a film inside another library's root when a library's download folder contains that root (answer deleted:1, file gone, not in the recycle bin). Needs the same inside-a-library refusal OrphanedDownloadService.RemoveAsync has.")]
+    [Fact]
     public async Task A_download_folder_that_holds_a_library_cannot_be_used_to_delete_that_librarys_media()
     {
         await using var app = await ApplicationTestHost.StartAsync();
