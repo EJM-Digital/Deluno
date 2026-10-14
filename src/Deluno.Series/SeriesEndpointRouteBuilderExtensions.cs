@@ -2810,6 +2810,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             ISeriesCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
             [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
@@ -2849,19 +2851,196 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(refErrors);
             }
 
-            var count = await repository.ReassignLibraryAsync(
-                request.SeriesIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+            // "Move the folder" is opt in, exactly as for films (#1327). Left off, the record is reassigned and
+            // nothing on disk changes.
+            if (!request.MoveFiles)
+            {
+                var reassignedOnly = await repository.ReassignLibraryAsync(
+                    request.SeriesIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+
+                if (reassignedOnly > 0)
+                {
+                    foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                        await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+
+                    // #1024: a rule can depend on the library or its folder.
+                    await autoTagging.ApplyEditedAsync(MediaKind.Series, request.SeriesIds, cancellationToken);
+                }
+
+                return Results.Ok(new { reassigned = reassignedOnly, filesMoved = 0, moveFailures = Array.Empty<string>() });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var toLibrary = libraries.FirstOrDefault(item => item.Id == request.ToLibraryId);
+            var fromLibrary = libraries.FirstOrDefault(item => item.Id == request.FromLibraryId);
+            if (toLibrary is null || fromLibrary is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Both libraries must exist to move folders between them."]
+                });
+            }
+
+            var failedSeriesIds = new HashSet<string>(StringComparer.Ordinal);
+            var moveFailureTitles = new List<string>();
+            var moveFailureReasons = new List<string>();
+            var moved = new List<(string SeriesId, string Title, string Source, string Destination, (string EpisodeId, string Previous, string New)[] Files)>();
+            var fromPrefix = fromLibrary.RootPath.TrimEnd('/', '\\').Replace('\\', '/') + "/";
+            foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.Ordinal))
+            {
+                var seriesItem = await repository.GetByIdAsync(seriesId, cancellationToken);
+                var episodeFiles = await repository.ListEpisodeFilePathsAsync(seriesId, cancellationToken);
+                if (seriesItem is null || episodeFiles.Count == 0)
+                {
+                    // Nothing on disk to move; the library change below still applies.
+                    continue;
+                }
+
+                void Fail(string reason)
+                {
+                    failedSeriesIds.Add(seriesId);
+                    moveFailureTitles.Add(seriesItem.Title);
+                    moveFailureReasons.Add($"{seriesItem.Title}: {reason}");
+                }
+
+                // Only the show's own folder ever moves; the shared guard decides, now, against the current rows.
+                var target = await ResolveOwnFolderAsync(repository, librariesRepository, seriesId, episodeFiles, cancellationToken);
+                if (!target.IsSafe)
+                {
+                    Fail(target.Message);
+                    continue;
+                }
+
+                var plan = SeriesFolderRelocationPlanner.Plan(
+                    episodeFiles.Select(file => file.FilePath).ToArray(),
+                    Path.GetFileName(target.Folder!.TrimEnd('/', '\\')),
+                    target.Folder);
+                if (plan is null)
+                {
+                    Fail("its episode files do not share a folder Deluno can move.");
+                    continue;
+                }
+
+                if (!Deluno.Platform.TitleFolderNeighbours.IsUnder(plan.SourceDirectory + "/", fromPrefix))
+                {
+                    Fail($"its folder is not inside {fromLibrary.Name}, so nothing was moved.");
+                    continue;
+                }
+
+                var destination = Path.Combine(toLibrary.RootPath, Path.GetFileName(plan.SourceDirectory));
+                var fullSource = Path.GetFullPath(plan.SourceDirectory);
+                var fullDestination = Path.GetFullPath(destination);
+                if (string.Equals(fullDestination, fullSource, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Both libraries share the folder's place; the record changes and nothing moves.
+                    continue;
+                }
+
+                if (Directory.Exists(destination) || File.Exists(destination))
+                {
+                    Fail($"a folder with that name already exists in {toLibrary.Name}, so nothing was moved.");
+                    continue;
+                }
+
+                if (Deluno.Platform.TitleFolderNeighbours.IsUnder(
+                        fullDestination + "/",
+                        fullSource.Replace('\\', '/').TrimEnd('/') + "/"))
+                {
+                    Fail($"{toLibrary.Name} sits inside the show's own folder, so nothing was moved.");
+                    continue;
+                }
+
+                try
+                {
+                    var parent = Path.GetDirectoryName(destination);
+                    if (parent is { Length: > 0 })
+                    {
+                        Directory.CreateDirectory(parent);
+                    }
+
+                    Directory.Move(plan.SourceDirectory, destination);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    failedSeriesIds.Add(seriesId);
+                    moveFailureTitles.Add(seriesItem.Title);
+                    moveFailureReasons.Add(FolderMoveRecovery.DescribeDiskFailure(seriesItem.Title, plan.SourceDirectory, destination, exception));
+                    continue;
+                }
+
+                moved.Add((seriesId, seriesItem.Title, plan.SourceDirectory, destination,
+                    episodeFiles
+                        .Select(file => (file.EpisodeId, file.FilePath, Path.Combine(destination, Path.GetRelativePath(plan.SourceDirectory, file.FilePath))))
+                        .ToArray()));
+            }
+
+            // A show whose move failed keeps its record where it was: its folder did not move.
+            var idsToReassign = request.SeriesIds.Where(id => !failedSeriesIds.Contains(id)).ToArray();
+            var count = 0;
+            if (idsToReassign.Length > 0)
+            {
+                try
+                {
+                    count = await repository.ReassignLibraryAsync(
+                        idsToReassign,
+                        request.FromLibraryId,
+                        request.ToLibraryId,
+                        moved.Where(item => idsToReassign.Contains(item.SeriesId)).SelectMany(item => item.Files).ToArray(),
+                        cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // One transaction: no record changed. Every folder that moved goes back, or is named.
+                    var reasons = new List<string>();
+                    foreach (var item in moved.Where(item => idsToReassign.Contains(item.SeriesId)))
+                    {
+                        var putBack = FolderMoveRecovery.TryPutBack(item.Source, item.Destination);
+                        reasons.Add(FolderMoveRecovery.Describe(
+                            item.Title, item.Source, item.Destination, putBack, exception.Message,
+                            $"run Rescan folder on {toLibrary.Name}"));
+                    }
+
+                    var summary = $"Deluno could not move the records of {idsToReassign.Length} show{(idsToReassign.Length == 1 ? "" : "s")} to {toLibrary.Name} ({exception.Message}), so they stayed in {fromLibrary.Name}."
+                        + (reasons.Count == 0 ? "" : $" {string.Join(" ", reasons)}");
+                    await activityFeedRepository.RecordActivityAsync(
+                        "library.series.move-records-failed",
+                        summary,
+                        JsonSerializer.Serialize(new { seriesIds = idsToReassign, reasons }),
+                        null,
+                        "library",
+                        request.ToLibraryId,
+                        cancellationToken);
+                    return Results.Ok(new
+                    {
+                        reassigned = 0,
+                        filesMoved = 0,
+                        moveFailures = moved.Select(item => item.Title).Concat(moveFailureTitles).ToArray(),
+                        moveFailureReasons = moveFailureReasons.Concat(new[] { summary }).ToArray()
+                    });
+                }
+            }
 
             if (count > 0)
             {
-                foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                foreach (var seriesId in idsToReassign.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
 
                 // #1024: a rule can depend on the library or its folder.
-                await autoTagging.ApplyEditedAsync(MediaKind.Series, request.SeriesIds, cancellationToken);
+                await autoTagging.ApplyEditedAsync(MediaKind.Series, idsToReassign, cancellationToken);
             }
 
-            return Results.Ok(new { reassigned = count });
+            await activityFeedRepository.RecordActivityAsync(
+                "library.series.reassigned",
+                moveFailureTitles.Count == 0
+                    ? $"{count} show{(count == 1 ? "" : "s")} moved from {fromLibrary.Name} to {toLibrary.Name}."
+                    : $"{count} show{(count == 1 ? "" : "s")} moved to {toLibrary.Name}; {moveFailureTitles.Count} folder{(moveFailureTitles.Count == 1 ? "" : "s")} could not be moved and stayed in {fromLibrary.Name}.",
+                JsonSerializer.Serialize(new { foldersMoved = moved.Count, moveFailureTitles, moveFailureReasons }),
+                null,
+                "library",
+                request.ToLibraryId,
+                cancellationToken);
+
+            return Results.Ok(new { reassigned = count, filesMoved = moved.Count, moveFailures = moveFailureTitles, moveFailureReasons });
         });
 
         series.MapPost("/bulk/tags", async (
@@ -4316,7 +4495,8 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record BulkReassignLibraryRequest(
         IReadOnlyList<string>? SeriesIds,
         string? FromLibraryId,
-        string? ToLibraryId);
+        string? ToLibraryId,
+        bool MoveFiles = false);
 
     private sealed record BulkTagsRequest(
         IReadOnlyList<string>? SeriesIds,

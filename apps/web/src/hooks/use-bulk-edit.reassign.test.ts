@@ -122,6 +122,30 @@ describe("useBulkEdit bulk reassign-library move-files (#787)", () => {
     );
   });
 
+  it("offers the same choice for shows and posts it to the series route", async () => {
+    const { result } = renderHook(() => {
+      const [items, setItems] = useState<MediaItem[]>([makeItem("s1", { libraryId: "lib-a", type: "show" })]);
+      const bulk = useBulkEdit({ libraryItems: items, setLibraryItems: setItems, variant: "shows" });
+      return { items, bulk };
+    });
+
+    act(() => { result.current.bulk.setSelectedIds(["s1"]); });
+    act(() => { result.current.bulk.openBulkTools("reassignLibrary"); });
+    act(() => { result.current.bulk.setBulkTargetLibraryId("lib-b"); });
+    expect(result.current.bulk.bulkMoveFiles).toBe(false);
+    act(() => { result.current.bulk.setBulkMoveFiles(true); });
+
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+
+    expect(authedFetch).toHaveBeenCalledWith(
+      "/api/series/bulk/reassign-library",
+      expect.objectContaining({
+        body: JSON.stringify({ seriesIds: ["s1"], fromLibraryId: "lib-a", toLibraryId: "lib-b", moveFiles: true })
+      })
+    );
+  });
+
   it("resets moveFiles to off every time the dialog is reopened", () => {
     const { result } = renderHook(() => useHarness([makeItem("a")]));
 
