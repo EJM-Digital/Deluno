@@ -276,7 +276,8 @@ $workflowChecks = @(
     @{ Label = "Deluno's recordings of its side of the Deluno-Weir talk match their manifest (#1239)"; Args = @("scripts/check-recorded-manifest.mjs") },
     @{ Label = "the recordings manifest check works"; Args = @("--test", "scripts/check-recorded-manifest.test.mjs") },
     @{ Label = "the coverage register names a row for every route, screen, job, migration, integration, tray action and scenario, and every proof it names exists"; Args = @("scripts/check-coverage-register.mjs") },
-    @{ Label = "the coverage register check and its inventories work"; Args = @("--test", "scripts/check-coverage-register.test.mjs") }
+    @{ Label = "the coverage register check and its inventories work"; Args = @("--test", "scripts/check-coverage-register.test.mjs") },
+    @{ Label = "the TypeScript SDK sends the right request and reports a refusal"; Args = @("--test", "sdk/typescript/tests/delunoclient.test.mjs") }
 )
 foreach ($check in $workflowChecks) {
     $result = Invoke-LoggedCommand -FilePath $nodePath -Arguments $check.Args
