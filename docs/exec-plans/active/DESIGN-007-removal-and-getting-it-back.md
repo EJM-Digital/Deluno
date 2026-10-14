@@ -619,6 +619,7 @@ search after the normal retry delay (10); an activity entry (13).
 | `missingSource` | no | **counts** | no | The client said done and the file is gone — that is the client's fault |
 | `samePath` | no | no | no | Nothing to do; activity only |
 | `conflict` | no | no | **raised** | Something is already there; a person decides |
+| `unsafeSourcePath` | no | no | no | The source path has `..` in it (#1306). Never retried, never refused; shown in plain words; the file is left alone |
 | `io` | no | no | no | The move itself threw — still downloading, locked, or a network path that went away |
 
 Three of those deserve their reason stated.
