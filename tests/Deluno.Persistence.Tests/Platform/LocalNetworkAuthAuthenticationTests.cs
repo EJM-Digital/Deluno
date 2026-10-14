@@ -114,10 +114,27 @@ public sealed class LocalNetworkAuthAuthenticationTests
         Assert.Null(denied);
     }
 
+    [Theory]
+    [InlineData("deluno_this-key-was-never-issued", false)]
+    [InlineData("deluno_", false)]
+    [InlineData(null, true)]
+    public async Task A_wrong_malformed_or_revoked_key_from_a_local_address_is_treated_as_no_key_and_the_local_network_rule_decides(string? key, bool revoked)
+    {
+        var settings = new LocalNetworkAuthSettings(true, [], [], []);
+
+        var fromHome = await AuthenticateAsync(settings, remoteAddress: "192.168.1.50", apiKey: key, revokeTheKeyFirst: revoked);
+        var fromTheInternet = await AuthenticateAsync(settings, remoteAddress: "8.8.8.8", apiKey: key, revokeTheKeyFirst: revoked);
+
+        Assert.Null(fromHome);
+        Assert.NotNull(fromTheInternet);
+    }
+
     private static async Task<IResult?> AuthenticateAsync(
         LocalNetworkAuthSettings settings,
         string remoteAddress,
-        string? forwardedFor = null)
+        string? forwardedFor = null,
+        string? apiKey = null,
+        bool revokeTheKeyFirst = false)
     {
         using var storage = TestStorage.Create();
         var timeProvider = TimeProvider.System;
@@ -139,7 +156,19 @@ public sealed class LocalNetworkAuthAuthenticationTests
             .AddSingleton<ITrustedProxyClientAddressResolver>(resolver)
             .BuildServiceProvider();
 
+        if (revokeTheKeyFirst)
+        {
+            var created = await repository.CreateApiKeyAsync(new CreateApiKeyRequest("Revoked", "read"), CancellationToken.None);
+            apiKey = created.ApiKey;
+            Assert.True(await repository.DeleteApiKeyAsync(created.Item.Id, CancellationToken.None));
+        }
+
         var context = new DefaultHttpContext { RequestServices = services };
+        if (apiKey is not null)
+        {
+            context.Request.Headers["X-Api-Key"] = apiKey;
+        }
+
         context.Connection.RemoteIpAddress = IPAddress.Parse(remoteAddress);
         if (forwardedFor is not null)
         {
