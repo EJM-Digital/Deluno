@@ -312,6 +312,9 @@ public static class DelunoRequestPipeline
         // declares itself public (the poster route) is let through.
         app.UseDelunoSignInGate(options.ResolveScopes);
 
+        // A request the framework cannot bind gets a plain message, after the sign-in (#1280).
+        app.UseDelunoBadRequestAnswers();
+
         app.MapDelunoApplicationEndpoints();
 
         app.MapFallback(async context =>

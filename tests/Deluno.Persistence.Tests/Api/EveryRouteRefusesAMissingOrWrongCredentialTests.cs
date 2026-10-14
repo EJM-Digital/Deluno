@@ -64,6 +64,38 @@ public sealed class EveryRouteRefusesAMissingOrWrongCredentialTests
     }
 
     [Fact]
+    public async Task Every_route_that_takes_a_body_answers_401_before_it_looks_at_the_body_or_its_content_type()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        using var client = app.CreateAnonymousClient();
+
+        var wrong = new List<string>();
+        foreach (var route in RouteMap.Read(app.Services).Where(route => route.Method is not ("GET" or "HEAD" or "OPTIONS") && !Anonymous.ContainsKey(route.Label)))
+        {
+            var bodies = new (string Name, Func<HttpContent> Make)[]
+            {
+                ("a JSON body that is not JSON", () => new StringContent("{ this is not json", Encoding.UTF8, "application/json")),
+                ("a plain-text body", () => new StringContent("hello", Encoding.UTF8, "text/plain")),
+                ("no content type and no body", () => new StringContent("")),
+                ("a JSON body", () => new StringContent("{}", Encoding.UTF8, "application/json"))
+            };
+
+            foreach (var (name, make) in bodies)
+            {
+                using var request = new HttpRequestMessage(new HttpMethod(route.Method), route.Path) { Content = make() };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                if (response.StatusCode != HttpStatusCode.Unauthorized)
+                {
+                    wrong.Add($"{route.Label} answered {(int)response.StatusCode} to {name} with no credential");
+                }
+            }
+        }
+
+        AssertNone(wrong, "Routes that looked at the body before the sign-in:");
+    }
+
+    [Fact]
     public async Task Every_route_answers_401_to_a_wrong_key_a_wrong_session_and_a_session_that_no_longer_counts()
     {
         await using var app = await ApplicationTestHost.StartAsync();

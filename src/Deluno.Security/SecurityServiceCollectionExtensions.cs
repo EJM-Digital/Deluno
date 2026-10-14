@@ -12,6 +12,9 @@ public static class SecurityServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoSecurityModule(this IServiceCollection services)
     {
+        // #1280: the framework throws on a request it cannot bind, instead of answering an empty 400, so
+        // UseDelunoBadRequestAnswers can say what was wrong.
+        services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
         services.AddSingleton<ISecurityRepository, SqliteSecurityRepository>();
         // #939: Allowed Hosts.
         services.AddSingleton<IAllowedHostsRepository, SqliteAllowedHostsRepository>();
