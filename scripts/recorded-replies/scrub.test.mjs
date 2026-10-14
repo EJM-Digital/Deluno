@@ -105,3 +105,9 @@ test('a setting listed by name is scrubbed by what the name says, and keys that 
   assert.equal(out.proxy_password, scrubbedValue);
   assert.equal(out.locale, 'en');
 });
+
+test('a Plex or Emby token in a query string is removed', () => {
+  const out = scrubText('/library/sections?X-Plex-Token=abcd1234&x-emby-token=zzzz9999&name=Movies');
+  assert.ok(!out.includes('abcd1234') && !out.includes('zzzz9999'));
+  assert.match(out, /name=Movies/);
+});
