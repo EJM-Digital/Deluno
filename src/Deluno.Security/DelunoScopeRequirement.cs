@@ -15,9 +15,13 @@ public sealed class DelunoScopeAuthorizationHandler(IHttpContextAccessor httpCon
         AuthorizationHandlerContext context,
         DelunoScopeRequirement requirement)
     {
-        var method = httpContextAccessor.HttpContext?.Request.Method ?? string.Empty;
+        var http = httpContextAccessor.HttpContext;
+        var method = http?.Request.Method ?? string.Empty;
         var requiredScopes = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
-            ? new[] { "read" }
+            // #1265: the two reads a processor makes for its hand-off work also open to the imports scope; every other read asks for read.
+            ? (http?.GetEndpoint()?.Metadata.GetMetadata<DelunoImportsScopeMayReadAttribute>() is not null
+                ? new[] { "read", "imports" }
+                : new[] { "read" })
             : requirement.Scopes;
 
         if (requiredScopes.Any(scope => context.User.HasClaim(DelunoAuthenticationHandler.ScopeClaimType, scope)))
@@ -28,3 +32,11 @@ public sealed class DelunoScopeAuthorizationHandler(IHttpContextAccessor httpCon
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// Marks a GET route that a key with the <c>imports</c> scope may also read (#1265). A GET otherwise asks for <c>read</c>. It
+/// is metadata on a named route, never a wildcard: a test walks every GET route and fails if an imports-only key gets through
+/// anywhere else.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false)]
+public sealed class DelunoImportsScopeMayReadAttribute : Attribute;
