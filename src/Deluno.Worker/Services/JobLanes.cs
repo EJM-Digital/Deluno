@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Worker.Jobs;
@@ -201,6 +202,11 @@ public static class JobLanes
         // made one catalogue wait for the other.
         new("search.movies", [LibrarySearchJobTypes.Movies], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
         new("search.tv", [LibrarySearchJobTypes.Tv], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+
+        // A person's own search of chosen titles (the library's Search button and the bulk editor, #1313), on lanes
+        // of their own so a click never waits behind the library's scheduled cycle.
+        new("search.title.movies", [TitleSearchJobs.Movie], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+        new("search.title.tv", [TitleSearchJobs.Series], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
 
         // The same work at a finer grain, and no longer behind a whole-series
         // search: a season pack search could hold a slot while single episodes
