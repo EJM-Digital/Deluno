@@ -5,6 +5,8 @@ using System.Text.Json.Nodes;
 using Deluno.Infrastructure.Storage;
 using Deluno.Integrations.Search;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Data;
 using Deluno.Quality.Guides;
 using Deluno.Quality.ReleasePreferences;
 using Microsoft.Data.Sqlite;
@@ -167,6 +169,40 @@ public sealed class QualityRoutesDoWhatTheySayTests
         var apply = await app.Client.PostAsJsonAsync("/api/v1/guides/trash/apply", new { package = next, expectedCurrentIntegritySha256 = integrity });
 
         Assert.Equal(HttpStatusCode.Created, apply.StatusCode);
+    }
+
+    [Fact]
+    public async Task Applying_the_rule_migration_moves_the_chosen_old_rule_onto_the_guides_format_and_refuses_a_stale_preview()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        const string oldAmazon = "4e9a630db98d5391aec1368a0256e2fe";
+        var quality = app.Services.GetRequiredService<IQualityRepository>();
+        var entry = LegacyGuideCatalogue.Current.Find(oldAmazon)!;
+        var rule = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest("Amazon Prime", "movies", 100, oldAmazon,
+                JsonSerializer.Serialize(entry.LegacyPatterns.Select(pattern => new { type = "releaseTitle", value = pattern, negate = false, required = true })),
+                true),
+            CancellationToken.None);
+
+        var preview = await app.Client.GetFromJsonAsync<JsonElement>("/api/v1/guides/trash/rule-migration");
+        var hash = preview.GetProperty("previewHash").GetString()!;
+        Assert.Equal(rule.Id, Assert.Single(preview.GetProperty("items").EnumerateArray()).GetProperty("ruleId").GetString());
+
+        var stale = await app.Client.PostAsJsonAsync("/api/v1/guides/trash/rule-migration/apply", new { previewHash = "not-this-preview", ruleIds = new[] { rule.Id } });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal(oldAmazon, (await quality.ListCustomFormatsAsync(CancellationToken.None)).Single(item => item.Id == rule.Id).TrashId);
+
+        var applied = await app.Client.PostAsJsonAsync("/api/v1/guides/trash/rule-migration/apply", new { previewHash = hash, ruleIds = new[] { rule.Id } });
+
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        var result = await applied.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, result.GetProperty("moved").GetInt32());
+        var after = (await quality.ListCustomFormatsAsync(CancellationToken.None)).Single(item => item.Id == rule.Id);
+        Assert.Equal("AMZN", after.Name);
+        Assert.Equal("b3b3a6ac74ecbd56bcdbefa4799fb9df", after.TrashId);
+        Assert.Equal(100, after.Score);
+        Assert.Equal(0, (await app.Client.GetFromJsonAsync<JsonElement>("/api/v1/guides/trash/rule-migration")).GetProperty("items").GetArrayLength());
+        Assert.Contains("custom-format", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
     }
 
     [Fact]
