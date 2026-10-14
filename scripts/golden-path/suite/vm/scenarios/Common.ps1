@@ -106,3 +106,9 @@ function Get-WeirAnswering {
     $c = $conns | Where-Object { $_.name -match 'weir' } | Select-Object -First 1
     $c
 }
+
+# Deluno's own log files from the last hours, wherever this install keeps them (the same places Collect-Logs.ps1 gathers).
+function Get-DelunoLogFiles {
+    $roots = @((Join-Path $env:LOCALAPPDATA 'Deluno\logs'), (Join-Path $env:LOCALAPPDATA 'DelunoData\logs'), (Join-Path $env:ProgramData 'Deluno\logs'), (Join-Path $env:ProgramData 'DelunoData\logs'), (Join-Path $env:APPDATA 'Deluno\logs'))
+    @($roots | Where-Object { Test-Path $_ } | ForEach-Object { Get-ChildItem -Path $_ -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.log', '.jsonl' -and $_.LastWriteTime -gt (Get-Date).AddHours(-3) } })
+}

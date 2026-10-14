@@ -172,7 +172,7 @@ $notAlone = @()
 foreach ($id in $allIds) {
     $s = Get-RunScope -Plan $plan -Groups @() -Scenarios @($id)
     $isHost = [bool]($plan | Where-Object { $_.Host -and $_.Ids -contains $id })
-    if (-not ((@($s.ChosenIds) -join ',') -eq $id -and -not $s.FullRun -and $s.NeedVm -eq (-not $isHost) -and $s.RunUpdate -eq $isHost)) { $notAlone += $id }
+    if (-not ((@($s.ChosenIds) -join ',') -eq $id -and -not $s.FullRun -and $s.NeedVm -eq (-not $isHost) -and $s.RunUpdate -eq ($id -eq 'update.over-running-previous') -and $s.RunGithubPicker -eq ($id -eq 'github-limit.picker'))) { $notAlone += $id }
 }
 Check "every planned scenario id ($($allIds.Count)) can be chosen alone, and only the VM ones need the VM" ($notAlone.Count -eq 0) ($notAlone -join ', ')
 Check 'a run of the update scenario alone needs no VM stage' (-not (Get-RunScope -Plan $plan -Scenarios @('update.over-running-previous')).NeedVm)
@@ -287,7 +287,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; seasonpack = 0; layout = 0; github = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -518,7 +518,7 @@ finally {
 }
 
 Write-Host 'The runner loads every library and group'
-foreach ($lib in 'Tray.Lib.ps1', 'Cdp.Lib.ps1', 'Fixtures.Lib.ps1', 'Initialize-Environment.ps1', 'scenarios\Common.ps1') { . (Join-Path (Join-Path $suite 'vm') $lib) }
+foreach ($lib in 'Tray.Lib.ps1', 'Cdp.Lib.ps1', 'Fixtures.Lib.ps1', 'GithubLimit.Lib.ps1', 'Initialize-Environment.ps1', 'scenarios\Common.ps1') { . (Join-Path (Join-Path $suite 'vm') $lib) }
 foreach ($f in Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | Sort-Object Name) { . $f.FullName }
 foreach ($g in @($plan | Where-Object { -not $_.Host })) { Check "the runner can call $($g.Function)" ($null -ne (Get-Command $g.Function -CommandType Function -ErrorAction SilentlyContinue)) }
 foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', 'New-TorrentFilm', 'New-UsenetFilm', 'Wait-FilmFinished', 'Open-DelunoPage', 'Get-TrayDot', 'Invoke-TrayMenuItem', 'Stop-WeirApp', 'Start-WeirApp', 'Set-WeirPause', 'Get-WeirLogText', 'Test-OneStory') {
@@ -540,6 +540,118 @@ Check 'the group sets the rule to move, puts it back, and puts the keep-seeding 
 Check 'the group reads each client itself for the category and the torrent, never only Deluno' ($ksText -match 'Get-KsClientTorrent' -and $ksText -match 'core\.get_torrent_status' -and $ksText -match 'torrent-get' -and $ksText -match 'torrents/info')
 Check 'the private torrent is checked for its data, for not being deleted, and for staying out of Transfers' ($ksText -match 'Get-KsFilesOnDisk' -and $ksText -match 'still holds the torrent' -and $ksText -match 'gone from Transfers')
 Check 'a password read for a client is masked in everything the suite writes' ((Get-Content -Raw (Join-Path $suite 'vm/Fixtures.Lib.ps1')) -match 'S\.Secrets\["ks-\$Kind-password"\]')
+
+Write-Host 'The four proof lines of #1196 are scenarios (github-limit.messages, github-limit.picker, seasonpack.no-library, layout.390-folder-chain)'
+$planNames = @($plan | ForEach-Object Name)
+foreach ($id in 'github-limit.messages', 'github-limit.picker', 'seasonpack.no-library', 'layout.390-folder-chain') { Check "$id is in the plan and can be run alone with -Scenarios" ($id -in $allIds -and (Get-RunScope -Plan $plan -Scenarios @($id)).ChosenIds -contains $id) }
+Check 'the picker scenario is the host''s own (it needs a clean machine and the limit used up before Setup), the message scenario runs in the VM' ((@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.picker') -and -not (@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.messages'))
+Check 'the picker scenario chosen alone needs no VM stage and runs the picker phase; it never runs the update phase' (-not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).NeedVm -and (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunGithubPicker -and -not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunUpdate)
+Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the update phase last' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'update' }) -join ',' -eq 'github,githubpicker,update' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
+Check 'Weir''s key is left after the last group that runs in the VM, whatever it is called' ($runSuiteText -match 'lastVmGroup' -and $runSuiteText -match '\$Groups -contains \$lastVmGroup' -and $runSuiteText -match "GithubLimit\.Lib\.ps1")
+foreach ($n in 'seasonpack', 'layout', 'github', 'githubpicker') { Check "the $n group says what it proves" ($n -in $topics.Group) }
+
+# The limit helpers, against stand-ins for GitHub (defined in a scope of their own, so they never reach the other checks).
+& {
+    $script:Stub = @{ Remaining = 3; Limit = 60; Reset = 1790000000; Calls = 0; Spend = $true }
+    function Invoke-RestMethod { param($Uri, [switch] $UseBasicParsing, $TimeoutSec, $Headers) [pscustomobject]@{ resources = [pscustomobject]@{ core = [pscustomobject]@{ limit = $script:Stub.Limit; remaining = $script:Stub.Remaining; reset = $script:Stub.Reset } } } }
+    function Invoke-WebRequest { param($Uri, [switch] $UseBasicParsing, $TimeoutSec, $Headers) $script:Stub.Calls++; if ($script:Stub.Spend -and $script:Stub.Remaining -gt 0) { $script:Stub.Remaining-- }; [pscustomobject]@{ Headers = @{ 'X-RateLimit-Remaining' = "$($script:Stub.Remaining)"; 'X-RateLimit-Reset' = "$($script:Stub.Reset)" } } }
+    $used = Use-GitHubLimitUp -MaxCalls 70
+    Check 'the VM spends exactly the calls left and stops at the first answer that says none are left' ($used.Reachable -and $used.Calls -eq 3 -and $used.Remaining -eq 0 -and $used.RemainingAtStart -eq 3 -and $used.ResetEpoch -eq 1790000000) ($used | ConvertTo-Json -Compress)
+    $script:Stub.Remaining = 0; $script:Stub.Calls = 0
+    $again = Use-GitHubLimitUp -MaxCalls 70
+    Check 'a limit that is already used up costs no calls' ($again.Reachable -and $again.Calls -eq 0)
+    $script:Stub.Remaining = 50; $script:Stub.Calls = 0; $script:Stub.Spend = $false
+    $capped = Use-GitHubLimitUp -MaxCalls 70
+    Check 'the loop never makes more calls than its cap, and says the limit was not reached' (-not $capped.Reachable -and $capped.Calls -eq 70 -and $capped.Reason -match 'could not be used up') ($capped | ConvertTo-Json -Compress)
+    $script:Stub.Limit = 5000; $script:Stub.Remaining = 4999; $script:Stub.Calls = 0
+    $big = Use-GitHubLimitUp -MaxCalls 70
+    Check 'an allowance bigger than the cap (a signed-in address) is not spent at all' (-not $big.Reachable -and $big.Calls -eq 0 -and $big.Reason -match '5000')
+}
+Check 'the reset is written as Deluno writes it: rounded up to the minute, in UTC' ((Get-GitHubLimitStamp -ResetEpoch 1) -eq '1970-01-01 00:01 UTC' -and (Get-GitHubLimitStamp -ResetEpoch 0) -eq '1970-01-01 00:00 UTC') (Get-GitHubLimitStamp -ResetEpoch 1)
+$resetNow = [DateTimeOffset]::UtcNow.AddMinutes(37).ToUnixTimeSeconds()
+$localForms = @(Get-GitHubLimitLocalForms -ResetEpoch $resetNow)
+Check 'the reset reads in the viewer''s local time in the 12 and the 24 hour forms' ($localForms.Count -eq 2 -and $localForms[0] -match '^\d{1,2}:\d{2}$' -and $localForms[1] -match '^\d{2}:\d{2}$')
+Check 'a sentence with the local time is accepted (12 hour, 24 hour, a minute either side) and one with only UTC or another time is not' ((Test-TextHasLocalReset -Text "used up until $($localForms[0]) PM. Deluno will try again then." -ResetEpoch $resetNow) -and (Test-TextHasLocalReset -Text "until $($localForms[1])" -ResetEpoch $resetNow) -and -not (Test-TextHasLocalReset -Text 'until 9:99' -ResetEpoch $resetNow) -and -not (Test-TextHasLocalReset -Text 'used up until 2026-10-09 00:35 UTC' -ResetEpoch $resetNow))
+Check 'a two-digit minute is not read inside a longer number' (-not (Test-TextHasLocalReset -Text "id 1$($localForms[1])5" -ResetEpoch $resetNow))
+
+# What the picker scenario concludes from what the VM kept.
+$goodLog = "2026-10-14T01:00:00 Weir: installer Weir-Setup.exe sha256 $('A' * 64)`n2026-10-14T01:00:00 Weir: SHA-256 matches the vendor's published checksum"
+$goodLimit = [pscustomobject]@{ Reachable = $true; Calls = 60; Remaining = 0; ResetUtc = '2026-10-14T02:00:00Z'; Reason = '' }
+$goodPicker = "x`n2026 final: Weir | Finished."
+$tags = @('v3.4.0-rc.1', 'v3.3.0', 'v3.2.0')
+$good = @(Get-GithubPickerChecks -Limit $goodLimit -HookLog $goodLog -PickerLog $goodPicker -WeirVersion '3.4.0-rc.1+abc' -FeedTags $tags)
+Check 'the picker scenario passes when Weir was installed through the feed with the limit used up' (@($good | Where-Object { -not $_.ok }).Count -eq 0 -and $good.Count -ge 7) (($good | Where-Object { -not $_.ok } | ForEach-Object { $_.name }) -join '; ')
+$badLimitLog = @(Get-GithubPickerChecks -Limit $goodLimit -HookLog ($goodLog + "`nWeir: GitHub's anonymous limit is used up until 2026-10-14T02:00:00") -PickerLog $goodPicker -WeirVersion '3.4.0' -FeedTags $tags)
+Check 'it fails when the install log says the limit stopped Weir' (@($badLimitLog | Where-Object { -not $_.ok -and $_.name -match 'never says' }).Count -eq 1)
+$notInstalled = @(Get-GithubPickerChecks -Limit $goodLimit -HookLog $goodLog -PickerLog $goodPicker -WeirVersion '' -FeedTags $tags)
+Check 'it fails when Weir is not installed' (@($notInstalled | Where-Object { -not $_.ok -and $_.name -match 'Weir is installed' }).Count -eq 1)
+$oldRelease = @(Get-GithubPickerChecks -Limit $goodLimit -HookLog $goodLog -PickerLog $goodPicker -WeirVersion '1.0.0' -FeedTags $tags)
+Check 'it fails when the installed Weir is not one of the feed''s newest releases' (@($oldRelease | Where-Object { -not $_.ok -and $_.name -match 'release feed' }).Count -eq 1)
+$notUsed = @(Get-GithubPickerChecks -Limit ([pscustomobject]@{ Reachable = $true; Calls = 3; Remaining = 5; ResetUtc = ''; Reason = '' }) -HookLog $goodLog -PickerLog $goodPicker -WeirVersion '3.3.0' -FeedTags $tags)
+Check 'it fails when GitHub still had calls left before Setup (the picker never met the limit)' (@($notUsed | Where-Object { -not $_.ok -and $_.name -match 'used up' }).Count -eq 1)
+$na = @(Get-GithubPickerChecks -Limit ([pscustomobject]@{ Reachable = $false; Calls = 0; Reason = 'GitHub allows 5000 calls an hour from this address.' }) -HookLog '' -PickerLog '' -WeirVersion '' -FeedTags @())
+Check 'it is not applicable, with the reason and as a pass, when the limit cannot be used up' ($na.Count -eq 1 -and $na[0].ok -and $na[0].name -match '^Not applicable' -and $na[0].detail -match '5000')
+Check 'it fails when the hook that uses the allowance up left no record' (@(Get-GithubPickerChecks -Limit $null | Where-Object { -not $_.ok }).Count -eq 1)
+Check 'a version reads as its first three numbers whatever its suffix or leading v' ((Get-VersionCore 'v3.4.0-rc.1') -eq '3.4.0' -and (Get-VersionCore '3.4.0.0') -eq '3.4.0' -and (Get-VersionCore '3.4.0+abc') -eq '3.4.0' -and (Get-VersionCore 'nonsense') -eq '')
+$rec = New-HostScenarioRecord -Id 'x' -Title 't' -Checks @([pscustomobject]@{ name = 'a'; ok = $true; detail = '' }) -Seconds 1
+$recBad = New-HostScenarioRecord -Id 'x' -Title 't' -Checks @([pscustomobject]@{ name = 'a'; ok = $false; detail = '' }) -Seconds 1
+$recNone = New-HostScenarioRecord -Id 'x' -Title 't' -Seconds 1
+$recErr = New-HostScenarioRecord -Id 'x' -Title 't' -ErrorText 'boom'
+Check 'a host-judged scenario is a pass, a fail, or an error (no checks, or an error), as the VM''s are' ($rec.status -eq 'pass' -and $recBad.status -eq 'fail' -and $recNone.status -eq 'error' -and $recErr.status -eq 'error' -and $recErr.error -eq 'boom')
+$mergedHost = @(Merge-SuiteResults -Plan $plan -Reported @($rec | ForEach-Object { $_.id = 'github-limit.picker'; $_ }) -Scenarios @('github-limit.picker'))
+Check 'a host-judged record merges into the results under the picker''s id' ($mergedHost.Count -eq 1 -and $mergedHost[0].Status -eq 'pass' -and $mergedHost[0].Group -eq 'githubpicker')
+
+# The host script's picker phase: a clean machine, the allowance used up BEFORE Setup, after the groups and before the update phase.
+$iPickerFn = $hostScript.IndexOf('function Invoke-GithubPickerPhase')
+$pickerBody = $hostScript.Substring($iPickerFn, $hostScript.IndexOf("`nif (`$runGithubPicker)") - $iPickerFn)
+Check 'the picker phase installs interactively (the picker is a first-run dialog) from the clean checkpoint, with the candidate''s installer' ($pickerBody -match '-Interactive' -and $pickerBody -match '-InstallerPath \$InstallerPath' -and $pickerBody -match '-Checkpoint \$Checkpoint')
+Check 'the limit is used up in the harness hook, which runs before Setup, with at most 70 calls' ($pickerBody -match '-AfterVmReady \$limitHook' -and $pickerBody -match 'Use-GitHubLimitUp -MaxCalls 70' -and $pickerBody.IndexOf('Use-GitHubLimitUp') -lt $pickerBody.IndexOf('Invoke-GoldenPath.ps1'))
+Check 'the phase reads what the VM kept (limit record, install log, picker log, Weir''s version, the release feed) and judges it with Get-GithubPickerChecks, and the build under test' ($pickerBody -match 'install-hook\.log' -and $pickerBody -match 'picker\.log' -and $pickerBody -match 'releases\.atom' -and $pickerBody -match 'Get-GithubPickerChecks' -and $pickerBody -match 'Test-BuildMatchesCommit')
+Check 'the picker phase runs after the log collection and the after-suite hook, before the update phase, and is in the verdict' ($hostScript.IndexOf('Invoke-GithubPickerPhase)') -gt $iAfterSuite -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -lt $iPhaseCall -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -lt $iVerdict)
+Check 'the host script takes the picker scenario from the scope (RunGithubPicker)' ($hostScript -match '\$runGithubPicker = \$scope\.RunGithubPicker' -and $hostScript -match 'if \(\$runGithubPicker\)')
+
+# The season-pack scenario.
+$spText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G11-SeasonPack.ps1')
+Check 'the season-pack scenario builds its show in a library of its own, imports two episodes, then changes the library''s folder so the old files match no library' ($spText -match "mediaType = 'tv'" -and $spText -match '/api/filesystem/import/jobs' -and $spText -match 'PUT -Path "/api/libraries/\$libId"' -and $spText -match 'rootPath = \$movedRoot')
+Check 'the replacement is a real one: overwrite, force replacement, a dispatch id and the exact episode-to-file manifest' ($spText -match 'forceReplacement = \$true' -and $spText -match 'replacementTargets' -and $spText -match 'overwrite = \[bool\]\$Replacement' -and $spText -match 'entityId = \$row\.episodeId' -and $spText -match 'expectedPath = \$f\.FullName')
+Check 'the old files are hashed before the pack and compared after, and looked for in place or at the pack path''s aside name' ($spText -match 'Get-FileHash' -and $spText -match 'deluno-pack-backup-' -and $spText -match 'byte-identical')
+Check 'Deluno''s own words are looked for in its log, for this show, once for each file' ($spText -match 'because no library matched it; nothing was deleted' -and $spText -match 'Get-DelunoLogFiles' -and $spText -match 'ge 2')
+Check 'the show and the library are removed afterwards, whatever happened' ($spText -match 'finally' -and $spText -match '/api/series/bulk' -and $spText -match "Method DELETE -Path ""/api/libraries/")
+Check 'the words the scenario looks for are the words the product writes' ((Get-Content -Raw (Join-Path $root '..\..\src\Deluno.Filesystem\ImportPipelineService.cs')) -match 'because no library matched it; nothing was deleted' -and (Get-Content -Raw (Join-Path $root '..\..\src\Deluno.Filesystem\ImportPipelineService.cs')) -match '\.deluno-pack-backup')
+
+# The 390 layout scenario.
+$lyText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G12-Layout.ps1')
+Check 'the layout scenario makes a real folder-chain problem (a library routed to a client whose folder disagrees) and confirms it from the folder check itself' ($lyText -match '/folder-chain' -and $lyText -match "status -eq 'problem'" -and $lyText -match 'allMatch -eq \$false' -and $lyText -match '/routing')
+Check 'it lets Health raise the problem and reads its row, cause and fix for the library''s name' ($lyText -match '/api/system/health/run' -and $lyText -match 'library:\$\{libId\}:folder-chain' -and $lyText -match '\.cause' -and $lyText -match '\.fix')
+Check 'the walk is at 390 px wide in the VM''s browser over DevTools, never on the workstation, and checks the width it got' ($lyText -match 'setDeviceMetricsOverride' -and $lyText -match 'width = 390' -and $lyText -match '\$_\.Width -ne 390')
+Check 'it fails on a page that scrolls sideways or a control outside the screen, and the library is removed afterwards' ($lyText -match 'scrollWidth > w \+ 1' -and $lyText -match 'outside the screen' -and $lyText -match "Method DELETE -Path ""/api/libraries/")
+. (Join-Path $suite 'vm\scenarios\G12-Layout.ps1')
+$walkRoutes = @(Get-NarrowWalkRoutes)
+$routerText = Get-Content -Raw (Join-Path $root '..\..\apps\web\src\router.tsx')
+$shellText = Get-Content -Raw (Join-Path $root '..\..\apps\web\src\components\app\settings-shell.tsx')
+$layoutText = Get-Content -Raw (Join-Path $root '..\..\apps\web\src\layouts\app-layout.tsx')
+$want = New-Object System.Collections.Generic.HashSet[string]
+[void]$want.Add('/settings'); [void]$want.Add('/setup-guide')
+$blockStart = $routerText.IndexOf('path: "settings",'); $blockEnd = $routerText.IndexOf('path: "system",')
+foreach ($mm in [regex]::Matches($routerText.Substring($blockStart, $blockEnd - $blockStart), 'path: "([a-z][a-z0-9-]*)",\s*\r?\n\s*lazy')) { [void]$want.Add('/settings/' + $mm.Groups[1].Value) }
+foreach ($mm in [regex]::Matches($routerText, 'path: "(settings/[a-z0-9-]+)"')) { [void]$want.Add('/' + $mm.Groups[1].Value) }
+foreach ($mm in [regex]::Matches($shellText, 'to: "(/(?:settings|indexers|search-cycles|system)[a-z0-9/-]*)"')) { [void]$want.Add($mm.Groups[1].Value) }
+foreach ($navName in 'libraryNav', 'operationsNav') {
+    $ns = $layoutText.IndexOf("const $navName = ["); $ne = $layoutText.IndexOf('] as const;', $ns)
+    foreach ($mm in [regex]::Matches($layoutText.Substring($ns, $ne - $ns), 'to: "(/[a-z0-9/-]*)"')) { [void]$want.Add($mm.Groups[1].Value) }
+}
+$missingRoutes = @($want | Where-Object { $_ -notin $walkRoutes })
+Check "the 390 walk visits every screen the smoke walk does ($($want.Count) from the router and the shell)" ($want.Count -gt 40 -and $missingRoutes.Count -eq 0) ($missingRoutes -join ', ')
+
+# The GitHub scenario.
+$ghText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G13-Github.ps1')
+Check 'the message scenario skips as not applicable, with the reason, when the limit cannot be used up' ($ghText -match 'Not applicable: the limit could not be used up from this address' -and $ghText -match 'Use-GitHubLimitUp -MaxCalls 70')
+Check 'it reads the tracker definitions'' Update now from the API and the screen, in the sentence the product writes' ($ghText -match 'update-check/run' -and $ghText -match '/settings/general' -and $ghText -match "GitHub's limit for checking releases from this network is used up until" -and (Get-Content -Raw (Join-Path $root '..\..\src\Deluno.Infrastructure\Http\GitHubApiConditionalHandler.cs')) -match "GitHub's limit for checking releases from this network is used up until")
+Check 'it reads the connections'' version check from the API and the screen, in the words the web app writes' ($ghText -match 'latestCheckPausedUntilUtc' -and $ghText -match "can't look for a newer version until" -and (Get-Content -Raw (Join-Path $root '..\..\apps\web\src\components\app\connection-version.tsx')) -match "can't look for a newer version until \$\{formatResetTime\(pausedUntil\)\} \(GitHub's limit\)")
+Check 'it restarts Deluno from its tray menu with github.com pointed at the VM, so the free feed cannot be read and nothing is remembered, and puts the hosts file back whatever happens' ($ghText -match 'Restart Deluno' -and $ghText -match 'Set-GithubFeedBlocked -Blocked \$true' -and $ghText -match 'finally' -and $ghText -match 'Set-GithubFeedBlocked -Blocked \$false')
+Check 'it checks the reset is shown in the viewer''s local time and never as UTC, on both screens' ((@([regex]::Matches($ghText, 'Test-TextHasLocalReset')).Count -ge 2) -and $ghText -match "notmatch 'UTC'")
+$hostsLines = @('127.0.0.1 localhost', "127.0.0.1 github.com www.github.com $script:GithubHostsTag", '# comment')
+Check 'only the suite''s own line is taken out of the hosts file' (@($hostsLines | Where-Object { $_ -notlike "*$($script:GithubHostsTag)*" }).Count -eq 2)
 
 Write-Host 'The news stub can hang an article and slow another'
 . (Join-Path $root 'usenet-stub\UsenetStub.Lib.ps1')

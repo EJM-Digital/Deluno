@@ -177,3 +177,53 @@ function Get-RunCoverageText {
     if (@($Scope.Selection).Count -gt 0) { return ('only these scenarios: ' + (@($Scope.Selection) -join ', ')) }
     'only some groups'
 }
+
+# ---------------------------------------------------------------- host-side scenarios (the update phase and the GitHub picker phase)
+
+# A scenario the host judged itself, in the shape the VM runner reports (id, title, status, seconds, error, notes, checks), so it merges
+# into the results like any other. A scenario with an error is an error; one with a failed check fails; one with no checks is an error.
+function New-HostScenarioRecord {
+    param([Parameter(Mandatory)] [string] $Id, [Parameter(Mandatory)] [string] $Title, [object[]] $Checks = @(), [string[]] $Notes = @(), [double] $Seconds = 0, [string] $ErrorText = '')
+    $failed = @($Checks | Where-Object { -not $_.ok })
+    $status = if ($ErrorText) { 'error' } elseif ($failed.Count -gt 0) { 'fail' } elseif (@($Checks).Count -eq 0) { 'error' } else { 'pass' }
+    if ($status -eq 'error' -and -not $ErrorText) { $ErrorText = 'The scenario ran no checks.' }
+    [pscustomobject]@{ id = $Id; title = $Title; status = $status; seconds = [math]::Round($Seconds, 1); error = $(if ($ErrorText) { $ErrorText } else { $null }); notes = @($Notes); checks = @($Checks) }
+}
+
+# The first three numbers of a version or a tag (a tag with a leading v and a release-candidate suffix, a four-part file version and a build suffix all read as the same three numbers), to compare an installed
+# program's version with a release feed's tags.
+function Get-VersionCore {
+    param([string] $Text)
+    $t = ([string]$Text).Trim() -replace '^[vV]', ''
+    $m = [regex]::Match($t, '^(\d+)\.(\d+)\.(\d+)')
+    if ($m.Success) { return ('{0}.{1}.{2}' -f [int]$m.Groups[1].Value, [int]$m.Groups[2].Value, [int]$m.Groups[3].Value) }
+    ''
+}
+
+# What the GitHub picker scenario asserts, from what the VM kept (github-limit.picker, #1181). -Limit is what Use-GitHubLimitUp returned
+# before Setup ran (null when nothing was kept). When the limit could not be used up from the VM's address, the scenario is "not
+# applicable" and says why, and passes with that one line, which is the owner's rule for it.
+function Get-GithubPickerChecks {
+    param($Limit, [string] $HookLog = '', [string] $PickerLog = '', [string] $WeirVersion = '', [string[]] $FeedTags = @())
+    $checks = New-Object System.Collections.ArrayList
+    $add = { param($n, $ok, $d) [void]$checks.Add([pscustomobject]@{ name = $n; ok = [bool]$ok; detail = [string]$d }) }
+    if ($null -eq $Limit) {
+        & $add 'The VM used GitHub''s allowance up before Setup ran' $false 'The hook that does it before Setup left no record, so the picker did not meet the limit.'
+        return @($checks)
+    }
+    if (-not $Limit.Reachable) {
+        & $add 'Not applicable: the limit could not be used up from this address' $true ([string]$Limit.Reason)
+        return @($checks)
+    }
+    & $add 'GitHub''s anonymous allowance was used up from the VM before Setup ran (0 calls left)' ($Limit.Remaining -eq 0) ("{0} call(s) made; reset {1}" -f $Limit.Calls, $Limit.ResetUtc)
+    & $add 'Weir is installed (through the picker)' (-not [string]::IsNullOrWhiteSpace($WeirVersion)) $(if ($WeirVersion) { "Weir.exe $WeirVersion" } else { 'Weir.exe not found' })
+    & $add 'The install log names Weir''s installer and its sha256' ($HookLog -match 'Weir: installer .* sha256 [0-9A-Fa-f]{64}') ''
+    & $add 'The install log says the checksum matches the vendor''s' ($HookLog -match 'Weir: SHA-256 matches') ''
+    & $add 'The install log never says GitHub''s limit stopped Weir (it was found without the API)' ($HookLog -notmatch 'Weir: GitHub''s anonymous limit is used up') ''
+    & $add 'The install log has no "could not find Weir''s latest release"' ($HookLog -notmatch 'Weir: .*[Cc]ould not find') ''
+    $core = Get-VersionCore $WeirVersion
+    $top = @($FeedTags | Select-Object -First 3 | ForEach-Object { Get-VersionCore $_ } | Where-Object { $_ })
+    & $add 'The installed Weir is one of the newest releases github.com''s release feed lists (the release used through the feed)' ($core -and ($core -in $top)) "installed $WeirVersion; feed newest: $((@($FeedTags) | Select-Object -First 3) -join ', ')"
+    & $add 'The picker reached its finish screen' ($PickerLog -match 'final: .*Finished\.') ''
+    @($checks)
+}
