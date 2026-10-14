@@ -54,13 +54,14 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatc
 
     /// <summary>
     /// Called by the client right after connecting or reconnecting with the
-    /// last sequence number it saw. Inside the resume window this replays
+    /// last sequence number it saw and the server instance that number came from (#1315). Inside the resume window this replays
     /// what was missed; beyond it, the client is told to resync from REST.
     /// </summary>
-    public RealtimeResumeResult Resume(long lastSeq, string[] subjects)
+    public RealtimeResumeResult Resume(long lastSeq, string[] subjects, string? instanceId)
     {
         _ = NormalizeAndValidate(subjects);
-        return resumeSource.Resume(lastSeq, GetSubjects());
+        // A client that names no instance (an older page) cannot prove its sequence is from this run: it resyncs.
+        return resumeSource.Resume(lastSeq, GetSubjects(), instanceId ?? string.Empty);
     }
 
     /// <summary>

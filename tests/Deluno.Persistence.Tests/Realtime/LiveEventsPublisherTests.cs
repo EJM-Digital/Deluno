@@ -414,7 +414,7 @@ public sealed class RealtimeWatcherTests
             await using var second = Connect(server);
             await second.StartAsync();
             await second.InvokeAsync("Subscribe", new[] { LiveRealtimeSubject.Name });
-            var result = await second.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq, new[] { LiveRealtimeSubject.Name });
+            var result = await second.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq, new[] { LiveRealtimeSubject.Name }, publisher.InstanceId);
 
             Assert.Equal(RealtimeResumeStatus.Replayed, result.Status);
             Assert.Equal(
@@ -424,7 +424,7 @@ public sealed class RealtimeWatcherTests
             Assert.Equal(result.Envelopes.Count, result.Envelopes.Select(envelope => envelope.Seq).Distinct().Count());
 
             // Asking again from the newest sequence replays nothing: no double counting.
-            var again = await second.InvokeAsync<RealtimeResumeResult>("Resume", result.Envelopes.Max(envelope => envelope.Seq), new[] { LiveRealtimeSubject.Name });
+            var again = await second.InvokeAsync<RealtimeResumeResult>("Resume", result.Envelopes.Max(envelope => envelope.Seq), new[] { LiveRealtimeSubject.Name }, publisher.InstanceId);
             Assert.Equal(RealtimeResumeStatus.CaughtUp, again.Status);
             Assert.Empty(again.Envelopes);
         }

@@ -125,9 +125,11 @@ public sealed class RealtimeResumeTests
             second,
             lastSeqBeforeDrop,
             new[] { RealtimeGroups.Dashboard },
-            envelopes => envelopes.Count(IsNotADashboardNudge) >= 3);
+            envelopes => envelopes.Count(IsNotADashboardNudge) >= 3,
+            fixture.ResumeSource.InstanceId);
 
         Assert.Equal(RealtimeResumeStatus.Replayed, result.Status);
+        Assert.Equal(fixture.ResumeSource.InstanceId, result.InstanceId);
         // The Dashboard nudge (#1082) shares the group and the sequence; the probes are what must arrive once each, in order.
         var replayed = result.Envelopes.Where(IsNotADashboardNudge).ToArray();
         Assert.Equal(3, replayed.Length);
@@ -209,7 +211,8 @@ public sealed class RealtimeResumeTests
         Assert.Empty(noHistory.Envelopes);
     }
 
-    [Fact(Skip = "DEFECT: after a server restart the sequence starts again at 0, and Resume treats a page holding an older, higher sequence as CaughtUp (lastSeq >= current) instead of ResyncRequired, so a page left open across a restart is never told to refetch. SignalRRealtimeEventPublisher.Resume.")]
+    // #1315: the sequence starts again at 0 when Deluno restarts, so a page holding a higher one from before must refetch.
+    [Fact]
     public async Task A_page_holding_a_sequence_from_before_a_restart_is_told_to_resync_not_caught_up()
     {
         await using var fixture = await StartAsync();
@@ -218,6 +221,82 @@ public sealed class RealtimeResumeTests
         var openAcrossTheRestart = fixture.ResumeSource.Resume(500, new[] { RealtimeGroups.Dashboard });
 
         Assert.Equal(RealtimeResumeStatus.ResyncRequired, openAcrossTheRestart.Status);
+    }
+
+    // #1315: a sequence only means something with the server run it came from.
+    [Fact]
+    public async Task A_page_from_another_server_run_is_told_to_resync_even_when_its_sequence_is_in_range()
+    {
+        await using var fixture = await StartAsync();
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "one", CancellationToken.None);
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "two", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence >= 2);
+        var latest = fixture.ResumeSource.CurrentSequence;
+
+        var otherRun = fixture.ResumeSource.Resume(1, new[] { RealtimeGroups.Dashboard }, "an-older-run");
+        var otherRunCurrent = fixture.ResumeSource.Resume(latest, new[] { RealtimeGroups.Dashboard }, "an-older-run");
+
+        Assert.Equal(RealtimeResumeStatus.ResyncRequired, otherRun.Status);
+        Assert.Equal(RealtimeResumeStatus.ResyncRequired, otherRunCurrent.Status);
+        Assert.Equal(fixture.ResumeSource.InstanceId, otherRun.InstanceId);
+    }
+
+    [Fact]
+    public async Task A_page_from_the_same_server_run_resumes_as_before()
+    {
+        await using var fixture = await StartAsync();
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "one", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence >= 1);
+        var seen = fixture.ResumeSource.CurrentSequence;
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "two", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.Resume(seen, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId).Envelopes.Any(IsNotADashboardNudge));
+
+        var same = fixture.ResumeSource.Resume(seen, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId);
+        var caughtUp = fixture.ResumeSource.Resume(fixture.ResumeSource.CurrentSequence, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId);
+
+        Assert.Equal(RealtimeResumeStatus.Replayed, same.Status);
+        Assert.Equal(RealtimeResumeStatus.CaughtUp, caughtUp.Status);
+    }
+
+    [Fact]
+    public async Task Two_server_runs_have_different_instance_ids()
+    {
+        await using var first = await StartAsync();
+        await using var second = await StartAsync();
+
+        Assert.NotEqual(first.ResumeSource.InstanceId, second.ResumeSource.InstanceId);
+    }
+
+    [Fact]
+    public async Task The_hub_resyncs_a_page_that_names_no_instance_or_another_one_and_resumes_one_that_names_this_one()
+    {
+        await using var fixture = await StartAsync();
+        await using var connection = fixture.Connect();
+        await connection.StartAsync();
+        await connection.InvokeAsync("Subscribe", new[] { RealtimeGroups.Dashboard });
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "one", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence >= 1);
+        var latest = fixture.ResumeSource.CurrentSequence;
+
+        var none = await connection.InvokeAsync<RealtimeResumeResult>("Resume", latest, new[] { RealtimeGroups.Dashboard }, (string?)null);
+        var other = await connection.InvokeAsync<RealtimeResumeResult>("Resume", latest, new[] { RealtimeGroups.Dashboard }, "an-older-run");
+        var same = await connection.InvokeAsync<RealtimeResumeResult>("Resume", latest, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId);
+
+        Assert.Equal(RealtimeResumeStatus.ResyncRequired, none.Status);
+        Assert.Equal(RealtimeResumeStatus.ResyncRequired, other.Status);
+        Assert.Equal(RealtimeResumeStatus.CaughtUp, same.Status);
+        Assert.Equal(fixture.ResumeSource.InstanceId, none.InstanceId);
+    }
+
+    [Fact]
+    public async Task Every_api_answer_names_the_server_run_beside_the_sequence()
+    {
+        await using var fixture = await StartAsync();
+        using var http = fixture.Http;
+
+        var read = await http.GetAsync("/api/probe");
+
+        Assert.Equal(fixture.ResumeSource.InstanceId, read.Headers.GetValues(RealtimePositionHeader.InstanceName).Single());
     }
 
     [Fact]
@@ -290,13 +369,14 @@ public sealed class RealtimeResumeTests
         long lastSeq,
         IReadOnlyCollection<string> subjects,
         Func<IReadOnlyList<RealtimeEnvelope>, bool> isConverged,
+        string? instanceId,
         int timeoutMs = 5000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         RealtimeResumeResult result;
         do
         {
-            result = await connection.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq, subjects);
+            result = await connection.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq, subjects, instanceId);
             if (isConverged(result.Envelopes))
             {
                 return result;
