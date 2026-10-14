@@ -237,19 +237,135 @@ public sealed class BulkTitleRoutesDoWhatTheySayTests
         Assert.Equal(toId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{show.SeriesId}")).GetProperty("libraryId").GetString());
     }
 
-    [Fact(Skip = "Defect: POST /api/series/bulk/reassign-library only changes the show's library record; unlike the films route (moveFiles) it never moves the show's folder, although the register row says it moves folders. Evidence: SqliteSeriesCatalogRepository.ReassignLibraryAsync is a single UPDATE of series_wanted_state.library_id.")]
+    [Fact]
     public async Task Reassigning_shows_moves_the_whole_show_folder_into_the_new_library()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var fromId = await ApiScenes.CreateLibraryAsync(app, "tv", "Shows", "Shows");
         var toId = await ApiScenes.CreateLibraryAsync(app, "tv", "Kids Shows", "Kids Shows");
         var show = await ApiScenes.ShowOnDiskAsync(app, libraryId: fromId);
+        var extra = Path.Combine(show.FolderPath, "Season 01", "The Wire S01E01.en.srt");
+        await File.WriteAllTextAsync(extra, "subtitle");
+        var toRoot = await ApiScenes.LibraryRootAsync(app, toId);
 
-        await PostAsync(app, "/api/series/bulk/reassign-library",
-            new { seriesIds = new[] { show.SeriesId }, fromLibraryId = fromId, toLibraryId = toId });
+        var result = await PostAsync(app, "/api/series/bulk/reassign-library",
+            new { seriesIds = new[] { show.SeriesId }, fromLibraryId = fromId, toLibraryId = toId, moveFiles = true });
 
+        Assert.Equal(1, result.GetProperty("reassigned").GetInt32());
+        Assert.Equal(1, result.GetProperty("filesMoved").GetInt32());
+        Assert.Empty(result.GetProperty("moveFailures").EnumerateArray());
+        var newFolder = Path.Combine(toRoot, Path.GetFileName(show.FolderPath));
         Assert.False(Directory.Exists(show.FolderPath), "the folder left the old library");
-        Assert.True(Directory.Exists(Path.Combine(await ApiScenes.LibraryRootAsync(app, toId), Path.GetFileName(show.FolderPath))));
+        Assert.True(Directory.Exists(newFolder));
+        var newFile = Path.Combine(newFolder, Path.GetRelativePath(show.FolderPath, show.FilePath));
+        Assert.True(File.Exists(newFile), "the episode is in the new library");
+        Assert.True(File.Exists(Path.Combine(newFolder, "Season 01", "The Wire S01E01.en.srt")), "the subtitle beside it travelled too");
+        Assert.Equal(newFile, await ApiScenes.TextAsync(app, "series", "SELECT file_path FROM episode_entries;"));
+        Assert.Equal(toId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{show.SeriesId}")).GetProperty("libraryId").GetString());
+    }
+
+    [Fact]
+    public async Task Reassigning_shows_refuses_a_move_whose_target_folder_already_exists_and_loses_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var fromId = await ApiScenes.CreateLibraryAsync(app, "tv", "Shows", "Shows");
+        var toId = await ApiScenes.CreateLibraryAsync(app, "tv", "Kids Shows", "Kids Shows");
+        var show = await ApiScenes.ShowOnDiskAsync(app, libraryId: fromId);
+        var toRoot = await ApiScenes.LibraryRootAsync(app, toId);
+        var occupied = Path.Combine(toRoot, Path.GetFileName(show.FolderPath));
+        Directory.CreateDirectory(occupied);
+        var theirs = Path.Combine(occupied, "keep.txt");
+        await File.WriteAllTextAsync(theirs, "another title's file");
+
+        var result = await PostAsync(app, "/api/series/bulk/reassign-library",
+            new { seriesIds = new[] { show.SeriesId }, fromLibraryId = fromId, toLibraryId = toId, moveFiles = true });
+
+        Assert.Equal(0, result.GetProperty("reassigned").GetInt32());
+        Assert.Equal(0, result.GetProperty("filesMoved").GetInt32());
+        Assert.Equal("The Wire", Assert.Single(result.GetProperty("moveFailures").EnumerateArray()).GetString());
+        Assert.Contains("already exists", result.GetProperty("moveFailureReasons")[0].GetString(), StringComparison.Ordinal);
+        Assert.True(File.Exists(show.FilePath), "the show's own files stay put");
+        Assert.Equal("another title's file", await File.ReadAllTextAsync(theirs));
+        Assert.Single(Directory.EnumerateFileSystemEntries(occupied));
+        Assert.Equal(show.FilePath, await ApiScenes.TextAsync(app, "series", "SELECT file_path FROM episode_entries;"));
+        Assert.Equal(fromId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{show.SeriesId}")).GetProperty("libraryId").GetString());
+    }
+
+    [Fact]
+    public async Task Reassigning_several_shows_moves_the_ones_that_can_move_and_names_the_one_that_cannot()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var fromId = await ApiScenes.CreateLibraryAsync(app, "tv", "Shows", "Shows");
+        var toId = await ApiScenes.CreateLibraryAsync(app, "tv", "Kids Shows", "Kids Shows");
+        var wire = await ApiScenes.ShowOnDiskAsync(app, title: "The Wire", libraryId: fromId);
+        var treme = await ApiScenes.ShowOnDiskAsync(app, title: "Treme", year: 2010, libraryId: fromId);
+        var toRoot = await ApiScenes.LibraryRootAsync(app, toId);
+        Directory.CreateDirectory(Path.Combine(toRoot, "Treme"));
+
+        var result = await PostAsync(app, "/api/series/bulk/reassign-library",
+            new { seriesIds = new[] { wire.SeriesId, treme.SeriesId }, fromLibraryId = fromId, toLibraryId = toId, moveFiles = true });
+
+        Assert.Equal(1, result.GetProperty("reassigned").GetInt32());
+        Assert.Equal(1, result.GetProperty("filesMoved").GetInt32());
+        Assert.Equal("Treme", Assert.Single(result.GetProperty("moveFailures").EnumerateArray()).GetString());
+        Assert.True(File.Exists(Path.Combine(toRoot, "The Wire", "Season 01", "The Wire S01E01.mkv")));
+        Assert.True(File.Exists(treme.FilePath));
+        Assert.Equal(toId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{wire.SeriesId}")).GetProperty("libraryId").GetString());
+        Assert.Equal(fromId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{treme.SeriesId}")).GetProperty("libraryId").GetString());
+    }
+
+    [Fact]
+    public async Task Reassigning_shows_puts_the_folder_back_when_the_records_cannot_follow()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var fromId = await ApiScenes.CreateLibraryAsync(app, "tv", "Shows", "Shows");
+        var toId = await ApiScenes.CreateLibraryAsync(app, "tv", "Kids Shows", "Kids Shows");
+        var show = await ApiScenes.ShowOnDiskAsync(app, libraryId: fromId);
+        await ApiScenes.ExecuteAsync(app, "series",
+            "CREATE TRIGGER refuse_library_change BEFORE UPDATE OF library_id ON series_wanted_state BEGIN SELECT RAISE(ABORT, 'database is locked'); END;");
+
+        var result = await PostAsync(app, "/api/series/bulk/reassign-library",
+            new { seriesIds = new[] { show.SeriesId }, fromLibraryId = fromId, toLibraryId = toId, moveFiles = true });
+
+        Assert.Equal(0, result.GetProperty("reassigned").GetInt32());
+        Assert.True(File.Exists(show.FilePath), "the folder was put back where it was");
+        Assert.False(Directory.Exists(Path.Combine(await ApiScenes.LibraryRootAsync(app, toId), Path.GetFileName(show.FolderPath))));
+        Assert.Equal(show.FilePath, await ApiScenes.TextAsync(app, "series", "SELECT file_path FROM episode_entries;"));
+        Assert.Equal(fromId, (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{show.SeriesId}")).GetProperty("libraryId").GetString());
+    }
+
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public async Task Both_reassign_routes_take_the_same_options_and_answer_in_the_same_shape(string kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var mediaType = kind == "movies" ? "movies" : "tv";
+        var fromId = await ApiScenes.CreateLibraryAsync(app, mediaType, "From", "From");
+        var toId = await ApiScenes.CreateLibraryAsync(app, mediaType, "To", "To");
+        var (_, titleId, filePath, folderPath) = await TitleAsync(app, kind, fromId);
+        var toRoot = await ApiScenes.LibraryRootAsync(app, toId);
+        var body = new Dictionary<string, object?> { [IdsKey(kind)] = new[] { titleId }, ["fromLibraryId"] = fromId, ["toLibraryId"] = toId };
+
+        var recordOnly = await PostAsync(app, $"/api/{kind}/bulk/reassign-library", body);
+        Assert.Equal(["filesMoved", "moveFailures", "reassigned"], recordOnly.EnumerateObject().Select(p => p.Name).Order().ToArray());
+        Assert.Equal(0, recordOnly.GetProperty("filesMoved").GetInt32());
+        Assert.True(File.Exists(filePath), "left alone unless asked");
+
+        body["fromLibraryId"] = toId;
+        body["toLibraryId"] = fromId;
+        await PostAsync(app, $"/api/{kind}/bulk/reassign-library", body);
+        body["fromLibraryId"] = fromId;
+        body["toLibraryId"] = toId;
+        body["moveFiles"] = true;
+        var moved = await PostAsync(app, $"/api/{kind}/bulk/reassign-library", body);
+
+        var names = moved.EnumerateObject().Select(p => p.Name).ToArray();
+        Assert.Contains("filesMoved", names);
+        Assert.Contains("moveFailures", names);
+        Assert.Contains("moveFailureReasons", names);
+        Assert.Equal(1, moved.GetProperty("filesMoved").GetInt32());
+        Assert.False(Directory.Exists(folderPath));
+        Assert.True(Directory.Exists(Path.Combine(toRoot, Path.GetFileName(folderPath))));
     }
 
     [Theory]
