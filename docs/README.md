@@ -7,6 +7,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `../AGENTS.md`: compact agent entry point.
 - `ARCHITECTURE.md`: module boundaries, dependency direction, and current architectural posture.
 - `QUALITY_SCORE.md`: current quality posture and highest-interest gaps.
+- `testing/STRATEGY.md`: the testing strategy: what 100% coverage means (seven measures, each enforced in CI) and the tiers (every push, nightly, before a tag).
 - `testing/COVERAGE.md`: the coverage register (`testing/coverage-register.json`): every behaviour, route, job, migration, integration and scenario, the tests that prove each, and the totals; CI fails when something is unmapped or a proof is gone.
 - `background-services.md`: every background service, what it does on an error at start-up, in its loop and on a timeout, and how Deluno restarts itself.
 - `repo-change-history.md`: commit-by-commit and subsystem-by-subsystem summary of what changed from the last shared baseline.
