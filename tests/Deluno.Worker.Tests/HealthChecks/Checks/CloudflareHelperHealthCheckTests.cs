@@ -4,6 +4,7 @@ using Deluno.Integrations.Search.Trackers;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Worker.HealthChecks.Checks;
+using Deluno.Tests.Recorded;
 using Moq;
 
 namespace Deluno.Worker.Tests.HealthChecks.Checks;
@@ -25,7 +26,7 @@ public sealed class CloudflareHelperHealthCheckTests
     [Fact]
     public async Task A_helper_that_answers_is_ok()
     {
-        var check = Check("http://127.0.0.1:8191", new AnsweringHandler(HttpStatusCode.OK, "FlareSolverr is ready!"));
+        var check = Check("http://127.0.0.1:8191", new AnsweringHandler(HttpStatusCode.OK, RecordedReplies.Flaresolverr("index").Single.Reply.Body!));
 
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Deluno.Integrations.Search.Trackers;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Tests.Recorded;
 using Moq;
 
 namespace Deluno.Integrations.Tests.Search.Trackers;
@@ -21,7 +22,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task Uses_the_configured_timeout_as_the_helpers_maxTimeout()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 42);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
@@ -33,7 +34,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task Clamps_an_out_of_range_configured_timeout_into_1_to_180_seconds()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 999);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
@@ -45,7 +46,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task A_post_fetch_sends_request_post_with_the_given_form_data()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
 
         var solution = await helper.PostAsync(TargetUrl, new Dictionary<string, string> { ["user"] = "me", ["pass"] = "secret" }, CancellationToken.None);
@@ -59,7 +60,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task Destroys_the_session_it_created_when_asked_to_clean_up()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
         Assert.Contains(recorder.Requests, request => request.Cmd == "sessions.create");
@@ -73,7 +74,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task Destroying_a_host_with_no_session_sends_nothing()
     {
-        var recorder = new RecordingHandler(new { status = "ok" });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
 
         await helper.DestroySessionAsync("never-fetched.example.test", CancellationToken.None);
@@ -84,7 +85,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task DestroyAllSessions_destroys_every_session_that_was_created()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
         await helper.FetchAsync(new Uri("https://other.example.test/"), CancellationToken.None);
@@ -99,7 +100,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task Reconcile_destroys_only_sessions_for_hosts_no_longer_active()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
         await helper.FetchAsync(new Uri("https://removed.example.test/"), CancellationToken.None);
@@ -114,7 +115,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task A_fetch_with_an_assigned_proxy_attaches_it_to_the_helpers_request()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None, new CloudflareHelperProxy("http://192.168.1.1:8080", "user", "pass"));
@@ -129,7 +130,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task A_fetch_with_no_assigned_proxy_sends_no_proxy_parameter()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
@@ -141,7 +142,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task A_proxy_with_no_credentials_sends_only_its_url()
     {
-        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None, new CloudflareHelperProxy("socks5://192.168.1.1:1080", null, null));
@@ -154,7 +155,7 @@ public sealed class FlareSolverrCloudflareHelperTests
     [Fact]
     public async Task No_helper_configured_returns_null_and_sends_nothing()
     {
-        var recorder = new RecordingHandler(new { status = "ok" });
+        var recorder = new RecordingHandler();
         var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60, helperUrl: null);
 
         var solution = await helper.FetchAsync(TargetUrl, CancellationToken.None);
@@ -233,8 +234,12 @@ public sealed class FlareSolverrCloudflareHelperTests
         return (new FlareSolverrCloudflareHelper(httpClientFactory.Object, settings.Object), handler);
     }
 
-    /// <summary>Records every command sent to the helper's own API and always answers with the given body.</summary>
-    private sealed class RecordingHandler(object responseBody) : HttpMessageHandler
+    /// <summary>
+    /// Records every command sent to the helper's own API and answers it with FlareSolverr's real reply to that command
+    /// (tests/fixtures/recorded/flaresolverr, #1237): the index page for the kind probe, `session-created`, the page it solved,
+    /// `request.post`, and `session-destroyed`.
+    /// </summary>
+    private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<RecordedCommand> Requests { get; } = [];
 
@@ -246,7 +251,7 @@ public sealed class FlareSolverrCloudflareHelperTests
                 // address, answered the way real FlareSolverr answers it, so
                 // every test here that never sets a kind keeps exercising
                 // today's FlareSolverr behaviour rather than Byparr's.
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("FlareSolverr is ready!") };
+                return RecordedReplies.Flaresolverr("index").Single.Reply.ToResponse();
             }
 
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
@@ -264,9 +269,13 @@ public sealed class FlareSolverrCloudflareHelperTests
                         proxy.TryGetProperty("password", out var password) ? password.GetString() : null)
                     : null));
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            var cmd = root.GetProperty("cmd").GetString();
+            return cmd switch
             {
-                Content = JsonContent.Create(responseBody)
+                "sessions.create" => RecordedReplies.Flaresolverr("session-created").Exchanges[0].Reply.ToResponse(),
+                "sessions.destroy" => RecordedReplies.Flaresolverr("session-destroyed").Exchanges[0].Reply.ToResponse(),
+                "request.post" => RecordedReplies.Flaresolverr("request-post").Single.Reply.ToResponse(),
+                _ => RecordedReplies.Flaresolverr("request-get-ok").Single.Reply.ToResponse()
             };
         }
     }

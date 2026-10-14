@@ -1,0 +1,25 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "wrong-method",
+  "recordedAt": "2026-10-14T08:05:36Z",
+  "note": "GET /v1 (the endpoint takes POST) (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v1"
+      },
+      "reply": {
+        "status": 405,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "Method not allowed.",
+          "status_code": 405
+        }
+      }
+    }
+  ]
+}

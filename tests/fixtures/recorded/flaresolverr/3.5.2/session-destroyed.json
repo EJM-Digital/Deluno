@@ -1,0 +1,78 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "session-destroyed",
+  "recordedAt": "2026-10-14T08:05:43Z",
+  "note": "sessions.destroy, the same again (no such session), then sessions.list (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.destroy",
+          "session": "recorder-<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "The session has been removed.",
+          "startTimestamp": 1791965141560,
+          "endTimestamp": 1791965143891,
+          "version": "3.5.2"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.destroy",
+          "session": "recorder-<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "error",
+          "message": "Error: The session doesn't exist.",
+          "startTimestamp": 1791965143897,
+          "endTimestamp": 1791965143899,
+          "version": "3.5.2"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.list"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "",
+          "sessions": [],
+          "startTimestamp": 1791965143912,
+          "endTimestamp": 1791965143914,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

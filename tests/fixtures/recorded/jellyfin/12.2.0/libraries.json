@@ -1,0 +1,224 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "libraries",
+  "recordedAt": "2026-10-14T08:31:32Z",
+  "note": "The libraries and users as the connection test lists them (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "Movies",
+            "Locations": [
+              "C:\\golden\\recorded-apps\\media\\Movies"
+            ],
+            "CollectionType": "movies",
+            "LibraryOptions": {
+              "Enabled": true,
+              "EnablePhotos": true,
+              "EnableRealtimeMonitor": false,
+              "EnableLUFSScan": false,
+              "EnableChapterImageExtraction": false,
+              "ExtractChapterImagesDuringLibraryScan": false,
+              "EnableTrickplayImageExtraction": false,
+              "ExtractTrickplayImagesDuringLibraryScan": false,
+              "PathInfos": [
+                {
+                  "Path": "C:\\golden\\recorded-apps\\media\\Movies"
+                }
+              ],
+              "SaveLocalMetadata": false,
+              "EnableInternetProviders": false,
+              "EnableAutomaticSeriesGrouping": true,
+              "EnableEmbeddedTitles": false,
+              "EnableEmbeddedExtrasTitles": false,
+              "EnableEmbeddedEpisodeInfos": false,
+              "AutomaticRefreshIntervalDays": 0,
+              "SeasonZeroDisplayName": "Specials",
+              "DisabledLocalMetadataReaders": [],
+              "DisabledSubtitleFetchers": [],
+              "SubtitleFetcherOrder": [],
+              "DisabledMediaSegmentProviders": [],
+              "MediaSegmentProviderOrder": [],
+              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+              "SkipSubtitlesIfAudioTrackMatches": true,
+              "RequirePerfectSubtitleMatch": true,
+              "SaveSubtitlesWithMedia": true,
+              "SaveLyricsWithMedia": false,
+              "SaveTrickplayWithMedia": false,
+              "DisabledLyricFetchers": [],
+              "LyricFetcherOrder": [],
+              "PreferNonstandardArtistsTag": false,
+              "UseCustomTagDelimiters": false,
+              "CustomTagDelimiters": [
+                "/",
+                "|",
+                ";",
+                "\\"
+              ],
+              "DelimiterWhitelist": [],
+              "AutomaticallyAddToCollection": false,
+              "AllowEmbeddedSubtitles": "AllowAll",
+              "TypeOptions": []
+            },
+            "ItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+            "PrimaryImageItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+            "RefreshStatus": "Idle"
+          },
+          {
+            "Name": "Shows",
+            "Locations": [
+              "C:\\golden\\recorded-apps\\media\\Shows"
+            ],
+            "CollectionType": "tvshows",
+            "LibraryOptions": {
+              "Enabled": true,
+              "EnablePhotos": true,
+              "EnableRealtimeMonitor": false,
+              "EnableLUFSScan": false,
+              "EnableChapterImageExtraction": false,
+              "ExtractChapterImagesDuringLibraryScan": false,
+              "EnableTrickplayImageExtraction": false,
+              "ExtractTrickplayImagesDuringLibraryScan": false,
+              "PathInfos": [
+                {
+                  "Path": "C:\\golden\\recorded-apps\\media\\Shows"
+                }
+              ],
+              "SaveLocalMetadata": false,
+              "EnableInternetProviders": false,
+              "EnableAutomaticSeriesGrouping": true,
+              "EnableEmbeddedTitles": false,
+              "EnableEmbeddedExtrasTitles": false,
+              "EnableEmbeddedEpisodeInfos": false,
+              "AutomaticRefreshIntervalDays": 0,
+              "SeasonZeroDisplayName": "Specials",
+              "DisabledLocalMetadataReaders": [],
+              "DisabledSubtitleFetchers": [],
+              "SubtitleFetcherOrder": [],
+              "DisabledMediaSegmentProviders": [],
+              "MediaSegmentProviderOrder": [],
+              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+              "SkipSubtitlesIfAudioTrackMatches": true,
+              "RequirePerfectSubtitleMatch": true,
+              "SaveSubtitlesWithMedia": true,
+              "SaveLyricsWithMedia": false,
+              "SaveTrickplayWithMedia": false,
+              "DisabledLyricFetchers": [],
+              "LyricFetcherOrder": [],
+              "PreferNonstandardArtistsTag": false,
+              "UseCustomTagDelimiters": false,
+              "CustomTagDelimiters": [
+                "/",
+                "|",
+                ";",
+                "\\"
+              ],
+              "DelimiterWhitelist": [],
+              "AutomaticallyAddToCollection": false,
+              "AllowEmbeddedSubtitles": "AllowAll",
+              "TypeOptions": []
+            },
+            "ItemId": "a656b907eb3a73532e40e44b968d0225",
+            "RefreshStatus": "Idle"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "rec<scrubbed>",
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "Id": "03d927573b5e4cd9942b61f120b5f9a4",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "LastLoginDate": "2026-10-14T08:31:08.5859447Z",
+            "LastActivityDate": "2026-10-14T08:31:08.5859447Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "Is<host>": true,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": false,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": true,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

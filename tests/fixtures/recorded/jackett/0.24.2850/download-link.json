@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "download-link",
+  "recordedAt": "2026-10-14T08:01:28Z",
+  "note": "The link of the first result followed (Jackett fetches the torrent from the tracker, or answers a redirect to a magnet link), from Jackett's Torznab endpoint for the public tracker 'yts' (no account). Jackett v0.24.2850.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/dl/yts/?jackett_apikey=<scrubbed>&path=Q2ZESjhIYWVtVDJ3MkNoQm5nbGZUbXlWOXJCc0twUVIydkRYTU5aNDllV21MRE5fRXR3Tk9VRlBPcG9Kd29Eai1BTXFhZGRUWUR1WW5sMnhyVnpJZ2xzYlFwa1ZIZ3RqYXJ1Yzd6czFhb2hteHBIeHd4anhaNl9yZS1LMzgtNjczQ29yWU52cDFEQTMyV0pzdVRmdDFaekhZOVc4TFFCVk92QUFCLVdTNHVMejZ1NGFMX1BRZVVicDR6LWRWZzQ4Qk1hbi1VSUM0QVQ1a1NBUFhhb08tcFE3eV8w&file=Sintel+(2010)+720p+BRRip+x264+-YTS"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/x-bittorrent"
+        },
+        "bodyText": "<20297 characters of a torrent file, not kept>"
+      }
+    }
+  ]
+}

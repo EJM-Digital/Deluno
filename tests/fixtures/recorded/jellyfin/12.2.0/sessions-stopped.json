@@ -1,0 +1,91 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "sessions-stopped",
+  "recordedAt": "2026-10-14T08:31:35Z",
+  "note": "The same client stopped playing: the session list afterwards (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "127.0.0.1",
+            "PlayableMediaTypes": [],
+            "Id": "f8719b35e25f36bf1559cb0619b68049",
+            "UserId": "03d927573b5e4cd9942b61f120b5f9a4",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-14T08:31:35.8193587Z",
+            "LastPlaybackCheckIn": "2026-10-14T08:31:33.7397653Z",
+            "DeviceName": "Recorder",
+            "DeviceId": "<host>er-1",
+            "ApplicationVersion": "1.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "SupportedCommands": []
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "127.0.0.1",
+            "PlayableMediaTypes": [],
+            "Id": "a93310e08147eb269fad9156a0e80a97",
+            "UserId": "03d927573b5e4cd9942b61f120b5f9a4",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-14T08:31:33.1084436Z",
+            "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+            "DeviceName": "Jellyfin Server",
+            "DeviceId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "ApplicationVersion": "12.2.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+            "SupportedCommands": []
+          }
+        ]
+      }
+    }
+  ]
+}

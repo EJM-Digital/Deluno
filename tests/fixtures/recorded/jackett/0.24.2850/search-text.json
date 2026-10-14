@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "search-text",
+  "recordedAt": "2026-10-14T08:01:19Z",
+  "note": "A text search for a film (Sintel, 2010) in the movie categories, from Jackett's Torznab endpoint for the public tracker 'yts' (no account). Jackett v0.24.2850.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/yts/results/torznab/api?apikey=<scrubbed>&t=search&q=Sintel&cat=2000"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/rss+xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\">\r\n  <channel>\r\n    <atom:link href=\"http://127.0.0.1:9117/\" rel=\"self\" type=\"application/rss+xml\" />\r\n    <title>YTS</title>\r\n    <description>YTS is a Public torrent site specialising in HD movies of small size</description>\r\n    <link>https://yts.gg/</link>\r\n    <language>en-US</language>\r\n    <category>search</category>\r\n    <item>\r\n      <title>Sintel (2010) 720p BRRip x264 -YTS</title>\r\n      <guid>https://yts.gg/torrent/download/A779FA758F2229586EEBC2E5960EB32FE5659596</guid>\r\n      <jackettindexer id=\"yts\">YTS</jackettindexer>\r\n      <type>public</type>\r\n      <comments>https://yts.gg/movies/sintel-2010</comments>\r\n      <pubDate>Sat, 15 Jun 2024 01:48:29 -0700</pubDate>\r\n      <size>143151596</size>\r\n      <description />\r\n      <link>http://127.0.0.1:9117/dl/yts/?jackett_apikey=&lt;scrubbed&gt;&amp;path=Q2ZESjhIYWVtVDJ3MkNoQm5nbGZUbXlWOXJCc0twUVIydkRYTU5aNDllV21MRE5fRXR3Tk9VRlBPcG9Kd29Eai1BTXFhZGRUWUR1WW5sMnhyVnpJZ2xzYlFwa1ZIZ3RqYXJ1Yzd6czFhb2hteHBIeHd4anhaNl9yZS1LMzgtNjczQ29yWU52cDFEQTMyV0pzdVRmdDFaekhZOVc4TFFCVk92QUFCLVdTNHVMejZ1NGFMX1BRZVVicDR6LWRWZzQ4Qk1hbi1VSUM0QVQ1a1NBUFhhb08tcFE3eV8w&amp;file=Sintel+(2010)+720p+BRRip+x264+-YTS</link>\r\n      <category>2040</category>\r\n      <category>100045</category>\r\n      <enclosure url=\"http://127.0.0.1:9117/dl/yts/?jackett_apikey=&lt;scrubbed&gt;&amp;path=Q2ZESjhIYWVtVDJ3MkNoQm5nbGZUbXlWOXJCc0twUVIydkRYTU5aNDllV21MRE5fRXR3Tk9VRlBPcG9Kd29Eai1BTXFhZGRUWUR1WW5sMnhyVnpJZ2xzYlFwa1ZIZ3RqYXJ1Yzd6czFhb2hteHBIeHd4anhaNl9yZS1LMzgtNjczQ29yWU52cDFEQTMyV0pzdVRmdDFaekhZOVc4TFFCVk92QUFCLVdTNHVMejZ1NGFMX1BRZVVicDR6LWRWZzQ4Qk1hbi1VSUM0QVQ1a1NBUFhhb08tcFE3eV8w&amp;file=Sintel+(2010)+720p+BRRip+x264+-YTS\" length=\"143151596\" type=\"application/x-bittorrent\" />\r\n      <torznab:attr name=\"category\" value=\"2040\" />\r\n      <torznab:attr name=\"category\" value=\"100045\" />\r\n      <torznab:attr name=\"imdb\" value=\"1727587\" />\r\n      <torznab:attr name=\"imdbid\" value=\"tt1727587\" />\r\n      <torznab:attr name=\"year\" value=\"2010\" />\r\n      <torznab:attr name=\"seeders\" value=\"13\" />\r\n      <torznab:attr name=\"peers\" value=\"14\" />\r\n      <torznab:attr name=\"coverurl\" value=\"http://127.0.0.1:9117/img/yts/?jackett_apikey=&lt;scrubbed&gt;&amp;path=Q2ZESjhIYWVtVDJ3MkNoQm5nbGZUbXlWOXJDUEZMVU11eWRwTVVoRmxZb0dsbFBxUlZxd0o4VW1lSnY4Y1JjaW4tOXBWTFRJZmhybzhLS1ZzUTR4bUpkYlhaWkxLS2JIa0RIc09UQmpjbnNaOFNGSS10R1E1dnFBVktFeEZEdHZZZW1vRUliOU9wcXo5dmZMaC1ScVJ2bkxQN3pLYzBwT3RHSzhDRC1VYVZicC0xSl9NWS1oQ1lLRXlfWDFjclNXX05iSEhB&amp;file=poster\" />\r\n      <torznab:attr name=\"infohash\" value=\"A779FA758F2229586EEBC2E5960EB32FE5659596\" />\r\n      <torznab:attr name=\"magneturl\" value=\"magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596&amp;dn=Sintel+(2010)+720p+BRRip+x264+-YTS&amp;tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&amp;tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce\" />\r\n      <torznab:attr name=\"downloadvolumefactor\" value=\"0\" />\r\n      <torznab:attr name=\"uploadvolumefactor\" value=\"1\" />\r\n    </item>\r\n  </channel>\r\n</rss>"
+      }
+    }
+  ]
+}

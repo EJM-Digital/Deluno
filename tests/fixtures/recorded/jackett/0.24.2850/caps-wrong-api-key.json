@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "caps-wrong-api-key",
+  "recordedAt": "2026-10-14T08:01:11Z",
+  "note": "The capabilities asked with a wrong API key.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/yts/results/torznab/api?apikey=<scrubbed>&t=caps"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<error code=\"100\" description=\"Invalid API Key\" />"
+      }
+    }
+  ]
+}

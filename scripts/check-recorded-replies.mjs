@@ -32,6 +32,17 @@ export const signatures = [
   // uTorrent and rTorrent are not installed in the golden VM, so nothing of theirs is recorded yet: their tests are listed "pending".
   { app: 'uTorrent', any: ['build'], text: ["id='token'", 'id=\\"token\\"'] },
   { app: 'rTorrent', text: ['<methodResponse>', '<methodResponse'] },
+  // Indexers: a Torznab or Newznab answer carries the feed's own attribute elements, or a caps document (Jackett and NZBHydra2 are recorded).
+  { app: 'Torznab/Newznab', text: ['torznab:attr', 'newznab:attr', 'xmlns:torznab', 'xmlns:newznab', 'torznab.com/schemas', 'newznab.com/DTD', '<caps>', '<caps '] },
+  // Jellyfin and Emby: keys only their server answers with.
+  { app: 'Emby/Jellyfin', any: ['StartupWizardCompleted', 'NowPlayingItem', 'ProviderIds', 'MediaSources', 'CollectionType', 'PlayedPercentage', 'ProductName', 'IsHidden'] },
+  { app: 'Emby/Jellyfin', all: ['ServerName', 'Version'] },
+  // Plex: its MediaContainer and the keys inside it.
+  { app: 'Plex', any: ['MediaContainer', 'machineIdentifier', 'ratingKey', 'librarySectionID'] },
+  // Seerr and Jellyseerr.
+  { app: 'Seerr', any: ['commitTag', 'updateAvailable', 'restartRequired', 'mediaInfo', 'requestedBy', 'commitsBehind'] },
+  // FlareSolverr: the envelope every /v1 reply has.
+  { app: 'FlareSolverr', any: ['startTimestamp', 'endTimestamp'], text: ['FlareSolverr is ready'] },
   // GitHub's release replies: the REST API's asset list, and the release feed's links to a release page.
   { app: 'Github', any: ['browser_download_url'], text: ['/releases/tag/', '<feed'] },
   { app: 'Weir', any: ['watched_folder', 'manager_library_key', 'folders_from_manager', 'queuePosition', 'watchedPath', 'handoff_ended', 'handoff_not_finished', 'outcome_already_recorded', 'handoff-status', 'handoff-outcome', 'library-folders'] }

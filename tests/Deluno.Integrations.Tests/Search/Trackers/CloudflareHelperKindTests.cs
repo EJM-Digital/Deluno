@@ -4,6 +4,7 @@ using System.Text.Json;
 using Deluno.Integrations.Search.Trackers;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Tests.Recorded;
 using Moq;
 
 namespace Deluno.Integrations.Tests.Search.Trackers;
@@ -36,7 +37,7 @@ public sealed class CloudflareHelperKindTests
     [Fact]
     public async Task Auto_detects_FlareSolverr_when_the_landing_page_does_not_say_Byparr()
     {
-        var handler = new FakeHandler(landingPageBody: "FlareSolverr is ready!");
+        var handler = new FakeHandler(landingPageBody: RecordedReplies.Flaresolverr("index").Single.Reply.Body!);
         var (helper, _) = CreateHelper(handler, CloudflareHelperKinds.Auto);
 
         await helper.FetchAsync(TargetUrl, CancellationToken.None);
@@ -163,10 +164,7 @@ public sealed class CloudflareHelperKindTests
             using var document = JsonDocument.Parse(body);
             Commands.Add(document.RootElement.GetProperty("cmd").GetString()!);
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } })
-            };
+            return RecordedReplies.Flaresolverr("request-get-ok").Single.Reply.ToResponse();
         }
     }
 }

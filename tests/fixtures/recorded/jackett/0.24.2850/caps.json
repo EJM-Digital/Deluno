@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "caps",
+  "recordedAt": "2026-10-14T08:01:11Z",
+  "note": "The capabilities (t=caps): server title, limits, search modes with their parameters, and the category tree, from Jackett's Torznab endpoint for the public tracker 'yts' (no account). Jackett v0.24.2850.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/yts/results/torznab/api?apikey=<scrubbed>&t=caps"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/rss+xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<caps>\r\n  <server title=\"Jackett\" />\r\n  <limits default=\"100\" max=\"100\" />\r\n  <searching>\r\n    <search available=\"yes\" supportedParams=\"q\" />\r\n    <tv-search available=\"no\" supportedParams=\"q\" />\r\n    <movie-search available=\"yes\" supportedParams=\"q,imdbid\" />\r\n    <music-search available=\"no\" supportedParams=\"q\" />\r\n    <audio-search available=\"no\" supportedParams=\"q\" />\r\n    <book-search available=\"no\" supportedParams=\"q\" />\r\n  </searching>\r\n  <categories>\r\n    <category id=\"2000\" name=\"Movies\">\r\n      <subcat id=\"2040\" name=\"Movies/HD\" />\r\n      <subcat id=\"2045\" name=\"Movies/UHD\" />\r\n      <subcat id=\"2060\" name=\"Movies/3D\" />\r\n    </category>\r\n    <category id=\"100044\" name=\"Movies/x264/1080p\" />\r\n    <category id=\"100046\" name=\"Movies/x264/2160p\" />\r\n    <category id=\"100047\" name=\"Movies/x264/3D\" />\r\n    <category id=\"100045\" name=\"Movies/x264/720p\" />\r\n  </categories>\r\n</caps>"
+      }
+    }
+  ]
+}
