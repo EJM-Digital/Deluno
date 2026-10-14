@@ -156,6 +156,20 @@ public sealed class GithubReleaseFallbackTests
         Assert.Single(replay.Requests);
     }
 
+    [Fact]
+    public void The_feed_lists_tags_newest_version_first_and_the_api_list_does_too()
+    {
+        var atom = WeirRecording().Find("releases.atom").Reply.Body!;
+
+        var tags = Deluno.Contracts.ReleaseAtomFeed.TagsNewestFirst(atom, includePreReleases: true);
+        Assert.Equal([Rc17, Rc13, Rc12], tags.Take(3));
+        Assert.Empty(Deluno.Contracts.ReleaseAtomFeed.TagsNewestFirst(atom, includePreReleases: false));
+
+        var releases = Deluno.Contracts.ReleaseVersions.GitHubReleasesNewestFirst(WeirRecording().Find("api.github.com").Reply.Body!, includePreReleases: true);
+        Assert.Equal([Rc17, Rc13, Rc12], releases.Select(r => r.GetProperty("tag_name").GetString()));
+        Assert.Empty(Deluno.Contracts.ReleaseVersions.GitHubReleasesNewestFirst(WeirRecording().Find("api.github.com").Reply.Body!, includePreReleases: false));
+    }
+
     // ---- The API route (when the feed cannot be read) ----
 
     private static Func<HttpRequestMessage, HttpResponseMessage?> FeedDown(Func<HttpRequestMessage, HttpResponseMessage?>? then = null)

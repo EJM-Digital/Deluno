@@ -312,9 +312,23 @@ public sealed class ComponentInstallService(
                         GithubLatestRelease.FeedNotFoundMessage(spec.DisplayName));
                 }
 
+                if (lookup.NoInstallerYet)
+                {
+                    // The newest releases are published but their files are not uploaded yet (#1263): not a missing release.
+                    _log.Write($"{spec.DisplayName}: no recent release has its installer and checksum yet ({string.Join("; ", lookup.Skipped ?? [])})");
+                    return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                        GithubLatestRelease.NoInstallerYetMessage(spec.DisplayName));
+                }
+
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
                     $"Could not find {spec.DisplayName}'s latest release on GitHub.");
             }
+
+            if (lookup.ChoiceLogLine(spec.DisplayName) is { } choice)
+            {
+                _log.Write(choice);
+            }
+
             url = resolved.AssetUrl;
             expectedSha256 = resolved.Sha256;
         }
