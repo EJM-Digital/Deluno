@@ -334,6 +334,10 @@ internal static class MigrationUpgradeHarness
 
     // ---- comparing ---------------------------------------------------------------------
 
+    /// <summary>"table.column" or "table.*" in the allowed set: that column (or any column) may change. "~table": rows of that table may be added, removed or the table dropped.</summary>
+    private static bool MayChange(ISet<string> allowed, string table, string column)
+        => allowed.Contains($"{table}.{column}") || allowed.Contains($"{table}.*");
+
     /// <summary>
     /// What a migration did to rows that were already there: a table that is gone, a row
     /// lost, a value changed. Empty means every row kept its meaning.
@@ -345,7 +349,7 @@ internal static class MigrationUpgradeHarness
         {
             if (!after.Rows.TryGetValue(table, out var rowsAfter))
             {
-                if (!allowed.Contains(table))
+                if (!allowed.Contains($"~{table}"))
                 {
                     findings.Add($"table {table} no longer exists ({rowsBefore.Count} row(s) went with it)");
                 }
@@ -353,7 +357,7 @@ internal static class MigrationUpgradeHarness
                 continue;
             }
 
-            if (rowsAfter.Count != rowsBefore.Count && !allowed.Contains(table))
+            if (rowsAfter.Count != rowsBefore.Count && !allowed.Contains($"~{table}"))
             {
                 findings.Add($"table {table} had {rowsBefore.Count} row(s) and now has {rowsAfter.Count}");
                 continue;
@@ -365,7 +369,7 @@ internal static class MigrationUpgradeHarness
                 {
                     if (!rowsAfter[i].TryGetValue(column, out var valueAfter))
                     {
-                        if (!allowed.Contains(table) && !allowed.Contains($"{table}.{column}"))
+                        if (!MayChange(allowed, table, column))
                         {
                             findings.Add($"column {table}.{column} no longer exists");
                         }
@@ -373,7 +377,7 @@ internal static class MigrationUpgradeHarness
                         continue;
                     }
 
-                    if (!ValuesEqual(valueBefore, valueAfter) && !allowed.Contains(table) && !allowed.Contains($"{table}.{column}"))
+                    if (!ValuesEqual(valueBefore, valueAfter) && !MayChange(allowed, table, column))
                     {
                         findings.Add($"{table}.{column} was '{Show(valueBefore)}' and is now '{Show(valueAfter)}'");
                     }
@@ -419,7 +423,7 @@ internal static class MigrationUpgradeHarness
 
             foreach (var column in columns.Where(column => previous.All(old => old.Name != column.Name)))
             {
-                if (allowed.Contains(table) || allowed.Contains($"{table}.{column.Name}"))
+                if (MayChange(allowed, table, column.Name))
                 {
                     continue;
                 }
