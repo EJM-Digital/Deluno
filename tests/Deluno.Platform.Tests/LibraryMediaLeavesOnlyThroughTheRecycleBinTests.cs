@@ -27,36 +27,35 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Companions/CompanionDownloads.cs"] = (1, "A companion installer download. " + OwnData),
         ["src/Deluno.Companions/CompanionTools.cs"] = (2, "A companion installer download. " + OwnData),
         ["src/Deluno.Contracts/StateFiles/StateFile.cs"] = (1, "The one shared state-file writer: the real disk behind it, deleting only the temporary file it wrote beside a state file, or a state file it was asked to clear. " + OwnData),
-        ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (2, "Leftover files of a season pack, refused unless under a configured download path; and a write-probe file. " + DownloadArea),
+        ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (1, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188)."),
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs"] = (2, "A processor's partial output and empty folders inside its output folder. " + DownloadArea),
-        ["src/Deluno.Filesystem/UnmatchedImportGiveUpService.cs"] = (1, "Only a file that is NOT inside any library root; one inside a library goes to the recycle bin (#1188)."),
+        ["src/Deluno.Infrastructure/Observability/DelunoFileLogger.cs"] = (2, "Deluno's own old log files past their retention. " + OwnData),
         ["src/Deluno.Infrastructure/Storage/StagedRestore.cs"] = (4, "Restore markers and staging under the data root. " + OwnData),
         ["src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs"] = (3, "A finished usenet job's own folder (or its one finished file), and the empty temporary folders Transmission leaves beside a removed download (#1224), asked for by the person's 'delete with data' when the client's own delete leaves it (#1212); only a folder named after that job, never a filesystem root. " + DownloadArea),
         ["src/Deluno.Integrations/DownloadClients/Clients/RtorrentDownloadClient.cs"] = (2, "The download's own data, asked for by the person's 'delete with data' on a download; rTorrent has no delete-with-data of its own. " + DownloadArea),
         ["src/Deluno.Integrations/DownloadClients/DownloadClientTelemetryService.cs"] = (2, "A refused download's payload, only inside the library's download path. " + DownloadArea),
         ["src/Deluno.Integrations/DownloadClients/DownloadFolderChangeNotice.cs"] = (1, "A notice state file. " + OwnData),
-        ["src/Deluno.Integrations/DownloadClients/OrphanedDownloadService.cs"] = (2, "An orphaned download; refuses anything inside a library root. " + DownloadArea),
         ["src/Deluno.Integrations/DownloadClients/RefusedDownloadCleanupService.cs"] = (2, "Leftovers of a refused release; the sweep is given the library roots and skips them. " + DownloadArea),
         ["src/Deluno.Integrations/Metadata/TmdbMetadataProvider.cs"] = (2, "Cached artwork under the data root. " + OwnData),
         ["src/Deluno.Integrations/Search/Trackers/TrackerDefinitionUpdateService.cs"] = (1, "A tracker definition marker. " + OwnData),
         ["src/Deluno.Media/SubtitleRejection.cs"] = (1, "A subtitle Deluno itself fetched and a person or the sync check rejected; it is blocklisted so it is never offered again."),
-        ["src/Deluno.Platform/ExternalIntegrationEndpointRouteBuilderExtensions.cs"] = (2, "A person's 'delete' on one item directly inside a library's processor output folder. " + DownloadArea),
         ["src/Deluno.Platform/Processing/ProcessorOutputPathPolicy.cs"] = (3, "A processor's second copy of a download already imported, inside the library's output folder. " + DownloadArea),
         ["src/Deluno.Platform/RecycleBin.cs"] = (4, "The recycle bin itself: permanent deletion of an item by the person, retention, and empty holding folders."),
         ["src/Deluno.Worker/Services/ProcessorHandoffWatcher.cs"] = (1, "A processor's partial output that is not ready. " + DownloadArea),
         ["src/Deluno.Worker/Services/ProcessorOutputSweep.cs"] = (2, "Stale processor output inside the library's output folder. " + DownloadArea),
     };
 
-    private static readonly Regex Delete = new(@"\b(?:File|Directory)\.Delete\(", RegexOptions.Compiled);
+    private static readonly Regex Delete = new(@"\b(?:File|Directory)\.Delete\(|\.Delete\(\)", RegexOptions.Compiled);
 
     [Fact]
     public void Every_delete_in_the_product_is_either_listed_with_a_reason_or_goes_through_the_recycle_bin()
     {
         var root = RepositoryRoot();
         var problems = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sep = Path.DirectorySeparatorChar;
         foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
                      .Where(file => !file.Contains($"{sep}obj{sep}") && !file.Contains($"{sep}bin{sep}")))
@@ -78,6 +77,17 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
             {
                 problems.Add($"{relative}: {count} deletes, {allowed.Max} listed. Check the new one cannot reach library media (or use IRecycleBinService), then raise the count with a reason.");
             }
+            else if (count < allowed.Max)
+            {
+                problems.Add($"{relative}: {count} deletes, {allowed.Max} listed. One was removed (#1318): lower the count so a later one cannot hide behind it.");
+            }
+
+            seen.Add(relative);
+        }
+
+        foreach (var listed in Allowed.Keys.Where(path => !seen.Contains(path)))
+        {
+            problems.Add($"{listed} no longer deletes anything outright: remove it from the list.");
         }
 
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
@@ -87,14 +97,13 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
     /// <summary>
     /// #1188: a private <c>TryDelete(path)</c> wrapper hid a real <c>File.Delete</c> from the count above (a pack
     /// import deleted the library file it replaced and its subtitles with it). Calls to a wrapper are counted
-    /// here, per file, so a new one cannot slip in. The eleven in the import pipeline are staging and backup
-    /// artifacts Deluno itself created, plus the fallbacks of an instance built without a recycle bin (the host
-    /// always supplies one); a replaced library video is never deleted when no library matches, it is left alone.
+    /// here, per file, so a new one cannot slip in. The six in the import pipeline are staging, temporary and rolled-back
+    /// copies Deluno itself created (#1318 took out the fallbacks of an instance built without a recycle bin: it leaves the replaced file); a replaced library video is never deleted when no library matches, it is left alone.
     /// </summary>
     private static readonly Dictionary<string, int> AllowedWrapperCalls = new(StringComparer.OrdinalIgnoreCase)
     {
         ["src/Deluno.Companions/CompanionDownloads.cs"] = 2,
-        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = 11,
+        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = 6,
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = 10,
     };
 
