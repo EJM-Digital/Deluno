@@ -208,9 +208,10 @@ public static class BundledComponentCredentialsEndpointRouteBuilderExtensions
                     {
                         body = await httpContext.Request.ReadFromJsonAsync<BundledComponentConnectRequest>(cancellationToken);
                     }
-                    catch (JsonException)
+                    catch (JsonException exception)
                     {
-                        return Results.BadRequest(new { message = "That request was not understood." });
+                        var (message, member) = DelunoBadRequestAnswers.Describe(exception);
+                        return Results.BadRequest(new { message, member });
                     }
                 }
 

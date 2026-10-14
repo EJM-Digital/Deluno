@@ -830,7 +830,17 @@ public static class QualityEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            // One format or an array of them (#777's single/bulk import).
+            // One format or an array of them (#777's single/bulk import). Anything else is not the
+            // documented shape; a number or a piece of text is refused here rather than answered
+            // with one error per "item" (#1280).
+            if (body.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+            {
+                return Results.BadRequest(new
+                {
+                    message = "Send one custom format as a JSON object, or a list of them as a JSON array."
+                });
+            }
+
             var items = body.ValueKind == JsonValueKind.Array
                 ? body.EnumerateArray().ToArray()
                 : [body];

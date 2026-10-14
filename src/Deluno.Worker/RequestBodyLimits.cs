@@ -155,6 +155,34 @@ public static class RequestBodyLimits
         }
     }
 
+    /// <summary>The name of the member <see cref="FirstTooLong"/> found too long, so the refusal can name it (#1280).</summary>
+    private static string? FirstTooLongMember(JsonElement element, string member = "")
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                return TextLimit(member) is { } max && element.GetString() is { } text && text.Length > max && member.Length > 0 ? member : null;
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    var found = FirstTooLongMember(property.Value, property.Name);
+                    if (found is not null) return found;
+                }
+
+                return null;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    var found = FirstTooLongMember(item, member);
+                    if (found is not null) return found;
+                }
+
+                return null;
+            default:
+                return null;
+        }
+    }
+
     private static string Spaced(string member)
     {
         var chars = new List<char>(member.Length + 4);
@@ -215,10 +243,12 @@ public static class RequestBodyLimits
 
             buffer.Position = 0;
             string? tooLong = null;
+            string? tooLongMember = null;
             try
             {
                 using var document = JsonDocument.Parse(buffer);
                 tooLong = FirstTooLong(document.RootElement);
+                tooLongMember = tooLong is null ? null : FirstTooLongMember(document.RootElement);
             }
             catch (JsonException)
             {
@@ -228,7 +258,7 @@ public static class RequestBodyLimits
             request.Body.Position = 0;
             if (tooLong is not null)
             {
-                await RefuseAsync(context, StatusCodes.Status400BadRequest, tooLong);
+                await RefuseAsync(context, StatusCodes.Status400BadRequest, tooLong, tooLongMember);
                 return;
             }
 
@@ -240,10 +270,14 @@ public static class RequestBodyLimits
             ? $"That request is too large. The most this can take is {limit / (1024 * 1024):N0} MB."
             : $"That request is too large. The most this can take is {limit / 1024:N0} KB.";
 
-    private static async Task RefuseAsync(HttpContext context, int status, string message)
+    private static async Task RefuseAsync(HttpContext context, int status, string message, string? member = null)
     {
+        // The same shape as every other refusal of a request (DelunoBadRequestAnswers): { message, member }; "error" stays for callers that read it.
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(new { message, error = message }, context.RequestAborted);
+        await context.Response.WriteAsJsonAsync(
+            member is null ? new Dictionary<string, string> { ["message"] = message, ["error"] = message }
+                           : new Dictionary<string, string> { ["message"] = message, ["error"] = message, ["member"] = member },
+            context.RequestAborted);
     }
 }

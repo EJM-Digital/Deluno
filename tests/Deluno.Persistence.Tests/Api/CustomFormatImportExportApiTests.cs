@@ -12,6 +12,25 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class CustomFormatImportExportApiTests
 {
+    /// <summary>#1280: the import takes one format (an object) or a list of them; anything else is not the documented shape and is refused, not answered with an error per "item".</summary>
+    [Theory]
+    [InlineData("12345")]
+    [InlineData("\"just some text\"")]
+    [InlineData("true")]
+    [InlineData("null")]
+    public async Task Import_refuses_a_body_that_is_not_a_format_or_a_list_of_formats(string json)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.PostAsync(
+            "/api/custom-formats/import",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("JSON object", body.GetProperty("message").GetString());
+    }
+
     [Fact]
     public async Task A_single_format_round_trips_through_export_then_import()
     {
