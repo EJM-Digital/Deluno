@@ -41,5 +41,5 @@ while (-not (Test-Path -LiteralPath $StopFile)) {
     }
     Add-Content -Path $Log -Value ($line | ConvertTo-Json -Compress -Depth 4) -Encoding utf8
     $left = $IntervalSeconds - $sw.Elapsed.TotalSeconds
-    if ($left -gt 0) { Start-Sleep -Milliseconds ([int]($left * 1000)) }
+    if ($left -gt 0) { Start-Sleep -Milliseconds ([int]($left * 1000)) } # reason: paces the sampler to its interval; the interval is the behaviour
 }

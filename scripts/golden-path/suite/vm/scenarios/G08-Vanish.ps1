@@ -37,7 +37,7 @@ function Invoke-GroupVanish {
                     }
                 }
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 500 # reason: poll interval inside a loop bounded by its deadline
         }
         Start-Sleep -Seconds 5
         # A client that was never seen saying "Files are gone": keep the row Deluno held for it (its status and the sourcePath the

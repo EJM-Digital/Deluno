@@ -342,7 +342,7 @@ public sealed class AFailingMetadataGatewayIsSaidHonestlyTests : IDisposable
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            await Task.Delay(Timeout.Infinite, cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken); // reason: a gateway that never answers until cancelled
             return new HttpResponseMessage(HttpStatusCode.OK);
         }
     }

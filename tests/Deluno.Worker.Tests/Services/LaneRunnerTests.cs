@@ -173,7 +173,7 @@ public sealed class LaneRunnerTests
 
         await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
         cancellation.Cancel();
-        await Task.Delay(30);
+        await Task.Delay(30); // reason: shows a shutdown does not cut off leased work; absence needs real time
         Assert.False(runnerTask.IsCompleted, "A shutdown must drain work that was already leased.");
 
         release.TrySetResult();
@@ -195,7 +195,7 @@ public sealed class LaneRunnerTests
             async (_, token) =>
             {
                 started.TrySetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token); // reason: a job that runs until the lane is cancelled
             },
             cancellation.Token,
             (_, _) => Interlocked.Increment(ref failures));
@@ -280,7 +280,7 @@ public sealed class LaneRunnerTests
             time.Advance(backoff - TimeSpan.FromMilliseconds(1));
             // Absence cannot be waited for; give a wrongly-woken runner ample
             // time to show itself. This can only miss a bug, never fail a good run.
-            await Task.Delay(100);
+            await Task.Delay(100); // reason: absence cannot be waited for; the runner is given real time to wrongly wake
             Assert.Equal(retry, Volatile.Read(ref ticks));
 
             time.ArmNextTimerSignal();

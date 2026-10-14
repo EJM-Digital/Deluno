@@ -474,7 +474,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         fake.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(async (DownloadClientItem _, string _, CancellationToken token) =>
             {
-                await Task.Delay(System.Threading.Timeout.Infinite, token);
+                await Task.Delay(System.Threading.Timeout.Infinite, token); // reason: a client that never answers until cancelled
                 return null!;
             });
         var service = new FolderChainService(
@@ -507,7 +507,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         fake.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(async (DownloadClientItem item, string category, CancellationToken _) =>
             {
-                await Task.Delay(500);
+                await Task.Delay(500); // reason: each client takes a moment to answer, so checks run one after another would take three times as long
                 return new DownloadClientCategoryCheckResult(item.Id, item.Name, category, DownloadClientCategoryStatuses.Ready, "Ready.", true, true, LibraryFolder);
             });
         var service = new FolderChainService(repository.Object, connections.Object, Registry(fake.Object));

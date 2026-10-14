@@ -1,10 +1,14 @@
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { defineSources, queryClient, sourceLoader, startSources, useRouteSources } from "./route-cache";
 import { setRealtimeConnected } from "./realtime-state";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /**
  * #1081: a screen opens on what the cache already holds and asks again behind
@@ -119,7 +123,8 @@ describe("route sources", () => {
     const refreshed = deferred<string>();
     const main = vi.fn(() => refreshed.promise);
     // Outside the window in which an answer is shared, so the revisit asks again.
-    await new Promise((resolve) => setTimeout(resolve, 3_100));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 3_100);
     renderProbe(makeSources(main, () => Promise.resolve(["a"])));
 
     // Drawn from the cache before the new answer exists.
@@ -169,9 +174,11 @@ describe("no polling timers", () => {
     return <p>n: {String(state.data.n)}</p>;
   }
 
-  const sleep = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+  // Fake timers: a timer the screen started would fire inside this advance, with no real waiting.
+  const sleep = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
   beforeEach(() => {
+    vi.useFakeTimers();
     queryClient.clear();
     setRealtimeConnected(false);
   });

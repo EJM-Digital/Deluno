@@ -93,7 +93,7 @@ public sealed class LiveDownloadReadingsTests : IAsyncDisposable
         for (var advanced = TimeSpan.Zero; advanced < total; advanced += step)
         {
             _clock.Advance(step);
-            await Task.Delay(8);
+            await Task.Delay(8); // reason: lets the publisher's background loop run between fake-clock steps; it exposes no signal to await
         }
     }
 

@@ -72,9 +72,10 @@ test("the guided setup's Yes/No answers survive a reload, and the Start page nam
   await page.getByRole("button", { name: /^(?:\d+ )?Updates\b/ }).click();
   await page.getByRole("radio", { name: "Update Deluno automatically? Yes" }).click();
   await page.getByRole("button", { name: /^(?:\d+ )?Automation\b/ }).click();
+  // The draft is saved half a second after the last change: wait for that save, not for a guessed time.
+  const saved = page.waitForResponse((response) => response.url().includes("/api/setup/draft") && response.request().method() === "PUT", { timeout: 10_000 });
   await page.getByRole("radio", { name: /Yes$/ }).first().click();
-  // The draft is saved a moment after a change.
-  await page.waitForTimeout(900);
+  await saved;
 
   await page.reload();
   await page.getByRole("button", { name: /How you sign in/ }).click();

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,7 +42,12 @@ describe("host name (#1101)", () => {
   it("does not ask while signed out", async () => {
     mocks.token = null;
     const { result } = renderHook(() => useHostName(), { wrapper });
-    await new Promise((r) => setTimeout(r, 20));
+    vi.useFakeTimers();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(result.current).toBeNull();
     expect(mocks.calls).toBe(0);
   });

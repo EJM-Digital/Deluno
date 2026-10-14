@@ -123,7 +123,7 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
         var first = await HandoffAsync(app, scene);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Dismissed, null, null, "You said you do not want it.", CancellationToken.None);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await RecordSendAsync(app, scene);
         var second = await HandoffAsync(app, scene, DateTimeOffset.UtcNow.AddMinutes(5));
         Assert.NotEqual(first.Id, second.Id);

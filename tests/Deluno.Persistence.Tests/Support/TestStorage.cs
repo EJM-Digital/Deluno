@@ -48,11 +48,11 @@ internal sealed class TestStorage : IDisposable
             }
             catch (IOException) when (attempt < 3)
             {
-                Thread.Sleep(20 * attempt);
+                Thread.Sleep(20 * attempt); // reason: back-off while Windows releases a file handle, three tries at most
             }
             catch (UnauthorizedAccessException) when (attempt < 3)
             {
-                Thread.Sleep(20 * attempt);
+                Thread.Sleep(20 * attempt); // reason: back-off while Windows releases a file handle, three tries at most
             }
             catch (IOException)
             {

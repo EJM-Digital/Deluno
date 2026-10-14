@@ -1362,7 +1362,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         public async Task<Deluno.Integrations.Search.Trackers.TrackerSearchResult> SearchAsync(
             Deluno.Integrations.Search.Trackers.TrackerConnection connection, Deluno.Integrations.Search.Trackers.TrackerQuery query, CancellationToken cancellationToken)
         {
-            await Task.Delay(Timeout.Infinite, cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken); // reason: a search that never answers until cancelled
             throw new InvalidOperationException("unreachable");
         }
 

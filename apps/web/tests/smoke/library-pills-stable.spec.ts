@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { untilQuiet } from "../helpers/settle";
 
 /**
  * #1048: every title is in exactly one pill, clicking a pill never changes
@@ -63,7 +64,7 @@ async function seededTitlesOnShelf(page: Page): Promise<Set<string>> {
       return element.scrollTop === before;
     });
     if (atEnd) break;
-    await page.waitForTimeout(120);
+    await untilQuiet(page, { frames: 8 });
   }
   return seen;
 }
@@ -151,7 +152,7 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
     await authenticateAndNavigate(page, "/movies");
     await expect(page.locator(`p[title^="${TITLE_PREFIX}"]`).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /Unmonitored/ }).first().click();
-    await page.waitForTimeout(600);
+    await untilQuiet(page);
 
     const container = page.locator("div.overflow-auto").first();
     await container.evaluate((element) => { element.scrollTop = 0; });
@@ -166,7 +167,7 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
         return element.scrollTop === before;
       });
       if (atEnd) break;
-      await page.waitForTimeout(120);
+      await untilQuiet(page, { frames: 8 });
     }
     expect(unmonitoredStrips, "no unmonitored title without a file said Unmonitored").toBeGreaterThan(0);
     expect(words.filter((word) => /^Missing/.test(word) || /^Subtitles missing/i.test(word)), "an unmonitored card still says Missing").toEqual([]);

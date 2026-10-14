@@ -94,7 +94,7 @@ public sealed class AnUnmatchedOutputProblemClosesWhenItsFileIsImportedTests
         var first = await HandoffAsync(app, scene);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Dismissed, null, null, "You said you do not want it.", CancellationToken.None);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         return first;
     }
 
