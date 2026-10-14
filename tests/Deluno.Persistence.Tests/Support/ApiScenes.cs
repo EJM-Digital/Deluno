@@ -46,11 +46,11 @@ internal static class ApiScenes
         => (await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray()
             .First(library => library.GetProperty("id").GetString() == libraryId).GetProperty("rootPath").GetString()!;
 
-    public static async Task<Film> FilmOnDiskAsync(ApplicationTestHost app, string title = "Dune", int year = 2021, string? libraryId = null, string quality = "Bluray-1080p")
+    public static async Task<Film> FilmOnDiskAsync(ApplicationTestHost app, string title = "Dune", int year = 2021, string? libraryId = null, string quality = "Bluray-1080p", string? folderName = null)
     {
         libraryId ??= await CreateLibraryAsync(app, "movies");
         var root = await LibraryRootAsync(app, libraryId);
-        var folder = Path.Combine(root, $"{title} ({year})");
+        var folder = Path.Combine(root, folderName ?? $"{title} ({year})");
         var filePath = Path.Combine(folder, $"{title} ({year}) [{quality}].mkv");
         Directory.CreateDirectory(folder);
         await File.WriteAllBytesAsync(filePath, [1, 2, 3, 4]);
@@ -69,11 +69,11 @@ internal static class ApiScenes
         return new Film(libraryId, movieId, filePath, folder);
     }
 
-    public static async Task<Show> ShowOnDiskAsync(ApplicationTestHost app, string title = "The Wire", int year = 2002, string? libraryId = null)
+    public static async Task<Show> ShowOnDiskAsync(ApplicationTestHost app, string title = "The Wire", int year = 2002, string? libraryId = null, string? folderName = null)
     {
         libraryId ??= await CreateLibraryAsync(app, "tv");
         var root = await LibraryRootAsync(app, libraryId);
-        var folder = Path.Combine(root, title);
+        var folder = Path.Combine(root, folderName ?? title);
         var filePath = Path.Combine(folder, "Season 01", $"{title} S01E01.mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         await File.WriteAllBytesAsync(filePath, [1, 2, 3, 4]);
