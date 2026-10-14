@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:smoke": "playwright test",
     "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "test:unit:watch": "vitest",
     "lint": "eslint src",
     "check:orphans": "knip --include files,dependencies",

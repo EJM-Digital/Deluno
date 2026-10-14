@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "Empty placeholder. CI's first coverage report fills it; the owner reviews and commits it (docs/testing/COVERAGE.md, How the baseline is filled). Per file: line and branch percent rounded down to two places; only ever raised.",
+  "files": {}
+}

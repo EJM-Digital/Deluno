@@ -23,7 +23,17 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: false,
-    setupFiles: ["src/test/setup.ts"]
+    setupFiles: ["src/test/setup.ts"],
+    // Only read with `vitest run --coverage` (npm run test:unit:coverage, CI coverage run). Every production source
+    // file is listed, tested or not; a file leaves the report only through docs/testing/coverage-exclusions.json,
+    // with a reason. The merge script reads coverage/lcov.info (issue 1268).
+    coverage: {
+      provider: "v8",
+      reporter: ["lcov"],
+      reportsDirectory: "coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/**/*.d.ts"]
+    }
   },
   build: {
     rollupOptions: {
