@@ -90,12 +90,26 @@ function Get-KsMovedMessage {
     $null
 }
 
-# Whether a line says the release was removed from the client by a strike (the public torrent's story, and what a private torrent must never have).
-function Get-KsRemovedMessage {
+# The strike lines Deluno wrote for one release: Activity rows of category download.health.remediated whose details name it.
+# Every strike line carries the label "Fixed a stuck download", the move included, so the label never tells a move from a
+# removal; the details' actions do ("moved to <category>" or "client entry removed ...").
+function Get-KsStrikeLines {
     param([Parameter(Mandatory)] $Film, [string[]] $Lines)
     foreach ($line in $Lines) {
-        if ($line -notmatch [regex]::Escape($Film.Title) -or $line -notmatch 'Fixed a stuck download') { continue }
-        try { return [string](($line | ConvertFrom-Json).message) } catch { return $line }
+        if ($line -notmatch [regex]::Escape($Film.Release)) { continue }
+        $row = try { $line | ConvertFrom-Json } catch { $null }
+        if (-not $row -or $row.category -ne 'download.health.remediated') { continue }
+        $details = try { [string]$row.detailsJson | ConvertFrom-Json } catch { $null }
+        if (-not $details -or -not ([string]$details.releaseName).StartsWith($Film.Release, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        [pscustomobject]@{ Message = [string]$row.message; Actions = @($details.actions | ForEach-Object { [string]$_ }); MovedTo = [string]$details.movedTo }
+    }
+}
+
+# Whether a strike removed the release from the client (the public torrent's story, and what a private torrent must never have).
+function Get-KsRemovedMessage {
+    param([Parameter(Mandatory)] $Film, [string[]] $Lines)
+    foreach ($strike in @(Get-KsStrikeLines -Film $Film -Lines $Lines)) {
+        if (@($strike.Actions | Where-Object { $_ -match 'removed' }).Count -gt 0) { return $strike.Message }
     }
     $null
 }
@@ -212,7 +226,8 @@ function Invoke-GroupKeepSeeding {
 
                 $row = Find-QueueRow -Name $pf.Release
                 Add-Check 'It is gone from Transfers, and stayed gone through another check' (-not $row) $(if ($row) { "still listed as '$($row.status)'" } else { '' })
-                Add-Check 'It was not struck again after the move' (@($lines | Where-Object { $_ -match [regex]::Escape($pf.Title) -and $_ -match 'Fixed a stuck download' }).Count -eq 0) ''
+                $strikes = @(Get-KsStrikeLines -Film $pf -Lines $lines)
+                Add-Check 'It was not struck again after the move (one strike line, the move)' ($strikes.Count -eq 1) ("{0} strike line(s): {1}" -f $strikes.Count, (($strikes | ForEach-Object { $_.Actions -join '+' }) -join ' | '))
                 $problems = @($afterView.problems | Where-Object { $_.releaseName -like "*$($pf.Title)*" })
                 Add-Check 'No keep-seeding problem is raised for it' ($problems.Count -eq 0) (($problems | ForEach-Object { $_.message }) -join '; ')
             }
