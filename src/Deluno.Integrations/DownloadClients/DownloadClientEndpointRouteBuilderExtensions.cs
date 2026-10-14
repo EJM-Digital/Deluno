@@ -614,7 +614,9 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             if (scopeDenied is not null) return scopeDenied;
 
             var libraries = await folderChain.ListDestinationsAsync(libraryId, cancellationToken);
-            return libraries is null ? Results.NotFound() : Results.Ok(new { libraries });
+            return libraries is null
+                ? Results.NotFound(new { error = "library_not_found", message = $"Deluno has no library with the id {libraryId}." })
+                : Results.Ok(new { libraries });
         }).WithMetadata(new DelunoImportsScopeMayReadAttribute());
 
         endpoints.MapPost("/api/download-clients/{clientId}/categories/check", async (
