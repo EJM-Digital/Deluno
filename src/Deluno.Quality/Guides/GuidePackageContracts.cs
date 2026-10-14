@@ -62,6 +62,11 @@ public sealed record GuideCustomFormat(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     bool? IncludeWhenRenaming = null);
 
+/// <summary>
+/// Read as its name wherever a package arrives (#1326): GET returns it as a string, so the apply and preview routes, which bind
+/// with the host's own JSON settings, must take that string back. The package routes' own settings (camel-case) still decide what is written.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum GuideMappingStatus
 {
     Reviewed,

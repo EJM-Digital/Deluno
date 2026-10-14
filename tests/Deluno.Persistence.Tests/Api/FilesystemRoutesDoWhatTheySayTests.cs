@@ -347,7 +347,7 @@ public sealed class FilesystemRoutesDoWhatTheySayTests
         Assert.Contains("under this title's own folder", await outside.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "Defect: POST /api/filesystem/reconciliation/repair refuses every issue id Deluno hands out. An issue id is the issue's details encoded (kind, media type, library id, title id, path), 274 to 282 characters for a short path like D:/Films/Dune (2021)/Dune.mkv, and the request pipeline caps a member named issueId at 200 characters: 400 'The issue id is too long. It can be at most 200 characters.' The title page's Review button (apps/web/src/components/app/title-folder-actions.tsx) posts such an id.")]
+    [Fact]
     public async Task Repairing_through_the_route_with_an_id_Deluno_issued_repairs_the_issue()
     {
         await using var app = await StartAsync();
