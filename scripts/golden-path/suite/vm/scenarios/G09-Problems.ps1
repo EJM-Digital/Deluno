@@ -12,7 +12,7 @@
 function Get-ProblemPlaces {
     param([Parameter(Mandatory)] [string] $Needle)
     $places = [ordered]@{}
-    $has = { param($obj) $t = ($obj | ConvertTo-Json -Depth 8 -Compress); $t -match [regex]::Escape($Needle) }
+    $has = { param($obj) $t = ($obj | ConvertTo-Json -Depth 8 -Compress); $t -match [regex]::Escape($Needle) }.GetNewClosure()
     $places['Transfers: needs action (hand-offs that went wrong)'] = [bool](@(Get-Handoffs | Where-Object { $_.releaseName -like "*$Needle*" -and $_.status -in 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'source-gone' }).Count)
     foreach ($spec in @(@('The bell (attention summary)', '/api/attention/summary'), @('System: health checks', '/api/system/health/summary'), @('System: health notices', '/api/system/health'))) {
         $r = Try-Deluno -Path $spec[1]

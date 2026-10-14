@@ -82,7 +82,10 @@ param(
     [string] $DelunoPassword,
     # Run once the VM answers over PowerShell Direct and before the installer is copied: called with the host session, the VM name
     # and the VM credential, so the scenario suite can start its tray watcher before Setup runs (Invoke-ScenarioSuite.ps1).
-    [scriptblock] $AfterVmReady
+    [scriptblock] $AfterVmReady,
+
+    # What the hook needs from its maker, passed in because a stored script block reads variables from where it is run, not where it was made.
+    [object] $AfterVmReadyContext = $null
 )
 
 $ErrorActionPreference = 'Stop'
@@ -266,7 +269,7 @@ try {
     $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
     Add-Result 'VM answers over PowerShell Direct' 'passed' $os
     if ($AfterVmReady) {
-        try { & $AfterVmReady $rig $VmName $vmCred; Add-Result 'Hook after the VM is ready' 'passed' 'Ran.' }
+        try { & $AfterVmReady $rig $VmName $vmCred $AfterVmReadyContext; Add-Result 'Hook after the VM is ready' 'passed' 'Ran.' }
         catch { Add-Result 'Hook after the VM is ready' 'failed' $_.Exception.Message }
     }
 
