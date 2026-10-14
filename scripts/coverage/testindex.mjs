@@ -40,7 +40,7 @@ export function testFiles(root) {
 const TS_TITLE = /\b(?:it|test|describe)(?:\.(?:each|skip|only|fixme|fails|concurrent|serial|describe|configure))*(?:\([^)]*\))?\(\s*(['"`])((?:\\.|(?!\1)[^\\\n])+)\1/g;
 const CS_METHOD = /\[(?:[A-Za-z]*Fact|[A-Za-z]*Theory)\b[^\]]*\]\s*(?:\[[^\]]*\]\s*)*(?:public\s+|internal\s+)?(?:static\s+)?(?:async\s+)?(?:Task|void|ValueTask)\s+(\w+)/g;
 const CS_CLASS = /\b(?:class|record)\s+(\w+)/g;
-const RECORDING = /RecordedReplies\b|WeirContract\.Rec|\bRecorded[A-Z]\w*\s*[(.<]|fixtures[\\/]+recorded/;
+const RECORDING = /RecordedReplies\b|WeirContract\.Rec|\bRec\(\s*"|\bRecorded[A-Z]\w*\s*[(.<]|fixtures[\\/]+recorded/;
 
 /** The names inside one test file: its tests, its groups and (C#) its classes. */
 export function namesOf(file, text) {
