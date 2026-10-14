@@ -135,6 +135,11 @@
       "file": "tests/Deluno.Persistence.Tests/Platform/MigrationAssistantServiceTests.cs",
       "kind": "pending",
       "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Seerr replies are still built inline. Seerr is not recorded (its build from source in the record VM did not finish); see tests/fixtures/recorded/MISSING.md."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/Properties/ScoringAndFeedProperties.cs",
+      "kind": "deliberate",
+      "reason": "Property tests (#1271): the feed is written by Deluno's own TorznabFeed.Write from generated releases and read back, to prove the reader never throws on any text and round-trips title, size and date. Generated input is the point; no recorded reply can stand in for arbitrary text. Real Torznab replies are tested from tests/fixtures/recorded/jackett."
     }
   ],
   "noBehaviour": [
