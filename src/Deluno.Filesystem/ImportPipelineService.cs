@@ -926,10 +926,12 @@ public sealed partial class ImportPipelineService(
             {
                 if (recycleBinService is null)
                 {
-                    // Keep hand-constructed test/utility instances backwards
-                    // compatible; the host always supplies the recoverable
-                    // service through DI.
-                    TryDelete(backupPath);
+                    // #1318: with no recycle bin the replaced file is left where it
+                    // is. A person's media is never deleted outright; the host
+                    // always supplies the bin through DI.
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath} because there is no recycle bin to move it to; nothing was deleted.",
+                        backupPath);
                 }
                 else if (matchedLibrary is null)
                 {
@@ -1663,20 +1665,13 @@ public sealed partial class ImportPipelineService(
 
                 if (recycleBinService is null)
                 {
-                    // Keep hand-constructed test/utility instances backwards
-                    // compatible; the host always supplies the recoverable
-                    // service through DI. Mirrors the single-file path's
-                    // no-recycle-bin fallback (#893).
-                    TryDelete(backup.BackupPath);
-                    var deletedSubtitles = 0;
-                    foreach (var subtitlePath in oldSubtitlePaths)
-                    {
-                        TryDelete(subtitlePath);
-                        deletedSubtitles++;
-                    }
-                    replacementMessages.Add(deletedSubtitles > 0
-                        ? $"Removed the previous {fileName} file it replaced, and its subtitles."
-                        : $"Removed the previous {fileName} file it replaced.");
+                    // #1318: with no recycle bin the replaced video and its subtitles are
+                    // left where they are; nothing of a person's is deleted outright.
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath}, with {SubtitleCount} subtitle file(s) beside {ExistingPath}, because there is no recycle bin to move it to; nothing was deleted.",
+                        backup.BackupPath,
+                        oldSubtitlePaths.Count,
+                        backup.ExistingPath);
                     continue;
                 }
 
@@ -4602,19 +4597,9 @@ public sealed partial class ImportPipelineService(
 
             if (recycleBinService is null)
             {
-                // Keep hand-constructed test/utility instances backwards
-                // compatible; the host always supplies the recoverable
-                // service through DI.
-                TryDelete(replacedPath);
-                foreach (var subtitlePath in oldSubtitlePaths)
-                {
-                    TryDelete(subtitlePath);
-                }
-
-                messages.Add(oldSubtitlePaths.Count > 0
-                    ? $"Removed the previous {fileName} file it replaced, and its subtitles."
-                    : $"Removed the previous {fileName} file it replaced.");
-                await DispatchFileDeletedNotificationAsync(fileName, forUpgrade: true, cancellationToken);
+                // #1318: with no recycle bin the previous file and its subtitles are
+                // left in place; nothing of a person's is deleted outright.
+                warnings.Add($"The previous file {fileName} was left in place because there is no recycle bin to move it to.");
                 continue;
             }
 
