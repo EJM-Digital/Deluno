@@ -46,6 +46,7 @@ $suiteDir = Split-Path $here -Parent
 . (Join-Path $here 'Tray.Lib.ps1')
 . (Join-Path $here 'Cdp.Lib.ps1')
 . (Join-Path $here 'Fixtures.Lib.ps1')
+. (Join-Path $here 'GithubLimit.Lib.ps1')
 . (Join-Path $here 'Initialize-Environment.ps1')
 . (Join-Path $suiteDir 'ScenarioPlan.ps1')
 . (Join-Path $here 'scenarios\Common.ps1')
@@ -59,6 +60,8 @@ Initialize-Suite -Root $Root
 $flag = Join-Path $Root 'results\done.flag'
 Remove-Item -LiteralPath $flag -ErrorAction SilentlyContinue
 $final = 'ok'
+# The last group that runs in the VM: only a run of the whole suite, or of that group alone, leaves Weir's key.
+$lastVmGroup = @(Get-ScenarioPlan | Where-Object { -not $_.Host } | ForEach-Object { $_.Name })[-1]
 try {
     Write-SuiteLog 'Scenario suite starting.'
     if ($selected.Count -gt 0) { Write-SuiteLog ("Only these scenarios: " + ($selected -join ', ')) }
@@ -98,7 +101,7 @@ finally {
     Save-Results
     # After the last scenario: the key Weir's scenario suite needs (Weir #954). A failure here is the run's failure. Only a run
     # of the whole suite, or of the last group alone, leaves it (a run of single scenarios is not Weir's suite's starting point).
-    if (-not $SetupOnly -and -not $PrepareOnly -and $selected.Count -eq 0 -and ($Groups.Count -eq 0 -or $Groups -contains 'problems')) {
+    if (-not $SetupOnly -and -not $PrepareOnly -and $selected.Count -eq 0 -and ($Groups.Count -eq 0 -or $Groups -contains $lastVmGroup)) {
         try { Publish-WeirScenarioKey }
         catch { $final = 'Could not make the key for Weir''s suite: ' + (Hide-Secrets $_.Exception.Message); Write-SuiteLog $final }
         try { Publish-WeirScenarioLogin }

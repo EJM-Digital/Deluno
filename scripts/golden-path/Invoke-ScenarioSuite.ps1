@@ -49,7 +49,7 @@
     Print the scenarios and what each proves, then stop. Touches nothing.
 
 .PARAMETER Groups
-    Run only these groups (install, films, removal, resend, stuck, outage, tryagain, vanish, problems, update). A partial run never records a pass.
+    Run only these groups (install, films, removal, resend, stuck, keepseeding, outage, tryagain, vanish, problems, seasonpack, layout, github, githubpicker, update). A partial run never records a pass.
 
 .PARAMETER Scenarios
     Run only these scenarios: ids, comma separated, or patterns (resend.*.sabnzbd). Each group prepares only what the chosen scenarios
@@ -132,6 +132,7 @@ $fullRun = $scope.FullRun
 $chosenIds = @($scope.ChosenIds)
 $needVm = $scope.NeedVm
 $runUpdate = $scope.RunUpdate
+$runGithubPicker = $scope.RunGithubPicker
 
 
 if ($ListOnly) {
@@ -281,7 +282,7 @@ $harnessRows = @()
 $readyRestored = $false
 $makeReady = $false
 $runNotes = New-Object System.Collections.ArrayList
-if ($readyName -and -not $needVm) { Write-Host "Only the update scenario was chosen, which runs on a clean machine of its own: the ready checkpoint is not used." -ForegroundColor Yellow }
+if ($readyName -and -not $needVm) { Write-Host "Only scenarios that run on a clean machine of their own were chosen (the update and the GitHub picker ones): the ready checkpoint is not used." -ForegroundColor Yellow }
 elseif ($readyName) {
     Write-Host "Looking for the ready checkpoint '$readyName' on $VmName..." -ForegroundColor Cyan
     if (Test-RigCheckpoint -Name $readyName) {
@@ -331,7 +332,7 @@ $installedBuild = ''
 $buildMatches = $false
 $runnerNote = ''
 $rig = $null
-if (-not $needVm) { $buildMatches = $true; $installedBuild = '(not installed: only the update scenario was chosen)' }
+if (-not $needVm) { $buildMatches = $true; $installedBuild = '(not installed: only scenarios that run on a clean machine of their own were chosen)' }
 if ($needVm) {
 $rig = New-PSSession -ComputerName $RigHost -Credential $rigCred
 try {
@@ -484,6 +485,80 @@ if ($AfterSuiteScript -and -not ($harnessFailures.Count -gt 0 -or -not $buildMat
     Write-Host "The after-suite script exited $LASTEXITCODE." -ForegroundColor $(if ($LASTEXITCODE -eq 0) { 'Green' } else { 'Yellow' })
 }
 
+# The GitHub picker phase (github-limit.picker, #1181): GitHub's anonymous allowance is used up inside the VM BEFORE Setup runs, so the
+# first-run picker meets the limit. It restores the clean checkpoint itself and installs the candidate the way a person does, and
+# it runs after the groups for that reason (the groups install the candidate once, with the allowance whole, for install-first-run).
+$pickerId = 'github-limit.picker'
+$pickerTitle = "With GitHub's hourly limit used up, the first-run picker still installs Weir through github.com's release feed"
+
+function Invoke-GithubPickerPhase {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $dir = Join-Path $OutDirectory 'github-picker-phase'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    try {
+        Write-Host 'GitHub picker phase: restoring the clean checkpoint, using the allowance up in the VM, then installing the way a person does...' -ForegroundColor Cyan
+        $limitHook = {
+            param($rigSession, $name, $cred)
+            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
+            Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
+                New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
+                Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
+                Get-Process ServerManager -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            } | Out-Null
+            # Before Setup runs: the VM makes anonymous calls until GitHub says none are left (at most 70), and keeps what it saw.
+            Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
+                . 'C:\golden\suite\vm\GithubLimit.Lib.ps1'
+                $used = Use-GitHubLimitUp -MaxCalls 70
+                ($used | ConvertTo-Json -Compress) | Set-Content -Path 'C:\golden\github-limit-before-install.json' -Encoding utf8
+            } | Out-Null
+        }
+        $harnessFile = Join-Path $dir ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
+        & (Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1') -RigHost $RigHost -InstallerPath $InstallerPath -Version $Version -VmName $VmName -Checkpoint $Checkpoint `
+            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $dir -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $limitHook
+        $rows = @(Read-HarnessRows -File $harnessFile)
+        $failedSteps = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
+
+        $rigP = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile)
+        try {
+            $vmCredP = Import-Clixml $VmCredentialFile
+            $evidence = Invoke-InVmVia -Session $rigP -Name $VmName -Credential $vmCredP -Block {
+                $o = [ordered]@{ Limit = ''; HookLog = ''; PickerLog = ''; WeirVersion = ''; DelunoBuild = ''; Tags = @(); LimitAfter = '' }
+                if (Test-Path 'C:\golden\github-limit-before-install.json') { $o.Limit = Get-Content -Raw 'C:\golden\github-limit-before-install.json' }
+                $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+                if (Test-Path $hook) { $o.HookLog = Get-Content -Raw $hook }
+                if (Test-Path 'C:\golden\picker.log') { $o.PickerLog = Get-Content -Raw 'C:\golden\picker.log' }
+                $weir = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Weir') -Recurse -Filter 'Weir.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($weir) { $o.WeirVersion = $weir.VersionInfo.ProductVersion }
+                $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Deluno') -Recurse -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\current\\' } | Select-Object -First 1
+                if ($exe) { $o.DelunoBuild = $exe.VersionInfo.ProductVersion }
+                try {
+                    $atom = (Invoke-WebRequest -Uri 'https://github.com/jampat000/Weir/releases.atom' -UseBasicParsing -TimeoutSec 40).Content
+                    $o.Tags = @([regex]::Matches($atom, '<link[^>]*href="[^"]*/releases/tag/([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+                } catch { }
+                try { $c = (Invoke-RestMethod -Uri 'https://api.github.com/rate_limit' -UseBasicParsing -TimeoutSec 20).resources.core; $o.LimitAfter = "$($c.remaining) of $($c.limit) left" } catch { }
+                [pscustomobject]$o
+            }
+        }
+        finally { Remove-PSSession $rigP -ErrorAction SilentlyContinue }
+        Set-Content -Path (Join-Path $dir 'github-picker-evidence.json') -Value ($evidence | ConvertTo-Json -Depth 5) -Encoding utf8
+
+        $limit = $null
+        if ($evidence.Limit) { try { $limit = $evidence.Limit | ConvertFrom-Json } catch { } }
+        $checks = @(Get-GithubPickerChecks -Limit $limit -HookLog ([string]$evidence.HookLog) -PickerLog ([string]$evidence.PickerLog) -WeirVersion ([string]$evidence.WeirVersion) -FeedTags @($evidence.Tags))
+        if ($limit -and $limit.Reachable) {
+            $checks += [pscustomobject]@{ name = 'The installed build is the commit under test'; ok = (Test-BuildMatchesCommit -ProductVersion ([string]$evidence.DelunoBuild) -Commit $fullSha); detail = [string]$evidence.DelunoBuild }
+        }
+        $notes = @("Allowance after the install: $($evidence.LimitAfter).", "Weir's release feed lists (newest first): $((@($evidence.Tags) | Select-Object -First 5) -join ', ').")
+        if ($failedSteps.Count -gt 0) { $notes += "Harness lines that failed (other components also need the API, so some are expected with the limit used up): $($failedSteps -join '; ')." }
+        $hookLines = @(([string]$evidence.HookLog) -split "`r?`n" | Where-Object { $_ -match 'Weir' } | Select-Object -Last 12)
+        if ($hookLines.Count -gt 0) { $notes += "Install log, Weir lines: $($hookLines -join ' || ')" }
+        return (New-HostScenarioRecord -Id $pickerId -Title $pickerTitle -Checks $checks -Notes $notes -Seconds $sw.Elapsed.TotalSeconds)
+    }
+    catch {
+        return (New-HostScenarioRecord -Id $pickerId -Title $pickerTitle -Checks @() -Notes @() -Seconds $sw.Elapsed.TotalSeconds -ErrorText "The GitHub picker phase stopped: $($_.Exception.Message)")
+    }
+}
+
 # The update phase (#1256) runs last of all, after the groups, the log collection and the after-suite script, and depends on nothing
 # before it: it restores the clean checkpoint itself and installs the PREVIOUS release on it. It never installs over the candidate
 # the groups used, which would be a downgrade onto a newer schema.
@@ -586,6 +661,10 @@ function Invoke-UpdatePhase {
         finally { Remove-PSSession $rigU -ErrorAction SilentlyContinue }
     }
     catch { return (New-UpdateFailureRecord "The update phase stopped: $($_.Exception.Message)") }
+}
+
+if ($runGithubPicker) {
+    $reported = @($reported) + @(Invoke-GithubPickerPhase)
 }
 
 if ($runUpdate) {
