@@ -191,7 +191,7 @@ public sealed class ScoringAndFeedProperties
         return feed.Read && feed.Releases.All(r => !string.IsNullOrWhiteSpace(r.ReleaseName) && (r.PublishedUtc is null || r.PublishedUtc.Value.Offset == TimeSpan.Zero));
     }
 
-    [Fact(Skip = "DEFECT: a tracker release whose title holds a control character (a stray backspace or line break in scraped HTML) makes TorznabFeed.Write throw an ArgumentException \"'\\u0008', hexadecimal value 0x08, is an invalid character\". One such row loses the whole page of results from that tracker. Owner to decide.")]
+    [Fact]
     public void A_release_with_a_control_character_in_its_title_still_gives_a_feed_that_can_be_written()
         => Prop.ForAll(Gen.Choose(1, 31).Where(code => code is not (9 or 10 or 13)).ToArbitrary(), code =>
         {
@@ -199,9 +199,60 @@ public sealed class ScoringAndFeedProperties
             return TorznabFeed.Write([release]).ToString().Length > 0;
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_release_with_a_control_character_in_its_title_still_gives_a_feed_that_can_be_written.")]
+    [Fact]
     public void A_title_with_a_backspace_does_not_stop_the_feed_being_written_shrunk_case()
-        => Assert.NotEmpty(TorznabFeed.Write([new TrackerRelease { Title = "Film\b2001", DownloadUrl = "https://t.example/d?id=1" }]).ToString());
+    {
+        var xml = XDocument.Parse(TorznabFeed.Write([new TrackerRelease { Title = "Film\b2001", DownloadUrl = "https://t.example/d?id=1" }]).ToString());
+        Assert.Equal("Film2001", xml.Descendants("item").Single().Element("title")!.Value);
+    }
+
+    [Fact]
+    public void A_release_with_neither_a_download_link_nor_a_magnet_is_skipped_and_logged_once_and_the_rest_of_the_page_is_kept()
+    {
+        var logger = new Mock<Microsoft.Extensions.Logging.ILogger>();
+        logger.Setup(l => l.IsEnabled(It.IsAny<Microsoft.Extensions.Logging.LogLevel>())).Returns(true);
+        var xml = TorznabFeed.Write(
+            [
+                new TrackerRelease { Title = "First", DownloadUrl = "https://t.example/d?id=1" },
+                new TrackerRelease { Title = "No link" },
+                new TrackerRelease { Title = "Also no link", DownloadUrl = " " },
+                new TrackerRelease { Title = "Last", MagnetUrl = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567" }
+            ],
+            logger.Object);
+        Assert.Equal(["First", "Last"], XDocument.Parse(xml.ToString()).Descendants("item").Select(i => i.Element("title")!.Value).ToArray());
+        logger.Verify(
+            l => l.Log(
+                Microsoft.Extensions.Logging.LogLevel.Warning,
+                It.IsAny<Microsoft.Extensions.Logging.EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Property]
+    public bool Any_text_as_a_title_never_makes_the_writer_throw(string? title)
+    {
+        var xml = TorznabFeed.Write([new TrackerRelease { Title = title ?? string.Empty, DownloadUrl = "https://t.example/d?id=1" }]);
+        return XDocument.Parse(xml.ToString()).Descendants("item").Count() == 1;
+    }
+
+    [Property]
+    public bool Any_text_in_any_field_never_makes_the_writer_throw_and_the_row_is_kept(string? text)
+    {
+        var bad = text ?? string.Empty;
+        var release = new TrackerRelease
+        {
+            Title = bad,
+            DownloadUrl = "https://t.example/d?id=" + bad,
+            DetailsUrl = "https://t.example/details?id=" + bad,
+            MagnetUrl = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=" + bad,
+            InfoHash = bad,
+            ImdbId = bad
+        };
+        var xml = XDocument.Parse(TorznabFeed.Write([release, new TrackerRelease { Title = "Second", DownloadUrl = "https://t.example/d?id=2" }]).ToString());
+        return xml.Descendants("item").Count() == 2;
+    }
 
     // ----- stubs, as in ReadingAnIndexerFeedTests -----
 
