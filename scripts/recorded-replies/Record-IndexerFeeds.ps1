@@ -46,9 +46,16 @@ function Invoke-RecordJackett($p) {
         if (-not $key) { Add-Missing 'jackett: no API key in ServerConfig.json'; return }
         Register-Secret $key
         $c = New-RecordedClient -BaseUrl "http://127.0.0.1:$port"
-        $null = Send-Recorded -Client $c -Path '/UI/Dashboard'   # the dashboard sets the cookie its own API wants
+        # With no admin password Jackett still wants its cookie: the login page sends the browser through /UI/TestCookie, which sets it.
+        $next = '/UI/Login?ReturnUrl=/UI/Dashboard'
+        for ($hop = 0; $hop -lt 5 -and $next; $hop++) {
+            $step = Send-Recorded -Client $c -Path $next -KeepHeaders @('location', 'content-type')
+            $next = [string]$step.reply.headers['location']
+            if ($next -match '^https?://[^/]+(/.*)$') { $next = $Matches[1] } elseif ($next -and -not $next.StartsWith('/')) { $next = '/UI/' + $next }
+            if ($next -like '/UI/Dashboard*') { break }
+        }
         $serverConfig = Send-Recorded -Client $c -Path '/api/v2.0/server/config'
-        $version = [string](Get-ReplyJson $serverConfig).app_version
+        $version = ([string](Get-ReplyJson $serverConfig).app_version).TrimStart('v')
         if (-not $version) { $version = $asset.Tag.TrimStart('v') }
         $dl = Get-DownloadNote
         Save-State jackett $version 'server-config' ('Jackett''s own configuration reply (the API key and any secret in it are removed).' + $dl) @($serverConfig)
@@ -96,13 +103,6 @@ function Invoke-RecordJackett($p) {
         }
         if ($tvId) {
             Save-State jackett $version 'search-tv' (& $note 'A TV search with season and episode (Breaking Bad S01E01)' $tvId) @((& $torznab $tvId 't=tvsearch&q=Breaking+Bad&season=1&ep=1&cat=5000'), (& $torznab $tvId 't=tvsearch&q=Breaking+Bad&cat=5000'))
-        }
-        # The tracker that failed its own test, if one did: the failure is a state too.
-        $failed = @(($script:PublicMovieIndexers + $script:PublicTvIndexers | Select-Object -Unique) | Where-Object { -not $usable.ContainsKey($_) })
-        if ($failed.Count -gt 0) {
-            $f = $failed[0]
-            $t = Send-Recorded -Client $c -Path "/api/v2.0/indexers/$f/results/torznab/api?apikey=$key&t=search&q=Sintel&cat=2000"
-            Save-State jackett $version 'tracker-failing' "A search on '$f', a public tracker that failed Jackett's own test from the VM that day (blocked, down or changed): the error Jackett passes on." @((Send-Recorded -Client $c -Method POST -Path "/api/v2.0/indexers/$f/test"), $t)
         }
     } finally {
         if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }

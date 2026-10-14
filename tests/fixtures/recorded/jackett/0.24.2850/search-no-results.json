@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "search-no-results",
+  "recordedAt": "2026-10-14T08:01:16Z",
+  "note": "A text search nothing matches, from Jackett's Torznab endpoint for the public tracker 'yts' (no account). Jackett v0.24.2850.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/yts/results/torznab/api?apikey=<scrubbed>&t=search&q=zzqqxxnotarelease&cat=2000,5000"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/rss+xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\">\r\n  <channel>\r\n    <atom:link href=\"http://127.0.0.1:9117/\" rel=\"self\" type=\"application/rss+xml\" />\r\n    <title>YTS</title>\r\n    <description>YTS is a Public torrent site specialising in HD movies of small size</description>\r\n    <link>https://yts.gg/</link>\r\n    <language>en-US</language>\r\n    <category>search</category>\r\n  </channel>\r\n</rss>"
+      }
+    }
+  ]
+}

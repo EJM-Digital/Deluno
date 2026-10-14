@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "unknown-function",
+  "recordedAt": "2026-10-14T08:01:11Z",
+  "note": "A function the Torznab API does not have (t=bogus).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/yts/results/torznab/api?apikey=<scrubbed>&t=bogus"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<error code=\"201\" description=\"yts does not support the requested query. Please check the capabilities (t=caps) and make sure the search mode and parameters are supported.\" />"
+      }
+    }
+  ]
+}

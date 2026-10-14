@@ -2,7 +2,7 @@
   "app": "jackett",
   "version": "0.24.2850",
   "state": "server-config",
-  "recordedAt": "2026-10-14T07:58:57Z",
+  "recordedAt": "2026-10-14T08:01:08Z",
   "note": "Jackett's own configuration reply (the API key and any secret in it are removed). Installed from: Jackett.Binaries.Windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
   "exchanges": [
     {
@@ -11,9 +11,39 @@
         "path": "/api/v2.0/server/config"
       },
       "reply": {
-        "status": 302,
-        "headers": {},
-        "bodyText": ""
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "notices": [],
+          "port": 9117,
+          "external": false,
+          "local_bind_address": "127.0.0.1",
+          "cors": false,
+          "api_key": "<scrubbed>",
+          "blackholedir": null,
+          "updatedisabled": false,
+          "prerelease": false,
+          "password": "",
+          "logging": false,
+          "basepathoverride": null,
+          "baseurloverride": null,
+          "cache_enabled": true,
+          "cache_ttl": 2100,
+          "cache_max_results_per_indexer": 1000,
+          "flaresolverrurl": null,
+          "flaresolverr_maxtimeout": 55000,
+          "omdbkey": null,
+          "omdburl": null,
+          "app_version": "v0.24.2850",
+          "can_run_netcore": false,
+          "proxy_type": -1,
+          "proxy_url": null,
+          "proxy_port": null,
+          "proxy_username": null,
+          "proxy_password": null
+        }
       }
     }
   ]
