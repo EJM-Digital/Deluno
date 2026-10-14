@@ -57,10 +57,20 @@ public enum ComponentStage
 /// <param name="Detail">For a failed component, why; otherwise a short note on the stage.</param>
 public sealed record ComponentProgress(string Kind, string DisplayName, ComponentStage Stage, string? Detail = null);
 
+/// <summary>What a download came to: the file, or why there is none. <paramref name="NotFound"/> is the server saying the file is not there (a 404).</summary>
+public sealed record ComponentDownload(string? Path, bool NotFound = false);
+
 public interface IComponentDownloader
 {
     /// <summary>Downloads <paramref name="url"/> to a local file and returns its path, or null on failure.</summary>
     Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same download, saying whether the failure was "not found". The picker uses it to tell a release whose installer
+    /// has not been uploaded yet (#1263) from any other failure. A downloader that cannot tell reports no "not found".
+    /// </summary>
+    async Task<ComponentDownload> DownloadWithStatusAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        => new(await DownloadAsync(url, suggestedFileName, cancellationToken));
 }
 
 /// <summary>Where the installer records what it checked for each component (#1061).</summary>
@@ -204,7 +214,8 @@ public sealed class ComponentInstallService(
     TimeSpan? credentialCaptureWait = null,
     IInstallLog? installLog = null,
     Func<BundledComponentSpec, LocalWeirBuild?>? localBuild = null,
-    IDownloadClientConfigurator? clientConfigurator = null)
+    IDownloadClientConfigurator? clientConfigurator = null,
+    HttpMessageHandler? githubHandler = null)
 {
     private readonly IDownloadClientConfigurator _clientConfigurator = clientConfigurator ?? new DownloadClientConfigurator(log: installLog ?? new FileInstallLog());
     private readonly IInstallLog _log = installLog ?? new FileInstallLog();
@@ -273,6 +284,7 @@ public sealed class ComponentInstallService(
         var url = spec.Url;
         var expectedSha256 = spec.Sha256;
         string? path = null;
+        GithubLookup? githubLookup = null;
         var local = _localBuild(spec);
         if (local is not null)
         {
@@ -293,7 +305,8 @@ public sealed class ComponentInstallService(
         }
         else if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.GithubRepo))
         {
-            var lookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken);
+            var lookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken, githubHandler);
+            githubLookup = lookup;
             var resolved = lookup.Asset;
             if (resolved is null)
             {
@@ -312,9 +325,23 @@ public sealed class ComponentInstallService(
                         GithubLatestRelease.FeedNotFoundMessage(spec.DisplayName));
                 }
 
+                if (lookup.NoInstallerYet)
+                {
+                    // The newest releases are published but their files are not uploaded yet (#1263): not a missing release.
+                    _log.Write($"{spec.DisplayName}: no recent release has its installer and checksum yet ({string.Join("; ", lookup.Skipped ?? [])})");
+                    return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                        GithubLatestRelease.NoInstallerYetMessage(spec.DisplayName));
+                }
+
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
                     $"Could not find {spec.DisplayName}'s latest release on GitHub.");
             }
+
+            if (lookup.ChoiceLogLine(spec.DisplayName) is { } choice)
+            {
+                _log.Write(choice);
+            }
+
             url = resolved.AssetUrl;
             expectedSha256 = resolved.Sha256;
         }
@@ -337,7 +364,46 @@ public sealed class ComponentInstallService(
         }
 
         Report(ComponentStage.Downloading, "Downloading the installer");
-        path ??= await _downloader.DownloadAsync(url, spec.FileName, cancellationToken);
+        var notFound = false;
+        if (path is null)
+        {
+            var download = await _downloader.DownloadWithStatusAsync(url, spec.FileName, cancellationToken);
+            path = download.Path;
+            notFound = download.NotFound;
+        }
+
+        // A release can have its checksum file before its installer (#1263): the installer answers 404. Take the next release
+        // that has its files, within the same cap of releases looked at; this costs a call only when the download failed.
+        var passedOver = new List<string>();
+        while (path is null && notFound && githubLookup?.Tag is { } missingTag && passedOver.Count < GithubLatestRelease.MaxReleasesLooked)
+        {
+            passedOver.Add(missingTag);
+            _log.Write($"{spec.DisplayName}: {missingTag}'s installer download answered 404 (not uploaded yet); looking at the next release");
+            githubLookup = await GithubLatestRelease.LookupAsync(spec, cancellationToken, githubHandler, excludeTags: passedOver);
+            if (githubLookup.Asset is null)
+            {
+                break;
+            }
+
+            if (githubLookup.ChoiceLogLine(spec.DisplayName) is { } retryChoice)
+            {
+                _log.Write(retryChoice);
+            }
+
+            url = githubLookup.Asset.AssetUrl;
+            expectedSha256 = githubLookup.Asset.Sha256;
+            var again = await _downloader.DownloadWithStatusAsync(url, spec.FileName, cancellationToken);
+            path = again.Path;
+            notFound = again.NotFound;
+        }
+
+        if (path is null && notFound)
+        {
+            // Every release looked at is still being uploaded: one plain sentence, not "could not download".
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                GithubLatestRelease.NoInstallerYetMessage(spec.DisplayName));
+        }
+
         if (path is null)
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
@@ -982,23 +1048,31 @@ public sealed class RegistryPrerequisiteReader : IPrerequisiteRegistryReader
 public sealed class HttpComponentDownloader : IComponentDownloader
 {
     public async Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        => (await DownloadWithStatusAsync(url, suggestedFileName, cancellationToken)).Path;
+
+    public async Task<ComponentDownload> DownloadWithStatusAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
     {
         try
         {
             using var http = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromMinutes(10) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno-Installer");
             using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return new ComponentDownload(null, NotFound: true);
+            }
+
             response.EnsureSuccessStatusCode();
 
             var path = Path.Combine(Path.GetTempPath(), "Deluno-components", Guid.NewGuid().ToString("N")[..8] + "-" + suggestedFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await using var file = File.Create(path);
             await response.Content.CopyToAsync(file, cancellationToken);
-            return path;
+            return new ComponentDownload(path);
         }
         catch
         {
-            return null;
+            return new ComponentDownload(null);
         }
     }
 }

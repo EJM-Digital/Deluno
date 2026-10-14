@@ -27,6 +27,8 @@ public static class RecordedReplies
     public static Recording Deluge(string state) => RecordedReplies.LoadLatest("deluge", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
+    /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>
+    public static Recording Github(string state) => RecordedReplies.LoadLatest("github", state);
     /// <summary>A JSON reply as an HTTP 200 response, for the parts of a test that are not an external app's reply.</summary>
     public static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
@@ -92,7 +94,9 @@ public static class RecordedReplies
                 return own;
             }
 
-            var operation = OperationOf(app, request.Method.Method, request.RequestUri!.PathAndQuery, body);
+            // GitHub answers from several hosts (github.com, api.github.com), so its recordings name the host too.
+            var target = app == "github" ? request.RequestUri!.Host + request.RequestUri.PathAndQuery : request.RequestUri!.PathAndQuery;
+            var operation = OperationOf(app, request.Method.Method, target, body);
             foreach (var recording in recordings)
             {
                 foreach (var exchange in recording.Exchanges)

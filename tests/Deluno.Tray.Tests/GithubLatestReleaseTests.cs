@@ -156,15 +156,25 @@ public sealed class DirectoryListingLatestReleaseTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request.RequestUri!.PathAndQuery);
+            // A release carries its checksum file now (#1263): the picker installs only from one that does.
+            if (request.RequestUri.AbsolutePath.EndsWith(".txt", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(
+                    string.Join('\n',
+                        $"{new string('a', 64)}  nzbget-21.1-bin-windows-setup.exe",
+                        $"{new string('b', 64)}  nzbget-22.0-bin-windows-setup.exe",
+                        $"{new string('c', 64)}  Weir-win-Setup.exe")) });
+            }
+
             var body = request.RequestUri.AbsolutePath.EndsWith("/releases/latest", StringComparison.Ordinal) ? stable : all;
             return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) });
         }
     }
 
-    private const string Stable = """{"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"}]}""";
+    private const string Stable = """{"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"},{"name":"nzbget-21.1.sig.txt","browser_download_url":"https://x.test/21.1/nzbget-21.1.sig.txt"}]}""";
     private const string StableAndNewerPreRelease = """
-        [{"tag_name":"v22.0-testing","prerelease":true,"assets":[{"name":"nzbget-22.0-bin-windows-setup.exe","browser_download_url":"https://x.test/22.0/nzbget-22.0-bin-windows-setup.exe"}]},
-         {"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"}]}]
+        [{"tag_name":"v22.0-testing","prerelease":true,"assets":[{"name":"nzbget-22.0-bin-windows-setup.exe","browser_download_url":"https://x.test/22.0/nzbget-22.0-bin-windows-setup.exe"},{"name":"nzbget-22.0.sig.txt","browser_download_url":"https://x.test/22.0/nzbget-22.0.sig.txt"}]},
+         {"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"},{"name":"nzbget-21.1.sig.txt","browser_download_url":"https://x.test/21.1/nzbget-21.1.sig.txt"}]}]
         """;
 
     [Fact]
@@ -177,8 +187,10 @@ public sealed class DirectoryListingLatestReleaseTests
         var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github);
 
         Assert.Equal("https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe", resolved!.AssetUrl);
-        Assert.Single(github.Requests);
-        Assert.EndsWith("/releases/latest", github.Requests[0]);
+        // One API call, for the latest release; the other is the release's own signature file.
+        var api = github.Requests.Where(r => !r.EndsWith(".txt", StringComparison.Ordinal)).ToList();
+        Assert.Single(api);
+        Assert.EndsWith("/releases/latest", api[0]);
     }
 
     [Fact]
@@ -187,10 +199,10 @@ public sealed class DirectoryListingLatestReleaseTests
         var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
         Assert.True(weir.IncludePreReleases);
         var github = new FakeGitHub(
-            """{"tag_name":"v2.0.0","assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"}]}""",
+            """{"tag_name":"v2.0.0","assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.0.0/SHA256SUMS.txt"}]}""",
             """
-            [{"tag_name":"v2.1.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.1.0-rc.1/Weir-win-Setup.exe"}]},
-             {"tag_name":"v2.0.0","prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"}]}]
+            [{"tag_name":"v2.1.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.1.0-rc.1/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.1.0-rc.1/SHA256SUMS.txt"}]},
+             {"tag_name":"v2.0.0","prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.0.0/SHA256SUMS.txt"}]}]
             """);
 
         var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, github);
@@ -376,9 +388,13 @@ public sealed class GithubRateLimitTests
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
-    /// <summary>api.github.com: call 1 answers with an ETag, call 2 answers 304, call 3 is the limit.</summary>
+    /// <summary>
+    /// api.github.com: call 1 answers with an ETag, call 2 answers 304, call 3 is the limit. The release is GitHub's own recorded
+    /// reply for NZBGet's latest release, and its signature file is the recorded download (github.com, not counted as an API call).
+    /// </summary>
     private sealed class ApiSequence(DateTimeOffset reset) : HttpMessageHandler
     {
+        private readonly Deluno.Tests.Recorded.Recording _recording = Deluno.Tests.Recorded.RecordedReplies.Github("nzbget-latest-release");
         private bool limiting = true;
 
         public int Calls { get; private set; }
@@ -389,14 +405,16 @@ public sealed class GithubRateLimitTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.Host != "api.github.com")
+            {
+                return Task.FromResult(_recording.Find(Path.GetFileName(request.RequestUri.AbsolutePath)).Reply.ToResponse());
+            }
+
             Calls++;
             IfNoneMatchSeen.Add(request.Headers.IfNoneMatch.FirstOrDefault()?.Tag);
             if (Calls == 1 || !limiting)
             {
-                var ok = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-                {
-                    Content = new StringContent("""{"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/nzbget-21.1-bin-windows-setup.exe"}]}"""),
-                };
+                var ok = _recording.Find("releases/latest").Reply.ToResponse();
                 ok.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"v1\"");
                 return Task.FromResult(ok);
             }
