@@ -1,0 +1,111 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "watched",
+  "recordedAt": "2026-10-14T08:31:33Z",
+  "note": "The film marked watched by the <host>, then the catalogue showing it played (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Users/03d927573b5e4cd9942b61f120b5f9a4/PlayedItems/3df4dba3fab3ef172511446b46f3e8a0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 1,
+          "IsFavorite": false,
+          "LastPlayedDate": "2026-10-14T08:31:32.9021978Z",
+          "Played": true,
+          "Key": "<scrubbed>",
+          "ItemId": "3df4dba3fab3ef172511446b46f3e8a0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/03d927573b5e4cd9942b61f120b5f9a4/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsPlayed&Fields=UserData"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Sintel",
+              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+              "Id": "3df4dba3fab3ef172511446b46f3e8a0",
+              "HasSubtitles": true,
+              "Container": "mkv",
+              "PremiereDate": "2010-09-30T07:00:00.0000000Z",
+              "OfficialRating": "PG",
+              "ChannelId": null,
+              "CommunityRating": 7.333,
+              "RunTimeTicks": 8880320000,
+              "ProductionYear": 2010,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 1,
+                "IsFavorite": false,
+                "LastPlayedDate": "2026-10-14T08:31:32.9021978Z",
+                "Played": true,
+                "Key": "<scrubbed>",
+                "ItemId": "3df4dba3fab3ef172511446b46f3e8a0"
+              },
+              "VideoType": "VideoFile",
+              "ImageTags": {
+                "Logo": "a4248888908dac86ebfb54038fb3442a",
+                "Primary": "f5eec7fc1c23f6f0364527b90ebdff63"
+              },
+              "BackdropImageTags": [
+                "ce437f2c989cc1aa35e3a9b68cae36b0"
+              ],
+              "ImageBlurHashes": {
+                "Backdrop": {
+                  "ce437f2c989cc1aa35e3a9b68cae36b0": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xae-WBNet6%1"
+                },
+                "Logo": {
+                  "a4248888908dac86ebfb54038fb3442a": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
+                },
+                "Primary": {
+                  "f5eec7fc1c23f6f0364527b90ebdff63": "dUE.63WXI:s,~BNHNGi_t8kXR+jEo3xuWBNGRlxts:Rk"
+                }
+              },
+              "LocationType": "FileSystem",
+              "MediaType": "Video",
+              "OriginalLanguage": "en"
+            }
+          ],
+          "TotalRecordCount": 1,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/03d927573b5e4cd9942b61f120b5f9a4/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsUnplayed&Fields=UserData"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    }
+  ]
+}
