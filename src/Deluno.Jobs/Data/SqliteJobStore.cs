@@ -4996,6 +4996,10 @@ public sealed class SqliteJobStore(
                 "an episode search", "Started looking for an episode.", "Episode search"),
             ["series.search.season"] = new(
                 "a season search", "Started looking for a whole season.", "Season search"),
+            ["movies.search.manual"] = new(
+                "a film search", "Started looking for a film you chose.", "Film search"),
+            ["series.search.manual"] = new(
+                "a show search", "Started looking for a show you chose.", "Show search"),
             ["movies.metadata.refresh"] = new(
                 "a movie metadata refresh", "Started refreshing movie metadata.", "Movie metadata refresh"),
             ["series.metadata.refresh"] = new(

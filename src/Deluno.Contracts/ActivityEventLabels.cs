@@ -241,6 +241,8 @@ public static class ActivityEventLabels
             ["library.movie.status-repaired"] = "Corrected a film's status",
             ["library.movie.untracked-files-moved"] = "Moved files Deluno was not tracking",
             ["library.movie.wanted-again"] = "Film wanted again",
+            ["library.series.move-records-failed"] = "Moved show files but could not update their records",
+            ["library.series.reassigned"] = "Moved a show to another library",
             ["library.series.rename-records-failed"] = "Renamed show files but could not update their records",
             ["library.series.renamed"] = "Renamed a show's files",
             ["library.quality.recalculated"] = "Recalculated library quality",
