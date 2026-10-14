@@ -28,6 +28,101 @@ foreach ($f in Get-ChildItem -Path $root -Recurse -Filter '*.ps1') {
     Check ("parses: " + $f.FullName.Substring($root.Length + 1)) ($errs.Count -eq 0) (($errs | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Message)" }) -join '; ')
 }
 
+Write-Host 'No stored script block reads a variable from its defining function (the $base / $sess bug)'
+# PowerShell resolves a script block's free variables when the block is RUN, from the caller's scope, not from the function that
+# made it. A block that is stored or handed back (assigned, returned, put in a hashtable or array) must therefore read only its own
+# params, variables it assigns itself, scope-qualified names ($script:, $global:, $env:, $using:) and automatic variables, or be
+# closed with .GetNewClosure(). A block passed straight to a command (Invoke-Command, ForEach-Object, -Body...) runs in place and
+# is exempt. Allow-list entries are 'file|function|variable' = the reason why the read is safe.
+$script:storedBlockAllow = @{
+}
+function Get-StoredBlockHazards([string] $Path, [string] $Text) {
+    $errs = $null; $tokens = $null
+    $ast = if ($Text) { [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$errs) }
+           else { [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errs) }
+    $automatic = @('_', 'psitem', 'args', 'input', 'true', 'false', 'null', 'psscriptroot', 'pscommandpath', 'matches', 'lastexitcode', 'error',
+        'this', 'psboundparameters', 'pscmdlet', 'myinvocation', 'host', 'pid', 'home', 'pwd', 'pshome', 'profile', 'foreach', 'switch', 'event',
+        'sender', 'eventargs', 'stacktrace', 'executioncontext', 'verbosepreference', 'erroractionpreference', 'warningpreference',
+        'progresspreference', 'debugpreference', 'informationpreference', 'confirmpreference', 'whatifpreference', 'outputencoding', 'ofs', '?')
+    $lang = 'System.Management.Automation.Language.'
+    $isVar = { param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] }
+    $blocks = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ScriptBlockExpressionAst] }, $true)
+    foreach ($b in $blocks) {
+        # Where does the block go? Walk up through wrappers and containers to the thing that holds it: an assignment, a return or a
+        # statement's output means stored; a command argument (a calculated property in Select-Object too) or a method call on it
+        # (.GetNewClosure(), .Invoke()) means run in place or closed.
+        $p = $b.Parent; $stored = $false
+        while ($p) {
+            if ($p -is [System.Management.Automation.Language.ParenExpressionAst] -or $p -is [System.Management.Automation.Language.ConvertExpressionAst] -or $p -is [System.Management.Automation.Language.CommandExpressionAst] -or $p -is [System.Management.Automation.Language.UnaryExpressionAst] -or
+                $p -is [System.Management.Automation.Language.HashtableAst] -or $p -is [System.Management.Automation.Language.ArrayLiteralAst] -or $p -is [System.Management.Automation.Language.ArrayExpressionAst]) {
+                $next = $p.Parent
+                if ($p -is [System.Management.Automation.Language.HashtableAst] -or $p -is [System.Management.Automation.Language.ArrayLiteralAst] -or $p -is [System.Management.Automation.Language.ArrayExpressionAst]) {
+                    $stored = $true   # inside a container: stored unless the container is itself a command argument (decided below)
+                    if ($next -is [System.Management.Automation.Language.AssignmentStatementAst] -or $next -is [System.Management.Automation.Language.ReturnStatementAst]) { break }
+                }
+                $p = $next; continue
+            }
+            if ($p -is [System.Management.Automation.Language.PipelineAst]) {
+                if ($p.PipelineElements.Count -eq 1) {
+                    $g = $p.Parent
+                    if ($g -is [System.Management.Automation.Language.HashtableAst]) { $p = $g; continue }
+                    if ($g -is [System.Management.Automation.Language.StatementBlockAst] -and ($g.Parent -is [System.Management.Automation.Language.ArrayExpressionAst] -or $g.Parent -is [System.Management.Automation.Language.SubExpressionAst])) { $p = $g.Parent; continue }
+                    $stored = ($g -is [System.Management.Automation.Language.StatementBlockAst]) -or ($g -is [System.Management.Automation.Language.NamedBlockAst]) -or ($g -is [System.Management.Automation.Language.ReturnStatementAst]) -or $stored
+                }
+                else { $stored = $false }
+                break
+            }
+            if ($p -is [System.Management.Automation.Language.AssignmentStatementAst] -or $p -is [System.Management.Automation.Language.ReturnStatementAst]) { $stored = $true }
+            elseif ($p -is [System.Management.Automation.Language.CommandAst] -or $p -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -or $p -is [System.Management.Automation.Language.MemberExpressionAst]) { $stored = $false }
+            break
+        }
+        if (-not $stored) { continue }
+        $fn = $b.Parent; while ($fn -and $fn -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $fn = $fn.Parent }
+        $fnName = if ($fn) { $fn.Name } else { '(script)' }
+        $known = @{}
+        foreach ($pa in $b.FindAll({ param($n) $n -is [System.Management.Automation.Language.ParameterAst] }, $true)) { $known[$pa.Name.VariablePath.UserPath.ToLowerInvariant()] = $true }
+        foreach ($as in $b.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)) {
+            foreach ($v in $as.Left.FindAll($isVar, $true)) { $known[$v.VariablePath.UserPath.ToLowerInvariant()] = $true }
+        }
+        foreach ($fe in $b.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] }, $true)) { $known[$fe.Variable.VariablePath.UserPath.ToLowerInvariant()] = $true }
+        foreach ($v in $b.FindAll($isVar, $true)) {
+            $name = $v.VariablePath.UserPath
+            if ($name.Contains(':')) { continue }
+            $lc = $name.ToLowerInvariant()
+            if ($known.ContainsKey($lc) -or $automatic -contains $lc) { continue }
+            [pscustomobject]@{ File = $Path; Line = $v.Extent.StartLineNumber; Function = $fnName; Variable = $name }
+        }
+    }
+}
+$repoRoot = (Resolve-Path (Join-Path $root '..\..')).Path
+$hazards = @()
+foreach ($f in Get-ChildItem -Path (Join-Path $repoRoot 'scripts') -Recurse -Filter '*.ps1') {
+    $rel = $f.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+    $hazards += @(Get-StoredBlockHazards $rel $null)
+}
+$hazards = @($hazards | Where-Object { -not $script:storedBlockAllow.ContainsKey("$($_.File)|$($_.Function)|$($_.Variable)") })
+Check 'no stored or returned script block reads a variable it does not define' ($hazards.Count -eq 0) (($hazards | Sort-Object File, Line -Unique | ForEach-Object { "$($_.File):$($_.Line) in $($_.Function) reads `$$($_.Variable)" }) -join '; ')
+$bugSnippet = 'function Open-X { $base = ''x''; $call = { Invoke-RestMethod -Uri $base }; $call }'
+$cleanSnippets = @(
+    'function Open-X { $base = ''x''; $call = { param($Uri) Invoke-RestMethod -Uri $Uri }; $call }',
+    'function Open-X { $base = ''x''; $call = { Invoke-RestMethod -Uri $base }.GetNewClosure(); $call }',
+    'function Open-X { $base = ''x''; $call = { Invoke-RestMethod -Uri $script:base }; $call }',
+    'function Open-X { $call = { $u = ''y''; Invoke-RestMethod -Uri $u; foreach ($i in 1..2) { $i } }; $call }',
+    'function Open-X { $base = ''x''; Invoke-Command -ScriptBlock { Invoke-RestMethod -Uri $base }; 1..2 | ForEach-Object { $base + $_ } }')
+$escapeSnippets = @(
+    'function Open-X { $base = ''x''; @{ Call = { Invoke-RestMethod -Uri $base } } }',
+    'function Open-X { $base = ''x''; return { $base } }',
+    'function Open-X { $base = ''x''; $list = @({ $base }) }',
+    'function Open-X { $base = ''x''; $o.Call = { $base } }')
+$bugHits = @(Get-StoredBlockHazards 'bug.ps1' $bugSnippet)
+Check 'self-test: the original bug (a returned block reading the function''s $base) is flagged' ($bugHits.Count -eq 1 -and $bugHits[0].Variable -eq 'base')
+for ($i = 0; $i -lt $cleanSnippets.Count; $i++) {
+    Check "self-test: fixed shape $($i + 1) passes" (@(Get-StoredBlockHazards 'snippet.ps1' $cleanSnippets[$i]).Count -eq 0) $cleanSnippets[$i]
+}
+for ($i = 0; $i -lt $escapeSnippets.Count; $i++) {
+    Check "self-test: escaping shape $($i + 1) (hashtable, return, array, property) is flagged" (@(Get-StoredBlockHazards 'snippet.ps1' $escapeSnippets[$i]).Count -eq 1) $escapeSnippets[$i]
+}
+
 Write-Host 'No address or machine name is written into a script'
 $addressPattern = '\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b|192\.168\.1\.10\b)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
 foreach ($f in Get-ChildItem -Path $root -Recurse -Filter '*.ps1') {
