@@ -51,7 +51,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            var errors = ValidateDestinationRule(request.Name, request.MatchKind, request.MatchValue, request.RootPath);
             await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
                 connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
                 request.LibraryId, NormalizeMediaType(request.MediaType), cancellationToken);
@@ -83,7 +83,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            var errors = ValidateDestinationRule(request.Name, request.MatchKind, request.MatchValue, request.RootPath);
             await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
                 connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
                 request.LibraryId, NormalizeMediaType(request.MediaType), cancellationToken);
@@ -774,13 +774,18 @@ public static class LibrariesEndpointRouteBuilderExtensions
     }
 
 
-    private static Dictionary<string, string[]> ValidateDestinationRule(string? name, string? matchValue, string? rootPath)
+    private static Dictionary<string, string[]> ValidateDestinationRule(string? name, string? matchKind, string? matchValue, string? rootPath)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(name))
         {
             errors["name"] = ["Give this destination rule a name."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(matchKind) && DestinationRuleKinds.Normalize(matchKind) is null)
+        {
+            errors["matchKind"] = [$"'{matchKind.Trim()}' is not a kind of rule. Choose one of: {string.Join(", ", DestinationRuleKinds.All)}."];
         }
 
         if (string.IsNullOrWhiteSpace(matchValue))
