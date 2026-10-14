@@ -96,8 +96,7 @@ foreach ($project in $projects) {
     if ($Coverage) {
         $coverageArguments = @(
             "--collect:XPlat Code Coverage",
-            "--settings", (Join-Path $Root "tests/coverage.runsettings"),
-            "--results-directory", (Join-Path $Root "artifacts/coverage/dotnet/$($project.BaseName)"))
+            "--settings", (Join-Path $Root "tests/coverage.runsettings"))
     }
     & $dotnet.Source test $project.FullName --configuration Release --no-build --no-restore `
         --logger "trx;LogFileName=backend-tests.trx" @filterArguments @coverageArguments
