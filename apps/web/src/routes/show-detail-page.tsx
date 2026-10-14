@@ -48,7 +48,7 @@ import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions
 import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
 import { SubtitleManualSearchDialog } from "../components/app/subtitle-manual-search-dialog";
 import { authedFetch } from "../lib/use-auth";
-import { cn } from "../lib/utils";
+import { cn, formatBytes } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
@@ -2988,9 +2988,3 @@ function formatTriggerKind(value: string) {
   }
 }
 
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}

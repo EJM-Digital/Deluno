@@ -16,6 +16,7 @@
  * grab's routing would for a library of the release's own media type —
  * never a client hand-picked here.
  */
+import { formatBytes } from "../lib/utils";
 import { useEffect, useState } from "react";
 import { Loader2, Search as SearchIcon } from "lucide-react";
 import { BlockReleaseAction } from "../components/app/block-release-action";
@@ -479,14 +480,3 @@ function CategoryChecklist({
   );
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
-}

@@ -7,6 +7,7 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
 import type { DashboardSummary } from "../../../lib/api";
+import { formatBytes } from "../../../lib/utils";
 import { useNow } from "../live/hooks";
 import { ChartLayer, quarterMax, rateText, traceHitAt } from "../chart-scale";
 import { instanceFacts } from "./facts";
@@ -178,7 +179,7 @@ export function ComputerCard({ overview }: { overview: SystemOverview | null }):
       {machine ? (
         <div className="sy-cols3">
           <Column colour={GREEN} label="CPU" value={String(Math.round(machine.cpuPercent))} unit="%" sub={[`${machine.cores} cores`, instance ? `Deluno ${Math.round(instance.cpuPercent)}%` : null].filter(Boolean).join(" · ")} values={history?.cpu ?? []} scale={{ kind: "percent" }} />
-          <Column colour={BLUE} label="Memory" value={(machine.memoryUsedBytes / 1e9).toFixed(1)} unit=" GB" sub={[`of ${(machine.memoryTotalBytes / 1e9).toFixed(1)} GB`, instance ? `Deluno ${sizeText(instance.memoryBytes)}` : null].filter(Boolean).join(" · ")} values={history?.memory ?? []} scale={{ kind: "percent" }} />
+          <Column colour={BLUE} label="Memory" value={formatBytes(machine.memoryUsedBytes).split(" ")[0]} unit={` ${formatBytes(machine.memoryUsedBytes).split(" ")[1] ?? ""}`} sub={[`of ${formatBytes(machine.memoryTotalBytes)}`, instance ? `Deluno ${sizeText(instance.memoryBytes)}` : null].filter(Boolean).join(" · ")} values={history?.memory ?? []} scale={{ kind: "percent" }} />
           <Column colour={VIOLET} label="Disk" value={mbps(machine.diskReadBytesPerSec + machine.diskWriteBytesPerSec)} unit=" MB/s" sub={`read ${mbps(machine.diskReadBytesPerSec)} · write ${mbps(machine.diskWriteBytesPerSec)} · ${plainCount(machine.diskIops)} IOPS`} values={history?.disk ?? []} scale={{ kind: "percent", noun: "busy" }} />
         </div>
       ) : (

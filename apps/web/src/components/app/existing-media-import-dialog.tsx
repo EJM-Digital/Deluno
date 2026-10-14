@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { formatBytes } from "../../lib/utils";
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileVideo, Folder, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
@@ -207,9 +208,3 @@ function CandidateRow({ item, checked, onCheckedChange }: { item: ExistingLibrar
   );
 }
 
-function formatBytes(value: number | null) {
-  if (value == null || value < 0) return "Size unknown";
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}

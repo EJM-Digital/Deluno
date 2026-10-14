@@ -63,8 +63,8 @@ describe("Log", () => {
 
 describe("Databases", () => {
   const databases: SystemDatabasesResponse = {
-    databases: [{ key: "jobs", name: "Activity and jobs", sizeBytes: 96e6 }, { key: "movies", name: "Movies", sizeBytes: 41e6 }],
-    totalBytes: 137e6,
+    databases: [{ key: "jobs", name: "Activity and jobs", sizeBytes: 96 * 1048576 }, { key: "movies", name: "Movies", sizeBytes: 41 * 1048576 }],
+    totalBytes: 137 * 1048576,
     integrityCheckedUtc: "2026-10-01T08:00:00Z",
     integrityOk: true,
     integrityNote: null,
@@ -82,7 +82,7 @@ describe("Databases", () => {
     const card = screen.getByRole("region", { name: "Backups and databases" });
     expect(within(card).getByText(/Databases · 137 MB/)).toBeInTheDocument();
     expect(within(card).getByText("Activity and jobs")).toBeInTheDocument();
-    expect(within(card).getByText("96 MB")).toBeInTheDocument();
+    expect(within(card).getByText("96.0 MB")).toBeInTheDocument();
     expect(within(card).getByText("Movies")).toBeInTheDocument();
   });
 });

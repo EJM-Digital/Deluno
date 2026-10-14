@@ -3,6 +3,7 @@
  * drawn, how many whole rows the facts box holds. The components only draw what these return.
  */
 import type { HealthCheckResultItem } from "../../../lib/api";
+import { formatBytes, NO_SIZE } from "../../../lib/utils";
 
 export type HealthArea = "library" | "downloads" | "connections" | "processing" | "storage" | "security" | "machine";
 
@@ -70,12 +71,8 @@ const whole = (value: number) => Math.round(value).toLocaleString("en-AU");
 
 /** "387 MB", "1.2 GB", "46 MB". */
 export function sizeText(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return "";
-  if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} TB`;
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1)} GB`;
-  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
-  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} KB`;
-  return `${Math.round(bytes)} B`;
+  const text = formatBytes(bytes);
+  return text === NO_SIZE ? "" : text;
 }
 
 /** A rate in MB/s with one decimal under 10 ("0.0", "3.4", "42"). */

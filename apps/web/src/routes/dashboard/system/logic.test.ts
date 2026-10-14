@@ -10,7 +10,7 @@ describe("System logic", () => {
     expect(areaOf({ id: "x", category: "system", name: "Deluno has no password" })).toBe("security");
   });
   it("words readings plainly", () => {
-    expect(sizeText(387e6)).toBe("387 MB");
+    expect(sizeText(387 * 1024 * 1024)).toBe("387 MB");
     expect(mbps(3.4e6)).toBe("3.4");
     expect(splitAddress("http://192.168.1.51:5099/")).toEqual({ host: "192.168.1.51", port: "5099" });
     expect(fullIn(null)).toBeNull();
