@@ -142,7 +142,7 @@ function Invoke-RecordTorrentControls($p, [string[]] $Apps) {
         $ver = & $adapters.deluge.VersionOf (& $adapters.deluge.Version)
         $fresh = New-RecordedClient -BaseUrl "http://127.0.0.1:$($p.DelugePort)"
         $script:FreshDelugeId = 0
-        $rpc = { param($method, $params = @()) $script:FreshDelugeId++; Send-Recorded -Client $fresh -Method POST -Path '/json' -Json ([ordered]@{ method = $method; params = @($params); id = $script:FreshDelugeId }) }
+        $rpc = { param($method, $params = @()) $script:FreshDelugeId++; Send-Recorded -Client $fresh -Method POST -Path '/json' -Json ([ordered]@{ method = $method; params = @($params); id = $script:FreshDelugeId }) }.GetNewClosure()
         $failed = & $rpc 'auth.login' @('not-the-password')
         $exchanges = @($failed, (& $rpc 'web.connected'), (& $rpc 'web.update_ui' @(@('name', 'state', 'progress'), @{})), (& $rpc 'core.pause_torrent' @(, @('0' * 40))))
         Save-State deluge $ver 'unauthenticated-call' 'Calls made after a failed login, so with no session: a connected check, a torrent list and a pause.' $exchanges
@@ -182,7 +182,7 @@ function Invoke-RecordTransmissionRefusedLogin($p, $A) {
         $keep = @('content-type', 'www-authenticate', 'x-transmission-session-id')
         $badCred = New-Object pscredential($testUser, (ConvertTo-SecureString 'not-the-password' -AsPlainText -Force))
         $bad = New-RecordedClient -BaseUrl "http://127.0.0.1:$port" -BasicAuth $badCred -KeepHeaders $keep
-        $call = { param($headers) Send-Recorded -Client $bad -Method POST -Path '/transmission/rpc' -Headers $headers -Json ([ordered]@{ method = 'session-get'; arguments = @{}; tag = 1 }) }
+        $call = { param($headers) Send-Recorded -Client $bad -Method POST -Path '/transmission/rpc' -Headers $headers -Json ([ordered]@{ method = 'session-get'; arguments = @{}; tag = 1 }) }.GetNewClosure()
         $exchanges = @(& $call @{})
         # With a made-up session id too: the login is checked before the session id.
         $exchanges += (& $call @{ 'X-Transmission-Session-Id' = 'not-a-real-session-id' })
@@ -213,7 +213,7 @@ function Invoke-RecordNzbgetRefusedLogin($p) {
     if ($text -notmatch '(?m)^AuthorizedIP=\S') { Add-Missing 'nzbget login-refused: AuthorizedIP is not set in nzbget.conf, so a wrong login was never let in by address; nothing to change'; return }
     $wasPaused = [bool](Get-ReplyJson (& $rpc 'status')).result.DownloadPaused
     $keep = @('content-type', 'www-authenticate')
-    $waitUp = { Start-Sleep -Seconds 2; $null = Wait-Until -Seconds 90 -EverySeconds 2 { $r = & $rpc 'version'; if ($r.reply.status -eq 200) { $r } }; Start-Sleep -Seconds 3 }
+    $waitUp = { Start-Sleep -Seconds 2; $null = Wait-Until -Seconds 90 -EverySeconds 2 { $r = & $rpc 'version'; if ($r.reply.status -eq 200) { $r } }; Start-Sleep -Seconds 3 }.GetNewClosure()
     try {
         [IO.File]::WriteAllBytes($configFile, $latin.GetBytes(([regex]::Replace($text, '(?m)^AuthorizedIP=.*$', 'AuthorizedIP='))))
         $null = & $rpc 'reload'
@@ -258,7 +258,7 @@ function Invoke-RecordNzbgetConfigError($p) {
         $up = Wait-Until -Seconds 90 -EverySeconds 2 { $r = & $rpc 'version'; if ($r.reply.status -eq 200) { $r } }
         Start-Sleep -Seconds 3
         $up
-    }
+    }.GetNewClosure()
     try {
         $clean = & $rpc 'loadconfig'
         $cleanNames = @((Get-ReplyJson $clean).result | ForEach-Object { $_.Name })

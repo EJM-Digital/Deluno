@@ -206,7 +206,7 @@ function Get-VersionCore {
 function Get-GithubPickerChecks {
     param($Limit, [string] $HookLog = '', [string] $PickerLog = '', [string] $WeirVersion = '', [string[]] $FeedTags = @())
     $checks = New-Object System.Collections.ArrayList
-    $add = { param($n, $ok, $d) [void]$checks.Add([pscustomobject]@{ name = $n; ok = [bool]$ok; detail = [string]$d }) }
+    $add = { param($n, $ok, $d) [void]$checks.Add([pscustomobject]@{ name = $n; ok = [bool]$ok; detail = [string]$d }) }.GetNewClosure()
     if ($null -eq $Limit) {
         & $add 'The VM used GitHub''s allowance up before Setup ran' $false 'The hook that does it before Setup left no record, so the picker did not meet the limit.'
         return @($checks)
