@@ -40,6 +40,11 @@ export function testFiles(root) {
 const TS_TITLE = /\b(?:it|test|describe)(?:\.(?:each|skip|only|fixme|fails|concurrent|serial|describe|configure))*(?:\([^)]*\))?\(\s*(['"`])((?:\\.|(?!\1)[^\\\n])+)\1/g;
 const CS_METHOD = /\[(?:[A-Za-z]*Fact|[A-Za-z]*Theory)\b[^\]]*\]\s*(?:\[[^\]]*\]\s*)*(?:public\s+|internal\s+)?(?:static\s+)?(?:async\s+)?(?:Task|void|ValueTask)\s+(\w+)/g;
 const CS_CLASS = /\b(?:class|record)\s+(\w+)/g;
+// real-fs: the test (or its class setup) creates a real temp folder or a real SQLite file, works on it with real file or database code,
+// and neither names a fake or in-memory file system or store. What cannot be decided is refused.
+const FS_CREATE = /Path\.GetTempPath\s*\(|CreateTempSubdirectory\s*\(|Path\.GetTempFileName\s*\(|\bTestStorage\.Create\s*\(|\bMigratedDatabaseTemplate\b|\bnew\s+ApplicationTestHost\b|\bApplicationTestHost\.(?:Create|Start)\w*\s*\(|\bnew\s+(?:TempFolder|TemporaryFolder|TempRoot|TempDataRoot|ScratchFolder|Scratch)\s*\(/;
+const FS_WORK = /\b(?:File|Directory|FileInfo|DirectoryInfo)\.|\bnew\s+(?:FileInfo|DirectoryInfo)\b|CreateHardLink|SqliteConnection|SqliteDatabaseConnectionFactory|\bMigrat\w*/;
+const FS_FAKE = /ScriptedStateFileSystem|\bIFileSystem\b|MockFileSystem|MemoryFileSystem|\bFake\w*(?:FileSystem|Storage|Repository|Database)\b|\bInMemory\w*(?:FileSystem|Storage|Store|Repository|Database)\b|\bNull\w*Repository\b|:memory:|Mode=Memory|new\s+Mock<\s*I\w*(?:File|Storage|Disk|Database|Repository)|Substitute\.For<\s*I\w*(?:File|Storage|Disk|Database|Repository)/;
 const RECORDING = /RecordedReplies\b|WeirContract\.Rec|\bRec\(\s*"|\bRecorded[A-Z]\w*\s*[(.<]|fixtures[\\/]+recorded/;
 
 /** The names inside one test file: its tests, its groups and (C#) its classes. */
@@ -116,6 +121,34 @@ export class TestIndex {
   }
 
   /**
+   * Is the test a real-fs test: it runs Deluno's real code against real files in a real temp folder, or a real SQLite file?
+   * Decided statically from the class setup (the text before its first test) plus the test's own body.
+   * A named test is judged alone; a class name, a cited fragment or "*" is judged over every test it covers, and every one must qualify.
+   * { real, why }: what cannot be decided is not real.
+   */
+  realFs(file, name) {
+    const f = this.files.get(file);
+    if (!f || !file.endsWith('.cs')) return { real: false, why: 'not a C# test file' };
+    const header = f.header ?? '';
+    let scope;
+    const body = name && name !== '*' ? f.bodies?.get(name) : undefined;
+    if (body !== undefined) scope = [[name, body]];
+    else {
+      const all = [...(f.bodies ?? [])];
+      if (!name || name === '*' || f.names.has(name)) scope = all;
+      else { const q = squash(name); scope = all.filter(([n]) => squash(n).startsWith(q)); }
+    }
+    if (scope.length === 0) return { real: false, why: 'no test found to judge' };
+    for (const [n, text] of scope) {
+      const both = header + '\n' + text;
+      if (FS_FAKE.test(both)) return { real: false, why: `${n} uses a fake or in-memory file system or store` };
+      if (!FS_CREATE.test(both)) return { real: false, why: `${n} (or its class setup) creates no real temp folder or database file` };
+      if (!FS_WORK.test(both)) return { real: false, why: `${n} does no file or database work that can be seen` };
+    }
+    return { real: true, why: '' };
+  }
+
+  /**
    * Is a smoke test's API stubbed? Decided from the spec's text: a test is stubbed when its body, a beforeEach/beforeAll hook of the file,
    * or a helper function of the file that it calls intercepts requests (page.route, route.fulfill, serveLive*).
    * { stubbed, decided }: what cannot be decided (the test is not found, or the name is the whole file) counts as stubbed and not decided.
@@ -176,5 +209,6 @@ export function proofTypeOf(file, index, name) {
   if (/^apps\/web\/tests\/.+\.spec\.ts$/.test(file)) return 'smoke';
   if (/\.test\.tsx?$/.test(file)) return 'vitest';
   if (index && index.replaysRecording(file, name)) return 'recording-replay';
+  if (index && index.realFs(file, name).real) return 'real-fs';
   return 'backend';
 }

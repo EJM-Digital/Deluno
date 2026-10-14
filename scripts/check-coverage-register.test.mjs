@@ -340,3 +340,164 @@ test('only an unmapped item or a missing proof fails the default run; the rest f
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------------------------- real-fs and vm (15 Oct 2026)
+
+const REAL_FS_CS = `
+public class ImportOnDiskTests
+{
+    [Fact]
+    public async Task A_hard_link_is_made_on_a_real_folder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "a.mkv"), "x");
+        Assert.True(File.Exists(Path.Combine(root, "a.mkv")));
+    }
+
+    [Fact]
+    public async Task A_fake_file_system_is_not_real()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var fs = new ScriptedStateFileSystem();
+        File.Exists(root);
+    }
+
+    [Fact]
+    public async Task An_in_memory_database_is_not_real()
+    {
+        var root = Path.GetTempPath();
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+    }
+
+    [Fact]
+    public async Task Nothing_is_created()
+    {
+        File.Exists("/some/path");
+    }
+
+    [Fact]
+    public async Task A_folder_is_made_but_nothing_is_done_with_it()
+    {
+        var root = Path.GetTempPath();
+    }
+}
+`;
+const REAL_FS_SETUP_CS = `
+public class SetupCreatesTheFolderTests : IDisposable
+{
+    private readonly string root = Directory.CreateTempSubdirectory("deluno").FullName;
+
+    [Fact]
+    public void A_file_is_written() { File.WriteAllText(Path.Combine(root, "a"), "x"); }
+
+    public void Dispose() { Directory.Delete(root, true); }
+}
+`;
+const REAL_FS_FILE = 'tests/X.Tests/RealFsTests.cs';
+const SCENARIO_PROOF = { type: 'scenario', file: 'scripts/golden-path/G.ps1', name: 'install-first-run' };
+
+test('real-fs is decided statically: a real temp folder or database file, real work on it, and no fake', () => {
+  const root = makeRepo({ [REAL_FS_FILE]: REAL_FS_CS, 'tests/X.Tests/SetupTests.cs': REAL_FS_SETUP_CS });
+  try {
+    const index = new TestIndex(root);
+    assert.equal(index.realFs(REAL_FS_FILE, 'A_hard_link_is_made_on_a_real_folder').real, true);
+    assert.match(index.realFs(REAL_FS_FILE, 'A_fake_file_system_is_not_real').why, /fake or in-memory/);
+    assert.match(index.realFs(REAL_FS_FILE, 'An_in_memory_database_is_not_real').why, /fake or in-memory/);
+    assert.match(index.realFs(REAL_FS_FILE, 'Nothing_is_created').why, /creates no real temp folder/);
+    assert.match(index.realFs(REAL_FS_FILE, 'A_folder_is_made_but_nothing_is_done_with_it').why, /no file or database work/);
+    assert.equal(index.realFs(REAL_FS_FILE, 'A_test_that_is_not_there').real, false);
+    // the class setup counts for its tests
+    assert.equal(index.realFs('tests/X.Tests/SetupTests.cs', 'A_file_is_written').real, true);
+    // a class name, a fragment and "*" are judged over every test they cover, and every one must qualify
+    assert.equal(index.realFs(REAL_FS_FILE, 'ImportOnDiskTests').real, false);
+    assert.equal(index.realFs(REAL_FS_FILE, '*').real, false);
+    assert.equal(index.realFs('tests/X.Tests/SetupTests.cs', '*').real, true);
+    assert.equal(index.realFs('tests/X.Tests/SetupTests.cs', 'SetupCreatesTheFolderTests').real, true);
+    // only C# backend tests can be real-fs
+    assert.equal(index.realFs('apps/web/tests/x.spec.ts', 'x').real, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a real-fs claim the checker cannot verify is refused: reported as a type problem and counted as inproc', () => {
+  const root = makeRepo({ [REAL_FS_FILE]: REAL_FS_CS });
+  try {
+    const index = new TestIndex(root);
+    const claim = (name) => ({ type: 'real-fs', file: REAL_FS_FILE, name });
+    const disk = (over) => row({ id: 'd1', severity: 'high', touches: 'disk', required: 'real', ...over });
+    const good = disk({ proofs: [claim('A_hard_link_is_made_on_a_real_folder')] });
+    const refused = disk({ id: 'd2', proofs: [claim('A_fake_file_system_is_not_real')] });
+    assert.equal(rowLevel(good, index), 2);
+    assert.equal(isGap(good, index), false);
+    assert.equal(rowLevel(refused, index), 1, 'a refused claim stays inproc');
+    assert.equal(isGap(refused, index), true);
+    assert.equal(rowLevel(good), 1, 'without an index nothing can be verified');
+    const problems = missingProofs(register([good, refused]), index, null);
+    assert.equal(problems.length, 1);
+    assert.equal(problems[0].kind, 'type');
+    assert.match(problems[0].why, /real-fs refused/);
+    const t = totals(register([good, refused]), index);
+    assert.equal(t.realFs.claims, 2);
+    assert.equal(t.realFs.counted, 1);
+    assert.equal(t.realFs.refused, 1);
+    assert.equal(t.highGaps, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('real-fs satisfies real only for disk and install rows', () => {
+  const root = makeRepo({ [REAL_FS_FILE]: REAL_FS_CS });
+  try {
+    const index = new TestIndex(root);
+    const proofs = [{ type: 'real-fs', file: REAL_FS_FILE, name: 'A_hard_link_is_made_on_a_real_folder' }];
+    for (const touches of ['disk', 'install']) assert.equal(isGap(row({ severity: 'high', touches, required: 'real', proofs }), index), false, touches);
+    // another app needs the other app's recorded reply or a scenario, and a row that touches nothing is already met by inproc
+    assert.equal(isGap(row({ severity: 'high', touches: 'other-app', required: 'real', proofs }), index), true);
+    assert.equal(rowLevel(row({ severity: 'high', touches: 'none', required: 'inproc', proofs }), index), 1);
+    const t = totals(register([row({ severity: 'high', touches: 'other-app', required: 'real', proofs })]), index);
+    assert.equal(t.realFs.noEffect, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a vm row needs a scenario: real-fs and a recording stay inproc', () => {
+  const root = makeRepo({ [REAL_FS_FILE]: REAL_FS_CS, 'tests/X.Tests/ATests.cs': CS_TEST });
+  try {
+    const index = new TestIndex(root);
+    const vm = (proofs) => row({ severity: 'high', touches: 'install', required: 'real', vm: true, proofs });
+    const realFs = { type: 'real-fs', file: REAL_FS_FILE, name: 'A_hard_link_is_made_on_a_real_folder' };
+    const replay = { type: 'recording-replay', file: 'tests/X.Tests/ATests.cs', name: 'A_recorded_reply_is_read' };
+    assert.equal(isGap(vm([realFs]), index), true);
+    assert.equal(isGap(vm([replay]), index), true);
+    assert.equal(isGap(vm([realFs, replay]), index), true);
+    assert.equal(isGap(vm([realFs, SCENARIO_PROOF]), index), false);
+    // the same proof on the same row without vm does reach real
+    assert.equal(isGap(row({ severity: 'high', touches: 'install', required: 'real', proofs: [realFs] }), index), false);
+    const t = totals(register([vm([realFs]), vm([SCENARIO_PROOF])]), index);
+    assert.equal(t.realFs.vmRows, 2);
+    assert.equal(t.realFs.vmRowGaps, 1);
+    assert.equal(t.realFs.noEffect, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('vm is only true, and only on a row that touches disk or install', () => {
+  assert.deepEqual(validateShape(register([row({ severity: 'high', touches: 'install', required: 'real', vm: true })])), []);
+  assert.deepEqual(validateShape(register([row({ severity: 'high', touches: 'disk', required: 'real', vm: true })])), []);
+  assert.match(validateShape(register([row({ vm: true })])).join('\n'), /vm is for a row that touches disk or install/);
+  assert.match(validateShape(register([row({ severity: 'high', touches: 'other-app', required: 'real', vm: true })])).join('\n'), /vm is for a row that touches disk or install/);
+  assert.match(validateShape(register([row({ severity: 'high', touches: 'disk', required: 'real', vm: false })])).join('\n'), /vm may only be true/);
+  assert.deepEqual(validateShape(register([row({ proofs: [{ type: 'real-fs', file: 'a.cs', name: 'x' }] })])), [], 'real-fs is a known proof type');
+});
+
+test('the generated section reports the real-fs proofs and the vm rows', () => {
+  const rows = [row({ id: 'v1', severity: 'high', touches: 'install', required: 'real', vm: true })];
+  const text = generatedSection(register(rows), [], totals(register(rows)));
+  assert.match(text, /Real-fs proofs: \*\*0\*\* claimed/);
+  assert.match(text, /\*\*1\*\* rows are "vm"/);
+});
