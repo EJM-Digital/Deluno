@@ -107,6 +107,8 @@ public static class IntegrationsServiceCollectionExtensions
         // the "clean up now" button resolve the same registration.
         services.AddScoped<IRefusedDownloadCleanupService, RefusedDownloadCleanupService>();
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();
+        // One memory of "Weir asked Deluno to wait" for every call to it (#1266).
+        services.AddSingleton<Deluno.Platform.Contracts.ProcessorRetryHolds>();
         services.AddScoped<IProcessorConnectionService, ProcessorConnectionService>();
 
         // Plex, Jellyfin and Emby (#493). Thirty seconds because a library

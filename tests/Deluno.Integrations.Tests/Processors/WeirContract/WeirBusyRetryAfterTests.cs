@@ -22,7 +22,7 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 /// (<c>weir/1.0.0-rc.18/database-busy-outcome</c> and <c>internal-error-outcome</c>, made by
 /// <c>scripts/recorded-replies/Record-WeirErrors.ps1</c>) has not been made yet: the run was stopped on 14 October 2026 (see
 /// tests/fixtures/recorded/MISSING.md). When it is made, replace <see cref="Busy"/> and <see cref="InternalError"/> with
-/// <c>Rec("database-busy-outcome").Single.Reply</c> and <c>Rec("internal-error-outcome").Single.Reply</c>. The issue text quotes the body as
+/// the single reply of each recording. The issue text quotes the body as
 /// <c>{"error":"database_busy"}</c>; Weir's source writes <c>detail</c> and <c>code</c>, which is what is used here, and Deluno reads neither
 /// field for this rule (only the status and the header).</para>
 /// </summary>
@@ -75,7 +75,7 @@ public sealed class WeirBusyRetryAfterTests
     [InlineData("")]
     [InlineData("soon")]
     [InlineData("0")]
-    [InlineData("-5")]
+    [InlineData("-5 seconds")]
     [InlineData("1.5.2")]
     [InlineData("Wed, 01 Jan 2020 00:00:00 GMT")]
     public void A_missing_or_unreadable_or_pointless_header_is_not_given(string? header)

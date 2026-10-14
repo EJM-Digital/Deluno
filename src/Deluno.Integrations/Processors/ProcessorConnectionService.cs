@@ -19,9 +19,36 @@ public sealed class ProcessorConnectionService(
     IProcessorHandoffTitleResolver? titleResolver = null,
     ILogger<ProcessorConnectionService>? logger = null,
     Deluno.Contracts.IConnectionVersionStore? versions = null,
-    TimeProvider? time = null) : IProcessorConnectionService
+    TimeProvider? time = null,
+    ProcessorRetryHolds? holds = null) : IProcessorConnectionService
 {
     private readonly TimeProvider clock = time ?? TimeProvider.System;
+    private readonly ProcessorRetryHolds retryHolds = holds ?? new ProcessorRetryHolds();
+
+    /// <summary>What is left of the wait a processor asked for (#1266), or null. Every call below asks it first, so one rule holds for all of them.</summary>
+    private TimeSpan? WaitingFor(ProcessorConnectionItem connection) => retryHolds.Remaining(connection.Id, clock.GetUtcNow());
+
+    private static string HeldMessage(ProcessorConnectionItem connection, TimeSpan left)
+        => $"{connection.Name} asked Deluno to wait, so Deluno will ask again in {Math.Ceiling(left.TotalSeconds):0} seconds.";
+
+    /// <summary>Reads the wait a not-now answer asked for, and holds every call back for it (plus up to a tenth of it as jitter). Null when it asked for none.</summary>
+    private TimeSpan? Learn(ProcessorConnectionItem connection, HttpResponseMessage response)
+    {
+        if (!IsWorthAskingAgain(response.StatusCode))
+        {
+            return null;
+        }
+
+        var now = clock.GetUtcNow();
+        var asked = ProcessorRetryAfter.Read(response, now);
+        if (asked is { } wait)
+        {
+            retryHolds.Hold(connection.Id, now + ProcessorRetryAfter.Wait(TimeSpan.Zero, wait, Random.Shared.NextDouble()));
+            logger?.LogInformation("{Processor} answered HTTP {StatusCode} and asked Deluno to wait {Seconds} seconds; nothing is sent to it before then.", connection.Name, (int)response.StatusCode, wait.TotalSeconds);
+        }
+
+        return asked;
+    }
 
     /// <summary>
     /// Reads the processor's health. A processor that answers also has its version read and stored (#1200), so the
@@ -449,6 +476,11 @@ public sealed class ProcessorConnectionService(
         CancellationToken cancellationToken)
     {
         var title = handoff.ReleaseName;
+        if (WaitingFor(connection) is { } submitLeft)
+        {
+            return new ProcessorSubmissionResult(false, "failed", HeldMessage(connection, submitLeft), null, submitLeft);
+        }
+
         try
         {
             var payload = await BuildPayloadAsync(handoff, cancellationToken);
@@ -512,7 +544,8 @@ public sealed class ProcessorConnectionService(
                 explanation is null
                     ? $"Processor submission returned HTTP {statusCode}."
                     : $"The processor refused the hand-off with HTTP {statusCode}: {explanation}",
-                statusCode);
+                statusCode,
+                Learn(connection, response));
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
         {
@@ -588,6 +621,11 @@ public sealed class ProcessorConnectionService(
             return ProcessorStatusSupport.None;
         }
 
+        if (WaitingFor(connection) is { } supportLeft)
+        {
+            return new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, HeldMessage(connection, supportLeft)) { RetryAfter = supportLeft };
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.Capabilities);
@@ -607,7 +645,10 @@ public sealed class ProcessorConnectionService(
                     ProcessorAnswer.Unreachable,
                     false,
                     false,
-                    $"{connection.Name} answered HTTP {(int)response.StatusCode}. {await ReadRefusalAsync(response, cancellationToken)}".TrimEnd());
+                    $"{connection.Name} answered HTTP {(int)response.StatusCode}. {await ReadRefusalAsync(response, cancellationToken)}".TrimEnd())
+                {
+                    RetryAfter = Learn(connection, response)
+                };
             }
 
             if (!response.IsSuccessStatusCode)
@@ -645,6 +686,11 @@ public sealed class ProcessorConnectionService(
             return new ProcessorHandoffStatusResult(ProcessorAnswer.Unsupported);
         }
 
+        if (WaitingFor(connection) is { } statusLeft)
+        {
+            return new ProcessorHandoffStatusResult(ProcessorAnswer.Unreachable, Message: HeldMessage(connection, statusLeft), RetryAfter: statusLeft);
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.Handoff(handoffId));
@@ -665,7 +711,8 @@ public sealed class ProcessorConnectionService(
                     ProcessorAnswer.Unreachable,
                     Message: explanation is null
                         ? $"{connection.Name} answered HTTP {(int)response.StatusCode} when asked about the hand-off."
-                        : $"{connection.Name} answered HTTP {(int)response.StatusCode}: {explanation}");
+                        : $"{connection.Name} answered HTTP {(int)response.StatusCode}: {explanation}",
+                    RetryAfter: Learn(connection, response));
             }
 
             return await ReadHandoffStatusAsync(response, cancellationToken)
@@ -687,6 +734,11 @@ public sealed class ProcessorConnectionService(
             return new ProcessorHandoffCancelResult(ProcessorAnswer.Unsupported, null);
         }
 
+        if (WaitingFor(connection) is { } cancelLeft)
+        {
+            return new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, HeldMessage(connection, cancelLeft), cancelLeft);
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Delete, endpoints.Handoff(handoffId));
@@ -698,7 +750,7 @@ public sealed class ProcessorConnectionService(
                 System.Net.HttpStatusCode.Conflict => new ProcessorHandoffCancelResult(ProcessorAnswer.Busy, await ReadRefusalAsync(response, cancellationToken)),
                 System.Net.HttpStatusCode.NotFound => new ProcessorHandoffCancelResult(ProcessorAnswer.NotFound, null),
                 System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized => new ProcessorHandoffCancelResult(ProcessorAnswer.Forbidden, await ForbiddenMessageAsync(response, connection, cancellationToken)),
-                _ => new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, await ReadRefusalAsync(response, cancellationToken))
+                _ => new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, await ReadRefusalAsync(response, cancellationToken), Learn(connection, response))
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
@@ -719,6 +771,11 @@ public sealed class ProcessorConnectionService(
         if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
         {
             return new ProcessorOutcomeResult(ProcessorAnswer.Unsupported, false, null);
+        }
+
+        if (WaitingFor(connection) is { } outcomeLeft)
+        {
+            return new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, HeldMessage(connection, outcomeLeft), outcomeLeft);
         }
 
         try
@@ -757,7 +814,7 @@ public sealed class ProcessorConnectionService(
                 // Not finished yet, or ended in a state it may still correct.
                 System.Net.HttpStatusCode.Conflict => await ReadConflictAsync(response, connection, cancellationToken),
                 var code when IsWorthAskingAgain(code) =>
-                    new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}."),
+                    new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}.", Learn(connection, response)),
                 // 400, 422 and the rest: the report itself was wrong, and
                 // sending the same report again would be wrong again.
                 var code => new ProcessorOutcomeResult(ProcessorAnswer.Refused, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}.")
