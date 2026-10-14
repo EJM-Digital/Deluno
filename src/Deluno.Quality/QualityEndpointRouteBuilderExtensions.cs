@@ -26,6 +26,17 @@ namespace Deluno.Quality;
 public static class QualityEndpointRouteBuilderExtensions
 {
     /// <summary>
+    /// #1326: GET leaves out the 1.5 MB pinned source inventory, so a package taken from GET and sent back has none. When it
+    /// names the same upstream revision as the inventory shipped in this build, that inventory is its own pin: put it back
+    /// rather than refuse a package Deluno itself issued. A package for any other revision is checked as it arrives.
+    /// </summary>
+    private static GuidePackageUpdateRequest WithPinnedSourceInventory(GuidePackageUpdateRequest request)
+        => request.Package is { SourceInventory: null } package
+           && string.Equals(package.Source.UpstreamRevision, GuideSourceInventoryCatalog.Current.UpstreamRevision, StringComparison.OrdinalIgnoreCase)
+            ? request with { Package = package with { SourceInventory = GuideSourceInventoryCatalog.Current } }
+            : request;
+
+    /// <summary>
     /// Serves the immutable guide package used by the setup and quality
     /// screens. It is read-scoped because clients must be able to preview the
     /// package without gaining permission to change quality profiles.
@@ -103,6 +114,8 @@ public static class QualityEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            request = WithPinnedSourceInventory(request);
+
             var preview = await store.PreviewAsync(request, cancellationToken);
             return Results.Json(preview, ReleasePreferenceJson.Options);
         });
@@ -168,6 +181,8 @@ public static class QualityEndpointRouteBuilderExtensions
             {
                 return denied;
             }
+
+            request = WithPinnedSourceInventory(request);
 
             try
             {
