@@ -6,8 +6,8 @@ namespace Deluno.Platform;
 /// <summary>
 /// Previews what removing a title would take (#1188: it never deletes anything; removal
 /// goes through the recycle bin) when every target is inside a configured
-/// library root. A title folder is removed as a unit when it is a direct child of
-/// that root, matching the way media libraries are laid out.
+/// library root. A title folder is removed as a unit only when nothing else is left
+/// in it (#1317); otherwise the title's own files and sidecars go on their own.
 /// </summary>
 public static class LibraryMediaDeletion
 {
@@ -19,6 +19,7 @@ public static class LibraryMediaDeletion
         var filePaths = new List<string>();
         var folderPaths = new List<string>();
         var warnings = new List<string>();
+        var ownByLibrary = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var trackedFile in trackedFiles)
         {
@@ -37,13 +38,33 @@ public static class LibraryMediaDeletion
                     continue;
                 }
 
-                if (File.Exists(fullPath)) filePaths.Add(fullPath);
-                var titleFolder = TryGetTitleFolder(fullPath, rootPath);
-                if (titleFolder is not null && Directory.Exists(titleFolder)) folderPaths.Add(titleFolder);
+                if (File.Exists(fullPath))
+                {
+                    filePaths.Add(fullPath);
+                    if (!ownByLibrary.TryGetValue(library.Id, out var own)) ownByLibrary[library.Id] = own = [];
+                    own.Add(fullPath);
+                }
             }
             catch
             {
                 warnings.Add($"{library.Name}: the configured library root could not be read.");
+            }
+        }
+
+        // #1317: the same rule the move itself follows, so the preview names what will really leave.
+        foreach (var (libraryId, paths) in ownByLibrary)
+        {
+            try
+            {
+                foreach (var unit in TitleOwnFiles.Plan(librariesById[libraryId].RootPath!, paths))
+                {
+                    if (unit.IsDirectory) folderPaths.Add(unit.Path);
+                    else if (!filePaths.Contains(unit.Path, StringComparer.OrdinalIgnoreCase)) filePaths.Add(unit.Path);
+                }
+            }
+            catch
+            {
+                warnings.Add($"{librariesById[libraryId].Name}: the configured library root could not be read.");
             }
         }
 
@@ -68,13 +89,6 @@ public static class LibraryMediaDeletion
         {
             return false;
         }
-    }
-
-    private static string? TryGetTitleFolder(string path, string rootPath)
-    {
-        var relative = Path.GetRelativePath(rootPath, path);
-        var firstSeparator = relative.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
-        return firstSeparator > 0 ? Path.Combine(rootPath, relative[..firstSeparator]) : null;
     }
 
     private static bool IsInsideRoot(string path, string rootPath)
