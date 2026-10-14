@@ -107,7 +107,7 @@ public static class ProcessorOutputLayout
 
             var name = relative[^1];
             var parent = Path.GetDirectoryName(target);
-            if (IsVideoName(name) && parent is not null && Directory.Exists(parent) && IsInside(root, parent + Path.DirectorySeparatorChar))
+            if (IsVideoName(name) && parent is not null && Directory.Exists(parent) && SafePathInsideOrEqual(root, parent))
             {
                 var renamed = CollisionPattern(name);
                 found.AddRange(Directory.EnumerateFiles(parent, "*", SearchOption.TopDirectoryOnly)
@@ -182,6 +182,10 @@ public static class ProcessorOutputLayout
 
     private static string[] Split(string path)
         => path.Trim().Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+
+    // The folder holding the file is the output folder itself for a flat file (#1262), so equal counts here; a folder that is
+    // outside the output folder, or climbs out of it, still does not (#1306).
+    private static bool SafePathInsideOrEqual(string root, string path) => Deluno.Contracts.SafePath.IsInside(root, path, allowEqual: true);
 
     private static bool IsInside(string root, string path) => Deluno.Contracts.SafePath.IsInside(root, path);
 }

@@ -124,6 +124,13 @@ public static class ImportFailurePolicy
     public const string ReplacementOwnershipMismatch = "replacementOwnershipMismatch";
 
     /// <summary>
+    /// The source path has a <c>..</c> in it, so the import refused to touch it (#1306). The path came from a client or
+    /// processor, not from the release, so nothing about the release is at fault: never refused, never retried on its
+    /// own, shown in plain words, and the file is left exactly where it is.
+    /// </summary>
+    public const string UnsafeSourcePath = "unsafeSourcePath";
+
+    /// <summary>
     /// The processing stage could not use the file and deleted it (#497).
     ///
     /// <para>Not an import failure and not in <see cref="KnownReasons"/>: the
@@ -200,7 +207,7 @@ public static class ImportFailurePolicy
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
         ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure,
-        DeadOrBrokenLink, InsufficientFreeSpace, DownloadIntegrityFailed
+        DeadOrBrokenLink, InsufficientFreeSpace, DownloadIntegrityFailed, UnsafeSourcePath
     ];
 
     /// <summary>
