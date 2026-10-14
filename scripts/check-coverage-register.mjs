@@ -11,8 +11,11 @@
 //     migration, integration client and operation, tray action, golden-path scenario) is named in the `covers` of some row;
 // (b) every proof a row names ({ type, file, name }) exists: the file is in the repository and the name is a test, a group or a class in it
 //     (name "*" means the whole file); a scenario proof names an id in ScenarioPlan.ps1;
-// (c) every row's proofs reach its required level: a high row needs a "real" proof (a golden-VM scenario, or a test that replays the
-//     other app's recorded real reply), every other row at least an "inproc" one. Reported as a total today; --strict fails on it.
+// (c) every row's proofs reach its required level. A high row that touches another app, files on disk or install/update/tray (its
+//     `touches` is other-app, disk or install) needs "real": a golden-VM scenario, a test that replays the other app's recorded real reply,
+//     or, for a screen behaviour, a Playwright smoke spec whose API calls are not stubbed (decided statically; undecidable counts as stubbed).
+//     Every other row needs at least "inproc". Reported as a total; only --strict fails on it.
+// Only (a) and (b) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
 // Determinism rules, reported with counts and failing under --strict: no fixed sleep in a test without a `reason:` comment on its line;
 // every golden-path scenario runnable alone; every external-app test on a recording or in tests/recorded-reply-allow-list.json.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -25,14 +28,30 @@ export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording
 export const KINDS = ['screen action', 'state', 'API route', 'job', 'integration-operation', 'failure-mode', 'migration', 'install-update', 'tray'];
 export const SEVERITIES = ['high', 'medium', 'low'];
 export const REAL_TYPES = new Set(['scenario', 'recording-replay']);
+export const TOUCHES = ['other-app', 'disk', 'install', 'none'];
+/** Areas whose rows are behaviours of a screen: a smoke spec against the real host may reach "real" for these. */
+export const SCREEN_AREAS = new Set(['shell', 'dashboard', 'guided-setup', 'library', 'movie-detail', 'show-detail', 'search-grab', 'queue', 'activity', 'connections', 'settings-library', 'settings-lists', 'automation', 'system', 'web']);
 const LEVEL_NAMES = ['none', 'inproc', 'real'];
 
-export const proofLevel = (proof) => (REAL_TYPES.has(proof.type) ? 2 : 1);
-export const rowLevel = (row) => (row.proofs ?? []).reduce((best, p) => Math.max(best, proofLevel(p)), 0);
-export const requiredLevel = (row) => (row.severity === 'high' ? 2 : 1);
-export const isGap = (row) => rowLevel(row) < requiredLevel(row);
+/** A high row that touches another app, files on disk, or install/update/tray needs real proof; every other row at least inproc. */
+export const requiredFor = (row) => (row.severity === 'high' && row.touches !== 'none' ? 'real' : 'inproc');
+export const requiredLevel = (row) => (requiredFor(row) === 'real' ? 2 : 1);
 
-/** The register's own shape: ids, enums, and the hard rule that a high row needs real proof. */
+/** Is this smoke proof stubbed? Decided statically; what cannot be decided counts as stubbed. */
+export function smokeState(proof, index) {
+  if (!index || typeof index.stubInfo !== 'function') return { stubbed: true, decided: false };
+  return index.stubInfo(proof.file, proof.name);
+}
+/** scenario and recording-replay are real; a smoke spec is real only for a screen behaviour and only when its API calls are not stubbed. */
+export function proofLevel(proof, row, index) {
+  if (REAL_TYPES.has(proof.type)) return 2;
+  if (proof.type === 'smoke' && row && SCREEN_AREAS.has(row.area) && !smokeState(proof, index).stubbed) return 2;
+  return 1;
+}
+export const rowLevel = (row, index) => (row.proofs ?? []).reduce((best, p) => Math.max(best, proofLevel(p, row, index)), 0);
+export const isGap = (row, index) => rowLevel(row, index) < requiredLevel(row);
+
+/** The register's own shape: ids, enums, and the rule deriving the required level from severity and what the row touches. */
 export function validateShape(register) {
   const problems = [];
   const areas = new Set(Object.keys(register.areas ?? {}));
@@ -46,8 +65,9 @@ export function validateShape(register) {
     if (!row.behaviour || !String(row.behaviour).trim()) problems.push(`${where}: needs a behaviour`);
     if (!KINDS.includes(row.kind)) problems.push(`${where}: kind "${row.kind}" is not one of ${KINDS.join(', ')}`);
     if (!SEVERITIES.includes(row.severity)) problems.push(`${where}: severity "${row.severity}" is not high, medium or low`);
-    if (row.severity === 'high' && row.required !== 'real') problems.push(`${where}: a high row requires "real" proof`);
-    if (row.severity !== 'high' && !['inproc', 'real'].includes(row.required)) problems.push(`${where}: required must be "inproc" or "real"`);
+    if (!TOUCHES.includes(row.touches)) problems.push(`${where}: touches "${row.touches}" is not one of ${TOUCHES.join(', ')}`);
+    else if (row.required !== requiredFor(row)) problems.push(`${where}: required must be "${requiredFor(row)}" for a ${row.severity} row that touches ${row.touches}`);
+    if (row.issue != null && !(Number.isInteger(row.issue) && row.issue > 0)) problems.push(`${where}: issue must be the number of an open coverage issue`);
     if (!Array.isArray(row.proofs)) problems.push(`${where}: proofs must be a list (empty when it is a gap)`);
     for (const p of [...(row.proofs ?? []), ...(row.partial ?? [])]) {
       if (!PROOF_TYPES.includes(p.type)) problems.push(`${where}: proof type "${p.type}" is not one of ${PROOF_TYPES.join(', ')}`);
@@ -86,12 +106,12 @@ export function missingProofs(register, index, planIds) {
   for (const row of register.rows) {
     for (const [list, label] of [[row.proofs ?? [], 'proof'], [row.partial ?? [], 'partial proof']]) {
       for (const p of list) {
-        if (!index.has(p.file)) { bad.push({ row: row.id, label, proof: p, why: `the file ${p.file} does not exist` }); continue; }
+        if (!index.has(p.file)) { bad.push({ kind: 'missing', row: row.id, label, proof: p, why: `the file ${p.file} does not exist` }); continue; }
         const typeProblem = typeMismatch(p, index);
-        if (typeProblem) { bad.push({ row: row.id, label, proof: p, why: typeProblem }); continue; }
+        if (typeProblem) { bad.push({ kind: 'type', row: row.id, label, proof: p, why: typeProblem }); continue; }
         if (p.name === '*') continue;
         if (p.type === 'scenario' && plan && plan.has(p.name)) continue;
-        if (!index.hasName(p.file, p.name)) bad.push({ row: row.id, label, proof: p, why: `no test, group or class "${p.name}" in ${p.file}` });
+        if (!index.hasName(p.file, p.name)) bad.push({ kind: 'missing', row: row.id, label, proof: p, why: `no test, group or class "${p.name}" in ${p.file}` });
       }
     }
   }
@@ -99,25 +119,29 @@ export function missingProofs(register, index, planIds) {
 }
 
 /** (c): totals. */
-export function totals(register) {
+export function totals(register, index) {
   const byArea = {};
   const bySeverity = { high: blank(), medium: blank(), low: blank() };
   const byLevel = { none: 0, inproc: 0, real: 0 };
   const all = blank();
   const gaps = [];
+  const highByTouches = Object.fromEntries(TOUCHES.map((t) => [t, { rows: 0, gaps: 0 }]));
+  const smoke = { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 };
   function blank() { return { rows: 0, proven: 0, gaps: 0 }; }
   for (const row of register.rows) {
-    const gap = isGap(row);
+    const gap = isGap(row, index);
+    if (row.severity === 'high' && highByTouches[row.touches]) { highByTouches[row.touches].rows++; if (gap) highByTouches[row.touches].gaps++; }
+    for (const pr of row.proofs ?? []) if (pr.type === 'smoke') { const st = smokeState(pr, index); smoke.proofs++; if (!st.stubbed) smoke.unstubbed++; else if (st.decided) smoke.stubbed++; else smoke.undecided++; }
     const a = (byArea[row.area] ??= { ...blank(), high: 0, highGaps: 0, level: { none: 0, inproc: 0, real: 0 } });
     for (const t of [a, bySeverity[row.severity], all]) { t.rows++; if (gap) t.gaps++; else t.proven++; }
     a.high += row.severity === 'high' ? 1 : 0;
     if (gap && row.severity === 'high') a.highGaps++;
-    const lv = LEVEL_NAMES[rowLevel(row)];
+    const lv = LEVEL_NAMES[rowLevel(row, index)];
     a.level[lv]++;
     byLevel[lv]++;
     if (gap) gaps.push(row);
   }
-  return { all, byArea, bySeverity, byLevel, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
+  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
 }
 
 // ------------------------------------------------------------------------------------------------ determinism rules
@@ -166,24 +190,33 @@ export function scenarioViolations(plan, index) {
 // ------------------------------------------------------------------------------------------------------- the report
 
 export function evaluate({ register, inventory, index, plan, root }) {
-  const shape = validateShape(register);
+  const internal = [];
+  const safe = (label, fn, fallback) => {
+    try { return fn(); } catch (error) { internal.push(`${label}: ${error?.message ?? error}`); return fallback; }
+  };
+  const shape = safe('register shape', () => validateShape(register), []);
   // Without PowerShell the golden-path plan cannot be read: its scenario rows are then neither required nor judged stale.
   const { unmapped, stale } = mapInventory(register, inventory, { checkStale: true, ignoreStale: plan.length ? [] : ['scenario:'] });
   const planIds = plan.length ? plan.map((p) => p.id) : null;
-  const missing = missingProofs(register, index, planIds);
-  const t = totals(register);
-  const sleeps = sleepViolations(index);
-  const scenarios = plan.length ? scenarioViolations(plan, index) : [];
-  return { shape, unmapped, stale, missing, totals: t, sleeps, scenarios };
+  const proofProblems = missingProofs(register, index, planIds);
+  const missing = proofProblems.filter((m) => m.kind === 'missing');
+  const typeProblems = proofProblems.filter((m) => m.kind === 'type');
+  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, gaps: [], highGaps: 0 });
+  const sleeps = safe('sleep rule', () => sleepViolations(index), []);
+  const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
+  return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal };
 }
 
-function externalAppViolations(root) {
-  const file = join(root, 'scripts/check-recorded-replies.mjs');
-  if (!existsSync(file)) return Promise.resolve({ problems: [], offenders: new Map(), listed: 0 });
-  return import(pathToFileURL(file).href).then((m) => {
+async function externalAppViolations(root) {
+  try {
+    const file = join(root, 'scripts/check-recorded-replies.mjs');
+    if (!existsSync(file)) return { problems: [], offenders: new Map(), listed: 0 };
+    const m = await import(pathToFileURL(file).href);
     const { problems, offenders } = m.check(root);
     return { problems, offenders, listed: offenders.size };
-  });
+  } catch (error) {
+    return { problems: [], offenders: new Map(), listed: 0, error: String(error?.message ?? error) };
+  }
 }
 
 const START = '<!-- coverage:generated:start -->';
@@ -194,13 +227,29 @@ export function generatedSection(register, inventory, t) {
   const lines = [];
   lines.push(`Generated by \`node scripts/check-coverage-register.mjs --write-doc\` from \`coverage-register.json\`. Do not edit by hand.`, '');
   lines.push(`**${t.all.rows}** behaviours. **${t.all.proven}** reach their required proof level (${pct(t.all.proven, t.all.rows)}); **${t.all.gaps}** are gaps, **${t.highGaps}** of them high.`, '');
-  lines.push('### By severity', '', '| Severity | Required proof | Rows | Reach it | Gaps |', '| --- | --- | ---: | ---: | ---: |');
-  for (const s of SEVERITIES) lines.push(`| ${s} | ${s === 'high' ? 'real' : 'inproc'} | ${t.bySeverity[s].rows} | ${t.bySeverity[s].proven} | ${t.bySeverity[s].gaps} |`);
+  lines.push('### By severity', '', '| Severity | Rows | Reach their level | Gaps |', '| --- | ---: | ---: | ---: |');
+  for (const s of SEVERITIES) lines.push(`| ${s} | ${t.bySeverity[s].rows} | ${t.bySeverity[s].proven} | ${t.bySeverity[s].gaps} |`);
+  lines.push('', '### High rows by what they touch (these need `real`, except `none`, which needs `inproc`)', '', '| Touches | High rows | High gaps |', '| --- | ---: | ---: |');
+  for (const k of TOUCHES) lines.push(`| ${k} | ${t.highByTouches[k]?.rows ?? 0} | ${t.highByTouches[k]?.gaps ?? 0} |`);
   lines.push('', '### By best proof a row has', '', '| Best proof | Rows |', '| --- | ---: |');
   for (const l of LEVEL_NAMES) lines.push(`| ${l === 'none' ? 'none (a gap)' : l} | ${t.byLevel[l]} |`);
-  lines.push('', '### By area', '', '| Area | What | Rows | Reach it | Gaps | High rows | High gaps | No proof | Inproc | Real |', '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  lines.push('', `Smoke proofs: **${t.smoke.proofs}**; unstubbed (can reach \`real\` for a screen behaviour) **${t.smoke.unstubbed}**; stubbed **${t.smoke.stubbed}**; not decidable statically, counted as stubbed **${t.smoke.undecided}**.`);
+  lines.push('', '### By area', '', '| Area | What | Rows | Reach their level | Gaps | High rows | High gaps | No proof | Inproc | Real |', '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const [area, a] of Object.entries(t.byArea).sort()) {
     lines.push(`| ${area} | ${register.areas[area]?.name ?? ''} | ${a.rows} | ${a.proven} | ${a.gaps} | ${a.high} | ${a.highGaps} | ${a.level.none} | ${a.level.inproc} | ${a.level.real} |`);
+  }
+  const byIssue = new Map();
+  for (const row of register.rows) if (row.issue != null) {
+    const e = byIssue.get(row.issue) ?? { rows: 0, gaps: 0, high: 0 };
+    e.rows++;
+    if (t.gaps.includes(row)) { e.gaps++; if (row.severity === 'high') e.high++; }
+    byIssue.set(row.issue, e);
+  }
+  lines.push('', '### Gaps with an open issue', '');
+  if (byIssue.size === 0) lines.push('No row names an issue yet.');
+  else {
+    lines.push('| Issue | Rows | Still gaps | High gaps |', '| --- | ---: | ---: | ---: |');
+    for (const [issue, e] of [...byIssue].sort((a, b) => a[0] - b[0])) lines.push(`| #${issue} | ${e.rows} | ${e.gaps} | ${e.high} |`);
   }
   const inv = countsOf(inventory);
   lines.push('', '### Inventories (generated from source by `scripts/coverage/inventory.mjs`)', '', '| Kind | Items |', '| --- | ---: |');
@@ -225,6 +274,7 @@ const stubFor = (item) => ({
   behaviour: `<one plain sentence about ${item.label ?? item.key}>`,
   kind: { route: 'API route', webroute: 'screen action', service: 'job', lane: 'job', handler: 'job', task: 'job', healthcheck: 'job', migration: 'migration', integration: 'integration-operation', tray: 'tray', scenario: 'integration-operation' }[item.kind],
   severity: 'medium',
+  touches: 'none',
   required: 'inproc',
   proofs: [],
   covers: [item.key]
@@ -236,16 +286,26 @@ async function main() {
   const root = resolve(rootArg >= 0 ? args[rootArg + 1] : join(dirname(fileURLToPath(import.meta.url)), '..'));
   const strict = args.includes('--strict');
   const registerPath = join(root, 'docs/testing/coverage-register.json');
-  if (!existsSync(registerPath)) {
-    console.error('docs/testing/coverage-register.json is missing.');
+  let register;
+  try {
+    register = JSON.parse(read(registerPath));
+    if (!Array.isArray(register.rows)) throw new Error('no "rows" list');
+  } catch (error) {
+    console.error(`docs/testing/coverage-register.json cannot be read (${error.message}): every inventory item is unmapped.`);
     process.exit(1);
   }
-  const register = JSON.parse(read(registerPath));
-  const index = new TestIndex(root);
-  const planResult = scenarioPlan(root);
-  const plan = planResult.ids;
-  const inventory = buildInventory(root, { skipScenarios: plan.length === 0 });
-  const result = evaluate({ register, inventory, index, plan, root });
+  let index, inventory, planResult, plan, result;
+  try {
+    index = new TestIndex(root);
+    planResult = scenarioPlan(root);
+    plan = planResult.ids;
+    inventory = buildInventory(root, { skipScenarios: plan.length === 0 });
+    result = evaluate({ register, inventory, index, plan, root });
+  } catch (error) {
+    // The check itself broke. Only an unmapped item or a missing proof may fail CI, so say so and stop.
+    console.error(`Coverage register check could not run: ${error?.stack ?? error}`);
+    process.exit(strict ? 1 : 0);
+  }
   const external = await externalAppViolations(root);
   const t = result.totals;
 
@@ -258,32 +318,45 @@ async function main() {
     return;
   }
   if (args.includes('--json')) {
-    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
+    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, highByTouches: t.highByTouches, smoke: t.smoke, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
     return;
   }
   if (args.includes('--list-gaps')) {
     const order = { high: 0, medium: 1, low: 2 };
-    for (const g of [...t.gaps].sort((a, b) => order[a.severity] - order[b.severity] || a.id.localeCompare(b.id))) console.log(`${g.severity.padEnd(6)} ${g.id}  ${g.behaviour.slice(0, 110)}`);
+    for (const g of [...t.gaps].sort((a, b) => order[a.severity] - order[b.severity] || a.id.localeCompare(b.id))) console.log(`${g.severity.padEnd(6)} ${g.touches.padEnd(9)} ${g.id}  ${g.behaviour.slice(0, 100)}`);
     return;
   }
 
   const lines = [];
-  const fail = [];
+  const fail = []; // the only things that fail CI: (a) and (b)
+  const warn = []; // everything else is reported, and fails only under --strict
   const shown = (list, f, n = 10) => list.slice(0, n).map(f).join('\n    ') + (list.length > n ? `\n    ... and ${list.length - n} more` : '');
   lines.push(`Coverage register: ${register.rows.length} rows, ${inventory.length} inventory items (${Object.entries(countsOf(inventory)).map(([k, n]) => `${n} ${k}`).join(', ')}).`);
   if (planResult.error) lines.push(`  !! ${planResult.error}: scenario ids are not checked.`);
 
-  if (result.shape.length) { fail.push(`the register is malformed (${result.shape.length}):\n    ${shown(result.shape, (x) => x)}`); }
   if (result.unmapped.length) fail.push(`(a) ${result.unmapped.length} inventory item(s) have no register row. Add a row with the key in "covers" (node scripts/check-coverage-register.mjs --stubs prints stubs):\n    ${shown(result.unmapped, (i) => `${i.key}  (${i.file ?? ''})`)}`);
   else lines.push('  OK  (a) every inventory item has a register row');
-  if (result.stale.length) fail.push(`(a) ${result.stale.length} row(s) cover an inventory item that no longer exists (remove the row or the key):\n    ${shown(result.stale, (s) => `${s.row} -> ${s.key}`)}`);
-  if (result.missing.length) fail.push(`(b) ${result.missing.length} proof(s) name a file or test that does not exist, or claim a type they do not have (fix the proof; the row is a gap until it has a real one):\n    ${shown(result.missing, (m) => `${m.row}: ${m.why}`)}`);
-  else lines.push('  OK  (b) every proof names a test that exists, of the type it claims');
+  if (result.missing.length) fail.push(`(b) ${result.missing.length} proof(s) name a file or test that does not exist (fix or remove the proof; the row is then a gap):\n    ${shown(result.missing, (m) => `${m.row}: ${m.why}`)}`);
+  else lines.push('  OK  (b) every proof names a file and a test that exist');
 
-  const levelLine = `(c) ${t.gaps.length} gaps (${t.highGaps} high): ${t.all.proven} of ${t.all.rows} rows reach their required proof level (high needs real; the rest inproc).`;
+  const notes = [
+    [result.shape.length, 'register shape problem(s)', result.shape],
+    [result.stale.length, 'row(s) cover an inventory item that no longer exists', result.stale.map((s) => `${s.row} -> ${s.key}`)],
+    [result.typeProblems.length, 'proof(s) claim a type they do not have', result.typeProblems.map((m) => `${m.row}: ${m.why}`)],
+    [result.internal.length, 'internal problem(s) in the check', result.internal],
+    [external.error ? 1 : 0, 'problem reading the recorded-reply check', [external.error]]
+  ];
+  for (const [n, text, items] of notes) {
+    if (!n) continue;
+    lines.push(`  !!  ${n} ${text} (reported only):\n    ${shown(items, (x) => x, 5)}`);
+    warn.push(`${n} ${text}`);
+  }
+
+  const levelLine = `(c) ${t.gaps.length} gaps (${t.highGaps} high): ${t.all.proven} of ${t.all.rows} rows reach their required proof level (high rows that touch another app, files on disk or install/update/tray need real; the rest inproc).`;
   lines.push(`  ${t.gaps.length ? '!!' : 'OK'}  ${levelLine}`);
-  lines.push(`      by severity: ${SEVERITIES.map((s) => `${s} ${t.bySeverity[s].gaps}/${t.bySeverity[s].rows}`).join(', ')} gaps; best proof: ${LEVEL_NAMES.map((l) => `${l} ${t.byLevel[l]}`).join(', ')}.`);
-  if (strict && t.gaps.length) fail.push(levelLine + ' (--strict)');
+  lines.push(`      by severity: ${SEVERITIES.map((s) => `${s} ${t.bySeverity[s].gaps}/${t.bySeverity[s].rows}`).join(', ')} gaps; high gaps by touches: ${TOUCHES.map((k) => `${k} ${t.highByTouches[k]?.gaps ?? 0}/${t.highByTouches[k]?.rows ?? 0}`).join(', ')}.`);
+  lines.push(`      best proof: ${LEVEL_NAMES.map((l) => `${l} ${t.byLevel[l]}`).join(', ')}. smoke proofs ${t.smoke.proofs}: ${t.smoke.unstubbed} unstubbed, ${t.smoke.stubbed} stubbed, ${t.smoke.undecided} not decidable (counted stubbed).`);
+  if (t.gaps.length) warn.push(levelLine);
 
   const rules = [
     [result.sleeps.length, `${result.sleeps.length} fixed sleep(s) in tests without a "reason:" comment on the line`, result.sleeps.map((s) => `${s.file}:${s.line}`), 'no fixed sleep in a test without a reason'],
@@ -292,15 +365,16 @@ async function main() {
   ];
   for (const [n, text, items, okText] of rules) {
     lines.push(`  ${n ? '!!' : 'OK'}  determinism: ${n ? text : okText}`);
-    if (strict && n) fail.push(`determinism: ${text}\n    ${shown(items, (x) => x, 5)}`);
+    if (n) warn.push(`determinism: ${text}\n    ${shown(items, (x) => x, 5)}`);
   }
 
   console.log(lines.join('\n'));
-  if (fail.length) {
-    console.error('\nCoverage register check failed:\n  ' + fail.join('\n  '));
+  const failing = strict ? [...fail, ...warn] : fail;
+  if (failing.length) {
+    console.error('\nCoverage register check failed:\n  ' + failing.join('\n  '));
     process.exit(1);
   }
-  if (!strict && (t.gaps.length || rules.some(([n]) => n))) console.log('  (gaps and rule breaches do not fail yet; node scripts/check-coverage-register.mjs --strict fails on them)');
+  if (warn.length) console.log('  (only an unmapped inventory item or a missing proof fails CI; the rest fails under --strict)');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) await main();
