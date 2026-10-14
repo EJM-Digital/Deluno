@@ -5183,11 +5183,7 @@ public sealed partial class ImportPipelineService(
     }
 
     private static bool IsWithinPath(string root, string candidate)
-    {
-        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var normalizedCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return normalizedCandidate.StartsWith(normalizedRoot, GetPathComparison());
-    }
+        => Deluno.Contracts.SafePath.IsInside(root, Path.GetFullPath(candidate), allowEqual: true);
 
     private static StringComparison GetPathComparison()
         => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

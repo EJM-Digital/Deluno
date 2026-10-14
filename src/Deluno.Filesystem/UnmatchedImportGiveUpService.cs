@@ -260,11 +260,7 @@ public sealed class UnmatchedImportGiveUpService(
 
         try
         {
-            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var full = Path.GetFullPath(path);
-            var normalized = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return full.StartsWith(normalized + Path.DirectorySeparatorChar, comparison)
-                   || full.StartsWith(normalized + Path.AltDirectorySeparatorChar, comparison);
+            return Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(root), Path.GetFullPath(path));
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {

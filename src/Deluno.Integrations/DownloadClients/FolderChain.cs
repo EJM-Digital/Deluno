@@ -361,7 +361,7 @@ public sealed class FolderChainService(
             var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
             string? Here(string? path) => string.IsNullOrWhiteSpace(path)
                 ? null
-                : mappings.Count > 0 ? Deluno.Platform.Processing.ProcessorPathMappingTranslator.ToDeluno(path, mappings) ?? path : path;
+                : mappings.Count > 0 ? Deluno.Platform.Processing.ProcessorPathMappingTranslator.ToDeluno(path, mappings) : path;
 
             var links = new List<FolderChainLink>();
             if (Here(watched) is { } watchedHere)

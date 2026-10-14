@@ -94,7 +94,7 @@ public sealed class ProcessorHealthCheck(
             // FolderChainService -- otherwise a correctly mapped setup reads
             // as a folder mismatch here.
             var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
-            string? ToDeluno(string? path) => mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(path, mappings) ?? path : path;
+            string? ToDeluno(string? path) => mappings.Count > 0 ? ProcessorPathMappingTranslator.ToDeluno(path, mappings) : path;
 
             // A processor with a watched folder per library says so in its library-folders
             // list (#1144): each library takes the entry made from it, found by its id.

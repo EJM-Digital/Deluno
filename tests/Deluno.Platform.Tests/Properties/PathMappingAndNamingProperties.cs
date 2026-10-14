@@ -134,7 +134,7 @@ public sealed class PathMappingAndNamingProperties
         return Translate(path) == path;
     }
 
-    [Fact(Skip = "DEFECT: a path under the source root that climbs out with \"..\" is mapped to a path that climbs out of the target root. \"/src/media/../../etc/passwd\" becomes \"/dst/media/../../etc/passwd\" and only the final file system decides where that is. Nothing removes or refuses \"..\". Owner to decide.")]
+    [Fact]
     public void A_mapped_path_with_dot_dot_segments_never_leaves_the_target_root()
         => Prop.ForAll(Cases(), c =>
         {
@@ -143,7 +143,7 @@ public sealed class PathMappingAndNamingProperties
             return !Key(result).Split('/').Contains("..");
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_mapped_path_with_dot_dot_segments_never_leaves_the_target_root.")]
+    [Fact]
     public void Climbing_out_of_the_source_root_does_not_climb_out_of_the_target_root_shrunk_case()
         => Assert.DoesNotContain("..", Key(Translate("/src/media/../../etc/passwd", new Mapping("/src/media", "/dst/media"))).Split('/'));
 
