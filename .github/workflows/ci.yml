@@ -311,14 +311,10 @@ jobs:
         if: ${{ needs.changes.outputs.run_coverage != 'true' }}
         run: npm run test:unit:web
 
-      # The same run with v8 coverage. The provider package is installed here, unsaved and at vitest's own
-      # version, because package-lock.json does not carry it yet; add it to apps/web devDependencies with
-      # `npm install -D @vitest/coverage-v8` (a local install, by the owner) and delete the install line.
+      # The same run with v8 coverage (@vitest/coverage-v8 is a devDependency of apps/web).
       - name: Run frontend unit tests with coverage
         if: ${{ needs.changes.outputs.run_coverage == 'true' }}
-        run: |
-          npm install --no-save --no-audit --no-fund --workspace apps/web @vitest/coverage-v8@4.1.11
-          npm run test:unit:web:coverage
+        run: npm run test:unit:web:coverage
 
       - name: Upload frontend coverage
         if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
