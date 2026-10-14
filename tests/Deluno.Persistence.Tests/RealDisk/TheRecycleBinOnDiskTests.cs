@@ -185,9 +185,9 @@ public sealed class TheRecycleBinOnDiskTests
         var second = LibraryFile(world, "Second (2002).mkv", length: 1_300_000);
         var third = LibraryFile(world, "Third (2003).mkv", length: 100);
         var firstItem = (await world.Bin.StoreReplacementAsync(world.Library, first, first, CancellationToken.None))!;
-        await Task.Delay(20); // reason: the bin keeps the oldest first, so the three items need distinct creation times
+        await Wait.ClockMovesOnAsync();
         var secondItem = (await world.Bin.StoreReplacementAsync(world.Library, second, second, CancellationToken.None))!;
-        await Task.Delay(20); // reason: the bin keeps the oldest first, so the three items need distinct creation times
+        await Wait.ClockMovesOnAsync();
         var thirdItem = (await world.Bin.StoreReplacementAsync(world.Library, third, third, CancellationToken.None))!;
         Expire(world, thirdItem.Id);
 
@@ -208,9 +208,9 @@ public sealed class TheRecycleBinOnDiskTests
         var b = LibraryFile(world, "B (2002).mkv", length: 1_300_000);
         var c = LibraryFile(world, "C (2003).mkv", length: 1_300_000);
         var itemA = (await world.Bin.StoreReplacementAsync(world.Library, a, a, CancellationToken.None))!;
-        await Task.Delay(20); // reason: the bin deletes the oldest first, so the items need distinct creation times
+        await Wait.ClockMovesOnAsync();
         var itemB = (await world.Bin.StoreReplacementAsync(world.Library, b, b, CancellationToken.None))!;
-        await Task.Delay(20); // reason: the bin deletes the oldest first, so the items need distinct creation times
+        await Wait.ClockMovesOnAsync();
         var itemC = (await world.Bin.StoreReplacementAsync(world.Library, c, c, CancellationToken.None))!;
         var settings = await world.Bin.GetSettingsAsync(CancellationToken.None);
         using var block = DeleteBlock.TryApply(itemA.RecyclePath);
