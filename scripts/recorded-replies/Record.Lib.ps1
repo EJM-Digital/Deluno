@@ -114,6 +114,10 @@ function Save-State {
     $json = ConvertTo-Json -InputObject $recording -Depth 30 -Compress
     if (Get-Command Remove-KnownSecrets -ErrorAction SilentlyContinue) { $json = Remove-KnownSecrets $json }
     $script:Recordings.Add(($json | ConvertFrom-Json))
+    # The host only gets the recordings when the whole run ends. A copy is kept in the VM as each state is saved (already scrubbed of the logins
+    # read there; scrub.mjs still runs over it on the host), so a run that is stopped part-way loses nothing: C:\golden\recorded\saved-states.jsonl,
+    # one recording per line, which Import-SavedStates.ps1 turns into the same files a finished run writes.
+    try { $null = New-Item -ItemType Directory -Force -Path 'C:\golden\recorded'; Add-Content -LiteralPath 'C:\golden\recorded\saved-states.jsonl' -Value $json -Encoding utf8 } catch { }
     $line = ('recorded {0} {1} {2} ({3} exchange(s))' -f $App, $safeVersion, $State, @($Exchanges).Count)
     Write-Host $line; Write-RunLog $line
 }
