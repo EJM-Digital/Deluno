@@ -42,7 +42,7 @@ public sealed class EpisodeAndTitleMatchingProperties
     private static ReleaseTitleExpectation Expect(Show show, int? season = null, int? episode = null)
         => new(show.Title, null, IsTv: true, season, episode);
 
-    [Fact(Skip = "DEFECT: an underscore before the marker hides it. \"Paper_S22E60_480p\" is not read as an episode, because \bS needs a non-word character before the S and an underscore is a word character. Seen in ReleaseTitleMatch (SeasonEpisode, SeasonPack, Boundary) and FeedReleaseNames.EpisodePattern accepts it only through its own separator class. Owner to decide.")]
+    [Fact]
     public void A_name_joined_with_underscores_reads_its_episode_like_any_other_separator()
         => Prop.ForAll(
             (from words in Words() from season in Gen.Choose(1, 40) from episode in Gen.Choose(1, 90) select (words, season, episode)).ToArbitrary(),
@@ -54,7 +54,7 @@ public sealed class EpisodeAndTitleMatchingProperties
                        && ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation(title, null, IsTv: true, show.season, show.episode + 1)) is not null;
             }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_name_joined_with_underscores_reads_its_episode_like_any_other_separator.")]
+    [Fact]
     public void An_underscore_joined_name_for_another_episode_is_refused_shrunk_case()
         => Assert.NotNull(ReleaseTitleMatch.Mismatch(
             "Paper_S22E60_480p_WEB-DL_x264-GRP",
@@ -118,7 +118,7 @@ public sealed class EpisodeAndTitleMatchingProperties
             });
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT: the most common multi-episode spelling, S01E01E02, is refused as \"for something else\" for every episode it holds. The title cut-off pattern allows S01E01 followed by a word boundary, and the second E is a word character, so the title is never cut and the name does not give the title. Owner to decide.")]
+    [Fact]
     public void A_multi_episode_name_written_S01E01E02_is_accepted_for_each_episode_it_holds()
         => Prop.ForAll(Shows(), show =>
         {
@@ -127,11 +127,28 @@ public sealed class EpisodeAndTitleMatchingProperties
                 .All(episode => ReleaseTitleMatch.Mismatch(name, Expect(show, show.Season, episode)) is null);
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_multi_episode_name_written_S01E01E02_is_accepted_for_each_episode_it_holds.")]
+    [Fact]
     public void Blade_S16E65E68_is_for_Blade_episode_65_shrunk_case()
         => Assert.Null(ReleaseTitleMatch.Mismatch(
             "Blade.S16E65E68.576p.WEB-DL.x264-GRP",
             new ReleaseTitleExpectation("Blade", null, IsTv: true, 16, 65)));
+
+    [Fact]
+    public void A_version_suffix_or_a_separated_tag_after_the_episode_reads_the_same_episode_and_other_glued_text_does_not()
+        => Prop.ForAll(Shows(), show =>
+        {
+            string[] same = ["v2", "v3", ".REPACK", "-PROPER"];
+            var episode = $"S{show.Season:D2}E{show.Episode:D2}";
+            var accepted = same.All(suffix =>
+                ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode)) is null
+                && ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode + 1)) is not null
+                && FeedReleaseNames.Parse($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}") is { Season: { } s, Episode: { } e } && s == show.Season && e == show.Episode);
+            var multi = ReleaseTitleMatch.Mismatch(
+                $"{show.Prefix}{show.Separator}{episode}E{show.Episode + show.Extra:D2}v2{show.Tail}", Expect(show, show.Season, show.Episode + show.Extra)) is null;
+            var refused = new[] { "vx", "abc" }.All(suffix =>
+                ReleaseTitleMatch.Mismatch($"{show.Prefix}{show.Separator}{episode}{suffix}{show.Tail}", Expect(show, show.Season, show.Episode)) is not null);
+            return accepted && multi && refused;
+        }).QuickCheckThrowOnFailure();
 
     [Fact]
     public void The_NxNN_form_means_the_same_as_SxxEyy()
@@ -169,7 +186,7 @@ public sealed class EpisodeAndTitleMatchingProperties
             return ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation(item.Show.Title, null, IsTv: true, AirDate: item.Date)) is null;
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT: a daily name for another date is accepted. Only the year of the air date is compared, and a different year falls through to null as well, so \"Show 2000.01.01\" passes a search for 2000-01-02 and for 2001-01-01. Owner to decide.")]
+    [Fact]
     public void A_daily_name_for_another_date_is_refused()
         => Prop.ForAll(DailyShows(), item =>
         {
@@ -178,7 +195,7 @@ public sealed class EpisodeAndTitleMatchingProperties
             return ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation(item.Show.Title, null, IsTv: true, AirDate: other)) is not null;
         }).QuickCheckThrowOnFailure();
 
-    [Fact(Skip = "DEFECT (shrunk case): see A_daily_name_for_another_date_is_refused.")]
+    [Fact]
     public void A_daily_name_for_the_next_day_is_refused_shrunk_case()
         => Assert.NotNull(ReleaseTitleMatch.Mismatch(
             "Night.Living.2000.01.01.720p.WEB-DL.x264-GRP",
@@ -255,6 +272,6 @@ public sealed class EpisodeAndTitleMatchingProperties
         return parsed is null
                || (parsed.Season is null or >= 0 and <= 99
                    && parsed.Episode is null or >= 0 and <= 999
-                   && parsed.Year is null or >= 1900 and <= 2099);
+                   && parsed.Year is null or >= 1900 and <= 2199);
     }
 }

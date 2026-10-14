@@ -62,16 +62,16 @@ public sealed class ExistingLibraryImportService(
 {
     private readonly LibraryImportSliceOptions _slice = sliceOptions ?? LibraryImportSliceOptions.Default;
 
-    private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
+    private static readonly Regex YearPattern = new(ReleaseNameReader.YearToken, RegexOptions.Compiled);
 
     /// <summary>
     /// The <c>(2008)</c> Deluno's own folder format puts on the end. It belongs
     /// to the folder rather than to the release name inside it.
     /// </summary>
     private static readonly Regex TrailingYearSuffixPattern =
-        new(@"\s*[\(\[](?<year>(19|20)\d{2})[\)\]]\s*$", RegexOptions.Compiled);
+        new(@"\s*[\(\[](?<year>" + ReleaseNameReader.YearDigits + @")[\)\]]\s*$", RegexOptions.Compiled);
 
-    private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+S\d{1,2}E\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+" + ReleaseNameReader.SeasonEpisodePattern + ReleaseNameReader.VersionSuffix + ReleaseNameReader.EndsToken, RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SeasonPackTitlePattern = new(
         @"(?<![A-Za-z0-9])(?:Season[.\s_-]+|S)\d{1,3}(?!E\d{1,3})(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
