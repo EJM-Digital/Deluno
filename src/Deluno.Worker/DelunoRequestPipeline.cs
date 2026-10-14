@@ -85,6 +85,10 @@ public static class DelunoRequestPipeline
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        // #1279: RequestBodyLimits names the limit per route; the form reader must allow the largest of them (a backup).
+        services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+            options.MultipartBodyLengthLimit = RequestBodyLimits.BackupFileBytes);
+
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
@@ -314,6 +318,9 @@ public static class DelunoRequestPipeline
 
         // A request the framework cannot bind gets a plain message, after the sign-in (#1280).
         app.UseDelunoBadRequestAnswers();
+
+        // #1279: how large a body each route takes, and how long each saved text member may be.
+        app.UseDelunoRequestBodyLimits();
 
         app.MapDelunoApplicationEndpoints();
 

@@ -21,6 +21,9 @@ export const GATES = {
   docker: "run_docker",
   // Only a manual run builds it: the installable build the golden path installs (docs/golden-path.md).
   "windows-installer": "run_windows_installer",
+  // Coverage is measured only when the backend and the web tests both ran (issue 1268).
+  "coverage-node": "run_coverage",
+  coverage: "run_coverage",
 };
 
 // Returns one line per problem; empty means CI passed.

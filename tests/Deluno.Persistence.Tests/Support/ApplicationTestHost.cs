@@ -129,6 +129,7 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     app.UseAuthorization();
                     // The bad-request answers are the shared pipeline's own, so a test sees what a caller sees (#1280).
                     app.UseDelunoBadRequestAnswers();
+                    app.UseDelunoRequestBodyLimits();
                     app.UseEndpoints(endpoints => endpoints.MapDelunoApplicationEndpoints());
                 }))
             .Build();

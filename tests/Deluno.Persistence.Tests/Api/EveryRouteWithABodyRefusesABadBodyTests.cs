@@ -9,11 +9,9 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// #1275: every route that takes a JSON body, found from the endpoint map, is sent a missing body, a body over 1 MB (no route
-/// sets a smaller limit of its own) and a body whose members all have the wrong type. Each must be answered with a 4xx, never a
-/// 5xx and never an unhandled exception. A missing, malformed or wrongly typed body is also answered with a plain message that
-/// names the member at fault (#1280). Routes that fail today on size are listed below with what they do, each pinned by a skipped
-/// test that names them, so the owner can decide; the walk itself stays green for every other route and fails if a listed route
-/// starts to behave (the list must then shrink).
+/// is over every route's limit) and a body whose members all have the wrong type. Each must be answered with a 4xx, never a
+/// 5xx and never an unhandled exception. A missing, malformed or wrongly typed body is answered with a plain message that
+/// names the member at fault (#1280). The body limits and text-length limits are #1279 (RequestBodyLimits).
 /// </summary>
 public sealed class EveryRouteWithABodyRefusesABadBodyTests
 {
@@ -27,65 +25,6 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
     private static readonly IReadOnlySet<string> OpensAWindowOnTheMachine = new HashSet<string>(StringComparer.Ordinal)
     {
         "POST /api/filesystem/native-folder-picker"
-    };
-
-    /// <summary>
-    /// Found defect: these routes accept a body over 1 MB (a 1 MB name is saved, or the unknown 1 MB member is ignored and the
-    /// rest is stored). No route sets a body limit of its own and the host's default is 30 MB.
-    /// </summary>
-    private static readonly IReadOnlySet<string> AcceptsAnOversizedBody = new HashSet<string>(StringComparer.Ordinal)
-    {
-        "POST /api/backups/",
-        "PUT /api/backups/settings",
-        "POST /api/blocked-releases",
-        "POST /api/custom-formats/",
-        "POST /api/custom-formats/dry-run",
-        "POST /api/custom-formats/import",
-        "POST /api/download-health/ignore-list",
-        "PUT /api/download-health/keep-seeding",
-        "POST /api/filesystem/import/preview",
-        "POST /api/filesystem/path-diagnostics",
-        "POST /api/integrations/external/import-preview",
-        "POST /api/integrations/external/trigger-refresh",
-        "POST /api/intelligent-routing/recommend-release",
-        "POST /api/metadata/test",
-        "POST /api/migration/preview",
-        "POST /api/movies/",
-        "POST /api/movies/metadata/jobs",
-        "PUT /api/notification-preferences/",
-        "POST /api/policy-sets/",
-        "PUT /api/quality-model/",
-        "PUT /api/recycle-bin/settings",
-        "POST /api/release-profiles/",
-        "PUT /api/release-profiles/mode",
-        "PUT /api/release-profiles/order",
-        "POST /api/retention/rules/trial",
-        "POST /api/search",
-        "PUT /api/security/allowed-hosts",
-        "PUT /api/security/local-network-auth",
-        "POST /api/series/",
-        "POST /api/series/metadata/jobs",
-        "PATCH /api/settings/",
-        "PUT /api/settings/automation",
-        "POST /api/setup/completed",
-        "PUT /api/setup/draft",
-        "PUT /api/setup/progress",
-        "POST /api/sharing-rules/",
-        "POST /api/tags/",
-        "POST /api/trackers/cloudflare-helper/test",
-        "PUT /api/trackers/definitions/update-check",
-        "PUT /api/updates/preferences",
-        "POST /api/v1/guides/trash/preview",
-        "POST /api/v1/guides/trash/sync/preview",
-        "PUT /api/v1/guides/trash/update-check/settings"
-    };
-
-    /// <summary>Found defect: these routes answer a body over 1 MB with an unhandled exception, which the host reports as a 500.</summary>
-    private static readonly IReadOnlySet<string> AnswersAnOversizedBodyWithA500 = new HashSet<string>(StringComparer.Ordinal)
-    {
-        "POST /api/filesystem/import/execute-batch",
-        "POST /api/filesystem/import/scan-folder",
-        "POST /api/integrations/external/file-changed"
     };
 
     /// <summary>
@@ -144,74 +83,136 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
     }
 
     [Fact]
-    public async Task Every_route_with_a_JSON_body_refuses_a_body_over_one_megabyte_with_a_4xx_except_the_listed_defects()
+    public async Task Every_route_with_a_JSON_body_refuses_a_body_over_one_megabyte_with_a_413_and_a_plain_message()
     {
         await using var app = await ApplicationTestHost.StartAsync();
-        var known = AcceptsAnOversizedBody.Concat(AnswersAnOversizedBodyWithA500).ToHashSet(StringComparer.Ordinal);
 
         var wrong = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var route in BodyRoutes(app).Where(route => !OpensAWindowOnTheMachine.Contains(route.Label)))
         {
-            var (status, detail) = await SendAsync(app, route, Json(Oversized(route.JsonBodyType!)));
-            var refused = Is4xx(status);
-            if (known.Contains(route.Label))
+            using var request = new HttpRequestMessage(new HttpMethod(route.Method), route.Path) { Content = Json(Oversized(route.JsonBodyType!)) };
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try
             {
-                seen.Add(route.Label);
-                if (refused)
+                using var response = await app.Client.SendAsync(request, cts.Token);
+                var text = await response.Content.ReadAsStringAsync(cts.Token);
+                if ((int)response.StatusCode != 413 || !text.Contains("too large", StringComparison.OrdinalIgnoreCase) || WhatIsWrongWithTheRefusal(413, text) is not null)
                 {
-                    wrong.Add($"{route.Label} now refuses an oversized body ({detail}); take it off the defect list");
+                    wrong.Add($"{route.Label} answered {(int)response.StatusCode} {text[..Math.Min(text.Length, 200)]}");
                 }
             }
-            else if (!refused)
+            catch (Exception exception)
             {
-                wrong.Add($"{route.Label} answered {detail} to a body over 1 MB");
+                wrong.Add($"{route.Label} threw {exception.GetType().Name}: {exception.Message}");
             }
         }
 
-        foreach (var missing in known.Except(seen))
-        {
-            wrong.Add($"{missing} is on the defect list but is not a route with a JSON body; remove it");
-        }
-
-        AssertNone(wrong, "Routes that did not behave on a body over 1 MB:");
+        AssertNone(wrong, "Routes that did not answer a body over 1 MB with a 413:");
     }
 
-    [Fact(Skip = "Found defect, owner to decide (#1275): routes accept a body over 1 MB. See AcceptsAnOversizedBody; no route sets a body limit of its own and the host default is 30 MB.")]
-    public async Task Defect_routes_refuse_a_body_over_one_megabyte()
+    [Theory]
+    [InlineData("/api/tags/", "name", 201)]
+    [InlineData("/api/custom-formats/", "name", 201)]
+    [InlineData("/api/policy-sets/", "name", 201)]
+    [InlineData("/api/release-profiles/", "name", 201)]
+    [InlineData("/api/movies/", "title", 201)]
+    [InlineData("/api/series/", "title", 201)]
+    [InlineData("/api/sharing-rules/", "name", 201)]
+    [InlineData("/api/tags/", "description", 4_001)]
+    public async Task A_saved_text_member_over_its_length_limit_is_refused_with_a_plain_400_and_nothing_is_saved(string path, string member, int length)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var body = "{\"" + member + "\":\"" + new string('A', length) + "\"}";
+
+        using var response = await app.Client.PostAsync(path, Json(body));
+        var text = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("too long", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("at most", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(new string('A', 50), text);
+        Assert.Null(WhatIsWrongWithTheRefusal(400, text, [member]));
+        Assert.Equal(member, JsonDocument.Parse(text).RootElement.GetProperty("member").GetString());
+    }
+
+    [Fact]
+    public async Task A_name_at_exactly_its_limit_is_not_refused_for_length()
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
-        var wrong = new List<string>();
-        foreach (var route in BodyRoutes(app).Where(route => AcceptsAnOversizedBody.Contains(route.Label)))
-        {
-            var (status, detail) = await SendAsync(app, route, Json(Oversized(route.JsonBodyType!)));
-            if (!Is4xx(status))
-            {
-                wrong.Add($"{route.Label} answered {detail}");
-            }
-        }
+        using var response = await app.Client.PostAsync("/api/tags/", Json("{\"name\":\"" + new string('A', RequestBodyLimitsNameLength) + "\"}"));
 
-        AssertNone(wrong, "Routes that accept a body over 1 MB:");
+        Assert.True(response.StatusCode is HttpStatusCode.OK or HttpStatusCode.Created, $"Answered {(int)response.StatusCode}.");
     }
 
-    [Fact(Skip = "Found defect, owner to decide (#1275): routes answer a body over 1 MB with an unhandled exception (a 500). See AnswersAnOversizedBodyWithA500.")]
-    public async Task Defect_routes_answer_a_body_over_one_megabyte_with_a_4xx_not_a_500()
+    private const int RequestBodyLimitsNameLength = 200;
+
+    [Fact]
+    public async Task A_batch_import_without_its_list_is_refused_with_a_400_and_a_reason()
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
-        var wrong = new List<string>();
-        foreach (var route in BodyRoutes(app).Where(route => AnswersAnOversizedBodyWithA500.Contains(route.Label)))
-        {
-            var (status, detail) = await SendAsync(app, route, Json(Oversized(route.JsonBodyType!)));
-            if (!Is4xx(status))
-            {
-                wrong.Add($"{route.Label} answered {detail}");
-            }
-        }
+        using var response = await app.Client.PostAsync("/api/filesystem/import/execute-batch", Json("{}"));
 
-        AssertNone(wrong, "Routes that answer an oversized body with a 500:");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("list of files", await response.Content.ReadAsStringAsync());
     }
+
+    [Theory]
+    [InlineData("/api/filesystem/import/scan-folder", "{\"folderPath\":\"C:\\\\x\\u0000y\"}")]
+    [InlineData("/api/integrations/external/file-changed", "{\"path\":\"C:\\\\x\\u0000y\"}")]
+    public async Task A_path_that_cannot_be_a_path_is_refused_with_a_400_not_a_500(string route, string body)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        using var response = await app.Client.PostAsync(route, Json(body));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/filesystem/import/scan-folder", "folderPath")]
+    [InlineData("/api/integrations/external/file-changed", "path")]
+    public async Task A_path_longer_than_the_path_limit_is_refused_with_a_400_not_a_500(string route, string member)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        using var response = await app.Client.PostAsync(route, Json("{\"" + member + "\":\"" + new string('a', 5_000) + "\"}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/tags/", 256 * 1024)]
+    [InlineData("/api/filesystem/import/preview", 1024 * 1024)]
+    [InlineData("/api/backups/restore", 256 * 1024 * 1024)]
+    [InlineData("/api/backups/restore/preview", 256 * 1024 * 1024)]
+    [InlineData("/api/movies/abc/subtitles/en/upload", 5 * 1024 * 1024)]
+    [InlineData("/api/series/abc/subtitles/en/upload", 5 * 1024 * 1024)]
+    public void Each_route_has_the_body_limit_that_fits_what_it_takes(string path, long bytes)
+        => Assert.Equal(bytes, Deluno.Worker.RequestBodyLimits.LimitFor(path));
+
+    [Theory]
+    [InlineData("name", 200)]
+    [InlineData("displayName", 200)]
+    [InlineData("title", 200)]
+    [InlineData("description", 4_000)]
+    [InlineData("notes", 4_000)]
+    [InlineData("path", 4_096)]
+    [InlineData("downloadsPath", 4_096)]
+    [InlineData("baseUrl", 2_048)]
+    [InlineData("pattern", 2_000)]
+    [InlineData("apiKey", 1_000)]
+    [InlineData("somethingElse", 4_000)]
+    public void Saved_text_members_have_a_length_limit_by_kind(string member, int limit)
+        => Assert.Equal(limit, Deluno.Worker.RequestBodyLimits.TextLimit(member));
+
+    [Theory]
+    [InlineData("detailsJson")]
+    [InlineData("csv")]
+    [InlineData("yaml")]
+    public void Members_that_hold_a_whole_document_are_bounded_by_the_body_limit_alone(string member)
+        => Assert.Null(Deluno.Worker.RequestBodyLimits.TextLimit(member));
 
     /// <summary>
     /// #1280: a refused body is answered with a plain message, in the <c>message</c> member the web app and the SDK read first.
@@ -345,7 +346,9 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
     private static readonly IReadOnlyDictionary<string, (int Reads, string[] Routes)> HandReads = new Dictionary<string, (int, string[])>(StringComparer.Ordinal)
     {
         ["src/Deluno.Api/Network/BundledComponentCredentials.cs"] = (1, ["POST /api/system/bundled-components/{kind}/connect"]),
-        ["src/Deluno.Integrations/Seerr/SeerrEndpointRouteBuilderExtensions.cs"] = (1, ["POST /api/seerr-servers/{id}/webhook"])
+        ["src/Deluno.Integrations/Seerr/SeerrEndpointRouteBuilderExtensions.cs"] = (1, ["POST /api/seerr-servers/{id}/webhook"]),
+        // The body-limit middleware (#1279) reads every API body before the route; the 413 walk and the malformed-JSON walk send every body route through it.
+        ["src/Deluno.Worker/RequestBodyLimits.cs"] = (2, [])
     };
 
     private static readonly System.Text.RegularExpressions.Regex HandRead = new(
