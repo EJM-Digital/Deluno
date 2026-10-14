@@ -151,15 +151,19 @@ function Stop-AppByName([string[]] $Names) {
 }
 
 # Waits until an address answers (any status below 500 counts, unless -Status is given). Returns the status or $null.
+# The status an address answers with, redirects not followed (0 when nothing answers).
+function Get-HttpStatus([string] $Url) {
+    try {
+        $req = [Net.HttpWebRequest]::Create($Url); $req.AllowAutoRedirect = $false; $req.Timeout = 10000; $req.ReadWriteTimeout = 10000
+        $res = $req.GetResponse(); $code = [int]$res.StatusCode; $res.Close(); $code
+    } catch [Net.WebException] { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 } } catch { 0 }
+}
+
+# Waits until an address answers (any status below 500 counts, unless -Status is given). Returns the status or $null.
 function Wait-Http {
     param([Parameter(Mandatory)] [string] $Url, [int] $Seconds = 120, [int[]] $Status)
     Wait-Until -Seconds $Seconds -EverySeconds 3 {
-        try {
-            $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0 -ErrorAction Stop
-            $code = [int]$r.StatusCode
-        } catch {
-            $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
-        }
+        $code = Get-HttpStatus $Url
         if ($Status) { if ($Status -contains $code) { $code } } elseif ($code -gt 0 -and $code -lt 500) { $code }
     }
 }
@@ -171,10 +175,10 @@ function New-MediaLibraryFolders([string] $MediaFile) {
     $movie = Join-Path $root 'Movies\Sintel (2010)'
     $show = Join-Path $root 'Shows\Recorded Show (2020)\Season 01'
     New-Item -ItemType Directory -Force -Path $movie, $show | Out-Null
-    if (-not (Test-Path (Join-Path $movie 'Sintel (2010) [WEB 1080p].mkv'))) { Copy-Item -LiteralPath $MediaFile -Destination (Join-Path $movie 'Sintel (2010) [WEB 1080p].mkv') }
+    if (-not (Test-Path -LiteralPath (Join-Path $movie 'Sintel (2010) [WEB 1080p].mkv'))) { Copy-Item -LiteralPath $MediaFile -Destination (Join-Path $movie 'Sintel (2010) [WEB 1080p].mkv') }
     foreach ($e in 1, 2) {
         $target = Join-Path $show ("Recorded Show (2020) - S01E0$e.mkv")
-        if (-not (Test-Path $target)) { Copy-Item -LiteralPath $MediaFile -Destination $target }
+        if (-not (Test-Path -LiteralPath $target)) { Copy-Item -LiteralPath $MediaFile -Destination $target }
     }
     [pscustomobject]@{ Root = $root; Movies = (Join-Path $root 'Movies'); Shows = (Join-Path $root 'Shows'); MovieFile = (Join-Path $movie 'Sintel (2010) [WEB 1080p].mkv') }
 }
