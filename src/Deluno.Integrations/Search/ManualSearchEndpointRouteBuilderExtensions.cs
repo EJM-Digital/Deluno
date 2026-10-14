@@ -121,6 +121,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
 
             var candidates = new List<object>();
             var matchedIndexerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var failedIndexers = new Dictionary<string, IntegrationFailure>(StringComparer.OrdinalIgnoreCase);
             foreach (var mediaType in mediaTypes)
             {
                 var family = mediaType == "tv" ? 5 : 2;
@@ -139,6 +140,11 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                     searchKind: AcquisitionSearchKinds.Interactive,
                     categoryIds: categoriesForType,
                     queryIsATitle: false);
+
+                foreach (var failure in plan.Failures ?? [])
+                {
+                    failedIndexers.TryAdd(failure.ServiceId, failure);
+                }
 
                 foreach (var candidate in plan.Candidates)
                 {
@@ -181,6 +187,24 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             foreach (var indexer in indexers)
             {
                 var found = matchedIndexerIds.Contains(indexer.Id);
+                if (!found && failedIndexers.TryGetValue(indexer.Id, out var failure))
+                {
+                    // An indexer that refused or errored did not "find nothing" (#1311). A refused key is already in
+                    // the history as a sign-in failure, written where it was found; any other failure is written here.
+                    if (failure.Kind != IntegrationFailureKind.Authentication)
+                    {
+                        await indexerHistoryRecorder.RecordSearchAsync(
+                            indexer.Id,
+                            indexer.Name,
+                            "failed",
+                            $"Search page: \"{query}\" failed: {failure.Message}",
+                            detailsJson: null,
+                            cancellationToken);
+                    }
+
+                    continue;
+                }
+
                 await indexerHistoryRecorder.RecordSearchAsync(
                     indexer.Id,
                     indexer.Name,

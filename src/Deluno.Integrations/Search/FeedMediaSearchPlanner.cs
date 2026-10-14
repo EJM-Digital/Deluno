@@ -707,6 +707,28 @@ public sealed class FeedMediaSearchPlanner(
 
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
+                    if (IndexerApiError.TryRead(document) is { } apiError)
+                    {
+                        // HTTP 200 with an <error> element is a refusal, not "found nothing" (#1311).
+                        var message = apiError.PlainMessage(indexer.Name);
+                        return new IndexerSearchOutcome(
+                            [],
+                            CandidatesTruncatedByIndexer: false,
+                            Failed: true,
+                            CircuitOpen: false,
+                            Outcome: "failed",
+                            ErrorMessage: message,
+                            Failure: IntegrationFailureFactory.FromLegacy(
+                                "indexer",
+                                indexer.Id,
+                                indexer.Name,
+                                "search",
+                                apiError.IsCredentialFailure ? "auth" : "protocol",
+                                message,
+                                code: apiError.Code?.ToString(),
+                                upstreamDetail: apiError.Description));
+                    }
+
                     return await ReadCandidatesAsync(document, token);
                 }
                 catch (TrackerException exception) when (exception.InnerException is TrackerBlockedException)
