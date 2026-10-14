@@ -181,7 +181,8 @@ test("the Docker candidate stays unpushed, and its scan can fail the release", (
 });
 
 test("ci-passed must judge every CI job", () => {
-  const ci = real.ci.replace(/(needs: \[changes, )(\w[\w-]*, )/, "$1");
+  // Edit ci-passed's own list: another job's `needs: [changes, ...]` may come first in the file.
+  const ci = real.ci.replace(/(\n  ci-passed:\r?\n    needs: \[changes, )(\w[\w-]*, )/, "$1");
   assert.notEqual(ci, real.ci, "the fixture edit must change ci.yml");
   assert.throws(() => checkReleaseGates({ ...real, ci }), /ci-passed does not need/);
 });
