@@ -346,6 +346,20 @@ public sealed class QualityRoutesTests
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
+    [Fact(Skip = "DEFECT: POST and PUT /api/policy-sets accept a quality profile id that does not exist and one made for the other media type (only the preview checks), and the plan then pushes it onto the libraries that use it (Deluno.Quality QualityEndpointRouteBuilderExtensions policySets.MapPost / MapPut validate only the name).")]
+    public async Task A_plan_that_names_a_quality_profile_for_the_other_media_type_or_no_profile_at_all_is_refused()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var tiers = await TierNamesAsync(app);
+        var films = await CreateProfileAsync(app, "Films profile", string.Join(",", tiers), tiers[0]);
+
+        using var unknown = await app.Client.PostAsJsonAsync("/api/policy-sets", new { name = "Plan", mediaType = "movies", qualityProfileId = "no-such-profile", upgradeUntilCutoff = true, isEnabled = true });
+        using var wrongKind = await app.Client.PostAsJsonAsync("/api/policy-sets", new { name = "Plan", mediaType = "tv", qualityProfileId = films, upgradeUntilCutoff = true, isEnabled = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, wrongKind.StatusCode);
+    }
+
     private static async Task<string> CreateProfileAsync(ApplicationTestHost app, string name, string allowed, string cutoff)
     {
         var response = await app.Client.PostAsJsonAsync("/api/quality-profiles", new

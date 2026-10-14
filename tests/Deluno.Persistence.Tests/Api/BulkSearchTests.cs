@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Worker.Jobs;
@@ -119,6 +120,27 @@ public sealed class BulkSearchTests
         Assert.Contains("movies.search.manual", registry.RegisteredJobTypes);
         Assert.Contains("series.search.manual", registry.RegisteredJobTypes);
         await Task.CompletedTask;
+    }
+
+    [Fact(Skip = "DEFECT: bulk search of chosen titles only flags their library for a search (the request carries library settings, not the titles), so the cycle that runs searches the whole library, not the selection. Evidence: the search job the planner then queues has no target ids in its payload.")]
+    public async Task The_search_that_runs_after_a_bulk_search_is_about_the_chosen_titles_and_not_the_whole_library()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var library = await LibraryAsync(app, "Films", "movies");
+        var chosen = await FilmAsync(app, "Chosen Only", 2020, library);
+        await FilmAsync(app, "Not Chosen", 2021, library);
+        await FilmAsync(app, "Also Not Chosen", 2022, library);
+        using var asked = await app.Client.PostAsJsonAsync("/api/movies/bulk/search", new { movieIds = new[] { chosen } });
+        Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var states = await jobs.ListLibraryAutomationStatesAsync(CancellationToken.None);
+        var plan = new LibraryAutomationPlanItem(library, "Films", "movies", false, true, true, 360, 24, 25, null, null);
+
+        await jobs.PlanLibrarySearchesAsync([plan], CancellationToken.None);
+
+        var job = Assert.Single(await jobs.ListAsync(100, CancellationToken.None), item => item.JobType == Deluno.Contracts.LibrarySearchJobTypes.Movies);
+        Assert.Contains(chosen, job.PayloadJson);
+        Assert.True(states.ContainsKey(library));
     }
 
     private static async Task<string> LibraryAsync(ApplicationTestHost app, string name, string mediaType)
