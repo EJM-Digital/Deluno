@@ -1,4 +1,5 @@
 import { comparablePath } from "../lib/library-paths";
+import { formatBytes } from "../lib/utils";
 import { toneSortValue } from "../lib/status-tones";
 import { latestVersionLabel, updateHeadline } from "../lib/update-headline";
 import { localizeResetTimes } from "../lib/reset-times";
@@ -2455,13 +2456,6 @@ function formatUptime(totalSeconds: number): string {
 function relativeTime(iso: string): string {
   const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);
   return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 
 function formatDuration(value: number | null, unit: "s" | "ms") {

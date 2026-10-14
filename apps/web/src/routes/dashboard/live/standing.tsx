@@ -7,7 +7,7 @@
  */
 import { CountUp } from "../../../components/ui/count-up";
 import type { DashboardLiveExtras, DashboardSummary, DashboardVolume } from "../../../lib/api/types/operations";
-import { formatSize } from "../downloads-kit";
+import { formatBytes } from "../../../lib/utils";
 
 /** The share of titles meeting their goal, as a whole percent; null when there is nothing in the library. */
 export function qualityShare(summary: DashboardSummary | undefined): { percent: number; met: number; total: number; upgradable: number } | null {
@@ -56,7 +56,7 @@ export function libraryDrives(summary: DashboardSummary | undefined): DashboardV
 /** What today has done to the space: what was imported, and what retention would give back. Empty when neither is known. */
 export function spaceToday(extras: DashboardLiveExtras | null | undefined): string {
   const parts: string[] = [];
-  if (extras) parts.push(extras.importedBytesToday > 0 ? `Today's imports took ${formatSize(extras.importedBytesToday)}.` : "Nothing imported yet today.");
-  if (extras && extras.retentionReclaimBytes > 0) parts.push(`Retention can free ${formatSize(extras.retentionReclaimBytes)}.`);
+  if (extras) parts.push(extras.importedBytesToday > 0 ? `Today's imports took ${formatBytes(extras.importedBytesToday)}.` : "Nothing imported yet today.");
+  if (extras && extras.retentionReclaimBytes > 0) parts.push(`Retention can free ${formatBytes(extras.retentionReclaimBytes)}.`);
   return parts.join(" ");
 }

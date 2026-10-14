@@ -4,7 +4,8 @@
  * reading (the sent download, the client's own queue item, the processor's own report) and a line with no real value is
  * left out rather than guessed. How many of them the card shows is decided by its height (see `fitDetails`).
  */
-import { ago, formatEta, formatSize } from "../downloads-kit";
+import { ago, formatEta } from "../downloads-kit";
+import { formatBytes } from "../../../lib/utils";
 import type { JourneyCard } from "./journey";
 import { startedLabel } from "./provenance";
 import { doneAbout } from "./times";
@@ -24,9 +25,9 @@ const bold = (text: string): Part => ({ bold: text });
 
 /** "1.2 of 3.2 GB": the two sizes with their unit said once when it is the same. */
 export function sizePair(done: number, total: number): string {
-  const first = formatSize(done).split(" ");
-  const second = formatSize(total).split(" ");
-  return first[1] === second[1] ? `${first[0]} of ${second[0]} ${second[1]}` : `${formatSize(done)} of ${formatSize(total)}`;
+  const first = formatBytes(done).split(" ");
+  const second = formatBytes(total).split(" ");
+  return first[1] !== undefined && first[1] === second[1] ? `${first[0]} of ${second[0]} ${second[1]}` : `${formatBytes(done)} of ${formatBytes(total)}`;
 }
 
 /** How long ago something happened, as a duration: "4 min". Nothing when the time is unknown. */
@@ -51,7 +52,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
     }
     case "grabbed": {
       if (release) lines.push(release);
-      if (size) lines.push({ parts: [bold(formatSize(size))], right: card.client ? `to ${card.client}` : undefined });
+      if (size) lines.push({ parts: [bold(formatBytes(size))], right: card.client ? `to ${card.client}` : undefined });
       break;
     }
     case "downloading": {
@@ -66,14 +67,14 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
     }
     case "processor": {
       if (card.processorStep) lines.push({ parts: [bold(card.processorStep)] });
-      lines.push({ parts: size ? [bold(formatSize(size)), " handed over"] : ["Handed over"], right: spent(card.handedOverUtc, now) });
+      lines.push({ parts: size ? [bold(formatBytes(size)), " handed over"] : ["Handed over"], right: spent(card.handedOverUtc, now) });
       if (card.processorQueuePosition && card.processorQueuePosition > 0) lines.push({ parts: [`Number ${card.processorQueuePosition.toLocaleString("en-AU")} in its line`] });
       if (release) lines.push(release);
       break;
     }
     case "importing": {
       if (card.destination) lines.push({ parts: ["To ", bold(card.destination)] });
-      const facts = [size ? formatSize(size) : null, card.quality ?? null].filter(Boolean) as string[];
+      const facts = [size ? formatBytes(size) : null, card.quality ?? null].filter(Boolean) as string[];
       if (facts.length > 0) lines.push({ parts: [bold(facts[0]), ...(facts.length > 1 ? [` · ${facts[1]}`] : [])] });
       if (release) lines.push(release);
       break;

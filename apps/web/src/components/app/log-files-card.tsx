@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatBytes } from "../../lib/utils";
 import { Download, FolderOpen, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -94,7 +95,7 @@ export function LogFilesCard() {
   return (
     <ListCard
       title="Log files"
-      count={files ? `${files.length} ${files.length === 1 ? "file" : "files"}, ${formatSize(files.reduce((sum, file) => sum + file.sizeBytes, 0))} in all` : undefined}
+      count={files ? `${files.length} ${files.length === 1 ? "file" : "files"}, ${formatBytes(files.reduce((sum, file) => sum + file.sizeBytes, 0))} in all` : undefined}
       actions={
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
@@ -127,7 +128,7 @@ export function LogFilesCard() {
           {(rows) => rows.map((file) => (
             <ListRow key={file.name}>
               <ListNameCell name={file.name} />
-              <ListCell numeric primary={formatSize(file.sizeBytes)} />
+              <ListCell numeric primary={formatBytes(file.sizeBytes)} />
               <ListCell primary={relative(file.lastWrittenUtc)} />
               <ListCell mobile>
                 <div className="flex items-center gap-1">
@@ -154,12 +155,6 @@ export function LogFilesCard() {
       />
     </ListCard>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function relative(iso: string): string {
