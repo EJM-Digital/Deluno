@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { serveLiveBusy } from "../helpers/live-busy";
 import { serveLiveRig } from "../helpers/live-rig";
+import { untilQuiet } from "../helpers/settle";
 
 // #1087, #1098: the Dashboard is two tabs, Live and System. Each fits one screen
 // at 1920x1080 and 2560x1440: the page never scrolls, whatever the tab holds,
@@ -42,7 +43,7 @@ async function fit(page: Page) {
 
 async function expectFitsOneScreen(page: Page, label: string) {
   // Let the tab's own lists arrive: a late list must not push the page down.
-  await page.waitForTimeout(900);
+  await untilQuiet(page);
   const measured = await fit(page);
   console.log(`${label}: scrollHeight ${measured.scrollHeight} / innerHeight ${measured.innerHeight}`);
   expect(measured.scrollHeight, `${label} scrolls the page`).toBeLessThanOrEqual(measured.innerHeight + 1);
@@ -59,7 +60,7 @@ async function expectFitsOneScreen(page: Page, label: string) {
  * clips has anything left over (#1082).
  */
 async function expectNoPanelCutsAnything(page: Page, label: string) {
-  await page.waitForTimeout(600);
+  await untilQuiet(page);
   const problems = await page.evaluate(() => {
     const found: string[] = [];
     const panel = document.querySelector('[role="tabpanel"]');
@@ -363,7 +364,7 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByText("Drive space")).toHaveCount(0);
       await expect(page.getByRole("img", { name: /meets its quality goal/ })).toHaveCount(0);
       await expect(page.getByText("Speed now")).toHaveCount(0);
-      await page.waitForTimeout(1600);
+      await untilQuiet(page);
       await page.screenshot({ path: `test-results/e2e-rig/live-busy-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live busy ${size.width}x${size.height}`);
       await expectCardsUniform(page, `live busy ${size.width}x${size.height}`);
@@ -380,7 +381,7 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
       await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
       await expectFitsOneScreen(page, `live rig-like ${size.width}x${size.height}`);
-      await page.waitForTimeout(1600);
+      await untilQuiet(page);
       await page.screenshot({ path: `test-results/e2e-rig/live-riglike-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live rig-like ${size.width}x${size.height}`);
       await expectCardsUniform(page, `live rig-like ${size.width}x${size.height}`);
@@ -398,7 +399,7 @@ test.describe("Dashboard tabs", () => {
       await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
       const shelf = page.getByRole("region", { name: "Your library" });
       await expect(shelf).toBeVisible();
-      await page.waitForTimeout(1200);
+      await untilQuiet(page);
       const chips = shelf.getByRole("radiogroup", { name: "Libraries" }).getByRole("radio");
       await expect(chips).toHaveText(["All", "Movies HD", "Kids", "TV"]);
       await expect(shelf.locator(".lsh-posters")).toHaveCount(1);
@@ -463,7 +464,7 @@ test.describe("Dashboard tabs", () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
     await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
-    await page.waitForTimeout(1500);
+    await untilQuiet(page);
     expect(await badge(page, "System")).toBe(0);
     expect(await badge(page, "Live")).toBe(0);
     await expect(page.getByRole("tab", { name: /^System/ }).getByLabel(/need a look|needs a look/)).toHaveCount(0);

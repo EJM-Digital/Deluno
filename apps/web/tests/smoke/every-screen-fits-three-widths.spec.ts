@@ -7,6 +7,7 @@ import { trackDataRequests } from "../helpers/data-settled";
 import { waitForLayoutCalm } from "../helpers/layout-calm";
 import { serveLiveBusy } from "../helpers/live-busy";
 import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
+import { untilQuiet, untilStill } from "../helpers/settle";
 
 // #1168. Every sidebar screen, every Settings page, a film page and a show page, at a wide desktop, a laptop and a
 // phone. Two things fail it, and neither is weakened to make a screen pass:
@@ -559,9 +560,9 @@ test.describe("every screen fits three widths", () => {
           // The rig's draft held a long address; a test of it answers with that address in one unbroken word.
           await page.getByPlaceholder("https://indexer.example/api").fill("https://a-very-long-indexer-host-name.example.org/torznab/api/v2.0/indexers/all/results/torznab/api?apikey=0123456789abcdef0123456789abcdef");
           await page.getByRole("button", { name: "Test search source" }).click();
-          await page.waitForTimeout(1500);
+          await untilQuiet(page);
         }
-        await page.waitForTimeout(300);
+        await untilQuiet(page);
         const problems = await page.evaluate(measure, { checkRepeats: false, phone: size.width < 768 });
         // The page's container hides what runs past its edge, so look at everything inside it.
         problems.push(...await page.evaluate(() => {
@@ -617,7 +618,7 @@ test.describe("every screen fits three widths", () => {
     const menu = page.getByRole("dialog").first();
     await expect(menu).toBeVisible();
     // The opening animation takes about a third of a second: measure once it has settled.
-    await page.waitForTimeout(700);
+    await untilStill(menu);
     const box = (await menu.boundingBox())!;
     expect(box.x, `the menu starts at x ${box.x}`).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, `the menu ends at x ${box.x + box.width}`).toBeLessThanOrEqual(390 + 1);
@@ -829,7 +830,7 @@ test.describe("Needs attention rows open on a phone", () => {
       await row.getByRole("cell").first().click();
       const drawer = page.getByRole("dialog");
       if (!(await drawer.isVisible({ timeout: 2_000 }).catch(() => false))) { offenders.push(`"${name.slice(0, 40)}" opens no drawer`); continue; }
-      await page.waitForTimeout(500); // the drawer slides in
+      await untilStill(drawer); // the drawer slides in
       const problems = await page.evaluate(measure, { checkRepeats: false, phone: true });
       for (const problem of problems) offenders.push(`"${name.slice(0, 30)}" drawer: ${problem}`);
       await page.keyboard.press("Escape");

@@ -82,7 +82,7 @@ test("adding a film lets you choose its profile, and an unticked search box mean
     expect(quiet.asked.searchForMissingNow, "the unticked box was sent as a search").toBe(false);
     expect(quietRow.qualityProfileId).toBe(chosenProfile.id);
     expect(quietRow.libraryId).toBe(library.id);
-    await page.waitForTimeout(2_500);
+    await page.waitForTimeout(2_500); // reason: shows that no search request follows; absence can only be shown by giving a wrong request real time to appear
     expect(searches, "a search request was sent although the box was unticked").toHaveLength(0);
     const history = await (await page.request.get("/api/movies/search-history", { headers })).json();
     expect(JSON.stringify(history)).not.toContain(quiet.id);

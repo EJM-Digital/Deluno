@@ -78,8 +78,12 @@ test.describe("first-run and auth screens", () => {
     await authenticateAndNavigate(page, "/setup-guide");
     await page.getByRole("button", { name: /Folders/ }).click();
     const moviesRoot = page.locator('input[placeholder*="Movies"]');
+    const saved = page.waitForResponse(
+      (response) => response.url().includes("/api/setup/draft") && response.request().method() === "PUT" && response.request().postData()?.includes("Draft Movies") === true,
+      { timeout: 10_000 }
+    );
     await moviesRoot.fill("D:\\Media\\Draft Movies");
-    await page.waitForTimeout(650);
+    await saved; // the draft is saved half a second after the change: wait for the save that carries it
 
     await page.reload();
     await expect(page.locator('input[placeholder*="Movies"]')).toHaveValue("D:\\Media\\Draft Movies");
