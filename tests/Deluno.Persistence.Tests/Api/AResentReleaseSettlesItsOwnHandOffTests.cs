@@ -19,6 +19,9 @@ namespace Deluno.Persistence.Tests.Api;
 /// #1226: a release removed with "I don't want it" and sent again to the SAME client is a new hand-off for the same
 /// download. Its own report, or the import that used its output, settles it; the output is never imported twice; and
 /// what Activity says about the two sends is one story.
+///
+/// <para>#1239: a report Weir really sent (tests/fixtures/recorded/deluno/*/events-*) is posted from its recording wherever one matches the case; a case with no real report stays
+/// inline on purpose, and tests/fixtures/recorded/MISSING.md lists it with the Weir state that would produce it.</para>
 /// </summary>
 public sealed class AResentReleaseSettlesItsOwnHandOffTests
 {
@@ -77,8 +80,17 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
         return file;
     }
 
-    private static Task<HttpResponseMessage> ReportAsync(ApplicationTestHost app, Scene scene, string handoffId, string status, string? outputPath = null, string? message = null)
-        => app.Client.PostAsJsonAsync("/api/integrations/processors/events", new { libraryId = scene.LibraryId, handoffId, status, outputPath, message });
+    /// <summary>
+    /// Weir's recorded report of a finished release folder (events-completed, #1239) for this test's release and hand-off: the folder
+    /// named for the release in its output folder, with the film inside. <paramref name="outputPath"/> is the file the test wrote there.
+    /// </summary>
+    private static Task<HttpResponseMessage> ReportAsync(ApplicationTestHost app, Scene scene, string handoffId, string status, string outputPath)
+    {
+        Assert.Equal("completed", status);
+        var body = RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-completed", 1), scene.LibraryId, handoffId, scene.Output, Release);
+        Assert.Equal([outputPath], RecordedWeirReports.OutputFilesOf(body));
+        return RecordedWeirReports.PostAsync(app.Client, body);
+    }
 
     private static async Task<IReadOnlyList<JobQueueItem>> ImportJobsAsync(ApplicationTestHost app)
         => (await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None))

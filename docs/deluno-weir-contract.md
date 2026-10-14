@@ -176,3 +176,68 @@ headers: `x-webhook-secret` scrubbed, `idempotency-key`, `content-type`) and Wei
 
 The older requests inside `weir/<version>/*.json` were sent by `Record-Weir.ps1` and `Record-WeirStates.ps1` from the documented
 shapes. They are no longer what Deluno's requests are held against; they remain only as the requests that produced Weir's replies.
+
+## 9. Deluno's replies to the calls Weir makes
+
+Weir reads four routes of Deluno with its Deluno API key (`X-Api-Key`). Deluno's reply to each is recorded from the server code
+(the whole application over HTTP, as `ApplicationTestHost` composes it: the same two composition calls the shipped hosts make), not from a
+proxy: `tests/fixtures/recorded/deluno/1.0.0-rc.30.32/reply-*.json`. `DelunoRepliesToWeirTests` runs the same calls again for every
+recording and holds Deluno's live reply to it member by member: the status, the `content-type` and `location` headers, and every member of
+the body, in order, with its type and its words. A reply that changes shape fails there, before Weir meets it. Only what no run can repeat
+is replaced in a recording: a generated id (`<id>`, or `<handoff:label>` / `<library:label>` for one the scenario made), a time (`<utc>`),
+the test's data folder (`<data-root>`, with forward slashes) and the key (a name for its scopes). To re-record on purpose, run
+`DelunoRepliesToWeirTests` with `DELUNO_RECORD_REPLIES=1`, run `node scripts/check-recorded-manifest.mjs --write`, and tell the Weir session.
+A reply Deluno's code takes from Weir (the answer to "send again") is Weir's own recording (`weir/1.0.0-rc.13/outcome-*`) served by a
+stand-in, never written here.
+
+The routes: `GET /api/integrations/processors/handoffs[?libraryId=&take=]`, `GET /api/integrations/processors/download-destinations[?libraryId=]`,
+`POST /api/integrations/processors/handoffs/{id}/import-original` and `POST /api/integrations/processors/handoffs/{id}/outcome/send-again`.
+
+| Deluno answers | Recording | Test |
+|---|---|---|
+| `200 []` on a Deluno with no hand-off, for every library and for one | `reply-handoffs-empty` | `Deluno_still_answers_what_it_was_recorded_answering` |
+| `200` a list of hand-offs (`id`, `libraryId`, `mediaType`, `clientId`, `queueItemId`, `releaseName`, `sourcePath`, `processorName`, `status`, `outputPath`, `importJobId`, `failureMessage`, `createdUtc`, `updatedUtc`, `processor`, `outcome`, `processorConnectionId`, `sourceFiles`), newest change first, filtered by `libraryId`, limited by `take` | `reply-handoffs-listed` | same |
+| `200` hand-offs carrying `outcome` in each delivery state (`pending`, `delivered`, `refused`, `given-up`, `never-received`, `settled`, `replaced`) | `reply-handoffs-with-outcomes` | same |
+| `200 { libraries: [] }`, and `404` (no body) for a `libraryId` Deluno does not have | `reply-download-destinations-empty` | same |
+| `200 { libraries[]: libraryId, libraryName, mediaType, downloadsPath, processorOutputPath, importWorkflow, destinations[], processorConnection }`, with the processor connection and its `pathMappings` for a library that hands to a processor, `null` for one that does not; `404` for an unknown library | `reply-download-destinations-libraries` | same |
+| `202` with the hand-off as it now stands (status `released`) and a `location` of the library's hand-off list, for a hand-off that is `failed`, `timed-out`, `stalled`, `lost` or `cancelled` | `reply-import-original-accepted` | same |
+| `409 { message }` ("The original can only be imported once the processor has stopped working on it...") for `waiting`, `submitted`, `accepted`, `started`, `completed`, `rejected`, `released` and `dismissed` | `reply-import-original-not-yet` | same |
+| `404` (no body) for a hand-off Deluno has no record of | `reply-import-original-unknown` | same |
+| `404 { message }` ("Deluno has nothing recorded to tell the processor...") for a hand-off with no outcome recorded, and for an unknown one | `reply-send-again-nothing-recorded` | same |
+| `200 { message, outcome }`, the outcome given up because the processor connection was removed | `reply-send-again-connection-removed` | same |
+| `200 { message, outcome }`, Weir acknowledged it and kept its copy (Weir `200`, `released: false`) | `reply-send-again-delivered` | same |
+| `200 { message, outcome }`, Weir acknowledged it and let go of its copy (Weir `200`, `released: true`) | `reply-send-again-delivered-released` | same |
+| `200`, Weir says it holds an answer (Weir `409 outcome_already_recorded`): settled | `reply-send-again-weir-has-its-answer` | same |
+| `200`, Weir says the hand-off ended (Weir `409 handoff_ended`): refused for good | `reply-send-again-weir-hand-off-ended` | same |
+| `200`, Weir has not finished (Weir `409 handoff_not_finished`): still owed, `nextAttemptUtc` set | `reply-send-again-weir-not-finished` | same |
+| `200`, Weir never received the hand-off (Weir `404`): `never-received` | `reply-send-again-weir-never-received` | same |
+| `200`, Weir refuses the secret (Weir `401` on its capabilities): still owed | `reply-send-again-weir-refuses-secret` | same |
+| `200`, Weir cannot be reached: still owed | `reply-send-again-weir-unreachable` | same |
+| `401` (no body) on each of the four routes, with no credential | `reply-no-sign-in` | same |
+| a key with only the `read` scope: `403 { message }` on the two reads (the route's own scope check, "This API key does not include the required scope: imports.") and `403 { error, required, granted }` on the two writes (the authorization policy) | `reply-key-without-imports-scope` | same |
+| a key with only the `imports` scope: the two writes pass the scope check (`404` for an unknown id), the two reads are `403 { error, required, granted }` | `reply-key-with-imports-scope-only` | same |
+
+**The key Weir needs.** The scenarios call with a key holding `read` and `imports` (the first recording of every route). The two last
+rows show why: the authorization policy asks a `GET` for the `read` scope whatever the route's own scope is, so a key with `imports` alone
+is refused on the two reads (`granted: ["imports"]`). `docs/external-integration-api.md` says the `imports` scope is enough for those two
+reads; the recordings say it is not. Until one of the two changes, the Weir session must give its Deluno key `read` and `imports`.
+
+Guards: `EveryWeirRecordingIsUsedByAContractTestTests` fails on a recording no test names or this document does not list;
+`DelunoRepliesToWeirTests.Every_scenario_has_its_recording_and_every_reply_recording_has_its_scenario` fails on a scenario with no recording
+and a recording with no scenario.
+
+### The manifest Weir checks
+
+`tests/fixtures/recorded/deluno/MANIFEST.sha256` lists a SHA-256 for every file under `tests/fixtures/recorded/deluno/<version>/` (the
+line is `<hash>  <version>/<state>.json`, hashed with line endings read as LF so a Windows and a Linux checkout agree).
+`scripts/check-recorded-manifest.mjs` fails when a recording changes, appears or goes without the manifest being rewritten
+(`npm run ci:check` runs it, and `scripts/check-recorded-manifest.test.mjs` tests it). The Weir session copies
+`tests/fixtures/recorded/deluno/` with its manifest, runs `node check-recorded-manifest.mjs --root <copy> --manifest <copy>/MANIFEST.sha256`
+(the script has no dependencies), and so knows when a copy has fallen behind Deluno's.
+
+### Reports Weir sends that are still built inline
+
+The reports in section 7 are posted from the recordings by `WeirRealReportsTests`, and also by `ProcessorCallbackContractTests`,
+`AProcessorIsNotTakenAtItsWordTests`, `ALateReportForARemovedSendIsSettledTests` and `AResentReleaseSettlesItsOwnHandOffTests` (through
+`RecordedWeirReports`) wherever a recording matches the case. A case with no real Weir report stays inline and is listed with the Weir
+state that would produce it in `tests/fixtures/recorded/MISSING.md` ("Reports Weir sends Deluno that the tests still build inline").

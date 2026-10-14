@@ -88,14 +88,14 @@ test('a recording no test replays fails, naming it, unless it is listed as havin
   const recording = JSON.stringify({ app: 'qbittorrent', version: '5.2.1', state: 'resumed', exchanges: [{ request: { method: 'GET', path: '/x' }, reply: { status: 200 } }] });
   const files = {
     'tests/fixtures/recorded/qbittorrent/5.2.1/resumed.json': recording,
-    'tests/fixtures/recorded/qbittorrent/5.1.0/old.json': recording,
+    'tests/fixtures/recorded/qbittorrent/5.1.0/resumed.json': recording,
     'tests/A.Tests/Unrelated.cs': inline('"resumed"')
   };
   let root = repo(files);
   try {
     const text = check(root).problems.join('\n');
     assert.match(text, /the recording "resumed" is replayed by no test/);
-    assert.doesNotMatch(text, /old/, 'only the newest version of an app is looked at');
+    assert.equal(text.match(/the recording "resumed"/g).length, 1, 'a state two versions hold is judged once');
   } finally { rmSync(root, { recursive: true, force: true }); }
 
   // A test that loads it by name replays it; so does a file that loads that app's recordings and lists the state.
@@ -125,4 +125,18 @@ test('a state quoted in a contract test beside the helper that loads the app cou
   delete files['tests/A.Tests/Contract/Behaviour.cs'];
   root = repo(files);
   try { assert.match(check(root).problems.join('\n'), /"status-working" is replayed by no test/); } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a state only an older version holds is still judged, because Deluno records its own side of the Weir talk in more than one version folder', () => {
+  const recording = JSON.stringify({ app: 'deluno', version: '1.0.0', state: 'events-old', exchanges: [{ request: { method: 'POST', path: '/x' }, reply: { status: 200 } }] });
+  const root = repo({
+    'tests/fixtures/recorded/deluno/1.0.0/events-old.json': recording,
+    'tests/fixtures/recorded/deluno/1.0.1/reply-new.json': recording,
+    'tests/A.Tests/Unrelated.cs': inline('RecordedReplies.Deluno("reply-new")')
+  });
+  try {
+    const text = check(root).problems.join('\n');
+    assert.match(text, /the recording "events-old" is replayed by no test/);
+    assert.doesNotMatch(text, /reply-new/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
