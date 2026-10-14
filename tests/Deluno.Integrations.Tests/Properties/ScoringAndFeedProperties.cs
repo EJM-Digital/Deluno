@@ -206,6 +206,30 @@ public sealed class ScoringAndFeedProperties
         Assert.Equal("Film2001", xml.Descendants("item").Single().Element("title")!.Value);
     }
 
+    [Fact]
+    public void A_release_with_neither_a_download_link_nor_a_magnet_is_skipped_and_logged_once_and_the_rest_of_the_page_is_kept()
+    {
+        var logger = new Mock<Microsoft.Extensions.Logging.ILogger>();
+        logger.Setup(l => l.IsEnabled(It.IsAny<Microsoft.Extensions.Logging.LogLevel>())).Returns(true);
+        var xml = TorznabFeed.Write(
+            [
+                new TrackerRelease { Title = "First", DownloadUrl = "https://t.example/d?id=1" },
+                new TrackerRelease { Title = "No link" },
+                new TrackerRelease { Title = "Also no link", DownloadUrl = " " },
+                new TrackerRelease { Title = "Last", MagnetUrl = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567" }
+            ],
+            logger.Object);
+        Assert.Equal(["First", "Last"], XDocument.Parse(xml.ToString()).Descendants("item").Select(i => i.Element("title")!.Value).ToArray());
+        logger.Verify(
+            l => l.Log(
+                Microsoft.Extensions.Logging.LogLevel.Warning,
+                It.IsAny<Microsoft.Extensions.Logging.EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
     [Property]
     public bool Any_text_as_a_title_never_makes_the_writer_throw(string? title)
     {
