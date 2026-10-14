@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "The only place a file may be left out of coverage. `path` is a repository-relative path or a glob (* within a folder, ** across folders). Every entry needs a plain-sentence `reason`; scripts/check-coverage-ratchet.mjs fails without one. Generated code is not listed: coverlet already drops it by the compiler's GeneratedCode and CompilerGenerated marks and by the obj folder (tests/coverage.runsettings).",
+  "exclusions": []
+}
