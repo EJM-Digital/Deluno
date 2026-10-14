@@ -1,4 +1,4 @@
-﻿# Records a real Torznab implementation (Jackett) and a real Newznab implementation (NZBHydra2) in the golden VM (#1237).
+# Records a real Torznab implementation (Jackett) and a real Newznab implementation (NZBHydra2) in the golden VM (#1237).
 # Runs INSIDE the VM after Record.Lib.ps1, Record.Secrets.ps1 and Install.Lib.ps1.
 #
 # Torznab: Jackett's own Windows build, from the project's GitHub release (the SHA-256 GitHub records for the asset is checked). Its
