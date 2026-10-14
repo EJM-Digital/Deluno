@@ -194,11 +194,19 @@ public sealed class OrphanedDownloadService(
         // Never inside a library, whatever else is true: a download folder
         // configured inside a library root must not let this reach media.
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+
+        // #1325: while any folder overlaps a library, nothing is cleaned up; and nothing that is, holds or sits inside a library's root.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is { } blocked)
+        {
+            return new OrphanedDownloadAction(false, blocked);
+        }
+
         var key = OrphanedDownloads.Key(item.Path);
         if (libraries.Any(library => !string.IsNullOrWhiteSpace(library.RootPath)
-            && key.StartsWith(OrphanedDownloads.Key(library.RootPath) + "/", StringComparison.OrdinalIgnoreCase)))
+            && key.StartsWith(OrphanedDownloads.Key(library.RootPath) + "/", StringComparison.OrdinalIgnoreCase))
+            || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, item.Path))
         {
-            return new OrphanedDownloadAction(false, $"{item.Name} is inside a library, so Deluno will not remove it.");
+            return new OrphanedDownloadAction(false, $"{item.Name} is inside a library, or holds one, so Deluno will not remove it.");
         }
 
         try

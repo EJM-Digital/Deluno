@@ -87,6 +87,13 @@ public sealed class UnmatchedImportGiveUpService(
 
     private async Task<bool> GiveUpAsync(string caseId, string title, string? detailsJson, string entityKind, CancellationToken cancellationToken)
     {
+        // #1325: no clean-up while a folder overlaps a library; the case stays open and is tried again once the layout is fixed.
+        if (librariesRepository is not null
+            && Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(await librariesRepository.ListLibrariesAsync(cancellationToken)) is not null)
+        {
+            return false;
+        }
+
         var (dispatchId, sourcePath) = ParseDetails(detailsJson);
         var deletedFile = false;
         var recycledFile = false;

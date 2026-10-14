@@ -2158,7 +2158,10 @@ public sealed class DownloadClientTelemetryService(
                     ? configuredRouteCategory
                     : null;
                 var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType, routeCategory);
-                var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
+                // #1325: a payload is deleted only while no folder overlaps a library, and never when it is, holds or sits inside a library's root.
+                var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath)
+                    && Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is null
+                    && !Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, item.SourcePath);
                 var applied = new List<string>();
                 var notesBefore = notes.Count;
 
