@@ -154,46 +154,7 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         // because [::]:port and http://+:port overlap. The explicit
         // ListenAnyIP() above is sufficient.
 
-        // Forwarded headers, response compression and rate limiting: the same
-        // services Deluno.Host uses (#1176), so a reverse proxy in front of the
-        // Windows install is honoured too.
-        builder.Services.AddDelunoWebPipeline(builder.Configuration);
-
-        // The tray restarts the host itself (HostRestartSupervisor), so giving up
-        // must not leave a failing exit code behind for the tray process.
-        builder.Services.AddSingleton(new BackgroundServiceSafetyOptions { SetExitCodeWhenGivingUp = false });
-        if (progress is not null)
-        {
-            // The migrator, the storage bootstrap and the startup gate report each step through this (#1256).
-            builder.Services.AddSingleton(progress);
-        }
-
-        builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
-        Firewall = new WindowsFirewallLanAccess(port);
-        builder.Services.AddSingleton<ILanAccess>(Firewall);
-        // Without this, DelunoApiExtensions' TryAddSingleton default
-        // (UncheckedBundledComponentDetection) wins, and GET
-        // /api/system/bundled-components reports every component as neither
-        // installed nor reachable on every real Windows install -- the
-        // installer's whole "detected on this machine" pre-fill (#640) goes
-        // dark even when qBittorrent or Weir is sitting right there. Only
-        // Deluno.Host's separate entry point registered the Windows
-        // implementation; the tray's own server never did.
-        builder.Services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
-        builder.Services.AddSingleton<IComponentRecoveryNotices>(_ => new TrayComponentRecoveryNotices());
-        builder.Services.AddHostedService<TrayUpdateBackgroundService>();
-        builder.Services.AddDelunoInfrastructure(builder.Configuration);
-        builder.Services.AddDelunoApplicationModules();
-        builder.Services.AddHostedService<ImportRecoveryCleanupService>();
-
-        builder.Services
-            .AddDataProtection()
-            .SetApplicationName("Deluno")
-            .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(settings.DataRoot, "protection-keys")));
-
-        // Protect local integration credentials and platform secrets.
-        builder.Services.AddDelunoPlatformSecrets(
-            Path.Combine(settings.DataRoot, "secrets", "master.key"));
+        Firewall = RegisterServices(builder.Services, builder.Configuration, settings, port, progress);
 
         _app = builder.Build();
 
@@ -219,6 +180,61 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         // Ready means this method is done, not only that Kestrel is listening: the supervisor stops watching a start at
         // Ready, and the firewall reading above is still part of the start. It is still covered by the web host window.
         progress?.Enter(StartupPhase.Ready);
+    }
+
+    /// <summary>
+    /// Every service the tray's host runs on. The hosted services come only from the shared registrations
+    /// (<c>AddDelunoInfrastructure</c> and <c>AddDelunoApplicationModules</c>, the same ones <c>Deluno.Host</c> uses) and
+    /// the tray's own updater: a copy of a server service kept here ran beside the configurable one (#1324).
+    /// </summary>
+    internal static WindowsFirewallLanAccess RegisterServices(
+        IServiceCollection services,
+        IConfiguration configuration,
+        AppSettings settings,
+        int port,
+        IStartupProgress? progress)
+    {
+        // Forwarded headers, response compression and rate limiting: the same
+        // services Deluno.Host uses (#1176), so a reverse proxy in front of the
+        // Windows install is honoured too.
+        services.AddDelunoWebPipeline(configuration);
+
+        // The tray restarts the host itself (HostRestartSupervisor), so giving up
+        // must not leave a failing exit code behind for the tray process.
+        services.AddSingleton(new BackgroundServiceSafetyOptions { SetExitCodeWhenGivingUp = false });
+        if (progress is not null)
+        {
+            // The migrator, the storage bootstrap and the startup gate report each step through this (#1256).
+            services.AddSingleton(progress);
+        }
+
+        services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
+        var firewall = new WindowsFirewallLanAccess(port);
+        services.AddSingleton<ILanAccess>(firewall);
+        // Without this, DelunoApiExtensions' TryAddSingleton default
+        // (UncheckedBundledComponentDetection) wins, and GET
+        // /api/system/bundled-components reports every component as neither
+        // installed nor reachable on every real Windows install -- the
+        // installer's whole "detected on this machine" pre-fill (#640) goes
+        // dark even when qBittorrent or Weir is sitting right there. Only
+        // Deluno.Host's separate entry point registered the Windows
+        // implementation; the tray's own server never did.
+        services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
+        services.AddSingleton<IComponentRecoveryNotices>(_ => new TrayComponentRecoveryNotices());
+        services.AddHostedService<TrayUpdateBackgroundService>();
+        services.AddDelunoInfrastructure(configuration);
+        services.AddDelunoApplicationModules();
+
+        services
+            .AddDataProtection()
+            .SetApplicationName("Deluno")
+            .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(settings.DataRoot, "protection-keys")));
+
+        // Protect local integration credentials and platform secrets.
+        services.AddDelunoPlatformSecrets(
+            Path.Combine(settings.DataRoot, "secrets", "master.key"));
+
+        return firewall;
     }
 
     /// <summary>
@@ -275,44 +291,5 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
     {
         _cts?.Dispose();
         _app?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
-}
-
-// Mirrors the service in Deluno.Host — needed here since Tray doesn't reference Host.
-// This is an intentional duplication; the correct long-term fix is to move this
-// service into Deluno.Worker.
-internal sealed class ImportRecoveryCleanupService(
-    Deluno.Movies.Data.IMovieCatalogRepository movieRepository,
-    Deluno.Series.Data.ISeriesCatalogRepository seriesRepository,
-    TimeProvider timeProvider,
-    ILogger<ImportRecoveryCleanupService> logger)
-    : BackgroundService
-{
-    private static readonly TimeSpan RetentionPeriod = TimeSpan.FromDays(30);
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        using var timer = new PeriodicTimer(CleanupInterval);
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                var cutoff     = timeProvider.GetUtcNow() - RetentionPeriod;
-                var movieCount  = await movieRepository.CleanupImportRecoveryCasesAsync(cutoff, stoppingToken);
-                var seriesCount = await seriesRepository.CleanupImportRecoveryCasesAsync(cutoff, stoppingToken);
-                if (movieCount > 0 || seriesCount > 0)
-                    logger.LogInformation(
-                        "Import recovery cleanup: {M} movie and {S} series cases removed.",
-                        movieCount, seriesCount);
-            }
-            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
-            {
-                logger.LogWarning(ex, "Import recovery cleanup error.");
-            }
-
-            try { await timer.WaitForNextTickAsync(stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
     }
 }

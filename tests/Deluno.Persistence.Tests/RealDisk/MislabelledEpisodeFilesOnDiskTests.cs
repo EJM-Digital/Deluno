@@ -120,7 +120,7 @@ public sealed class MislabelledEpisodeFilesOnDiskTests
 
     // DEFECT (the register row says so): the repair is a plain background service that runs at start-up and every six hours
     // whatever the automatic-jobs switch says, so on a fresh install (switch off) it still moves a person's file to the bin.
-    [Fact(Skip = "Defect: MislabelledEpisodeFileRepairService is not gated by the automatic-jobs switch, so it moves a file to the recycle bin on an install where nothing automatic is on.")]
+    [Fact]
     public async Task A_mislabelled_file_is_left_alone_while_automatic_jobs_are_off()
     {
         await using var world = await StartWorldAsync();
