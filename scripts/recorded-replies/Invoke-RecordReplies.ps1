@@ -52,12 +52,18 @@ param(
     # Records only these extra states and changes nothing else: 'controls' (resume of a known paused job, a pause of an unknown id, a wrong login, for the
     # apps in -Apps), 'nzbget-config' (NZBGet paused over errors in its configuration, #1257) and 'weir-states' (the Weir states Record-Weir.ps1 does not reach).
     # No MISSING.md is rewritten in this mode: the lines it prints are added to that file by hand.
-    [ValidateSet('controls', 'nzbget-config', 'weir-states')] [string[]] $Extra,
+    # 'weir-reports' (the reports Weir sends Deluno, through a proxy Weir's Deluno connection is pointed at for the run, and the Weir states that go
+    # with them: #1239, #1262) and 'weir-errors' (Weir's 503 database_busy and JSON 500, on a second Weir server made for the purpose).
+    [ValidateSet('controls', 'nzbget-config', 'weir-states', 'weir-reports', 'weir-errors')] [string[]] $Extra,
+    # With -Extra: also run the ordinary Weir recording first (capabilities, hand-offs, outcomes), so one run records the whole of a new Weir version.
+    [switch] $IncludeBaseWeir,
+    [int] $DelunoPort = 7879,
     [switch] $NoSwarm,   # skip the two-client transfers (about 20 of the 35 minutes)
     [switch] $DelunoSide, [string] $DelunoVersion = 'current', [int] $PerState = 3
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Extra -contains 'weir-reports' -and $DelunoVersion -eq 'current') { throw '-Extra weir-reports saves Weir''s reports as Deluno''s recordings: pass -DelunoVersion <the version the Deluno in the VM reports>, for example 1.0.0-rc.30.32.' }
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $OutDirectory) { $OutDirectory = Join-Path $repoRoot 'tests\fixtures\recorded' }
 $here = $PSScriptRoot
@@ -66,7 +72,7 @@ $vmParams = [ordered]@{
     VmMediaFile = $VmMediaFile; NewznabPort = $NewznabPort; NntpPort = $NntpPort
     SabnzbdPort = $SabnzbdPort; SabnzbdConfigPath = $SabnzbdConfigPath
     NzbgetPort = $NzbgetPort; QbittorrentPort = $QbittorrentPort; TransmissionPort = $TransmissionPort; DelugePort = $DelugePort
-    WeirUrl = $WeirUrl; WeirVersion = $WeirVersion; WeirSource = $WeirSource
+    WeirUrl = $WeirUrl; WeirVersion = $WeirVersion; WeirSource = $WeirSource; DelunoPort = $DelunoPort
     # The Usenet stub as it is in this repository (hang file, folder jobs); the VM's copy is brought up to it.
     DelunoVersion = $DelunoVersion; PerState = $PerState; NoSwarm = [bool]$NoSwarm
 }
@@ -80,12 +86,14 @@ $texts = @{
 
 
 # The in-VM program: the helper library, the recorders, then the calls. It prints a JSON document on its last line.
-$libs = 'Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Record-WeirStates.ps1', 'Record-Controls.ps1', 'Collect-DelunoSide.ps1' |
-    ForEach-Object { Get-Content -Raw -LiteralPath (Join-Path $here $_) }
+# DelunoSecrets.Lib.ps1 is the scenario suite's too (the DPAPI reading of Weir's webhook secret), so it lives with the suite.
+$libs = @(Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\golden-path\suite\vm\DelunoSecrets.Lib.ps1')) +
+    @('Record.Lib.ps1', 'Record.Secrets.ps1', 'Record-Usenet.ps1', 'Record-Torrents.ps1', 'Record-Weir.ps1', 'Record-WeirStates.ps1', 'Record-WeirReports.ps1', 'Record-WeirErrors.ps1', 'Record-Controls.ps1', 'Collect-DelunoSide.ps1' |
+        ForEach-Object { Get-Content -Raw -LiteralPath (Join-Path $here $_) })
 $calls = [System.Text.StringBuilder]::new()
 $map = [ordered]@{ sabnzbd = 'Invoke-RecordSabnzbd'; nzbget = 'Invoke-RecordNzbget'; weir = 'Invoke-RecordWeir' }
 foreach ($app in $map.Keys) {
-    if (-not $Extra -and $Apps -contains $app) {
+    if ((-not $Extra -or ($IncludeBaseWeir -and $app -eq 'weir')) -and $Apps -contains $app) {
         $null = $calls.AppendLine("Write-RunLog 'start $app'; try { $($map[$app]) `$p } catch { Add-Missing ('$app stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }")
     }
 }
@@ -101,6 +109,8 @@ if ($Extra -contains 'weir-states') { $null = $calls.AppendLine("Write-RunLog 's
 if (-not $Extra -and $torrentApps.Count -gt 0) {
     $null = $calls.AppendLine("Write-RunLog 'start torrent clients'; try { Invoke-RecordTorrentClients `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent clients stopped: ' + `$_.Exception.Message) }")
 }
+if ($Extra -contains 'weir-reports') { $null = $calls.AppendLine("Write-RunLog 'start weir reports'; try { Invoke-RecordWeirReports `$p } catch { Add-Missing ('weir reports stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+if ($Extra -contains 'weir-errors') { $null = $calls.AppendLine("Write-RunLog 'start weir errors'; try { Invoke-RecordWeirErrors `$p } catch { Add-Missing ('weir errors stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
 if ($DelunoSide) { $null = $calls.AppendLine('try { Invoke-CollectDelunoSide $p } catch { Add-Missing (''deluno side stopped: '' + $_.Exception.Message) }') }
 # A script block body cannot start with param() after other statements, so the parameters arrive as one JSON argument.
 $program = ($libs -join "`n") + "`n`$p = `$args[0] | ConvertFrom-Json`nforeach (`$k in `$args[1].Keys) { `$p | Add-Member -NotePropertyName `$k -NotePropertyValue `$args[1][`$k] -Force }`n" + $calls.ToString() +
