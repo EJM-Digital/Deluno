@@ -180,6 +180,55 @@ public static partial class ReleaseVersions
         }
     }
 
+    /// <summary>
+    /// The releases in a GitHub <c>/releases</c> answer, newest version first (not list order): drafts never, tags that are
+    /// not a version never, and release candidates only when <paramref name="includePreReleases"/> is true. Used when the
+    /// newest release is not complete yet (its files are still being uploaded) and the picker looks at the next one (#1263).
+    /// </summary>
+    /// <returns>Detached copies of the release objects.</returns>
+    public static IReadOnlyList<JsonElement> GitHubReleasesNewestFirst(string releasesJson, bool includePreReleases)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(releasesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            var found = new List<(ParsedVersion Version, JsonElement Release)>();
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object
+                    || (item.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True)
+                    || !item.TryGetProperty("tag_name", out var tag) || tag.ValueKind != JsonValueKind.String
+                    || Parse(tag.GetString()) is not { } version)
+                {
+                    continue;
+                }
+
+                var flagged = item.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True;
+                if (!includePreReleases && (flagged || version.IsPreRelease))
+                {
+                    continue;
+                }
+
+                found.Add((version, item.Clone()));
+            }
+
+            // A stable sort, so equal versions keep the order GitHub listed them in.
+            return found.Select((entry, index) => (entry, index))
+                .OrderByDescending(x => x.entry.Version, Comparer<ParsedVersion>.Create(ComparePrecedence))
+                .ThenBy(x => x.index)
+                .Select(x => x.entry.Release)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>Compares the numbers only, missing parts counting as zero ("4.6" equals "4.6.0").</summary>
     public static int Compare(ParsedVersion left, ParsedVersion right)
     {

@@ -57,6 +57,20 @@ public static partial class ReleaseAtomFeed
     }
 
     /// <summary>
+    /// Every readable tag, newest version first (not feed order), each tag once. Release candidates count when
+    /// <paramref name="includePreReleases"/> is true. Used to look at the next release when the newest has no files yet (#1263).
+    /// </summary>
+    public static IReadOnlyList<string> TagsNewestFirst(string atom, bool includePreReleases = true, string tagPrefix = "")
+        => Tags(atom, tagPrefix)
+            .Distinct(StringComparer.Ordinal)
+            .Select((tag, index) => (tag, index, version: ReleaseVersions.Parse(tag[tagPrefix.Length..])))
+            .Where(x => x.version is not null && (includePreReleases || !x.version.IsPreRelease))
+            .OrderByDescending(x => x.version!, Comparer<ParsedVersion>.Create(ReleaseVersions.ComparePrecedence))
+            .ThenBy(x => x.index)
+            .Select(x => x.tag)
+            .ToList();
+
+    /// <summary>
     /// The newest tag by version order (not feed order). Release candidates count when
     /// <paramref name="includePreReleases"/> is true. Null when no tag is readable.
     /// </summary>
