@@ -323,6 +323,20 @@ public sealed class RecycleBinService(
                 }
             }
 
+            // Folders the moved files left empty (a season, a group folder) go too; one that still holds anything stays.
+            foreach (var group in units.Items.GroupBy(unit => unit.Library.Id))
+            {
+                var library = group.First().Library;
+                var movedHere = group
+                    .Where(unit => !Exists(unit.OriginalPath, unit.IsDirectory))
+                    .Select(unit => new TitleOwnUnit(unit.OriginalPath, unit.IsDirectory))
+                    .ToArray();
+                foreach (var folder in TitleOwnFiles.AncestorsToTidy(library.RootPath!, movedHere))
+                {
+                    TryDeleteEmptyDirectory(folder);
+                }
+            }
+
             if (moved.Count > 0)
             {
                 await EnforceRetentionUnsafeAsync(state, cancellationToken);
@@ -776,8 +790,9 @@ public sealed class RecycleBinService(
         IReadOnlyList<TrackedLibraryFile> trackedFiles,
         IReadOnlyDictionary<string, Libraries.Contracts.LibraryItem> librariesById)
     {
-        var units = new Dictionary<string, MoveUnit>(StringComparer.OrdinalIgnoreCase);
+        var units = new List<MoveUnit>();
         var warnings = new List<string>();
+        var perLibrary = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var trackedFile in trackedFiles)
         {
@@ -797,13 +812,12 @@ public sealed class RecycleBinService(
                     continue;
                 }
 
-                if (File.Exists(path))
+                if (!perLibrary.TryGetValue(library.Id, out var paths))
                 {
-                    var titleFolder = TryGetTitleFolder(path, root);
-                    var unitPath = titleFolder is not null && Directory.Exists(titleFolder) ? titleFolder : path;
-                    var isDirectory = Directory.Exists(unitPath);
-                    units[$"{library.Id}:{unitPath}"] = new MoveUnit(library, unitPath, isDirectory);
+                    perLibrary[library.Id] = paths = [];
                 }
+
+                paths.Add(path);
             }
             catch
             {
@@ -811,7 +825,22 @@ public sealed class RecycleBinService(
             }
         }
 
-        return new UnitSet(units.Values.ToArray(), warnings.Distinct(StringComparer.Ordinal).ToArray());
+        // #1317: only the title's own files and sidecars, and a folder only when nothing else is left in it.
+        foreach (var (libraryId, paths) in perLibrary)
+        {
+            var library = librariesById[libraryId];
+            try
+            {
+                units.AddRange(TitleOwnFiles.Plan(library.RootPath!, paths)
+                    .Select(unit => new MoveUnit(library, unit.Path, unit.IsDirectory)));
+            }
+            catch
+            {
+                warnings.Add($"{library.Name}: the configured library root could not be read.");
+            }
+        }
+
+        return new UnitSet(units, warnings.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     private static RecycleBinItem? FindItem(RecycleBinState state, string id)
@@ -819,13 +848,6 @@ public sealed class RecycleBinService(
 
     private static string HoldingRoot(string libraryRoot)
         => Path.GetFullPath(libraryRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + ".deluno-recycle-bin";
-
-    private static string? TryGetTitleFolder(string path, string root)
-    {
-        var relative = Path.GetRelativePath(root, path);
-        var separator = relative.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
-        return separator > 0 ? Path.Combine(root, relative[..separator]) : null;
-    }
 
     private static bool IsInsideRoot(string path, string root) => Deluno.Contracts.SafePath.IsInside(root, path);
 
