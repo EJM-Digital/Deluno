@@ -191,7 +191,7 @@ public static class ProcessorOutcomeDelivery
         }
 
         var told = support.Answer is ProcessorAnswer.Unreachable or ProcessorAnswer.Forbidden
-            ? new ProcessorOutcomeResult(support.Answer, false, support.Message ?? $"Deluno could not reach {connection.Name}.")
+            ? new ProcessorOutcomeResult(support.Answer, false, support.Message ?? $"Deluno could not reach {connection.Name}.", support.RetryAfter)
             : await processorConnections.ReportOutcomeAsync(
                 connection,
                 record.HandoffId,
@@ -216,7 +216,8 @@ public static class ProcessorOutcomeDelivery
                 told.Message ?? $"{connection.Name} did not acknowledge it.",
                 nowUtc,
                 announce: attempts == 1,
-                cancellationToken);
+                cancellationToken,
+                told.RetryAfter);
         }
 
         return await SettleAsync(
@@ -239,7 +240,8 @@ public static class ProcessorOutcomeDelivery
         string said,
         DateTimeOffset nowUtc,
         bool announce,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? retryAfter = null)
     {
         if (nowUtc - record.RecordedUtc >= ProcessorOutcomeDeliveries.GiveUpAfter)
         {
@@ -262,7 +264,8 @@ public static class ProcessorOutcomeDelivery
             record with
             {
                 Delivery = ProcessorOutcomeDeliveries.Pending,
-                NextAttemptUtc = nowUtc + ProcessorOutcomeDeliveries.WaitAfter(Math.Max(attempts, 1)),
+                // The time the processor asked for when it gave one (#1266), otherwise the usual doubling from a minute.
+                NextAttemptUtc = nowUtc + ProcessorRetryAfter.Wait(ProcessorOutcomeDeliveries.WaitAfter(Math.Max(attempts, 1)), retryAfter, Random.Shared.NextDouble()),
                 ProcessorSaid = said
             },
             announce,

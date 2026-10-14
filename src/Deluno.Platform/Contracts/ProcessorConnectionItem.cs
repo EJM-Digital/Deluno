@@ -103,7 +103,8 @@ public sealed record ProcessorSubmissionResult(
     bool IsAccepted,
     string Status,
     string Message,
-    int? StatusCode);
+    int? StatusCode,
+    TimeSpan? RetryAfter = null);
 
 public interface IProcessorConnectionService
 {

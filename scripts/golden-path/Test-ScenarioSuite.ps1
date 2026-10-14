@@ -160,6 +160,12 @@ Check 'the update group is the last one in the plan' ($plan[-1].Name -eq 'update
 Check 'the existing scenario ids are unchanged' ((@('install-first-run', 'film.qbittorrent', 'film.extra-left-out', 'remove-copy.deluge.file', 'resend.during.sabnzbd', 'stuck.peers.transmission', 'outage.inflight', 'tryagain.nzbget', 'vanish.waiting.deluge', 'problems.dismiss-everywhere', 'activity.one-story') | Where-Object { $_ -notin $allIds }).Count -eq 0)
 $runSuiteText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
 Check 'the VM runner leaves host groups to the host' ($runSuiteText -match '\$group\.Host')
+Write-Host 'The single-file takeover scenario (#1262)'
+Check 'the plan has resend.single-file.takeover in the resend group, and a pattern for one client does not pick it' ((@($plan | Where-Object { $_.Name -eq 'resend' })[0].Ids -contains 'resend.single-file.takeover') -and (@(Resolve-ScenarioSelection -Scenarios 'resend.*.qbittorrent' -Plan $plan) -notcontains 'resend.single-file.takeover'))
+Check 'resend.single-file.takeover can be chosen alone' ((@(Resolve-ScenarioSelection -Scenarios 'resend.single-file.takeover' -Plan $plan) -join ',') -eq 'resend.single-file.takeover')
+$takeoverText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G04-Resend.ps1')
+Check 'the takeover scenario asks Weir for its own answer, checks the path Deluno imported from, and Deluno''s record of finding the file' ($takeoverText -match 'Get-WeirIntakeStatus' -and $takeoverText -match 'Get-ExpectedProcessorOutput' -and $takeoverText -match 'found the cleaned file')
+Check 'the VM runner loads the shared reading of the secret Deluno shares with Weir' ($runSuiteText -match 'DelunoSecrets\.Lib\.ps1')
 $hostScript = Get-Content -Raw (Join-Path $root 'Invoke-ScenarioSuite.ps1')
 $iAfterSuite = $hostScript.IndexOf('& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AfterSuiteScript')
 $iPhaseCall = $hostScript.IndexOf('Invoke-UpdatePhase)')
