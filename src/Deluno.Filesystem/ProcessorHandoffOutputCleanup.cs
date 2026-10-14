@@ -122,12 +122,8 @@ public static class ProcessorHandoffOutputCleanup
         }
     }
 
-    private static bool IsWithinPath(string root, string candidate)
-    {
-        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var normalizedCandidate = candidate.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return normalizedCandidate.StartsWith(normalizedRoot, GetPathComparison());
-    }
+    internal static bool IsWithinPath(string root, string candidate)
+        => Deluno.Contracts.SafePath.IsInside(root, candidate);
 
     private static StringComparison GetPathComparison()
         => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

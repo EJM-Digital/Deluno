@@ -434,6 +434,41 @@ public sealed class DelunoBackupServiceTests
         Assert.True(File.Exists(item.FullPath));
     }
 
+    /// <summary>#1306: a restore entry that climbs out of the data folder, or only shares its text prefix, is skipped; a clean one lands.</summary>
+    [Fact]
+    public async Task A_restore_entry_that_climbs_out_of_the_data_folder_is_skipped()
+    {
+        using var storage = TempDataRoot.Create();
+        var dataRoot = Path.Combine(storage.Path, "data");
+        Directory.CreateDirectory(dataRoot);
+        var service = CreateService(dataRoot, "2026-10-13T01:00:00Z");
+
+        using var zipped = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zipped, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            void Add(string name, string text)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+                writer.Write(text);
+            }
+
+            Add("deluno-backup.json", "{\"app\":\"Deluno\"}");
+            Add("data/good/settings.json", "{}");
+            Add("data/../../escaped.txt", "no");
+            Add("data/a/../../../escaped2.txt", "no");
+            Add("data/..\\..\\escaped3.txt", "no");
+        }
+
+        zipped.Position = 0;
+        var restored = await service.RestoreAsync(zipped, CancellationToken.None);
+
+        Assert.True(restored.Restored);
+        Assert.Equal(["good" + Path.DirectorySeparatorChar + "settings.json"], restored.RestoredFiles);
+        Assert.False(File.Exists(Path.Combine(storage.Path, "escaped.txt")));
+        Assert.False(File.Exists(Path.Combine(storage.Path, "escaped2.txt")));
+        Assert.False(File.Exists(Path.Combine(storage.Path, "escaped3.txt")));
+    }
+
     private static DelunoBackupService CreateService(string dataRoot, string utcNowIso)
     {
         return new DelunoBackupService(

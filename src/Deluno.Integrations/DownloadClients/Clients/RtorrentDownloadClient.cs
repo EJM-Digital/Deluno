@@ -217,7 +217,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             NormalizeStatus(nativeStatus, progress), progress,
             (downRate / 1_000_000d), 0, sizeBytes, bytesDone, peers, "rTorrent",
             string.IsNullOrWhiteSpace(message) ? null : message,
-            capturedUtc, directory,
+            capturedUtc, Deluno.Contracts.SafePath.ReportedPath(directory),
             Ratio: ratio,
             UploadSpeedMbps: (upRate / 1_000_000d),
             // rTorrent's own message field is its own diagnostic text (a

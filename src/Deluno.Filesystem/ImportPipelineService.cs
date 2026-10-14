@@ -260,6 +260,20 @@ public sealed partial class ImportPipelineService(
     {
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
 
+        // A source path that climbs out ("..") is never copied, moved or deleted from, whoever supplied it (#1306).
+        if (Deluno.Contracts.SafePath.HasDotSegments(request.Preview.SourcePath))
+        {
+            const string unsafeMessage = "The file's path climbs out of its folder (it has .. in it), so Deluno will not import it.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "unsafeSourcePath",
+                unsafeMessage,
+                "Check the path the download client or processor reported, then retry the import.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, unsafeMessage);
+        }
+
         // Named from its grab before anything else, so the folder, the file
         // and the catalogue entry agree (#617). An import queued from Transfers
         // arrived titled with the release's name.
@@ -5182,12 +5196,9 @@ public sealed partial class ImportPipelineService(
         return removed;
     }
 
-    private static bool IsWithinPath(string root, string candidate)
-    {
-        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var normalizedCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return normalizedCandidate.StartsWith(normalizedRoot, GetPathComparison());
-    }
+    /// <summary>Decided (#1306): the root itself counts as inside. Each caller steps over the root on its own first, so a folder above it is never reached.</summary>
+    internal static bool IsWithinPath(string root, string candidate)
+        => Deluno.Contracts.SafePath.IsInside(root, Path.GetFullPath(candidate), allowEqual: true);
 
     private static StringComparison GetPathComparison()
         => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

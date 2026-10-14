@@ -1306,12 +1306,7 @@ public sealed class FilesystemReconciliationService(
 
     private static bool IsInsideRoot(string path, string rootPath)
     {
-        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var fullPath = Path.GetFullPath(path);
-        return fullPath.StartsWith(
-            root + Path.DirectorySeparatorChar,
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
-            string.Equals(fullPath, root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        return Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(rootPath), Path.GetFullPath(path), allowEqual: true);
     }
 
     private static string NormalizeMediaType(string? mediaType)

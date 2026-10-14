@@ -92,6 +92,32 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal("WEB 1080p", wanted.Single().CurrentQuality);
     }
 
+    /// <summary>#1306: a selected path that climbs out of the library with ".." is refused, though it starts with the root's text.</summary>
+    [Fact]
+    public async Task A_selected_path_that_climbs_out_of_the_library_is_refused()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-19T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = CreateMovieTree(storage, count: 1);
+        var outside = Path.Combine(Path.GetDirectoryName(rootPath)!, "outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "Outside.Film.2020.mkv"), "x");
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var climbing = Path.Combine(rootPath, "..", Path.GetFileName(outside));
+        var result = await service.ImportSelectedAsync(libraryId, [climbing], CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(0, result.ImportedCount);
+        Assert.Equal("outsideLibrary", Assert.Single(result.Issues).Kind);
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task Start_creates_a_queued_run_rather_than_importing_inline()
     {

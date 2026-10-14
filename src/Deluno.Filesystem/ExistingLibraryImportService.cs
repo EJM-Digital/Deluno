@@ -477,11 +477,7 @@ public sealed class ExistingLibraryImportService(
     }
 
     private static bool IsWithinRoot(string rootPath, string candidatePath)
-    {
-        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var candidate = Path.GetFullPath(candidatePath);
-        return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase);
-    }
+        => Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(rootPath), Path.GetFullPath(candidatePath), comparison: StringComparison.OrdinalIgnoreCase);
 
     public async Task<LibraryImportSliceOutcome> RunSliceAsync(string runId, CancellationToken cancellationToken)
     {

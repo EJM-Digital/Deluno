@@ -333,9 +333,13 @@ internal static class DownloadClientHelpers
 
     internal static string CleanReleaseTitle(string value) => value.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
 
-    internal static string? ChoosePath(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+    /// <summary>The first path the client reported that does not climb out with "." or ".." (see <see cref="Deluno.Contracts.SafePath.ReportedPath"/>).</summary>
+    internal static string? ChoosePath(params string?[] values) => values.Select(Deluno.Contracts.SafePath.ReportedPath).FirstOrDefault(value => value is not null);
 
     internal static string? ResolveDownloadPath(string? directory, string? name)
+        => Deluno.Contracts.SafePath.ReportedPath(JoinDownloadPath(directory, name));
+
+    private static string? JoinDownloadPath(string? directory, string? name)
     {
         var cleanDirectory = directory?.Trim();
         var cleanName = name?.Trim();

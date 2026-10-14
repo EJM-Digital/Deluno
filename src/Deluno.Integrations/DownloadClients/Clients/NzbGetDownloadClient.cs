@@ -509,7 +509,7 @@ public sealed class NzbGetDownloadClient(
                 return done;
             }
 
-            var where = !string.IsNullOrWhiteSpace(finishedJob.FinalDir) ? finishedJob.FinalDir : finishedJob.DestDir;
+            var where = Deluno.Contracts.SafePath.ReportedPath(finishedJob.FinalDir) ?? Deluno.Contracts.SafePath.ReportedPath(finishedJob.DestDir);
             if (string.IsNullOrWhiteSpace(where))
             {
                 return done;
@@ -939,7 +939,7 @@ public sealed class NzbGetDownloadClient(
     }
 
     /// <summary>NZBGet's DestDir is already the job's own folder; adding the job name again named a folder that does not exist (#635).</summary>
-    private static string? JobFolder(string? destDir) => string.IsNullOrWhiteSpace(destDir) ? null : destDir.Trim().TrimEnd('/', '\\');
+    private static string? JobFolder(string? destDir) => Deluno.Contracts.SafePath.ReportedPath(destDir)?.TrimEnd('/', '\\');
 
     private sealed record NzbGetRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("params")] object[] Params);
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
