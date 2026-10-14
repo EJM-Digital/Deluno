@@ -205,14 +205,14 @@ public sealed class FolderChainTests
     {
         using var caller = new CancellationTokenSource();
         var work = FolderChainService.WithTimeoutAsync<int>(
-            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; },
+            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; }, // reason: a step that never finishes; only the cancellation or the timeout under test ends it
             TimeSpan.FromMinutes(1),
             caller.Token);
         caller.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => work);
 
         await Assert.ThrowsAsync<TimeoutException>(() => FolderChainService.WithTimeoutAsync<int>(
-            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; },
+            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; }, // reason: a step that never finishes; only the cancellation or the timeout under test ends it
             TimeSpan.FromMilliseconds(50),
             CancellationToken.None));
     }
@@ -316,9 +316,9 @@ public sealed class FolderChainTests
         {
             if (Throw) throw new InvalidOperationException("boom");
             // Ignores the token on purpose: the check must not depend on the client honouring it.
-            if (Hang) await Task.Delay(TimeSpan.FromMinutes(2), CancellationToken.None);
+            if (Hang) await Task.Delay(TimeSpan.FromMinutes(2), CancellationToken.None); // reason: a client that hangs and ignores its token; the step timeout under test must cut it off
             // Honours the token, like a real HTTP client: throws TaskCanceledException when the step timeout fires.
-            if (HangHonouringToken) await Task.Delay(TimeSpan.FromMinutes(2), cancellationToken);
+            if (HangHonouringToken) await Task.Delay(TimeSpan.FromMinutes(2), cancellationToken); // reason: a client that hangs but honours its token; the step timeout under test must cut it off
             return Result!;
         }
 

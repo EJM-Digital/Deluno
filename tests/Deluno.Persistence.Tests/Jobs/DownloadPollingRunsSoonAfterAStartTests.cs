@@ -50,7 +50,7 @@ public sealed class DownloadPollingRunsSoonAfterAStartTests
         for (var moved = TimeSpan.Zero; moved < limit; moved += TimeSpan.FromSeconds(10))
         {
             time.Advance(TimeSpan.FromSeconds(10));
-            await Task.Delay(20);
+            await Task.Delay(20); // reason: lets the background polling task run after each fake-clock step; it has no signal to await, and the loop is bounded by limit
             if (polling.Count >= count)
             {
                 return true;

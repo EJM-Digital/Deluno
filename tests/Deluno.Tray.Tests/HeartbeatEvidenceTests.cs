@@ -47,7 +47,7 @@ public sealed class HeartbeatEvidenceTests : IDisposable
 
         var before = WriteTime(database + "-wal");
         var lengthBefore = new FileInfo(database + "-wal").Length;
-        Thread.Sleep(300);
+        Thread.Sleep(300); // reason: the file system's own modified time must tick over before the write whose time is compared
         // The statement SqliteJobStore.HeartbeatAsync runs.
         Exec(connection, "INSERT INTO worker_heartbeats (worker_id, last_seen_utc) VALUES ('worker-a', '2026-10-13T09:00:15Z') ON CONFLICT(worker_id) DO UPDATE SET last_seen_utc = excluded.last_seen_utc;");
 
@@ -76,7 +76,7 @@ public sealed class HeartbeatEvidenceTests : IDisposable
             CreateNoWindow = true,
         })!;
         Assert.True(SpinWait.SpinUntil(() => File.Exists(path) && new FileInfo(path).Length > 0, 30000), "the child did not write");
-        Thread.Sleep(1500);
+        Thread.Sleep(1500); // reason: the child must keep the file open and writing for a real while so the time taken while it is open is measured
         var whileOpen = WriteTime(path);
 
         child.Kill(entireProcessTree: true);
@@ -86,7 +86,7 @@ public sealed class HeartbeatEvidenceTests : IDisposable
 
         Assert.True(afterKill >= whileOpen, "the time went backwards after the kill");
         Assert.True(killedAt - afterKill < TimeSpan.FromSeconds(5), $"the last write ({afterKill:O}) is not the time of the last write before the kill ({killedAt:O})");
-        Thread.Sleep(1000);
+        Thread.Sleep(1000); // reason: shows no further write after the kill; absence needs real time to wrongly write
         Assert.Equal(afterKill, WriteTime(path));
         var age = HeartbeatEvidence.Age([_folder], TimeProvider.System, HeartbeatEvidence.LastWriteOnDisk);
         Assert.True(age < HeartbeatEvidence.Window, $"age after the kill was {age}");

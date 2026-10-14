@@ -4,6 +4,7 @@ import { test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "./helpers/auth-helper";
 import { serveLiveBusy } from "./helpers/live-busy";
 import { serveLiveRig } from "./helpers/live-rig";
+import { untilQuiet } from "./helpers/settle";
 
 // Retakes the README's screenshots (#1122) from the same mock data the smoke
 // tests use: the Dashboard, Transfers and Activity come from serveLiveRig; the
@@ -216,7 +217,7 @@ test.describe("README screenshots", () => {
     const shot = async (url: string, name: string, ready: string | RegExp) => {
       await page.goto(url);
       await page.getByText(ready).first().waitFor({ timeout: 20_000 });
-      await page.waitForTimeout(1800);
+      await untilQuiet(page);
       await assertNothingPrivate(page, name);
       await page.screenshot({ path: path.join(outDir, `${name}.png`) });
     };

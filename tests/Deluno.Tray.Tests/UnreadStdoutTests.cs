@@ -151,7 +151,7 @@ public sealed class UnreadStdoutTests
     }
 
     private static async Task<bool> FinishesWithin(Task task, TimeSpan limit)
-        => await Task.WhenAny(task, Task.Delay(limit)) == task;
+        => await Task.WhenAny(task, Task.Delay(limit)) == task; // reason: the limit is a ceiling that proves the task did not block, not a measured wait
 
     /// <summary>
     /// The process's standard output and error replaced by the write end of a real anonymous pipe that nobody reads,

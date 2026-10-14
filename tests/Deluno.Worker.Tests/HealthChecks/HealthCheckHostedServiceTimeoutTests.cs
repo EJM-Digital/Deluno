@@ -52,7 +52,7 @@ public sealed class HealthCheckHostedServiceTimeoutTests
             while (Volatile.Read(ref calls) < 3)
             {
                 Assert.True(DateTime.UtcNow < deadline, "The service stopped looping after the timeout.");
-                await Task.Delay(10);
+                await Task.Delay(10); // reason: poll interval inside a bounded wait (10 s above)
             }
 
             Assert.False(service.ExecuteTask!.IsCompleted);

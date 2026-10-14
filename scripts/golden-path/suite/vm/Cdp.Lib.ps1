@@ -20,7 +20,7 @@ function Start-Edge {
     Start-Process -FilePath $exe -ArgumentList "--remote-debugging-port=$Port", "--user-data-dir=$Profile", '--no-first-run', '--no-default-browser-check', '--window-size=1366,900', 'about:blank' | Out-Null
     $ready = $false
     for ($i = 0; $i -lt 30 -and -not $ready; $i++) {
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 500 # reason: poll interval inside a loop bounded by its deadline
         try { Invoke-RestMethod -Uri "http://127.0.0.1:$Port/json/version" -TimeoutSec 2 | Out-Null; $ready = $true } catch { }
     }
     if (-not $ready) { throw 'Edge did not open its DevTools port.' }
@@ -170,7 +170,7 @@ function Click-PageText {
             }
             throw "Could not click /$Pattern/ within $TimeoutSec s: $why."
         }
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 250 # reason: poll interval inside a loop bounded by its deadline
     }
     foreach ($type in 'mouseMoved', 'mousePressed', 'mouseReleased') {
         $params = @{ type = $type; x = $last.x; y = $last.y; button = 'left'; clickCount = 1 }

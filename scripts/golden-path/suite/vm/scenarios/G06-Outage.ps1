@@ -62,7 +62,7 @@ function Watch-WeirSignals {
         # A copy of the keys: writing to a hashtable while its own Keys are enumerated throws "Collection was modified" (rc.30.22).
         foreach ($k in @($first.Keys)) { if ($null -eq $first[$k] -and $hit[$k]) { $first[$k] = [math]::Round($since, 1) } }
         if (@($first.Values | Where-Object { $null -eq $_ }).Count -eq 0) { break }
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 300 # reason: poll interval inside a loop bounded by its deadline
     }
     [pscustomobject]@{ Tray = $first.Tray; System = $first.System; Dashboard = $first.Dashboard; Server = $first.Server; Samples = $samples }
 }

@@ -41,11 +41,11 @@ public sealed class TitleSubjectRoutingTests : IAsyncDisposable
         await _publisher.StartAsync(CancellationToken.None);
         for (var attempt = 0; attempt < 200; attempt++)
         {
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: poll interval inside a bounded wait (200 tries above)
             var result = _publisher.Resume(1, subjects);
             if (result.Status == RealtimeResumeStatus.Replayed && result.Envelopes.Count > 0)
             {
-                await Task.Delay(50);
+                await Task.Delay(50); // reason: lets any further event settle so the list is the whole burst; absence needs real time
                 return [.. _publisher.Resume(1, subjects).Envelopes.Select(envelope => $"{envelope.Name}@{envelope.Subject}")];
             }
         }

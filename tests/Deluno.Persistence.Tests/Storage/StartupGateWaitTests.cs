@@ -12,7 +12,7 @@ public sealed class StartupGateWaitTests
         var gate = new DelunoStartupGate();
         var waiting = gate.WaitUntilReadyAsync(NullLogger.Instance, "Test service", CancellationToken.None, TimeSpan.FromMilliseconds(30));
 
-        await Task.Delay(150);
+        await Task.Delay(150); // reason: the gate's own 30 ms slice is real time: the wait must outlast it and still be waiting
         Assert.False(waiting.IsCompleted);
 
         foreach (var database in DelunoStorageLayout.Databases)

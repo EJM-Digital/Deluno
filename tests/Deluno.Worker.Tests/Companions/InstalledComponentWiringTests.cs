@@ -156,11 +156,11 @@ public sealed class InstalledComponentWiringTests : IDisposable
             }
             catch (MockException)
             {
-                await Task.Delay(20);
+                await Task.Delay(20); // reason: poll interval inside a bounded wait (deadline above)
             }
         }
 
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: shows the clean-up ran once and not again; absence needs the loop given real time
         await service.StopAsync(CancellationToken.None);
 
         cleanup.Verify(item => item.ForgetAllAsync(It.IsAny<CancellationToken>()), Times.Once);

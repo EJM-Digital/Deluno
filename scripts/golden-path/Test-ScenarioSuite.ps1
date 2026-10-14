@@ -298,7 +298,7 @@ function New-FilmFor {
 function Send-Film { param($Film, [string] $Kind) [void]$script:Trace.Add("send:$Kind"); $Film }
 function Write-SuiteLog { param($Text) }
 function Hide-Secrets { param($Text) $Text }
-function Start-Sleep { param($Seconds, $Milliseconds) }
+function Start-Sleep { param($Seconds, $Milliseconds) } # reason: replaces the real sleep in the harness test, so the unit under test runs at once
 function Invoke-Deluno {
     param($Method, $Path, $Body, $TimeoutSec)
     # The keep-seeding group's setup that reaches Deluno is written down, so a run of one scenario can be shown to do only its own.
@@ -836,7 +836,7 @@ if ($edge) {
     try {
         $script:Cdp.Port = $cdpPort
         $up = $false
-        for ($i = 0; $i -lt 40 -and -not $up; $i++) { Start-Sleep -Milliseconds 500; try { Invoke-RestMethod "http://127.0.0.1:$cdpPort/json/version" -TimeoutSec 2 | Out-Null; $up = $true } catch { } }
+        for ($i = 0; $i -lt 40 -and -not $up; $i++) { Start-Sleep -Milliseconds 500; try { Invoke-RestMethod "http://127.0.0.1:$cdpPort/json/version" -TimeoutSec 2 | Out-Null; $up = $true } catch { } } # reason: poll interval inside a loop bounded by its deadline
         Check 'Edge opens its DevTools port' $up
         if ($up) {
             $page = New-CdpPage 'about:blank'
@@ -1093,7 +1093,7 @@ $srvScript = {
     $l.Start()
     while ($l.IsListening) {
         $ctx = $l.GetContext()
-        if ($Mode -eq 'silent') { Start-Sleep -Seconds 600; continue }
+        if ($Mode -eq 'silent') { Start-Sleep -Seconds 600; continue } # reason: the stand-in server that never answers, so the caller's own timeout is what the test shows
         $req = $ctx.Request; $res = $ctx.Response
         $body = (New-Object IO.StreamReader($req.InputStream)).ReadToEnd()
         $path = $req.Url.AbsolutePath
@@ -1125,7 +1125,7 @@ $coldRoot = Join-Path ([IO.Path]::GetTempPath()) ('cold-' + [guid]::NewGuid().To
 New-Item -ItemType Directory -Force -Path $coldRoot | Out-Null
 try {
     $up = $false
-    for ($i = 0; $i -lt 50 -and -not $up; $i++) { try { Invoke-RestMethod -Uri "http://127.0.0.1:$okPort/json" -Method Post -Body '{"method":"web.connected"}' -ContentType 'application/json' -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 100 } }
+    for ($i = 0; $i -lt 50 -and -not $up; $i++) { try { Invoke-RestMethod -Uri "http://127.0.0.1:$okPort/json" -Method Post -Body '{"method":"web.connected"}' -ContentType 'application/json' -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 100 } } # reason: poll interval inside a loop bounded by its deadline
     Check 'the stand-in client answers' $up
     # A fresh Windows PowerShell that loads only the suite's shared code and the fixtures, as the films group sees them when it is
     # chosen alone: no group file, so nothing the keep-seeding group sets up. A decoy file stands for the test video: the old code

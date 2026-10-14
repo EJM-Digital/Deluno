@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { untilQuiet } from "../helpers/settle";
 
 // #1081. Every sidebar screen change feels instant: the screen's real content is
 // on screen within 300 ms of the click once the app has been opened (100 ms on a
@@ -93,7 +94,7 @@ async function settle(page: Page, screen: Screen) {
   // Background refreshes of the screen just opened finish before the next click,
   // so each measurement starts from a quiet page. (networkidle never arrives:
   // the live connection and the pollers keep the network busy by design.)
-  await page.waitForTimeout(SETTLE_MS);
+  await untilQuiet(page, { frames: Math.round(SETTLE_MS / 30) });
 }
 
 async function goTo(page: Page, screen: Screen) {

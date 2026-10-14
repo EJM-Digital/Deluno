@@ -60,7 +60,7 @@ public sealed class HookLogTests : IDisposable
         HookLog.RetryDelay = TimeSpan.FromMilliseconds(40);
         var path = Path.Combine(dir, "install-hook.log");
         var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        var release = Task.Run(async () => { await Task.Delay(100); stream.Dispose(); });
+        var release = Task.Run(async () => { await Task.Delay(100); stream.Dispose(); }); // reason: holds a real file lock for longer than the 40 ms retry delay so the retry under test happens
 
         HookLog.Write("after the lock");
         await release;

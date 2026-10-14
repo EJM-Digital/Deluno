@@ -21,7 +21,7 @@ vi.mock("@microsoft/signalr", () => {
     onclose() {}
     async start() {
       this.self.state = "Connecting";
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 5)); // reason: the fake hub takes a moment to connect, as a real one does; the renewal under test must cope
       if (this.self.state !== "Connecting") throw new Error("stopped while starting");
       this.self.state = "Connected";
     }

@@ -1,5 +1,6 @@
 import { expect as baseExpect, test } from "@playwright/test";
 import { fallbackCredentials } from "../helpers/auth-helper";
+import { untilQuiet } from "../helpers/settle";
 
 // Cause of the flakes (#1191): the default 5 s wait for a heading or a control is shorter than a cold render takes on a busy machine.
 const expect = baseExpect.configure({ timeout: 15_000 });
@@ -143,7 +144,7 @@ test.describe("authenticated app smoke", () => {
       // networkidle: the live connection and the pollers keep the network busy
       // by design (#1081).
       await expect(page.locator("#main-content [aria-busy='true']")).toHaveCount(0, { timeout: 15_000 });
-      await page.waitForTimeout(1_500);
+      await untilQuiet(page);
       const text = await page.locator("body").innerText();
       expect(text).not.toMatch(rawEventCode);
       expect(text).not.toMatch(rawSourceCode);

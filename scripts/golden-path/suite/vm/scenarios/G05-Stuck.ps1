@@ -40,7 +40,7 @@ function Wait-AllStruck {
             }
         }
         if (@($seen.Values | Where-Object { -not $_.Line }).Count -eq 0) { break }
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 4 # reason: poll interval inside a loop bounded by its deadline
     }
     $seen
 }

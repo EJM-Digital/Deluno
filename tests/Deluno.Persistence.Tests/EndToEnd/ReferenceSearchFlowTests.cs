@@ -72,7 +72,7 @@ public sealed class ReferenceSearchFlowTests
         while (!both.IsCompleted && DateTime.UtcNow < giveUp)
         {
             time.Advance(TimeSpan.FromSeconds(10));
-            await Task.WhenAny(both, Task.Delay(50));
+            await Task.WhenAny(both, Task.Delay(50)); // reason: yields so the paced searches run between fake-clock steps; the 30 s ceiling above ends it
         }
 
         Assert.True(both.IsCompleted, "Both paced searches finish once time moves on.");
