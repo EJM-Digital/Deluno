@@ -135,19 +135,22 @@ function* testFiles(directory) {
   }
 }
 
-// The recordings of each app at its newest version: [{ app, state }].
+// The current recording of each state of each app: [{ app, state }]. A state is current at the newest version that holds it, so an app
+// recorded in more than one version folder (Deluno's own side of its talk with Weir) keeps its older states until a newer version replaces them.
 export function recordedStates(root) {
   const base = join(root, 'tests', 'fixtures', 'recorded');
   const found = [];
   if (!existsSync(base)) return found;
-  const key = (version) => version.split(/[.-]/).map((part) => (/^\d+$/.test(part) ? part.padStart(6, '0') : part)).join('.');
   for (const app of readdirSync(base)) {
     const appFolder = join(base, app);
     if (!statSync(appFolder).isDirectory()) continue;
-    const versions = readdirSync(appFolder).filter((v) => statSync(join(appFolder, v)).isDirectory()).sort((a, b) => key(a).localeCompare(key(b)));
-    const newest = versions.at(-1);
-    if (!newest) continue;
-    for (const file of readdirSync(join(appFolder, newest))) if (file.endsWith('.json')) found.push({ app, state: file.slice(0, -5) });
+    const states = new Set();
+    for (const version of readdirSync(appFolder)) {
+      const folder = join(appFolder, version);
+      if (!statSync(folder).isDirectory()) continue;
+      for (const file of readdirSync(folder)) if (file.endsWith('.json')) states.add(file.slice(0, -5));
+    }
+    for (const state of states) found.push({ app, state });
   }
   return found;
 }

@@ -19,8 +19,13 @@ namespace Deluno.Persistence.Tests.Api;
 /// resend was asked for but before Deluno had made the resend's own hand-off. Weir logged
 /// <c>POST /api/integrations/processors/events returned HTTP 409</c> at 22:18:20Z, 23:11:54Z and 23:15:59Z.
 ///
-/// <para>The request is the one Weir's <c>CompletionReports.BuildCompletionBody</c> builds: handoffId, status,
-/// processorName, libraryId, releaseName, outputPath, message and outputFiles - and no source path.</para>
+/// <para>The reports are the ones the real Weir sent (tests/fixtures/recorded/deluno/&lt;version&gt;/events-*, #1239), with
+/// only the library, the hand-off and the folder changed to the test's own: handoffId, status, processorName, libraryId,
+/// releaseName, outputPath, message and outputFiles - and no source path. The one report no recording holds, a rejection, is
+/// built here and listed in tests/fixtures/recorded/MISSING.md.</para>
+///
+/// <para>#1239: a report Weir really sent (tests/fixtures/recorded/deluno/*/events-*) is posted from its recording wherever one matches the case; a case with no real report stays
+/// inline on purpose, and tests/fixtures/recorded/MISSING.md lists it with the Weir state that would produce it.</para>
 /// </summary>
 public sealed class ALateReportForARemovedSendIsSettledTests
 {
@@ -89,18 +94,19 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         return first;
     }
 
+    /// <summary>Weir's recorded report of a finished single file (events-completed, the file flat in its output folder), for this test's release.</summary>
     private static Task<HttpResponseMessage> WeirReportsAsync(ApplicationTestHost app, Scene scene, string handoffId, string outputPath)
-        => app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            handoffId,
-            status = "completed",
-            processorName = "Weir",
-            libraryId = scene.LibraryId,
-            releaseName = Release + ".mkv",
-            outputPath,
-            message = "Weir processed the file.",
-            outputFiles = new[] { outputPath }
-        });
+    {
+        var body = RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-completed"), scene.LibraryId, handoffId, scene.Output, Release + ".mkv");
+        Assert.Equal([outputPath], RecordedWeirReports.OutputFilesOf(body));
+        return RecordedWeirReports.PostAsync(app.Client, body);
+    }
+
+    /// <summary>Weir's recorded report of a failure, for this test's release.</summary>
+    private static Task<HttpResponseMessage> WeirFailsAsync(ApplicationTestHost app, Scene scene, string handoffId, string state)
+        => RecordedWeirReports.PostAsync(
+            app.Client,
+            RecordedWeirReports.Body(RecordedWeirReports.Exchange(state), scene.LibraryId, handoffId, scene.Output, Release + ".mkv"));
 
     public static IEnumerable<object[]> Clients()
     {
@@ -173,6 +179,7 @@ public sealed class ALateReportForARemovedSendIsSettledTests
     [Theory]
     [InlineData("rejected")]
     [InlineData("held")]
+    [InlineData("unreadable")]
     [InlineData("gone")]
     public async Task A_failed_report_for_a_removed_send_that_was_asked_for_again_is_settled_too(string kind)
     {
@@ -180,14 +187,15 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         var scene = await SceneAsync(app);
         var first = await RemovedAndAskedForAgainAsync(app, scene, "transmission-1", "hash-retthree", ProcessorHandoffStatuses.Dismissed);
 
-        // The failed reports Weir's CompletionReports.BuildCompletionBody builds: a rejection, a hold, a download that was gone.
-        object body = kind switch
+        // A hold for a file under Weir's minimum size, a file it cannot read, and a download that was gone are Weir's recorded reports.
+        // A rejection has never been recorded (the golden VM has no workflow that rejects), so it stays as Weir's code builds it.
+        var response = kind switch
         {
-            "rejected" => new { handoffId = first.Id, status = "failed", processorName = "Weir", libraryId = scene.LibraryId, releaseName = Release + ".mkv", message = "bad release", disposition = "rejected", sourceRemoved = true, outputFiles = Array.Empty<string>() },
-            "held" => new { handoffId = first.Id, status = "failed", processorName = "Weir", libraryId = scene.LibraryId, releaseName = Release + ".mkv", message = "could not process", disposition = "held", sourceRemoved = false, outputFiles = Array.Empty<string>() },
-            _ => new { handoffId = first.Id, status = "failed", processorName = "Weir", libraryId = scene.LibraryId, releaseName = Release + ".mkv", message = "no longer there", sourceRemoved = false, failureClass = "source-gone", outputFiles = Array.Empty<string>() }
+            "rejected" => await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new { handoffId = first.Id, status = "failed", processorName = "Weir", libraryId = scene.LibraryId, releaseName = Release + ".mkv", message = "bad release", disposition = "rejected", sourceRemoved = true, outputFiles = Array.Empty<string>() }),
+            "held" => await WeirFailsAsync(app, scene, first.Id, "events-failed-under-minimum"),
+            "unreadable" => await WeirFailsAsync(app, scene, first.Id, "events-failed-unreadable"),
+            _ => await WeirFailsAsync(app, scene, first.Id, "events-failed-source-gone")
         };
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", body);
 
         Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(first.Id, CancellationToken.None))?.Status);

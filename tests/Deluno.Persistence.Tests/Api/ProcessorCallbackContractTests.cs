@@ -17,6 +17,9 @@ namespace Deluno.Persistence.Tests.Api;
 /// what, and how many files one report may list, and this holds the code to it.
 /// A processor built against the document (Weir) must not meet a different
 /// answer in production.
+///
+/// <para>#1239: a report Weir really sent (tests/fixtures/recorded/deluno/*/events-*) is posted from its recording wherever one matches the case; a case with no real report stays
+/// inline on purpose, and tests/fixtures/recorded/MISSING.md lists it with the Weir state that would produce it.</para>
 /// </summary>
 public sealed class ProcessorCallbackContractTests
 {
@@ -135,10 +138,34 @@ public sealed class ProcessorCallbackContractTests
 
         // A person told Deluno to stop waiting; a completion after that is late.
         await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Cancelled, null, null, "stopped", CancellationToken.None);
-        var late = await ReportAsync(app, scene, handoff.Id, "completed", null, outputPath: Path.Combine(scene.Output, Release, $"{Release}.mkv"));
+        var late = await LateRecordedReportAsync(app, scene, handoff);
 
         Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
     }
+
+    /// <summary>The report Weir really sent for a hand-off Deluno had stopped waiting for (events-too-late), and the answer it got.</summary>
+    [Fact]
+    public async Task A_finished_report_Weir_really_sent_for_a_dismissed_hand_off_is_a_409_with_the_recorded_words()
+    {
+        var recorded = RecordedWeirReports.Exchange("events-too-late");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, "stopped", CancellationToken.None);
+
+        var late = await LateRecordedReportAsync(app, scene, handoff);
+
+        Assert.Equal((HttpStatusCode)recorded.Reply.Status, late.StatusCode);
+        var said = await late.Content.ReadAsStringAsync();
+        Assert.Contains("too late", said);
+        Assert.Contains("No import was queued", said);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))?.Status);
+    }
+
+    private static Task<HttpResponseMessage> LateRecordedReportAsync(ApplicationTestHost app, Scene scene, ProcessorHandoffItem handoff)
+        => RecordedWeirReports.PostAsync(
+            app.Client,
+            RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-too-late"), scene.LibraryId, handoff.Id, scene.Output, Release));
 
     private sealed record Scene(string LibraryId, string Downloads, string Output);
 

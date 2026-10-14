@@ -294,7 +294,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Ok(handoffs
                 .Select(item => outcomes.TryGetValue(item.Id, out var outcome) ? item with { Outcome = outcome } : item)
                 .ToArray());
-        });
+        }).WithMetadata(new DelunoImportsScopeMayReadAttribute());
 
         // Say again what became of the file, from the start (#580). The
         // scheduled pass already does this for anything still owed; this is for
