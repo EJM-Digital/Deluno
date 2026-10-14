@@ -172,6 +172,11 @@ jobs:
           node scripts/check-recorded-replies.mjs
           node --test scripts/check-recorded-replies.test.mjs scripts/recorded-replies/scrub.test.mjs
 
+      - name: The coverage register has a row for everything Deluno does, and every proof it names exists
+        run: |
+          node scripts/check-coverage-register.mjs
+          node --test scripts/check-coverage-register.test.mjs
+
       - name: The Windows icon is built from the current logo
         run: node scripts/check-windows-icon.mjs
 

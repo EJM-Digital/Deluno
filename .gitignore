@@ -6,6 +6,7 @@ Thumbs.db
 .env
 .env.local
 coverage/
+!/scripts/coverage/
 *.log
 *.tsbuildinfo
 dotnet-install.ps1

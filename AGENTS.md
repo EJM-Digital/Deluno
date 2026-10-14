@@ -33,6 +33,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 - Deluno-Weir contract (every call, reply and report, with its recording and test): `docs/deluno-weir-contract.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
+- Coverage register (every behaviour and the tests that prove it; add a row with every new route, job, migration or screen): `docs/testing/COVERAGE.md`
 - CI and release standard (shared with Weir): `docs/ci-standard.md`
 - GA release checklist and sign-off flow: `docs/ga-release-checklist.md`
 - Active execution plans: `docs/exec-plans/active/`
