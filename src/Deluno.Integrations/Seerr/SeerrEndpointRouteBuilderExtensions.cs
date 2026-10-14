@@ -144,7 +144,18 @@ public static class SeerrEndpointRouteBuilderExtensions
                 return Results.Unauthorized();
             }
 
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            JsonDocument document;
+            try
+            {
+                document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            }
+            catch (JsonException exception)
+            {
+                var (message, member) = DelunoBadRequestAnswers.Describe(exception);
+                return Results.BadRequest(new { message, member });
+            }
+
+            using var _ = document;
             var root = document.RootElement;
             var notificationType = TextOf(root, "notification_type");
             if (notificationType is not ("MEDIA_APPROVED" or "MEDIA_AUTO_APPROVED"))
