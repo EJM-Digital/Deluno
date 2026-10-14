@@ -130,7 +130,7 @@ public sealed class NetworkCheckerTests
             Reached = host;
             if (ReachHangs)
             {
-                await Task.Delay(Timeout.Infinite, cancellationToken);
+                await Task.Delay(Timeout.Infinite, cancellationToken); // reason: a probe that never answers; the test cancels it
             }
 
             return Reach;

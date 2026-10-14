@@ -77,7 +77,7 @@ public sealed class DashboardBuildingBlocksTests
         var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
         while (cache.Peek() != "v2" && DateTimeOffset.UtcNow < deadline)
         {
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: poll interval inside a bounded wait (3 s above)
         }
 
         Assert.Equal("v2", cache.Peek());
@@ -134,7 +134,7 @@ public sealed class DashboardBuildingBlocksTests
             }
 
             restarted.TrySetResult();
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, token); // reason: a build that never finishes until the test releases or cancels it
         }, stop.Token);
         await restarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
 

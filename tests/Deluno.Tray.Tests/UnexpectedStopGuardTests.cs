@@ -25,11 +25,11 @@ public sealed class UnexpectedStopGuardTests
         {
             if (fail)
             {
-                await Task.Delay(400, CancellationToken.None);
+                await Task.Delay(400, CancellationToken.None); // reason: a worker that fails a moment after it starts, as a real one does; the guard under test must still catch it
                 throw new InvalidOperationException("forced failure");
             }
 
-            await Task.Delay(Timeout.Infinite, stoppingToken);
+            await Task.Delay(Timeout.Infinite, stoppingToken); // reason: a worker that runs until stopped
         }
     }
 
@@ -154,7 +154,7 @@ public sealed class UnexpectedStopGuardTests
         expectedStop = true;
         await host.App.StopAsync();
         await host.App.DisposeAsync();
-        await Task.Delay(300);
+        await Task.Delay(300); // reason: shows no unexpected-stop alarm follows an expected stop; absence needs real time
 
         Assert.Equal(0, raised);
     }

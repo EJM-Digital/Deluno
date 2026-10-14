@@ -508,7 +508,7 @@ public sealed partial class DelunoRepliesToWeirTests
                 handoff = (await Processors.UpdateProcessorHandoffAsync(handoff.Id, status, null, null, message, CancellationToken.None))!;
             }
 
-            await Task.Delay(15);
+            await Wait.ClockMovesOnAsync();
             return handoff;
         }
 

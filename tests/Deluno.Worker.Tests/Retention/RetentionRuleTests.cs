@@ -1236,7 +1236,7 @@ public sealed class RetentionRuleTests
         _store.BeforeSave = () => saving.Task;
         var save = Service().SaveEditedRuleAsync(rule.Id, new SaveRetentionRuleRequest(rule.Name, rule.Level, true, rule.Steps, rule.MediaServerIds, false, ExpiryAction: RetentionExpiryActions.Delete), CancellationToken.None);
         var check = Service().CheckAsync(rule with { ExpiryAction = RetentionExpiryActions.Delete, ExpiryTag = null }, "schedule", CancellationToken.None);
-        await Task.Delay(100);
+        await Task.Delay(100); // reason: shows the check is still waiting behind the slow save; absence needs real time
         Assert.False(check.IsCompleted);
         saving.SetResult();
         await save;
@@ -1403,7 +1403,7 @@ public sealed class RetentionRuleTests
 
         // The check is mid-read; switching the rule off must not queue behind it.
         var save = Service().SaveEditedRuleAsync(rule.Id, new SaveRetentionRuleRequest(rule.Name, rule.Level, false, rule.Steps, rule.MediaServerIds, false, ExpiryAction: RetentionExpiryActions.Delete), CancellationToken.None);
-        Assert.Same(save, await Task.WhenAny(save, Task.Delay(TimeSpan.FromSeconds(5))));
+        Assert.Same(save, await Task.WhenAny(save, Task.Delay(TimeSpan.FromSeconds(5)))); // reason: the 5 s is the ceiling that proves the save did not queue behind the read, not a measured wait
         Assert.NotNull(await save);
 
         release.SetResult();
@@ -1422,7 +1422,7 @@ public sealed class RetentionRuleTests
         _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>())).Returns(async () =>
         {
             most = Math.Max(most, Interlocked.Increment(ref active));
-            await Task.Delay(40);
+            await Task.Delay(40); // reason: each read takes a moment so overlapping checks would show as more than one active at once
             Interlocked.Decrement(ref active);
             return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary([Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40))], ["james", "ben"]));
         });

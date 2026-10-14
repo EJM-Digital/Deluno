@@ -151,7 +151,7 @@ public sealed class SystemOverviewServiceTests
         rig.Facts.Drives = [new DriveFacts("net", "Library", @"\\nas\media\Movies", 8_000, 2_000, 1_000, null)];
 
         await rig.SampleAsync();
-        await Task.Delay(200);
+        await Task.Delay(200); // reason: lets the first sample's background probes finish before the second reads them; they expose no signal
         var overview = await rig.SampleAsync();
 
         Assert.Null(overview.Machine.RebootPending);
@@ -334,7 +334,7 @@ public sealed class SystemOverviewServiceTests
                 return;
             }
 
-            await Task.Delay(30);
+            await Task.Delay(30); // reason: poll interval inside a bounded wait (100 tries above)
         }
 
         Assert.Fail("The reading did not arrive.");

@@ -30,7 +30,7 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
         }
 
         // Sending to the client takes a moment; this is the window the race lived in.
-        await Task.Delay(grabTakes);
+        await Task.Delay(grabTakes); // reason: how long a send to the client takes is the window the race lived in; the send gate under test must cover it
         await RecordAsync(world, clientId, clientName);
         return true;
     }
@@ -67,7 +67,7 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
                 return false;
             }
 
-            await Task.Delay(150);
+            await Task.Delay(150); // reason: the same send window, without the gate, to show the race the gate closes
             await RecordAsync(world, clientId, clientName);
             return true;
         }
@@ -124,7 +124,7 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
         async Task Take(string[] ids)
         {
             using var gate = await DispatchSendGate.EnterAsync("Abbott.S01E01", ids, CancellationToken.None);
-            await Task.Delay(20);
+            await Task.Delay(20); // reason: holds each gate briefly so the 20 callers really contend for it
         }
 
         await Task.WhenAll(

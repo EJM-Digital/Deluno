@@ -28,7 +28,7 @@ public sealed class BackgroundServiceFailureTests
             Ran.TrySetResult();
             try
             {
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                await Task.Delay(Timeout.Infinite, stoppingToken); // reason: a service that runs until stopped
             }
             catch (OperationCanceledException)
             {
@@ -118,7 +118,7 @@ public sealed class BackgroundServiceFailureTests
             RunningSteadily.TrySetResult();
             try
             {
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                await Task.Delay(Timeout.Infinite, stoppingToken); // reason: a service that runs until stopped
             }
             catch (OperationCanceledException)
             {
@@ -304,7 +304,7 @@ public sealed class BackgroundServiceFailureTests
 
             // A person stops the service (or an update does) before the exit delay ends.
             lifetime.StopApplication();
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            await Task.Delay(TimeSpan.FromSeconds(2)); // reason: shows the process does not exit after a stop; absence needs real time past the exit delay
             await host.StopAsync();
 
             Assert.False(exited);
@@ -355,7 +355,7 @@ public sealed class BackgroundServiceFailureTests
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the failure to be recorded.");
-            await Task.Delay(20);
+            await Task.Delay(20); // reason: poll interval inside a bounded wait (5 s above)
         }
     }
 }

@@ -104,7 +104,7 @@ public sealed class MigrationLockRetryTests
         // Longer than the connection's five-second busy timeout, so the first attempt really fails.
         var release = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(6.5));
+            await Task.Delay(TimeSpan.FromSeconds(6.5)); // reason: the lock must outlast SQLite's real five-second busy timeout so the first attempt fails
             using var commit = holder.CreateCommand();
             commit.CommandText = "COMMIT;";
             commit.ExecuteNonQuery();
@@ -153,7 +153,7 @@ public sealed class MigrationLockRetryTests
 
         var release = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(6.5));
+            await Task.Delay(TimeSpan.FromSeconds(6.5)); // reason: the lock must outlast SQLite's real five-second busy timeout so the first attempt fails
             using var commit = holder.CreateCommand();
             commit.CommandText = "COMMIT;";
             commit.ExecuteNonQuery();

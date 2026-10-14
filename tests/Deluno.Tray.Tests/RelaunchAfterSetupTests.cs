@@ -175,13 +175,13 @@ public sealed class RelaunchAfterSetupTests : IDisposable
         var result = Task.Run(() => RelaunchAfterSetup.RunWithinBudget(() => gate.Wait(), RelaunchAfterSetup.HookBudget, time, _log.Add));
 
         Assert.True(RelaunchAfterSetup.HookBudget < TimeSpan.FromSeconds(30), "Velopack kills a hook after 30 seconds");
-        await Task.Delay(50);
+        await Task.Delay(50); // reason: shows it has not given up before its fake-clock budget is spent; absence needs real time
         Assert.False(result.IsCompleted, "it gave up before its budget was spent");
         // Fake time, a second at a time, until the budget is spent (the timer is registered on the work's own thread).
         for (var spent = 0; spent < 40 && !result.IsCompleted; spent++)
         {
             time.Advance(TimeSpan.FromSeconds(1));
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: lets the work's own thread register its timer between fake-clock steps (40 steps at most)
         }
 
         Assert.True(result.IsCompleted, "it was still waiting after its budget was spent");

@@ -89,7 +89,7 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         var first = await HandoffAsync(app, scene, clientId, queueItemId, handoffReleaseName);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
         await Repository(app).UpdateProcessorHandoffAsync(first.Id, endedAs, null, null, "You said you do not want it.", CancellationToken.None);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await RecordSendAsync(app, scene, clientId, queueItemId);
         return first;
     }

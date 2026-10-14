@@ -98,7 +98,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         var scene = await SceneAsync(app);
         var handoff = await HandoffAsync(app, scene);
         await RecordDispatchAsync(app, scene, imported: true);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await RecordDispatchAsync(app, scene, imported: false); // the same release fetched again, newer
         var output = await WriteOutputAsync(scene);
 
@@ -127,7 +127,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         // The 1080p release was imported. A 2160p release of the same film is grabbed later and handed over on its own.
         await RecordDispatchAsync(app, scene, imported: true);
         var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await jobs.RecordDownloadDispatchAsync(
             scene.LibraryId, "movies", "movie", "movie-nosferatu", Better, "Fixture Indexer",
             Client, "Deluge", "sent", null, clientExternalId: $"hash-{Better}", cancellationToken: CancellationToken.None);
@@ -650,7 +650,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         await RecordDispatchAsync(app, scene, imported: false, entityId: movieId);
         await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, "Weir could not finish it.", CancellationToken.None);
         var output = await WriteOutputAsync(scene);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         // A better release of the same film, fetched later, is in the library.
         var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
         var newer = await jobs.RecordDownloadDispatchAsync(
@@ -749,9 +749,9 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         await RecordDispatchAsync(app, scene, imported: true, entityId: oldFilm);
         var output = await WriteOutputAsync(scene);
         (await app.Client.DeleteAsync($"/api/movies/{oldFilm}")).EnsureSuccessStatusCode();
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, "job-of-the-removed-film", null, CancellationToken.None);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         var newFilm = await AddMovieAsync(app);
         return ((await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!, newFilm, output);
     }
@@ -833,9 +833,9 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         await RecordDispatchAsync(app, scene, imported: true, entityId: oldFilm);
         var output = await WriteOutputAsync(scene);
         (await app.Client.DeleteAsync($"/api/movies/{oldFilm}")).EnsureSuccessStatusCode();
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, "job-of-the-removed-film", null, CancellationToken.None);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         var file = Path.Combine(app.DataRoot, "Films", "Nosferatu (1922)", "Nosferatu (1922).mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         await File.WriteAllBytesAsync(file, [1, 2, 3, 4]);
@@ -863,7 +863,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         await File.WriteAllBytesAsync(file, [1, 2, 3, 4]);
         var handoff = await HandoffAsync(app, scene);
         // The film is in the library by a later download of another release.
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
         await movies.ImportExistingAsync(
             scene.LibraryId, "Nosferatu", 1922, "covered", "Imported.", "Bluray-1080p", "Bluray-1080p", true,
@@ -1093,7 +1093,7 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         var scene = await SceneAsync(app);
         // The film is older than the hand-off (Nosferatu on the rig), has no file, and its import dead-lettered.
         var film = await AddMovieAsync(app);
-        await Task.Delay(30);
+        await Wait.ClockMovesOnAsync();
         var handoff = await SentHandoffAsync(app, scene);
         await RecordDispatchAsync(app, scene, imported: false, entityId: film);
         var output = await WriteOutputAsync(scene);

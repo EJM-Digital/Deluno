@@ -44,7 +44,7 @@ public sealed class LaneSupervisorTests
             }
 
             secondRun.TrySetResult();
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, token); // reason: a lane that runs until the supervisor cancels it
         }, stop.Token);
 
         await secondRun.Task.WaitAsync(TimeSpan.FromSeconds(3));
@@ -75,7 +75,7 @@ public sealed class LaneSupervisorTests
             }
 
             second.TrySetResult();
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, token); // reason: a lane that runs until the supervisor cancels it
         }, stop.Token);
 
         await second.Task.WaitAsync(TimeSpan.FromSeconds(3));
@@ -96,7 +96,7 @@ public sealed class LaneSupervisorTests
         var task = supervisor.SuperviseAsync("import", async token =>
         {
             started.TrySetResult();
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, token); // reason: a lane that runs until the supervisor cancels it
         }, stop.Token);
 
         await started.Task;

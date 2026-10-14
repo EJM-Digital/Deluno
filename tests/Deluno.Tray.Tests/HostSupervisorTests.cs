@@ -24,7 +24,7 @@ public sealed class HostSupervisorTests
         public void Enter(StartupPhase phase, string? detail = null) => Progress.Enter(phase, detail);
 
         /// <summary>Works for this long on the fake clock, as a real step does.</summary>
-        public Task WorkAsync(TimeSpan span) => Task.Delay(span, Time, Token);
+        public Task WorkAsync(TimeSpan span) => Task.Delay(span, Time, Token); // reason: already on the fake clock: a step that works for this long in fake time
 
         /// <summary>Never returns on its own; ends only when the supervisor cancels it.</summary>
         public Task HangAsync()
@@ -514,7 +514,7 @@ public sealed class HostSupervisorTests
             call.Enter(StartupPhase.Migrations, "movies: V0042");
             return never.Task; // ignores cancel
         };
-        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct); // the host will not let go
+        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct); // the host will not let go // reason: the host never lets go; only the supervisor's cancellation ends it
 
         var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
 
@@ -533,7 +533,7 @@ public sealed class HostSupervisorTests
         using var h = new Harness(restarter: restarter);
         var never = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Host.Script = call => { call.Enter(StartupPhase.WebHost); return never.Task; };
-        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct); // reason: the host never lets go; only the supervisor's cancellation ends it
 
         var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
 
@@ -548,7 +548,7 @@ public sealed class HostSupervisorTests
         using var h = new Harness();
         var never = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Host.Script = call => { call.Enter(StartupPhase.Starting); return never.Task; };
-        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        h.Host.OnFree = ct => Task.Delay(Timeout.InfiniteTimeSpan, ct); // reason: the host never lets go; only the supervisor's cancellation ends it
 
         var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart));
 
