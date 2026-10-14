@@ -698,6 +698,74 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     }
 
     /// <summary>
+    /// #1301: what each removal reason sends to a torrent client is the remove call that client was recorded receiving
+    /// (qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0: removed-with-data), with the data flag set: "It's bad", "I don't
+    /// want it", "Remove this copy" and "Search for another release" delete the files; "Just stop tracking it" sends nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", QueueRemovalReasons.Failed)]
+    [InlineData("qbittorrent", QueueRemovalReasons.Unwanted)]
+    [InlineData("qbittorrent", QueueRemovalReasons.Reclaim)]
+    [InlineData("qbittorrent", QueueRemovalReasons.GaveUp)]
+    [InlineData("transmission", QueueRemovalReasons.Failed)]
+    [InlineData("transmission", QueueRemovalReasons.Unwanted)]
+    [InlineData("transmission", QueueRemovalReasons.Reclaim)]
+    [InlineData("transmission", QueueRemovalReasons.GaveUp)]
+    [InlineData("deluge", QueueRemovalReasons.Failed)]
+    [InlineData("deluge", QueueRemovalReasons.Unwanted)]
+    [InlineData("deluge", QueueRemovalReasons.Reclaim)]
+    [InlineData("deluge", QueueRemovalReasons.GaveUp)]
+    public async Task Each_removal_reason_that_deletes_sends_the_recorded_remove_call_with_the_data_flag_set(string protocol, string reason)
+    {
+        var recorded = protocol switch
+        {
+            "qbittorrent" => RecordedReplies.Qbittorrent("removed-with-data").Find("torrents/delete").Request,
+            "transmission" => RecordedReplies.Transmission("removed-with-data").Find("torrent-remove").Request,
+            _ => RecordedReplies.Deluge("removed-with-data").Find("core.remove_torrent").Request
+        };
+        var (path, flag) = protocol switch
+        {
+            "qbittorrent" => ("api/v2/torrents/delete", "deleteFiles=true"),
+            "transmission" => ("torrent-remove", "\"delete-local-data\":true"),
+            _ => ("core.remove_torrent", ",true]")
+        };
+        Assert.Contains(path, recorded.Path + recorded.Body, StringComparison.Ordinal);
+        Assert.Contains(flag, System.Text.RegularExpressions.Regex.Replace(recorded.Body ?? string.Empty, @"\s", string.Empty), StringComparison.Ordinal);
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(reason);
+
+        Assert.True(result.Succeeded, result.Message);
+        var removal = Assert.Single(traffic.Requests, request => request.Contains(path, StringComparison.Ordinal));
+        Assert.Contains(flag, System.Text.RegularExpressions.Regex.Replace(removal, @"\s", string.Empty), StringComparison.Ordinal);
+        Assert.DoesNotContain(traffic.Requests, request => request.Contains("pause", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>#1301: "Just stop tracking it" sends a recorded torrent client not even the remove call it was recorded taking, and no other call either.</summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("transmission")]
+    [InlineData("deluge")]
+    public async Task Stopping_tracking_sends_a_recorded_torrent_client_none_of_the_calls_it_was_recorded_taking_for_a_removal(string protocol)
+    {
+        var recordedRemoval = protocol switch
+        {
+            "qbittorrent" => RecordedReplies.Qbittorrent("removed-with-data").Find("torrents/delete").Request,
+            "transmission" => RecordedReplies.Transmission("removed-with-data").Find("torrent-remove").Request,
+            _ => RecordedReplies.Deluge("removed-with-data").Find("core.remove_torrent").Request
+        };
+        Assert.NotEmpty(recordedRemoval.Path);
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Forget);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Empty(traffic.Requests);
+    }
+
+    /// <summary>
     /// #1241: the old "forget" verb meant removal with data on a torrent client, so it is no longer a verb
     /// the gateway passes on. A caller that still sends it is refused and the client is not touched.
     /// </summary>
@@ -725,6 +793,12 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     {
         public List<string> Requests { get; } = [];
 
+        /// <summary>A call that takes a download out of the client. Until one is made the client holds the download (the sign-in and version calls a removal begins with are not it).</summary>
+        private static bool IsRemoval(string request)
+            => request.Contains("torrents/delete", StringComparison.Ordinal) || request.Contains("torrent-remove", StringComparison.Ordinal)
+                || request.Contains("core.remove_torrent", StringComparison.Ordinal) || request.Contains("action=remove", StringComparison.Ordinal)
+                || request.Contains("<methodName>d.erase</methodName>", StringComparison.Ordinal);
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
@@ -751,7 +825,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
             if (isTorrentList)
             {
-                var held = Requests.Count == 0;
+                var held = !Requests.Any(IsRemoval);
                 if (path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase))
                 {
                     return Json(held
