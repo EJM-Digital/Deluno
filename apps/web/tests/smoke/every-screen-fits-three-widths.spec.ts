@@ -649,9 +649,15 @@ test.describe("a title page's header, Destination and History tabs read at every
       const stamp = Date.now();
       const libraryIds: string[] = [];
       for (const [kind, label] of [["movies", "Movies"], ["tv", "TV"]] as const) {
+        // Each library gets its own long root and a separate downloads folder: a downloads folder that is a library
+        // root, or two libraries on one root, is refused on save (#1325).
+        const root = path.join(deep, `${label} ${stamp}`);
+        const downloads = path.join(os.tmpdir(), "deluno-fit-check-downloads", `${label} ${stamp}`);
+        fs.mkdirSync(root, { recursive: true });
+        fs.mkdirSync(downloads, { recursive: true });
         const response = await page.request.post("/api/libraries", {
           headers,
-          data: { name: `Fit tabs ${label} ${stamp}`, mediaType: kind, purpose: "Main library", rootPath: deep, downloadsPath: deep, autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalMinutes: 12, retryDelayHours: 6, maxItemsPerRun: 10 }
+          data: { name: `Fit tabs ${label} ${stamp}`, mediaType: kind, purpose: "Main library", rootPath: root, downloadsPath: downloads, autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalMinutes: 12, retryDelayHours: 6, maxItemsPerRun: 10 }
         });
         expect(response.ok(), "the test library is created").toBe(true);
         const id = ((await response.json()) as { id: string }).id;
