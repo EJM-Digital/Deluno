@@ -133,7 +133,7 @@ public sealed class TorznabOnRecordedJackettTests
         Assert.Equal(1, asked.Split('&').Count(part => part.StartsWith("apikey=", StringComparison.Ordinal)));
     }
 
-    [Fact(Skip = "Defect (#1301): a search answered HTTP 200 + <error code=100 Invalid API key> (Jackett's recorded reply to a wrong key) is recorded in the Indexer History as outcome no_results, 'Search page: found nothing', not as an authentication failure. FeedMediaSearchPlanner never looks for the error element.")]
+    [Fact]
     public async Task A_search_with_a_wrong_key_answered_200_with_an_error_is_an_authentication_failure_and_a_row_in_the_indexer_history()
     {
         var (server, app, indexer) = await StartAsync(answerEverythingWith: WrongKey);
@@ -154,7 +154,7 @@ public sealed class TorznabOnRecordedJackettTests
 
     // ---- the RSS feed (tn39) ----
 
-    [Fact(Skip = "Defect (#1301): IndexerFeedReader reads Jackett's HTTP 200 + <error code=100 Invalid API key> as a good, empty feed (Read = true, no releases), so RSS sync records a read of nothing, never an authentication failure. IndexerFeedReader.ReadRecentAsync never looks for the error element.")]
+    [Fact]
     public async Task An_rss_feed_read_with_a_wrong_key_answered_200_with_an_error_is_not_read_as_empty_and_names_the_refusal()
     {
         var (server, app, indexer) = await StartAsync(answerEverythingWith: WrongKey);
