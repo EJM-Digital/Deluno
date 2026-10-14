@@ -19,7 +19,11 @@
 //     real-fs: a backend test that runs Deluno's real code against real files in a real temp folder (real hard links, moves, deletes, permissions)
 //     or a real SQLite database file, with no fake or in-memory file system or store. The checker decides it statically (the class setup or the test
 //     creates the temp folder or database, does file or database work, and names no fake); if it cannot decide, the claim is refused: it counts as
-//     inproc and is counted in the totals. A row marked "vm": true can only be proven by a real install (NTFS-specific behaviour, network shares,
+//     inproc and is counted in the totals.
+//     container-smoke: a step of a workflow in .github/workflows (named by its `- name:`), or a container script in scripts/ (named "*"), that
+//     really starts the container: its text must run `docker run` or `docker compose up`. A step that only builds, configures or scans an image
+//     is refused (counts as inproc). Real for a disk or install row that is not "vm", the same as real-fs.
+//     A row marked "vm": true can only be proven by a real install (NTFS-specific behaviour, network shares,
 //     cross-volume moves and links, the installer, the update, the tray, Windows service mode): it needs a scenario proof, nothing else reaches real.
 // Only (a) and (b) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
 // Determinism rules, reported with counts and failing under --strict: no fixed sleep in a test without a `reason:` comment on its line;
@@ -27,10 +31,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { TestIndex, read, walk, slash } from './coverage/testindex.mjs';
+import { CONTAINER_SMOKE_FILE, TestIndex, read, walk, slash } from './coverage/testindex.mjs';
 import { buildInventory, countsOf, scenarioPlan } from './coverage/inventory.mjs';
 
-export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay', 'real-fs'];
+export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay', 'real-fs', 'container-smoke'];
 export const KINDS = ['screen action', 'state', 'API route', 'job', 'integration-operation', 'failure-mode', 'migration', 'install-update', 'tray'];
 export const SEVERITIES = ['high', 'medium', 'low'];
 export const REAL_TYPES = new Set(['scenario', 'recording-replay']);
@@ -45,6 +49,11 @@ const LEVEL_NAMES = ['none', 'inproc', 'real'];
 export const requiredFor = (row) => (row.severity === 'high' && row.touches !== 'none' ? 'real' : 'inproc');
 export const requiredLevel = (row) => (requiredFor(row) === 'real' ? 2 : 1);
 
+/** Does a container-smoke proof count for this row? Same rule as real-fs: a disk or install row that is not "vm", and the named step must really start the container. */
+export function containerSmokeCounts(proof, row, index) {
+  if (proof.type !== 'container-smoke' || !row || row.vm === true || !REAL_FS_TOUCHES.has(row.touches)) return false;
+  return !!index && typeof index.containerSmoke === 'function' && index.containerSmoke(proof.file, proof.name).real;
+}
 /** Is this smoke proof stubbed? Decided statically; what cannot be decided counts as stubbed. */
 export function smokeState(proof, index) {
   if (!index || typeof index.stubInfo !== 'function') return { stubbed: true, decided: false };
@@ -62,6 +71,7 @@ export function realFsCounts(proof, row, index) {
 export function proofLevel(proof, row, index) {
   if (row && row.vm === true) return proof.type === 'scenario' ? 2 : 1;
   if (proof.type === 'real-fs') return realFsCounts(proof, row, index) ? 2 : 1;
+  if (proof.type === 'container-smoke') return containerSmokeCounts(proof, row, index) ? 2 : 1;
   if (REAL_TYPES.has(proof.type)) return 2;
   if (proof.type === 'smoke' && row && SCREEN_AREAS.has(row.area) && !smokeState(proof, index).stubbed) return 2;
   return 1;
@@ -119,6 +129,11 @@ function typeMismatch(p, index) {
       const r = index.realFs(p.file, p.name);
       return r.real ? null : `real-fs refused (counts as inproc): ${r.why}`;
     }
+    case 'container-smoke': {
+      if (!CONTAINER_SMOKE_FILE.test(p.file)) return `a container-smoke proof must be a packaging workflow or a container script in scripts, not ${p.file}`;
+      const r = index.containerSmoke(p.file, p.name);
+      return r.real ? null : `container-smoke refused (counts as inproc): ${r.why}`;
+    }
     case 'recording-replay': return index.replaysRecording(p.file, p.name) ? null : `"${p.name}" in ${p.file} does not load a recorded real reply (RecordedReplies / the Weir contract helper)`;
     default: return p.file.endsWith('.ps1') ? `a backend proof cannot be a PowerShell script (${p.file}); use type "scenario"` : null;
   }
@@ -153,6 +168,7 @@ export function totals(register, index) {
   const highByTouches = Object.fromEntries(TOUCHES.map((t) => [t, { rows: 0, gaps: 0 }]));
   const smoke = { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 };
   const realFs = { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 };
+  const container = { claims: 0, counted: 0, refused: 0, noEffect: 0 };
   function blank() { return { rows: 0, proven: 0, gaps: 0 }; }
   for (const row of register.rows) {
     const gap = isGap(row, index);
@@ -165,6 +181,12 @@ export function totals(register, index) {
       else if (realFsCounts(pr, row, index)) realFs.counted++;
       else realFs.noEffect++;
     }
+    for (const pr of row.proofs ?? []) if (pr.type === 'container-smoke') {
+      container.claims++;
+      if (!(index && typeof index.containerSmoke === 'function' && index.containerSmoke(pr.file, pr.name).real)) container.refused++;
+      else if (containerSmokeCounts(pr, row, index)) container.counted++;
+      else container.noEffect++;
+    }
     const a = (byArea[row.area] ??= { ...blank(), high: 0, highGaps: 0, level: { none: 0, inproc: 0, real: 0 } });
     for (const t of [a, bySeverity[row.severity], all]) { t.rows++; if (gap) t.gaps++; else t.proven++; }
     a.high += row.severity === 'high' ? 1 : 0;
@@ -174,7 +196,7 @@ export function totals(register, index) {
     byLevel[lv]++;
     if (gap) gaps.push(row);
   }
-  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, realFs, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
+  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, realFs, container, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
 }
 
 // ------------------------------------------------------------------------------------------------ determinism rules
@@ -234,7 +256,7 @@ export function evaluate({ register, inventory, index, plan, root }) {
   const proofProblems = missingProofs(register, index, planIds);
   const missing = proofProblems.filter((m) => m.kind === 'missing');
   const typeProblems = proofProblems.filter((m) => m.kind === 'type');
-  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, gaps: [], highGaps: 0 });
+  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, container: { claims: 0, counted: 0, refused: 0, noEffect: 0 }, gaps: [], highGaps: 0 });
   const sleeps = safe('sleep rule', () => sleepViolations(index), []);
   const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
   return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal };
@@ -268,6 +290,7 @@ export function generatedSection(register, inventory, t) {
   for (const l of LEVEL_NAMES) lines.push(`| ${l === 'none' ? 'none (a gap)' : l} | ${t.byLevel[l]} |`);
   lines.push('', `Smoke proofs: **${t.smoke.proofs}**; unstubbed (can reach \`real\` for a screen behaviour) **${t.smoke.unstubbed}**; stubbed **${t.smoke.stubbed}**; not decidable statically, counted as stubbed **${t.smoke.undecided}**.`);
   lines.push('', `Real-fs proofs: **${t.realFs.claims}** claimed; **${t.realFs.counted}** verified and counted as real; **${t.realFs.refused}** refused (the checker could not verify a real temp folder or database file with no fake, so they count as inproc); **${t.realFs.noEffect}** verified but without effect (the row is "vm", or does not touch disk or install). **${t.realFs.vmRows}** rows are "vm" (only a real install can prove them, so they need a scenario); **${t.realFs.vmRowGaps}** of them are still gaps.`);
+  lines.push('', `Container-smoke proofs: **${t.container.claims}** claimed; **${t.container.counted}** verified and counted as real; **${t.container.refused}** refused (the named step or script does not start the container image, so they count as inproc); **${t.container.noEffect}** verified but without effect (the row is "vm", or does not touch disk or install).`);
   lines.push('', '### By area', '', '| Area | What | Rows | Reach their level | Gaps | High rows | High gaps | No proof | Inproc | Real |', '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const [area, a] of Object.entries(t.byArea).sort()) {
     lines.push(`| ${area} | ${register.areas[area]?.name ?? ''} | ${a.rows} | ${a.proven} | ${a.gaps} | ${a.high} | ${a.highGaps} | ${a.level.none} | ${a.level.inproc} | ${a.level.real} |`);
@@ -352,7 +375,7 @@ async function main() {
     return;
   }
   if (args.includes('--json')) {
-    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, highByTouches: t.highByTouches, smoke: t.smoke, realFs: t.realFs, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
+    console.log(JSON.stringify({ rows: t.all, bySeverity: t.bySeverity, highByTouches: t.highByTouches, smoke: t.smoke, realFs: t.realFs, container: t.container, byLevel: t.byLevel, byArea: t.byArea, highGaps: t.highGaps, inventory: countsOf(inventory) }, null, 1));
     return;
   }
   if (args.includes('--list-gaps')) {
@@ -391,6 +414,7 @@ async function main() {
   lines.push(`      by severity: ${SEVERITIES.map((s) => `${s} ${t.bySeverity[s].gaps}/${t.bySeverity[s].rows}`).join(', ')} gaps; high gaps by touches: ${TOUCHES.map((k) => `${k} ${t.highByTouches[k]?.gaps ?? 0}/${t.highByTouches[k]?.rows ?? 0}`).join(', ')}.`);
   lines.push(`      best proof: ${LEVEL_NAMES.map((l) => `${l} ${t.byLevel[l]}`).join(', ')}. smoke proofs ${t.smoke.proofs}: ${t.smoke.unstubbed} unstubbed, ${t.smoke.stubbed} stubbed, ${t.smoke.undecided} not decidable (counted stubbed).`);
   lines.push(`      real-fs proofs ${t.realFs.claims}: ${t.realFs.counted} counted, ${t.realFs.refused} refused (counted inproc), ${t.realFs.noEffect} without effect. vm rows (need a scenario): ${t.realFs.vmRows}, ${t.realFs.vmRowGaps} still gaps.`);
+  lines.push(`      container-smoke proofs ${t.container.claims}: ${t.container.counted} counted, ${t.container.refused} refused (counted inproc), ${t.container.noEffect} without effect.`);
   if (t.gaps.length) warn.push(levelLine);
 
   const rules = [

@@ -23,6 +23,10 @@ export function walk(dir, accept, out = []) {
 export const slash = (p) => p.split('\\').join('/');
 export const read = (file) => readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
 
+/** A packaging script that starts the shipped container (and, as a proof file, the workflows whose steps do). */
+const CONTAINER_SCRIPT = /(?:^|\/)scripts\/(?:[^/]*\/)*[^/]*(?:docker|compose|container)[^/]*\.(?:mjs|ps1|sh)$/;
+export const CONTAINER_SMOKE_FILE = /^(?:\.github\/workflows\/[^/]+\.ya?ml|scripts\/(?:[^/]*\/)*[^/]*(?:docker|compose|container)[^/]*\.(?:mjs|ps1|sh))$/;
+
 /** Every file that can hold a proof, as repo-relative paths. */
 export function testFiles(root) {
   const files = [];
@@ -30,7 +34,8 @@ export function testFiles(root) {
   add('tests', (f) => f.endsWith('.cs') && !/[\\/]fixtures[\\/]/.test(f));
   add('apps/web/src', (f) => /\.test\.tsx?$/.test(f));
   add('apps/web/tests', (f) => /\.spec\.ts$/.test(f) || /\.test\.tsx?$/.test(f));
-  add('scripts', (f) => /\.test\.mjs$/.test(f) || /[\\/]golden-path[\\/].*\.ps1$/.test(f));
+  add('scripts', (f) => /\.test\.mjs$/.test(f) || /[\\/]golden-path[\\/].*\.ps1$/.test(f) || CONTAINER_SCRIPT.test(slash(f)));
+  add('.github/workflows', (f) => /\.ya?ml$/.test(f));
   add('services', (f) => /[\\/]test[\\/].*\.js$/.test(f) || /\.test\.(js|mjs|ts)$/.test(f));
   add('sdk', (f) => /\.test\.(js|mjs|ts)$/.test(f));
   add('integrations', (f) => /(\.test\.|[\\/]tests?[\\/]).*\.(js|mjs|ts|py)$/.test(f));
@@ -45,6 +50,8 @@ const CS_CLASS = /\b(?:class|record)\s+(\w+)/g;
 const FS_CREATE = /Path\.GetTempPath\s*\(|CreateTempSubdirectory\s*\(|Path\.GetTempFileName\s*\(|\bTestStorage\.Create\s*\(|\bMigratedDatabaseTemplate\b|\bnew\s+ApplicationTestHost\b|\bApplicationTestHost\.(?:Create|Start)\w*\s*\(|\bnew\s+(?:TempFolder|TemporaryFolder|TempRoot|TempDataRoot|ScratchFolder|Scratch)\s*\(/;
 const FS_WORK = /\b(?:File|Directory|FileInfo|DirectoryInfo)\.|\bnew\s+(?:FileInfo|DirectoryInfo)\b|CreateHardLink|SqliteConnection|SqliteDatabaseConnectionFactory|\bMigrat\w*/;
 const FS_FAKE = /ScriptedStateFileSystem|\bIFileSystem\b|MockFileSystem|MemoryFileSystem|\bFake\w*(?:FileSystem|Storage|Repository|Database)\b|\bInMemory\w*(?:FileSystem|Storage|Store|Repository|Database)\b|\bNull\w*Repository\b|:memory:|Mode=Memory|new\s+Mock<\s*I\w*(?:File|Storage|Disk|Database|Repository)|Substitute\.For<\s*I\w*(?:File|Storage|Disk|Database|Repository)/;
+// container-smoke: a packaging step or script that starts the shipped container image (docker run, or docker compose up on the shipped file).
+const CONTAINER_START = /\bdocker\s+(?:compose\s+(?:-\S+\s+\S+\s+)*up|run)\b/;
 const RECORDING = /RecordedReplies\b|WeirContract\.Rec|\bRec\(\s*"|\bRecorded[A-Z]\w*\s*[(.<]|fixtures[\\/]+recorded/;
 
 /** The names inside one test file: its tests, its groups and (C#) its classes. */
@@ -56,6 +63,8 @@ export function namesOf(file, text) {
   } else if (file.endsWith('.ps1')) {
     for (const m of text.matchAll(/^\s*function\s+([\w-]+)/gim)) names.add(m[1]);
     for (const m of text.matchAll(/(['"])([a-z][a-z0-9-]*(?:\.[a-z0-9*-]+)+)\1/g)) names.add(m[2]);
+  } else if (/\.ya?ml$/.test(file)) {
+    for (const m of text.matchAll(/^\s*-\s+name:\s*(.+?)\s*$/gm)) names.add(m[1].replace(/^["']|["']$/g, ''));
   } else {
     for (const m of text.matchAll(TS_TITLE)) names.add(m[2]);
   }
@@ -118,6 +127,23 @@ export class TestIndex {
     const q = squash(name);
     for (const [n, text] of f.bodies ?? []) if (squash(n).startsWith(q) && RECORDING.test(text)) return true;
     return false;
+  }
+
+  /**
+   * Is the proof a step of a packaging workflow (or a packaging script) that starts the shipped container image?
+   * Decided statically from the step's text: a named step is judged alone, a script or "*" as a whole. { real, why }.
+   */
+  containerSmoke(file, name) {
+    const f = this.files.get(file);
+    if (!f || !CONTAINER_SMOKE_FILE.test(file)) return { real: false, why: 'not a packaging workflow or container script' };
+    let text = f.text;
+    if (/\.ya?ml$/.test(file) && name && name !== '*') {
+      const q = squash(name);
+      const step = f.text.split(/^(?=\s*-\s+name:)/m).find((x) => squash(/^\s*-\s+name:\s*(.+)/.exec(x)?.[1] ?? '') === q);
+      if (step === undefined) return { real: false, why: `no step named "${name}" to judge` };
+      text = step;
+    }
+    return CONTAINER_START.test(text) ? { real: true, why: '' } : { real: false, why: `${name || file} does not start the container image with docker run or docker compose up` };
   }
 
   /**

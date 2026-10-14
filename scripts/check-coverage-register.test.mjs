@@ -501,3 +501,80 @@ test('the generated section reports the real-fs proofs and the vm rows', () => {
   assert.match(text, /Real-fs proofs: \*\*0\*\* claimed/);
   assert.match(text, /\*\*1\*\* rows are "vm"/);
 });
+
+// ---------------------------------------------------------------------------------------------- container-smoke (15 Oct 2026; the same type and rule as Weir's register)
+
+const WORKFLOW = '.github/workflows/ci-packaging.yml';
+const WORKFLOW_STEPS =
+  'jobs:\n  docker-smoke:\n    steps:\n' +
+  '      - name: Start Deluno Docker candidate\n        run: docker run -d --name deluno -p 18080:8080 "$IMAGE"\n' +
+  '      - name: Start from the compose file\n        run: docker compose -f compose.yaml -p proof up -d\n' +
+  '      - name: Trivy scan of the Docker candidate\n        run: trivy image deluno:candidate\n' +
+  '      - name: Validate Compose contract\n        run: docker compose config --quiet\n' +
+  '      - name: Cleanup\n        run: docker rm -f deluno\n';
+const dockerRow = (name, over = {}) => row({ id: 'k1', area: 'api', severity: 'high', touches: 'install', required: 'real', proofs: [{ type: 'container-smoke', file: WORKFLOW, name }], ...over });
+
+test('container-smoke: a step that starts the container is real for an install row; a step that only builds or scans is refused', () => {
+  const root = makeRepo({ [WORKFLOW]: WORKFLOW_STEPS });
+  try {
+    const index = new TestIndex(root);
+    for (const step of ['Start Deluno Docker candidate', 'Start from the compose file']) {
+      assert.equal(index.containerSmoke(WORKFLOW, step).real, true, step);
+      assert.equal(isGap(dockerRow(step), index), false, step);
+    }
+    for (const step of ['Trivy scan of the Docker candidate', 'Validate Compose contract', 'Cleanup']) {
+      const verdict = index.containerSmoke(WORKFLOW, step);
+      assert.equal(verdict.real, false, step);
+      assert.match(verdict.why, /does not start the container image/);
+      assert.equal(rowLevel(dockerRow(step), index), 1, 'a refused step stays inproc');
+    }
+    assert.match(index.containerSmoke(WORKFLOW, 'A step nobody wrote').why, /no step named/);
+    assert.equal(rowLevel(dockerRow('Start Deluno Docker candidate')), 1, 'without an index nothing can be verified');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('container-smoke: a script is judged as a whole, and must be a container script or a workflow', () => {
+  const script = 'scripts/test-docker-thing.sh';
+  const root = makeRepo({ [script]: 'docker run --detach --name x "$1"\n', 'scripts/check-docker-thing.sh': 'echo nothing started\n', [WORKFLOW]: WORKFLOW_STEPS });
+  try {
+    const index = new TestIndex(root);
+    assert.equal(index.containerSmoke(script, '*').real, true);
+    assert.equal(index.containerSmoke('scripts/check-docker-thing.sh', '*').real, false);
+    const reg = register([
+      row({ id: 'k1', severity: 'high', touches: 'install', required: 'real', proofs: [{ type: 'container-smoke', file: script, name: '*' }] }),
+      row({ id: 'k2', severity: 'high', touches: 'install', required: 'real', proofs: [{ type: 'container-smoke', file: 'tests/X.Tests/RealFsTests.cs', name: 'x' }] }),
+      row({ id: 'k3', severity: 'high', touches: 'install', required: 'real', proofs: [{ type: 'container-smoke', file: WORKFLOW, name: 'A step nobody wrote' }] })
+    ]);
+    const problems = missingProofs(reg, index, null);
+    assert.match(problems.map((p) => p.why).join('\n'), /does not exist/, 'a cs file not in the repo is missing');
+    assert.match(problems.find((p) => p.row === 'k3').why, /no step named "A step nobody wrote"/);
+    const cs = makeRepo({ 'tests/X.Tests/RealFsTests.cs': REAL_FS_CS });
+    try {
+      assert.match(missingProofs(reg, new TestIndex(cs), null).find((p) => p.row === 'k2').why, /container-smoke proof must be a packaging workflow or a container script/);
+    } finally {
+      rmSync(cs, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('container-smoke does not count for a vm row or a row that touches no disk or install, and the totals count it', () => {
+  const root = makeRepo({ [WORKFLOW]: WORKFLOW_STEPS });
+  try {
+    const index = new TestIndex(root);
+    const start = 'Start Deluno Docker candidate';
+    assert.equal(rowLevel(dockerRow(start, { vm: true }), index), 1);
+    assert.equal(rowLevel(dockerRow(start, { touches: 'other-app' }), index), 1);
+    assert.equal(isGap(dockerRow(start, { vm: true }), index), true);
+    const reg = register([dockerRow(start), dockerRow('Trivy scan of the Docker candidate', { id: 'k2' }), dockerRow(start, { id: 'k3', touches: 'other-app' })]);
+    const t = totals(reg, index);
+    assert.deepEqual({ ...t.container }, { claims: 3, counted: 1, refused: 1, noEffect: 1 });
+    assert.deepEqual(validateShape(reg), [], 'container-smoke is a known proof type');
+    assert.match(generatedSection(reg, [], t), /Container-smoke proofs: \*\*3\*\* claimed; \*\*1\*\* verified/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
