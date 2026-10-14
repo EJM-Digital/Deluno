@@ -9,6 +9,25 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.32
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.31, plus:
+
+- Installing Weir (or NZBGet) from the app picker no longer fails when its
+  newest release on GitHub has just been published and its files are not
+  uploaded yet. Deluno uses the newest release that has them, and says which.
+
 ## 1.0.0-rc.30.31
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
