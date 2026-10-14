@@ -51,7 +51,7 @@ A start that failed or hung used to be final: the supervisor covered only a stop
 | `HistoryRetentionWorker` | no | None. | Caught and logged; next pass after the interval. | A failed pass. |
 | `QbittorrentBlocklistSyncService`, `ContentBlocklistRemoteRefreshService` | no | None. | Caught and logged; hourly. | A failed pass. |
 | `DelunoBackupService` | no | None. | Caught and logged each minute. | A failed pass. |
-| `ImportRecoveryRetentionService`, `ImportRecoveryCleanupService` (tray host copy) | no | None. | Caught and logged. | A failed pass. |
+| `ImportRecoveryRetentionService` (the tray runs this one too; its own copy was removed, #1324) | no | None. | Caught and logged. | A failed pass. |
 | `RetentionScheduleHostedService` | no | None. | Caught per rule and per pass. | A failed pass. |
 | `EpisodeGroupRefreshHostedService`, `SceneMappingRefreshHostedService` | no | None. | Caught per pass and around scheduling. | A failed pass. |
 | `RankingModelTrainingHostedService` | no | Waits for the databases (rule 3); a failure reading its status is logged and it carries on. | Every pass, and the failure record inside it, is guarded. | A failed pass. |
