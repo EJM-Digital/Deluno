@@ -956,6 +956,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IHealthCheckRepository healthCheckRepository,
             IActivityFeedRepository activityFeed,
+            IRecycleBinService recycleBinService,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -987,28 +988,39 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 return Results.BadRequest(new { message = "Deluno only removes an item directly inside a processor output folder this way." });
             }
 
+            // #1318: never a library's media. The item may not be inside any library's root, nor hold one
+            // (an output folder set to the folder above a library would otherwise name the library itself).
+            var everyLibrary = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            if (everyLibrary.Any(other => !string.IsNullOrWhiteSpace(other.RootPath)
+                && (Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(other.RootPath), fullPath, allowEqual: true)
+                    || Deluno.Contracts.SafePath.IsInside(fullPath, Path.GetFullPath(other.RootPath)))))
+            {
+                return Results.BadRequest(new { message = "That is a library folder, not processor output, so Deluno will not remove it." });
+            }
+
             var name = Path.GetFileName(fullPath);
             string message;
-            try
+            if (Directory.Exists(fullPath))
             {
-                if (Directory.Exists(fullPath))
+                if (await recycleBinService.StoreDownloadFolderAsync(library, fullPath, cancellationToken) is null)
                 {
-                    Directory.Delete(fullPath, recursive: true);
-                    message = $"Deleted the folder {name} from the {library.Name} library's processor output folder.";
+                    return Results.Conflict(new { message = $"Deluno could not move {name} to the recycle bin, so it was left where it is." });
                 }
-                else if (File.Exists(fullPath))
-                {
-                    File.Delete(fullPath);
-                    message = $"Deleted {name} from the {library.Name} library's processor output folder.";
-                }
-                else
-                {
-                    return Results.NotFound(new { message = "That is already gone." });
-                }
+
+                message = $"Moved the folder {name} from the {library.Name} library's processor output folder to the recycle bin.";
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            else if (File.Exists(fullPath))
             {
-                return Results.Conflict(new { message = $"Deluno could not delete {name}: {ex.Message}" });
+                if (await recycleBinService.StoreDownloadFileAsync(library, fullPath, cancellationToken) is null)
+                {
+                    return Results.Conflict(new { message = $"Deluno could not move {name} to the recycle bin, so it was left where it is." });
+                }
+
+                message = $"Moved {name} from the {library.Name} library's processor output folder to the recycle bin.";
+            }
+            else
+            {
+                return Results.NotFound(new { message = "That is already gone." });
             }
 
             await healthCheckRepository.RemoveAsync($"processor-output:{library.Id}:{name.ToLowerInvariant()}", cancellationToken);

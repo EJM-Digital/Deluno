@@ -154,9 +154,9 @@ public interface IRecycleBinService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Moves one leftover file from a library's downloads folder to the bin
-    /// instead of deleting it (#1318). Null, and nothing touched, when the file
-    /// is not inside that downloads folder or is inside the library root: a
+    /// Moves one leftover download file to the bin instead of deleting it
+    /// (#1318). The caller has already established that the file is download
+    /// data. Null, and nothing touched, when the file is inside the library root: a
     /// file in the root is a person's media and leaves only through
     /// <see cref="StoreRemovedFileAsync"/>.
     /// </summary>
@@ -453,9 +453,11 @@ public sealed class RecycleBinService(
     }
 
     /// <summary>The full path when it is inside the library's downloads folder and not inside its root, else null.</summary>
+    private static bool SafePathHasDots(string path) => Deluno.Contracts.SafePath.HasDotSegments(path);
+
     private static string? DownloadPathOrNull(Libraries.Contracts.LibraryItem library, string path)
     {
-        if (string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(library.DownloadsPath))
+        if (string.IsNullOrWhiteSpace(library.RootPath) || string.IsNullOrWhiteSpace(path))
         {
             return null;
         }
@@ -464,9 +466,8 @@ public sealed class RecycleBinService(
         try
         {
             var root = Path.GetFullPath(library.RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var downloads = Path.GetFullPath(library.DownloadsPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             full = Path.GetFullPath(path);
-            if (IsInsideRoot(full, root) || !IsInsideRoot(full, downloads))
+            if (SafePathHasDots(path) || full.Equals(root, StringComparison.OrdinalIgnoreCase) || IsInsideRoot(full, root))
             {
                 return null;
             }
