@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { untilQuiet } from "../helpers/settle";
 
 /**
  * Anchored to this file, not to `process.cwd()`.
@@ -39,7 +40,7 @@ test.describe("mobile review", () => {
       test.skip(testInfo.project.name !== "mobile", "This is the phone review.");
 
       await authenticateAndNavigate(page, target.path);
-      await page.waitForTimeout(1500);
+      await untilQuiet(page);
 
       fs.mkdirSync(reviewDir, { recursive: true });
       await page.screenshot({ path: path.join(reviewDir, `${target.name}.png`), fullPage: true });

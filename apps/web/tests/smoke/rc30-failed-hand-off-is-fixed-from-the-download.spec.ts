@@ -162,7 +162,7 @@ test("while a hand-off is being sent again no old failure shows beside it (#1204
     await expect(drawer.getByText(old)).toHaveCount(0);
   }
   // Still gone after the page asks again.
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1500); // reason: shows the old failure stays gone after the page's own next refresh; that refresh has no signal to await
   await expect(drawer.getByText(oldFinding)).toHaveCount(0);
   await expect(drawer.getByText(oldError)).toHaveCount(0);
   await expect(drawer.getByText("Processing failed")).toHaveCount(0);

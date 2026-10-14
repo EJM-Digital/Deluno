@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { untilQuiet } from "../helpers/settle";
 
 /**
  * #934 — "checked at scale": a smoke server seeded with a large synthetic
@@ -90,7 +91,7 @@ async function scrollToSettledBottom(page: Page, maxIterations = 12) {
       return;
     }
     previousHeight = height;
-    await page.waitForTimeout(250);
+    await untilQuiet(page, { frames: 15 });
   }
 }
 
@@ -99,7 +100,7 @@ async function scrollToMiddle(page: Page) {
   await container.evaluate((element) => {
     element.scrollTop = element.scrollHeight / 2;
   });
-  await page.waitForTimeout(150);
+  await untilQuiet(page, { frames: 10 });
 }
 
 async function scrollToTop(page: Page) {
@@ -107,7 +108,7 @@ async function scrollToTop(page: Page) {
   await container.evaluate((element) => {
     element.scrollTop = 0;
   });
-  await page.waitForTimeout(150);
+  await untilQuiet(page, { frames: 10 });
 }
 
 /** Every seeded title visible right now, however deep it scrolled to get there. */
