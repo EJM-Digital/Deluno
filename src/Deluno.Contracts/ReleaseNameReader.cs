@@ -28,6 +28,9 @@ public static partial class ReleaseNameReader
     /// <summary>A year standing alone between non-digits. "2160p" is a resolution, not the year 2160.</summary>
     public const string YearToken = @"(?<![0-9])(?!2160[pi]" + EndsToken + ")" + YearDigits + @"(?![0-9])";
 
+    /// <summary>An optional re-release version straight after an episode marker or absolute number: v2, v3.</summary>
+    public const string VersionSuffix = @"(?:v\d)?";
+
     /// <summary>The season and episode part of an episode marker: S01E01, S01E01E02, S01E01-E03, S01E01-03.</summary>
     public const string SeasonEpisodePattern =
         @"S(?<season>\d{1,2})[ ._-]?E(?<episode>\d{1,3})(?:(?:-?E(?<last>\d{1,3}))+|-(?<last>\d{1,3}))?";
@@ -96,7 +99,7 @@ public static partial class ReleaseNameReader
     private static int Number(Match match, string group)
         => int.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
 
-    [GeneratedRegex(StartsToken + "(?:" + SeasonEpisodePattern + "|" + NxNNPattern + ")" + EndsToken, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(StartsToken + "(?:" + SeasonEpisodePattern + "|" + NxNNPattern + ")" + VersionSuffix + EndsToken, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SeasonEpisode();
 
     [GeneratedRegex(StartsToken + "(?:" + SeasonPackPattern + ")" + EndsToken, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

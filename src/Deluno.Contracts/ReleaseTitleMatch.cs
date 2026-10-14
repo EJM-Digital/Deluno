@@ -401,7 +401,7 @@ public static partial class ReleaseTitleMatch
     }
 
     // Where a title ends in a release name.
-    [GeneratedRegex(@"" + ReleaseNameReader.YearToken + @"|[\(\[]|" + ReleaseNameReader.StartsToken + @"(?:S\d{1,2}(?:[ ._-]?E\d{1,3})*|\d{1,2}x\d{2,3}|season|series|complete|temporada|saison)" + ReleaseNameReader.EndsToken + @"|\s-\s\d{1,4}\b|" + ReleaseNameReader.StartsToken + @"(?:(?:480|576|720|1080|2160)[pi]|4k|uhd|bluray|blu-ray|bdrip|brrip|bd|web|web-?dl|webrip|hdtv|hdrip|dvdrip|dvd|remux|x264|x265|h\.?264|h\.?265|hevc|xvid|proper|repack|remastered|extended|unrated|internal|multi|dual)" + ReleaseNameReader.EndsToken, RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"" + ReleaseNameReader.YearToken + @"|[\(\[]|" + ReleaseNameReader.StartsToken + @"(?:S\d{1,2}(?:[ ._-]?E\d{1,3})*|\d{1,2}x\d{2,3})" + ReleaseNameReader.VersionSuffix + ReleaseNameReader.EndsToken + @"|" + ReleaseNameReader.StartsToken + @"(?:season|series|complete|temporada|saison)" + ReleaseNameReader.EndsToken + @"|\s-\s\d{1,4}" + ReleaseNameReader.VersionSuffix + ReleaseNameReader.EndsToken + @"|" + ReleaseNameReader.StartsToken + @"(?:(?:480|576|720|1080|2160)[pi]|4k|uhd|bluray|blu-ray|bdrip|brrip|bd|web|web-?dl|webrip|hdtv|hdrip|dvdrip|dvd|remux|x264|x265|h\.?264|h\.?265|hevc|xvid|proper|repack|remastered|extended|unrated|internal|multi|dual)" + ReleaseNameReader.EndsToken, RegexOptions.IgnoreCase)]
     private static partial Regex Boundary();
 
     [GeneratedRegex(@"^\s*(?:(?:\[[^\]]*\]|【[^】]*】)\s*)+")]
@@ -416,6 +416,6 @@ public static partial class ReleaseTitleMatch
     [GeneratedRegex(@"[._\s]+(?:-[._\s]*)?")]
     private static partial Regex TitleSeparators();
 
-    [GeneratedRegex(@"(?:\s-\s|\bE|#)(?<number>\d{1,4})\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:\s-\s|\bE|#)(?<number>\d{1,4})" + ReleaseNameReader.VersionSuffix + ReleaseNameReader.EndsToken, RegexOptions.IgnoreCase)]
     private static partial Regex Absolute();
 }
