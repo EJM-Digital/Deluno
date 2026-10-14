@@ -244,6 +244,35 @@ public sealed class HealthCheckRunnerTests
         quietRealtime.Verify(publisher => publisher.PublishHealthChangedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task A_check_that_throws_becomes_an_unknown_row_and_the_other_checks_still_run()
+    {
+        IReadOnlyList<HealthCheckOutcome>? written = null;
+        var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
+        repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .Callback((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => written = outcomes)
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null),
+                    HealthCheckTransition.Unchanged))
+                .ToArray());
+        var broken = new Mock<Deluno.Worker.HealthChecks.IHealthCheck>();
+        broken.SetupGet(instance => instance.Category).Returns(HealthCheckCategories.Processor);
+        broken.Setup(instance => instance.RunAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("the processor check had a bug"));
+        var working = FakeCheck(HealthCheckCategories.DownloadClient, [HealthCheckOutcome.Problem("download-client:1", HealthCheckCategories.DownloadClient, "Client", "Down.", "cause", "fix")]);
+
+        var runner = new HealthCheckRunner([broken.Object, working], repository.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IOutboundNotificationService>(), Mock.Of<IRealtimeEventPublisher>(), NullLogger<HealthCheckRunner>.Instance);
+        await runner.RunAllAsync(CancellationToken.None);
+
+        Assert.NotNull(written);
+        var unknown = Assert.Single(written!, outcome => outcome.Status == HealthCheckStatuses.Unknown);
+        Assert.Equal("check-error:" + HealthCheckCategories.Processor, unknown.Id);
+        Assert.Equal(HealthCheckCategories.Processor, unknown.Category);
+        Assert.Contains("the processor check had a bug", unknown.Message);
+        Assert.Contains(written!, outcome => outcome.Id == "download-client:1" && outcome.Status == HealthCheckStatuses.Problem);
+    }
+
     private static Deluno.Worker.HealthChecks.IHealthCheck FakeCheck(string category, IReadOnlyList<HealthCheckOutcome> outcomes)
     {
         var check = new Mock<Deluno.Worker.HealthChecks.IHealthCheck>();
