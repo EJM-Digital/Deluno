@@ -22,112 +22,8 @@
     their shipped ones; build-rules.md) and are masked in everything the suite writes.
 #>
 
-$script:Ks = @{
-    Category    = 'golden-keep-seeding'
-    PrivateName = 'Golden private feed'
-    Ports       = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112 }
-}
-
-# ---------------------------------------------------------------- reading the clients themselves
-
-function Find-KsDataRoots {
-    $roots = foreach ($base in $env:ProgramData, $env:LOCALAPPDATA, $env:APPDATA) {
-        if ($base -and (Test-Path $base)) { Get-ChildItem -Path $base -Filter 'Deluno*' -Directory -ErrorAction SilentlyContinue | ForEach-Object FullName }
-    }
-    @($roots)
-}
-
-# DPAPI text as Deluno writes it: dpapi:v1:<base64>, entropy "Deluno.Platform.Secrets:<purpose>"; the tray writes it with the machine
-# scope, Deluno's own store with the user's, so both are tried.
-function Unprotect-KsSecret {
-    param([string] $Blob, [string] $Purpose)
-    if (-not $Blob -or -not $Blob.StartsWith('dpapi:v1:')) { return $null }
-    Add-Type -AssemblyName System.Security
-    try { $cipher = [Convert]::FromBase64String($Blob.Substring('dpapi:v1:'.Length)) } catch { return $null }
-    $entropy = [Text.Encoding]::UTF8.GetBytes('Deluno.Platform.Secrets:' + $Purpose)
-    foreach ($scope in 'LocalMachine', 'CurrentUser') {
-        try { return [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect($cipher, $entropy, [Security.Cryptography.DataProtectionScope]::$scope)) } catch { }
-    }
-    $null
-}
-
-# The login the installer generated for a client kind ("qbittorrent"), or $null when it made none. The password is masked at once.
-function Get-KsComponentLogin {
-    param([Parameter(Mandatory)] [string] $Kind)
-    foreach ($root in Find-KsDataRoots) {
-        $file = Get-ChildItem -Path $root -Filter 'component-credentials.json' -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $file) { continue }
-        $entries = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
-        foreach ($name in $entries.PSObject.Properties.Name) {
-            if ($name -ne $Kind) { continue }
-            $password = Unprotect-KsSecret $entries.$name.Password "bundled-component:$name"
-            if ($password) {
-                if ($script:S) { $script:S.Secrets["ks-$Kind-password"] = $password; $script:S.Secrets["ks-$Kind-user"] = [string]$entries.$name.Username }
-                return [pscustomobject]@{ User = [string]$entries.$name.Username; Password = $password }
-            }
-        }
-    }
-    $null
-}
-
-function Open-KsQbit {
-    $base = "http://127.0.0.1:$($script:Ks.Ports.qbittorrent)"
-    $login = Get-KsComponentLogin -Kind 'qbittorrent'
-    if (-not $login) { throw 'qBittorrent''s saved login was not found in the VM, so the scenario cannot read the client.' }
-    $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-    $r = Invoke-WebRequest -Uri "$base/api/v2/auth/login" -Method Post -Body @{ username = $login.User; password = $login.Password } -Headers @{ Referer = $base } -WebSession $sess -UseBasicParsing -TimeoutSec 20
-    if ($r.Content -notmatch 'Ok') { throw 'qBittorrent refused the saved login.' }
-    [pscustomobject]@{ Base = $base; Session = $sess }
-}
-
-function Open-KsDeluge {
-    $base = 'http://127.0.0.1:' + $script:Ks.Ports.deluge + '/json'
-    $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-    $call = {
-        param($method, $params)
-        Invoke-RestMethod -Uri $base -Method Post -ContentType 'application/json' -WebSession $sess -UseBasicParsing -TimeoutSec 20 -Body (@{ method = $method; params = $params; id = 1 } | ConvertTo-Json -Depth 6 -Compress)
-    }
-    # Deluge keeps its shipped login (build-rules.md); the web UI must be connected to the daemon before it answers core calls.
-    & $call 'auth.login' @('deluge') | Out-Null
-    if (-not (& $call 'web.connected' @()).result) {
-        $hosts = (& $call 'web.get_hosts' @()).result
-        if ($hosts) { & $call 'web.connect' @($hosts[0][0]) | Out-Null; Start-Sleep -Seconds 2 }
-    }
-    $call
-}
-
-function Invoke-KsTransmission {
-    param([Parameter(Mandatory)] [string] $Method, [hashtable] $Arguments = @{})
-    $uri = 'http://127.0.0.1:' + $script:Ks.Ports.transmission + '/transmission/rpc'
-    $body = @{ method = $Method; arguments = $Arguments } | ConvertTo-Json -Depth 6 -Compress
-    $headers = @{}
-    if ($script:Ks.TrSession) { $headers['X-Transmission-Session-Id'] = $script:Ks.TrSession }
-    if ($script:Ks.TrAuth) { $headers['Authorization'] = $script:Ks.TrAuth }
-    for ($try = 0; $try -lt 3; $try++) {
-        try {
-            return (Invoke-RestMethod -Uri $uri -Method Post -ContentType 'application/json' -Headers $headers -Body $body -UseBasicParsing -TimeoutSec 20)
-        }
-        catch {
-            $resp = $_.Exception.Response
-            if ($resp -and [int]$resp.StatusCode -eq 409) {
-                $script:Ks.TrSession = $resp.Headers['X-Transmission-Session-Id']
-                if ($script:S -and $script:Ks.TrSession) { $script:S.Secrets['ks-transmission-session'] = $script:Ks.TrSession }
-                $headers['X-Transmission-Session-Id'] = $script:Ks.TrSession
-                continue
-            }
-            if ($resp -and [int]$resp.StatusCode -eq 401 -and -not $script:Ks.TrAuth) {
-                # Transmission keeps its shipped login unless Deluno saved one for it.
-                $login = Get-KsComponentLogin -Kind 'transmission'
-                if (-not $login) { throw 'Transmission wants a login and none was saved.' }
-                $script:Ks.TrAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($login.User):$($login.Password)"))
-                $headers['Authorization'] = $script:Ks.TrAuth
-                continue
-            }
-            throw
-        }
-    }
-    throw 'Transmission would not accept the session.'
-}
+# The clients' own sessions and calls (Open-KsQbit, Open-KsDeluge, Invoke-KsDeluge, Invoke-KsTransmission, the saved logins) live in
+# Fixtures.Lib.ps1, so a group that is chosen alone never depends on this one. $script:Ks (the keep-seeding names) is defined there too.
 
 # Makes the keep-seeding category in the client, as a person does in the client first (Deluno never creates one). Transmission's
 # labels need no making.
@@ -143,8 +39,8 @@ function New-KsClientCategory {
             }
         }
         'deluge' {
-            $call = Open-KsDeluge
-            $r = & $call 'label.add' @($Name)
+            $d = Open-KsDeluge
+            $r = Invoke-KsDeluge -Session $d -Method 'label.add' -Params @($Name) -Subject "label $Name"
             if ($r.error -and "$($r.error.message)" -notmatch 'already exists') { throw "Deluge would not make the label: $($r.error.message)" }
         }
     }
@@ -161,8 +57,8 @@ function Get-KsClientTorrent {
             [pscustomobject]@{ Present = [bool]$row; Category = $(if ($row) { [string]$row.category } else { $null }); State = $(if ($row) { [string]$row.state } else { $null }) }
         }
         'deluge' {
-            $call = Open-KsDeluge
-            $r = & $call 'core.get_torrent_status' @($Hash, @('label', 'state', 'name'))
+            $d = Open-KsDeluge
+            $r = Invoke-KsDeluge -Session $d -Method 'core.get_torrent_status' -Params @($Hash, @('label', 'state', 'name')) -Subject "hash $Hash"
             $s = $r.result
             $has = $s -and @($s.PSObject.Properties).Count -gt 0
             [pscustomobject]@{ Present = [bool]$has; Category = $(if ($has) { [string]$s.label } else { $null }); State = $(if ($has) { [string]$s.state } else { $null }) }
