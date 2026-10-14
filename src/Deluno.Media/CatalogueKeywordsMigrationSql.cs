@@ -43,4 +43,36 @@ public static class CatalogueKeywordsMigrationSql
 
         return sql.ToString();
     }
+
+    /// <summary>
+    /// Before the (shipped, unchangeable) backfill: set aside the stored metadata of every row that holds a
+    /// keyword list and blank it in place, so the backfill's <c>metadata_json IS NOT NULL</c> test skips it.
+    /// The backfill reads each keyword with <c>json_extract(entry.value, '$')</c>, and for a string element
+    /// <c>json_each</c> already hands back the bare text, which is not JSON: SQLite stops with "malformed JSON"
+    /// and the database never opens (#1305). Nothing is lost: <see cref="RepairAfter"/> puts the text back
+    /// verbatim in the same transaction.
+    /// </summary>
+    public static string RepairBefore(string table) => $"""
+        CREATE TEMP TABLE keywords_repair AS
+        SELECT id, metadata_json FROM {table}
+        WHERE metadata_json IS NOT NULL
+          AND json_valid(metadata_json)
+          AND json_type(metadata_json, '$.Keywords') = 'array';
+        UPDATE {table} SET metadata_json = NULL WHERE id IN (SELECT id FROM keywords_repair);
+        """;
+
+    /// <summary>
+    /// After the backfill: restore the stored metadata byte for byte and list its keywords the right way
+    /// (the element text itself, as <c>json_each</c> returns it).
+    /// </summary>
+    public static string RepairAfter(string table) => $"""
+        UPDATE {table}
+        SET metadata_json = (SELECT r.metadata_json FROM keywords_repair r WHERE r.id = {table}.id),
+            keywords = (
+                SELECT group_concat(entry.value, ', ')
+                FROM keywords_repair r, json_each(json_extract(r.metadata_json, '$.Keywords')) AS entry
+                WHERE r.id = {table}.id)
+        WHERE id IN (SELECT id FROM keywords_repair);
+        DROP TABLE keywords_repair;
+        """;
 }
