@@ -28,10 +28,10 @@ public sealed class AGrabTheClientRefusesIsRecordedAsFailedTests
 
     [Theory]
     [InlineData("deluge", "Deluge refused Deluno's password")]
-    [InlineData("qbittorrent", "qBittorrent refused Deluno's username and password", Skip = "DEFECT: a grab to qBittorrent whose login is refused stores the raw 'qBittorrent answered the sign-in with 401' line, not the plain refusal the connection test and the actions give.")]
-    [InlineData("transmission", "Transmission refused Deluno's username and password", Skip = "DEFECT: a grab to Transmission whose login is refused stores 'Response status code does not indicate success: 401', not the plain refusal the connection test and the actions give.")]
-    [InlineData("sabnzbd", "SABnzbd refused Deluno's API key", Skip = "DEFECT: a grab to SABnzbd whose API key is refused stores 'Response status code does not indicate success: 403', not the plain refusal the connection test and the actions give.")]
-    [InlineData("nzbget", "NZBGet refused Deluno's username and password", Skip = "DEFECT: a grab to NZBGet whose login is refused stores 'Response status code does not indicate success: 401', not the plain refusal the connection test and the actions give.")]
+    [InlineData("qbittorrent", "qBittorrent refused Deluno's username and password")]
+    [InlineData("transmission", "Transmission refused Deluno's username and password")]
+    [InlineData("sabnzbd", "SABnzbd refused Deluno's API key")]
+    [InlineData("nzbget", "NZBGet refused Deluno's username and password")]
     public async Task A_client_that_refuses_Delunos_login_is_stored_on_the_dispatch_in_plain_words_and_the_grab_answers_failed(string protocol, string clientsWords)
     {
         var (result, stored) = await GrabAsync(protocol, RealClientAnswering(protocol, refusesLogin: true), withTorrentFile: false);
