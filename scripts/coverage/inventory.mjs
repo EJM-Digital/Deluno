@@ -376,7 +376,6 @@ export function integrationItems(root) {
     known.add(fam.file);
     const p = join(root, fam.file);
     if (!existsSync(p)) {
-      out.push({ kind: 'integration', key: `integration:${fam.id}`, label: `${fam.id} (file missing: ${fam.file})`, file: fam.file, missing: true });
       continue;
     }
     out.push({ kind: 'integration', key: `integration:${fam.id}`, label: fam.id, file: fam.file, client: true });

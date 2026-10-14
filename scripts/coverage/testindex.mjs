@@ -114,6 +114,50 @@ export class TestIndex {
     for (const [n, text] of f.bodies ?? []) if (squash(n).startsWith(q) && RECORDING.test(text)) return true;
     return false;
   }
+
+  /**
+   * Is a smoke test's API stubbed? Decided from the spec's text: a test is stubbed when its body, a beforeEach/beforeAll hook of the file,
+   * or a helper function of the file that it calls intercepts requests (page.route, route.fulfill, serveLive*).
+   * { stubbed, decided }: what cannot be decided (the test is not found, or the name is the whole file) counts as stubbed and not decided.
+   */
+  stubInfo(file, name) {
+    const f = this.files.get(file);
+    if (!f || !/\.spec\.ts$/.test(file)) return { stubbed: true, decided: false };
+    f.stub ??= analyseSpec(f.text);
+    const a = f.stub;
+    if (!name || name === '*') return { stubbed: true, decided: false };
+    let body = a.bodies.get(name);
+    if (body === undefined) {
+      const q = squash(name);
+      for (const [title, text] of a.bodies) {
+        const s = squash(title);
+        if (s === q || (q.length >= 14 && (s.startsWith(q) || (s.length >= 14 && q.startsWith(s))))) { body = text; break; }
+      }
+    }
+    if (body === undefined) return { stubbed: true, decided: false };
+    const stubbed = a.hooksStub || STUB_MARKER.test(body) || a.stubHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(body));
+    return { stubbed, decided: true };
+  }
+}
+
+const STUB_MARKER = /\.route\(|\bserveLive\w*|\.fulfill\(|routeFromHAR/;
+/** Splits a Playwright spec into its tests and hooks and says which intercept requests. */
+function analyseSpec(text) {
+  const starts = [...text.matchAll(/^[ \t]*(?:(?:test|it)(?:\.(?:only|skip|fixme|slow|fail))?\(\s*(['"`])((?:\\.|(?!\1)[^\\\n])+)\1|test\.(beforeEach|beforeAll)\()/gm)];
+  const header = starts.length ? text.slice(0, starts[0].index) : text;
+  const bodies = new Map();
+  let hooksStub = false;
+  for (let i = 0; i < starts.length; i++) {
+    const seg = text.slice(starts[i].index, i + 1 < starts.length ? starts[i + 1].index : text.length);
+    if (starts[i][3]) { if (STUB_MARKER.test(seg)) hooksStub = true; } else bodies.set(starts[i][2], seg);
+  }
+  const stubHelpers = [];
+  const defs = [...header.matchAll(/(?:async\s+)?function\s+(\w+)|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?(?:function|\()/g)];
+  for (let i = 0; i < defs.length; i++) {
+    const seg = header.slice(defs[i].index, i + 1 < defs.length ? defs[i + 1].index : header.length);
+    if (STUB_MARKER.test(seg)) stubHelpers.push(defs[i][1] ?? defs[i][2]);
+  }
+  return { bodies, hooksStub, stubHelpers };
 }
 
 /** Splits a C# test file into the text before its first test and the body of each test. */

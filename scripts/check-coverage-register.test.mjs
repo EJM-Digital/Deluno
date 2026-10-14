@@ -4,9 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
-  evaluate, generatedSection, isGap, mapInventory, missingProofs, rowLevel, scenarioViolations, sleepViolations, totals, validateShape
+  evaluate, generatedSection, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, totals, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
 import { migrationItems, routeItems, trayItems, webRouteItems } from './coverage/inventory.mjs';
@@ -22,7 +23,7 @@ function makeRepo(files) {
 }
 
 const row = (over = {}) => ({
-  id: 'api.movies.get-movies', area: 'api', behaviour: 'GET /api/movies lists the movies', kind: 'API route', severity: 'medium', required: 'inproc',
+  id: 'api.movies.get-movies', area: 'api', behaviour: 'GET /api/movies lists the movies', kind: 'API route', severity: 'medium', touches: 'none', required: 'inproc',
   proofs: [], ...over
 });
 const register = (rows) => ({ version: 1, areas: { api: { name: 'API' } }, rows });
@@ -45,19 +46,19 @@ const SPEC = `import { test } from '@playwright/test';\ntest('the movies page op
 test('a row reaches its level only with a proof of that level', () => {
   const none = row();
   const unit = row({ proofs: [{ type: 'vitest', file: 'a.test.ts', name: 'x' }] });
-  const high = row({ severity: 'high', required: 'real', proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] });
-  const highReal = row({ severity: 'high', required: 'real', proofs: [{ type: 'recording-replay', file: 'A.cs', name: 'x' }] });
+  const high = row({ severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] });
+  const highReal = row({ severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'recording-replay', file: 'A.cs', name: 'x' }] });
   assert.equal(rowLevel(none), 0);
   assert.equal(isGap(none), true);
   assert.equal(isGap(unit), false);
   assert.equal(isGap(high), true, 'a high row is not met by an in-process test');
   assert.equal(isGap(highReal), false);
-  assert.equal(isGap(row({ severity: 'high', required: 'real', proofs: [{ type: 'scenario', file: 'G.ps1', name: 'film.qbittorrent' }] })), false);
+  assert.equal(isGap(row({ severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'scenario', file: 'G.ps1', name: 'film.qbittorrent' }] })), false);
 });
 
 test('the register shape refuses a high row that asks for less than real proof, and duplicate ids', () => {
   assert.deepEqual(validateShape(register([row()])), []);
-  assert.match(validateShape(register([row({ severity: 'high', required: 'inproc' })])).join('\n'), /requires "real"/);
+  assert.match(validateShape(register([row({ severity: 'high', touches: 'other-app', required: 'inproc' })])).join('\n'), /required must be "real"/);
   assert.match(validateShape(register([row(), row()])).join('\n'), /id used twice/);
   assert.match(validateShape(register([row({ kind: 'nonsense' })])).join('\n'), /kind/);
   assert.match(validateShape(register([row({ area: 'nowhere' })])).join('\n'), /area/);
@@ -126,8 +127,8 @@ test('totals count gaps by severity, best proof and area', () => {
   const rows = [
     row({ id: 'a1', proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] }),
     row({ id: 'a2' }),
-    row({ id: 'a3', severity: 'high', required: 'real', proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] }),
-    row({ id: 'a4', severity: 'high', required: 'real', proofs: [{ type: 'scenario', file: 'G.ps1', name: 'x' }] })
+    row({ id: 'a3', severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] }),
+    row({ id: 'a4', severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'scenario', file: 'G.ps1', name: 'x' }] })
   ];
   const t = totals(register(rows));
   assert.equal(t.all.rows, 4);
@@ -243,6 +244,98 @@ const router = createBrowserRouter([
     assert.deepEqual(webRouteItems(root).map((r) => r.key), ['web:/', 'web:/login', 'web:/movies', 'web:/movies/:id', 'web:/movies/wanted']);
     assert.deepEqual(migrationItems(root).map((m) => m.key), ['migration:movies/V0001', 'migration:movies/V0002']);
     assert.deepEqual(trayItems(root).map((t) => t.key), ['tray:Open', 'tray:PauseResume', 'tray:Quit']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the required level follows severity and what the row touches', () => {
+  assert.equal(requiredFor(row({ severity: 'high', touches: 'other-app' })), 'real');
+  assert.equal(requiredFor(row({ severity: 'high', touches: 'disk' })), 'real');
+  assert.equal(requiredFor(row({ severity: 'high', touches: 'install' })), 'real');
+  assert.equal(requiredFor(row({ severity: 'high', touches: 'none' })), 'inproc');
+  assert.equal(requiredFor(row({ severity: 'medium', touches: 'other-app' })), 'inproc');
+  assert.match(validateShape(register([row({ touches: 'moon' })])).join('\n'), /touches/);
+  assert.match(validateShape(register([row({ issue: 'x' })])).join('\n'), /issue/);
+  assert.deepEqual(validateShape(register([row({ issue: 1301 })])), []);
+});
+
+const STUBBED_SPEC = `
+import { test } from '@playwright/test';
+async function stubFiles(page) { await page.route('**/api/files', (r) => r.fulfill({ json: [] })); }
+test('opens the real page', async ({ page }) => { await page.goto('/movies'); });
+test('shows the stubbed files', async ({ page }) => { await stubFiles(page); await page.goto('/movies/1'); });
+test('stubs inline', async ({ page }) => { await page.route('**/api/x', (r) => r.abort()); });
+`;
+const HOOKED_SPEC = `
+import { test } from '@playwright/test';
+test.beforeEach(async ({ page }) => { await page.route('**/api/y', (r) => r.fulfill({ json: {} })); });
+test('every test here is stubbed', async ({ page }) => {});
+`;
+
+test('a smoke proof is real for a screen behaviour only when its API calls are not stubbed', () => {
+  const root = makeRepo({ 'apps/web/tests/smoke/a.spec.ts': STUBBED_SPEC, 'apps/web/tests/smoke/b.spec.ts': HOOKED_SPEC });
+  try {
+    const index = new TestIndex(root);
+    const a = 'apps/web/tests/smoke/a.spec.ts';
+    assert.deepEqual(index.stubInfo(a, 'opens the real page'), { stubbed: false, decided: true });
+    assert.deepEqual(index.stubInfo(a, 'shows the stubbed files'), { stubbed: true, decided: true });
+    assert.deepEqual(index.stubInfo(a, 'stubs inline'), { stubbed: true, decided: true });
+    assert.deepEqual(index.stubInfo('apps/web/tests/smoke/b.spec.ts', 'every test here is stubbed'), { stubbed: true, decided: true });
+    assert.deepEqual(index.stubInfo(a, '*'), { stubbed: true, decided: false }, 'what cannot be decided counts as stubbed');
+    assert.deepEqual(index.stubInfo(a, 'a title that is not there'), { stubbed: true, decided: false });
+
+    const screen = (name, over = {}) => row({ area: 'library', kind: 'screen action', severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'smoke', file: a, name }], ...over });
+    assert.equal(isGap(screen('opens the real page'), index), false);
+    assert.equal(isGap(screen('shows the stubbed files'), index), true);
+    assert.equal(isGap(screen('opens the real page', { area: 'api' }), index), true, 'only a screen behaviour may reach real through a smoke spec');
+    assert.equal(isGap(screen('opens the real page'), null), true, 'without the index every smoke proof counts as stubbed');
+
+    const t = totals(register([screen('opens the real page'), screen('shows the stubbed files', { id: 'x2' }), screen('*', { id: 'x3' })]).rows ? { ...register([]), rows: [screen('opens the real page'), screen('shows the stubbed files', { id: 'x2' }), screen('*', { id: 'x3' })] } : null, index);
+    assert.deepEqual(t.smoke, { proofs: 3, unstubbed: 1, stubbed: 1, undecided: 1 });
+    assert.deepEqual(t.highByTouches['other-app'], { rows: 3, gaps: 2 });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the generated section names the issues rows point at', () => {
+  const rows = [row({ id: 'i1', issue: 1301 }), row({ id: 'i2', issue: 1301, proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] })];
+  const reg = register(rows);
+  const text = generatedSection(reg, [], totals(reg, null));
+  assert.match(text, /#1301 \| 2 \| 1 \| 0/);
+  assert.match(generatedSection(register([row()]), [], totals(register([row()]), null)), /No row names an issue yet/);
+});
+
+test('only an unmapped item or a missing proof fails the default run; the rest fails only under --strict', () => {
+  const root = makeRepo({
+    'tests/X.Tests/MovieListTests.cs': CS_TEST,
+    'src/Deluno.Movies/MoviesEndpoints.cs': 'class E { void Map(IEndpointRouteBuilder endpoints) { endpoints.MapGet("/api/movies", List); } }'
+  });
+  const registerFile = join(root, 'docs/testing/coverage-register.json');
+  const script = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'check-coverage-register.mjs');
+  const run = (rows, args = []) => {
+    mkdirSync(dirname(registerFile), { recursive: true });
+    writeFileSync(registerFile, JSON.stringify(register(rows)));
+    return spawnSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8' });
+  };
+  const good = { type: 'backend', file: 'tests/X.Tests/MovieListTests.cs', name: 'Listing_movies_answers_ok' };
+  try {
+    // A gap, a duplicate id, a stale cover and a proof of the wrong type: reported, not failed.
+    const soft = run([
+      row({ covers: ['route:GET /api/movies'] }),
+      row({ covers: ['route:GET /api/gone'], proofs: [{ ...good, type: 'recording-replay' }] }),
+      row({ id: 'api.other', severity: 'high', touches: 'other-app', required: 'real', proofs: [good] })
+    ]);
+    assert.equal(soft.status, 0, soft.stderr + soft.stdout);
+    assert.equal(run([row({ covers: ['route:GET /api/movies'] })], ['--strict']).status, 1, '--strict fails on a gap');
+    // (a) an unmapped item fails.
+    assert.equal(run([row()]).status, 1);
+    // (b) a proof that does not exist fails.
+    const missing = run([row({ covers: ['route:GET /api/movies'], proofs: [{ ...good, name: 'A_test_that_was_renamed_away' }] })]);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /\(b\)/);
+    assert.equal(run([row({ covers: ['route:GET /api/movies'], proofs: [good] })]).status, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
