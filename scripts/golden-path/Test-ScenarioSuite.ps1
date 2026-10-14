@@ -539,7 +539,7 @@ $ksText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G10-KeepSeeding.ps1')
 Check 'the group sets the rule to move, puts it back, and puts the keep-seeding choices and the private indexer back through Deluno' ($ksText -match "privateAction = 'move-and-replace'" -and $ksText -match 'could not restore rule' -and $ksText -match 'could not restore the keep-seeding choices' -and $ksText -match '-Method DELETE -Path "/api/indexers/')
 Check 'the group reads each client itself for the category and the torrent, never only Deluno' ($ksText -match 'Get-KsClientTorrent' -and $ksText -match 'core\.get_torrent_status' -and $ksText -match 'torrent-get' -and $ksText -match 'torrents/info')
 Check 'the private torrent is checked for its data, for not being deleted, and for staying out of Transfers' ($ksText -match 'Get-KsFilesOnDisk' -and $ksText -match 'still holds the torrent' -and $ksText -match 'gone from Transfers')
-Check 'a password read for a client is masked in everything the suite writes' ($ksText -match 'S\.Secrets\["ks-\$Kind-password"\]')
+Check 'a password read for a client is masked in everything the suite writes' ((Get-Content -Raw (Join-Path $suite 'vm/Fixtures.Lib.ps1')) -match 'S\.Secrets\["ks-\$Kind-password"\]')
 
 Write-Host 'The news stub can hang an article and slow another'
 . (Join-Path $root 'usenet-stub\UsenetStub.Lib.ps1')
@@ -667,7 +667,7 @@ try {
     $script:Notes = @()
     $script:Events = New-Object System.Collections.ArrayList
     function Get-ClientTorrent {
-        param($Kind, $Hash)
+        param($Kind, $Hash, $For)
         $c = $script:Cl[$Kind]
         [pscustomobject]@{ Kind = $Kind; Present = $c.Present; State = $c.State; Progress = [double]$c.Progress; Checking = [bool]$c.Checking; DataFolder = $c.Folder; SavePath = $c.Folder; DownloadPath = $null; ContentPath = $null }
     }
@@ -760,7 +760,7 @@ try {
     $script:Fx.Base = @{ small = $baseFile; big = $baseFile; extra = $extraFile }
     $script:Fx.IndexerIds = @{ torrent = 'ix' }
     function Add-SuiteTorrentRelease { param($Title, $Cat, $File, $Folder, $DummyMb) [pscustomobject]@{ size = 9000; infohash = ('cd' * 20); torrent = 'x.torrent' } }
-    function Get-ClientDataFolder { param($Kind) $script:Asked += $Kind; Join-Path $pRoot "client-$Kind" }
+    function Get-ClientDataFolder { param($Kind, $For) $script:Asked += $Kind; Join-Path $pRoot "client-$Kind" }
     foreach ($kind in 'qbittorrent', 'transmission', 'deluge') {
         foreach ($layout in 'file', 'folder') {
             $script:Asked = @()
@@ -781,9 +781,11 @@ finally { Remove-Item -LiteralPath $pRoot -Recurse -Force -ErrorAction SilentlyC
 & {
 
 Write-Host 'The folder a client keeps an unfinished torrent in is read from the client'
+function Write-SuiteLog { param($Text) }
 $script:Fx.Sessions.Clear()
-function Open-KsQbit { [pscustomobject]@{ Base = 'http://qb'; Session = $null } }
-function Open-KsDeluge { { param($method, $params) if ($method -eq 'core.get_config_value') { [pscustomobject]@{ result = 'C:\Downloads\Incomplete\Deluge'; error = $null } } else { [pscustomobject]@{ result = $null; error = $null } } } }
+function Open-KsQbit { param($Subject) [pscustomobject]@{ Base = 'http://127.0.0.1:1'; Session = $null } }
+function Open-KsDeluge { param($Subject) [pscustomobject]@{ Base = 'http://127.0.0.1:1/json'; Session = $null } }
+function Invoke-KsDeluge { param($Session, $Method, $Params, $Subject) if ($Method -eq 'core.get_config_value') { [pscustomobject]@{ result = 'C:\Downloads\Incomplete\Deluge'; error = $null } } else { [pscustomobject]@{ result = $null; error = $null } } }
 $script:Prefs = [pscustomobject]@{ temp_path_enabled = $true; temp_path = 'C:/Downloads/Incomplete/qBittorrent'; save_path = 'C:/Downloads/Completed' }
 $script:Cats = '{"deluno-movies":{"name":"deluno-movies","savePath":"C:/Downloads/Completed/Movies"}}' | ConvertFrom-Json
 function Invoke-RestMethod { param($Uri, $Headers, $WebSession, [switch] $UseBasicParsing, $TimeoutSec) if ($Uri -like '*app/preferences') { $script:Prefs } else { $script:Cats } }
@@ -793,9 +795,9 @@ Check 'qBittorrent with an incomplete folder of its own on the category: that fo
 $script:Prefs.temp_path_enabled = $false; $script:Cats = '{"deluno-movies":{"name":"deluno-movies","savePath":"C:/Downloads/Completed/Movies","download_path":false}}' | ConvertFrom-Json
 Check 'qBittorrent without an incomplete folder: the folder the category saves to' ((Get-ClientDataFolder -Kind 'qbittorrent') -eq 'C:\Downloads\Completed\Movies')
 Check 'Deluge: its download location' ((Get-ClientDataFolder -Kind 'deluge') -eq 'C:\Downloads\Incomplete\Deluge')
-function Invoke-KsTransmission { param($Method, $Arguments) [pscustomobject]@{ arguments = [pscustomobject]@{ 'incomplete-dir-enabled' = $true; 'incomplete-dir' = 'C:/Downloads/Incomplete/Transmission'; 'download-dir' = 'C:/Downloads/Completed' } } }
+function Invoke-KsTransmission { param($Method, $Arguments, $Subject) [pscustomobject]@{ arguments = [pscustomobject]@{ 'incomplete-dir-enabled' = $true; 'incomplete-dir' = 'C:/Downloads/Incomplete/Transmission'; 'download-dir' = 'C:/Downloads/Completed' } } }
 Check 'Transmission: its incomplete folder when it has one' ((Get-ClientDataFolder -Kind 'transmission') -eq 'C:\Downloads\Incomplete\Transmission')
-function Invoke-KsTransmission { param($Method, $Arguments) [pscustomobject]@{ arguments = [pscustomobject]@{ 'incomplete-dir-enabled' = $false; 'incomplete-dir' = ''; 'download-dir' = 'C:/Downloads/Completed' } } }
+function Invoke-KsTransmission { param($Method, $Arguments, $Subject) [pscustomobject]@{ arguments = [pscustomobject]@{ 'incomplete-dir-enabled' = $false; 'incomplete-dir' = ''; 'download-dir' = 'C:/Downloads/Completed' } } }
 Check 'Transmission: its download folder when it has no incomplete one' ((Get-ClientDataFolder -Kind 'transmission') -eq 'C:\Downloads\Completed')
 }
 
@@ -818,6 +820,137 @@ Check 'a film''s data is placed where the client says, not at a written-down fol
 Check 'a failed film is explained with the client''s folder and the files found' ($wait -match 'Get-FilmPlacementReport' -and $wait -match 'Add-Note' -and (Get-FnText 'Save-FilmClientEvidence') -match 'Get-FilmPlacementReport')
 $allText = (Get-ChildItem (Join-Path $suite 'vm') -Recurse -Filter '*.ps1' | ForEach-Object { Get-Content -Raw $_.FullName }) -join "`n"
 Check 'nothing refers to the old written-down incomplete folders' ($allText -notmatch 'Fx\.Incomplete')
+
+Write-Host 'Every call to a download client is bounded, logged and needs no other group (the 14 Oct hang)'
+$vmDir = Join-Path $suite 'vm'
+$fixAst2 = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $vmDir 'Fixtures.Lib.ps1'), [ref]$null, [ref]$null)
+$fixLoops = @($fixAst2.FindAll({ param($n) $n -is [System.Management.Automation.Language.WhileStatementAst] -or $n -is [System.Management.Automation.Language.DoWhileStatementAst] -or $n -is [System.Management.Automation.Language.DoUntilStatementAst] }, $true))
+Check 'the fixture code has no while or do loop (every wait goes through Wait-Until, which has a limit)' ($fixLoops.Count -eq 0) (($fixLoops | ForEach-Object { 'line ' + $_.Extent.StartLineNumber }) -join ', ')
+$fixFors = @($fixAst2.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForStatementAst] }, $true))
+Check 'every for loop in the fixture code counts to a fixed number' (@($fixFors | Where-Object { $_.Condition.Extent.Text -notmatch '-lt \d+$' }).Count -eq 0)
+$fixCmds = @($fixAst2.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true))
+Check 'the fixture code never prompts' (@($fixCmds | Where-Object { $_.GetCommandName() -in 'Read-Host', 'Get-Credential', 'pause' }).Count -eq 0)
+$httpCalls = @($fixCmds | Where-Object { $_.GetCommandName() -in 'Invoke-RestMethod', 'Invoke-WebRequest' })
+$httpFns = @($httpCalls | ForEach-Object { $p = $_.Parent; while ($p -and $p -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $p = $p.Parent }; if ($p) { $p.Name } else { '(script)' } } | Select-Object -Unique)
+Check 'only Invoke-FxHttp sends a request to a client, and it always sets a time limit' (($httpFns -join ',') -match '^Invoke-FxHttp(,Start-FeedAndStubs)?$|^Start-FeedAndStubs,Invoke-FxHttp$' -and $fixText -match 'TimeoutSec = \$limit')
+$vmCalls = foreach ($vf in Get-ChildItem $vmDir -Recurse -Filter '*.ps1') {
+    $a = [System.Management.Automation.Language.Parser]::ParseFile($vf.FullName, [ref]$null, [ref]$null)
+    $a.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { [pscustomobject]@{ File = $vf.Name; Name = $_.GetCommandName(); Text = $_.Extent.Text; Cmd = $_ } }
+}
+$noLimit = @($vmCalls | Where-Object { $_.Name -eq 'Wait-Until' -and $_.Text -notmatch '-TimeoutSec' })
+Check 'every Wait-Until in the suite sets its time limit' ($noLimit.Count -eq 0) (($noLimit | ForEach-Object { $_.File + ': ' + $_.Text.Substring(0, [math]::Min(60, $_.Text.Length)) }) -join '; ')
+$rawHttp = @($vmCalls | Where-Object { $_.Name -in 'Invoke-RestMethod', 'Invoke-WebRequest' -and $_.Text -notmatch 'TimeoutSec' -and $_.Text -notmatch '@p\b' })
+Check 'every other request in the suite sets a time limit too' ($rawHttp.Count -eq 0) (($rawHttp | ForEach-Object { $_.File + ': ' + $_.Text.Substring(0, [math]::Min(60, $_.Text.Length)) }) -join '; ')
+Check 'a client''s session is not a script block that reads its address from whoever calls it' ($fixText -notmatch '\$call = \{' -and $fixText -match 'function Invoke-KsDeluge')
+Check 'the films group no longer needs the keep-seeding group: the client helpers are in Fixtures.Lib.ps1, not in G10' ((@('Open-KsQbit', 'Open-KsDeluge', 'Invoke-KsDeluge', 'Invoke-KsTransmission', 'Get-KsComponentLogin') | Where-Object { $groupText -match ('function\s+' + $_ + '\b') }).Count -eq 0 -and $fixText -match '\$script:Ks = @\{')
+
+# A stand-in for the three clients' web interfaces on this PC (a real listener, so the real request code runs), and one that accepts
+# a call and never answers.
+$srvScript = {
+    param($Port, $Mode)
+    $l = New-Object System.Net.HttpListener
+    $l.Prefixes.Add("http://127.0.0.1:$Port/")
+    $l.Start()
+    while ($l.IsListening) {
+        $ctx = $l.GetContext()
+        if ($Mode -eq 'silent') { Start-Sleep -Seconds 600; continue }
+        $req = $ctx.Request; $res = $ctx.Response
+        $body = (New-Object IO.StreamReader($req.InputStream)).ReadToEnd()
+        $path = $req.Url.AbsolutePath
+        $out = ''
+        if ($path -eq '/stop') { $res.OutputStream.Close(); $l.Stop(); break }
+        elseif ($path -eq '/json') {
+            $m = ($body | ConvertFrom-Json).method
+            $r = switch ($m) { 'auth.login' { $true } 'web.connected' { $true } 'core.get_config_value' { 'C:/Downloads/Incomplete/Deluge' } default { $null } }
+            $out = (@{ result = $r; error = $null; id = 1 } | ConvertTo-Json -Compress)
+        }
+        elseif ($path -eq '/transmission/rpc') {
+            if (-not $req.Headers['X-Transmission-Session-Id']) { $res.StatusCode = 409; $res.Headers.Add('X-Transmission-Session-Id', 'abc') }
+            else { $out = '{"result":"success","arguments":{"incomplete-dir":"C:/Downloads/Incomplete/Transmission","incomplete-dir-enabled":true,"download-dir":"C:/Downloads/Completed"}}' }
+        }
+        elseif ($path -eq '/api/v2/auth/login') { $out = 'Ok.' }
+        elseif ($path -eq '/api/v2/app/preferences') { $out = '{"temp_path_enabled":true,"temp_path":"C:/Downloads/Incomplete/qBittorrent","save_path":"C:/Downloads/Completed"}' }
+        elseif ($path -eq '/api/v2/torrents/categories') { $out = '{"deluno-movies":{"name":"deluno-movies","savePath":"C:/Downloads/Completed/Movies"}}' }
+        $bytes = [Text.Encoding]::UTF8.GetBytes($out)
+        $res.ContentType = 'application/json'
+        $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        $res.OutputStream.Close()
+    }
+}
+function Get-FreePort { $t = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0); $t.Start(); $p = $t.LocalEndpoint.Port; $t.Stop(); $p }
+$okPort = Get-FreePort; $silentPort = Get-FreePort
+$okPs = [powershell]::Create(); [void]$okPs.AddScript($srvScript).AddArgument($okPort).AddArgument('ok'); $okHandle = $okPs.BeginInvoke()
+$silentPs = [powershell]::Create(); [void]$silentPs.AddScript($srvScript).AddArgument($silentPort).AddArgument('silent'); $silentHandle = $silentPs.BeginInvoke()
+$coldRoot = Join-Path ([IO.Path]::GetTempPath()) ('cold-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $coldRoot | Out-Null
+try {
+    $up = $false
+    for ($i = 0; $i -lt 50 -and -not $up; $i++) { try { Invoke-RestMethod -Uri "http://127.0.0.1:$okPort/json" -Method Post -Body '{"method":"web.connected"}' -ContentType 'application/json' -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 100 } }
+    Check 'the stand-in client answers' $up
+    # A fresh Windows PowerShell that loads only the suite's shared code and the fixtures, as the films group sees them when it is
+    # chosen alone: no group file, so nothing the keep-seeding group sets up. A decoy file stands for the test video: the old code
+    # sent Deluge's calls to the film's own variable, which held that path.
+    $decoy = Join-Path $coldRoot 'base-video.mkv'
+    [IO.File]::WriteAllBytes($decoy, (New-Object byte[] 5000))
+    $child = Join-Path $coldRoot 'cold.ps1'
+    Set-Content -Path $child -Encoding ascii -Value @'
+param($Vm, $OkPort, $SilentPort, $Decoy)
+$ErrorActionPreference = 'Stop'
+. (Join-Path $Vm 'Suite.Lib.ps1')
+. (Join-Path $Vm 'Fixtures.Lib.ps1')
+function Get-KsComponentLogin { param($Kind) [pscustomobject]@{ User = 'user'; Password = 'secret' } }
+$out = [ordered]@{}
+$script:Ks.Ports.qbittorrent = $OkPort; $script:Ks.Ports.deluge = $OkPort; $script:Ks.Ports.transmission = $OkPort
+# Called the way New-TorrentFilm calls it, with a local named $base that holds a file path.
+function Ask-LikeNewTorrentFilm { param($Kind) $base = $Decoy; $sess = $null; Get-ClientDataFolder -Kind $Kind -For 'GpTest.2020.1080p.WEB-DL.x264-GOLDEN' }
+foreach ($k in 'deluge', 'qbittorrent', 'transmission') {
+    $script:Fx.Sessions.Clear(); $script:Ks.TrSession = $null
+    try { $out[$k] = Ask-LikeNewTorrentFilm -Kind $k } catch { $out[$k] = 'ERROR ' + $_.Exception.Message }
+}
+$out.DecoyBytes = (Get-Item -LiteralPath $Decoy).Length
+# A client that takes the call and never answers: a short limit, and the time it took.
+$script:Fx.ClientCallSec = 2; $script:Fx.ClientReadSec = 4
+foreach ($k in 'deluge', 'qbittorrent', 'transmission') {
+    $script:Ks.Ports.qbittorrent = $SilentPort; $script:Ks.Ports.deluge = $SilentPort; $script:Ks.Ports.transmission = $SilentPort
+    $script:Fx.Sessions.Clear(); $script:Ks.TrSession = $null
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    try { $r = Ask-LikeNewTorrentFilm -Kind $k; $out["silent-$k"] = "answered $r" } catch { $out["silent-$k"] = $_.Exception.Message }
+    $out["silent-$k-seconds"] = [math]::Round($sw.Elapsed.TotalSeconds, 1)
+}
+# A call whose address is not a local web address is refused before anything is sent (and the file is not touched).
+try { Invoke-FxHttp -Client 'deluge' -Call 'core.get_config_value' -Subject 'x' -Uri $Decoy -Method Post -Body '{}' ; $out.FilePath = 'sent' } catch { $out.FilePath = $_.Exception.Message }
+try { Invoke-FxHttp -Client 'deluge' -Call 'core.get_config_value' -Subject 'x' -Uri '' -Method Post -Body '{}' ; $out.EmptyUri = 'sent' } catch { $out.EmptyUri = $_.Exception.Message }
+$out.DecoyBytesAfter = (Get-Item -LiteralPath $Decoy).Length
+$out | ConvertTo-Json -Depth 4
+'@
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $raw = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $child -Vm $vmDir -OkPort $okPort -SilentPort $silentPort -Decoy $decoy 2>&1
+    $elapsed = $sw.Elapsed.TotalSeconds
+    $jsonText = ($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Where-Object { $_ -notmatch '^\d{4}-\d\d-\d\d \d\d:' }) -join "`n"
+    $logLines = @($raw | ForEach-Object { "$_" } | Where-Object { $_ -match 'asking ' })
+    $c = $null; try { $c = $jsonText | ConvertFrom-Json } catch { }
+    Check 'the cold-start run gave an answer to read' ($null -ne $c) ($raw -join ' | ')
+    if ($c) {
+        Check 'Deluge: its download location, from a cold start with no keep-seeding setup' ($c.deluge -eq 'C:\Downloads\Incomplete\Deluge') "$($c.deluge)"
+        Check 'qBittorrent: its folder, from a cold start with no keep-seeding setup' ($c.qbittorrent -eq 'C:\Downloads\Incomplete\qBittorrent\deluno-movies') "$($c.qbittorrent)"
+        Check 'Transmission: its folder, from a cold start with no keep-seeding setup' ($c.transmission -eq 'C:\Downloads\Incomplete\Transmission') "$($c.transmission)"
+        Check 'a variable named $base in the caller (the film''s video) is never taken for a client''s address, and the file is untouched' ($c.DecoyBytes -eq 5000 -and $c.DecoyBytesAfter -eq 5000)
+        Check 'an address that is a file path is refused before anything is sent, and says which step' ($c.FilePath -match 'was not sent' -and $c.FilePath -match 'deluge' -and $c.FilePath -match 'core.get_config_value')
+        Check 'an empty address is refused too' ($c.EmptyUri -match 'was not sent' -or $c.EmptyUri -match 'Uri')
+        foreach ($k in 'deluge', 'qbittorrent', 'transmission') {
+            $msg = [string]$c."silent-$k"; $sec = [double]$c."silent-$k-seconds"
+            Check "$k that never answers ends in a bounded error ($sec s, limit 2 s a call)" ($sec -lt 25 -and $msg -notmatch '^answered') $msg
+            Check "$k's error names the client, the step, the film and what it waited for" ($msg -match $k -and $msg -match 'GpTest\.2020' -and $msg -match 'waiting for') $msg
+        }
+        Check 'the suite log gets a line before each client call, naming the client, the call and the film' (@($logLines | Where-Object { $_ -match 'asking deluge: auth.login \(GpTest' }).Count -ge 1 -and @($logLines | Where-Object { $_ -match 'asking transmission: session-get \(GpTest' }).Count -ge 1 -and @($logLines | Where-Object { $_ -match 'asking qbittorrent: preferences \(GpTest' }).Count -ge 1) ($logLines -join ' | ')
+        Check 'the whole run, silent clients included, finished in a bounded time' ($elapsed -lt 120) "$elapsed s"
+    }
+}
+finally {
+    try { Invoke-RestMethod -Uri "http://127.0.0.1:$okPort/stop" -Method Post -Body 'x' -TimeoutSec 3 | Out-Null } catch { }
+    $okPs.Stop(); $okPs.Dispose(); $silentPs.Stop(); $silentPs.Dispose()
+    Remove-Item -LiteralPath $coldRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })
