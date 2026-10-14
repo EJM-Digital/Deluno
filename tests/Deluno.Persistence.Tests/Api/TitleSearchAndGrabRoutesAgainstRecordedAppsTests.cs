@@ -248,4 +248,28 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{seriesId}';"));
         Assert.Equal(HttpStatusCode.NotFound, (await rig.App.Client.PostAsJsonAsync("/api/series/no-such-show/grab", new { releaseName = "x", downloadUrl = "magnet:?xt=urn:btih:00" })).StatusCode);
     }
+
+    [Fact]
+    public async Task Approving_a_held_release_sends_exactly_that_release_to_the_client_and_takes_it_off_the_needs_action_list()
+    {
+        await using var rig = await RigAsync();
+        var (seriesId, _) = await AddShowAsync(rig);
+        // The search itself leaves the real result Jackett gave as held: usable, but wanting a person's yes.
+        await PostOkAsync(rig.App, $"/api/series/{seriesId}/search?mode=preview");
+        var held = await rig.App.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases");
+        var row = held.EnumerateArray().First();
+        var releaseName = row.GetProperty("releaseName").GetString()!;
+        var addsBefore = rig.Qbit.Requests.Count(request => request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
+
+        var approve = await rig.App.Client.PostAsync($"/api/attention/held-releases/{row.GetProperty("historyId").GetString()}/approve", content: null);
+
+        Assert.True(approve.IsSuccessStatusCode, await approve.Content.ReadAsStringAsync());
+        Assert.Equal(releaseName, (await approve.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("releaseName").GetString());
+        var added = rig.Qbit.Requests.Where(request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(addsBefore + 1, added.Length);
+        Assert.Contains(row.GetProperty("downloadUrl").GetString()!.Split('&')[0], Uri.UnescapeDataString(added[^1].Body), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(rig.Qbit.Unanswered);
+        Assert.DoesNotContain((await rig.App.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray(), item => item.GetProperty("historyId").GetString() == row.GetProperty("historyId").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await rig.App.Client.PostAsync("/api/attention/held-releases/no-such-record/approve", content: null)).StatusCode);
+    }
 }
