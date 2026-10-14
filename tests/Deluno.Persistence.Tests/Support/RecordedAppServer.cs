@@ -68,11 +68,24 @@ internal sealed class RecordedAppServer : IAsyncDisposable
         };
     }
 
+    /// <summary>
+    /// For an app that answers every kind of question at one address and tells them apart by a query value (Torznab's <c>t=</c>):
+    /// a call whose <paramref name="parameter"/> has a listed value is answered with that recorded exchange's reply.
+    /// </summary>
+    public static Func<HttpRequestMessage, string, HttpResponseMessage?> ByQuery(string parameter, params (string Value, Exchange Reply)[] answers)
+        => (request, _) =>
+        {
+            var value = System.Web.HttpUtility.ParseQueryString(request.RequestUri?.Query ?? string.Empty)[parameter];
+            return answers.FirstOrDefault(answer => string.Equals(answer.Value, value, StringComparison.Ordinal)).Reply?.Reply.ToResponse();
+        };
+
     public static async Task<RecordedAppServer> StartAsync(
         string app,
         IEnumerable<Recording> recordings,
-        Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept = null)
+        Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept = null,
+        string? addressInRecordings = null)
     {
+        RecordedAppServer? self = null;
         var requests = new List<Seen>();
         var unanswered = new List<string>();
         var handler = RecordedReplies.Handler(app, recordings, intercept);
@@ -135,12 +148,22 @@ internal sealed class RecordedAppServer : IAsyncDisposable
                     }
                 }
 
-                await context.Response.Body.WriteAsync(await reply.Content.ReadAsByteArrayAsync());
+                var bytes = await reply.Content.ReadAsByteArrayAsync();
+                var type = reply.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                if (addressInRecordings is not null && self is not null && (type.Contains("xml", StringComparison.Ordinal) || type.Contains("json", StringComparison.Ordinal) || type.StartsWith("text/", StringComparison.Ordinal)))
+                {
+                    // A reply that names the app's own address (Jackett's download links) is made to name this server instead.
+                    bytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(bytes).Replace(addressInRecordings, self.BaseUrl, StringComparison.Ordinal));
+                }
+
+                context.Response.ContentLength = bytes.Length;
+                await context.Response.Body.WriteAsync(bytes);
             }
         });
         await server.StartAsync();
         var address = server.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
-        return new RecordedAppServer(server, handler, new Uri(address), requests, unanswered);
+        self = new RecordedAppServer(server, handler, new Uri(address), requests, unanswered);
+        return self;
     }
 
     public async ValueTask DisposeAsync()

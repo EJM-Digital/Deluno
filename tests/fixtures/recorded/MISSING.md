@@ -144,3 +144,5 @@ Each line is a register row group that cannot be proven by a recording-replay te
 ## Needed by the route proofs (coverage register, area api)
 
 - sabnzbd whole-client resume: `GET /api?mode=resume&output=json` (what `POST /api/download-clients/{clientId}/resume` sends) with SABnzbd paused as a whole (queue.paused true before, false after). Only the per-job `mode=queue&name=resume` is recorded.
+- jackett: the bytes of a downloaded `.torrent` (the `download-link` recording keeps a placeholder, not the file), so a grab by `.torrent` link cannot be replayed; the search-and-grab route proof sends the recorded magnet link instead.
+- jackett (or any torznab/newznab app): a Cloudflare challenge reply (403/503 with the challenge page) that makes Deluno send the request through an indexer proxy (`POST /v1 request.get` to FlareSolverr). The indexer-proxy routes (`POST /api/indexer-proxies`, `PUT/DELETE /api/indexer-proxies/{id}`) therefore stay gaps.
