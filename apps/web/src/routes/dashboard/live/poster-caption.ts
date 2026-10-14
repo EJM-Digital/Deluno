@@ -4,7 +4,7 @@
  * every poster's lines are level across the row: the title, the status (a dot in the Movies page's own legend colour and words),
  * a quiet detail line and when. A line with nothing to say keeps its space.
  */
-import { formatSize } from "../downloads-kit";
+import { formatBytes } from "../../../lib/utils";
 import type { ArrivalGroup } from "./arrival-groups";
 
 /** The status dot's colour is the Movies page's legend: gold for quality met, green for can still be upgraded, grey when not known. */
@@ -51,6 +51,6 @@ export function posterDetail(group: DetailFields): string {
   const episodes = group.episodeSpan ?? group.episodes;
   if (episodes) parts.push(episodes);
   if (group.upgrades > 0 && group.items.length === 1 && group.previousQuality) parts.push(`from ${group.previousQuality}`);
-  else if (!episodes && group.sizeBytes > 0) parts.push(formatSize(group.sizeBytes).replace(/\.0 /, " "));
+  else if (!episodes && group.sizeBytes > 0) parts.push(formatBytes(group.sizeBytes).replace(/\.0 /, " "));
   return parts.join(" · ");
 }

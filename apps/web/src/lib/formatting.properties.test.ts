@@ -1,7 +1,10 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { formatEta, formatSize, formatSpeed, until, ago } from "../routes/dashboard/downloads-kit";
+import { formatEta, formatSpeed, until, ago } from "../routes/dashboard/downloads-kit";
 import { formatBytes, formatBytesFromGb } from "./utils";
+
+const formatSize = formatBytes;
+const DASH = "—";
 import { formatRuntime } from "./display-preferences";
 
 /** #1271: size, speed and time formatting, as properties over any number rather than a few examples. */
@@ -25,7 +28,9 @@ describe("formatSize properties", () => {
   it("never reads NaN, undefined or Infinity for any input at all", () => {
     fc.assert(
       fc.property(anyNumber, (n) => {
-        expect(formatSize(n)).toMatch(/^\d+(\.\d)? (B|KB|MB|GB|TB)$/);
+        const text = formatSize(n);
+        if (Number.isFinite(n) && n >= 0) expect(text).toMatch(/^\d+(\.\d)? (B|KB|MB|GB|TB)$/);
+        else expect(text).toBe(DASH);
       }),
     );
   });
@@ -38,10 +43,13 @@ describe("formatSize properties", () => {
     );
   });
 
-  it("reads null, undefined, zero and negatives as 0 B", () => {
-    expect(formatSize(null)).toBe("0 B");
-    expect(formatSize(undefined)).toBe("0 B");
-    fc.assert(fc.property(fc.double({ max: 0, noNaN: true }), (n) => { expect(formatSize(n)).toBe("0 B"); }));
+  it("reads zero as 0 B and null, undefined, negatives and non-finite sizes as a plain dash", () => {
+    expect(formatSize(0)).toBe("0 B");
+    expect(formatSize(null)).toBe(DASH);
+    expect(formatSize(undefined)).toBe(DASH);
+    expect(formatSize(NaN)).toBe(DASH);
+    expect(formatSize(Infinity)).toBe(DASH);
+    fc.assert(fc.property(fc.double({ max: -Number.MIN_VALUE, noNaN: true }), (n) => { expect(formatSize(n)).toBe(DASH); }));
   });
 
   it("is monotonic: a larger size never reads as a smaller amount (whole bytes)", () => {
@@ -61,7 +69,7 @@ describe("formatSize properties", () => {
     );
   });
 
-  it.skip("never shows a value of 1024 or more in a unit that has a larger one (just under a unit boundary) - DEFECT: 1048575 reads 1024 KB", () => {
+  it("never shows a value of 1024 or more in a unit that has a larger one (just under a unit boundary) - DEFECT: 1048575 reads 1024 KB", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 4 }), fc.integer({ min: 1, max: 600 }), (power, below) => {
         const [amount, unit] = formatSize(1024 ** power - below).split(" ");
@@ -70,21 +78,25 @@ describe("formatSize properties", () => {
     );
   });
 
-  it.skip("DEFECT (shrunk case): a size just under 1 MB reads 1024 KB, not 1 MB", () => {
+  it("DEFECT (shrunk case): a size just under 1 MB reads 1024 KB, not 1 MB", () => {
     expect(formatSize(1048575)).toBe("1.0 MB");
   });
 
-  it.skip("DEFECT (shrunk case): half a byte reads with a missing unit", () => {
+  it("DEFECT (shrunk case): half a byte reads with a missing unit", () => {
     expect(formatSize(0.5)).toBe("1 B");
   });
 });
 
 describe("formatBytes properties", () => {
-  it.skip("DEFECT (shrunk case): a negative size reads NaN undefined", () => {
-    expect(formatBytes(-5)).toBe("0 B");
+  it("a subnormal size reads 0 B, not Infinity", () => {
+    expect(formatBytes(Number.MIN_VALUE)).toBe("0 B");
   });
 
-  it.skip("DEFECT (shrunk case): half a byte reads with a missing unit", () => {
+  it("a negative size reads a dash", () => {
+    expect(formatBytes(-5)).toBe(DASH);
+  });
+
+  it("DEFECT (shrunk case): half a byte reads with a missing unit", () => {
     expect(formatBytes(0.5)).toBe("1 B");
   });
 

@@ -3,6 +3,7 @@
  * can see on disk for this title, not only the one it tracks. A title with a
  * remux plus a sample previously had no way to see the second file at all.
  */
+import { formatBytes } from "../../lib/utils";
 import { useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Trash2 } from "lucide-react";
 import { fetchJson, type MovieFileItem, type SubtitleLanguageOption } from "../../lib/api";
@@ -19,18 +20,6 @@ import {
   ListRow,
   ListTable
 } from "../ui/list-card";
-
-function formatBytes(bytes: number | null) {
-  if (bytes === null || bytes === undefined) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
 
 function kindLabel(kind: MovieFileItem["kind"]) {
   return kind === "video" ? "Video" : kind === "subtitle" ? "Subtitle" : "Other";

@@ -12,12 +12,27 @@ export function formatBytesFromGb(value: number | null | undefined) {
   return `${value.toFixed(1)} GB`;
 }
 
-/** Whole bytes in the largest unit that still reads as a number: "12.0 GB", "840 B". */
-export function formatBytes(value: number) {
-  if (!value) return "0 B";
+/** What a size reads as when it is missing, negative or not a number: a plain dash, never "NaN" or "undefined". */
+export const NO_SIZE = "—";
+
+/**
+ * The one size formatter for every screen (#1310): "840 B", "12.5 MB", "120 GB".
+ * The unit is always present and always the largest one that keeps the amount under 1024
+ * (so just under a megabyte reads "1.0 MB", not "1024 KB"). A missing, negative or
+ * non-finite size reads a dash.
+ */
+export function formatBytes(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return NO_SIZE;
   const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+  let index = 0;
+  let amount = value;
+  // Rounding reaches 1024 just under a boundary (1048575 B is 1023.999 KB): step up so it reads 1.0 MB.
+  while (index < units.length - 1 && Math.round(amount) >= 1024) {
+    index += 1;
+    amount = value / 1024 ** index;
+  }
+  const text = index === 0 || amount >= 100 ? String(Math.round(amount)) : amount.toFixed(1);
+  return `${text} ${units[index]}`;
 }
 
 export function formatRelative(value: string) {
