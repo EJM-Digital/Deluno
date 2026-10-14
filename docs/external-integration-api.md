@@ -752,7 +752,7 @@ This is not Weir-specific: any processor may report it, in whatever path shape m
 - A processor without these endpoints is judged the same way, from the hand-off's last recorded change.
 - Whichever way the wait ends, a processed file that appears in the output folder afterwards is still imported.
 
-`POST /api/integrations/processors/handoffs/{id}/import-original` imports the untouched download for a hand-off the processor did not finish.
+`POST /api/integrations/processors/handoffs/{id}/import-original` imports the untouched download for a hand-off the processor did not finish. A hand-off Deluno has no record of answers `404` with `{ "error": "handoff_not_found", "message": "Deluno has no hand-off with the id <id>." }`.
 
 #### Where each library's downloads land
 
@@ -764,7 +764,7 @@ A processor that has to watch the right folder can ask Deluno where every downlo
 GET /api/integrations/processors/download-destinations?libraryId=library-id
 ```
 
-`libraryId` is optional; without it every library is listed. An unknown `libraryId` answers `404`. Otherwise `200` with:
+`libraryId` is optional; without it every library is listed. An unknown `libraryId` answers `404` with `{ "error": "library_not_found", "message": "Deluno has no library with the id <id>." }`; a `404` with no body means only that this Deluno has no such route. Otherwise `200` with:
 
 | Field | JSON type | Meaning |
 | --- | --- | --- |
@@ -862,7 +862,7 @@ Deluno keeps an outcome until the processor hears it:
 - Deluno gives up after seven days without an acknowledgement, or when the processor connection is removed.
 - A processor that answers but does not list `handoff-outcome` is not told, and keeps its copy until its own retention reclaims it.
 
-Each hand-off in `GET /api/integrations/processors/handoffs` carries an `outcome` record: what was said, whether it was heard (`pending`, `delivered`, `refused` or `given-up`), how many attempts there have been, when the next is due, and the processor's last words. `POST /api/integrations/processors/handoffs/{id}/outcome/send-again` starts the report over, with a new count of attempts and a new week.
+Each hand-off in `GET /api/integrations/processors/handoffs` carries an `outcome` record: what was said, whether it was heard (`pending`, `delivered`, `refused` or `given-up`), how many attempts there have been, when the next is due, and the processor's last words. `POST /api/integrations/processors/handoffs/{id}/outcome/send-again` starts the report over, with a new count of attempts and a new week. A hand-off with no outcome recorded (or one Deluno does not know) answers `404` with `{ "error": "nothing_recorded", "message": "Deluno has nothing recorded to tell the processor about this hand-off. An outcome is recorded when its import finishes." }`. `GET /api/integrations/processors/handoffs` and `POST /api/integrations/processors/events` answer no `404` for an unknown thing.
 
 ### Completion safety boundary
 
