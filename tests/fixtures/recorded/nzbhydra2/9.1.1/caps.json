@@ -2,7 +2,7 @@
   "app": "nzbhydra2",
   "version": "9.1.1",
   "state": "caps",
-  "recordedAt": "2026-10-14T08:18:37Z",
+  "recordedAt": "2026-10-14T08:20:06Z",
   "note": "t=caps: NZBHydra2 9.1.1's own Newznab API with no indexer configured (every Usenet indexer needs an account). Installed from: nzbhydra2-9.1.1-windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
   "exchanges": [
     {
@@ -13,9 +13,9 @@
       "reply": {
         "status": 200,
         "headers": {
-          "content-type": "application/xml"
+          "content-type": "application/xml; charset=UTF-8"
         },
-        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<error xmlns:atom=\"http://www.w3.org/2005/Atom\"  xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\" code=\"100\" description=\"Wrong api key\"/>\n"
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<caps xmlns:atom=\"http://www.w3.org/2005/Atom\"  xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\">\n    <server title=\"NZBHydra 2\" email=\"user@example.test\" url=\"https://github.com/theotherp/nzbhydra2\" image=\"https://raw.githubusercontent.com/theotherp/nzbhydra2/master/core/src/main/resources/static/img/banner-bright.png\"/>\n    <limits max=\"100\" default=\"100\"/>\n    <retention days=\"3000\"/>\n    <searching>\n        <search available=\"yes\" supportedParams=\"q,cat,limit,offset,minage,maxage,minsize,maxsize\"/>\n        <tv-search available=\"yes\" supportedParams=\"q,season,ep,cat,limit,offset,minage,maxage,minsize,maxsize,rid,tvdbid,tvmazeid,imdbid,traktid\"/>\n        <movie-search available=\"yes\" supportedParams=\"q,cat,limit,offset,minage,maxage,minsize,maxsize,imdbid,tmdbid\"/>\n        <audio-search available=\"no\" supportedParams=\"\"/>\n        <book-search available=\"no\" supportedParams=\"\"/>\n    </searching>\n    <categories>\n        <category id=\"1000\" name=\"Console\"/>\n        <category id=\"2000\" name=\"Movies\">\n            <subcat id=\"2040\" name=\"Movies HD\"/>\n            <subcat id=\"2030\" name=\"Movies SD\"/>\n        </category>\n        <category id=\"3000\" name=\"Audio\">\n            <subcat id=\"3030\" name=\"Audiobook\"/>\n            <subcat id=\"3040\" name=\"FLAC\"/>\n            <subcat id=\"3010\" name=\"MP3\"/>\n        </category>\n        <category id=\"4000\" name=\"PC\"/>\n        <category id=\"5000\" name=\"TV\">\n            <subcat id=\"5070\" name=\"Anime\"/>\n            <subcat id=\"5040\" name=\"TV HD\"/>\n            <subcat id=\"5030\" name=\"TV SD\"/>\n        </category>\n        <category id=\"6000\" name=\"XXX\"/>\n        <category id=\"7020\" name=\"Ebook\"/>\n        <category id=\"7030\" name=\"Comic\"/>\n    </categories>\n</caps>\n"
       }
     }
   ]
