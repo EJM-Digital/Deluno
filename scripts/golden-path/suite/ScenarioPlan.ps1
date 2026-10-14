@@ -14,6 +14,7 @@ function Get-ScenarioPlan {
     $all = $script:AllClientKinds
     $groups = @(
         @{ Name = 'install';  Function = 'Invoke-GroupInstall';  Ids = @('install-first-run') }
+        @{ Name = 'nzbgetsetup'; Function = 'Invoke-GroupNzbgetSetup'; Ids = @('nzbget.setup-twice') }
         @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') }
         @{ Name = 'removal';  Function = 'Invoke-GroupRemoval';  Ids = @($all | ForEach-Object { "remove-copy.$_.folder" }) + @($script:TorrentKinds | ForEach-Object { "remove-copy.$_.file" }) }
         @{ Name = 'resend';   Function = 'Invoke-GroupResend';   Ids = @(foreach ($t in 'before', 'during', 'after') { foreach ($k in $all) { "resend.$t.$k" } }) }
@@ -109,6 +110,7 @@ function Get-SelectedKinds {
 function Get-ScenarioTopics {
     @(
         [pscustomobject]@{ Group = 'install'; Proves = 'The tray icon blinks, with its two-item menu, while Deluno sets itself up and the picker runs; Weir is installed through the picker and answers on this PC only.' }
+        [pscustomobject]@{ Group = 'nzbgetsetup'; Proves = 'The Usenet provider is set a second time on an NZBGet that already has it, through Deluno''s API, before the films: NZBGet''s own status is not paused and its log holds no "Invalid option" and no "errors in configuration", and Deluno shows no settings-error warning on it. (#1257)' }
         [pscustomobject]@{ Group = 'films'; Proves = 'A film through each client: grabbed, downloaded, handed to Weir, cleaned and imported. One film carries a small extra that is left out of the hand-off and stays in the client''s folder.' }
         [pscustomobject]@{ Group = 'removal'; Proves = '"Remove this copy" on a finished download leaves nothing behind (a folder; and a single file on the torrent clients); removing twice reads as a failure and writes no second Activity row.' }
         [pscustomobject]@{ Group = 'resend'; Proves = '"I don''t want it", then a resend of the same release to the same client, before Weir starts the first send, while Weir works on it, and after Weir has finished it: the new hand-off settles with one import.' }

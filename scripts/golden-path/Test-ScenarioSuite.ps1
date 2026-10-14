@@ -382,7 +382,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; seasonpack = 0; layout = 0; github = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; github = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -644,6 +644,22 @@ Check 'the picker scenario chosen alone needs no VM stage and runs the picker ph
 Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the update phase last' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'update' }) -join ',' -eq 'github,githubpicker,update' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
 Check 'Weir''s key is left after the last group that runs in the VM, whatever it is called' ($runSuiteText -match 'lastVmGroup' -and $runSuiteText -match '\$Groups -contains \$lastVmGroup' -and $runSuiteText -match "GithubLimit\.Lib\.ps1")
 foreach ($n in 'seasonpack', 'layout', 'github', 'githubpicker') { Check "the $n group says what it proves" ($n -in $topics.Group) }
+# #1257: the NZBGet setup-twice scenario is in the plan, runs before the films, can be run alone, and judges NZBGet's own replies
+# (recorded from NZBGet 26.3) the way the issue describes.
+Check 'nzbget.setup-twice is in the plan, runs before the film scenarios, and can be run alone with -Scenarios' ('nzbget.setup-twice' -in $allIds -and $planNames.IndexOf('nzbgetsetup') -lt $planNames.IndexOf('films') -and (Get-RunScope -Plan $plan -Scenarios @('nzbget.setup-twice')).ChosenIds -contains 'nzbget.setup-twice' -and (Get-RunScope -Plan $plan -Scenarios @('nzbget.setup-twice')).NeedVm)
+Check 'the nzbgetsetup group says what it proves' ('nzbgetsetup' -in $topics.Group)
+& {
+    . (Join-Path $suite 'vm\scenarios\G00-NzbgetSetupTwice.ps1')
+    $recorded = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'tests\fixtures\recorded\nzbget\26.3'
+    function Read-Reply([string] $State, [string] $Method) {
+        $doc = Get-Content -Raw -LiteralPath (Join-Path $recorded "$State.json") | ConvertFrom-Json
+        ($doc.exchanges | Where-Object { $_.request.body.method -eq $Method } | Select-Object -First 1).reply.body.result
+    }
+    $paused = @(Get-NzbgetConfigProblems -Status (Read-Reply 'config-error-paused' 'status') -LogEntries (Read-Reply 'config-error-paused' 'log'))
+    Check 'NZBGet paused over a bad nzbget.conf (recorded status and log) fails the check, naming the pause and the Invalid option line' ($paused.Count -ge 2 -and ($paused -join '|') -match 'paused' -and ($paused -join '|') -match 'Invalid option' -and ($paused -join '|') -match 'errors in configuration') ($paused -join ' | ')
+    $clean = @(Get-NzbgetConfigProblems -Status (Read-Reply 'config-error-cleared' 'status') -LogEntries @())
+    Check 'NZBGet after the file is valid again (recorded status, not paused, empty log) passes the check' ($clean.Count -eq 0) ($clean -join ' | ')
+}
 
 # The limit helpers, against stand-ins for GitHub (defined in a scope of their own, so they never reach the other checks).
 & {
