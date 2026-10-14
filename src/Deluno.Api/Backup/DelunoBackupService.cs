@@ -582,12 +582,60 @@ public sealed class DelunoBackupService(
         }
     }
 
+    private string? otherFilesNote;
+
+    /// <summary>
+    /// Removes the oldest backups past the retention count, and only backups Deluno recorded making: an archive whose own
+    /// manifest says it is a Deluno backup. Any other file in the folder (an owner's zip, a download) is left alone and
+    /// named once in plain words in the backup settings' problem line and the log.
+    /// </summary>
     private async Task EnforceRetentionAsync(BackupSettingsState state, CancellationToken cancellationToken)
     {
+        var folder = EffectiveBackupFolder(state);
         var items = await ListBackupsAsync(cancellationToken);
-        foreach (var item in items.Skip(state.RetentionCount))
+        var recorded = items.Where(item => HasDelunoManifest(item.FullPath)).ToArray();
+        foreach (var item in recorded.Skip(state.RetentionCount))
         {
             File.Delete(item.FullPath);
+        }
+
+        var others = Directory
+            .EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .Where(name => name is not null
+                && !name.StartsWith("backup-settings.json", StringComparison.OrdinalIgnoreCase)
+                && !recorded.Any(item => string.Equals(item.FileName, name, StringComparison.OrdinalIgnoreCase)))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var note = others.Length == 0
+            ? null
+            : $"The backup folder also holds {others.Length} file{(others.Length == 1 ? string.Empty : "s")} Deluno did not make ({string.Join(", ", others)}). Deluno leaves {(others.Length == 1 ? "it" : "them")} alone and never removes {(others.Length == 1 ? "it" : "them")} to tidy old backups.";
+        if (note is not null && !string.Equals(note, otherFilesNote, StringComparison.Ordinal))
+        {
+            logger.LogInformation("{Note}", note);
+        }
+
+        otherFilesNote = note;
+    }
+
+    private bool HasDelunoManifest(string file)
+    {
+        try
+        {
+            using var archive = ZipFile.OpenRead(file);
+            var entry = archive.GetEntry("deluno-backup.json");
+            if (entry is null)
+            {
+                return false;
+            }
+
+            using var stream = entry.Open();
+            var manifest = JsonSerializer.Deserialize<BackupManifest>(stream, JsonOptions);
+            return manifest is not null && string.Equals(manifest.App, "Deluno", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -721,7 +769,7 @@ public sealed class DelunoBackupService(
             EffectiveBackupFolder(state),
             state.LastRunUtc,
             state.NextRunUtc,
-            state.Problem);
+            state.Problem ?? otherFilesNote);
 
     private DateTimeOffset? CalculateNextRun(BackupSettingsState state, DateTimeOffset now)
     {
