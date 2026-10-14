@@ -68,7 +68,7 @@ public sealed class ApiKeyScopesOnDiskTests
     // DEFECT (the register row says so): the backup archive holds the installation's configuration, and the docs call backups
     // system-scoped, but a key with only `read` can list them and download the file. DelunoRequestPipeline.ResolveApiScopes
     // answers ["read"] for every GET before it gets to the /api/backups rule, and the group itself needs only the Read policy.
-    [Theory(Skip = "Defect: a read-only key can list and download a backup archive, although backups are documented as system-scoped.")]
+    [Theory]
     [InlineData("read")]
     [InlineData("home-assistant")]
     public async Task A_key_without_the_system_scope_cannot_list_or_download_a_backup_file(string scopes)
