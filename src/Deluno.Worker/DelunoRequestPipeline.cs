@@ -85,6 +85,10 @@ public static class DelunoRequestPipeline
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        // #1279: RequestBodyLimits names the limit per route; the form reader must allow the largest of them (a backup).
+        services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+            options.MultipartBodyLengthLimit = RequestBodyLimits.BackupFileBytes);
+
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
@@ -311,6 +315,9 @@ public static class DelunoRequestPipeline
         // The sign-in check in front of every API route (#1146); a route that
         // declares itself public (the poster route) is let through.
         app.UseDelunoSignInGate(options.ResolveScopes);
+
+        // #1279: how large a body each route takes, and how long each saved text member may be.
+        app.UseDelunoRequestBodyLimits();
 
         app.MapDelunoApplicationEndpoints();
 
