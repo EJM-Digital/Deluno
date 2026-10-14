@@ -161,7 +161,7 @@ public sealed class RestartRecoveryOnDiskTests
     [Theory]
     [InlineData("{\"SourcePath\":\"C:\\\\downloads\\\\Sanct")]
     [InlineData("")]
-    [InlineData("[1, 2, 3]")]
+    [InlineData("this is just a sentence, not a restart marker")]
     public async Task A_truncated_empty_or_non_marker_file_sends_the_staging_file_to_the_recycle_bin_and_tells_the_person(string markerText)
     {
         await using var world = await StartWorldAsync();
