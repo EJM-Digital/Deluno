@@ -238,7 +238,9 @@ internal sealed class DeleteBlock : IDisposable
 
     private DeleteBlock(Action undo) => _undo = undo;
 
-    public static DeleteBlock? TryApply(string file)
+    /// <param name="file">The file to hold open on Windows.</param>
+    /// <param name="posixFolder">The folder whose write permission is taken away elsewhere; the file's own folder when left out.</param>
+    public static DeleteBlock? TryApply(string file, string? posixFolder = null)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -246,13 +248,12 @@ internal sealed class DeleteBlock : IDisposable
             return new DeleteBlock(held.Dispose);
         }
 
-        return ApplyOnPosix(file);
+        return ApplyOnPosix(posixFolder ?? Path.GetDirectoryName(file)!);
     }
 
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static DeleteBlock? ApplyOnPosix(string file)
+    private static DeleteBlock? ApplyOnPosix(string folder)
     {
-        var folder = Path.GetDirectoryName(file)!;
         var original = File.GetUnixFileMode(folder);
         File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
         try
