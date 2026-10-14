@@ -105,8 +105,8 @@ public static partial class NamingTemplateRenderer
             .ToArray();
 
         return segments.Length == 0
-            ? SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode) is { Length: > 0 } fallback
-                ? FitSegment(fallback, FileNameSanitizer.MaxNameBytes)
+            ? FitSegment(SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode), FileNameSanitizer.MaxNameBytes) is { Length: > 0 } fallback
+                ? fallback
                 : "Untitled"
             : Path.Combine(segments);
     }
@@ -153,6 +153,7 @@ public static partial class NamingTemplateRenderer
     /// </summary>
     private static string FitSegment(string segment, int maxBytes)
     {
+        segment = FileNameSanitizer.TrimEnd(segment.Trim());
         if (FileNameSanitizer.ByteCount(segment) <= maxBytes)
         {
             return segment;
@@ -239,7 +240,7 @@ public static partial class NamingTemplateRenderer
         // A user-entered template must not escape the selected library root.
         // Separators have already been split, so these are the only traversal
         // segments that can remain.
-        return cleaned is "." or ".." ? string.Empty : FileNameSanitizer.TrimEnd(cleaned);
+        return cleaned is "." or ".." ? string.Empty : cleaned;
     }
 
     [GeneratedRegex(@"\s*[\(\[]\s*(?:19|20|21)\d{2}\s*[\)\]]\s*$", RegexOptions.CultureInvariant)]

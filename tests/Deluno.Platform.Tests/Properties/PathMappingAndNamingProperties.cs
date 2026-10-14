@@ -288,8 +288,47 @@ public sealed class PathMappingAndNamingProperties
     public void A_title_ending_in_a_dot_is_not_rendered_ending_in_a_dot_shrunk_case()
     {
         Assert.Equal("Mr", NamingTemplateRenderer.RenderSegment("{Title}", "Mr.", 2001));
-        Assert.Equal("Mr (2001)", NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "Mr.", 2001));
+        Assert.Equal("Mr. (2001)", NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "Mr.", 2001));
         Assert.Equal("Mr", Path.GetFileName(NamingTemplateRenderer.RenderFolder("{Title}", "Mr.", 2001)));
+    }
+
+    /// <summary>What a title became before #1308: illegal characters to a dash, outer white space trimmed.</summary>
+    private static string OldTitle(string title)
+        => new string(title.Select(c => "<>|?*\"/\\".Contains(c) ? '-' : c).ToArray()).Trim();
+
+    [Fact]
+    public void A_name_that_was_already_fine_renders_exactly_as_it_did_before()
+        => Prop.ForAll(
+            (from length in Gen.Choose(1, 300)
+             from parts in Gen.Elements("a", "B", "7", " ", ".", "-", "_", "&", "'", "<", "|", "?", "\u00e9", "\u4e2d").ArrayOf(length)
+             select string.Concat(parts)).ToArbitrary(),
+            title =>
+            {
+                foreach (var template in new[] { "{Title}", "{Title} ({Year})", "{Title} ({Year}) {Quality}" })
+                {
+                    var oldTitle = OldTitle(title);
+                    var old = template.Replace("{Title}", oldTitle).Replace("{Year}", "2001").Replace("{Quality}", "WEBDL-1080p").Trim();
+                    if (oldTitle.Length == 0 || old.EndsWith('.') || old.EndsWith(' ') || old.Any(char.IsControl) || Bytes(old) > 255)
+                    {
+                        continue;
+                    }
+
+                    var rendered = NamingTemplateRenderer.RenderSegment(template, title, 2001, decision: new NamingDecision(Quality: "WEBDL-1080p"));
+                    if (rendered != old)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }).QuickCheckThrowOnFailure();
+
+    [Fact]
+    public void A_dot_inside_a_name_is_kept_and_only_the_end_of_the_whole_name_is_trimmed()
+    {
+        Assert.Equal("Mr. Smith (2001)", NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "Mr. Smith", 2001));
+        Assert.Equal("Mr", NamingTemplateRenderer.RenderSegment("{Title}", "Mr.", 2001, reserveBytes: 4) + "");
+        Assert.DoesNotContain("..", NamingTemplateRenderer.RenderSegment("{Title}", "Mr.", 2001) + ".mkv");
     }
 
     [Fact]

@@ -15,7 +15,8 @@ public sealed class TrackerIndexers(
     ITrackerEngine engine,
     ICloudflareHelper? cloudflareHelper = null,
     TimeSpan? budget = null,
-    Deluno.Connections.Data.IConnectionsRepository? connections = null) : ITrackerIndexerTester
+    Deluno.Connections.Data.IConnectionsRepository? connections = null,
+    Microsoft.Extensions.Logging.ILogger<TrackerIndexers>? logger = null) : ITrackerIndexerTester
 {
     public async Task<TrackerConnection> ConnectAsync(IndexerItem indexer, CancellationToken cancellationToken)
     {
@@ -131,7 +132,7 @@ public sealed class TrackerIndexers(
     public async Task<XDocument> SearchAsync(IndexerItem indexer, TrackerQuery query, CancellationToken cancellationToken)
     {
         var result = await engine.SearchAsync(await ConnectAsync(indexer, cancellationToken), query, cancellationToken);
-        return TorznabFeed.Write(result.Releases);
+        return TorznabFeed.Write(result.Releases, logger);
     }
 
     public async Task<TrackerGrab> ResolveAsync(IndexerItem indexer, string link, CancellationToken cancellationToken)
@@ -240,11 +241,20 @@ public static class TorznabFeed
         return builder.ToString();
     }
 
-    public static XDocument Write(IEnumerable<TrackerRelease> releases)
+    public static XDocument Write(IEnumerable<TrackerRelease> releases, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
+        var skipped = new List<string?>();
         var channel = new XElement("channel", new XElement("title", "Deluno tracker search"));
         foreach (var release in releases)
         {
+            // A row with nowhere to download from cannot be a result, and one such row
+            // must not lose the page: it is skipped and reported once, below.
+            if (string.IsNullOrWhiteSpace(release.Link))
+            {
+                skipped.Add(release.Title);
+                continue;
+            }
+
             var link = Clean(release.Link);
             var item = new XElement(
                 "item",
@@ -318,6 +328,15 @@ public static class TorznabFeed
             }
 
             channel.Add(item);
+        }
+
+        if (skipped.Count > 0 && logger is not null)
+        {
+            Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(
+                logger,
+                "Skipped {Count} tracker release(s) with neither a download link nor a magnet link, for example {Title}.",
+                skipped.Count,
+                Clean(skipped[0]));
         }
 
         return new XDocument(new XElement("rss", new XAttribute("version", "2.0"), new XAttribute(XNamespace.Xmlns + "torznab", Torznab), channel));

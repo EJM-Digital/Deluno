@@ -119,15 +119,16 @@ public static class FileNameSanitizer
             }
         }
 
-        return TrimEnd(builder.ToString().Trim());
+        return builder.ToString().Trim();
     }
 
     /// <summary>The longest a single file or folder name may be, in UTF-8 bytes, on the common file systems.</summary>
     public const int MaxNameBytes = 255;
 
     /// <summary>
-    /// Windows drops a trailing dot or space, so the name Deluno records would
-    /// not be the name on disk. Both are removed here, on every platform.
+    /// Windows drops a dot or space that ends a whole name, so the name Deluno records would
+    /// not be the name on disk. Callers trim only the end of the finished name (before the
+    /// extension), never inside it: "Mr. (2001)" is a good name.
     /// </summary>
     public static string TrimEnd(string value) => value.TrimEnd('.', ' ');
 
@@ -136,7 +137,7 @@ public static class FileNameSanitizer
     /// <summary>
     /// Cuts <paramref name="value"/> to at most <paramref name="maxBytes"/> UTF-8
     /// bytes at a character boundary (a surrogate pair is never split) and
-    /// removes any trailing dot or space the cut leaves.
+    /// removes a trailing space the cut leaves.
     /// </summary>
     public static string LimitBytes(string value, int maxBytes)
     {
@@ -165,6 +166,6 @@ public static class FileNameSanitizer
             end += width;
         }
 
-        return TrimEnd(value[..end]);
+        return value[..end].TrimEnd();
     }
 }
