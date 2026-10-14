@@ -96,14 +96,14 @@ public static class GithubLatestRelease
             // the API as before.
             if (!hasPattern && string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern))
             {
-                var fromFeed = await ResolveFromFeedAsync(http, spec, cancellationToken);
+                var fromFeed = await ResolveFromFeedAsync(http, spec, excludeTags, cancellationToken);
                 if (fromFeed is not null)
                 {
                     return fromFeed;
                 }
             }
 
-            return await ResolveFromApiAsync(http, spec, hasPattern, cancellationToken);
+            return await ResolveFromApiAsync(http, spec, hasPattern, excludeTags, cancellationToken);
         }
         catch (Deluno.Infrastructure.Http.GitHubRateLimitException limited)
         {
@@ -117,6 +117,15 @@ public static class GithubLatestRelease
         {
             return new GithubLookup(null);
         }
+    }
+
+    /// <summary>Why a release is passed over after its installer download answered 404 (the checksum file was uploaded before the installer).</summary>
+    private static string InstallerNotThere(string tag) => $"{tag}'s installer download was not there yet";
+
+    private static ResolvedGithubAsset? Excluded(string tag, List<string> skipped)
+    {
+        skipped.Add(InstallerNotThere(tag));
+        return null;
     }
 
     private static string InstallerName(BundledComponentSpec spec) => string.IsNullOrWhiteSpace(spec.GithubAsset) ? "its Windows installer" : spec.GithubAsset!;
@@ -134,7 +143,7 @@ public static class GithubLatestRelease
     /// the next newest, up to <see cref="MaxReleasesLooked"/>. Null when the feed cannot be read or a call fails for
     /// any reason but "not there", so the caller falls back to the API.
     /// </summary>
-    private static async Task<GithubLookup?> ResolveFromFeedAsync(HttpClient http, BundledComponentSpec spec, CancellationToken cancellationToken)
+    private static async Task<GithubLookup?> ResolveFromFeedAsync(HttpClient http, BundledComponentSpec spec, IReadOnlyCollection<string>? excludeTags, CancellationToken cancellationToken)
     {
         try
         {
@@ -158,6 +167,13 @@ public static class GithubLatestRelease
             var skipped = new List<string>();
             foreach (var tag in tags.Take(MaxReleasesLooked))
             {
+                if (excludeTags?.Contains(tag) == true)
+                {
+                    // Already chosen once and its installer download answered 404: it still counts toward the cap, and costs no call.
+                    skipped.Add(InstallerNotThere(tag));
+                    continue;
+                }
+
                 var assetUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(spec.GithubRepo!, tag, spec.GithubAsset!);
                 string? sha256 = null;
                 if (!string.IsNullOrWhiteSpace(spec.GithubChecksumAsset))
@@ -217,7 +233,7 @@ public static class GithubLatestRelease
     /// version order, drafts never. Every other component starts from GitHub's own "latest release", which is the
     /// newest stable one and never a pre-release, and only reads the list when that release is not complete.
     /// </summary>
-    private static async Task<GithubLookup> ResolveFromApiAsync(HttpClient http, BundledComponentSpec spec, bool hasPattern, CancellationToken cancellationToken)
+    private static async Task<GithubLookup> ResolveFromApiAsync(HttpClient http, BundledComponentSpec spec, bool hasPattern, IReadOnlyCollection<string>? excludeTags, CancellationToken cancellationToken)
     {
         var skipped = new List<string>();
         var looked = 0;
@@ -235,7 +251,9 @@ public static class GithubLatestRelease
                     triedTag.Add(latest.TagName);
                 }
 
-                var found = await TryReleaseAsync(http, spec, hasPattern, latest, skipped, cancellationToken);
+                var found = latest.TagName is not null && excludeTags?.Contains(latest.TagName) == true
+                    ? Excluded(latest.TagName, skipped)
+                    : await TryReleaseAsync(http, spec, hasPattern, latest, skipped, cancellationToken);
                 if (found is not null)
                 {
                     return new GithubLookup(found, Tag: latest.TagName, Skipped: skipped);
@@ -258,7 +276,9 @@ public static class GithubLatestRelease
             }
 
             looked++;
-            var found = await TryReleaseAsync(http, spec, hasPattern, release, skipped, cancellationToken);
+            var found = release.TagName is not null && excludeTags?.Contains(release.TagName) == true
+                ? Excluded(release.TagName, skipped)
+                : await TryReleaseAsync(http, spec, hasPattern, release, skipped, cancellationToken);
             if (found is not null)
             {
                 return new GithubLookup(found, Tag: release.TagName, Skipped: skipped);

@@ -220,8 +220,8 @@ public sealed class GithubReleaseFallbackTests
             && line.Contains(Rc17, StringComparison.Ordinal)
             && line.Contains("download was not there", StringComparison.Ordinal));
         Assert.Equal(0, replay.ApiCalls);
-        // Within the cap: the feed twice, rc.17's and rc.13's checksum files once each (the retry does not fetch rc.17's again).
-        Assert.Equal(5, replay.Requests.Count);
+        // Within the cap: the feed twice, rc.17 and rc.13 checksum files once each (the retry does not fetch rc.17 again).
+        Assert.Equal(4, replay.Requests.Count);
     }
 
     [Fact]
