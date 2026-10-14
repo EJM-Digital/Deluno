@@ -1,0 +1,22 @@
+{
+  "app": "nzbhydra2",
+  "version": "9.1.1",
+  "state": "unknown-function",
+  "recordedAt": "2026-10-14T08:18:38Z",
+  "note": "A function that does not exist (t=bogus): NZBHydra2 9.1.1's own Newznab API with no indexer configured (every Usenet indexer needs an account). Installed from: nzbhydra2-9.1.1-windows.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?t=bogus&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<error xmlns:atom=\"http://www.w3.org/2005/Atom\"  xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\" code=\"900\" description=\"Validation failed for argument [0] in public org.springframework.http.ResponseEntity&lt;?&gt; org.nzbhydra.api.ExternalApi.api(org.nzbhydra.mapping.newznab.NewznabParameters,java.lang.String,java.lang.String) throws java.lang.Exception: [Field error in object 'newznabParameters' on field 't': rejected value [bogus]; codes [typeMismatch.newznabParameters.t,typeMismatch.t,typeMismatch.org.nzbhydra.mapping.newznab.ActionAttribute,typeMismatch]; arguments [org.springframework.context.support.DefaultMessageSourceResolvable: codes [newznabParameters.t,t]; arguments []; default message [t]]; default message [Failed to convert property value of type 'java.lang.String' to required type 'org.nzbhydra.mapping.newznab.ActionAttribute' for property 't'; No enum constant org.nzbhydra.mapping.newznab.ActionAttribute.BOGUS]] \"/>\n"
+      }
+    }
+  ]
+}
