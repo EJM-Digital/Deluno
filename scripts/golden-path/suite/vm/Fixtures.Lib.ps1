@@ -25,6 +25,11 @@ $script:Fx = @{
     # a folder named for the category inside its incomplete folder, and which folder it has is its own to say (rc.30.22, rc.30.30).
     Category = 'deluno-movies'
     Sessions = @{}
+    # Every call to a client is bounded: one call, and one read (a call, and one more after signing in again), in seconds.
+    ClientCallSec = 20
+    ClientReadSec = 90
+    LastCall = $null
+    LastCallAt = $null
     Base     = @{}
     IndexerIds = @{}
     Counter  = 0
@@ -170,7 +175,7 @@ function New-TorrentFilm {
     # The data goes where the client itself says it keeps the data of an unfinished torrent, before Deluno sends the torrent. A
     # dummy film has no data, so the client is not asked.
     $placeIn = $null
-    if ($Variant -ne 'dummy') { $placeIn = Get-ClientDataFolder -Kind $Client }
+    if ($Variant -ne 'dummy') { $placeIn = Get-ClientDataFolder -Kind $Client -For $release }
     if ($Variant -eq 'dummy') {
         $rel = Add-SuiteTorrentRelease -Title $release -DummyMb 40
     }
@@ -317,35 +322,228 @@ function ConvertTo-FxPath {
     $p
 }
 
-# The client's logged-in session (qBittorrent's cookie, Deluge's caller); kept, and made again when -Fresh is asked for.
+# ---------------------------------------------------------------- the clients' own APIs (14 Oct run: a hang with no log line)
+#
+# Every call to a download client's own web interface goes through Invoke-FxHttp, and nothing else in the suite asks a client:
+#   - the address must be http://127.0.0.1:<port>. An address that is empty or is a file path is refused before anything is sent: with
+#     a file path, Windows PowerShell treats it as a file:// address, ignores -TimeoutSec, and a POST to it waits forever on the
+#     file stream while it OVERWRITES the file (the 14 Oct hang: Deluge's call used a variable it did not own, $base, and found the
+#     test video's path from the film being made; the call never returned and the video was cut to the 7-byte request body);
+#   - each call has a time limit ($script:Fx.ClientCallSec); on expiry the error names the client, the call, the film and what it
+#     was waiting for;
+#   - a line goes to the suite log before the call (client, call, film), so a hang explains itself. A call repeated within 15 s
+#     with the same words is written once (the polling loops would otherwise write a line a second).
+
+# What the keep-seeding group (G10) adds is its own names; the ports and the Transmission session belong to every group.
+$script:Ks = @{
+    Category    = 'golden-keep-seeding'
+    PrivateName = 'Golden private feed'
+    Ports       = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112 }
+    TrSession   = $null
+    TrAuth      = $null
+}
+
+function Write-FxCall {
+    param([string] $Client, [string] $Call, [string] $Subject)
+    $sig = "$Client|$Call|$Subject"
+    $now = Get-Date
+    if ($script:Fx.LastCall -eq $sig -and $script:Fx.LastCallAt -and ($now - $script:Fx.LastCallAt).TotalSeconds -lt 15) { return }
+    $script:Fx.LastCall = $sig
+    $script:Fx.LastCallAt = $now
+    if (Get-Command Write-SuiteLog -ErrorAction SilentlyContinue) {
+        Write-SuiteLog ("   asking {0}: {1}{2}" -f $Client, $Call, $(if ($Subject) { " ($Subject)" } else { '' }))
+    }
+}
+
+# One call to a client's web interface, bounded and logged. Returns what Invoke-RestMethod (or, with -Web, Invoke-WebRequest) returns.
+# An HTTP error answer (a status) is rethrown as it is, so the caller can read the status; anything else (no answer, refused,
+# timed out) becomes a plain error naming the step.
+function Invoke-FxHttp {
+    param(
+        [Parameter(Mandatory)] [string] $Client,
+        [Parameter(Mandatory)] [string] $Call,
+        [Parameter(Mandatory)] [string] $Uri,
+        [string] $Subject = '',
+        [string] $Waiting = 'its web interface to answer',
+        [string] $Method,
+        $Body,
+        [string] $ContentType,
+        [hashtable] $Headers,
+        $WebSession,
+        [switch] $Web
+    )
+    if ($Uri -notmatch '^http://127\.0\.0\.1:\d+(/|$)') {
+        throw ("{0}: the step '{1}'{2} was not sent, because its address is not a local web address ('{3}'). Waiting for {4}." -f $Client, $Call, $(if ($Subject) { " for $Subject" } else { '' }), $Uri, $Waiting)
+    }
+    $limit = [int]$script:Fx.ClientCallSec
+    Write-FxCall -Client $Client -Call $Call -Subject $Subject
+    $p = @{ Uri = $Uri; UseBasicParsing = $true; TimeoutSec = $limit }
+    if ($Method) { $p.Method = $Method }
+    if ($null -ne $Body) { $p.Body = $Body }
+    if ($ContentType) { $p.ContentType = $ContentType }
+    if ($Headers) { $p.Headers = $Headers }
+    if ($WebSession) { $p.WebSession = $WebSession }
+    try {
+        if ($Web) { Invoke-WebRequest @p } else { Invoke-RestMethod @p }
+    }
+    catch {
+        if ($_.Exception.Response) { throw }
+        throw ("{0}: the step '{1}'{2} did not complete within {3} s: waiting for {4}. {5}" -f $Client, $Call, $(if ($Subject) { " for $Subject" } else { '' }), $limit, $Waiting, (Hide-Secrets $_.Exception.Message))
+    }
+}
+
+# The client's logged-in session (qBittorrent's cookie, Deluge's address and cookie); kept, and made again when -Fresh is asked for.
+# Needs nothing from any group: the ports and the saved logins are read here.
 function Get-FxClientSession {
-    param([Parameter(Mandatory)] [string] $Kind, [switch] $Fresh)
+    param([Parameter(Mandatory)] [string] $Kind, [switch] $Fresh, [string] $Subject = '')
     if ($Fresh) { $script:Fx.Sessions.Remove($Kind) }
     if (-not $script:Fx.Sessions.ContainsKey($Kind)) {
-        $script:Fx.Sessions[$Kind] = switch ($Kind) { 'qbittorrent' { Open-KsQbit } 'deluge' { Open-KsDeluge } default { $null } }
+        $script:Fx.Sessions[$Kind] = switch ($Kind) { 'qbittorrent' { Open-KsQbit -Subject $Subject } 'deluge' { Open-KsDeluge -Subject $Subject } default { $null } }
     }
     $script:Fx.Sessions[$Kind]
 }
 
-# Runs a read against a client; a session the client no longer knows is made again once.
+# Runs a read against a client, which gets the session and the film's name; a session the client no longer knows is made again
+# once. $Call names the step for the log and for an error. Every call inside is bounded (Invoke-FxHttp), the read is tried twice at
+# most, and a second failure says what each try said. A read that has already used its whole time ($script:Fx.ClientReadSec) is not
+# tried again.
 function Invoke-FxClientRead {
-    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [scriptblock] $Read)
-    try { return (& $Read (Get-FxClientSession -Kind $Kind)) }
-    catch { return (& $Read (Get-FxClientSession -Kind $Kind -Fresh)) }
+    param(
+        [Parameter(Mandatory)] [string] $Kind,
+        [Parameter(Mandatory)] [string] $Call,
+        [string] $Subject = '',
+        [Parameter(Mandatory)] [scriptblock] $Read
+    )
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    try { return (& $Read (Get-FxClientSession -Kind $Kind -Subject $Subject) $Subject) }
+    catch {
+        $first = $_.Exception.Message
+        if ($sw.Elapsed.TotalSeconds -ge $script:Fx.ClientReadSec) { throw "${Kind}: the step '$Call' for $Subject gave up after $([int]$sw.Elapsed.TotalSeconds) s. $first" }
+        try { return (& $Read (Get-FxClientSession -Kind $Kind -Fresh -Subject $Subject) $Subject) }
+        catch { throw "${Kind}: the step '$Call' for $Subject failed twice (after signing in again). First: $first Then: $($_.Exception.Message)" }
+    }
+}
+
+# The login the installer saved for a client, read from its data folders (DPAPI), masked at once.
+
+function Find-KsDataRoots {
+    $roots = foreach ($base in $env:ProgramData, $env:LOCALAPPDATA, $env:APPDATA) {
+        if ($base -and (Test-Path $base)) { Get-ChildItem -Path $base -Filter 'Deluno*' -Directory -ErrorAction SilentlyContinue | ForEach-Object FullName }
+    }
+    @($roots)
+}
+
+# DPAPI text as Deluno writes it: dpapi:v1:<base64>, entropy "Deluno.Platform.Secrets:<purpose>"; the tray writes it with the machine
+# scope, Deluno's own store with the user's, so both are tried.
+function Unprotect-KsSecret {
+    param([string] $Blob, [string] $Purpose)
+    if (-not $Blob -or -not $Blob.StartsWith('dpapi:v1:')) { return $null }
+    Add-Type -AssemblyName System.Security
+    try { $cipher = [Convert]::FromBase64String($Blob.Substring('dpapi:v1:'.Length)) } catch { return $null }
+    $entropy = [Text.Encoding]::UTF8.GetBytes('Deluno.Platform.Secrets:' + $Purpose)
+    foreach ($scope in 'LocalMachine', 'CurrentUser') {
+        try { return [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect($cipher, $entropy, [Security.Cryptography.DataProtectionScope]::$scope)) } catch { }
+    }
+    $null
+}
+
+# The login the installer generated for a client kind ("qbittorrent"), or $null when it made none. The password is masked at once.
+function Get-KsComponentLogin {
+    param([Parameter(Mandatory)] [string] $Kind)
+    foreach ($root in Find-KsDataRoots) {
+        $file = Get-ChildItem -Path $root -Filter 'component-credentials.json' -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $file) { continue }
+        $entries = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
+        foreach ($name in $entries.PSObject.Properties.Name) {
+            if ($name -ne $Kind) { continue }
+            $password = Unprotect-KsSecret $entries.$name.Password "bundled-component:$name"
+            if ($password) {
+                if ($script:S) { $script:S.Secrets["ks-$Kind-password"] = $password; $script:S.Secrets["ks-$Kind-user"] = [string]$entries.$name.Username }
+                return [pscustomobject]@{ User = [string]$entries.$name.Username; Password = $password }
+            }
+        }
+    }
+    $null
+}
+
+function Open-KsQbit {
+    param([string] $Subject = '')
+    $base = "http://127.0.0.1:$($script:Ks.Ports.qbittorrent)"
+    $login = Get-KsComponentLogin -Kind 'qbittorrent'
+    if (-not $login) { throw 'qBittorrent''s saved login was not found in the VM, so the scenario cannot read the client.' }
+    $sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $r = Invoke-FxHttp -Client 'qbittorrent' -Call 'sign in' -Subject $Subject -Uri "$base/api/v2/auth/login" -Method Post -Body @{ username = $login.User; password = $login.Password } -Headers @{ Referer = $base } -WebSession $sess -Web -Waiting 'the web interface to accept the saved login'
+    if ($r.Content -notmatch 'Ok') { throw 'qBittorrent refused the saved login.' }
+    [pscustomobject]@{ Base = $base; Session = $sess }
+}
+
+# Deluge's web interface, signed in and connected to the daemon. The session is a plain object (address and cookie), not a script
+# block: a script block reads $base and $sess from whoever calls it, and found someone else's (the 14 Oct hang).
+function Open-KsDeluge {
+    param([string] $Subject = '')
+    $d = [pscustomobject]@{ Base = ('http://127.0.0.1:' + $script:Ks.Ports.deluge + '/json'); Session = (New-Object Microsoft.PowerShell.Commands.WebRequestSession) }
+    # Deluge keeps its shipped login (build-rules.md); the web UI must be connected to the daemon before it answers core calls.
+    $login = Invoke-KsDeluge -Session $d -Method 'auth.login' -Params @('deluge') -Subject $Subject
+    if ($login.result -ne $true) { throw 'Deluge''s web interface refused its shipped login.' }
+    if (-not (Invoke-KsDeluge -Session $d -Method 'web.connected' -Params @() -Subject $Subject).result) {
+        $hosts = (Invoke-KsDeluge -Session $d -Method 'web.get_hosts' -Params @() -Subject $Subject).result
+        if ($hosts) { Invoke-KsDeluge -Session $d -Method 'web.connect' -Params @($hosts[0][0]) -Subject $Subject | Out-Null; Start-Sleep -Seconds 2 }
+    }
+    $d
+}
+
+# One Deluge JSON call on an opened session. Returns the reply ({ result, error, id }).
+function Invoke-KsDeluge {
+    param([Parameter(Mandatory)] $Session, [Parameter(Mandatory)] [string] $Method, [object[]] $Params = @(), [string] $Subject = '')
+    $body = @{ method = $Method; params = $Params; id = 1 } | ConvertTo-Json -Depth 6 -Compress
+    Invoke-FxHttp -Client 'deluge' -Call $Method -Subject $Subject -Uri $Session.Base -Method Post -ContentType 'application/json' -Body $body -WebSession $Session.Session -Waiting 'the web interface to answer'
+}
+
+function Invoke-KsTransmission {
+    param([Parameter(Mandatory)] [string] $Method, [hashtable] $Arguments = @{}, [string] $Subject = '')
+    $uri = 'http://127.0.0.1:' + $script:Ks.Ports.transmission + '/transmission/rpc'
+    $body = @{ method = $Method; arguments = $Arguments } | ConvertTo-Json -Depth 6 -Compress
+    $headers = @{}
+    if ($script:Ks.TrSession) { $headers['X-Transmission-Session-Id'] = $script:Ks.TrSession }
+    if ($script:Ks.TrAuth) { $headers['Authorization'] = $script:Ks.TrAuth }
+    for ($try = 0; $try -lt 3; $try++) {
+        try {
+            return (Invoke-FxHttp -Client 'transmission' -Call $Method -Subject $Subject -Uri $uri -Method Post -ContentType 'application/json' -Headers $headers -Body $body -Waiting 'its RPC to answer')
+        }
+        catch {
+            $resp = $_.Exception.Response
+            if ($resp -and [int]$resp.StatusCode -eq 409) {
+                $script:Ks.TrSession = $resp.Headers['X-Transmission-Session-Id']
+                if ($script:S -and $script:Ks.TrSession) { $script:S.Secrets['ks-transmission-session'] = $script:Ks.TrSession }
+                $headers['X-Transmission-Session-Id'] = $script:Ks.TrSession
+                continue
+            }
+            if ($resp -and [int]$resp.StatusCode -eq 401 -and -not $script:Ks.TrAuth) {
+                # Transmission keeps its shipped login unless Deluno saved one for it.
+                $login = Get-KsComponentLogin -Kind 'transmission'
+                if (-not $login) { throw 'Transmission wants a login and none was saved.' }
+                $script:Ks.TrAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($login.User):$($login.Password)"))
+                $headers['Authorization'] = $script:Ks.TrAuth
+                continue
+            }
+            throw
+        }
+    }
+    throw "transmission: the step '$Method' was refused 3 times (its session id or login was not accepted)."
 }
 
 # Where the client keeps the data of an unfinished torrent of the films' category, from the client's own settings, to put a film's
 # data there before Deluno sends the torrent. Throws when the client will not say.
 function Get-ClientDataFolder {
-    param([Parameter(Mandatory)] [string] $Kind)
+    param([Parameter(Mandatory)] [string] $Kind, [string] $For = '')
     $folder = $null
     switch ($Kind) {
         'qbittorrent' {
-            $folder = Invoke-FxClientRead -Kind $Kind -Read {
-                param($q)
+            $folder = Invoke-FxClientRead -Kind $Kind -Call 'where it keeps an unfinished torrent' -Subject $For -Read {
+                param($q, $for)
                 $h = @{ Referer = $q.Base }
-                $prefs = Invoke-RestMethod -Uri "$($q.Base)/api/v2/app/preferences" -Headers $h -WebSession $q.Session -UseBasicParsing -TimeoutSec 20
-                $cats = Invoke-RestMethod -Uri "$($q.Base)/api/v2/torrents/categories" -Headers $h -WebSession $q.Session -UseBasicParsing -TimeoutSec 20
+                $prefs = Invoke-FxHttp -Client 'qbittorrent' -Call 'preferences' -Subject $for -Uri "$($q.Base)/api/v2/app/preferences" -Headers $h -WebSession $q.Session
+                $cats = Invoke-FxHttp -Client 'qbittorrent' -Call 'categories' -Subject $for -Uri "$($q.Base)/api/v2/torrents/categories" -Headers $h -WebSession $q.Session
                 $cat = $cats.PSObject.Properties | Where-Object { $_.Name -eq $script:Fx.Category } | ForEach-Object { $_.Value } | Select-Object -First 1
                 # The category's own incomplete folder if it has one; else the incomplete folder with the category's name inside it
                 # (automatic management); else the folder the category saves to.
@@ -356,15 +554,15 @@ function Get-ClientDataFolder {
             }
         }
         'deluge' {
-            $folder = Invoke-FxClientRead -Kind $Kind -Read {
-                param($call)
-                $r = & $call 'core.get_config_value' @('download_location')
+            $folder = Invoke-FxClientRead -Kind $Kind -Call 'core.get_config_value' -Subject $For -Read {
+                param($d, $for)
+                $r = Invoke-KsDeluge -Session $d -Method 'core.get_config_value' -Params @('download_location') -Subject $for
                 if ($r.error) { throw "Deluge answered $($r.error.message)" }
                 [string]$r.result
             }
         }
         'transmission' {
-            $s = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled', 'download-dir') }).arguments
+            $s = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled', 'download-dir') } -Subject $For).arguments
             $folder = if ($s.'incomplete-dir-enabled' -and $s.'incomplete-dir') { $s.'incomplete-dir' } else { $s.'download-dir' }
         }
         default { throw "$Kind is not a torrent client." }
@@ -377,14 +575,15 @@ function Get-ClientDataFolder {
 # What the client itself says about a torrent right now: whether it holds it, whether it is checking its files, how far it is, and the
 # folder it is looking in for the data. Never asks Deluno.
 function Get-ClientTorrent {
-    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [string] $Hash)
+    param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [string] $Hash, [string] $For = '')
+    if (-not $For) { $For = "hash $Hash" }
     $none = [pscustomobject]@{ Kind = $Kind; Present = $false; State = $null; Progress = 0.0; Checking = $false; DataFolder = $null; SavePath = $null; DownloadPath = $null; ContentPath = $null }
     $hash = $Hash.ToLowerInvariant()
     switch ($Kind) {
         'qbittorrent' {
-            $row = Invoke-FxClientRead -Kind $Kind -Read {
-                param($q)
-                @(Invoke-RestMethod -Uri "$($q.Base)/api/v2/torrents/info?hashes=$hash" -Headers @{ Referer = $q.Base } -WebSession $q.Session -UseBasicParsing -TimeoutSec 20) | Where-Object { $_ } | Select-Object -First 1
+            $row = Invoke-FxClientRead -Kind $Kind -Call 'torrents/info' -Subject $For -Read {
+                param($q, $for)
+                @(Invoke-FxHttp -Client 'qbittorrent' -Call 'torrents/info' -Subject $for -Uri "$($q.Base)/api/v2/torrents/info?hashes=$hash" -Headers @{ Referer = $q.Base } -WebSession $q.Session) | Where-Object { $_ } | Select-Object -First 1
             }
             if (-not $row) { return $none }
             $progress = [double]$row.progress
@@ -395,9 +594,9 @@ function Get-ClientTorrent {
             [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$row.state; Progress = $progress; Checking = ([string]$row.state -like 'checking*'); DataFolder = $folder; SavePath = $save; DownloadPath = $dl; ContentPath = (ConvertTo-FxPath ([string]$row.content_path)) }
         }
         'deluge' {
-            $s = Invoke-FxClientRead -Kind $Kind -Read {
-                param($call)
-                $r = & $call 'core.get_torrent_status' @($hash, @('state', 'progress', 'save_path', 'name'))
+            $s = Invoke-FxClientRead -Kind $Kind -Call 'core.get_torrent_status' -Subject $For -Read {
+                param($d, $for)
+                $r = Invoke-KsDeluge -Session $d -Method 'core.get_torrent_status' -Params @($hash, @('state', 'progress', 'save_path', 'name')) -Subject $for
                 if ($r.error) { throw "Deluge answered $($r.error.message)" }
                 $r.result
             }
@@ -407,10 +606,10 @@ function Get-ClientTorrent {
             [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$s.state; Progress = ([double]$s.progress / 100); Checking = ([string]$s.state -eq 'Checking'); DataFolder = $save; SavePath = $save; DownloadPath = $null; ContentPath = $null }
         }
         'transmission' {
-            $r = Invoke-KsTransmission -Method 'torrent-get' -Arguments @{ ids = @($hash); fields = @('hashString', 'status', 'percentDone', 'downloadDir', 'name') }
+            $r = Invoke-KsTransmission -Method 'torrent-get' -Arguments @{ ids = @($hash); fields = @('hashString', 'status', 'percentDone', 'downloadDir', 'name') } -Subject $For
             $t = @($r.arguments.torrents) | Where-Object { $_ } | Select-Object -First 1
             if (-not $t) { return $none }
-            $ses = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled') }).arguments
+            $ses = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled') } -Subject $For).arguments
             $progress = [double]$t.percentDone
             $dl = $(if ($ses.'incomplete-dir-enabled' -and $ses.'incomplete-dir') { ConvertTo-FxPath ([string]$ses.'incomplete-dir') } else { $null })
             $save = ConvertTo-FxPath ([string]$t.downloadDir)
@@ -478,12 +677,15 @@ function Move-FilmDataToFolder {
 # changed since the client was last told to check.
 function Resolve-FilmPlacement {
     param([Parameter(Mandatory)] $Film, [int] $WaitSec = 60)
+    $asked = @{ Error = $null }
     $w = Wait-Until -TimeoutSec $WaitSec -IntervalSec 1 -Condition {
-        $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash
+        try { $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release }
+        catch { $asked.Error = $_.Exception.Message; throw }
         if ($i.Present -and $i.DataFolder) { $i }
     }
     if (-not $w.Ok) {
-        return [pscustomobject]@{ Ok = $false; Moved = $false; Key = $null; Info = $null; Check = $null; Text = "$($Film.ClientKind) does not hold $($Film.Release) (or does not say where it looks) after $WaitSec s" }
+        $why = $(if ($asked.Error) { "; the last answer was an error: $(Hide-Secrets $asked.Error)" } else { '' })
+        return [pscustomobject]@{ Ok = $false; Moved = $false; Key = $null; Info = $null; Check = $null; Text = "$($Film.ClientKind) does not hold $($Film.Release) (or does not say where it looks) after $WaitSec s$why" }
     }
     $info = $w.Value
     $check = Test-FilmDataAt -Film $Film -Folder $info.DataFolder
@@ -494,8 +696,8 @@ function Resolve-FilmPlacement {
             return [pscustomobject]@{ Ok = $false; Moved = $false; Key = $null; Info = $info; Check = $check; Text = "$($Film.ClientKind) is checking its files; they are left where they are ($($check.Text))" }
         }
         if ($info.Checking) {
-            $idle = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { -not (Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash).Checking }
-            if ($idle.Ok) { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash }
+            $idle = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { -not (Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release).Checking }
+            if ($idle.Ok) { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release }
         }
         try { $moved = Move-FilmDataToFolder -Film $Film -Folder $info.DataFolder }
         catch { Write-SuiteLog ("   {0}: could not move the data to where the client looks: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }
@@ -548,7 +750,7 @@ function Get-FilmPlacementReport {
     param([Parameter(Mandatory)] $Film)
     $lines = New-Object System.Collections.ArrayList
     $info = $null
-    if ($Film.Hash) { try { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash } catch { [void]$lines.Add("The client could not be asked: $(Hide-Secrets $_.Exception.Message)") } }
+    if ($Film.Hash) { try { $info = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release } catch { [void]$lines.Add("The client could not be asked: $(Hide-Secrets $_.Exception.Message)") } }
     if ($info -and $info.Present) {
         [void]$lines.Add(("{0} looks for the data in {1} (save path {2}, incomplete path {3}, content path {4}); it is {5} at {6:N1}%." -f $Film.ClientKind, $info.DataFolder, $info.SavePath, $info.DownloadPath, $info.ContentPath, $info.State, ($info.Progress * 100)))
         [void]$lines.Add('At the folder the client looks in: ' + (Test-FilmDataAt -Film $Film -Folder $info.DataFolder).Text)
@@ -595,7 +797,7 @@ function Wait-ClientCheckDone {
     param([Parameter(Mandatory)] $Film, [int] $TimeoutSec = 30)
     $state = @{ Seen = $false; Last = $null }
     $w = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Condition {
-        $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash
+        $i = Get-ClientTorrent -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release
         $state.Last = $i
         if (-not $i.Present) { return $null }
         if ($i.Checking) { $state.Seen = $true; return $null }
@@ -610,12 +812,12 @@ function Wait-ClientCheckDone {
 function Invoke-DelugeSettle {
     param([Parameter(Mandatory)] $Film, [string] $Destination = 'C:\Downloads\Completed\Movies')
     $hash = $Film.Hash.ToLowerInvariant()
-    $call = Get-FxClientSession -Kind 'deluge'
-    $r = & $call 'core.force_recheck' @(, @($hash))
+    $d = Get-FxClientSession -Kind 'deluge' -Subject $Film.Release
+    $r = Invoke-KsDeluge -Session $d -Method 'core.force_recheck' -Params @(, @($hash)) -Subject $Film.Release
     if ($r.error) { throw "Deluge would not check $($Film.Release): $($r.error.message)" }
     $done = Wait-ClientCheckDone -Film $Film
     Write-SuiteLog ("   {0}: Deluge's check ended: {1}" -f $Film.Release, $(if ($done) { "$($done.State) at $([math]::Round($done.Progress * 100, 1))%" } else { 'it no longer holds the torrent' }))
-    $r = & $call 'core.move_storage' @(@($hash), $Destination)
+    $r = Invoke-KsDeluge -Session $d -Method 'core.move_storage' -Params @(@($hash), $Destination) -Subject $Film.Release
     if ($r.error) { throw "Deluge would not move $($Film.Release): $($r.error.message)" }
     $true
 }
