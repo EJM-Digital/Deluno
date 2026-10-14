@@ -52,6 +52,15 @@ public abstract class SqliteSqlMigration : IDelunoDatabaseMigration
 
     protected abstract string Sql { get; }
 
+    /// <summary>
+    /// SQL run in the same transaction just before <see cref="Sql"/>. Not part of the checksum: it
+    /// lets a recorded migration open on data its own SQL cannot read, without touching that SQL.
+    /// </summary>
+    protected virtual string? BeforeSql => null;
+
+    /// <summary>SQL run in the same transaction just after <see cref="Sql"/>. Not part of the checksum.</summary>
+    protected virtual string? AfterSql => null;
+
     /// <summary>See <see cref="IDelunoDatabaseMigration.CompactsDatabaseAfterApply"/>.</summary>
     public virtual bool CompactsDatabaseAfterApply => false;
 
@@ -60,9 +69,17 @@ public abstract class SqliteSqlMigration : IDelunoDatabaseMigration
         DbTransaction transaction,
         CancellationToken cancellationToken)
     {
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = Sql;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        foreach (var text in new[] { BeforeSql, Sql, AfterSql })
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = text;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 }

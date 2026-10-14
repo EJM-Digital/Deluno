@@ -254,13 +254,11 @@ public sealed class CatalogueDataMigrationTests
     }
 
     /// <summary>
-    /// DEFECT found by #1274 (not fixed here): the backfill reads each keyword with <c>json_extract(entry.value, '$')</c>.
-    /// For a string element <c>json_each</c> already returns the unquoted text, so <c>json_extract</c> is handed
-    /// <c>heist</c>, which is not JSON, and SQLite stops with "malformed JSON". The migration therefore fails, and with it start-up, on
-    /// any database that holds a stored metadata blob with a non-empty list of keywords before this migration runs.
-    /// Released installs did not hold such blobs yet, so none broke; a restored backup or a copied database could.
+    /// #1305. The shipped backfill reads each keyword with <c>json_extract(entry.value, '$')</c>, which stops with
+    /// "malformed JSON" on a bare string, so a database stuck at V0022/V0023 with keyword lists could not open. The
+    /// migration's SQL is unchanged (its checksum is recorded on installs); a repair step around it fixes the rows.
     /// </summary>
-    [Theory(Skip = "Defect: V0023/V0024 fail with 'malformed JSON' on a stored keyword list. Found by #1274, to be fixed with a new migration, never by editing the old one.")]
+    [Theory]
     [MemberData(nameof(Both))]
     public async Task V0023_and_V0024_list_the_keywords_in_the_stored_metadata(string name)
     {
@@ -271,6 +269,31 @@ public sealed class CatalogueDataMigrationTests
         await upgrade.MigrateAsync();
 
         Assert.Equal("heist, time loop", await upgrade.TextAsync($"SELECT keywords FROM {c.Entries} WHERE id = 'tagged';"));
+        // The stored metadata comes back byte for byte, spacing included.
+        Assert.Equal("{\"Keywords\":[\"heist\",\"time loop\"]}", await upgrade.TextAsync($"SELECT metadata_json FROM {c.Entries} WHERE id = 'tagged';"));
+    }
+
+    [Theory]
+    [MemberData(nameof(Both))]
+    public async Task V0023_and_V0024_repair_leaves_rows_that_are_not_keyword_lists_alone_and_opens_a_second_time(string name)
+    {
+        var c = Of(name);
+        await using var upgrade = await UpgradeCase.BeforeAsync(c.Database, c.Keywords);
+        await AddEntryAsync(upgrade, c, "spaced", ("metadata_json", "{ \"Overview\": \"x\",  \"Keywords\": [ \"a\", \"b, c\" ] }"));
+        await AddEntryAsync(upgrade, c, "broken", ("metadata_json", "{not json"));
+        await AddEntryAsync(upgrade, c, "not-a-list", ("metadata_json", "{\"Keywords\":\"heist\"}"));
+        await AddEntryAsync(upgrade, c, "plain", ("metadata_json", "{\"Overview\":\"kept\"}"));
+
+        await upgrade.MigrateAsync();
+
+        var rows = (await upgrade.RowsAsync($"SELECT id, keywords, metadata_json FROM {c.Entries};")).ToDictionary(row => (string)row["id"]!);
+        Assert.Equal("a, b, c", rows["spaced"]["keywords"]);
+        Assert.Equal("{ \"Overview\": \"x\",  \"Keywords\": [ \"a\", \"b, c\" ] }", rows["spaced"]["metadata_json"]);
+        Assert.Equal("{not json", rows["broken"]["metadata_json"]);
+        Assert.Null(rows["broken"]["keywords"]);
+        Assert.Null(rows["not-a-list"]["keywords"]);
+        Assert.Equal("{\"Keywords\":\"heist\"}", rows["not-a-list"]["metadata_json"]);
+        Assert.Equal("{\"Overview\":\"kept\"}", rows["plain"]["metadata_json"]);
     }
 
     [Theory]
