@@ -1,0 +1,54 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "challenge-not-seen",
+  "recordedAt": "2026-10-14T08:05:41Z",
+  "note": "request.get of the public pages that sometimes show a Cloudflare challenge: none showed one today, and the replies say so (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "request.get",
+          "url": "https://www.cloudflare.com/cdn-cgi/trace",
+          "session": "recorder-<scrubbed>",
+          "maxTimeout": 120000
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "Challenge not detected!",
+          "solution": {
+            "url": "https://www.cloudflare.com/cdn-cgi/trace",
+            "status": 200,
+            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+            "turnstile_token": null,
+            "headers": {},
+            "response": "<html><head><meta name=\"color-scheme\" content=\"light dark\"></head><body><pre style=\"word-wrap: break-word; white-space: pre-wrap;\">fl=1336f41\nh=www.cloudflare.com\nip=175.111.176.60\nts=1791965141.000\nvisit_scheme=https\nuag=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36\ncolo=SYD\nsliver=050-tier1\nhttp=http/3\nloc=AU\ntls=TLSv1.3\nsni=plaintext\nwarp=off\ngateway=off\nrbi=off\nkex=X25519MLKEM768\n</pre></body></html>",
+            "cookies": [
+              {
+                "domain": ".www.cloudflare.com",
+                "expiry": 1791966941,
+                "httpOnly": true,
+                "name": "__cf_bm",
+                "path": "/",
+                "sameSite": "None",
+                "secure": true,
+                "value": "eq_SZ99w6PvPFxE_nJEuPS2jsBVa6exp.ceVK.iXFek-1791965141.3913302-1.0.1.1-8Vknw5OogmPgoMy_mETA5Qmc1gOMj4pUtQjN00EHk1FPFmojSriU7i7KFlejV9SSzuC3ccn_QTNd6rvWe_E_jXCibiyhx7wBqakyP.zd.rC9xBmb4UCsTyoUK4W5IYbHVHnsorv.RzYBM0qn3ygMcA"
+              }
+            ]
+          },
+          "startTimestamp": 1791965141307,
+          "endTimestamp": 1791965141542,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

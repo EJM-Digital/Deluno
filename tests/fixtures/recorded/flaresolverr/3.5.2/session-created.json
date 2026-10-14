@@ -1,0 +1,82 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "session-created",
+  "recordedAt": "2026-10-14T08:05:30Z",
+  "note": "sessions.create, the same again (it already exists), then sessions.list (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.create",
+          "session": "recorder-<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "Session created successfully.",
+          "session": "recorder-<scrubbed>",
+          "startTimestamp": 1791965128034,
+          "endTimestamp": 1791965130302,
+          "version": "3.5.2"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.create",
+          "session": "recorder-<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "Session already exists.",
+          "session": "recorder-<scrubbed>",
+          "startTimestamp": 1791965130315,
+          "endTimestamp": 1791965130316,
+          "version": "3.5.2"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "sessions.list"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "message": "",
+          "sessions": [
+            "recorder-<scrubbed>"
+          ],
+          "startTimestamp": 1791965130323,
+          "endTimestamp": 1791965130324,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

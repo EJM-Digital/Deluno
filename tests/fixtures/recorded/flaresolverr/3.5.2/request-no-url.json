@@ -1,0 +1,32 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "request-no-url",
+  "recordedAt": "2026-10-14T08:05:36Z",
+  "note": "request.get with no url (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "request.get",
+          "session": "recorder-<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "error",
+          "message": "Error: Request parameter 'url' is mandatory in 'request.get' command.",
+          "startTimestamp": 1791965136858,
+          "endTimestamp": 1791965136860,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

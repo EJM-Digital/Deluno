@@ -1,0 +1,34 @@
+{
+  "app": "flaresolverr",
+  "version": "3.5.2",
+  "state": "request-timeout",
+  "recordedAt": "2026-10-14T08:05:36Z",
+  "note": "request.get with a maxTimeout too short to finish (FlareSolverr 3.5.2 for Windows, its own Chrome, public pages only). Installed from: flaresolverr_windows_x64.zip from github.com: SHA-256 matched the vendor's published checksum.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1",
+        "body": {
+          "cmd": "request.get",
+          "url": "https://example.com/",
+          "session": "recorder-<scrubbed>",
+          "maxTimeout": 1
+        }
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "error",
+          "message": "Error: Error solving the challenge. Timeout after 0.001 seconds.",
+          "startTimestamp": 1791965136836,
+          "endTimestamp": 1791965136850,
+          "version": "3.5.2"
+        }
+      }
+    }
+  ]
+}

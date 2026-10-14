@@ -6,7 +6,7 @@
 # key or a function gets wrong. It is pointed at public trackers that need no account (YTS for films, EZTV for series, and the
 # others tried in order if one is down or blocks the VM); what the run records is whatever they really answered that day.
 #
-# Newznab: NZBHydra2's own Windows build (with Temurin 17's JRE from Adoptium, checksum from Adoptium's API) answers the Newznab
+# Newznab: NZBHydra2's own Windows build (its Windows build carries its own Java runtime) answers the Newznab
 # API of its own. No Usenet indexer lets you search without an account, so it records caps, the empty search and the errors only;
 # a real indexer's search results are listed in MISSING.md.
 
@@ -114,24 +114,21 @@ function Invoke-RecordNzbhydra($p) {
     Assert-FreeSpace 3 'NZBHydra2'
     Assert-Internet
     $dir = Get-AppFolder 'nzbhydra2'
-    # Java 17: Eclipse Temurin's JRE zip, with the checksum Adoptium's API gives for it.
-    $java = Join-Path $dir 'jre'
-    if (-not (Test-Path (Join-Path $java '*\bin\java.exe'))) {
-        $meta = Invoke-RestMethod -Uri 'https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse' -UseBasicParsing
-        $pkg = @($meta)[0].binary.package
-        $jz = Save-Verified -Url $pkg.link -OutFile (Join-Path $dir $pkg.name) -Sha256 $pkg.checksum
-        Expand-Fresh $jz $java
-    }
-    $javaExe = (Get-ChildItem -Path $java -Filter java.exe -Recurse | Select-Object -First 1).FullName
     $asset = Get-GitHubAsset -Repo 'theotherp/nzbhydra2' -NamePattern '^nzbhydra2-[\d.]+-windows\.zip$'
     $zip = Save-Verified -Url $asset.Url -OutFile (Join-Path $dir $asset.Name) -Sha256 $asset.Sha256
     $app = Join-Path $dir 'app'
     if (-not (Test-Path $app)) { Expand-Fresh $zip $app }
-    $jar = (Get-ChildItem -Path $app -Filter 'core-*-exec.jar' -Recurse | Select-Object -First 1).FullName
-    if (-not $jar) { $jar = (Get-ChildItem -Path $app -Filter '*.jar' -Recurse | Sort-Object Length -Descending | Select-Object -First 1).FullName }
+    # NZBHydra2's Windows build is a native image that needs Microsoft's Visual C++ runtime (a clean server has none: exit code 0xC0000135).
+    if (-not (Test-Path "$env:windir\System32\vcruntime140_1.dll")) {
+        $vc = Save-Verified -Url 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile (Join-Path $dir 'vc_redist.x64.exe') -NoChecksumReason 'Microsoft lists none beside the download; the signature is checked'
+        Assert-SignedBy $vc 'Microsoft Corporation'
+        $null = Start-Process -FilePath $vc -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+    }
+    $core = (Get-ChildItem -Path $app -Filter 'core.exe' -Recurse | Select-Object -First 1).FullName
+    if (-not $core) { throw 'The NZBHydra2 archive holds no core.exe' }
     $data = Join-Path $dir 'data'; New-Item -ItemType Directory -Force -Path $data | Out-Null
     $port = $p.NzbhydraPort
-    $proc = Start-AppProcess -File $javaExe -Arguments @('-Xmx512M', '-jar', $jar, '--datafolder', $data, '--host', '127.0.0.1', '--port', "$port", '--nobrowser') -WorkingDirectory (Split-Path $jar) -LogName 'nzbhydra2.log'
+    $proc = Start-AppProcess -File $core -Arguments @('directstart', '--datafolder', $data, '--host', '127.0.0.1', '--port', "$port", '--nobrowser') -WorkingDirectory (Split-Path $core) -LogName 'nzbhydra2.log'
     try {
         if (-not (Wait-Http -Url "http://127.0.0.1:$port/" -Seconds 240)) { Add-Missing "nzbhydra2: it did not answer on 127.0.0.1:$port after 4 minutes (see $(Get-AppFolder 'logs'))"; return }
         $yml = Get-ChildItem -Path $data -Filter 'nzbhydra.yml' -Recurse | Select-Object -First 1
@@ -153,6 +150,6 @@ function Invoke-RecordNzbhydra($p) {
         Add-Missing 'nzbhydra2: a real Usenet indexer''s search results, its NZB download (t=get) and its account errors need an account at an indexer; not recorded'
     } finally {
         if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-        Stop-AppByName 'java'
+        Stop-AppByName 'core'
     }
 }
