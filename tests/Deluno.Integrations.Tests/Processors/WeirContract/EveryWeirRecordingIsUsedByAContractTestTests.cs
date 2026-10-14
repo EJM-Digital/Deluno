@@ -63,7 +63,7 @@ public sealed class EveryWeirRecordingIsUsedByAContractTestTests
             .Distinct()
             .ToArray();
         var recorded = RecordedReplies.States("weir", RecordedReplies.LatestVersion("weir"))
-            .Concat(RecordedReplies.States("deluno", RecordedReplies.LatestVersion("deluno")))
+            .Concat(RecordedReplies.Versions("deluno").SelectMany(version => RecordedReplies.States("deluno", version)))
             .ToArray();
         var neither = states.Where(state => !recorded.Contains(state)).ToArray();
 
@@ -77,19 +77,23 @@ public sealed class EveryWeirRecordingIsUsedByAContractTestTests
         // Deluno's own side of the talk (what it sends Weir, what Weir reports to it) was written down by the recording proxy.
         var sources = ContractTestSources() + "\n" + PersistenceTestSources();
         var document = File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "deluno-weir-contract.md"));
-        var version = RecordedReplies.LatestVersion("deluno");
-        var problems = RecordedReplies.States("deluno", version)
-            .Where(state => !sources.Contains($"\"{state}\"", StringComparison.Ordinal) || !document.Contains($"`{state}`", StringComparison.Ordinal))
-            .Select(state => $"deluno/{version}/{state}.json")
+        var problems = RecordedReplies.Versions("deluno")
+            .SelectMany(version => RecordedReplies.States("deluno", version).Select(state => (version, state)))
+            .Where(recording => !sources.Contains($"\"{recording.state}\"", StringComparison.Ordinal) || !document.Contains($"`{recording.state}`", StringComparison.Ordinal))
+            .Select(recording => $"deluno/{recording.version}/{recording.state}.json")
             .ToArray();
 
-        Assert.True(problems.Length == 0, "Not named by a test (here or in tests/Deluno.Persistence.Tests/Api/WeirRealReportsTests.cs) or missing from docs/deluno-weir-contract.md: " + string.Join(", ", problems));
+        Assert.True(problems.Length == 0, "Not named by a test (here, in WeirRealReportsTests.cs or in DelunoRepliesToWeirTests.cs under tests/Deluno.Persistence.Tests/Api) or missing from docs/deluno-weir-contract.md: " + string.Join(", ", problems));
     }
 
     private static string PersistenceTestSources()
     {
-        var file = Path.Combine(RepositoryRoot(), "tests", "Deluno.Persistence.Tests", "Api", "WeirRealReportsTests.cs");
-        return File.Exists(file) ? File.ReadAllText(file) : string.Empty;
+        // The tests that replay Deluno's side of the talk: Weir's reports to it, and Deluno's replies to Weir's calls.
+        var folder = Path.Combine(RepositoryRoot(), "tests", "Deluno.Persistence.Tests", "Api");
+        return string.Join("\n", new[] { "WeirRealReportsTests.cs", "DelunoRepliesToWeirTests.cs" }
+            .Select(name => Path.Combine(folder, name))
+            .Where(File.Exists)
+            .Select(File.ReadAllText));
     }
 
     private static string ContractTestSources()

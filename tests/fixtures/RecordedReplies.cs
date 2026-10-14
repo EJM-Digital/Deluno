@@ -181,9 +181,13 @@ public static class RecordedReplies
         return Parse(File.ReadAllText(path), path);
     }
 
-    /// <summary>Loads a state from the newest version of the app.</summary>
+    /// <summary>
+    /// Loads a state from the newest version of the app that holds it. A state is recorded once, at the version of the app that
+    /// made it, and stays the current recording until a newer version records it again (Deluno's own side of the talk with Weir
+    /// is recorded in more than one version folder).
+    /// </summary>
     public static Recording LoadLatest(string app, string state, string? root = null)
-        => Load(app, LatestVersion(app, root), state, root);
+        => Load(app, Versions(app, root).LastOrDefault(version => Exists(app, version, state, root)) ?? LatestVersion(app, root), state, root);
 
     public static Recording Parse(string json, string source = "recording")
     {
