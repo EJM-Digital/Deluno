@@ -23,6 +23,12 @@ function Get-ScenarioPlan {
         @{ Name = 'tryagain'; Function = 'Invoke-GroupTryAgain'; Ids = @($all | ForEach-Object { "tryagain.$_" }) }
         @{ Name = 'vanish';   Function = 'Invoke-GroupVanish';   Ids = @(foreach ($t in 'before', 'waiting') { foreach ($k in $all) { "vanish.$t.$k" } }) }
         @{ Name = 'problems'; Function = 'Invoke-GroupProblems'; Ids = @('problems.dismiss-everywhere', 'activity.one-story') }
+        @{ Name = 'seasonpack'; Function = 'Invoke-GroupSeasonPack'; Ids = @('seasonpack.no-library') }
+        @{ Name = 'layout';   Function = 'Invoke-GroupLayout';   Ids = @('layout.390-folder-chain') }
+        # The last group that runs in the VM: it uses GitHub's hourly allowance up, which stays used up for up to an hour.
+        @{ Name = 'github';   Function = 'Invoke-GroupGithub';   Ids = @('github-limit.messages') }
+        # The host's own, each on a clean machine: they restore the clean checkpoint and install, so they run after the groups.
+        @{ Name = 'githubpicker'; Function = $null; Host = $true; Ids = @('github-limit.picker') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
     )
     $groups | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Function = $_.Function; Host = [bool]$_.Host; Ids = @($_.Ids) } }
@@ -66,6 +72,7 @@ function Get-RunScope {
         ChosenIds = $chosen
         NeedVm = [bool](@($vmIds | Where-Object { $_ -in $chosen }).Count)
         RunUpdate = ('update.over-running-previous' -in $chosen)
+        RunGithubPicker = ('github-limit.picker' -in $chosen)
     }
 }
 
@@ -110,6 +117,10 @@ function Get-ScenarioTopics {
         [pscustomobject]@{ Group = 'outage'; Proves = 'Weir quits with nothing in flight, and with a hand-off in flight: the tray, System and the Dashboard go amber within a minute and come back within a minute.' }
         [pscustomobject]@{ Group = 'tryagain'; Proves = 'Try again on a failed hand-off: the drawer, read every 200 ms, never shows the old failure and its header follows the real hand-off.' }
         [pscustomobject]@{ Group = 'vanish'; Proves = 'Files that vanish before the hand-off read "Files are gone" and are never handed off; files that vanish while the hand-off waits end it as "source gone" with nothing imported.' }
+        [pscustomobject]@{ Group = 'seasonpack'; Proves = 'A season-pack replacement whose old episode files match no library (the library''s folder was changed after they were imported) leaves them on disk, byte for byte, and Deluno''s log says they were left because no library matched them and that nothing was deleted. (#1188)' }
+        [pscustomobject]@{ Group = 'layout'; Proves = 'With a library whose client''s category folder does not agree with its downloads folder (a real folder-chain problem), every screen opens at 390 px wide in the VM without scrolling sideways or clipping a control, and the problem is raised by name: Health reads "The <library> library''s category and save path" and a screen that lists problems shows it. (#1191)' }
+        [pscustomobject]@{ Group = 'github'; Proves = 'With GitHub''s anonymous hourly allowance used up from the VM, the tracker definitions'' Update now and the connections'' version check each name GitHub''s limit, with the reset in the viewer''s local time (never UTC), on the API and on the screen. Uses the limit up for up to an hour, so it is the last group in the VM. (#1181)' }
+        [pscustomobject]@{ Group = 'githubpicker'; Proves = 'Run by the host on a clean machine of its own, after the groups: GitHub''s allowance is used up inside the VM before Setup runs, and the first-run picker still installs Weir through github.com''s release feed (releases.atom); the install log names Weir''s installer and checksum, never says the limit stopped it, and the installed Weir is a release the feed lists. (#1181)' }
         [pscustomobject]@{ Group = 'update'; Proves = 'Run by the host after everything else, on a restored clean machine: the previous release is installed silently and given state; the candidate''s Setup runs silently over it while it runs. Deluno comes back on its own (no hand start) as the candidate, with its download clients, libraries and Activity, and its start goes cleanly (the start marker reads ready, no retry, no give-up). Needs the previous release''s Setup.exe (-PreviousInstallerPath).' }
         [pscustomobject]@{ Group = 'problems'; Proves = 'A problem shown in several places clears everywhere when dismissed in one; every hand-off''s closing line in Activity tells one story.' }
     )
