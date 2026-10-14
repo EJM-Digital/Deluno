@@ -76,7 +76,7 @@ function Invoke-RecordSeerr($p) {
         $version = [string](Get-ReplyJson $status).version
         if (-not $version) { $version = $build.Tag }
         $dl = Get-DownloadNote
-        $n = { param($what) "$what (Seerr $version built from source, signed in to the VM's Jellyfin, TMDB titles from Seerr's own key)." + $dl }
+        $n = { param($what) "$what (Seerr $version built from source, signed in to the VM's Jellyfin, TMDB titles from Seerr's own key)." + $dl }.GetNewClosure()
         Save-State seerr $version 'status' (& $n '/api/v1/status: the version, whether an update is available, whether a restart is needed (ConnectionVersionParserTests)') @($status)
 
         # First sign-in: the Jellyfin administrator becomes Seerr's owner and links the media server.
@@ -98,7 +98,7 @@ function Invoke-RecordSeerr($p) {
         Save-State seerr $version 'setup' (& $n 'The first sign-in with the Jellyfin administrator, the library sync and enable, the initialize call and the main settings (the API key and the session are removed)') @(@($signin, $libs, $enable, $init, $main) | Where-Object { $_ })
         $k = New-RecordedClient -BaseUrl "http://127.0.0.1:$port" -DefaultHeaders @{ 'X-Api-Key' = $key }
         $bad = New-RecordedClient -BaseUrl "http://127.0.0.1:$port" -DefaultHeaders @{ 'X-Api-Key' = 'not-the-key' }
-        $get = { param($path) Send-Recorded -Client $k -Path $path }
+        $get = { param($path) Send-Recorded -Client $k -Path $path }.GetNewClosure()
         Save-State seerr $version 'wrong-api-key' (& $n 'The request list, the user list and settings with a key Seerr does not know, and with no key') @(
             (Send-Recorded -Client $bad -Path '/api/v1/request?filter=all&sort=added'), (Send-Recorded -Client $bad -Path '/api/v1/user?sort=displayname'),
             (Send-Recorded -Client (New-RecordedClient -BaseUrl "http://127.0.0.1:$port") -Path '/api/v1/settings/main'))
