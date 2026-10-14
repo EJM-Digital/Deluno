@@ -67,6 +67,7 @@ The job ids and display names below are the same in both repositories.
 9. **Containers are scanned.** Every image built in CI and in the release is scanned with Trivy (`aquasecurity/trivy-action`, pinned). The scan fails on a `HIGH` or `CRITICAL` vulnerability that has a fix available (`severity: HIGH,CRITICAL`, `ignore-unfixed: true`, `exit-code: "1"`).
 10. **Dependabot watches the actions.** The `github-actions` ecosystem in `dependabot.yml` covers `.github/workflows`, so a security advisory on a pinned action opens a pull request.
 11. **Browser tests retry once on CI; backend tests never retry.** Playwright runs with `retries: process.env.CI ? 1 : 0`, so one failed attempt is run again, and the job summary lists every test that passed only on the retry under "Flaky (passed on retry)". Nothing is hidden, and a test on that list is fixed. The backend xUnit tests are not retried at all: a failure is a failure.
+12. **A skip is never a pass.** A test that needs a real external tool skips itself where the tool is missing. CI installs the pinned tool, sets a require variable that turns the skip into a failure, and fails the leg unless the expected number of those tests ran; a skip is never a pass.
 
 ## The release
 
