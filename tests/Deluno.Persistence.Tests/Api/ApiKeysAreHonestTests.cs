@@ -112,7 +112,7 @@ public sealed class ApiKeysAreHonestTests
         Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
     }
 
-    [Fact(Skip = "DEFECT: GET /api/api-keys answers 200 to a read-only key (key names, scopes and prefixes), although the route group is declared system-scoped and the code comment says list operations stay system-scoped.")]
+    [Fact]
     public async Task A_read_only_key_cannot_list_the_keys()
     {
         await using var app = await ApplicationTestHost.StartAsync();

@@ -26,11 +26,17 @@ internal sealed record MappedRoute(
 {
     public string Label => $"{Method} {Pattern}";
 
+    /// <summary>The scopes the route's group declares, read from the first policy in the endpoint metadata (the group's own policy comes before any the route adds).</summary>
+    public IReadOnlyList<string> GroupScopes(IReadOnlyDictionary<string, string[]> scopesByPolicy)
+        => Policies.Count == 0 ? [] : scopesByPolicy[Policies[0]];
+
     /// <summary>The scopes a key needs for this route, as the platform asks for them: any GET asks for read (or imports on the two hand-off reads); every other method asks for what its policy names.</summary>
     public IReadOnlyList<string> ScopesNeeded(IReadOnlyDictionary<string, string[]> scopesByPolicy)
     {
         if (Method is "GET" or "HEAD" or "OPTIONS")
         {
+            // #1314: a GET under a system-scoped group asks for system, not read.
+            if (GroupScopes(scopesByPolicy).SequenceEqual(["system"])) return ["system"];
             return ImportsMayRead ? ["read", "imports"] : ["read"];
         }
 

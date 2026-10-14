@@ -17,7 +17,9 @@ public sealed class DelunoScopeAuthorizationHandler(IHttpContextAccessor httpCon
     {
         var http = httpContextAccessor.HttpContext;
         var method = http?.Request.Method ?? string.Empty;
-        var requiredScopes = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
+        // #1314: a system-scoped policy asks for system on every method; a read-only key must not list keys, backups or update settings.
+        var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+        var requiredScopes = isRead && !requirement.Scopes.SequenceEqual(["system"])
             // #1265: the two reads a processor makes for its hand-off work also open to the imports scope; every other read asks for read.
             ? (http?.GetEndpoint()?.Metadata.GetMetadata<DelunoImportsScopeMayReadAttribute>() is not null
                 ? new[] { "read", "imports" }
