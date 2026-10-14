@@ -1,4 +1,5 @@
 using System.Net;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -599,17 +600,25 @@ public sealed class WeirCompanion(
         var http = httpClientFactory.CreateClient(CompanionDownloader.ClientName);
         try
         {
-            string setupUrl, sumsUrl;
-            // The free route first (#1181): the newest tag, release candidates included and drafts never, from the
+            // The free route first (#1181): the newest tags, release candidates included and drafts never, from the
             // release feed on github.com, which GitHub's 60 API calls an hour do not cover; the release files
             // are then fetched from the release download address. The API is only for a feed that cannot be read.
-            var feedTag = await NewestTagFromReleaseFeedAsync(http, cancellationToken);
-            if (feedTag is not null)
+            // The newest release is not always the newest one with its files (rc.17 was published with none, #1264), so
+            // the walk is the one the tray's picker uses: the newest of the last few releases that has its installer
+            // and checksum file, and one plain sentence naming the newest looked at when none does.
+            ReleaseFiles? files = null;
+            var feedTags = await TagsFromReleaseFeedAsync(http, cancellationToken);
+            if (feedTags is not null)
             {
-                setupUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(CompanionCatalog.WeirRepository, feedTag, CompanionCatalog.WeirSetupAsset);
-                sumsUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(CompanionCatalog.WeirRepository, feedTag, CompanionCatalog.WeirChecksumsAsset);
+                var walk = await Deluno.Contracts.ReleaseFallback.WalkAsync(feedTags, null,
+                    tag => Deluno.Contracts.ReleaseFallback.TryDownloadFolderAsync(http, CompanionCatalog.WeirRepository, tag, CompanionCatalog.WeirSetupAsset, CompanionCatalog.WeirChecksumsAsset, ChecksumFor, probeInstaller: true, cancellationToken));
+                if (!walk.Unreadable)
+                {
+                    files = walk.Value ?? throw NoInstallerYet(walk.NewestLooked);
+                }
             }
-            else
+
+            if (files is null)
             {
                 try
                 {
@@ -617,19 +626,42 @@ public sealed class WeirCompanion(
                     request.Headers.UserAgent.ParseAdd("Deluno");
                     using var response = await http.SendAsync(request, cancellationToken);
                     response.EnsureSuccessStatusCode();
-                    // The newest release by version order, release candidates included, drafts never (#1123).
-                    var newest = Deluno.Contracts.ReleaseVersions.NewestGitHubRelease(await response.Content.ReadAsStringAsync(cancellationToken))
-                        ?? throw new CompanionStepException($"{Name} has no published release for Deluno to install.");
-                    var assets = newest.GetProperty("assets").EnumerateArray().ToArray();
-                    var setup = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirSetupAsset);
-                    var sums = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirChecksumsAsset);
-                    if (setup.ValueKind != JsonValueKind.Object || sums.ValueKind != JsonValueKind.Object)
+                    // Newest by version order, release candidates included, drafts never (#1123).
+                    var releases = Deluno.Contracts.ReleaseVersions.GitHubReleasesNewestFirst(await response.Content.ReadAsStringAsync(cancellationToken), includePreReleases: true)
+                        .Where(release => release.TryGetProperty("tag_name", out var name) && name.ValueKind == JsonValueKind.String)
+                        .ToDictionary(release => release.GetProperty("tag_name").GetString()!, StringComparer.Ordinal);
+                    if (releases.Count == 0)
                     {
-                        throw NoChecksum();
+                        throw new CompanionStepException($"{Name} has no published release for Deluno to install.");
                     }
 
-                    setupUrl = setup.GetProperty("browser_download_url").GetString()!;
-                    sumsUrl = sums.GetProperty("browser_download_url").GetString()!;
+                    var walk = await Deluno.Contracts.ReleaseFallback.WalkAsync(releases.Keys, null, async tag =>
+                    {
+                        var assets = releases[tag].TryGetProperty("assets", out var list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().ToArray() : [];
+                        var setup = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirSetupAsset);
+                        var sums = assets.FirstOrDefault(asset => asset.GetProperty("name").GetString() == CompanionCatalog.WeirChecksumsAsset);
+                        if (setup.ValueKind != JsonValueKind.Object)
+                        {
+                            return ReleaseAttempt<ReleaseFiles>.Skip($"{tag} has no {CompanionCatalog.WeirSetupAsset} yet");
+                        }
+
+                        if (sums.ValueKind != JsonValueKind.Object)
+                        {
+                            return ReleaseAttempt<ReleaseFiles>.Skip($"{tag} has no {CompanionCatalog.WeirChecksumsAsset} yet");
+                        }
+
+                        using var sumsResponse = await http.GetAsync(sums.GetProperty("browser_download_url").GetString()!, cancellationToken);
+                        if (sumsResponse.StatusCode == HttpStatusCode.NotFound)
+                        {
+                            return ReleaseAttempt<ReleaseFiles>.Skip($"{tag} has no {CompanionCatalog.WeirChecksumsAsset} yet");
+                        }
+
+                        sumsResponse.EnsureSuccessStatusCode();
+                        return ChecksumFor(await sumsResponse.Content.ReadAsStringAsync(cancellationToken), CompanionCatalog.WeirSetupAsset) is { } hash
+                            ? ReleaseAttempt<ReleaseFiles>.Found(new ReleaseFiles(setup.GetProperty("browser_download_url").GetString()!, hash))
+                            : ReleaseAttempt<ReleaseFiles>.Skip($"{tag}'s {CompanionCatalog.WeirChecksumsAsset} does not list {CompanionCatalog.WeirSetupAsset}");
+                    });
+                    files = walk.Value ?? throw NoInstallerYet(walk.NewestLooked);
                 }
                 catch (Deluno.Infrastructure.Http.GitHubRateLimitException limit)
                 {
@@ -638,36 +670,27 @@ public sealed class WeirCompanion(
                 }
             }
 
-            string checksums;
-            try
-            {
-                checksums = await http.GetStringAsync(sumsUrl, cancellationToken);
-            }
-            catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
-            {
-                throw NoChecksum();
-            }
-
-            var hash = checksums.Split('\n')
-                .Select(line => line.Trim().Split((char[])[' ', '\t', '*'], StringSplitOptions.RemoveEmptyEntries))
-                .FirstOrDefault(parts => parts.Length == 2 && parts[1] == CompanionCatalog.WeirSetupAsset)?[0]
-                ?? throw new CompanionStepException($"{Name}'s checksum file does not list {CompanionCatalog.WeirSetupAsset}, so Deluno will not install it.");
-            return new CompanionArtifact(CompanionCatalog.WeirSetupAsset, new Uri(setupUrl), hash, MustBeSigned: false, MinimumBytes: 5_000_000);
+            return new CompanionArtifact(CompanionCatalog.WeirSetupAsset, new Uri(files.AssetUrl), files.Sha256!, MustBeSigned: false, MinimumBytes: 5_000_000);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             throw new CompanionStepException($"Deluno could not reach GitHub to find {Name}'s latest release. Check this computer's internet connection.");
         }
 
-        CompanionStepException NoChecksum()
-            => new($"{Name}'s latest release does not publish {CompanionCatalog.WeirSetupAsset} with a checksum, so Deluno will not install it.");
+        CompanionStepException NoInstallerYet(string? newestLooked)
+            => new(Deluno.Contracts.ReleaseFallback.NoInstallerYetSentence(Name, newestLooked));
+
+        static string? ChecksumFor(string checksums, string asset)
+            => checksums.Split('\n')
+                .Select(line => line.Trim().Split((char[])[' ', '\t', '*'], StringSplitOptions.RemoveEmptyEntries))
+                .FirstOrDefault(parts => parts.Length == 2 && parts[1] == asset)?[0];
     }
 
     /// <summary>
-    /// The newest published release's tag, release candidates included and drafts never (a draft is not in the
-    /// public feed), by version order, from the release feed on github.com. Null when the feed cannot be read.
+    /// The published releases' tags, newest first by version order, release candidates included and drafts never (a draft
+    /// is not in the public feed), from the release feed on github.com. Null when the feed cannot be read.
     /// </summary>
-    private async Task<string?> NewestTagFromReleaseFeedAsync(HttpClient http, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>?> TagsFromReleaseFeedAsync(HttpClient http, CancellationToken cancellationToken)
     {
         string atom;
         try
@@ -693,7 +716,8 @@ public sealed class WeirCompanion(
             return null;
         }
 
-        return NewestTagInReleaseFeed(atom);
+        var tags = Deluno.Contracts.ReleaseAtomFeed.TagsNewestFirst(atom, includePreReleases: true);
+        return tags.Count == 0 ? null : tags;
     }
 
     /// <summary>Reads the tags out of a GitHub <c>releases.atom</c> feed and returns the highest by version order; null when none is readable.</summary>

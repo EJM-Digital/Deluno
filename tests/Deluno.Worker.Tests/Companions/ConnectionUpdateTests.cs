@@ -386,6 +386,113 @@ public sealed class ConnectionUpdateTests : IDisposable
         Assert.DoesNotContain(requested, url => url.Contains("api.github.com", StringComparison.Ordinal));
     }
 
+    // ------------------------------------------------------------------ the newest release has no files (#1264)
+
+    private const string Rc17 = StubGitHub.Rc17;
+
+    private static string DownloadUrl(string tag, string asset) => $"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{tag}/{asset}";
+
+    /// <summary>GitHub's recorded 404 for a release file that was not uploaded.</summary>
+    private static HttpResponseMessage RecordedNoFile() => RecordedReplies.Github("weir-newest-release-has-no-files").Find($"{Rc17}/SHA256SUMS.txt").Reply.ToResponse();
+
+    private async Task<(WeirCompanion Tool, Mock<ICompanionSystem> System, TinyWeir Weir)> WeirWith(List<string> requested, bool feedAvailable = true, Func<HttpRequestMessage, HttpResponseMessage?>? own = null)
+    {
+        var setupBytes = new byte[5_100_000];
+        Random.Shared.NextBytes(setupBytes);
+        var weir = new TinyWeir();
+        var system = WeirSystem(weir.Port);
+        await Task.CompletedTask;
+        return (NewWeir(system.Object, Hash(setupBytes), setupBytes, feedAvailable: feedAvailable, requested: requested, own: own), system, weir);
+    }
+
+    private static CompanionRunContext Context(string folder) => new("http://127.0.0.1:7879", folder, Mock.Of<ICompanionProgress>());
+
+    [Fact]
+    public async Task The_newest_release_having_no_files_the_newest_release_that_has_them_is_installed_and_never_the_empty_one()
+    {
+        var requested = new List<string>();
+        var (tool, system, weir) = await WeirWith(requested);
+        using var _ = weir;
+
+        await tool.UpdateAsync(Context(_folder), CancellationToken.None);
+
+        Assert.Contains(DownloadUrl(Rc17, CompanionCatalog.WeirChecksumsAsset), requested);
+        Assert.DoesNotContain(DownloadUrl(Rc17, CompanionCatalog.WeirSetupAsset), requested);
+        Assert.Contains(DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirSetupAsset), requested);
+        system.Verify(item => item.RunAsync(It.Is<string>(path => path.EndsWith(CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal)), "--silent", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task When_the_release_feed_cannot_be_read_the_API_list_is_walked_the_same_way_and_rc13_is_installed()
+    {
+        var requested = new List<string>();
+        var (tool, system, weir) = await WeirWith(requested, feedAvailable: false);
+        using var _ = weir;
+
+        await tool.UpdateAsync(Context(_folder), CancellationToken.None);
+
+        Assert.Contains(requested, url => url.Contains("api.github.com/repos/", StringComparison.Ordinal));
+        Assert.DoesNotContain(DownloadUrl(Rc17, CompanionCatalog.WeirSetupAsset), requested);
+        Assert.Contains(DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirChecksumsAsset), requested);
+        system.Verify(item => item.RunAsync(It.Is<string>(path => path.EndsWith(CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal)), "--silent", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_newer_release_whose_checksum_file_does_not_list_the_installer_is_passed_over_for_the_one_before_it()
+    {
+        var requested = new List<string>();
+        var (tool, system, weir) = await WeirWith(requested, own: request =>
+            request.RequestUri!.AbsoluteUri == DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirChecksumsAsset)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("0000000000000000000000000000000000000000000000000000000000000000  something-else.zip\n") }
+                : null);
+        using var _ = weir;
+
+        await tool.UpdateAsync(Context(_folder), CancellationToken.None);
+
+        Assert.Contains(DownloadUrl("v1.0.0-rc.12", CompanionCatalog.WeirSetupAsset), requested);
+        system.Verify(item => item.RunAsync(It.IsAny<string>(), "--silent", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_release_whose_installer_answers_404_after_its_checksum_arrived_is_passed_over_for_the_one_before_it()
+    {
+        var requested = new List<string>();
+        var (tool, system, weir) = await WeirWith(requested, own: request =>
+            request.RequestUri!.AbsoluteUri == DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirSetupAsset) ? RecordedNoFile() : null);
+        using var _ = weir;
+
+        await tool.UpdateAsync(Context(_folder), CancellationToken.None);
+
+        Assert.Contains(DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirChecksumsAsset), requested);
+        Assert.Contains(DownloadUrl("v1.0.0-rc.12", CompanionCatalog.WeirSetupAsset), requested);
+        system.Verify(item => item.RunAsync(It.IsAny<string>(), "--silent", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task When_no_release_in_the_window_has_its_files_one_plain_sentence_names_the_newest_looked_at_and_nothing_runs(bool feedAvailable)
+    {
+        var requested = new List<string>();
+        var (tool, system, weir) = await WeirWith(requested, feedAvailable, own: request =>
+            request.RequestUri!.AbsoluteUri.Contains("/releases/download/", StringComparison.Ordinal) ? RecordedNoFile() : null);
+        using var _ = weir;
+
+        var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.UpdateAsync(Context(_folder), CancellationToken.None));
+
+        Assert.Contains(Rc17, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("have no Windows installer yet", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("try again in a few minutes", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', failure.Message);
+        if (feedAvailable)
+        {
+            // At most the newest five are looked at, one checksum file each.
+            Assert.Equal(Deluno.Contracts.ReleaseFallback.MaxReleasesLooked, requested.Count(url => url.EndsWith(CompanionCatalog.WeirChecksumsAsset, StringComparison.Ordinal)));
+        }
+
+        system.Verify(item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static ConnectionUpdateFacts Facts(string project, string installed, string latest, string? host, string? pinned, bool installedByDeluno)
@@ -455,12 +562,12 @@ public sealed class ConnectionUpdateTests : IDisposable
     }
 
     /// <summary>A Weir whose GitHub release, installer and checksum file are answered by a stub, never the network.</summary>
-    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false)
+    private WeirCompanion NewWeir(ICompanionSystem system, string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false, Func<HttpRequestMessage, HttpResponseMessage?>? own = null)
     {
         // The real client sits behind the GitHub handler, which turns a used-up limit into its plain failure.
         HttpMessageHandler handler = new Deluno.Infrastructure.Http.GitHubApiConditionalHandler(new Deluno.Infrastructure.Http.GitHubApiState(), TimeProvider.System)
         {
-            InnerHandler = new StubGitHub(publishedHash, setupBytes, apiLimited, feedAvailable, requested, feedNotFound)
+            InnerHandler = new StubGitHub(publishedHash, setupBytes, apiLimited, feedAvailable, requested, feedNotFound, own)
         };
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler, disposeHandler: false));
@@ -474,32 +581,34 @@ public sealed class ConnectionUpdateTests : IDisposable
     }
 
     /// <summary>
-    /// GitHub as it answered about Weir on 14 Oct 2026 (tests/fixtures/recorded/github), apart from three things changed on purpose:
-    /// the newest release, rc.17, was published with no files and is taken off the feed and the list, so the newest is rc.13, which has
-    /// them (the update tool takes the newest tag and does not skip a release without files, as the component picker does, #1263);
-    /// the feed entries are listed oldest first, so that the version order, not the position, is what picks the tag; and the checksum
-    /// file names the installer by the hash of the test's own installer bytes (the one value changed in the recorded rc.13 file).
+    /// GitHub as it answered about Weir on 14 Oct 2026 (tests/fixtures/recorded/github), with rc.17 left in the feed and the list
+    /// exactly as recorded: published with no files, so every file of it answers the recorded 404 (#1264). Apart from that, only
+    /// two things are changed on purpose: the feed entries are listed oldest first, so that the version order, not the position,
+    /// is what picks the tag; and the checksum file names the installer by the hash of the test's own installer bytes (the one
+    /// value changed in the recorded rc.13 file).
     /// </summary>
-    private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false) : HttpMessageHandler
+    private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false, Func<HttpRequestMessage, HttpResponseMessage?>? own = null) : HttpMessageHandler
     {
         private static readonly Recording Weir = RecordedReplies.Github("weir-newest-release-has-no-files");
 
         /// <summary>The newest tag with files in the recording.</summary>
         public const string Newest = "v1.0.0-rc.13";
 
+        /// <summary>The newest release in the recording, published with no files.</summary>
+        public const string Rc17 = "v1.0.0-rc.17";
+
         private static string Feed()
         {
             var atom = Weir.Find("Weir/releases.atom").Reply.Body!;
             var entries = System.Text.RegularExpressions.Regex.Matches(atom, "<entry>.*?</entry>", System.Text.RegularExpressions.RegexOptions.Singleline)
                 .Select(match => match.Value)
-                .Where(entry => !entry.Contains("v1.0.0-rc.17", StringComparison.Ordinal))
                 .Reverse();
             return atom[..atom.IndexOf("<entry>", StringComparison.Ordinal)] + string.Join('\n', entries) + "\n</feed>";
         }
 
-        private string Checksums()
+        private string Checksums(string tag)
         {
-            var recorded = Weir.Find($"{Newest}/SHA256SUMS.txt").Reply.Body!;
+            var recorded = Weir.Find($"{tag}/SHA256SUMS.txt").Reply.Body!;
             return string.Join('\n', recorded.Split('\n').Select(line => line.TrimEnd('\r').EndsWith("  " + CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal) ? $"{publishedHash}  {CompanionCatalog.WeirSetupAsset}\r" : line));
         }
 
@@ -507,6 +616,11 @@ public sealed class ConnectionUpdateTests : IDisposable
         {
             var url = request.RequestUri!.AbsoluteUri;
             requested?.Add(url);
+            if (own?.Invoke(request) is { } answered)
+            {
+                return Task.FromResult(answered);
+            }
+
             HttpContent content;
             if (apiLimited && request.RequestUri.Host == "api.github.com")
             {
@@ -530,13 +644,17 @@ public sealed class ConnectionUpdateTests : IDisposable
             }
             else if (url.Contains("/releases?", StringComparison.Ordinal))
             {
-                var list = (System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(Weir.Find("api.github.com").Reply.Body!)!;
-                list.RemoveAt(0);
-                content = new StringContent(list.ToJsonString(), Encoding.UTF8, "application/json");
+                content = new StringContent(Weir.Find("api.github.com").Reply.Body!, Encoding.UTF8, "application/json");
+            }
+            else if (url.Contains($"/{Rc17}/", StringComparison.Ordinal))
+            {
+                // rc.17 was published with no files: GitHub's own recorded 404 for its checksum file answers every file of it.
+                return Task.FromResult(Weir.Find($"{Rc17}/SHA256SUMS.txt").Reply.ToResponse());
             }
             else if (url.EndsWith(CompanionCatalog.WeirChecksumsAsset, StringComparison.Ordinal))
             {
-                content = new StringContent(Checksums(), Encoding.UTF8, "text/plain");
+                var tag = url.Split("/releases/download/")[1].Split('/')[0];
+                content = new StringContent(Checksums(Uri.UnescapeDataString(tag)), Encoding.UTF8, "text/plain");
             }
             else
             {
