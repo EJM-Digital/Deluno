@@ -1,0 +1,23 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "weir-velopack-feed",
+  "recordedAt": "2026-10-14T03:00:00Z",
+  "note": "A real unauthenticated GET on 14 Oct 2026 of the Velopack release feed (releases.win.json) that an app built with Velopack publishes beside its installer, here Weir rc.13. The download answered 302 to GitHub's file storage; the recording holds the final reply a client that follows redirects sees.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "github.com/jampat000/Weir/releases/download/v1.0.0-rc.13/releases.win.json",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/octet-stream"
+        },
+        "bodyText": "{\"Assets\":[{\"PackageId\":\"Weir\",\"Version\":\"1.0.0-rc.13\",\"Type\":\"Full\",\"FileName\":\"Weir-1.0.0-rc.13-full.nupkg\",\"SHA1\":\"85BD6EED5E0F4CE2CF532EE5F5981F82C0F0BAB8\",\"SHA256\":\"30CBA36616B10E52007BFFC52B71C6BF2E2FE5A3E8A18387CD01227814D7EA13\",\"Size\":179387349},{\"PackageId\":\"Weir\",\"Version\":\"1.0.0-rc.13\",\"Type\":\"Delta\",\"FileName\":\"Weir-1.0.0-rc.13-delta.nupkg\",\"SHA1\":\"47F26A83C5A792DB1DFA6C492944CF25CA3BD39E\",\"SHA256\":\"91A04E69644820853369D8BB9D02DCB3CE5CF6B28B120AE7B6D4F4037751E8A3\",\"Size\":2890362}]}"
+      }
+    }
+  ]
+}

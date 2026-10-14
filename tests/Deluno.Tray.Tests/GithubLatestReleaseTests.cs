@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using Deluno.Tray;
 using Xunit;
 
@@ -5,120 +6,101 @@ namespace Deluno.Tray.Tests;
 
 public sealed class GithubLatestReleaseTests
 {
-    private const string Releases = """
-        [{"tag_name":"v1.0.0-rc.1","draft":false,"prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/rc1/Weir-win-Setup.exe"}]},
-         {"tag_name":"v1.0.0-rc.2","draft":false,"prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/rc2/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/rc2/SHA256SUMS.txt"}]},
-         {"tag_name":"v9.0.0","draft":true,"prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/draft/Weir-win-Setup.exe"}]}]
-        """;
+    // Every GitHub reply here is GitHub's own, recorded on 14 Oct 2026 (tests/fixtures/recorded/github). Weir's releases list is
+    // rc.17 (published with no files), rc.13 and rc.12; where a test needs another state it changes only the value it is about.
+    private const string Rc17 = "v1.0.0-rc.17";
+    private const string Rc13 = "v1.0.0-rc.13";
+    private const string Rc13InstallerSha = "444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7";
+
+    private static Recording WeirRecording() => RecordedReplies.Github("weir-newest-release-has-no-files");
+
+    private static string Releases() => WeirRecording().Find("api.github.com").Reply.Body!;
+
+    private static string Sums(string tag) => WeirRecording().Find($"{tag}/SHA256SUMS.txt").Reply.Body!;
+
+    private static string NzbgetSignature() => RecordedReplies.Github("nzbget-latest-release").Find("v26.3/nzbget-26.3.sig.txt").Reply.Body!;
 
     [Fact]
     public void Picks_the_highest_version_release_including_pre_releases_and_never_a_draft()
     {
-        var release = GithubLatestRelease.PickRelease(Releases);
+        // rc.17 is the highest version and every Weir release is a pre-release: the listing order does not decide it.
+        Assert.Equal(Rc17, GithubLatestRelease.PickRelease(Releases())!.TagName);
+        var reversed = new System.Text.Json.Nodes.JsonArray(((System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(Releases())!).Reverse().Select(n => n!.DeepClone()).ToArray());
+        Assert.Equal(Rc17, GithubLatestRelease.PickRelease(reversed.ToJsonString())!.TagName);
 
-        Assert.Equal("https://x.test/rc2/Weir-win-Setup.exe", release!.Assets!.First(a => a.Name == "Weir-win-Setup.exe").BrowserDownloadUrl);
+        // With rc.17 a draft (the one value changed), the next is rc.13 and its files.
+        var release = GithubLatestRelease.PickRelease(WeirRecording().Body("api.github.com", ("0.draft", true)))!;
+
+        Assert.Equal(Rc13, release.TagName);
+        Assert.Equal($"https://github.com/jampat000/Weir/releases/download/{Rc13}/Weir-win-Setup.exe", release.Assets!.First(a => a.Name == "Weir-win-Setup.exe").BrowserDownloadUrl);
         Assert.Contains(release.Assets!, a => a.Name == "SHA256SUMS.txt");
     }
 
     [Fact]
     public void Resolves_a_repository_whose_only_release_is_a_pre_release()
     {
-        var release = GithubLatestRelease.PickRelease("""[{"tag_name":"v1.0.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/Weir-win-Setup.exe"}]}]""");
+        var list = (System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(Releases())!;
+        var only = new System.Text.Json.Nodes.JsonArray(list[1]!.DeepClone());
 
-        Assert.Equal("https://x.test/Weir-win-Setup.exe", release!.Assets![0].BrowserDownloadUrl);
+        var release = GithubLatestRelease.PickRelease(only.ToJsonString());
+
+        Assert.Equal(Rc13, release!.TagName);
+        Assert.Equal($"https://github.com/jampat000/Weir/releases/download/{Rc13}/Weir-win-Setup.exe", release.Assets!.First(a => a.Name == "Weir-win-Setup.exe").BrowserDownloadUrl);
     }
 
     [Fact]
-    public void Orders_rc2_over_rc1_and_a_stable_release_over_rc9()
+    public void Orders_a_later_release_candidate_over_an_earlier_one_and_a_stable_release_over_every_candidate()
     {
-        string Pick(params string[] tags) => GithubLatestRelease.PickRelease("[" + string.Join(",", tags.Select(t => $$"""{"tag_name":"{{t}}","assets":[{"name":"{{t}}","browser_download_url":"https://x.test/{{t}}"}]}""")) + "]")!.Assets![0].Name!;
+        // rc.13 over rc.12 (listed in the other order), then rc.12 made the stable release v1.0.0 (its tag and pre-release flag changed): stable wins.
+        var list = (System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(Releases())!;
+        var rc13AndRc12 = new System.Text.Json.Nodes.JsonArray(list[2]!.DeepClone(), list[1]!.DeepClone());
+        Assert.Equal(Rc13, GithubLatestRelease.PickRelease(rc13AndRc12.ToJsonString())!.TagName);
 
-        Assert.Equal("v1.0.0-rc.2", Pick("v1.0.0-rc.1", "v1.0.0-rc.2"));
-        Assert.Equal("v1.0.0", Pick("v1.0.0-rc.9", "v1.0.0"));
-        Assert.Null(GithubLatestRelease.PickRelease("""[{"tag_name":"v1.0.0","draft":true}]"""));
+        Assert.Equal("v1.0.0", GithubLatestRelease.PickRelease(WeirRecording().Body("api.github.com", ("2.tag_name", "v1.0.0"), ("2.prerelease", false)))!.TagName);
+
+        // Every release a draft: nothing to pick.
+        Assert.Null(GithubLatestRelease.PickRelease(WeirRecording().Body("api.github.com", ("0.draft", true), ("1.draft", true), ("2.draft", true))));
     }
 
     [Fact]
     public void The_checksum_check_still_applies_to_the_pre_release_asset()
     {
-        var release = GithubLatestRelease.PickRelease(Releases)!;
-        var sums = "d34db33f  Weir-win-Setup.exe\n";
+        var release = GithubLatestRelease.PickRelease(WeirRecording().Body("api.github.com", ("0.draft", true)))!;
 
-        Assert.Equal("d34db33f", GithubLatestRelease.ParseChecksum(sums, release.Assets!.First(a => a.Name == "Weir-win-Setup.exe").Name!));
-        Assert.Null(GithubLatestRelease.ParseChecksum("d34db33f  OldWeir-win-Setup.exe\n", "Weir-win-Setup.exe"));
+        Assert.Equal(Rc13InstallerSha, GithubLatestRelease.ParseChecksum(Sums(Rc13), release.Assets!.First(a => a.Name == "Weir-win-Setup.exe").Name!));
+        Assert.Null(GithubLatestRelease.ParseChecksum(Sums(Rc13).Replace("Weir-win-Setup.exe", "OldWeir-win-Setup.exe", StringComparison.Ordinal), "Weir-win-Setup.exe"));
     }
 
     [Fact]
     public void Reads_the_matching_line_from_a_standard_SHA256SUMS_file()
-    {
-        var sums = "abc123  RELEASES\n" +
-                   "d34db33f00000000000000000000000000000000000000000000000000000000  Weir-win-Setup.exe\n" +
-                   "cafef00d  weir-web-dist.zip\n";
-
-        var hash = GithubLatestRelease.ParseChecksum(sums, "Weir-win-Setup.exe");
-
-        Assert.Equal("d34db33f00000000000000000000000000000000000000000000000000000000", hash);
-    }
+        => Assert.Equal(Rc13InstallerSha, GithubLatestRelease.ParseChecksum(Sums(Rc13), "Weir-win-Setup.exe"));
 
     [Fact]
     public void Answers_null_when_the_file_has_no_matching_line()
-    {
-        var hash = GithubLatestRelease.ParseChecksum("abc123  something-else.exe\n", "Weir-win-Setup.exe");
-
-        Assert.Null(hash);
-    }
+        => Assert.Null(GithubLatestRelease.ParseChecksum(Sums(Rc13), "Weir-win-Setup-that-is-not-there.exe"));
 
     [Fact]
     public void Does_not_match_a_line_whose_name_merely_ends_with_the_target_file_name()
-    {
-        // "OldWeir-win-Setup.exe" ends with "Weir-win-Setup.exe" but is not it.
-        // A pure EndsWith match would wrongly hand back this line's hash for a
-        // lookup of the real asset.
-        var sums = "deadbeef  OldWeir-win-Setup.exe\n";
-
-        var hash = GithubLatestRelease.ParseChecksum(sums, "Weir-win-Setup.exe");
-
-        Assert.Null(hash);
-    }
+        // "Weir-win-Setup.exe" ends with "win-Setup.exe" but is not it: a pure EndsWith match would hand back its hash for a lookup of another asset.
+        => Assert.Null(GithubLatestRelease.ParseChecksum(Sums(Rc13), "win-Setup.exe"));
 
     [Fact]
     public void Matches_a_path_prefixed_entry_by_its_base_name()
-    {
-        var sums = "d34db33f  dist/Weir-win-Setup.exe\n";
-
-        var hash = GithubLatestRelease.ParseChecksum(sums, "Weir-win-Setup.exe");
-
-        Assert.Equal("d34db33f", hash);
-    }
+        // The recorded file with the installer's line carrying a folder (the one value changed).
+        => Assert.Equal(Rc13InstallerSha, GithubLatestRelease.ParseChecksum(Sums(Rc13).Replace("  Weir-win-Setup.exe", "  dist/Weir-win-Setup.exe", StringComparison.Ordinal), "Weir-win-Setup.exe"));
 
     [Fact]
     public void Reads_a_hash_out_of_nzbgets_own_jsonp_signature_file()
     {
-        // NZBGet's nzbget-<version>.sig.txt is not a SHA256SUMS.txt line --
-        // it is a JSONP body naming every asset's SHA256 as its own key.
-        var sig = "nzbget_signatures({\n" +
-                  "\"MD5(nzbget-21.1-bin-windows-setup.exe)\" : \"4298f1eec6d7c8644844a28ceb92c0ed\",\n" +
-                  "\"SHA1(nzbget-21.1-bin-windows-setup.exe)\" : \"61723cec5870438763d21bb7259a76a631c8108f\",\n" +
-                  "\"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"536515ca1e57321c5de664441d3394c4cd63c603183e257275188b3a9e168477\",\n" +
-                  "\"RSA-SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"deadbeef\"\n" +
-                  "});";
+        // NZBGet's nzbget-<version>.sig.txt is not a SHA256SUMS.txt line -- it is a JSONP body naming every asset's SHA256 as its own key.
+        var hash = GithubLatestRelease.ParseChecksum(NzbgetSignature(), "nzbget-26.3-bin-windows-setup.exe");
 
-        var hash = GithubLatestRelease.ParseChecksum(sig, "nzbget-21.1-bin-windows-setup.exe");
-
-        Assert.Equal("536515ca1e57321c5de664441d3394c4cd63c603183e257275188b3a9e168477", hash);
+        Assert.Equal("5ddba34ef3dcc7dc3e62480a95ccf36cb02d4f0876dd2dc81ccc42cab27a3bd7", hash);
     }
 
     [Fact]
     public void Jsonp_signature_lookup_answers_null_for_a_different_asset_name()
-    {
-        var sig = "nzbget_signatures({\n" +
-                  "\"SHA256(nzbget-21.1-bin-linux.run)\" : \"9c4bd5169c91c4ad56338d0989d63632abe708bdf496137b484e3faa18708011\"\n" +
-                  "});";
-
-        var hash = GithubLatestRelease.ParseChecksum(sig, "nzbget-21.1-bin-windows-setup.exe");
-
-        Assert.Null(hash);
-    }
+        => Assert.Null(GithubLatestRelease.ParseChecksum(NzbgetSignature(), "nzbget-26.2-bin-windows-setup.exe"));
 }
 
 public sealed class DirectoryListingLatestReleaseTests
@@ -149,48 +131,59 @@ public sealed class DirectoryListingLatestReleaseTests
     }
 
     // #1123: pre-releases are for Weir only. A component without the flag keeps GitHub's own "latest release".
-    private sealed class FakeGitHub(string stable, string all) : HttpMessageHandler
+    // GitHub's replies are the recorded ones: NZBGet's latest release (v26.3), its releases list (a newer "testing" pre-release ahead
+    // of the stable releases), its release feed and signature files; Weir's feed, list and checksum files.
+    internal sealed class Replay
     {
+        private readonly Recording[] _recordings;
+        private readonly Func<HttpRequestMessage, HttpResponseMessage?>? _own;
+
+        public Replay(Func<HttpRequestMessage, HttpResponseMessage?>? own, params Recording[] recordings)
+        {
+            _own = own;
+            _recordings = recordings;
+        }
+
         public List<string> Requests { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public HttpMessageHandler Handler => RecordedReplies.Handler("github", _recordings, (request, _) =>
         {
-            Requests.Add(request.RequestUri!.PathAndQuery);
-            // A release carries its checksum file now (#1263): the picker installs only from one that does.
-            if (request.RequestUri.AbsolutePath.EndsWith(".txt", StringComparison.Ordinal))
-            {
-                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(
-                    string.Join('\n',
-                        $"{new string('a', 64)}  nzbget-21.1-bin-windows-setup.exe",
-                        $"{new string('b', 64)}  nzbget-22.0-bin-windows-setup.exe",
-                        $"{new string('c', 64)}  Weir-win-Setup.exe")) });
-            }
+            Requests.Add(request.RequestUri!.AbsoluteUri);
+            return _own?.Invoke(request);
+        });
 
-            var body = request.RequestUri.AbsolutePath.EndsWith("/releases/latest", StringComparison.Ordinal) ? stable : all;
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) });
-        }
+        public IEnumerable<string> ApiRequests => Requests.Where(r => new Uri(r).Host == "api.github.com");
     }
 
-    private const string Stable = """{"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"},{"name":"nzbget-21.1.sig.txt","browser_download_url":"https://x.test/21.1/nzbget-21.1.sig.txt"}]}""";
-    private const string StableAndNewerPreRelease = """
-        [{"tag_name":"v22.0-testing","prerelease":true,"assets":[{"name":"nzbget-22.0-bin-windows-setup.exe","browser_download_url":"https://x.test/22.0/nzbget-22.0-bin-windows-setup.exe"},{"name":"nzbget-22.0.sig.txt","browser_download_url":"https://x.test/22.0/nzbget-22.0.sig.txt"}]},
-         {"tag_name":"v21.1","prerelease":false,"assets":[{"name":"nzbget-21.1-bin-windows-setup.exe","browser_download_url":"https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe"},{"name":"nzbget-21.1.sig.txt","browser_download_url":"https://x.test/21.1/nzbget-21.1.sig.txt"}]}]
-        """;
+    private static Replay NzbgetReplay(Func<HttpRequestMessage, HttpResponseMessage?>? own = null)
+        => new(own, RecordedReplies.Github("nzbget-latest-release"), RecordedReplies.Github("nzbget-release-feed"));
+
+    private static Replay WeirReplay(Func<HttpRequestMessage, HttpResponseMessage?>? own = null)
+        => new(own, RecordedReplies.Github("weir-newest-release-has-no-files"));
+
+    /// <summary>The 503 of a release feed that cannot be read (a status with no body, which GitHub gives and a recording cannot hold), so the lookup takes the API route.</summary>
+    private static Func<HttpRequestMessage, HttpResponseMessage?> FeedDown(Func<HttpRequestMessage, HttpResponseMessage?>? then = null)
+        => request => request.RequestUri!.AbsoluteUri.EndsWith("/releases.atom", StringComparison.Ordinal)
+            ? new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable)
+            : then?.Invoke(request);
+
+    private const string Nzbget263Installer = "https://github.com/nzbgetcom/nzbget/releases/download/v26.3/nzbget-26.3-bin-windows-setup.exe";
 
     [Fact]
     public async Task A_component_without_the_flag_takes_the_latest_stable_release_even_when_a_newer_pre_release_exists()
     {
         var nzbget = BundledComponents.Load().Single(s => s.Kind == "nzbget");
         Assert.False(nzbget.IncludePreReleases);
-        var github = new FakeGitHub(Stable, StableAndNewerPreRelease);
+        // NZBGet's installer name carries its version, so it is found through the API's latest release; the API's list holds a newer "testing" pre-release that must not be taken.
+        var github = NzbgetReplay();
 
-        var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github);
+        var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github.Handler);
 
-        Assert.Equal("https://x.test/21.1/nzbget-21.1-bin-windows-setup.exe", resolved!.AssetUrl);
-        // One API call, for the latest release; the other is the release's own signature file.
-        var api = github.Requests.Where(r => !r.EndsWith(".txt", StringComparison.Ordinal)).ToList();
-        Assert.Single(api);
-        Assert.EndsWith("/releases/latest", api[0]);
+        Assert.Equal(Nzbget263Installer, resolved!.AssetUrl);
+        Assert.Equal("5ddba34ef3dcc7dc3e62480a95ccf36cb02d4f0876dd2dc81ccc42cab27a3bd7", resolved.Sha256);
+        // One API call, for the latest release; the other call is the release's own signature file.
+        var api = Assert.Single(github.ApiRequests);
+        Assert.EndsWith("/releases/latest", api);
     }
 
     [Fact]
@@ -198,52 +191,30 @@ public sealed class DirectoryListingLatestReleaseTests
     {
         var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
         Assert.True(weir.IncludePreReleases);
-        var github = new FakeGitHub(
-            """{"tag_name":"v2.0.0","assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.0.0/SHA256SUMS.txt"}]}""",
-            """
-            [{"tag_name":"v2.1.0-rc.1","prerelease":true,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.1.0-rc.1/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.1.0-rc.1/SHA256SUMS.txt"}]},
-             {"tag_name":"v2.0.0","prerelease":false,"assets":[{"name":"Weir-win-Setup.exe","browser_download_url":"https://x.test/2.0.0/Weir-win-Setup.exe"},{"name":"SHA256SUMS.txt","browser_download_url":"https://x.test/2.0.0/SHA256SUMS.txt"}]}]
-            """);
+        // Through the API: Weir's list is release candidates only, with rc.12 changed into an older stable release (its tag and flag).
+        var recording = RecordedReplies.Github("weir-newest-release-has-no-files");
+        var github = WeirReplay(FeedDown(request => request.RequestUri!.AbsoluteUri.Contains("/releases?per_page=100", StringComparison.Ordinal)
+            ? RecordedReplies.Json(recording.Body("api.github.com", ("2.tag_name", "v0.9.0"), ("2.prerelease", false)))
+            : null));
 
-        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, github);
+        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, github.Handler);
 
-        Assert.Equal("https://x.test/2.1.0-rc.1/Weir-win-Setup.exe", resolved!.AssetUrl);
+        Assert.Equal("https://github.com/jampat000/Weir/releases/download/v1.0.0-rc.13/Weir-win-Setup.exe", resolved!.AssetUrl);
     }
 
     // #1181: the free route first. The newest tag comes from github.com's release feed and the files from the release
     // download folder; neither counts against GitHub's 60 API calls an hour.
-    private sealed class FeedOnly : HttpMessageHandler
-    {
-        public List<string> Requests { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var url = request.RequestUri!.AbsoluteUri;
-            Requests.Add(url);
-            if (request.RequestUri.Host == "api.github.com")
-            {
-                throw new InvalidOperationException("the API must not be called");
-            }
-
-            var content = url.EndsWith("/releases.atom", StringComparison.Ordinal)
-                ? """<feed><entry><link href="https://github.com/o/weir/releases/tag/v2.0.0"/></entry><entry><link href="https://github.com/o/weir/releases/tag/v2.1.0-rc.1"/></entry></feed>"""
-                : url.Contains("SHA256", StringComparison.OrdinalIgnoreCase) || url.Contains("SUMS", StringComparison.OrdinalIgnoreCase)
-                    ? "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd  Weir-win-Setup.exe\n"
-                    : "installer";
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(content) });
-        }
-    }
-
     [Fact]
     public async Task Weir_is_found_through_the_release_feed_release_candidates_included_without_the_api()
     {
-        var weir = BundledComponents.Load().Single(s => s.Kind == "weir") with { GithubRepo = "o/weir" };
-        var handler = new FeedOnly();
+        var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
+        var handler = WeirReplay(request => request.RequestUri!.Host == "api.github.com" ? throw new InvalidOperationException("the API must not be called") : null);
 
-        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, handler);
+        var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, handler.Handler);
 
-        Assert.Equal("https://github.com/o/weir/releases/download/v2.1.0-rc.1/Weir-win-Setup.exe", resolved!.AssetUrl);
-        Assert.Equal("abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd", resolved.Sha256);
+        // rc.17 is the newest tag but has no files: the newest release that has them is used.
+        Assert.Equal("https://github.com/jampat000/Weir/releases/download/v1.0.0-rc.13/Weir-win-Setup.exe", resolved!.AssetUrl);
+        Assert.Equal("444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7", resolved.Sha256);
         Assert.DoesNotContain(handler.Requests, url => url.Contains("api.github.com", StringComparison.Ordinal));
     }
 
@@ -320,24 +291,16 @@ public sealed class GithubRateLimitTests
     public async Task A_404_from_the_release_feed_says_the_feed_is_unreachable_and_does_not_fall_back_to_the_api()
     {
         var seen = new List<string>();
-        var weir = BundledComponents.Load().Single(s => s.Kind == "weir");
+        var weir = BundledComponents.Load().Single(s => s.Kind == "weir") with { GithubRepo = "jampat000/no-such-repo-1263" };
+        var replay = new DirectoryListingLatestReleaseTests.Replay(request => { seen.Add(request.RequestUri!.AbsoluteUri); return null; }, RecordedReplies.Github("release-feed-not-found"));
 
-        var lookup = await GithubLatestRelease.LookupAsync(weir, CancellationToken.None, new Recording(seen));
+        var lookup = await GithubLatestRelease.LookupAsync(weir, CancellationToken.None, replay.Handler);
 
         Assert.True(lookup.FeedNotFound);
         Assert.False(lookup.RateLimited);
         Assert.Null(lookup.Asset);
         Assert.DoesNotContain(seen, url => url.Contains("api.github.com"));
         Assert.Contains("release feed isn't reachable", GithubLatestRelease.FeedNotFoundMessage("Weir"));
-    }
-
-    private sealed class Recording(List<string> seen) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            seen.Add(request.RequestUri!.AbsoluteUri);
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
-        }
     }
 
     [Fact]

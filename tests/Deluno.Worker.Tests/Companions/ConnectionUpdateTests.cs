@@ -10,6 +10,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Tests.Recorded;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -321,9 +322,9 @@ public sealed class ConnectionUpdateTests : IDisposable
 
         await tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None);
 
-        // The newest tag by version order is the 3.4.0 release candidate, over the 3.3.0 that the feed lists first.
-        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirChecksumsAsset}", requested);
-        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirSetupAsset}", requested);
+        // The newest tag by version order is release candidate 13, over rc.12 and the others that the feed lists before it.
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{StubGitHub.Newest}/{CompanionCatalog.WeirChecksumsAsset}", requested);
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{StubGitHub.Newest}/{CompanionCatalog.WeirSetupAsset}", requested);
         system.Verify(item => item.RunAsync(It.Is<string>(path => path.EndsWith(CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal)), "--silent", It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -340,7 +341,7 @@ public sealed class ConnectionUpdateTests : IDisposable
         await tool.UpdateAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, Mock.Of<ICompanionProgress>()), CancellationToken.None);
 
         Assert.DoesNotContain(requested, url => url.Contains("api.github.com", StringComparison.Ordinal));
-        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/v3.4.0-rc.1/{CompanionCatalog.WeirSetupAsset}", requested);
+        Assert.Contains($"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{StubGitHub.Newest}/{CompanionCatalog.WeirSetupAsset}", requested);
     }
 
     [Fact]
@@ -472,8 +473,36 @@ public sealed class ConnectionUpdateTests : IDisposable
             factory.Object);
     }
 
+    /// <summary>
+    /// GitHub as it answered about Weir on 14 Oct 2026 (tests/fixtures/recorded/github), apart from three things changed on purpose:
+    /// the newest release, rc.17, was published with no files and is taken off the feed and the list, so the newest is rc.13, which has
+    /// them (the update tool takes the newest tag and does not skip a release without files, as the component picker does, #1263);
+    /// the feed entries are listed oldest first, so that the version order, not the position, is what picks the tag; and the checksum
+    /// file names the installer by the hash of the test's own installer bytes (the one value changed in the recorded rc.13 file).
+    /// </summary>
     private sealed class StubGitHub(string publishedHash, byte[] setupBytes, bool apiLimited = false, bool feedAvailable = true, List<string>? requested = null, bool feedNotFound = false) : HttpMessageHandler
     {
+        private static readonly Recording Weir = RecordedReplies.Github("weir-newest-release-has-no-files");
+
+        /// <summary>The newest tag with files in the recording.</summary>
+        public const string Newest = "v1.0.0-rc.13";
+
+        private static string Feed()
+        {
+            var atom = Weir.Find("Weir/releases.atom").Reply.Body!;
+            var entries = System.Text.RegularExpressions.Regex.Matches(atom, "<entry>.*?</entry>", System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(match => match.Value)
+                .Where(entry => !entry.Contains("v1.0.0-rc.17", StringComparison.Ordinal))
+                .Reverse();
+            return atom[..atom.IndexOf("<entry>", StringComparison.Ordinal)] + string.Join('\n', entries) + "\n</feed>";
+        }
+
+        private string Checksums()
+        {
+            var recorded = Weir.Find($"{Newest}/SHA256SUMS.txt").Reply.Body!;
+            return string.Join('\n', recorded.Split('\n').Select(line => line.TrimEnd('\r').EndsWith("  " + CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal) ? $"{publishedHash}  {CompanionCatalog.WeirSetupAsset}\r" : line));
+        }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var url = request.RequestUri!.AbsoluteUri;
@@ -491,29 +520,23 @@ public sealed class ConnectionUpdateTests : IDisposable
             {
                 if (!feedAvailable)
                 {
-                    return Task.FromResult(new HttpResponseMessage(feedNotFound ? HttpStatusCode.NotFound : HttpStatusCode.ServiceUnavailable));
+                    // A feed that cannot be read answers with a bare status (a 503, not recorded); a missing repository gives GitHub's recorded 404.
+                    return Task.FromResult(feedNotFound
+                        ? RecordedReplies.Github("release-feed-not-found").Single.Reply.ToResponse()
+                        : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
                 }
 
-                var repository = CompanionCatalog.WeirRepository;
-                content = new StringContent($$"""
-                    <feed xmlns="http://www.w3.org/2005/Atom">
-                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.3.0"/></entry>
-                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.4.0-rc.1"/></entry>
-                      <entry><link rel="alternate" type="text/html" href="https://github.com/{{repository}}/releases/tag/v3.2.0"/></entry>
-                    </feed>
-                    """, Encoding.UTF8, "application/atom+xml");
+                content = new StringContent(Feed(), Encoding.UTF8, "application/atom+xml");
             }
             else if (url.Contains("/releases?", StringComparison.Ordinal))
             {
-                content = new StringContent($$"""
-                    [{"tag_name":"v9.9.9","draft":true,"assets":[]},{"tag_name":"v3.3.0-rc.1","prerelease":true,"assets":[]},{"tag_name":"v3.3.0","assets":[
-                      {"name":"{{CompanionCatalog.WeirSetupAsset}}","browser_download_url":"https://downloads.example.test/{{CompanionCatalog.WeirSetupAsset}}"},
-                      {"name":"{{CompanionCatalog.WeirChecksumsAsset}}","browser_download_url":"https://downloads.example.test/{{CompanionCatalog.WeirChecksumsAsset}}"}]}]
-                    """, Encoding.UTF8, "application/json");
+                var list = (System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(Weir.Find("api.github.com").Reply.Body!)!;
+                list.RemoveAt(0);
+                content = new StringContent(list.ToJsonString(), Encoding.UTF8, "application/json");
             }
             else if (url.EndsWith(CompanionCatalog.WeirChecksumsAsset, StringComparison.Ordinal))
             {
-                content = new StringContent($"{publishedHash}  {CompanionCatalog.WeirSetupAsset}\n", Encoding.UTF8, "text/plain");
+                content = new StringContent(Checksums(), Encoding.UTF8, "text/plain");
             }
             else
             {
