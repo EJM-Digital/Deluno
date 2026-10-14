@@ -70,6 +70,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateMovieCollectionRequest request,
             IMovieCollectionService service,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -84,6 +85,15 @@ public static class MoviesEndpointRouteBuilderExtensions
                 {
                     ["providerId"] = ["Enter a numeric TMDb collection id."]
                 });
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             if (string.IsNullOrWhiteSpace(request.LibraryId))
@@ -115,12 +125,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateMovieCollectionRequest request,
             IMovieCollectionService service,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             try
@@ -141,12 +161,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkUpdateMovieCollectionsRequest request,
             IMovieCollectionService service,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             try
@@ -1200,12 +1230,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] TitleRemovalService titleRemoval,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             if (request.MovieIds is not { Count: > 0 })
@@ -2723,6 +2763,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2737,6 +2778,15 @@ public static class MoviesEndpointRouteBuilderExtensions
                 {
                     ["movieIds"] = ["Choose at least one movie before updating quality."]
                 });
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             // No profile means the title goes back to following its library's (#1157).
@@ -2798,6 +2848,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2820,6 +2871,18 @@ public static class MoviesEndpointRouteBuilderExtensions
                 {
                     ["libraryId"] = ["Both fromLibraryId and toLibraryId are required."]
                 });
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "fromLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.FromLibraryId, "movies", cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "toLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.ToLibraryId, "movies", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             // "Move the files" is opt in. Left off, the record is reassigned

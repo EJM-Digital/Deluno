@@ -29,9 +29,10 @@ public static class SeerrEndpointRouteBuilderExtensions
         servers.MapGet(string.Empty, async ([FromServices] ISeerrRepository repository, CancellationToken cancellationToken)
             => Results.Ok(await repository.ListAsync(cancellationToken)));
 
-        servers.MapPost(string.Empty, async ([FromBody] SaveSeerrRequest request, [FromServices] ISeerrRepository repository, CancellationToken cancellationToken) =>
+        servers.MapPost(string.Empty, async ([FromBody] SaveSeerrRequest request, [FromServices] ISeerrRepository repository, [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory, CancellationToken cancellationToken) =>
         {
             var errors = Validate(request, stored: null);
+            await AddDestinationProblemsAsync(connectionFactory, errors, request, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -41,7 +42,7 @@ public static class SeerrEndpointRouteBuilderExtensions
             return Results.Created($"/api/seerr-servers/{saved!.Id}", saved);
         });
 
-        servers.MapPut("{id}", async (string id, [FromBody] SaveSeerrRequest request, [FromServices] ISeerrRepository repository, CancellationToken cancellationToken) =>
+        servers.MapPut("{id}", async (string id, [FromBody] SaveSeerrRequest request, [FromServices] ISeerrRepository repository, [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory, CancellationToken cancellationToken) =>
         {
             var stored = await repository.GetAsync(id, cancellationToken);
             if (stored is null)
@@ -50,6 +51,7 @@ public static class SeerrEndpointRouteBuilderExtensions
             }
 
             var errors = Validate(request, stored);
+            await AddDestinationProblemsAsync(connectionFactory, errors, request, cancellationToken);
             return errors.Count > 0 ? Results.ValidationProblem(errors) : Results.Ok(await repository.SaveAsync(id, request, cancellationToken));
         });
 
@@ -263,6 +265,18 @@ public static class SeerrEndpointRouteBuilderExtensions
             WebhookSecret: stored?.WebhookSecret,
             Tags: request.Tags ?? stored?.Tags ?? string.Empty,
             Tags4k: request.Tags4k ?? stored?.Tags4k ?? string.Empty);
+    }
+
+    private static async Task AddDestinationProblemsAsync(
+        Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
+        Dictionary<string, string[]> errors,
+        SaveSeerrRequest request,
+        CancellationToken cancellationToken)
+    {
+        await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "movieLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library, request.MovieLibraryId, "movies", cancellationToken);
+        await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "movieQualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile, request.MovieQualityProfileId, "movies", cancellationToken);
+        await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "seriesLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library, request.SeriesLibraryId, "tv", cancellationToken);
+        await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "seriesQualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile, request.SeriesQualityProfileId, "tv", cancellationToken);
     }
 
     private static Dictionary<string, string[]> Validate(SaveSeerrRequest request, SeerrConnection? stored)

@@ -41,6 +41,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateDestinationRuleRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -51,6 +52,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, NormalizeMediaType(request.MediaType), cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -69,6 +73,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateDestinationRuleRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -79,6 +84,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, NormalizeMediaType(request.MediaType), cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -135,6 +143,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateLibraryViewRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -151,6 +160,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateLibraryView(request.Name);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -168,6 +180,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryViewRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -184,6 +197,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateLibraryView(request.Name);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "libraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.LibraryId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -236,6 +252,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateLibraryRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
@@ -247,6 +264,12 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateLibrary(request);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, NormalizeMediaType(request.MediaType), cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "processorConnectionId", Deluno.Infrastructure.Storage.ReferenceKind.ProcessorConnection,
+                request.ProcessorConnectionId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -413,6 +436,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryMediaPlanRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
@@ -421,6 +445,20 @@ public static class LibrariesEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var existingLibrary = (await repository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(library => string.Equals(library.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (existingLibrary is not null)
+            {
+                var planErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                    connectionFactory, planErrors, "policySetId", Deluno.Infrastructure.Storage.ReferenceKind.PolicySet,
+                    request.PolicySetId, existingLibrary.MediaType, cancellationToken);
+                if (planErrors.Count > 0)
+                {
+                    return Results.ValidationProblem(planErrors);
+                }
             }
 
             var item = await repository.UpdateLibraryMediaPlanAsync(id, request, cancellationToken);
@@ -460,6 +498,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryQualityProfileRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken,
             [FromServices] Deluno.Quality.IProfileChangeReevaluator? reevaluator = null) =>
@@ -476,6 +515,20 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 {
                     ["qualityProfileId"] = ["Choose a quality profile for this library."]
                 });
+            }
+
+            var profileLibrary = (await repository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(library => string.Equals(library.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (profileLibrary is not null)
+            {
+                var profileErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                    connectionFactory, profileErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                    request.QualityProfileId, profileLibrary.MediaType, cancellationToken);
+                if (profileErrors.Count > 0)
+                {
+                    return Results.ValidationProblem(profileErrors);
+                }
             }
 
             var item = await repository.UpdateLibraryQualityProfileAsync(id, request.QualityProfileId, cancellationToken);
@@ -501,6 +554,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryWorkflowRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -511,6 +565,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateLibraryWorkflow(request);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "processorConnectionId", Deluno.Infrastructure.Storage.ReferenceKind.ProcessorConnection,
+                request.ProcessorConnectionId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -576,6 +633,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryRoutingRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -586,6 +644,29 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateLibraryRouting(request);
+            foreach (var source in request.Sources ?? [])
+            {
+                if (errors.ContainsKey("sources"))
+                {
+                    break;
+                }
+
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                    connectionFactory, errors, "sources", Deluno.Infrastructure.Storage.ReferenceKind.Indexer,
+                    source.IndexerId, null, cancellationToken);
+            }
+
+            foreach (var client in request.DownloadClients ?? [])
+            {
+                if (errors.ContainsKey("downloadClients"))
+                {
+                    break;
+                }
+
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                    connectionFactory, errors, "downloadClients", Deluno.Infrastructure.Storage.ReferenceKind.DownloadClient,
+                    client.DownloadClientId, null, cancellationToken);
+            }
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);

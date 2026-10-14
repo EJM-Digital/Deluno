@@ -2144,12 +2144,22 @@ public static class SeriesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] TitleRemovalService titleRemoval,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "tv", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             if (request.SeriesIds is not { Count: > 0 })
@@ -2720,6 +2730,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2734,6 +2745,15 @@ public static class SeriesEndpointRouteBuilderExtensions
                 {
                     ["seriesIds"] = ["Choose at least one series before updating quality."]
                 });
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, "tv", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             // No profile means the title goes back to following its library's (#1157).
@@ -2792,6 +2812,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2814,6 +2835,18 @@ public static class SeriesEndpointRouteBuilderExtensions
                 {
                     ["libraryId"] = ["Both fromLibraryId and toLibraryId are required."]
                 });
+            }
+
+            var refErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "fromLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.FromLibraryId, "tv", cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, refErrors, "toLibraryId", Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                request.ToLibraryId, "tv", cancellationToken);
+            if (refErrors.Count > 0)
+            {
+                return Results.ValidationProblem(refErrors);
             }
 
             var count = await repository.ReassignLibraryAsync(

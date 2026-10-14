@@ -346,7 +346,7 @@ public sealed class QualityRoutesTests
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
-    [Fact(Skip = "DEFECT: POST and PUT /api/policy-sets accept a quality profile id that does not exist and one made for the other media type (only the preview checks), and the plan then pushes it onto the libraries that use it (Deluno.Quality QualityEndpointRouteBuilderExtensions policySets.MapPost / MapPut validate only the name).")]
+    [Fact]
     public async Task A_plan_that_names_a_quality_profile_for_the_other_media_type_or_no_profile_at_all_is_refused()
     {
         await using var app = await ApplicationTestHost.StartAsync();

@@ -507,6 +507,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkConnectionTagsRequest request,
             ITagReferenceStore tagReferences,
+            Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
@@ -537,6 +538,22 @@ public static class PlatformEndpointRouteBuilderExtensions
                 {
                     ["ids"] = ["Choose at least one connection before applying tags."]
                 });
+            }
+
+            var unknownIds = new Dictionary<string, string[]>();
+            var idKind = target.Value switch
+            {
+                BulkTagTarget.Indexer => Deluno.Infrastructure.Storage.ReferenceKind.Indexer,
+                BulkTagTarget.DownloadClient => Deluno.Infrastructure.Storage.ReferenceKind.DownloadClient,
+                _ => Deluno.Infrastructure.Storage.ReferenceKind.NotificationConnection
+            };
+            foreach (var connectionId in request.Ids)
+            {
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, unknownIds, "ids", idKind, connectionId, null, cancellationToken);
+                if (unknownIds.Count > 0)
+                {
+                    return Results.ValidationProblem(unknownIds);
+                }
             }
 
             if (!MediaTagBulkOperations.TryParseMode(request.Mode, out var mode))
@@ -678,6 +695,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             SaveAutoTagRuleRequest request,
             IAutoTagRuleStore store,
+            Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -686,7 +704,8 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = AutoTagRuleValidator.Validate(request);
+            var errors = new Dictionary<string, string[]>(AutoTagRuleValidator.Validate(request));
+            await AddAutoTagReferenceProblemsAsync(connectionFactory, errors, request, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -701,6 +720,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             SaveAutoTagRuleRequest request,
             IAutoTagRuleStore store,
+            Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -709,7 +729,8 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = AutoTagRuleValidator.Validate(request);
+            var errors = new Dictionary<string, string[]>(AutoTagRuleValidator.Validate(request));
+            await AddAutoTagReferenceProblemsAsync(connectionFactory, errors, request, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -1032,6 +1053,39 @@ public static class PlatformEndpointRouteBuilderExtensions
             : parts.Count == 1
                 ? parts[0]
                 : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
+    }
+
+    /// <summary>#1316: a condition that names a quality profile or a library must name one that exists.</summary>
+    private static async Task AddAutoTagReferenceProblemsAsync(
+        Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
+        Dictionary<string, string[]> errors,
+        SaveAutoTagRuleRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (errors.ContainsKey("specifications"))
+        {
+            return;
+        }
+
+        foreach (var spec in request.Specifications ?? [])
+        {
+            var kind = spec.Type switch
+            {
+                AutoTagSpecificationTypes.QualityProfile => (Deluno.Infrastructure.Storage.ReferenceKind?)Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                AutoTagSpecificationTypes.Library => Deluno.Infrastructure.Storage.ReferenceKind.Library,
+                _ => null
+            };
+            if (kind is null)
+            {
+                continue;
+            }
+
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "specifications", kind.Value, spec.Value, null, cancellationToken);
+            if (errors.ContainsKey("specifications"))
+            {
+                return;
+            }
+        }
     }
 
     private static Dictionary<string, string[]> ValidateTag(string? name)
