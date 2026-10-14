@@ -290,6 +290,15 @@ public sealed class MigrationAssistantService(
                     var matchingProfiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
                     var profileId = matchingProfiles.FirstOrDefault(profile =>
                         string.Equals(profile.MediaType, mediaType, StringComparison.OrdinalIgnoreCase))?.Id;
+                    // The same folder rule as every other way of making a library (#1325).
+                    var layoutRefusal = Deluno.Libraries.LibraryFolderLayout.RefuseSave(
+                        (await librariesRepository.ListLibrariesAsync(cancellationToken)).Select(Deluno.Libraries.LibraryFolders.From),
+                        new Deluno.Libraries.LibraryFolders(Guid.NewGuid().ToString("N"), GetData(operation, "name") ?? operation.Name, GetData(operation, "rootPath"), null, null));
+                    if (layoutRefusal is not null)
+                    {
+                        throw new InvalidOperationException(layoutRefusal);
+                    }
+
                     var created = await librariesRepository.CreateLibraryAsync(
                         new CreateLibraryRequest(
                             GetData(operation, "name"),

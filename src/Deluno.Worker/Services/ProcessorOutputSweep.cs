@@ -47,6 +47,13 @@ public sealed class ProcessorOutputSweep(
     public async Task<int> SweepAsync(CancellationToken cancellationToken)
     {
         var allLibraries = await libraries.ListLibrariesAsync(cancellationToken);
+
+        // #1325: no clean-up while a folder overlaps a library; the problem is on System, Health.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(allLibraries) is not null)
+        {
+            return 0;
+        }
+
         var refineLibraries = allLibraries
             .Where(library => ImportWorkflows.HandsToProcessor(library.ImportWorkflow) && !string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
             .ToArray();
@@ -105,14 +112,6 @@ public sealed class ProcessorOutputSweep(
         {
             var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(entry));
             if (string.IsNullOrWhiteSpace(name) || !IsDirectChildOf(root, entry) || IsLink(entry))
-            {
-                continue;
-            }
-
-            // #1318: never a library's media, even when an output folder is set above or around a library.
-            if (allLibraries.Any(other => !string.IsNullOrWhiteSpace(other.RootPath)
-                && (Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(other.RootPath), entry, allowEqual: true)
-                    || Deluno.Contracts.SafePath.IsInside(entry, Path.GetFullPath(other.RootPath)))))
             {
                 continue;
             }
@@ -187,6 +186,13 @@ public sealed class ProcessorOutputSweep(
     {
         var full = Path.GetFullPath(path);
         if (!IsInside(root, full))
+        {
+            return false;
+        }
+
+        // Never a library's root, anything inside one, or a folder that holds one (#1325).
+        var layout = await libraries.ListLibrariesAsync(cancellationToken);
+        if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(layout, full) || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(layout, root))
         {
             return false;
         }

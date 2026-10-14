@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Filesystem;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -232,9 +234,8 @@ public sealed class ImportRoutesOnDiskTests
         Assert.Equal("not in a download folder", File.ReadAllText(stranger));
     }
 
-    // DEFECT (the register row says so): this route deletes with File.Delete, not the recycle bin, and trusts the library's
-    // downloads folder. A library whose downloads folder is inside (or is) its own root therefore lets this route delete a
-    // film outright. A file inside a library root should only ever leave through the recycle bin.
+    // Was a defect (#1318): the route deleted with File.Delete and trusted the library's downloads folder, so a downloads folder
+    // that is its own root let it delete a film outright. Now it does nothing while a folder overlaps (#1325).
     [Fact]
     public async Task Deleting_season_pack_leftovers_never_deletes_a_file_that_is_inside_a_library_root()
     {
@@ -242,13 +243,19 @@ public sealed class ImportRoutesOnDiskTests
         var inside = Path.Combine(world.Root, "Show (2000)", "Season 01", "Show.S01E01.mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(inside)!);
         File.WriteAllText(inside, "a person's episode");
-        // The library's downloads folder is its own root.
+        // The library's downloads folder is its own root: the save refuses it (#1325) ...
         var update = await world.App.Client.PutAsJsonAsync($"/api/libraries/{world.Library.Id}", new { name = world.Library.Name, rootPath = world.Root, downloadsPath = world.Root });
-        Assert.True(update.IsSuccessStatusCode, await update.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
 
-        await DeleteLeftoversAsync(world, inside);
+        // ... and an install that saved it before still has it, so the old layout is written straight in.
+        await world.App.Services.GetRequiredService<ILibrariesRepository>().UpdateLibraryDetailsAsync(
+            world.Library.Id, new UpdateLibraryDetailsRequest(null, null, world.Root), CancellationToken.None);
 
-        Assert.True(File.Exists(inside) || (await world.Bin.ListAsync(CancellationToken.None)).Count == 1, "library media must still exist, in the library or in the bin");
+        var response = await DeleteLeftoversAsync(world, inside);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.True(File.Exists(inside), "library media stays where it is");
+        Assert.Empty(await world.Bin.ListAsync(CancellationToken.None));
     }
 
     [Fact]

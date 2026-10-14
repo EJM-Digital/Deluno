@@ -525,7 +525,7 @@ public sealed partial class ImportPipelineService(
             // shown good at Checkpoint A -- is kept until a person chooses
             // (#919). Only the processed file, never the download it came
             // from (request.ProcessedFromPath).
-            DeleteBrokenProcessedCopy(preview.SourcePath);
+            DeleteBrokenProcessedCopy(preview.SourcePath, await librariesRepository.ListLibrariesAsync(cancellationToken));
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -800,7 +800,8 @@ public sealed partial class ImportPipelineService(
                 preview.SourcePath,
                 matchedLibrary,
                 await IsStillSharedByClientAsync(request.DispatchId, preview.SourcePath, cancellationToken),
-                mode);
+                mode,
+                await librariesRepository.ListLibrariesAsync(cancellationToken));
             var provenance = BuildImportProvenance(
                 request,
                 preview.SourcePath,
@@ -1910,7 +1911,8 @@ public sealed partial class ImportPipelineService(
                     placement.File.Preview.SourcePath,
                     ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
                     await IsStillSharedByClientAsync(request.DispatchId, placement.File.Preview.SourcePath, cancellationToken),
-                    modeUsed));
+                    modeUsed,
+                    libraries));
             }
             var cleanup = cleanupList.ToArray();
             var matchedLibrary = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
@@ -2308,8 +2310,15 @@ public sealed partial class ImportPipelineService(
     /// fails is logged, not thrown, and does not stop the fault being held
     /// and shown.
     /// </summary>
-    private void DeleteBrokenProcessedCopy(string processedFilePath)
+    private void DeleteBrokenProcessedCopy(string processedFilePath, IReadOnlyList<LibraryItem> allLibraries)
     {
+        // #1325: nothing is deleted while a folder overlaps a library, and never a file inside a library.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(allLibraries) is not null
+            || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(allLibraries, processedFilePath))
+        {
+            return;
+        }
+
         try
         {
             if (File.Exists(processedFilePath))
@@ -4973,7 +4982,8 @@ public sealed partial class ImportPipelineService(
         string sourcePath,
         LibraryItem? library,
         bool stillSharedByClient,
-        string transferModeUsed)
+        string transferModeUsed,
+        IReadOnlyList<LibraryItem> allLibraries)
     {
         // #892: a copy import leaves a second, full copy of the data on disk -
         // the source and the library file no longer share anything. A hardlink
@@ -5019,6 +5029,12 @@ public sealed partial class ImportPipelineService(
                 "The download client is still sharing this, so Deluno left its copy alone. It will ask the client to remove it once your sharing rule is met.");
         }
 
+        // #1325: while a folder overlaps a library nothing is cleaned up, so the source stays where it is.
+        if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(allLibraries) is not null)
+        {
+            return new WorkflowCleanupResult("keep-source", false, 0, "Source kept because a folder overlaps a library. Fix the folders in Settings, Libraries; Deluno does not clean anything up until then.");
+        }
+
         var sourceRemoved = false;
         var emptyFoldersRemoved = 0;
         string? warning = null;
@@ -5041,7 +5057,7 @@ public sealed partial class ImportPipelineService(
                 // outright; a loose file sharing the processor output root
                 // with other hand-offs only ever loses its own leftovers, by
                 // name, never a sibling hand-off's files.
-                emptyFoldersRemoved = CleanupProcessorHandoffLeftovers(sourcePath, library.ProcessorOutputPath);
+                emptyFoldersRemoved = CleanupProcessorHandoffLeftovers(sourcePath, library.ProcessorOutputPath, allLibraries);
             }
             else if (library.RemoveEmptySourceFolders)
             {
@@ -5077,7 +5093,7 @@ public sealed partial class ImportPipelineService(
     /// output folder, and reports how many extra items were cleared (#915).
     /// The matched file itself is already gone by the time this runs.
     /// </summary>
-    private static int CleanupProcessorHandoffLeftovers(string matchedFilePath, string? processorOutputRoot)
+    private static int CleanupProcessorHandoffLeftovers(string matchedFilePath, string? processorOutputRoot, IReadOnlyList<LibraryItem> allLibraries)
     {
         if (string.IsNullOrWhiteSpace(processorOutputRoot) || !Directory.Exists(processorOutputRoot))
         {
@@ -5097,6 +5113,12 @@ public sealed partial class ImportPipelineService(
             && IsWithinPath(root, handoffFolder)
             && Directory.Exists(handoffFolder))
         {
+            // Never a library's root, a folder inside one, or one that holds one (#1325).
+            if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(allLibraries, handoffFolder))
+            {
+                return 0;
+            }
+
             // The folder-hand-off shape: the whole subfolder was named for
             // this one completed download and belongs to this hand-off
             // alone, so whatever the processor left in it -- scraps,
