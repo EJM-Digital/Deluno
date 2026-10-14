@@ -77,6 +77,9 @@ public sealed class ProcessorHandoffWatcher(
     /// </summary>
     private const int HeldTooLongMultiplier = 3;
 
+    /// <summary>Every library, as of this pass: what every deletion below checks the folder layout against (#1325).</summary>
+    private IReadOnlyList<LibraryItem> layout = [];
+
     /// <param name="libraries">The libraries that can be worked on right now.</param>
     /// <param name="allLibraries">
     /// Every library that exists, reachable or not. A hand-off is orphaned only
@@ -89,6 +92,8 @@ public sealed class ProcessorHandoffWatcher(
         CancellationToken cancellationToken,
         IReadOnlyList<LibraryItem>? allLibraries = null)
     {
+        layout = allLibraries ?? libraries;
+
         // Hand-offs that are over but still owe something (#1155).
         await SettleReturnedTitlesAsync(allLibraries ?? libraries, now, cancellationToken);
         await SettleFailedImportsAsync(allLibraries ?? libraries, now, cancellationToken);
@@ -547,7 +552,7 @@ public sealed class ProcessorHandoffWatcher(
         var name = connection?.Name ?? handoff.ProcessorName ?? "The processor";
         async Task<bool> CloseAsAlreadyImportedAsync()
         {
-            var deleted = ProcessorOutputPathPolicy.DeleteSecondCopy(output, library.ProcessorOutputPath, handoff.SourcePath);
+            var deleted = ProcessorOutputPathPolicy.DeleteSecondCopy(output, library.ProcessorOutputPath, handoff.SourcePath, layout);
             await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, null, null, cancellationToken);
             await activityFeed.RecordActivityAsync(
                 "processing.output.already-imported",
@@ -942,7 +947,9 @@ public sealed class ProcessorHandoffWatcher(
     {
         var summary = string.Empty;
         var path = handoff.OutputPath;
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)
+            && Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(layout) is null
+            && !Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(layout, path))
         {
             if (ProcessorOutputReadiness.IsReady(path))
             {
@@ -971,7 +978,8 @@ public sealed class ProcessorHandoffWatcher(
         var scrapsRemoved = ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
             WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath, library.DownloadsPath),
             library.ProcessorOutputPath,
-            ProcessorOutputReadiness.IsReady);
+            ProcessorOutputReadiness.IsReady,
+            layout);
         if (scrapsRemoved > 0)
         {
             summary += scrapsRemoved == 1

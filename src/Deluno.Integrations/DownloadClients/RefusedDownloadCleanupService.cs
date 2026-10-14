@@ -173,6 +173,13 @@ public sealed class RefusedDownloadCleanupService(
 
             var settings = await platformRepository.GetAsync(cancellationToken);
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+
+            // #1325: no clean-up while a folder overlaps a library; the problem is on System, Health.
+            if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(libraries) is not null)
+            {
+                return 0;
+            }
+
             var snapshots = await downloadClients.GetSnapshotsForLeftoverScanAsync(cancellationToken);
 
             var listedPaths = new List<string>();
@@ -249,6 +256,11 @@ public sealed class RefusedDownloadCleanupService(
             var deleted = 0;
             foreach (var payload in payloads)
             {
+                if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, payload.Path))
+                {
+                    continue;
+                }
+
                 try
                 {
                     if (payload.IsDirectory)
