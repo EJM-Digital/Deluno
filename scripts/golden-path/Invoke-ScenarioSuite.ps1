@@ -303,21 +303,21 @@ elseif ($readyName) {
 if (-not $SkipInstall -and $needVm -and -not $readyRestored) {
     # Before Setup runs, start the tray watcher in the desktop session, so the first-run icon is read from its first second.
     $hook = {
-        param($rigSession, $name, $cred)
-        Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
+        param($rigSession, $name, $cred, $context)
+        Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $context.Bundle
         # Windows Server opens Server Manager at sign-in and it covers the picker: close it now and stop it opening again.
         Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
             New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
             Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
             Get-Process ServerManager -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         } | Out-Null
-        Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -ArgumentList @('GoldenSuiteTray', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Watch-Tray.ps1"') -Block $startTaskBlock | Out-Null
+        Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -ArgumentList @('GoldenSuiteTray', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Watch-Tray.ps1"') -Block $context.StartTask | Out-Null
     }
     $harness = Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1'
     Write-Host 'Installing the candidate the way a person does (restore checkpoint, Setup, component picker)...' -ForegroundColor Cyan
     & $harness -RigHost $RigHost -InstallerPath $InstallerPath -Version $Version -VmName $VmName -Checkpoint $Checkpoint `
         -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $OutDirectory `
-        -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $hook
+        -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $hook -AfterVmReadyContext @{ Bundle = $bundle; StartTask = $startTaskBlock }
     $harnessRows = @(Read-HarnessRows -File $harnessFile)
     $harnessFailures = @($harnessRows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
     if ($harnessRows.Count -eq 0) { [void]$warnings.Add("The harness wrote no results file at $harnessFile.") }
@@ -498,8 +498,8 @@ function Invoke-GithubPickerPhase {
     try {
         Write-Host 'GitHub picker phase: restoring the clean checkpoint, using the allowance up in the VM, then installing the way a person does...' -ForegroundColor Cyan
         $limitHook = {
-            param($rigSession, $name, $cred)
-            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
+            param($rigSession, $name, $cred, $context)
+            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $context.Bundle
             Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
                 New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
                 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
@@ -514,7 +514,7 @@ function Invoke-GithubPickerPhase {
         }
         $harnessFile = Join-Path $dir ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
         & (Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1') -RigHost $RigHost -InstallerPath $InstallerPath -Version $Version -VmName $VmName -Checkpoint $Checkpoint `
-            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $dir -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $limitHook
+            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $dir -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $limitHook -AfterVmReadyContext @{ Bundle = $bundle; StartTask = $startTaskBlock }
         $rows = @(Read-HarnessRows -File $harnessFile)
         $failedSteps = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
 
@@ -603,8 +603,8 @@ function Invoke-UpdatePhase {
     try {
         Write-Host "Update phase: restoring the clean checkpoint and installing the previous release ($prevVersion) silently..." -ForegroundColor Cyan
         $updateHook = {
-            param($rigSession, $name, $cred)
-            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $bundle
+            param($rigSession, $name, $cred, $context)
+            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $context.Bundle
             Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
                 New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
                 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
@@ -614,7 +614,7 @@ function Invoke-UpdatePhase {
         $updateHarnessFile = Join-Path $updateDir ("golden-path-{0}-{1}.md" -f $prevVersion, (Get-Date -Format 'yyyy-MM-dd'))
         # Silent (not -Interactive): Setup --silent, then Deluno started in the signed-in desktop session, as the harness always does.
         & (Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1') -RigHost $RigHost -InstallerPath $PreviousInstallerPath -Version $prevVersion -VmName $VmName -Checkpoint $Checkpoint `
-            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $updateDir -AfterVmReady $updateHook
+            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $updateDir -AfterVmReady $updateHook -AfterVmReadyContext @{ Bundle = $bundle; StartTask = $startTaskBlock }
         $rows = @(Read-HarnessRows -File $updateHarnessFile)
         $bad = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
         if ($rows.Count -eq 0) { return (New-UpdateFailureRecord "The previous release's install wrote no results file at $updateHarnessFile.") }

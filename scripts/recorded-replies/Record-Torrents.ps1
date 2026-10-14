@@ -71,7 +71,7 @@ function Invoke-TorrentScenario {
         $broken = & $A.AddBroken (Split-Path $fileA)
         Save-State $App $ver 'add-refused' 'A file that is not a torrent sent to the client to add: it refuses it.' @($broken)
         # The client's settings and the operations Deluno performs on a torrent (category or label moves, a new location, share limits, queue moves).
-        if ($A.Extras) { try { & $A.Extras $relA (Split-Path $fileA) } catch { Add-Missing "$App extras stopped: $($_.Exception.Message)" } }
+        if ($A.Extras) { try { & $A.Extras $relA (Split-Path $fileA) $ver } catch { Add-Missing "$App extras stopped: $($_.Exception.Message)" } }
         $rmA = & $A.Remove $relA.InfoHash $true
         Save-State $App $ver 'removed-with-data' 'The finished torrent removed together with its data.' @($rmA, (& $A.List $relA.InfoHash))
     } else { Add-Missing "$App finished-single-file / removed-with-data: the film torrent was not complete after 3 minutes" }
@@ -178,8 +178,8 @@ function New-QbitAdapter($p) {
         Queue = { param($on) $null = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/app/setPreferences' -Form @{ json = (@{ queueing_enabled = $true; max_active_downloads = $(if ($on) { 1 } else { 5 }) } | ConvertTo-Json -Compress) } }
         AllowLocalPeers = { param($on) $null = Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/app/setPreferences' -Form @{ json = (@{ enable_multi_connections_from_same_ip = [bool]$on } | ConvertTo-Json -Compress) } }
         SetUploadLimit = { param($h, $bytesPerSecond) Send-Recorded -Client $global:QbClient -Method POST -Path '/api/v2/torrents/setUploadLimit' -Form @{ hashes = $h; limit = $bytesPerSecond } }
-        Extras = { param($t, $dir)
-            $h = $t.InfoHash; $c = $global:QbClient; $v = $A.Ver
+        Extras = { param($t, $dir, $ver)
+            $h = $t.InfoHash; $c = $global:QbClient; $v = $ver
             $moved = "C:\golden\recorded\qbittorrent\moved"; New-Item -ItemType Directory -Force -Path $moved | Out-Null
             Save-State qbittorrent $v 'settings' 'The client''s preferences, categories, default save path and main data, as Deluno reads them.' @(
                 (Send-Recorded -Client $c -Path '/api/v2/app/preferences'), (Send-Recorded -Client $c -Path '/api/v2/torrents/categories'),
@@ -245,8 +245,8 @@ function New-TransmissionAdapter($p) {
         Queue = { param($on) $null = & $global:TrRpc 'session-set' @{ 'download-queue-enabled' = $true; 'download-queue-size' = $(if ($on) { 1 } else { 5 }) } }
         AllowLocalPeers = { param($on) }
         SetUploadLimit = { param($h, $bytesPerSecond) & $global:TrRpc 'torrent-set' @{ ids = @($h); uploadLimited = $true; uploadLimit = [int][math]::Max(1, [math]::Ceiling($bytesPerSecond / 1024)) } }
-        Extras = { param($tor, $dir)
-            $h = $tor.InfoHash; $v = $A.Ver; $moved = "C:\golden\recorded\transmission\moved"; New-Item -ItemType Directory -Force -Path $moved | Out-Null
+        Extras = { param($tor, $dir, $ver)
+            $h = $tor.InfoHash; $v = $ver; $moved = "C:\golden\recorded\transmission\moved"; New-Item -ItemType Directory -Force -Path $moved | Out-Null
             Save-State transmission $v 'settings' 'The session settings and the free space of the download folder, as Deluno reads them.' @((& $global:TrRpc 'session-get'), (& $global:TrRpc 'free-space' @{ path = $dir }))
             $lab = & $global:TrRpc 'torrent-set' @{ ids = @($h); labels = @('recorded-movies') }
             Save-State transmission $v 'label-set' 'A label put on a finished torrent (Transmission''s way of a category).' @($lab, (& $global:TrRpc 'torrent-get' @{ fields = $global:TrFields; ids = @($h) }))
@@ -299,8 +299,8 @@ function New-DelugeAdapter($p) {
         SetUploadLimit = { param($h, $bytesPerSecond) & $global:DlRpc 'core.set_torrent_options' (@(, @($h)) + @(@{ max_upload_speed = [double][math]::Max(1, $bytesPerSecond / 1024) })) }
         Progress = { param($e) $x = (Get-ReplyJson $e).result.torrents; $first = if ($x) { $x.PSObject.Properties | Select-Object -First 1 }; if ($first) { [double]$x.($first.Name).progress / 100 } else { 0 } }
         IsComplete = { param($e) $x = (Get-ReplyJson $e).result.torrents; $first = if ($x) { $x.PSObject.Properties | Select-Object -First 1 }; $first -and $x.($first.Name).progress -ge 100 }
-        Extras = { param($tor, $dir)
-            $h = $tor.InfoHash; $v = $A.Ver; $moved = "C:\golden\recorded\deluge\moved"; New-Item -ItemType Directory -Force -Path $moved | Out-Null
+        Extras = { param($tor, $dir, $ver)
+            $h = $tor.InfoHash; $v = $ver; $moved = "C:\golden\recorded\deluge\moved"; New-Item -ItemType Directory -Force -Path $moved | Out-Null
             Save-State deluge $v 'settings' 'The core settings, session state, free space and labels, as Deluno reads them.' @(
                 (& $global:DlRpc 'core.get_config_values' @(, @('download_location', 'move_completed', 'move_completed_path'))), (& $global:DlRpc 'core.get_session_state'),
                 (& $global:DlRpc 'core.get_free_space'), (& $global:DlRpc 'label.get_labels'))
