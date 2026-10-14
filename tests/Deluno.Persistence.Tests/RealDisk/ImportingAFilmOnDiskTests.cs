@@ -184,6 +184,37 @@ public sealed class ImportingAFilmOnDiskTests
         Assert.Contains(RunAccount.Phrase(), opened.RecommendedAction);
     }
 
+    // ---------------------------------------------------------------- a name can never climb out of the library
+
+    [Theory]
+    [InlineData("..", "{Movie Title} ({Release Year})")]
+    [InlineData(".", "{Movie Title} ({Release Year})")]
+    [InlineData("Sintel", "../escaped/{Movie Title}")]
+    [InlineData("Sintel", @"..\escaped\{Movie Title}")]
+    [InlineData("Sintel", "{Movie Title}/../../escaped")]
+    public async Task A_title_or_template_segment_of_dots_renders_empty_so_an_import_never_writes_outside_the_library_root(string title, string folderFormat)
+    {
+        await using var world = await StartWorldAsync(new ScriptedProbe(_ => ScriptedProbe.Good()));
+        var settings = (await world.App.Client.GetFromJsonAsync<JsonObject>("/api/settings"))!;
+        settings["movieFolderFormat"] = folderFormat;
+        var saved = await world.App.Client.PutAsJsonAsync("/api/settings", settings);
+        Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
+        var movie = await world.AddMovieAsync(title == ".." || title == "." ? "Sintel" : title, 2010);
+        var source = world.WriteDownload(Release + ".mkv", fill: 0x44);
+        var dispatch = await world.RecordDispatchAsync(movie.Id, "Sintel 2010 WEB 1080p");
+        var parentOfRoot = Path.GetDirectoryName(world.Root)!;
+        var before = Directory.GetFileSystemEntries(parentOfRoot).Order().ToArray();
+
+        var result = await world.ImportAsync(RealDiskLibrary.Request(source, title, 2010, dispatchId: dispatch));
+
+        Assert.True(result.Succeeded, result.Message);
+        var placed = Path.GetFullPath(result.Response!.Preview.DestinationPath);
+        Assert.StartsWith(world.Root + Path.DirectorySeparatorChar, placed, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(placed));
+        Assert.Equal(before, Directory.GetFileSystemEntries(parentOfRoot).Order().ToArray());
+        Assert.False(Directory.Exists(Path.Combine(parentOfRoot, "escaped")));
+    }
+
     // ---------------------------------------------------------------- where the file lands
 
     [Theory]
