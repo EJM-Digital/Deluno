@@ -81,7 +81,7 @@ export function LibraryBulkToolsDialog({
         {operation === "minimumAvailability" ? <Field label="Minimum availability" help="The point Deluno is allowed to start looking for these titles."><Select value={minimumAvailability} onChange={(event) => onMinimumAvailabilityChange(event.target.value)}>{MINIMUM_AVAILABILITY_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
         {operation === "reassignLibrary" ? <>
           <Field label="Destination library" help="Reassign selected titles to a different library/root."><Select value={targetLibraryId} onChange={(event) => onTargetLibraryChange(event.target.value)}><option value="">Choose library</option>{libraries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
-          <Field label="Files" help={moveFiles ? "Files physically move to the new library's root." : "Only the record moves; files stay under the old root."}>
+          <Field label="Files" help={moveFiles ? (variant === "movies" ? "Files physically move to the new library's root." : "Each show's whole folder moves to the new library's root.") : "Only the record moves; files stay under the old root."}>
             <CheckboxRow label="Move the files to the new root" checked={moveFiles} onCheckedChange={onMoveFilesChange} />
           </Field>
         </> : null}
