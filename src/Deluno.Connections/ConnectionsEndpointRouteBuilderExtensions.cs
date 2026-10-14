@@ -73,6 +73,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateIndexerRequest request,
             [FromServices] IConnectionsRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IHealthCheckRepository healthChecks,
             [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
@@ -85,6 +86,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateIndexer(request);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "proxyId", Deluno.Infrastructure.Storage.ReferenceKind.IndexerProxy,
+                request.ProxyId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -251,6 +255,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateIndexerRequest request,
             [FromServices] IConnectionsRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IHealthCheckRepository healthChecks,
             [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
@@ -263,6 +268,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateIndexerUpdate(request);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "proxyId", Deluno.Infrastructure.Storage.ReferenceKind.IndexerProxy,
+                request.ProxyId, null, cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);

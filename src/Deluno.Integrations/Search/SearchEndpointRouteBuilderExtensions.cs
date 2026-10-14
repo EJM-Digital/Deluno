@@ -157,6 +157,7 @@ public static class SearchEndpointRouteBuilderExtensions
         releaseProfiles.MapPost(string.Empty, async (
             [FromBody] CreateReleaseProfileRequest request,
             IReleaseProfileRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var errors = ValidateReleaseProfile(
@@ -169,6 +170,15 @@ public static class SearchEndpointRouteBuilderExtensions
                 mustContain: request.MustContain,
                 mustNotContain: request.MustNotContain,
                 tagNames: request.TagNames);
+            foreach (var scopedIndexerId in request.IndexerIds ?? [])
+            {
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "indexerIds", Deluno.Infrastructure.Storage.ReferenceKind.Indexer, scopedIndexerId, null, cancellationToken);
+                if (errors.ContainsKey("indexerIds"))
+                {
+                    break;
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -190,6 +200,7 @@ public static class SearchEndpointRouteBuilderExtensions
             string id,
             [FromBody] UpdateReleaseProfileRequest request,
             IReleaseProfileRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var errors = ValidateReleaseProfile(
@@ -203,6 +214,15 @@ public static class SearchEndpointRouteBuilderExtensions
                 mustContain: request.MustContain,
                 mustNotContain: request.MustNotContain,
                 tagNames: request.TagNames);
+            foreach (var scopedIndexerId in request.IndexerIds ?? [])
+            {
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(connectionFactory, errors, "indexerIds", Deluno.Infrastructure.Storage.ReferenceKind.Indexer, scopedIndexerId, null, cancellationToken);
+                if (errors.ContainsKey("indexerIds"))
+                {
+                    break;
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);

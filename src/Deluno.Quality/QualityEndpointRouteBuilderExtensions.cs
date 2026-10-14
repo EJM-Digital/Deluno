@@ -901,6 +901,7 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdatePolicySetRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -929,24 +930,22 @@ public static class QualityEndpointRouteBuilderExtensions
                 }
                 else
                 {
+                    var problem = await Deluno.Infrastructure.Storage.ReferenceChecks.FindProblemAsync(
+                        connectionFactory,
+                        Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                        requestedQualityProfileId,
+                        MediaPolicyCatalog.NormalizeMediaType(request.MediaType ?? current.MediaType),
+                        cancellationToken);
+                    if (problem is not null)
+                    {
+                        return Results.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["qualityProfileId"] = [problem]
+                        });
+                    }
+
                     var proposedProfile = (await repository.ListQualityProfilesAsync(cancellationToken))
-                        .FirstOrDefault(profile => string.Equals(profile.Id, requestedQualityProfileId, StringComparison.OrdinalIgnoreCase));
-                    if (proposedProfile is null)
-                    {
-                        return Results.ValidationProblem(new Dictionary<string, string[]>
-                        {
-                            ["qualityProfileId"] = ["Choose an existing quality profile before previewing this Media Plan."]
-                        });
-                    }
-
-                    if (!string.Equals(proposedProfile.MediaType, request.MediaType ?? current.MediaType, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return Results.ValidationProblem(new Dictionary<string, string[]>
-                        {
-                            ["qualityProfileId"] = ["The selected quality profile must use the same media type as the Media Plan."]
-                        });
-                    }
-
+                        .First(profile => string.Equals(profile.Id, requestedQualityProfileId, StringComparison.OrdinalIgnoreCase));
                     proposedReleasePreferencePlan = proposedProfile.ReleasePreferencePlan;
                 }
             }
@@ -971,6 +970,7 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreatePolicySetRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IPolicySetLibraryApplier libraryApplier,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken,
@@ -983,6 +983,14 @@ public static class QualityEndpointRouteBuilderExtensions
             }
 
             var errors = ValidatePolicySet(request.Name);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "qualityProfileId",
+                Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, MediaPolicyCatalog.NormalizeMediaType(request.MediaType), cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "destinationRuleId",
+                Deluno.Infrastructure.Storage.ReferenceKind.DestinationRule,
+                request.DestinationRuleId, MediaPolicyCatalog.NormalizeMediaType(request.MediaType), cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -1003,6 +1011,7 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdatePolicySetRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
             [FromServices] IPolicySetLibraryApplier libraryApplier,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken,
@@ -1015,6 +1024,14 @@ public static class QualityEndpointRouteBuilderExtensions
             }
 
             var errors = ValidatePolicySet(request.Name);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "qualityProfileId",
+                Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                request.QualityProfileId, MediaPolicyCatalog.NormalizeMediaType(request.MediaType), cancellationToken);
+            await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                connectionFactory, errors, "destinationRuleId",
+                Deluno.Infrastructure.Storage.ReferenceKind.DestinationRule,
+                request.DestinationRuleId, MediaPolicyCatalog.NormalizeMediaType(request.MediaType), cancellationToken);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
