@@ -1,0 +1,438 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "deluge-tags",
+  "recordedAt": "2026-10-14T03:00:00Z",
+  "note": "Real unauthenticated GETs on 14 Oct 2026 (about 03:00Z). Deluge publishes tags, not releases (development tags such as deluge-2.2.1.dev0 sit among them): its tags API (per_page=100) and tags.atom feed. Shortened for size: the API list keeps the first 40 of 85 tags (down to deluge-1.3.1); the feed keeps its first 10 entries with their html content removed.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/deluge-torrent/deluge/tags?per_page=100",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "name": "deluge-2.2.1.dev0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.2.1.dev0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.2.1.dev0",
+            "commit": {
+              "sha": "dc987157d61b869c89b0ef1bb7854ca343fcfb5f",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/dc987157d61b869c89b0ef1bb7854ca343fcfb5f"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjIuMS5kZXYw"
+          },
+          {
+            "name": "deluge-2.2.0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.2.0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.2.0",
+            "commit": {
+              "sha": "e9777eaabc8698473a05d8c02624f462bdc5af61",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/e9777eaabc8698473a05d8c02624f462bdc5af61"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjIuMA=="
+          },
+          {
+            "name": "deluge-2.1.2.dev0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.1.2.dev0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.1.2.dev0",
+            "commit": {
+              "sha": "d0da06dfc8816d286d028828688c17ddd9d4625b",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/d0da06dfc8816d286d028828688c17ddd9d4625b"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjEuMi5kZXYw"
+          },
+          {
+            "name": "deluge-2.1.1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.1.1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.1.1",
+            "commit": {
+              "sha": "0b5f45b486e8e974ba8a0b1d6e8edcd124fca62a",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/0b5f45b486e8e974ba8a0b1d6e8edcd124fca62a"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjEuMQ=="
+          },
+          {
+            "name": "deluge-2.1.1.dev0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.1.1.dev0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.1.1.dev0",
+            "commit": {
+              "sha": "592b05cd87ad01938175426d19aeb7d5896fa61b",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/592b05cd87ad01938175426d19aeb7d5896fa61b"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjEuMS5kZXYw"
+          },
+          {
+            "name": "deluge-2.1.0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.1.0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.1.0",
+            "commit": {
+              "sha": "20efcfd34583a999e16463c300705c9a5b669f9d",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/20efcfd34583a999e16463c300705c9a5b669f9d"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjEuMA=="
+          },
+          {
+            "name": "deluge-2.1.0.dev0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.1.0.dev0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.1.0.dev0",
+            "commit": {
+              "sha": "897955f0a164349d3191c778cfcb37ee9bff9daf",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/897955f0a164349d3191c778cfcb37ee9bff9daf"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjEuMC5kZXYw"
+          },
+          {
+            "name": "deluge-2.0.5",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.5",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.5",
+            "commit": {
+              "sha": "612e0061ed847dc3436644ef5dbfacaa984c1017",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/612e0061ed847dc3436644ef5dbfacaa984c1017"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuNQ=="
+          },
+          {
+            "name": "deluge-2.0.4",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.4",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.4",
+            "commit": {
+              "sha": "65f7cf0d836220911be94a3536c1479df61abb4d",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/65f7cf0d836220911be94a3536c1479df61abb4d"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuNA=="
+          },
+          {
+            "name": "deluge-2.0.3",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.3",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.3",
+            "commit": {
+              "sha": "b711cd258ae3001d5f1aa69617c22a2d258b1c06",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/b711cd258ae3001d5f1aa69617c22a2d258b1c06"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMw=="
+          },
+          {
+            "name": "deluge-2.0.2",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.2",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.2",
+            "commit": {
+              "sha": "2d87cde887ea7411ef8ce1a142f0f94748aabc65",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/2d87cde887ea7411ef8ce1a142f0f94748aabc65"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMg=="
+          },
+          {
+            "name": "deluge-2.0.1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.1",
+            "commit": {
+              "sha": "d24109f0a2d69f9bed644be7d77bcf059315d3af",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/d24109f0a2d69f9bed644be7d77bcf059315d3af"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMQ=="
+          },
+          {
+            "name": "deluge-2.0.0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.0",
+            "commit": {
+              "sha": "0dc4e18ac4d53571a6a75a5ff2ec09a2e268e0d7",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/0dc4e18ac4d53571a6a75a5ff2ec09a2e268e0d7"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMA=="
+          },
+          {
+            "name": "deluge-2.0.0.dev0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.0.dev0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.0.dev0",
+            "commit": {
+              "sha": "4dd6308db91a38311317ef5bd0f1bbd6788424e1",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/4dd6308db91a38311317ef5bd0f1bbd6788424e1"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMC5kZXYw"
+          },
+          {
+            "name": "deluge-2.0.0b1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0.0b1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0.0b1",
+            "commit": {
+              "sha": "d250e0a48602671430729717c91e366e30728e15",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/d250e0a48602671430729717c91e366e30728e15"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjAuMGIx"
+          },
+          {
+            "name": "deluge-2.0b1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-2.0b1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-2.0b1",
+            "commit": {
+              "sha": "d250e0a48602671430729717c91e366e30728e15",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/d250e0a48602671430729717c91e366e30728e15"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0yLjBiMQ=="
+          },
+          {
+            "name": "deluge-1.3.15",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.15",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.15",
+            "commit": {
+              "sha": "a6e8ac8725c2be28679e26b7c6674aad339338b1",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/a6e8ac8725c2be28679e26b7c6674aad339338b1"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTU="
+          },
+          {
+            "name": "deluge-1.3.14",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.14",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.14",
+            "commit": {
+              "sha": "9bec5142c72a386a3cb40d3b3169b1ad68a1d969",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/9bec5142c72a386a3cb40d3b3169b1ad68a1d969"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTQ="
+          },
+          {
+            "name": "deluge-1.3.13",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.13",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.13",
+            "commit": {
+              "sha": "226346311412c164cfb5e467d04b1ee8627bc015",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/226346311412c164cfb5e467d04b1ee8627bc015"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTM="
+          },
+          {
+            "name": "deluge-1.3.12",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.12",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.12",
+            "commit": {
+              "sha": "602a913fa3286f977c06e30f162b87ae05ba750c",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/602a913fa3286f977c06e30f162b87ae05ba750c"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTI="
+          },
+          {
+            "name": "deluge-1.3.11",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.11",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.11",
+            "commit": {
+              "sha": "6ab951caeeb84d72f309b201c0723eb0895f5bda",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/6ab951caeeb84d72f309b201c0723eb0895f5bda"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTE="
+          },
+          {
+            "name": "deluge-1.3.10",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.10",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.10",
+            "commit": {
+              "sha": "cc56764ee97ab9a9df6316bab23a0db1bc958f5f",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/cc56764ee97ab9a9df6316bab23a0db1bc958f5f"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMTA="
+          },
+          {
+            "name": "deluge-1.3.9",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.9",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.9",
+            "commit": {
+              "sha": "d3f47097c1e74d5a6a69b808fcd695994a79ce44",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/d3f47097c1e74d5a6a69b808fcd695994a79ce44"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuOQ=="
+          },
+          {
+            "name": "deluge-1.3.8",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.8",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.8",
+            "commit": {
+              "sha": "3e632600c66d0f48e1757325bc4478afeb01a4f5",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/3e632600c66d0f48e1757325bc4478afeb01a4f5"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuOA=="
+          },
+          {
+            "name": "deluge-1.3.7",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.7",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.7",
+            "commit": {
+              "sha": "f77440efcbf4185bd6ceac792355431f5f4552b9",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/f77440efcbf4185bd6ceac792355431f5f4552b9"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuNw=="
+          },
+          {
+            "name": "deluge-1.3.6",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.6",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.6",
+            "commit": {
+              "sha": "e9ba3972ad4c4f926b89e3412d1ede09d1a4c85e",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/e9ba3972ad4c4f926b89e3412d1ede09d1a4c85e"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuNg=="
+          },
+          {
+            "name": "deluge-1.3.5",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.5",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.5",
+            "commit": {
+              "sha": "196458399e059ffddc20c302d613b1c6420640ef",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/196458399e059ffddc20c302d613b1c6420640ef"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuNQ=="
+          },
+          {
+            "name": "deluge-1.3.4",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.4",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.4",
+            "commit": {
+              "sha": "bb89a355e581626c1927e9d6080432398aa560f2",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/bb89a355e581626c1927e9d6080432398aa560f2"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuNA=="
+          },
+          {
+            "name": "deluge-1.3.3",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.3",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.3",
+            "commit": {
+              "sha": "448478485ab223b3baab9e98357be9a19933cc58",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/448478485ab223b3baab9e98357be9a19933cc58"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMw=="
+          },
+          {
+            "name": "deluge-1.3.2",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.2",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.2",
+            "commit": {
+              "sha": "c81fbf788d5db0bb75372a6905704b6ba82b67a8",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/c81fbf788d5db0bb75372a6905704b6ba82b67a8"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMg=="
+          },
+          {
+            "name": "deluge-1.3.1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.1",
+            "commit": {
+              "sha": "b0ceae8d2883b407f266dc7f18be7e15511bf173",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/b0ceae8d2883b407f266dc7f18be7e15511bf173"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMQ=="
+          },
+          {
+            "name": "deluge-1.3.0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.0",
+            "commit": {
+              "sha": "90e4de54e9f3485b0b2d7c79973c8c19a6144f18",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/90e4de54e9f3485b0b2d7c79973c8c19a6144f18"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMA=="
+          },
+          {
+            "name": "deluge-1.3.0_rc2",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.0_rc2",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.0_rc2",
+            "commit": {
+              "sha": "b9336889f5b668309346c0e286c24c1a19d32f89",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/b9336889f5b668309346c0e286c24c1a19d32f89"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMF9yYzI="
+          },
+          {
+            "name": "deluge-1.3.0_rc1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.3.0_rc1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.3.0_rc1",
+            "commit": {
+              "sha": "f0c06f4bc51bad0b9f0527483dbb5c0abe20bf7c",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/f0c06f4bc51bad0b9f0527483dbb5c0abe20bf7c"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjMuMF9yYzE="
+          },
+          {
+            "name": "deluge-1.2.3",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.3",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.3",
+            "commit": {
+              "sha": "cc086917c1056acd052954c48eab7358affb2145",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/cc086917c1056acd052954c48eab7358affb2145"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMw=="
+          },
+          {
+            "name": "deluge-1.2.2",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.2",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.2",
+            "commit": {
+              "sha": "32a00d7919cc549d23e646515280dcc0e71a255b",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/32a00d7919cc549d23e646515280dcc0e71a255b"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMg=="
+          },
+          {
+            "name": "deluge-1.2.1",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.1",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.1",
+            "commit": {
+              "sha": "3791fe2d2fd936e94120eb1f9e70229225eacf04",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/3791fe2d2fd936e94120eb1f9e70229225eacf04"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMQ=="
+          },
+          {
+            "name": "deluge-1.2.0",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.0",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.0",
+            "commit": {
+              "sha": "4748c96d262ec433121dcd2e119586a74d651de1",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/4748c96d262ec433121dcd2e119586a74d651de1"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMA=="
+          },
+          {
+            "name": "deluge-1.2.0_rc5",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.0_rc5",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.0_rc5",
+            "commit": {
+              "sha": "28da88006d6b71cb88bd6f77399ace938866bdc1",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/28da88006d6b71cb88bd6f77399ace938866bdc1"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMF9yYzU="
+          },
+          {
+            "name": "deluge-1.2.0_rc4",
+            "zipball_url": "https://api.github.com/repos/deluge-torrent/deluge/zipball/refs/tags/deluge-1.2.0_rc4",
+            "tarball_url": "https://api.github.com/repos/deluge-torrent/deluge/tarball/refs/tags/deluge-1.2.0_rc4",
+            "commit": {
+              "sha": "f47f7965c861acc8127578bf8d52ffab05ae3597",
+              "url": "https://api.github.com/repos/deluge-torrent/deluge/commits/f47f7965c861acc8127578bf8d52ffab05ae3597"
+            },
+            "node_id": "MDM6UmVmMTcwMDk2ODQ6cmVmcy90YWdzL2RlbHVnZS0xLjIuMF9yYzQ="
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "github.com/deluge-torrent/deluge/tags.atom",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/atom+xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:media=\"http://search.yahoo.com/mrss/\" xml:lang=\"en-US\">\n  <id>tag:github.com,2008:https://github.com/deluge-torrent/deluge/releases</id>\n  <link type=\"text/html\" rel=\"alternate\" href=\"https://github.com/deluge-torrent/deluge/releases\"/>\n  <link type=\"application/atom+xml\" rel=\"self\" href=\"https://github.com/deluge-torrent/deluge/releases.atom\"/>\n  <title>Tags from deluge</title>\n  <updated>2025-08-17T20:22:28Z</updated>\n  <entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.2.1.dev0</id>\n    <updated>2025-08-17T20:22:28Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.2.1.dev0\"/>\n    <title>deluge-2.2.1.dev0</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.2.0</id>\n    <updated>2025-04-28T21:31:06Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.2.0\"/>\n    <title>deluge-2.2.0</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.1.2.dev0</id>\n    <updated>2022-07-10T13:05:21Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.1.2.dev0\"/>\n    <title>deluge-2.1.2.dev0</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.1.1</id>\n    <updated>2022-07-10T12:25:14Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.1.1\"/>\n    <title>deluge-2.1.1</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.1.1.dev0</id>\n    <updated>2022-06-28T21:11:29Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.1.1.dev0\"/>\n    <title>deluge-2.1.1.dev0</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.1.0</id>\n    <updated>2022-06-28T18:56:55Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.1.0\"/>\n    <title>deluge-2.1.0</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.1.0.dev0</id>\n    <updated>2021-12-28T19:26:38Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.1.0.dev0\"/>\n    <title>deluge-2.1.0.dev0: Remove all Python 2 support</title>\n    <author>\n      <name>DjLegolas</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/6710676?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.0.5</id>\n    <updated>2021-12-15T18:49:29Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.0.5\"/>\n    <title>deluge-2.0.5</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.0.4</id>\n    <updated>2021-12-12T19:22:25Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.0.4\"/>\n    <title>deluge-2.0.4</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n<entry>\n    <id>tag:github.com,2008:Repository/17009684/deluge-2.0.3</id>\n    <updated>2019-06-12T17:47:35Z</updated>\n    <link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/deluge-torrent/deluge/releases/tag/deluge-2.0.3\"/>\n    <title>deluge-2.0.3</title>\n    <content></content>\n    <author>\n      <name>cas--</name>\n    </author>\n    <media:thumbnail height=\"30\" width=\"30\" url=\"https://avatars.githubusercontent.com/u/606038?s=60&amp;v=4\"/>\n  </entry>\n</feed>\n"
+      }
+    }
+  ]
+}

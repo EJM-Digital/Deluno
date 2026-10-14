@@ -74,7 +74,7 @@ public static class GithubLatestRelease
     /// checksum file per release looked at. Five is enough because a release that is still being published has
     /// no files for minutes, not for five releases, and a person who hits it is told to try again.
     /// </summary>
-    public const int MaxReleasesLooked = 5;
+    public const int MaxReleasesLooked = Deluno.Contracts.ReleaseFallback.MaxReleasesLooked;
 
     public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null, IReadOnlyCollection<string>? excludeTags = null)
     {
@@ -120,7 +120,7 @@ public static class GithubLatestRelease
     }
 
     /// <summary>Why a release is passed over after its installer download answered 404 (the checksum file was uploaded before the installer).</summary>
-    private static string InstallerNotThere(string tag) => $"{tag}'s installer download was not there yet";
+    private static string InstallerNotThere(string tag) => Deluno.Contracts.ReleaseFallback.InstallerNotThere(tag);
 
     private static ResolvedGithubAsset? Excluded(string tag, List<string> skipped)
     {
@@ -164,60 +164,18 @@ public static class GithubLatestRelease
                 return null;
             }
 
-            var skipped = new List<string>();
-            foreach (var tag in tags.Take(MaxReleasesLooked))
+            // One walk shared with the update tool inside Deluno (Deluno.Contracts.ReleaseFallback, #1264).
+            var walk = await Deluno.Contracts.ReleaseFallback.WalkAsync(tags, excludeTags,
+                tag => Deluno.Contracts.ReleaseFallback.TryDownloadFolderAsync(http, spec.GithubRepo!, tag, spec.GithubAsset!, spec.GithubChecksumAsset, ParseChecksum, probeInstaller: false, cancellationToken),
+                MaxReleasesLooked);
+            if (walk.Unreadable)
             {
-                if (excludeTags?.Contains(tag) == true)
-                {
-                    // Already chosen once and its installer download answered 404: it still counts toward the cap, and costs no call.
-                    skipped.Add(InstallerNotThere(tag));
-                    continue;
-                }
-
-                var assetUrl = Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(spec.GithubRepo!, tag, spec.GithubAsset!);
-                string? sha256 = null;
-                if (!string.IsNullOrWhiteSpace(spec.GithubChecksumAsset))
-                {
-                    using var sums = await http.GetAsync(Deluno.Contracts.ReleaseAtomFeed.DownloadUrl(spec.GithubRepo!, tag, spec.GithubChecksumAsset), cancellationToken);
-                    if (sums.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    {
-                        skipped.Add($"{tag} has no {spec.GithubChecksumAsset} yet");
-                        continue;
-                    }
-
-                    if (!sums.IsSuccessStatusCode)
-                    {
-                        return null;
-                    }
-
-                    sha256 = ParseChecksum(await sums.Content.ReadAsStringAsync(cancellationToken), spec.GithubAsset!);
-                    if (sha256 is null)
-                    {
-                        skipped.Add($"{tag}'s {spec.GithubChecksumAsset} does not list {spec.GithubAsset}");
-                        continue;
-                    }
-                }
-                else
-                {
-                    // Without a checksum to read, make sure the file is really in that release before saying so.
-                    using var head = new HttpRequestMessage(HttpMethod.Head, assetUrl);
-                    using var exists = await http.SendAsync(head, cancellationToken);
-                    if (exists.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    {
-                        skipped.Add($"{tag} has no {spec.GithubAsset} yet");
-                        continue;
-                    }
-
-                    if (!exists.IsSuccessStatusCode)
-                    {
-                        return null;
-                    }
-                }
-
-                return new GithubLookup(new ResolvedGithubAsset(assetUrl, sha256), Tag: tag, Skipped: skipped);
+                return null;
             }
 
-            return new GithubLookup(null, Skipped: skipped, NoInstallerYet: true);
+            return walk.Value is { } files
+                ? new GithubLookup(new ResolvedGithubAsset(files.AssetUrl, files.Sha256), Tag: walk.Tag, Skipped: walk.Skipped)
+                : new GithubLookup(null, Skipped: walk.Skipped, NoInstallerYet: true);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
