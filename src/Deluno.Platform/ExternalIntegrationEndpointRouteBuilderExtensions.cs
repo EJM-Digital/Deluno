@@ -319,6 +319,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             {
                 return Results.NotFound(new
                 {
+                    error = "nothing_recorded",
                     message = "Deluno has nothing recorded to tell the processor about this hand-off. An outcome is recorded when its import finishes."
                 });
             }
@@ -620,7 +621,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (scopeDenied is not null) return scopeDenied;
 
             var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
-            if (handoff is null) return Results.NotFound();
+            if (handoff is null) return Results.NotFound(new { error = "handoff_not_found", message = $"Deluno has no hand-off with the id {id}." });
             if (!ProcessorHandoffStatuses.CanReleaseOriginal(handoff.Status))
             {
                 return Results.Conflict(new
@@ -636,7 +637,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 null,
                 $"Importing the original of {handoff.ReleaseName}, unprocessed, as requested.",
                 cancellationToken);
-            if (released is null) return Results.NotFound();
+            if (released is null) return Results.NotFound(new { error = "handoff_not_found", message = $"Deluno has no hand-off with the id {id}." });
 
             await activityFeed.RecordActivityAsync(
                 "processing.released",
