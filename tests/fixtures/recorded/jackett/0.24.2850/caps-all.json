@@ -1,0 +1,22 @@
+{
+  "app": "jackett",
+  "version": "0.24.2850",
+  "state": "caps-all",
+  "recordedAt": "2026-10-14T08:01:11Z",
+  "note": "The capabilities of Jackett's aggregate indexer \"all\" (every configured tracker at once).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2.0/indexers/all/results/torznab/api?apikey=<scrubbed>&t=caps"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/rss+xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<caps>\r\n  <server title=\"Jackett\" />\r\n  <limits default=\"1000\" max=\"1000\" />\r\n  <searching>\r\n    <search available=\"yes\" supportedParams=\"q\" />\r\n    <tv-search available=\"yes\" supportedParams=\"q,season,ep\" />\r\n    <movie-search available=\"yes\" supportedParams=\"q,imdbid\" />\r\n    <music-search available=\"yes\" supportedParams=\"q\" />\r\n    <audio-search available=\"yes\" supportedParams=\"q\" />\r\n    <book-search available=\"yes\" supportedParams=\"q\" />\r\n  </searching>\r\n  <categories>\r\n    <category id=\"1000\" name=\"Console\">\r\n      <subcat id=\"1030\" name=\"Console/Wii\" />\r\n      <subcat id=\"1040\" name=\"Console/XBox\" />\r\n      <subcat id=\"1090\" name=\"Console/Other\" />\r\n      <subcat id=\"1180\" name=\"Console/PS4\" />\r\n    </category>\r\n    <category id=\"2000\" name=\"Movies\">\r\n      <subcat id=\"2020\" name=\"Movies/Other\" />\r\n      <subcat id=\"2030\" name=\"Movies/SD\" />\r\n      <subcat id=\"2040\" name=\"Movies/HD\" />\r\n      <subcat id=\"2045\" name=\"Movies/UHD\" />\r\n      <subcat id=\"2060\" name=\"Movies/3D\" />\r\n    </category>\r\n    <category id=\"3000\" name=\"Audio\">\r\n      <subcat id=\"3020\" name=\"Audio/Video\" />\r\n      <subcat id=\"3030\" name=\"Audio/Audiobook\" />\r\n      <subcat id=\"3040\" name=\"Audio/Lossless\" />\r\n      <subcat id=\"3050\" name=\"Audio/Other\" />\r\n    </category>\r\n    <category id=\"4000\" name=\"PC\">\r\n      <subcat id=\"4010\" name=\"PC/0day\" />\r\n      <subcat id=\"4030\" name=\"PC/Mac\" />\r\n      <subcat id=\"4040\" name=\"PC/Mobile-Other\" />\r\n      <subcat id=\"4050\" name=\"PC/Games\" />\r\n      <subcat id=\"4060\" name=\"PC/Mobile-iOS\" />\r\n      <subcat id=\"4070\" name=\"PC/Mobile-Android\" />\r\n    </category>\r\n    <category id=\"5000\" name=\"TV\">\r\n      <subcat id=\"5040\" name=\"TV/HD\" />\r\n      <subcat id=\"5045\" name=\"TV/UHD\" />\r\n      <subcat id=\"5050\" name=\"TV/Other\" />\r\n      <subcat id=\"5070\" name=\"TV/Anime\" />\r\n    </category>\r\n    <category id=\"6000\" name=\"XXX\">\r\n      <subcat id=\"6010\" name=\"XXX/DVD\" />\r\n      <subcat id=\"6040\" name=\"XXX/x264\" />\r\n      <subcat id=\"6045\" name=\"XXX/UHD\" />\r\n      <subcat id=\"6060\" name=\"XXX/ImageSet\" />\r\n      <subcat id=\"6070\" name=\"XXX/Other\" />\r\n    </category>\r\n    <category id=\"7000\" name=\"Books\">\r\n      <subcat id=\"7020\" name=\"Books/EBook\" />\r\n      <subcat id=\"7030\" name=\"Books/Comics\" />\r\n      <subcat id=\"7050\" name=\"Books/Other\" />\r\n    </category>\r\n    <category id=\"8000\" name=\"Other\" />\r\n  </categories>\r\n</caps>"
+      }
+    }
+  ]
+}
