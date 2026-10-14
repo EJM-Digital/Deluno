@@ -121,10 +121,7 @@ public sealed class ScheduledBackupsOnDiskTests
         Assert.False(File.Exists(made[1].FullPath));
     }
 
-    // DEFECT found while proving retention: it counts every zip in the backup folder that opens as an archive, whether
-    // or not it carries Deluno's manifest. A person's own zip kept in that folder becomes "the oldest backup" and is
-    // deleted once there are more than RetentionCount archives.
-    [Fact(Skip = "Defect: retention deletes a zip in the backup folder that is not a Deluno backup (it counts any readable zip).")]
+    [Fact]
     public async Task Retention_never_deletes_a_zip_that_is_not_a_backup()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -147,5 +144,39 @@ public sealed class ScheduledBackupsOnDiskTests
         }
 
         Assert.True(File.Exists(theirs), "a zip that is not a Deluno backup must be left alone");
+    }
+
+    [Fact]
+    public async Task Files_in_the_backup_folder_that_deluno_did_not_make_are_left_alone_and_named_once_in_plain_words()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-01-01T03:00:00Z"));
+        using var scope = app.Services.CreateScope();
+        var service = ServiceFor(app, scope, time);
+        await service.SaveSettingsAsync(new UpdateBackupSettingsRequest(false, "daily", "03:00", 1, null), CancellationToken.None);
+        var folder = Path.Combine(app.DataRoot, "backups");
+        // Named like a backup, and a plain text file: neither carries a Deluno manifest, so neither is Deluno's to remove.
+        var lookalike = Path.Combine(folder, "deluno-backup-20190101-000000.zip");
+        using (var archive = ZipFile.Open(lookalike, ZipArchiveMode.Create))
+        {
+            archive.CreateEntry("photo.txt");
+        }
+
+        var notes = Path.Combine(folder, "notes.txt");
+        File.WriteAllText(notes, "mine");
+        for (var index = 0; index < 3; index++)
+        {
+            await service.CreateBackupAsync("manual", CancellationToken.None);
+            time.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.True(File.Exists(lookalike));
+        Assert.Equal("mine", File.ReadAllText(notes));
+        Assert.Single(Directory.GetFiles(folder, "deluno-backup-2026*.zip"));
+        var problem = (await service.GetSettingsAsync(CancellationToken.None)).Problem!;
+        Assert.Contains("2 files Deluno did not make", problem);
+        Assert.Contains("deluno-backup-20190101-000000.zip", problem);
+        Assert.Contains("notes.txt", problem);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(problem, "notes.txt"));
     }
 }
