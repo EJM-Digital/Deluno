@@ -3969,6 +3969,14 @@ public sealed class SqliteMovieCatalogRepository(
 
     private static readonly string[] TrackedPathTables = ["movie_wanted_state", "movie_subtitle_state", "movie_subtitle_scan"];
 
+    // Every table that stores one of a title's file paths, with the column holding the title's id. A rename or move rewrites all of
+    // them in one transaction (#1323). The stored release evidence is keyed by "media_id" and is rewritten with the rest.
+    private static readonly (string Table, string KeyColumn)[] RelocatedPathTables =
+    [
+        ("movie_wanted_state", "movie_id"), ("movie_subtitle_state", "movie_id"), ("movie_subtitle_scan", "movie_id"),
+        ("media_preference_evaluations", "media_id")
+    ];
+
     public async Task<IReadOnlyList<string>> ListTrackedFilePathsAsync(string movieId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -4016,13 +4024,13 @@ public sealed class SqliteMovieCatalogRepository(
         // also folds "É" and "é": a folder such as "Édith Piaf (2007)" is found either way.
         var prefix = oldTrimmed.Replace('\\', '/') + "/";
         var rewritten = 0;
-        foreach (var table in TrackedPathTables)
+        foreach (var (table, keyColumn) in RelocatedPathTables)
         {
             var toRewrite = new List<(long RowId, string Path)>();
             using (var select = connection.CreateCommand())
             {
                 select.Transaction = transaction;
-                select.CommandText = $"SELECT rowid, file_path FROM {table} WHERE movie_id = @movieId AND file_path IS NOT NULL;";
+                select.CommandText = $"SELECT rowid, file_path FROM {table} WHERE {keyColumn} = @movieId AND file_path IS NOT NULL;";
                 AddParameter(select, "@movieId", movieId);
                 await using var reader = await select.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
