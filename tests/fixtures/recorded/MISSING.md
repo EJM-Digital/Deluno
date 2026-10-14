@@ -102,3 +102,18 @@ Not recorded, and how to produce each (every one is one command, run with the VM
 - **FlareSolverr "Challenge solved!"**: needs a page that actually shows a Cloudflare challenge to the VM; the public pages tried did not (`challenge-not-seen` is recorded instead).
 - **Jellyfin delete by id**: Jellyfin 12.2.0 answered `DELETE /Items/{id}` of a scanned throwaway film with 500 "Error processing request." (recorded as `item-deleted`, with 400 for an unknown id). Whether the 500 is a permissions problem of the service account or Jellyfin's real answer was not investigated; record it again as a user with delete rights before treating it as Jellyfin's behaviour. The setup wizard's `RemoteAccess` call also answered 500 and the wizard still completed.
 - **Tests still building these apps' replies inline** (listed "pending" in tests/recorded-reply-allow-list.json with the reason): the Torznab and Newznab feed tests that need crafted releases, MediaServerClientTests and MediaServerVersionTests (Emby and Plex parts; the Jellyfin parts of MediaServerClientTests were not rewritten), LeavingSoonCollectionClientTests (Plex), SeerrClientTests and MigrationAssistantServiceTests (Seerr), the Emby, Plex and Seerr lines of ConnectionVersionParserTests, and the uTorrent and rTorrent parts of the eleven download-client files.
+
+## Needed to close the integration coverage gaps (#1301)
+
+Found while proving each integration operation on recordings. Each line is a state a row of `docs/testing/coverage-register.json` needs and no recording holds; the row stays a gap until it is recorded.
+
+- qbittorrent: a sign-in answered 403 (the address banned after too many wrong logins; q7), and a sign-in answered 200 with the body `Fails.` (the "rejected right after install, then accepted" variant of q6).
+- deluge: `core.get_torrent_status` asking for the `label` field (the keep-seeding move reads it before and after; the test changes the one value in the recorded files reply), `core.remove_torrent` answered `false`, and `label.get_labels` with the Label plugin switched off.
+- nzbget: `listfiles` (n17), and `append` answered with an error object for a release it will not take.
+- sabnzbd: `get_files` (s21).
+- utorrent and rtorrent: no recording at all, so every utorrent and rtorrent row stays a gap.
+- emby, plex and seerr: no recording at all, so every row that names only them stays a gap.
+- jackett and nzbhydra2: a `t=search` (not `t=caps`) answered for a wrong key, a 3xx redirect on a search, feed read or test (tn10, tn35), a torrent file download that is redirected, answered 429 with Retry-After, or timed out (tf10), and a Newznab search that returns releases (the recorded searches hold none), whose NZB links a Usenet grab hands to SABnzbd or NZBGet (tn48).
+- weir: `HEAD` on the hand-off address and `GET` on a health address (the connection Test; w1), and a processor whose hand-off address redirects to another host (w14).
+- jellyfin: an API key that is not an administrator's (the recorded `/Users` 401 is a key Jellyfin does not know at all, and the key-cannot-list-users test uses it), a collection taken off the home screen (un-favourite), and `Library/Media/Updated` answered with an error.
+- github: the vendor installer download itself (a 20 MB binary; the downloader tests use the real `SHA256SUMS.txt` of a Weir release as the downloaded file).
