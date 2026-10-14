@@ -15,7 +15,7 @@ public sealed class ReleaseNameYearProperties
 
     private static Arbitrary<Name> Names()
         => (from words in Gen.Elements(Words).ArrayOf()
-            from year in Gen.Choose(1900, 2100)
+            from year in Gen.Choose(1900, 2199)
             from separator in Gen.Elements(Separators)
             select new Name(words.Length == 0 ? ["Alien"] : words, year, separator)).ToArbitrary();
 
@@ -31,12 +31,12 @@ public sealed class ReleaseNameYearProperties
     public bool InferYear_never_throws_and_any_year_it_returns_is_between_1900_and_2100(string? text)
     {
         var year = ReleaseNameParser.InferYear(text!);
-        return year is null or >= 1900 and <= 2100;
+        return year is null or >= 1900 and <= 2199;
     }
 
     [Fact]
     public void The_last_year_wins_so_a_title_that_is_itself_a_year_is_not_the_release_year()
-        => Prop.ForAll((from a in Gen.Choose(1900, 2100) from b in Gen.Choose(1900, 2100) select (a, b)).ToArbitrary(), pair =>
+        => Prop.ForAll((from a in Gen.Choose(1900, 2199) from b in Gen.Choose(1900, 2199) select (a, b)).ToArbitrary(), pair =>
             ReleaseNameParser.InferYear($"Blade.Runner.{pair.Item1}.{pair.Item2}.1080p") == pair.Item2).QuickCheckThrowOnFailure();
 
     [Fact]

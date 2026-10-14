@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Worker.Services;
 
 /// <summary>
@@ -31,7 +33,7 @@ public static class ReleaseNameParser
         {
             if (part.Length == 4 &&
                 int.TryParse(part, out var year) &&
-                year is >= 1900 and <= 2100)
+                ReleaseNameReader.IsYear(year))
             {
                 inferred = year;
             }

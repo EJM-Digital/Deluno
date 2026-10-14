@@ -31,14 +31,14 @@ public static partial class FeedReleaseNames
         }
 
         var name = releaseName.Trim();
-        var episode = EpisodePattern().Match(name);
-        if (episode.Success)
+        foreach (var marker in ReleaseNameReader.ReadEpisodes(name))
         {
-            return new ParsedFeedRelease(
-                episode.Groups["title"].Value,
-                null,
-                int.Parse(episode.Groups["season"].Value, System.Globalization.CultureInfo.InvariantCulture),
-                int.Parse(episode.Groups["episode"].Value, System.Globalization.CultureInfo.InvariantCulture));
+            // The title is what stands before the marker, which must follow a separator.
+            if (marker.Index > 0 && name[marker.Index - 1] is ' ' or '.' or '_' or '-' or '	'
+                && name[..marker.Index].Trim(' ', '.', '_', '-', '	') is { Length: > 0 })
+            {
+                return new ParsedFeedRelease(name[..marker.Index].TrimEnd(' ', '.', '_', '-', '	'), null, marker.Season, marker.FirstEpisode);
+            }
         }
 
         // The last year in the name, so "2001.A.Space.Odyssey.1968" is 1968.
@@ -86,12 +86,9 @@ public static partial class FeedReleaseNames
     public static string WithoutTrailingYear(string normalizedTitle)
         => TrailingYearPattern().Replace(normalizedTitle, string.Empty).Trim();
 
-    [GeneratedRegex(@"^(?<title>.+?)[\s._-]+S(?<season>\d{1,2})[\s._-]?E(?<episode>\d{1,3})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex EpisodePattern();
-
-    [GeneratedRegex(@"^(?<title>.+)[\s._\-(\[]+(?<year>(?:19|20)\d{2})(?:[\s._\-)\]]|$)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?<title>.+)[\s._\-(\[]+(?<year>" + ReleaseNameReader.YearDigits + @")(?:[\s._\-)\]]|$)", RegexOptions.CultureInvariant)]
     private static partial Regex FilmPattern();
 
-    [GeneratedRegex(@"\s(?:19|20)\d{2}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\s" + ReleaseNameReader.YearDigits + "$", RegexOptions.CultureInvariant)]
     private static partial Regex TrailingYearPattern();
 }
