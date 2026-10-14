@@ -21,6 +21,19 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await GrabCoreAsync(client, request, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return ClientCredentials.GrabFailure(client, request, message);
+        }
+    }
+
+    private async Task<DownloadClientGrabResult> GrabCoreAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         var apiKey = client.Secret ?? client.Username;
@@ -359,6 +372,19 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetHistoryCoreAsync(client, capturedUtc, cancellationToken);
+        }
+        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
+        {
+            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
+            return [];
+        }
+    }
+
+    private async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return [];
