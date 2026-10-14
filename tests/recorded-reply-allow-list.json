@@ -140,6 +140,11 @@
       "file": "tests/Deluno.Integrations.Tests/Properties/ScoringAndFeedProperties.cs",
       "kind": "deliberate",
       "reason": "Property tests (#1271): the feed is written by Deluno's own TorznabFeed.Write from generated releases and read back, to prove the reader never throws on any text and round-trips title, size and date. Generated input is the point; no recorded reply can stand in for arbitrary text. Real Torznab replies are tested from tests/fixtures/recorded/jackett."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/APathAClientReportsThatClimbsOutIsNeverUsedTests.cs",
+      "kind": "pending",
+      "reason": "The uTorrent and rTorrent parts build their replies inline because neither app is recorded yet (#1272). Every other client in the file replays its recorded reply with one path swapped. Delete this entry once uTorrent and rTorrent are recorded and these parts load them."
     }
   ],
   "noBehaviour": [
