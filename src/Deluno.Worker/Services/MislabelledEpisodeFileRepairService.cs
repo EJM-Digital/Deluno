@@ -4,6 +4,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Platform;
+using Deluno.Platform.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,13 +19,16 @@ namespace Deluno.Worker.Services;
 /// from such a release (the grab's release name, or the file's own name) has the file moved to the recycle bin
 /// (Restore works), is Missing again, is searched at once, and says so in Activity. The test is
 /// <see cref="ReleaseTitleMatch.MislabelledAs"/>, the rule search uses, so there is one. A file whose name carries its
-/// own title, or none, is never touched, and a second run finds nothing to do.
+/// own title, or none, is never touched, and a second run finds nothing to do. It moves a person's file, so while automatic
+/// jobs are off it does nothing and says so once in Activity (#1321).
 /// </summary>
+[ChangesMediaOnlyWhenAutomaticJobsAreOn]
 public sealed class MislabelledEpisodeFileRepairService(
     IServiceScopeFactory scopes,
     ILogger<MislabelledEpisodeFileRepairService> logger) : BackgroundService
 {
     public const string ActivityCategory = "series.episode-file.mislabelled";
+    internal const string ServiceKey = "mislabelled-episode-file-repair";
 
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
 
@@ -37,6 +41,15 @@ public sealed class MislabelledEpisodeFileRepairService(
             {
                 using var scope = scopes.CreateScope();
                 var services = scope.ServiceProvider;
+                if (!await AutomaticJobs.IsOnAsync(services.GetRequiredService<IPlatformSettingsRepository>(), stoppingToken))
+                {
+                    await services.GetRequiredService<IActivityFeedRepository>().RecordActivityOnChangeAsync(
+                        AutomaticJobs.PausedActivityCategory,
+                        AutomaticJobs.PausedMessage("checking episode files against the names of the downloads they came from"),
+                        null, null, "service", ServiceKey, stoppingToken);
+                    continue;
+                }
+
                 await RunAsync(
                     services.GetRequiredService<ISeriesCatalogRepository>(),
                     services.GetRequiredService<ILibrariesRepository>(),
