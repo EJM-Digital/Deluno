@@ -220,6 +220,12 @@ public sealed class FlareSolverrCloudflareHelperTests
         Assert.Null(solution);
     }
 
+    private sealed class AnswersEverythingWith(RecordedReply reply) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(reply.ToResponse());
+    }
+
     /// <summary>The recorded helper, except that one command is answered with another recorded reply (a timeout, a body that is not its API).</summary>
     private sealed class HelperAnswering(HttpMessageHandler inner, string command, RecordedReply reply) : HttpMessageHandler
     {
@@ -236,6 +242,46 @@ public sealed class FlareSolverrCloudflareHelperTests
 
             return await new HttpMessageInvoker(inner, disposeHandler: false).SendAsync(request, cancellationToken);
         }
+    }
+
+    [Fact]
+    public async Task The_probe_of_a_helper_that_answers_its_landing_page_says_FlareSolverr_answered_and_a_refused_connection_and_a_405_are_told_apart()
+    {
+        var address = new Uri("http://127.0.0.1:8191");
+
+        using (var ready = new HttpClient(new RecordedFlareSolverrHandler()))
+        {
+            var (healthy, message) = await CloudflareHelperProbe.CheckAsync(ready, address, CancellationToken.None);
+            Assert.True(healthy);
+            Assert.Equal("FlareSolverr answered at 127.0.0.1:8191.", message);
+        }
+
+        using (var refused = new HttpClient(RecordedReplies.Flaresolverr("not-answering").NotAnswering()))
+        {
+            var (healthy, message) = await CloudflareHelperProbe.CheckAsync(refused, address, CancellationToken.None);
+            Assert.False(healthy);
+            Assert.StartsWith("Nothing answered at 127.0.0.1:8191:", message, StringComparison.Ordinal);
+        }
+
+        var wrong = RecordedReplies.Flaresolverr("wrong-method").Single.Reply;
+        Assert.Equal(405, wrong.Status);
+        using (var notTheLandingPage = new HttpClient(new AnswersEverythingWith(wrong)))
+        {
+            var (healthy, message) = await CloudflareHelperProbe.CheckAsync(notTheLandingPage, address, CancellationToken.None);
+            Assert.False(healthy);
+            Assert.Equal("127.0.0.1:8191 answered HTTP 405.", message);
+        }
+    }
+
+    [Fact]
+    public async Task A_helper_counts_as_configured_by_the_address_in_preferences_or_by_an_indexers_own_address()
+    {
+        var (set, _) = RecordedCreateHelper(new RecordedFlareSolverrHandler(), timeoutSeconds: 60, helperUrl: "http://127.0.0.1:8191");
+        var (none, _) = RecordedCreateHelper(new RecordedFlareSolverrHandler(), timeoutSeconds: 60, helperUrl: null);
+
+        Assert.True(await set.IsConfiguredAsync(CancellationToken.None));
+        Assert.False(await none.IsConfiguredAsync(CancellationToken.None));
+        Assert.True(await none.IsConfiguredAsync(CancellationToken.None, helperUrl: "http://192.168.1.9:8191"));
     }
 
     private sealed class RefusingHandler : HttpMessageHandler
