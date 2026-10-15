@@ -360,6 +360,28 @@ test.describe("System screens on the real host (#1294)", () => {
     }
   });
 
+  test("Allowed Hosts: turning it on makes the real host refuse an unlisted address, keeps the listed one and this machine, and turning it off lets everything back in", async ({ page, request }) => {
+    await authenticateAndNavigate(page, "/system/security");
+    const headers = await authHeaders(page);
+    // Straight to the host itself, so the Host header each request carries is the one the test chooses.
+    const api = `http://127.0.0.1:${process.env.DELUNO_SMOKE_API_PORT ?? "5199"}`;
+    const call = (hostName: string | null) => request.get(`${api}/api/system/health`, { headers: { ...headers, ...(hostName ? { Host: hostName } : {}) }, failOnStatusCode: false });
+    const put = (enabled: boolean, allowedHosts: string[]) =>
+      request.put(`${api}/api/security/allowed-hosts`, { headers, data: { enabled, allowedHosts }, failOnStatusCode: false });
+
+    expect((await call("evil.example")).status(), "off: any address is answered").toBe(200);
+    try {
+      expect((await put(true, ["deluno.home.example"])).status()).toBe(200);
+      await expect.poll(async () => (await call("evil.example")).status(), { message: "an unlisted address is refused" }).toBe(400);
+      expect((await call("deluno.home.example")).status(), "the listed address is answered").toBe(200);
+      expect((await call(null)).status(), "this machine is never locked out").toBe(200);
+      expect((await call("localhost")).status(), "localhost is always allowed").toBe(200);
+    } finally {
+      expect((await put(false, [])).status()).toBe(200);
+    }
+    await expect.poll(async () => (await call("evil.example")).status(), { message: "off again: any address is answered" }).toBe(200);
+  });
+
   test("/system/docs opens the Help & Guides page", async ({ page }) => {
     await authenticateAndNavigate(page, "/system/docs");
     await expect(page.getByText("Deluno Operating Model")).toBeVisible();

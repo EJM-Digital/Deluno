@@ -150,3 +150,9 @@ Each line is a register row group that cannot be proven by a recording-replay te
 - seerr, trakt, subtitle providers (OpenSubtitles and the others Deluno signs in to), and the services notification webhooks post to (Discord, Slack, Telegram, ntfy): nothing of theirs is recorded, so the routes that test, save or call them (`/api/seerr-servers*`, `/api/trakt/*`, `/api/subtitle-providers*`, `/api/notification-webhooks*`) stay gaps. Each needs its real reply to a sign-in or test call, a webhook delivery and its refusal.
 - tmdb (or the managed metadata broker): the reply to a provider-record lookup (`ResolveProviderRecordAsync`) for one film and one show, so `POST /api/movies/{id}/metadata/link` and `POST /api/series/{id}/metadata/link` can be replayed.
 - sabnzbd and nzbget: the replies to a Usenet provider (news server) being written (`set_config` for a server section; NZBGet `saveconfig`), for `POST /api/download-clients/usenet-provider`.
+
+## Needed by the System coverage rows (#1294, 15 Oct 2026)
+
+- weir: a processor output folder that holds a stray finished file, a stray season folder, and a second copy of a film the library holds, each beside a hand-off in each state (working, done, handed back), as Weir leaves the folder: the System > Health rows "Import", "Clear", "Keep" and "Remove" on a processor-output row act on those folders and have no recorded Weir state to run against
+- an indexer whose own test answers unhealthy or unreachable (a Torznab site that refuses, one that times out), recorded as the reply the Indexers screen stores, for the System > Health "Indexer" row and its grace for a new one
+- a download client with leftover finished downloads (qBittorrent, Deluge, Transmission, SABnzbd, NZBGet): the torrents/history list of a client that holds a finished item no library file shares and one a library file still shares, for System > System tasks "Run now" on the leftover-downloads task
