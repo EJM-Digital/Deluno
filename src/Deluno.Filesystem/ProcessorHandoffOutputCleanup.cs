@@ -134,7 +134,4 @@ public static class ProcessorHandoffOutputCleanup
 
     internal static bool IsWithinPath(string root, string candidate)
         => Deluno.Contracts.SafePath.IsInside(root, candidate);
-
-    private static StringComparison GetPathComparison()
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }
