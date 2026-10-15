@@ -33,7 +33,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 - Deluno-Weir contract (every call, reply and report, with its recording and test): `docs/deluno-weir-contract.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
-- **Testing: `docs/testing/STRATEGY.md`** (the bar: every screen, menu, line and function proven, seven measures each enforced in CI) and `docs/testing/COVERAGE.md` (the register; add a row with every new route, job, migration or screen). Builders run only the tests they write until the owner says go.
+- **Testing: `docs/testing/STRATEGY.md`** (the bar: every screen, menu, line and function proven, seven measures each enforced in CI) and `docs/testing/COVERAGE.md` (the register; add a row with every new route, job, migration or screen; the gaps may only go down from the base branch: `node scripts/check-coverage-register.mjs --base origin/main`). Builders run only the tests they write until the owner says go.
 - CI and release standard (shared with Weir): `docs/ci-standard.md`; GA checklist and sign-off: `docs/ga-release-checklist.md`
 - Active execution plans: `docs/exec-plans/active/`
 
