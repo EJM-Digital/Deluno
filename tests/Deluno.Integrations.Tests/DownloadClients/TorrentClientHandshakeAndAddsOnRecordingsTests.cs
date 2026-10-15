@@ -80,7 +80,7 @@ public sealed class TorrentClientHandshakeAndAddsOnRecordingsTests
     [Fact]
     public async Task A_transmission_that_knows_labels_says_the_label_is_made_when_first_used_and_asks_only_for_its_rpc_version()
     {
-        var calls = new Calls("transmission", [RecordedReplies.Transmission("session-handshake"), RecordedReplies.Transmission("settings")]);
+        var calls = new Calls("transmission", [RecordedReplies.Transmission("settings")]);
         var handler = calls.Build();
 
         var check = await new TransmissionDownloadClient(new Factory(handler))
