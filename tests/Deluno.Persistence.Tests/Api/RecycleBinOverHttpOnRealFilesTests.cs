@@ -1,10 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
+using Deluno.Worker.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -52,6 +57,38 @@ public sealed class RecycleBinOverHttpOnRealFilesTests
         using var again = await app.Client.PostAsync("/api/recycle-bin/cleanup", content: null);
         Assert.Equal(0, (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("removed").GetInt32());
         Assert.True(File.Exists(movedToday.RecyclePath));
+    }
+
+    [Fact]
+    public async Task The_scheduled_recycle_bin_task_removes_only_what_has_expired_and_records_that_it_ran()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        using var libraryRoot = new Folder();
+        var expired = Path.Combine(libraryRoot.Path, "Expired.Movie.2020.mkv");
+        var recent = Path.Combine(libraryRoot.Path, "Recent.Movie.2026.mkv");
+        await File.WriteAllTextAsync(expired, "expired");
+        await File.WriteAllTextAsync(recent, "recent");
+        (await app.Client.PutAsJsonAsync("/api/recycle-bin/settings", new { retentionDays = 7, maxSizeMb = 10000 })).EnsureSuccessStatusCode();
+        var movedToday = await BinAsync(app, DateTimeOffset.UtcNow, libraryRoot.Path, recent);
+        var movedLongAgo = await BinAsync(app, DateTimeOffset.UtcNow.AddDays(-40), libraryRoot.Path, expired);
+        var planner = new WorkPlanner(
+            NullLogger<WorkPlanner>.Instance,
+            app.Services.GetRequiredService<IJobQueueRepository>(),
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System);
+
+        await planner.RunRecycleBinCleanupAsync(app.Services.GetRequiredService<IRecycleBinService>(), CancellationToken.None);
+
+        Assert.False(File.Exists(movedLongAgo.RecyclePath), "the expired item is permanently removed");
+        Assert.True(File.Exists(movedToday.RecyclePath), "an item inside its retention is never taken");
+        var left = await app.Client.GetFromJsonAsync<JsonElement>("/api/recycle-bin");
+        Assert.Equal(movedToday.Id, Assert.Single(left.EnumerateArray()).GetProperty("id").GetString());
+        var state = (await app.Services.GetRequiredService<IJobQueueRepository>().ListSystemTaskStatesAsync(CancellationToken.None))
+            .Single(task => task.ScheduleKey == SystemTasks.RecycleBinCleanup);
+        Assert.Equal("completed", state.LastResult);
+        var tasks = await app.Client.GetFromJsonAsync<JsonElement>("/api/system/tasks");
+        var shown = tasks.EnumerateArray().Single(task => task.GetProperty("key").GetString() == SystemTasks.RecycleBinCleanup);
+        Assert.Equal("Clean the recycle bin", shown.GetProperty("name").GetString());
     }
 
     [Fact]
