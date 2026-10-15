@@ -746,7 +746,7 @@ describe("the release candidates table and its drawer", () => {
 
   const typed = { ...PREFERRED, preferenceEvaluation: { typed: true } };
 
-  async function openDrawerFor(candidate: { releaseName: string }, handlerFor: Handler = RESPONSES([PREFERRED, ELIGIBLE])) {
+  async function openDrawerFor(candidate: { releaseName: string; decisionStatus?: string }, handlerFor: Handler = RESPONSES([PREFERRED, ELIGIBLE])) {
     setup(handlerFor);
     await renderPage();
     press("Choose a release");
