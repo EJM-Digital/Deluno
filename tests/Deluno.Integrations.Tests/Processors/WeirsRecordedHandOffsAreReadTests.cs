@@ -7,7 +7,7 @@ using Deluno.Tests.Recorded;
 namespace Deluno.Integrations.Tests.Processors;
 
 /// <summary>
-/// #1237: every state of a hand-off that Weir 1.0.0-rc.13 was recorded in, replayed through the code that reads it. A hand-off is
+/// #1237: every state of a hand-off that Weir 1.0.0-rc.13 and 1.0.0-rc.18 were recorded in (a state recorded by both is read from the newer), replayed through the code that reads it. A hand-off is
 /// accepted whether its source is a file, a release folder, a folder with the files named, or the same source sent again; Weir's
 /// status says working or completed with the output it made (or none, when it changed nothing); and Weir's reply to Deluno's outcome
 /// says whether it let go of its copy, in the words it gave. The replies are Weir's own; the requests are Deluno's.
@@ -89,7 +89,7 @@ public sealed class WeirsRecordedHandOffsAreReadTests
     [InlineData("release-folder-status-working", "working", false)]
     [InlineData("source-files-status-completed", "completed", true)]
     [InlineData("source-files-status-working", "working", false)]
-    [InlineData("resend-status-completed", "completed", false)]
+    [InlineData("resend-status-completed", "completed", true)]
     [InlineData("missing-file-status-working", "working", false)]
     public async Task Each_recorded_status_is_read_with_its_state_and_the_output_weir_made(string recording, string state, bool hasOutput)
     {

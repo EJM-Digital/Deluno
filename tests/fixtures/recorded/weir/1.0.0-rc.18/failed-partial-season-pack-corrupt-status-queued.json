@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "failed-partial-season-pack-corrupt-status-queued",
+  "recordedAt": "2026-10-15T03:12:47Z",
+  "note": "The status of a season-pack hand-off where one episode is corrupt while it was queued.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/86146156-6308-476f-9d75-e0d7f8d10598"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "86146156-6308-476f-9d75-e0d7f8d10598",
+          "state": "queued",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T03:10:45Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "This file changed too recently. Weir waits 60s after the last change before processing, so it has about 32s to go."
+        }
+      }
+    }
+  ]
+}

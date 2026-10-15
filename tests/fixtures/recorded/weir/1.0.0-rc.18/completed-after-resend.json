@@ -1,0 +1,55 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "completed-after-resend",
+  "recordedAt": "2026-10-15T02:45:19Z",
+  "note": "Both sends of the same source finished with an output path (Weir did not skip the second).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/3e2d51a6-0308-4101-a036-b7cd5a376f9b"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "3e2d51a6-0308-4101-a036-b7cd5a376f9b",
+          "state": "cancelled",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:45:01.051038Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "This release was sent again, so Weir is answering the newer send and has nothing to add here."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/0efbc134-d154-47bc-970d-9b1e7be0f34a"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "0efbc134-d154-47bc-970d-9b1e7be0f34a",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:45:19.313212Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.R.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.R.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

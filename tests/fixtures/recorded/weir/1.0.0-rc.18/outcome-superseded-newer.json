@@ -1,0 +1,57 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "outcome-superseded-newer",
+  "recordedAt": "2026-10-15T02:50:30Z",
+  "note": "The outcome of the NEWER hand-off, reported after Weir finished it, once the older hand-off's outcome had been recorded.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/586df1d0-9125-4b90-84d7-913888b1df40"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "586df1d0-9125-4b90-84d7-913888b1df40",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:50:30.148123Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/586df1d0-9125-4b90-84d7-913888b1df40/outcome",
+        "body": {
+          "outcome": "imported",
+          "occurredUtc": "2026-10-15T02:50:30.6132325Z",
+          "importedPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Superseded.mkv",
+          "reason": null
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "586df1d0-9125-4b90-84d7-913888b1df40",
+          "outcome": "imported",
+          "released": false,
+          "message": "Weir recorded that Deluno imported the file. Weir had already settled its copy, so it left it as it is."
+        }
+      }
+    }
+  ]
+}

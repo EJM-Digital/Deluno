@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "resend-status-completed",
+  "recordedAt": "2026-10-15T02:45:19Z",
+  "note": "The status of the resent hand-off while it was completed.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/0efbc134-d154-47bc-970d-9b1e7be0f34a"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "0efbc134-d154-47bc-970d-9b1e7be0f34a",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:45:19.313212Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.R.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.R.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

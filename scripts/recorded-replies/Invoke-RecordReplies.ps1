@@ -57,6 +57,8 @@ param(
     [ValidateSet('controls', 'nzbget-config', 'weir-states', 'weir-reports', 'weir-errors')] [string[]] $Extra,
     # With -Extra: also run the ordinary Weir recording first (capabilities, hand-offs, outcomes), so one run records the whole of a new Weir version.
     [switch] $IncludeBaseWeir,
+    # With -Extra weir-reports: only these steps (takeover, collision, rejected, 'season packs', 'repeat after 503', 'answered 401', 'answered 403'), comma separated in one string.
+    [string] $ReportSteps,
     [int] $DelunoPort = 7879,
     [switch] $NoSwarm,   # skip the two-client transfers (about 20 of the 35 minutes)
     [switch] $DelunoSide, [string] $DelunoVersion = 'current', [int] $PerState = 3
@@ -74,7 +76,7 @@ $vmParams = [ordered]@{
     NzbgetPort = $NzbgetPort; QbittorrentPort = $QbittorrentPort; TransmissionPort = $TransmissionPort; DelugePort = $DelugePort
     WeirUrl = $WeirUrl; WeirVersion = $WeirVersion; WeirSource = $WeirSource; DelunoPort = $DelunoPort
     # The Usenet stub as it is in this repository (hang file, folder jobs); the VM's copy is brought up to it.
-    DelunoVersion = $DelunoVersion; PerState = $PerState; NoSwarm = [bool]$NoSwarm
+    DelunoVersion = $DelunoVersion; ReportSteps = $ReportSteps; PerState = $PerState; NoSwarm = [bool]$NoSwarm
 }
 # Script text the VM needs (the torrent-making scripts, the local tracker, the Usenet stub as it is in this repository). Sent as
 # plain values beside the small JSON of settings, not inside it: Windows PowerShell 5.1 serialises that much text far too slowly.

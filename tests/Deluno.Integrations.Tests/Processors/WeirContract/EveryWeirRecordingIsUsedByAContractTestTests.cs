@@ -62,7 +62,9 @@ public sealed class EveryWeirRecordingIsUsedByAContractTestTests
             .Where(state => state.Length > 0 && state.Contains('-'))
             .Distinct()
             .ToArray();
-        var recorded = RecordedReplies.States("weir", RecordedReplies.LatestVersion("weir"))
+        // A state is found where the helpers find it: in the newest version that was recorded giving it (an older version's remains
+        // readable until a newer recording of the same state replaces it).
+        var recorded = RecordedReplies.Versions("weir").SelectMany(version => RecordedReplies.States("weir", version))
             .Concat(RecordedReplies.Versions("deluno").SelectMany(version => RecordedReplies.States("deluno", version)))
             .ToArray();
         var neither = states.Where(state => !recorded.Contains(state)).ToArray();

@@ -565,16 +565,20 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         var handoff = await HandoffAsync(app, scene);
         await RecordDispatchAsync(app, scene, imported: false);
 
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            libraryId = scene.LibraryId,
-            handoffId = handoff.Id,
-            status = "failed",
-            disposition = "rejected",
-            sourceRemoved,
-            message = "No usable audio track.",
-            failureClass = "guardrail"
-        });
+        // sourceRemoved false is Weir 1.0.0-rc.18's own report of an audio-only file under its reject policy (it left the file in place); the other
+        // two are the report with that member left out and set to true, which Weir was not seen sending.
+        var response = sourceRemoved == false
+            ? await RecordedWeirReports.PostAsync(app.Client, RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-failed-rejected"), scene.LibraryId, handoff.Id, scene.Output))
+            : await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+            {
+                libraryId = scene.LibraryId,
+                handoffId = handoff.Id,
+                status = "failed",
+                disposition = "rejected",
+                sourceRemoved,
+                message = "No usable audio track.",
+                failureClass = "guardrail"
+            });
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var blocked = Assert.Single(await app.Services.GetRequiredService<IBlockedReleaseRepository>().ListAsync(CancellationToken.None));
