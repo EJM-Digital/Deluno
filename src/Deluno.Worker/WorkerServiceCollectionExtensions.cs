@@ -150,6 +150,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, ProxyHealthCheck>();
         services.AddScoped<IHealthCheck, RemotePathMappingHealthCheck>();
         services.AddScoped<IHealthCheck, SystemTimeHealthCheck>();
+        services.AddScoped<IHealthCheck, DatabaseIntegrityHealthCheck>();
         services.AddScoped<IHealthCheck, MediaServerRefreshHealthCheck>();
         services.AddScoped<IHealthCheck, DownloadHardlinkHealthCheck>();
         services.AddScoped<IHealthCheck, ClientScriptFailureHealthCheck>();

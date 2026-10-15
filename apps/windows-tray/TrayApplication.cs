@@ -429,7 +429,7 @@ public sealed class TrayApplication : ApplicationContext
                     {
                         var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno", "logs");
                         Directory.CreateDirectory(logDir);
-                        File.AppendAllText(Path.Combine(logDir, "component-startup.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+                        CappedLog.Append(Path.Combine(logDir, "component-startup.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
                     }
                     catch
                     {
