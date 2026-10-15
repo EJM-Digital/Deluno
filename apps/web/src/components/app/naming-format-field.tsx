@@ -240,13 +240,13 @@ export function NamingFormatField({
               <span className="min-w-0 flex-1">
                 <span className={cn("flex items-center gap-2 text-(length:--type-caption) font-semibold", active ? "text-primary" : "text-foreground")}>
                   <span className="truncate">{option.label}</span>
-                  {index === 0 ? <span className="shrink-0 text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-primary/70">Recommended</span> : null}
+                  {index === 0 ? <span className="shrink-0 text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-primary">Recommended</span> : null}
                 </span>
                 <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">{option.description}</span>
               </span>
               {showExamples ? (
                 <span className="hidden max-w-[42%] shrink-0 text-right md:block">
-                  <span className="block text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Example</span>
+                  <span className="block text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground">Example</span>
                   <code className="mt-0.5 block truncate text-(length:--type-caption) text-foreground">{option.hint}</code>
                 </span>
               ) : null}
@@ -257,7 +257,7 @@ export function NamingFormatField({
 
       {showExamples ? (
         <div className="flex min-w-0 items-baseline gap-3 text-(length:--type-caption)">
-          <span className="shrink-0 font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Preview</span>
+          <span className="shrink-0 font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preview</span>
           <code className="truncate text-foreground">{example || "Choose a style to see a preview."}</code>
         </div>
       ) : null}

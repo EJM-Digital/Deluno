@@ -4,7 +4,7 @@ import { useFieldContext } from "./field";
 
 /** Shared control chrome for Input, Select and Textarea — one look, one height. */
 export const controlClassName =
-  "deluno-control density-control-text flex h-(--control-height) w-full rounded-xl border border-hairline bg-surface-1 px-(--field-pad-x) py-2 text-foreground placeholder:text-muted-foreground/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive/60";
+  "deluno-control density-control-text flex h-(--control-height) w-full rounded-xl border border-hairline bg-surface-1 px-(--field-pad-x) py-2 text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive/60";
 
 /**
  * The same control, with its box taken off — for a control that sits inside
@@ -17,7 +17,7 @@ export const controlClassName =
  * inside the first the moment a pointer touches it.
  */
 export const bareControlClassName =
-  "deluno-control density-control-text flex h-(--control-height) w-full bg-transparent text-foreground placeholder:text-muted-foreground/80 focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-60";
+  "deluno-control density-control-text flex h-(--control-height) w-full bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-60";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, id, ...props }, ref) => {

@@ -159,7 +159,7 @@ export function LibraryFilterPanel({
       {picking ? (
         <div className="space-y-2 rounded-xl border border-hairline bg-background/40 p-3">
           <div className="flex items-center gap-2">
-            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <Input
               autoFocus
               value={fieldSearch}
@@ -186,7 +186,7 @@ export function LibraryFilterPanel({
                   <p className="text-(length:--type-micro) font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {group.label}
                   </p>
-                  <p className="text-(length:--type-micro) text-muted-foreground/70">{group.blurb}</p>
+                  <p className="text-(length:--type-micro) text-muted-foreground">{group.blurb}</p>
                   <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
                     {inGroup.map((field) => (
                       <button
@@ -429,7 +429,7 @@ function Group({ label, hint, children }: { label: string; hint: string; childre
   return (
     <div className="space-y-1.5">
       <SectionLabel>{label}</SectionLabel>
-      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground/80">{hint}</p>
+      <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">{hint}</p>
       <div className="pt-1">{children}</div>
     </div>
   );

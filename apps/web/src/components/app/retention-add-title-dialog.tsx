@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { ListPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchJson, readValidationProblem } from "../../lib/api";

@@ -15,7 +15,7 @@
  * GET /api/{movies|series}/{id}/rename-preview,
  * POST /api/{movies|series}/bulk/rename-apply.
  */
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { FolderSearch, LoaderCircle, PencilLine } from "lucide-react";
 import { useState } from "react";
 import { authedFetch } from "../../lib/use-auth";

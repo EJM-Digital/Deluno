@@ -103,7 +103,7 @@ export function EmptyState({
       ) : null}
 
       {learnMore ? (
-        <div className="relative z-10 mt-3 text-(length:--type-caption) text-muted-foreground/80">
+        <div className="relative z-10 mt-3 text-(length:--type-caption) text-muted-foreground">
           {learnMore}
         </div>
       ) : null}

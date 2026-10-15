@@ -61,6 +61,11 @@ export interface A11yFinding { id: string; help: string; nodes: string[] }
 
 /** axe on the page as it stands. Serious and critical rules only, as the owner's accessibility bar. */
 export async function axeFindings(page: Page): Promise<A11yFinding[]> {
+  // A row that fades in as a live push arrives is half transparent for 0.6 s; axe would read its colours mid-fade.
+  // Wait for every animation that has an end (not the endless spinners) so it measures the colours the person ends up with.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => undefined))));
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   return results.violations
     .filter((v) => v.impact === "serious" || v.impact === "critical")
@@ -72,13 +77,34 @@ export const describeFindings = (found: A11yFinding[]) => found.map((f) => `${f.
 export interface FocusStop { label: string; tag: string; visibleFocus: boolean; inOrder: boolean }
 
 /**
+ * The accessible name of a control, as a screen reader works it out: aria-label, then aria-labelledby, then the
+ * label(s) the control belongs to (for a checkbox, switch or field), then its own text, title or placeholder.
+ * Written as source text so the same function runs inside the page.
+ */
+const NAME_OF_SOURCE = String.raw`(el) => {
+  const text = (node) => (node ? (node.innerText || node.textContent || "") : "").trim().replace(/\s+/g, " ").slice(0, 60);
+  const labelled = (el.getAttribute("aria-labelledby") || "").split(/\s+/).map((id) => text(document.getElementById(id))).join(" ").trim();
+  const labels = el.labels ? Array.from(el.labels).map(text).join(" ").trim() : "";
+  return el.getAttribute("aria-label") || labelled || labels || text(el) || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("name") || "";
+}`;
+
+/**
  * Walks the page with the Tab key alone and says what each stop was: its accessible name, whether the focus is visible
  * (an outline or a ring) and whether it comes after the previous stop in the page. Stops when focus leaves the page's
  * own controls or comes round to the first one again.
  */
-export async function tabWalk(page: Page, limit = 80): Promise<{ stops: FocusStop[]; reachable: string[]; missed: string[] }> {
+export async function tabWalk(page: Page, limit = 200): Promise<{ stops: FocusStop[]; reachable: string[]; missed: string[] }> {
+  await page.evaluate(`window.__nameOf = ${NAME_OF_SOURCE};`);
   await page.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
+    // A blur alone leaves the browser's place for the next Tab at the control that had focus, so a screen that
+    // focuses its first field on its own would never list that field as a stop. Park the starting point at the very
+    // top of the document, then remove the marker.
+    const marker = document.createElement("span");
+    marker.tabIndex = -1;
+    document.body.prepend(marker);
+    marker.focus();
+    marker.remove();
     window.scrollTo(0, 0);
     (window as unknown as { __tabWalk: { previous: Element | null } }).__tabWalk = { previous: null };
   });
@@ -90,8 +116,7 @@ export async function tabWalk(page: Page, limit = 80): Promise<{ stops: FocusSto
       const el = document.activeElement as HTMLElement | null;
       if (!el || el === document.body) return null;
       const state = (window as unknown as { __tabWalk: { previous: Element | null } }).__tabWalk;
-      const name = el.getAttribute("aria-label") || (el.innerText || "").trim().replace(/\s+/g, " ").slice(0, 60)
-        || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("name") || "";
+      const name = (window as unknown as { __nameOf: (e: Element) => string }).__nameOf(el);
       const style = getComputedStyle(el);
       const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
       const ring = style.boxShadow !== "none" && style.boxShadow !== "";
@@ -119,7 +144,7 @@ export async function tabWalk(page: Page, limit = 80): Promise<{ stops: FocusSto
         const style = getComputedStyle(el);
         return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && !(el as HTMLButtonElement).disabled && el.tabIndex >= 0 && !el.closest("[aria-hidden=true], [inert]");
       })
-      .map((el) => el.getAttribute("aria-label") || (el.innerText || "").trim().replace(/\s+/g, " ").slice(0, 60) || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("name") || "");
+      .map((el) => (window as unknown as { __nameOf: (e: Element) => string }).__nameOf(el));
   });
   const missed = wanted.filter((label) => label && !reachable.includes(label));
   return { stops, reachable, missed };

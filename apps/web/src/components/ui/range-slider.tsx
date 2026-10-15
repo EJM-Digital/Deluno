@@ -226,7 +226,7 @@ export function RangeAxis({
           <span
             key={tick}
             className={cn(
-              "absolute top-0 flex flex-col gap-0.5 whitespace-nowrap text-(length:--type-micro) tabular-nums leading-none text-muted-foreground/70",
+              "absolute top-0 flex flex-col gap-0.5 whitespace-nowrap text-(length:--type-micro) tabular-nums leading-none text-muted-foreground",
               // The end labels tuck inside the track rather than overhang the column.
               first ? "items-start" : last ? "items-end" : "items-center -translate-x-1/2"
             )}

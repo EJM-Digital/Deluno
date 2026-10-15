@@ -889,7 +889,7 @@ function ContentTopbar({
         >
           <Search className={cn(TOPBAR_ICON, "shrink-0")} />
           <span className="hidden lg:inline">Search &amp; navigate...</span>
-          <kbd className="ml-auto hidden rounded-sm border border-hairline bg-background/70 px-1.5 py-0.5 font-mono text-(length:--shell-kbd-size) text-muted-foreground/70 lg:inline">{commandShortcut.label}</kbd>
+          <kbd className="ml-auto hidden rounded-sm border border-hairline bg-background/70 px-1.5 py-0.5 font-mono text-(length:--shell-kbd-size) text-muted-foreground lg:inline">{commandShortcut.label}</kbd>
         </button>
 
         <button type="button" onClick={() => setSearchOpen(true)} aria-label="Search & navigate" className={cn(TOPBAR_ICON_BUTTON, "md:hidden")}>

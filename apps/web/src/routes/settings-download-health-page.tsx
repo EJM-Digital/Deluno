@@ -443,7 +443,7 @@ function ConnectivityCheckCard({
               : "Has not skipped a pass."}
           </span>
           {lastSkip ? (
-            <Link to={activityLinkForStatus("done")} className="shrink-0 text-primary underline-offset-2 hover:underline">
+            <Link to={activityLinkForStatus("done")} className="shrink-0 text-primary underline underline-offset-2 hover:no-underline">
               See in Activity
             </Link>
           ) : null}

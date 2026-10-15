@@ -362,13 +362,13 @@
     --secondary-foreground: 222 18% 15%;
     --muted: 220 14% 85.6%;
     --muted-foreground: 217 11% 36%;
-    --destructive: 0 84% 44%;
+    --destructive: 0 84% 39.5%;
     --destructive-foreground: 0 0% 100%;
-    --success: 145 72% 31%;
+    --success: 145 72% 25%;
     --success-foreground: 0 0% 100%;
-    --warning: 24 94% 34.5%;
+    --warning: 24 94% 32%;
     --warning-foreground: 28 40% 10%;
-    --info: 207 92% 41%;
+    --info: 207 92% 34.5%;
     --info-foreground: 0 0% 100%;
     /*
       The two marks a title can wear that no operational tone covers.
@@ -394,7 +394,7 @@
     --mark-missing: 0 84% 44%;
     --mark-downloading: 207 92% 41%;
     --mark-upgrade: 145 72% 31%;
-    --mark-quality-met: 42 96% 37%;
+    --mark-quality-met: 42 96% 34%;
     /*
       Gold is a *material*, and a flat fill of it reads as yellow. This is the
       surface: a highlight, a body and a shadow for `.mark-grail` to run a
@@ -487,10 +487,10 @@
     --sidebar-accent: 220 15% 79%;
     --sidebar-accent-foreground: 222 24% 10%;
     --sidebar-border: 220 13% 76.7%;
-    --state-ok: 145 72% 31%;
-    --state-warn: 24 94% 34.5%;
-    --state-danger: 0 84% 44%;
-    --state-info: 207 92% 41%;
+    --state-ok: 145 72% 25%;
+    --state-warn: 24 94% 32%;
+    --state-danger: 0 84% 39.5%;
+    --state-info: 207 92% 34.5%;
     --media-foreground: 0 0% 98%;
     --media-muted-foreground: 0 0% 82%;
     --gradient-surface: linear-gradient(160deg, hsl(220 22% 94.7%) 0%, hsl(220 16% 89.8%) 100%);
@@ -541,14 +541,14 @@
     --secondary-foreground: 220 18% 96%;
     --muted: 217 24% 15%;
     --muted-foreground: 217 13% 70%;
-    --destructive: 0 84% 62%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84% 67.5%;
+    --destructive-foreground: 218 48% 9%;
     --success: 145 78% 52%;
     --success-foreground: 145 50% 8%;
     --warning: 28 96% 58%;
-    --warning-foreground: 28 40% 10%;
+    --warning-foreground: 28 90% 88%;
     --info: 207 96% 62%;
-    --info-foreground: 210 30% 98%;
+    --info-foreground: 218 48% 9%;
     --mark-missing: 0 84% 62%;
     --mark-downloading: 207 96% 62%;
     --mark-upgrade: 145 78% 52%;
@@ -578,7 +578,7 @@
     --sidebar-border: 217 24% 15%;
     --state-ok: 145 78% 52%;
     --state-warn: 28 96% 58%;
-    --state-danger: 0 84% 62%;
+    --state-danger: 0 84% 67.5%;
     --state-info: 207 96% 62%;
     --media-foreground: 0 0% 98%;
     --media-muted-foreground: 0 0% 82%;
@@ -592,7 +592,7 @@
   }
 
   :root {
-    --primary: 213 82% 42%;
+    --primary: 213 82% 33.5%;
     --primary-glow: 211 90% 58%;
     --primary-2: 216 82% 52%;
     --primary-deep: 218 76% 20%;

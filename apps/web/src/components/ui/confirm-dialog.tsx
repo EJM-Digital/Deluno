@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "./dialog-primitives";
 import { AlertTriangle } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

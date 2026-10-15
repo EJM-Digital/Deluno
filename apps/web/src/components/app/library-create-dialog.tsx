@@ -1,7 +1,7 @@
 import type { Dispatch, FormEventHandler, MutableRefObject, SetStateAction } from "react";
 import { ArtworkImage } from "../ui/artwork-image";
 import { ArrowUpRight, LoaderCircle, Plus, Search, X } from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import type { MetadataProviderStatus, MetadataSearchResult } from "../../lib/api";
 import { SHOW_MONITOR_PRESETS, type CreateFormDraft, type LibraryVariant, type ShowMonitorPreset } from "../../hooks/use-library-create";
 import { cn } from "../../lib/utils";
