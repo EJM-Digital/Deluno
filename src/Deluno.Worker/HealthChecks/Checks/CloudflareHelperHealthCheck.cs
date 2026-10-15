@@ -28,7 +28,7 @@ public sealed class CloudflareHelperHealthCheck(
             return [];
         }
 
-        if (!Uri.TryCreate(configured.Trim(), UriKind.Absolute, out var address))
+        if (!WebAddress.TryParse(configured, out var address))
         {
             return [HealthCheckOutcome.Problem(
                 Id, Category, Name,
