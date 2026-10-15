@@ -66,6 +66,41 @@ public sealed class NotificationProviderPayloadTests
     }
 
     [Fact]
+    public async Task Discord_provider_sends_one_embed_with_the_title_message_footer_and_the_colour_of_its_event()
+    {
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Discord, "https://discord.com/api/webhooks/1/abc", null);
+
+        await service.DispatchAsync("import.completed", "Imported", "The Matrix (1999)", null, CancellationToken.None);
+
+        Assert.Equal("https://discord.com/api/webhooks/1/abc", handler.LastRequestUri);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        var embed = Assert.Single(body.RootElement.GetProperty("embeds").EnumerateArray());
+        Assert.Equal("Imported", embed.GetProperty("title").GetString());
+        Assert.Equal("The Matrix (1999)", embed.GetProperty("description").GetString());
+        Assert.Equal(0x57F287, embed.GetProperty("color").GetInt32());
+        Assert.Equal("Deluno • import.completed", embed.GetProperty("footer").GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task A_generic_webhook_pointed_at_a_discord_address_is_sent_as_a_discord_embed_and_any_other_address_keeps_the_generic_shape()
+    {
+        using var discordStorage = TestStorage.Create();
+        var (discord, discordHandler) = await CreateServiceAsync(discordStorage, NotificationProviders.Generic, "https://discord.com/api/webhooks/2/def", null);
+        await discord.DispatchAsync("import.failed", "Import failed", "Dune (2021)", null, CancellationToken.None);
+        using (var body = System.Text.Json.JsonDocument.Parse(discordHandler.LastRequestBody!))
+        {
+            Assert.Equal(0xED4245, Assert.Single(body.RootElement.GetProperty("embeds").EnumerateArray()).GetProperty("color").GetInt32());
+        }
+
+        using var otherStorage = TestStorage.Create();
+        var (other, otherHandler) = await CreateServiceAsync(otherStorage, NotificationProviders.Generic, "https://hooks.example.test/plain", null);
+        await other.DispatchAsync("import.failed", "Import failed", "Dune (2021)", null, CancellationToken.None);
+        using var plain = System.Text.Json.JsonDocument.Parse(otherHandler.LastRequestBody!);
+        Assert.False(plain.RootElement.TryGetProperty("embeds", out _));
+    }
+
+    [Fact]
     public async Task Telegram_provider_posts_to_the_bot_api_with_chat_id_and_text()
     {
         using var storage = TestStorage.Create();
