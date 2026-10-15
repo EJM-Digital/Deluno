@@ -121,7 +121,9 @@ async function passTheTests(page: Page) {
   await page.getByPlaceholder("Username, if required").fill("admin");
   await page.getByPlaceholder("Password/API key").fill("adminadmin");
   await page.getByRole("button", { name: "Test download client" }).click();
-  await expect(page.getByText(/Passed/).nth(1).or(page.getByText(/Passed/).first())).toBeVisible({ timeout: 20_000 });
+  // Each test has its own status label, so the client has passed once a second one says Passed. (An .or() of the two
+  // matched both at once, which Playwright refuses as ambiguous.)
+  await expect(page.getByText(/^Passed$/)).toHaveCount(2, { timeout: 20_000 });
 }
 
 test.describe("the guided setup on the real host", () => {

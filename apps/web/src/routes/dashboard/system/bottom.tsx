@@ -83,6 +83,18 @@ type Level = "all" | "error" | "warning";
 
 const NO_ENTRIES: readonly SystemLogEntry[] = [];
 
+/** Back-to-back lines with the same level and message become one line with a count, so a refusal repeated ten times
+ *  reads once ("×10") instead of filling the card with the same sentence. The newest line's time is kept. */
+export function collapseRepeats(rows: readonly SystemLogEntry[]): { row: SystemLogEntry; count: number }[] {
+  const lines: { row: SystemLogEntry; count: number }[] = [];
+  for (const row of rows) {
+    const last = lines[lines.length - 1];
+    if (last && last.row.level === row.level && last.row.message === row.message) last.count += 1;
+    else lines.push({ row, count: 1 });
+  }
+  return lines;
+}
+
 export function LogCard({ log }: { log: SystemLogResponse | null }): JSX.Element {
   const [level, setLevel] = useState<Level>("all");
   const rows = log?.entries ?? NO_ENTRIES;
@@ -103,11 +115,12 @@ export function LogCard({ log }: { log: SystemLogResponse | null }): JSX.Element
         <Link className="sy-link" to="/system" aria-label="Open the full log files">Full log →</Link>
       </div>
       <ul className="sy-log sy-scroll">
-        {shown.map((row) => (
+        {collapseRepeats(shown).map(({ row, count }) => (
           <li key={row.id}>
             <span className="sy-tm">{new Date(row.timeUtc).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
             <span className={`sy-lvl sy-${row.level === "warning" ? "warn" : row.level}`}>{row.level}</span>
             <span className="sy-msg" title={row.source ? `${row.source}: ${row.message}` : row.message}>{row.message}</span>
+            {count > 1 ? <span className="sy-muted sy-num" aria-label={`${count} times`}>×{count}</span> : null}
           </li>
         ))}
         {shown.length === 0 ? <li className="sy-muted" style={{ display: "block" }}>{!log ? "The log has not been read yet." : level === "all" ? "Nothing notable has been logged today." : "Nothing at this level."}</li> : null}

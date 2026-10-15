@@ -53,6 +53,24 @@ describe("Log", () => {
     expect(screen.getByRole("link", { name: "Open the full log files" })).toHaveAttribute("href", "/system");
   });
 
+  it("says a line repeated back to back once, with how many times, and keeps separate lines apart", () => {
+    const refused = "Seerr webhook for connection 01a1 refused: the Authorization header did not match its webhook secret.";
+    const repeated: SystemLogResponse = {
+      ...log,
+      entries: [
+        { id: "r1", timeUtc: "2026-10-01T11:59:30Z", level: "warning", message: refused, source: "Seerr" },
+        { id: "r2", timeUtc: "2026-10-01T11:59:20Z", level: "warning", message: refused, source: "Seerr" },
+        { id: "r3", timeUtc: "2026-10-01T11:59:10Z", level: "warning", message: refused, source: "Seerr" },
+        { id: "b", timeUtc: "2026-10-01T11:58:00Z", level: "warning", message: "The indexer answered slowly.", source: "HealthCheck" },
+        { id: "r4", timeUtc: "2026-10-01T11:57:00Z", level: "warning", message: refused, source: "Seerr" }
+      ]
+    };
+    render(<MemoryRouter><LogCard log={repeated} /></MemoryRouter>);
+    expect(screen.getAllByText(refused)).toHaveLength(2);
+    expect(screen.getByLabelText("3 times")).toHaveTextContent("×3");
+    expect(screen.queryByLabelText("1 times")).toBeNull();
+  });
+
   it("says plainly when nothing has been read or logged", () => {
     const { rerender } = render(<MemoryRouter><LogCard log={null} /></MemoryRouter>);
     expect(screen.getByText("The log has not been read yet.")).toBeInTheDocument();
