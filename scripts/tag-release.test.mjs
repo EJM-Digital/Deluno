@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  checkCi, checkGoldenPath, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
+  checkCi, checkGoldenPath, describeGoldenPath, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
 } from "./tag-release-checks.mjs";
 
 const sha = "a".repeat(40);
@@ -68,12 +68,15 @@ test("an earlier failed run does not hide a later green full run", () => {
   assert.deepEqual(checkCi([run({ databaseId: 1, conclusion: "failure" }), run({ databaseId: 2 })], () => fullJobs), []);
 });
 
-test("the golden path must be success, newest status first", () => {
-  const status = (id, state, at) => ({ id, context: "golden-path", state, created_at: at });
-  assert.deepEqual(checkGoldenPath([status(1, "success", "2026-10-01T00:00:00Z")]), []);
-  assert.match(checkGoldenPath([])[0], /no status/);
+test("the golden path outcome decides: a pass counts, anything else is a refusal that says why", () => {
+  assert.deepEqual(checkGoldenPath({ ok: true, sha, carried: false }), []);
   assert.match(
-    checkGoldenPath([status(1, "success", "2026-10-01T00:00:00Z"), status(2, "failure", "2026-10-02T00:00:00Z")])[0],
-    /is failure/,
+    checkGoldenPath({ ok: false, problems: ['the latest "golden-path" status is failure'] })[0],
+    /not passed on HEAD: the latest "golden-path" status is failure/,
   );
+});
+
+test("a carried-over pass is named, with the commit it came from", () => {
+  assert.match(describeGoldenPath({ ok: true, sha, carried: true, reason: "no file that ships changed" }), new RegExp(`${sha}.*identical`));
+  assert.equal(describeGoldenPath({ ok: true, sha, carried: false }), "The golden path passed on HEAD.");
 });

@@ -84,7 +84,10 @@ jobs:
       contents: read
       statuses: read
     steps:
+      # The full history, so an earlier commit's golden-path pass can be carried over when no shipped file changed since.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: The golden path passed on the tagged commit
         env:
