@@ -656,7 +656,8 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromServices] IQualityRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromServices] IProfileChangeReevaluator? reevaluator = null) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -664,12 +665,17 @@ public static class QualityEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var removed = await repository.DeleteQualityProfileAsync(id, cancellationToken);
-            if (removed)
+            var removal = await repository.RemoveQualityProfileAsync(id, cancellationToken);
+            if (removal is not null)
             {
+                if (reevaluator is not null)
+                {
+                    await reevaluator.ReportProfileDeletedAsync(removal, cancellationToken);
+                }
+
                 await realtimeEventPublisher.PublishEntityChangedAsync("QualityProfile", id, cancellationToken);
             }
-            return removed ? Results.NoContent() : Results.NotFound();
+            return removal is not null ? Results.NoContent() : Results.NotFound();
         });
 
         qualityModel.MapGet(string.Empty, async (

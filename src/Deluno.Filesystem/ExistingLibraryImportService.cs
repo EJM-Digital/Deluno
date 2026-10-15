@@ -925,15 +925,9 @@ public sealed class ExistingLibraryImportService(
     /// met forever.</para>
     /// </summary>
     private LibraryQualityDecision Decide(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
-        => mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-            MediaType: library.MediaType,
-            HasFile: true,
-            CurrentQuality: item.DetectedQuality,
-            CutoffQuality: library.CutoffQuality,
-            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
-            UpgradeUnknownItems: library.UpgradeUnknownItems,
-            FileSizeBytes: item.FileSizeBytes,
-            SizeFloorBytes: FloorFor(library.MediaType, item.DetectedQuality, model)));
+        => mediaDecisionService.DecideWantedState(WantedDecisionInputs.Build(
+            library.MediaType, true, item.DetectedQuality, library.CutoffQuality,
+            library.UpgradeUntilCutoff, library.UpgradeUnknownItems, item.FileSizeBytes, model));
 
     /// <summary>
     /// The same judgement, made once per episode against its own file.
@@ -955,45 +949,12 @@ public sealed class ExistingLibraryImportService(
             .Select(episode => episode.HasFile && !string.IsNullOrWhiteSpace(episode.CurrentQuality)
                 ? episode with
                 {
-                    QualityCutoffMet = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-                        MediaType: library.MediaType,
-                        HasFile: true,
-                        CurrentQuality: episode.CurrentQuality,
-                        CutoffQuality: library.CutoffQuality,
-                        UpgradeUntilCutoff: library.UpgradeUntilCutoff,
-                        UpgradeUnknownItems: library.UpgradeUnknownItems,
-                        FileSizeBytes: episode.FileSizeBytes,
-                        SizeFloorBytes: FloorFor(library.MediaType, episode.CurrentQuality, model))).QualityCutoffMet
+                    QualityCutoffMet = mediaDecisionService.DecideWantedState(WantedDecisionInputs.Build(
+                        library.MediaType, true, episode.CurrentQuality, library.CutoffQuality,
+                        library.UpgradeUntilCutoff, library.UpgradeUnknownItems, episode.FileSizeBytes, model)).QualityCutoffMet
                 }
                 : episode)
             .ToArray();
-
-    /// <summary>
-    /// The size floor this tier sets, in bytes, or null where there is no rule.
-    /// </summary>
-    private static long? FloorFor(string mediaType, string? quality, QualityModelSnapshot model)
-    {
-        if (string.IsNullOrWhiteSpace(quality))
-        {
-            return null;
-        }
-
-        var tier = model.Tiers.FirstOrDefault(item =>
-            string.Equals(item.Name, quality, StringComparison.OrdinalIgnoreCase));
-
-        if (tier is null)
-        {
-            return null;
-        }
-
-        // A show's rule is per episode and a film's per film, which is the same
-        // conversion QualityTierBytes makes for the catalogue databases.
-        var (floor, _) = mediaType.Contains("TV", StringComparison.OrdinalIgnoreCase)
-            ? QualityTierBytes.ForEpisode(tier)
-            : QualityTierBytes.ForMovie(tier);
-
-        return floor > 0 ? floor : null;
-    }
 
     /// <summary>
     /// The entries the run walks, in a stable order.
