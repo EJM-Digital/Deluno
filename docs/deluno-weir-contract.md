@@ -9,7 +9,7 @@ recorded replies. A change to either side's shape fails a test before it ships.
   `Collect-DelunoSide.ps1`; the proxy was in front of Weir and in front of Deluno, and both connections were put back after). The same
   folder holds Weir's reports to Deluno and Deluno's replies to them.
 - **Weir's replies** are recorded from the real Weir (`tests/fixtures/recorded/weir/<version>/<state>.json`, newest
-  1.0.0-rc.13; how they are recorded: `tests/fixtures/recorded/README.md`). No test writes a Weir reply itself.
+  1.0.0-rc.18, with rc.13 kept where rc.18 holds no recording of a state; how they are recorded: `tests/fixtures/recorded/README.md`). No test writes a Weir reply itself.
 - **The tests** are in `tests/Deluno.Integrations.Tests/Processors/WeirContract/`:
   - `WeirContractClientTests`: the real `ProcessorConnectionService` reads each recording of Weir's replies.
   - `WeirRealExchangeTests`: the request Deluno really sent (hand-off, outcome, status poll, cancel, the two asks) is held
@@ -247,3 +247,60 @@ The reports in section 7 are posted from the recordings by `WeirRealReportsTests
 `AProcessorIsNotTakenAtItsWordTests`, `ALateReportForARemovedSendIsSettledTests` and `AResentReleaseSettlesItsOwnHandOffTests` (through
 `RecordedWeirReports`) wherever a recording matches the case. A case with no real Weir report stays inline and is listed with the Weir
 state that would produce it in `tests/fixtures/recorded/MISSING.md` ("Reports Weir sends Deluno that the tests still build inline").
+
+## 10. Weir 1.0.0-rc.18 (#1239, #1262, #1266)
+
+Recorded on the golden VM on 15 October 2026 (Deluno 1.0.0-rc.30.32, Weir 1.0.0-rc.18) in one run of
+`scripts/recorded-replies/Invoke-RecordReplies.ps1 -Apps weir -Extra weir-states,weir-reports,weir-errors -IncludeBaseWeir`. A state recorded by
+rc.13 and rc.18 alike is read from rc.18 (the helpers take the newest version that holds it); a state only rc.13 holds (`completed-without-output-path`,
+the `real-*` layouts, the burst and wrong-secret states) stays readable from rc.13. The states below are the ones rc.18 added; the tests that read
+each are `WeirContractClientTests` (`A_status_is_read_as_Weir_said_it`, `A_file_sent_again_and_a_name_that_is_taken_are_read_as_Weir_recorded_them`,
+`A_status_that_is_rejected_is_a_state_Deluno_reads_by_its_word_and_keeps_Weirs_message`), `WeirContractBehaviourTests` (the watcher rows) and
+`WeirBusyRetryAfterTests`.
+
+What the run showed about Weir that differs from rc.13:
+
+- **A resend's finished status carries its output path.** `resend-status-completed`, `completed-after-resend` and `resend-takeover-second-final-status`
+  all name `outputPath`. rc.13 answered a resend's finished status without one (`completed-without-output-path`, kept); the "rc.14 clears the path" reading was
+  not seen from rc.18. Deluno handles both (`ProcessorHandoffWatcher`, status row "`completed`, `outputPath` null").
+- **A file sent twice at once**: the first send ends `cancelled` ("This release was sent again, so Weir is answering the newer send and has nothing to add here.") and
+  its report is `failed` with `failureClass: "superseded"` (`events-superseded`); the second finishes `completed` with its output path (`events-completed-after-takeover`).
+- **A name already taken in the output**: with "replace" the second file lands on the same output path; with "keep both" it is `stem (2).ext` beside the first
+  (Weir numbers from 2, not 1).
+- **Weir's status has a `rejected` state** (`failed-rejected-status-rejected`): an audio-only file under the reject failure policy. Deluno ends the hand-off failed in Weir's words.
+- **A 503 on a finished report was not repeated by Weir in 300 seconds** (`events-completed-answered-503-not-repeated`), and neither were a 401 or a 403
+  (`events-answered-401-not-repeated`, `events-answered-403-not-repeated`, nothing more arrived in 130 seconds).
+
+| Weir answers | Recording | Deluno reads | Deluno does | Test |
+|---|---|---|---|---|
+| `200` `queued` with a place in line (8, 2) | `status-queued` | state, place in line | as in section 4 | `A_hand_off_Weir_is_still_working_on_stays_open_and_the_screen_shows_what_Weir_said` |
+| `200` `queued` for a hand-off that names its files | `source-files-status-queued` | state, place in line (2), no message | waits | same |
+| `200` `queued` with the settle-time message ("This file changed too recently. Weir waits 60s ...") | `failed-rejected-status-queued`, `failed-partial-season-pack-corrupt-status-queued` | state, message | stored and shown; waits; ends nothing | `A_queued_hand_off_Weir_is_letting_settle_stays_open_and_ends_nothing`, `A_queued_season_pack_Weir_is_letting_settle_stays_open_and_ends_nothing` |
+| `200` `working` for a resend, a taken-over send, a season pack and a pack with a bad episode | `resend-status-working`, `resend-takeover-second-status-working`, `completed-season-pack-status-working`, `failed-partial-season-pack-corrupt-status-working` | state, message | stored and shown; waits | same as `working` in section 4 |
+| `200` `completed` with an output path for a taken-over send, both collision policies, and a season-pack folder | `resend-takeover-second-status-completed`, `resend-takeover-second-final-status`, `output-collision-replace-first-status`, `output-collision-replace-second-status`, `output-collision-keep-both-first-status`, `output-collision-keep-both-second-status`, `completed-season-pack-status-completed` | state, output path | stored and shown; waits for Weir's report or the output folder | `A_hand_off_Weir_says_is_completed_stays_open_for_its_own_report_or_the_output_folder` |
+| the two sends of one source: the older `cancelled` with Weir's words, the newer `completed` with its path | `completed-after-resend`, `resend-takeover-first-status` | state | the older hand-off ends stopped ("Weir stopped work on ..."); Activity `processing.cancelled` | `A_hand_off_Weir_says_it_cancelled_ends_stopped`, `The_older_send_of_a_file_sent_again_is_cancelled_by_Weir_and_ends_stopped` |
+| `200` `rejected`, message "Weir only processes movie and TV files that contain a video stream ..." | `failed-rejected-status-rejected` | state `rejected`, message | the hand-off ends failed ("Weir reports rejected for <release>: <Weir's message>"); Activity `processing.failed`; a case to clear (`processor-failed`) | `A_hand_off_Weir_says_it_rejected_ends_failed_in_Weirs_words_and_leaves_a_case_to_clear` |
+| `200` for a hand-off sent again while Weir held the first (the second send is accepted, the body is `{}`) | `resend-takeover-accepted` | accepted | submitted | `A_file_sent_again_and_a_name_that_is_taken_are_read_as_Weir_recorded_them` |
+| `409` `{ code: "handoff_not_finished" }` to an outcome for a hand-off still queued | `outcome-handoff-not-finished` | busy (by the code) | owed again in a minute | `A_409_outcome_is_read_by_its_code_never_by_its_words` |
+| `503` `{ detail, code: "database_busy" }` with `Retry-After: 1` (another program held Weir's database write lock longer than its busy timeout, set to one second on a second Weir made for this) | `database-busy-outcome` | unreachable, `RetryAfter` 1 s | held back for that time (plus at most a tenth), then asked again; an outcome report is owed again after it | `WeirBusyRetryAfterTests` |
+| `404` `{ detail: "Weir has never received this hand-off." }` for the same report sent again once the lock was gone | `database-busy-retried` | not found | the ordinary answer for a hand-off Weir has no record of | `The_same_report_sent_again_after_the_lock_is_gone_is_an_ordinary_unknown_hand_off` |
+| `500` `{ detail, code: "internal_error" }` (a table the route reads is missing; second Weir) | `internal-error-outcome` | unreachable, no wait asked | retryable like the plain-text 500 | `Weirs_JSON_500_internal_error_is_retryable_like_the_plain_text_one_and_asks_for_no_wait` |
+
+### Reports Weir 1.0.0-rc.18 sends (`deluno/1.0.0-rc.30.32/events-*`)
+
+Weir made these hand-offs straight to its own intake, so the real Deluno behind the recording proxy had no row for them and answered `409`
+(`events-superseded`, `events-completed-after-takeover`, the collision and season-pack states); where a recording's reply says `202` or `403` or `503`, the proxy answered it
+itself and the recording's note says so. `WeirRealReportsTests` posts each body to a Deluno that holds the hand-off (and to one that holds none, for the 409).
+
+| Weir reports | Recording | Deluno answers | Deluno does | Test |
+|---|---|---|---|---|
+| `failed`, `failureClass: "superseded"`, "This release was sent again ..." (the older of two sends) | `events-superseded` | `202` failed (a hand-off held); `409` with no row | the older hand-off ends failed; the newer one is settled by its own report | `A_failure_Weir_reports_for_a_dropped_or_partly_unreadable_hand_off_is_accepted_as_failed` |
+| `completed` for the send that took over | `events-completed-after-takeover` | `202` with an import; `409` with no row | imported from the path named | `A_single_file_Weir_finished_under_a_taken_name_is_accepted_and_imported_from_where_it_put_it` |
+| `completed` under "replace", twice, one output path | `events-completed-collision-replace-first`, `events-completed-collision-replace-second` | same | same | same |
+| `completed` under "keep both": `stem.ext`, then `stem (2).ext` | `events-completed-collision-keep-both-first`, `events-completed-collision-keep-both-second` | same | same | same |
+| `failed`, `disposition: "rejected"`, `failureClass: "preflight"`, no output (an audio-only file under Weir's reject policy; Weir left the file) | `events-failed-rejected` | `202` `{ status: "failed", importJobId: null }` when Deluno finds the download in a client (the proxy's own answer here; real Deluno said 409 for want of a row); `409` "could not find the download ... so it could not refuse that release" when it cannot | with the download: the release is blocked ("Weir refused it", Deluno will remove it) and a regrab is searched; without it: nothing is refused and the hand-off stays for a person | `A_rejection_says_who_removed_the_download`, `A_rejection_Weir_reports_for_a_download_Deluno_cannot_find_is_a_409_that_says_so`, `A_failed_report_for_a_removed_send_that_was_asked_for_again_is_settled_too` |
+| `completed` for a season-pack folder of two episodes, `outputFiles` both | `events-completed-season-pack` | `202` with one pack import; `409` with no row | one import of the folder | `A_season_pack_Weir_finished_is_accepted_and_imported_as_one_pack_from_its_folder`, `A_folder_hand_off_with_several_output_files_imports_as_one_pack` |
+| `failed`, `disposition: "held"`, `outputFiles` the two good episodes of three, no `outputPath` | `events-failed-partial-season-pack`, `events-failed-partial-season-pack-corrupt` (the same body) | `202` failed with the two files imported; `409` with no row | what succeeded is imported; the hand-off ends failed with the count | `A_partial_failure_imports_what_succeeded_and_reports_the_count`, `A_main_video_the_processor_failed_still_fails_the_hand_off` |
+| `completed`, answered `503` by the proxy; nothing more arrived in 300 s | `events-completed-answered-503-not-repeated` | (not answered by Deluno) | the report is owed; sent again, it imports once | `A_completed_report_Deluno_did_not_answer_is_imported_once_whenever_it_is_sent_again` |
+| `completed`, answered `401` by the proxy; nothing more in 130 s | `events-answered-401-not-repeated` | `401` (Deluno's own, `reply-no-sign-in`) | Weir does not send it again | `A_report_Deluno_refuses_for_its_credential_is_not_sent_again_and_the_refusal_is_Delunos_own` |
+| `completed`, answered `403` by the proxy; nothing more in 130 s | `events-answered-403-not-repeated` | `403` (Deluno's own, `reply-key-without-imports-scope`) | same | same |

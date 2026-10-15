@@ -169,6 +169,8 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
+        // Weir's recorded report posted twice. Weir does not repeat a report by itself within five minutes of a 503 (events-completed-answered-503-not-repeated),
+        // so the second post is this test's own; what is held is that Deluno imports once however many times the same body arrives.
         var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
         Assert.True(first.IsSuccessStatusCode, await first.Content.ReadAsStringAsync());
 
@@ -239,23 +241,22 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     [Fact]
     public async Task A_folder_hand_off_with_several_output_files_imports_as_one_pack()
     {
+        // Weir's own report for a season-pack folder of two episodes (rc.18, #1239), with Deluno's TV library, hand-off and folders.
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await TvSceneAsync(app);
-        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, "Pioneer.One.S01")).FullName;
-        var episode1 = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
-        var episode2 = Path.Combine(folder, "Pioneer.One.S01E02.mkv");
-        await File.WriteAllBytesAsync(episode1, new byte[4096]);
-        await File.WriteAllBytesAsync(episode2, new byte[4096]);
-        var handoff = await HandoffAsync(app, scene, "Pioneer.One.S01");
-
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        var recorded = RecordedWeirReports.Exchange("events-completed-season-pack");
+        var release = RecordedWeirReports.ReleaseOf(recorded);
+        var handoff = await HandoffAsync(app, scene, release);
+        var body = RecordedWeirReports.Body(recorded, scene.LibraryId, handoff.Id, scene.Output, vmOutputRoot: RecordedWeirReports.VmTvOutputRoot);
+        var files = RecordedWeirReports.OutputFilesOf(body);
+        Assert.Equal(2, files.Length);
+        foreach (var file in files)
         {
-            libraryId = scene.LibraryId,
-            handoffId = handoff.Id,
-            status = "completed",
-            outputPath = folder,
-            outputFiles = new[] { episode1, episode2 }
-        });
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            await File.WriteAllBytesAsync(file, new byte[4096]);
+        }
+
+        var response = await RecordedWeirReports.PostAsync(app.Client, body);
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
@@ -268,7 +269,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
         var importJob = Assert.Single(jobs, job => job.Id == stored!.ImportJobId);
         var payload = JsonSerializer.Deserialize<ImportExecuteRequest>(importJob.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        Assert.Equal(folder, payload.Preview.SourcePath);
+        Assert.Equal(body["outputPath"]!.GetValue<string>(), payload.Preview.SourcePath);
     }
 
     /// <summary>#619: a single-file hand-off also carries OutputFiles, with one item, and still works. Weir's real report (events-completed: the file flat in its output folder, #1239).</summary>
@@ -308,35 +309,52 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await TvSceneAsync(app);
-        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, "Pioneer.One.S01")).FullName;
-        var succeeded = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
-        await File.WriteAllBytesAsync(succeeded, new byte[4096]);
-        var handoff = await HandoffAsync(app, scene, "Pioneer.One.S01");
-
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            libraryId = scene.LibraryId,
-            handoffId = handoff.Id,
-            status = "failed",
-            outputPath = folder,
-            message = "1 of 2 episodes processed; 1 failed: S01E02.",
-            outputFiles = new[] { succeeded }
-        });
+        var (handoff, body, response) = await PostRecordedPartialPackAsync(app, scene);
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("\"failed\"", body);
+        var said = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"failed\"", said);
 
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
         Assert.Equal(ProcessorHandoffStatuses.Failed, stored?.Status);
         Assert.NotNull(stored?.ImportJobId);
-        Assert.Contains("1 of 2 episodes processed; 1 failed", stored?.FailureMessage);
+        Assert.Contains("Weir finished 2 of 3 files", stored?.FailureMessage);
         Assert.Contains("imported", stored?.FailureMessage, StringComparison.OrdinalIgnoreCase);
 
         var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
         var importJob = Assert.Single(jobs, job => job.Id == stored!.ImportJobId);
         var payload = JsonSerializer.Deserialize<ImportExecuteRequest>(importJob.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        Assert.Equal(succeeded, payload.Preview.SourcePath);
+        // What succeeded is the folder the two good episodes share, never the third.
+        Assert.Equal(Path.GetDirectoryName(RecordedWeirReports.OutputFilesOf(body)[0]), payload.Preview.SourcePath);
+    }
+
+    /// <summary>
+    /// Weir's own report for a season pack of two good episodes and one corrupt one under its "hold" failure policy (rc.18, #1239):
+    /// status failed, disposition held, the two episodes it did finish in outputFiles, and no outputPath. The recorded copy
+    /// <c>events-failed-partial-season-pack</c> is the same report under the name the first test of this kind looked for.
+    /// </summary>
+    private static async Task<(ProcessorHandoffItem Handoff, System.Text.Json.Nodes.JsonObject Body, HttpResponseMessage Response)> PostRecordedPartialPackAsync(ApplicationTestHost app, Scene scene)
+    {
+        var recorded = RecordedWeirReports.Exchange("events-failed-partial-season-pack-corrupt");
+        Assert.Equal(recorded.Request.Body, RecordedWeirReports.Exchange("events-failed-partial-season-pack").Request.Body);
+        var handoff = await HandoffAsync(app, scene, RecordedWeirReports.ReleaseOf(recorded));
+        var body = RecordedWeirReports.Body(recorded, scene.LibraryId, handoff.Id, scene.Output, vmOutputRoot: RecordedWeirReports.VmTvOutputRoot);
+        // The download holds all three episodes: the two Weir finished and the one its message names as unreadable.
+        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, RecordedWeirReports.ReleaseOf(recorded))).FullName;
+        var unreadable = System.Text.RegularExpressions.Regex.Match(body["message"]!.GetValue<string>(), @"could not process 1 file: (\S+\.mkv)").Groups[1].Value;
+        Assert.NotEmpty(unreadable);
+        foreach (var name in RecordedWeirReports.OutputFilesOf(body).Select(Path.GetFileName).Append(unreadable))
+        {
+            await File.WriteAllBytesAsync(Path.Combine(source, name!), new byte[100_000]);
+        }
+
+        foreach (var file in RecordedWeirReports.OutputFilesOf(body))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            await File.WriteAllBytesAsync(file, new byte[90_000]);
+        }
+
+        return (handoff, body, await RecordedWeirReports.PostAsync(app.Client, body));
     }
 
     /// <summary>
@@ -442,26 +460,10 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     [Fact]
     public async Task A_main_video_the_processor_failed_still_fails_the_hand_off()
     {
+        // The third episode of Weir's recorded pack was the one it could not read: a main video, so the hand-off fails.
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await TvSceneAsync(app);
-        const string release = "Pioneer.One.S01";
-        var source = Directory.CreateDirectory(Path.Combine(scene.Downloads, release)).FullName;
-        await File.WriteAllBytesAsync(Path.Combine(source, "Pioneer.One.S01E01.mkv"), new byte[100_000]);
-        await File.WriteAllBytesAsync(Path.Combine(source, "Pioneer.One.S01E02.mkv"), new byte[100_000]);
-        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, release)).FullName;
-        var done = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
-        await File.WriteAllBytesAsync(done, new byte[90_000]);
-        var handoff = await HandoffAsync(app, scene, release);
-
-        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            libraryId = scene.LibraryId,
-            handoffId = handoff.Id,
-            status = "failed",
-            outputPath = folder,
-            message = "1 of 2 episodes processed; 1 failed: S01E02.",
-            outputFiles = new[] { done }
-        });
+        var (handoff, _, response) = await PostRecordedPartialPackAsync(app, scene);
 
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);

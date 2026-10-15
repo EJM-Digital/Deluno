@@ -18,6 +18,9 @@ internal static class RecordedWeirReports
     /// <summary>The folder Weir leaves finished movies in on the golden VM.</summary>
     public const string VmOutputRoot = @"C:\Weir\Ready\Movies";
 
+    /// <summary>The folder Weir leaves finished episodes in on the golden VM.</summary>
+    public const string VmTvOutputRoot = @"C:\Weir\Ready\TV";
+
     /// <summary>Exchange <paramref name="index"/> of a recorded <c>events-*</c> state.</summary>
     public static Exchange Exchange(string state, int index = 0) => RecordedReplies.Deluno(state).Exchanges[index];
 
@@ -28,8 +31,9 @@ internal static class RecordedWeirReports
     /// The recorded body ready to post. <paramref name="release"/>, when given, replaces the recorded release name wherever
     /// it appears in the body (a file keeps its <c>.mkv</c> when the recorded one had it).
     /// </summary>
-    public static JsonObject Body(Exchange recorded, string libraryId, string handoffId, string outputRoot, string? release = null)
+    public static JsonObject Body(Exchange recorded, string libraryId, string handoffId, string outputRoot, string? release = null, string? vmOutputRoot = null)
     {
+        var vmRoot = vmOutputRoot ?? VmOutputRoot;
         var body = JsonNode.Parse(recorded.Request.Body!)!.AsObject();
         var recordedRelease = ReleaseOf(recorded);
         var recordedStem = StripVideoExtension(recordedRelease);
@@ -37,7 +41,7 @@ internal static class RecordedWeirReports
 
         string Rebased(string path)
         {
-            var relative = path.StartsWith(VmOutputRoot, StringComparison.OrdinalIgnoreCase) ? path[VmOutputRoot.Length..].TrimStart('\\') : path;
+            var relative = path.StartsWith(vmRoot, StringComparison.OrdinalIgnoreCase) ? path[vmRoot.Length..].TrimStart('\\') : path;
             if (stem is not null)
             {
                 relative = relative.Replace(recordedStem, stem, StringComparison.Ordinal);

@@ -71,7 +71,7 @@ public sealed class AskingTheProcessorTests
         Assert.True(support.HasLibraryFolders);
         Assert.Contains("/api/v1/intake/library-folders", requested);
         Assert.Equal(2, folders.Count);
-        Assert.Equal(new ProcessorLibraryFolder("01a127b7c0c9718d90fc38b21d1b9daf", @"C:\Downloads\Completed\Movies", true, @"C:\Weir\Ready\Movies", 52428800), folders[0]);
+        Assert.Equal(new ProcessorLibraryFolder((string)RecordedReplies.Weir("library-folders").Single.Reply.Json()["libraries"]![0]!["manager_library_key"]!, @"C:\Downloads\Completed\Movies", true, @"C:\Weir\Ready\Movies", 52428800), folders[0]);
         Assert.Null(folders[1].ManagerLibraryKey);
     }
 
@@ -146,7 +146,7 @@ public sealed class AskingTheProcessorTests
 
     /// <summary>Every state Weir was recorded in is read as its own state, with the place in the line, the output and the words Weir gave.</summary>
     [Theory]
-    [InlineData("status-queued", "queued", 12)]
+    [InlineData("status-queued", "queued", 8)]
     [InlineData("status-working", "working", null)]
     [InlineData("status-cancelled", "cancelled", null)]
     [InlineData("status-failed", "failed", null)]
@@ -164,7 +164,7 @@ public sealed class AskingTheProcessorTests
     [Fact]
     public async Task Never_heard_of_it_and_could_not_ask_are_different_answers()
     {
-        var notFound = await Service(_ => Recorded("no-record", "handoffs/deluno/9c911dd4-098c-4cd4-902c-4995b2aaf5b7", 0)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+        var notFound = await Service(_ => Recorded("no-record", "handoffs/deluno/", 0)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
         var down = await Service(_ => throw new HttpRequestException("connection refused")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
         var broken = await Service(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
 
