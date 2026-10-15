@@ -86,9 +86,13 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
 
   async function handleCopy() {
     if (!url) return;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    toast.success("Copied to clipboard");
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("The browser would not copy it. Select the address and copy it by hand.");
+    }
   }
 
   const hasLink = (existing?.length ?? 0) > 0;

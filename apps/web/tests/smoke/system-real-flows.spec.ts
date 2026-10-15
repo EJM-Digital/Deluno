@@ -83,12 +83,10 @@ test.describe("System screens on the real host (#1294)", () => {
     expect(restoreRequests).toHaveLength(1);
   });
 
-  // DEFECT (found 15 Oct 2026, run against the real host): the Backups page offers "Download latest" and a "Download" link per backup as plain
-  // anchors (`<a href="/api/backups/{id}/download">`). The app keeps its sign-in in localStorage and sends it as an Authorization header, which a
-  // browser does not add to a followed link, so the server answers 401 and no file is saved. Evidence from this test on the real host:
-  //   DOWNLOAD-LINK status=401 downloadEvent=none sentAuthorization=null
-  // Marked fixme until the links fetch with the sign-in (or carry a short-lived link); then remove the fixme and this row is proven.
-  test.fixme("Backups: the Download latest link downloads the newest zip (defect: the link sends no sign-in and the server answers 401)", async ({ page }) => {
+  // #1331: the Backups page offers "Download latest" and a "Download" link per backup. A followed link sends no Authorization header, so the server
+  // answered 401 and nothing was saved (DOWNLOAD-LINK status=401 downloadEvent=none sentAuthorization=null). The links now fetch with the sign-in and
+  // save the result.
+  test("Backups: the Download latest link downloads the newest zip, fetched with the sign-in", async ({ page }) => {
     await authenticateAndNavigate(page, "/system/backups");
     const headers = await authHeaders(page);
     const made = await page.request.post("/api/backups", { headers, data: { reason: "manual" } });
@@ -100,8 +98,10 @@ test.describe("System screens on the real host (#1294)", () => {
     const download = page.waitForEvent("download", { timeout: 15_000 }).catch(() => null);
     await link.click();
     const [response, file] = await Promise.all([answer, download]);
-    console.log(`DOWNLOAD-LINK status=${response?.status()} downloadEvent=${file ? file.suggestedFilename() : "none"} sentAuthorization=${JSON.stringify(response?.request().headers().authorization ?? null)}`);
+    console.log(`DOWNLOAD-LINK status=${response?.status()} downloadEvent=${file ? file.suggestedFilename() : "none"} signedIn=${Boolean(response?.request().headers().authorization)}`);
     expect(file, `the link answered ${response?.status()} and no file was saved`).not.toBeNull();
+    expect(response?.status()).toBe(200);
+    expect(response?.request().headers().authorization).toMatch(/^Bearer /);
     expect(file!.suggestedFilename()).toMatch(/\.zip$/);
   });
 
