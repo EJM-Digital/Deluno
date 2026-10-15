@@ -546,8 +546,10 @@ public static class SearchEndpointRouteBuilderExtensions
                 stats?.FailedQueries ?? 0,
                 stats?.AverageResponseMilliseconds,
                 grabs.SuccessfulGrabs,
-                windowDays),
-            LastQueryUtc: stats?.LastQueryUtc);
+                windowDays,
+                stats?.HeldBackQueries ?? 0),
+            LastQueryUtc: stats?.LastQueryUtc,
+            HeldBackQueries: stats?.HeldBackQueries ?? 0);
     }
 
     private static ScoreboardRow BuildHistoricalScoreboardRow(
@@ -576,11 +578,29 @@ public static class SearchEndpointRouteBuilderExtensions
                 stats.FailedQueries,
                 stats.AverageResponseMilliseconds,
                 grabs.SuccessfulGrabs,
-                windowDays),
-            LastQueryUtc: stats.LastQueryUtc);
+                windowDays,
+                stats.HeldBackQueries),
+            LastQueryUtc: stats.LastQueryUtc,
+            HeldBackQueries: stats.HeldBackQueries);
     }
 
     private static string BuildRowRecommendation(
+        string name,
+        long totalQueries,
+        long failedQueries,
+        double? averageResponseMilliseconds,
+        long successfulGrabs,
+        int windowDays,
+        long heldBackQueries = 0)
+    {
+        // #1330: searches Deluno itself held back are not queries and never a failure; say so in plain words.
+        var heldBack = heldBackQueries == 0
+            ? string.Empty
+            : $" {heldBackQueries:N0} {(heldBackQueries == 1 ? "search was" : "searches were")} held back by your limit.";
+        return BuildSentRecommendation(name, totalQueries, failedQueries, averageResponseMilliseconds, successfulGrabs, windowDays) + heldBack;
+    }
+
+    private static string BuildSentRecommendation(
         string name,
         long totalQueries,
         long failedQueries,
@@ -649,7 +669,8 @@ public static class SearchEndpointRouteBuilderExtensions
         long TotalGrabs,
         long SuccessfulGrabs,
         string Recommendation,
-        DateTimeOffset? LastQueryUtc = null)
+        DateTimeOffset? LastQueryUtc = null,
+        long HeldBackQueries = 0)
     {
         public double FailureRate => TotalQueries == 0 ? 0 : (double)FailedQueries / TotalQueries;
 

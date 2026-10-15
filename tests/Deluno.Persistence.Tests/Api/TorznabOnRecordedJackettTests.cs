@@ -172,7 +172,7 @@ public sealed class TorznabOnRecordedJackettTests
     /// the scoreboard as a query and as a failed one ("Needs attention: 50% of 2 queries failed"). The planner's own comment says a
     /// refused call must never count as a query attempt. Skipped until that is fixed; the figures are from the real run.
     /// </summary>
-    [Fact(Skip = "Defect: a search stopped by the indexer's own query limit is counted on the scoreboard as a query and as a failure (totalQueries 2, failedQueries 1 after one search and one refused search), against FeedMediaSearchPlanner's own rule that a refused call is never a query attempt.")]
+    [Fact]
     public async Task A_search_stopped_by_the_indexers_own_limit_is_not_counted_as_a_query_or_a_failure_on_the_scoreboard()
     {
         var (server, app, indexer) = await StartAsync(request => request with { QueryLimit = 1 });
