@@ -244,7 +244,7 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
 
     // DEFECT (found by this test, 15 Oct 2026): a client that refuses the send (qBittorrent 415 "not a valid torrent file", recorded as add-refused) gives a
     // grab result that is neither "sent" nor "failed", so the episodes/search route counts it in plannedCount (planned 1, failed 0) instead of failedCount.
-    [Fact(Skip = "Defect: a send the client refuses is counted in plannedCount, not failedCount (SeriesEndpointRouteBuilderExtensions episodes/search only counts status == failed)")]
+    [Fact]
     public async Task A_client_that_refuses_the_send_counts_the_episode_as_failed()
     {
         await using var rig = await RigAsync(refuseAdd: true);

@@ -137,7 +137,7 @@ public sealed class MlNetReleaseRankingModelService(
         var scored = model.Transform(split.TestSet);
         var metrics = _ml.BinaryClassification.Evaluate(scored);
 
-        var modelVersion = $"rm-{timeProvider.GetUtcNow():yyyyMMddHHmmss}-{Guid.CreateVersion7().ToString("N")[..6]}";
+        var modelVersion = $"rm-{timeProvider.GetUtcNow():yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
         var metadata = new ModelMetadata(
             Version: modelVersion,
             TrainedUtc: timeProvider.GetUtcNow(),

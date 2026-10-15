@@ -27,8 +27,35 @@ public static class FilesystemIssueIds
             new FilesystemIssueToken(kind, mediaType, libraryId, entityId, episodeId, path, title))));
 
     public static FilesystemIssueToken Decode(string issueId)
-        => JsonSerializer.Deserialize<FilesystemIssueToken>(Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(issueId)))
-           ?? throw new InvalidOperationException("Invalid reconciliation issue id.");
+        => TryDecode(issueId, out var token)
+            ? token
+            : throw new InvalidOperationException("Invalid reconciliation issue id.");
+
+    /// <summary>False, rather than an exception, for an id that is not base64url JSON of an issue.</summary>
+    public static bool TryDecode(string? issueId, out FilesystemIssueToken token)
+    {
+        token = null!;
+        if (string.IsNullOrWhiteSpace(issueId))
+        {
+            return false;
+        }
+
+        try
+        {
+            var decoded = JsonSerializer.Deserialize<FilesystemIssueToken>(Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(issueId)));
+            if (decoded is null || string.IsNullOrWhiteSpace(decoded.Kind) || string.IsNullOrWhiteSpace(decoded.Path))
+            {
+                return false;
+            }
+
+            token = decoded;
+            return true;
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The longest id this builder can produce when a path (and, for an unmatched file, the name taken from it in the entity

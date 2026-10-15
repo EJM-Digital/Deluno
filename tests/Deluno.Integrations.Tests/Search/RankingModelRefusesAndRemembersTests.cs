@@ -44,7 +44,7 @@ public sealed class RankingModelRefusesAndRemembersTests : IDisposable
             new ConfigurationBuilder().AddInMemoryCollection(values).Build(),
             source,
             Options.Create(new StoragePathOptions { DataRoot = _dataRoot }),
-            new FixedClock(Now, _advancing));
+            new FixedClock(Now, advancing: false));
     }
 
     /// <summary>Fixed, or (when asked) a clock that moves on a second at every look, so models trained one after the other get different versions.</summary>
@@ -54,8 +54,6 @@ public sealed class RankingModelRefusesAndRemembersTests : IDisposable
 
         public override DateTimeOffset GetUtcNow() => advancing ? now.AddSeconds(Interlocked.Increment(ref _looks)) : now;
     }
-
-    private bool _advancing;
 
     private static IReadOnlyList<ReleaseRankingTrainingRow> Rows(int count)
     {
@@ -161,9 +159,24 @@ public sealed class RankingModelRefusesAndRemembersTests : IDisposable
     }
 
     [Fact]
+    public async Task Two_trainings_in_the_same_second_get_two_versions_and_the_first_is_not_overwritten()
+    {
+        var service = Service(new RecordingSource(Rows(180)), ("Enabled", "true"), ("MinTrainingSamples", "40"));
+
+        var first = await service.TrainAsync("first", CancellationToken.None);
+        var second = await service.TrainAsync("second", CancellationToken.None);
+
+        Assert.True(first.Success, first.Message);
+        Assert.True(second.Success, second.Message);
+        Assert.NotEqual(first.ModelVersion, second.ModelVersion);
+        var versions = service.GetStatus().AvailableVersions ?? [];
+        Assert.Contains(first.ModelVersion!, versions);
+        Assert.Contains(second.ModelVersion!, versions);
+    }
+
+    [Fact]
     public async Task After_a_restart_the_model_marked_active_is_loaded_again_without_training_and_a_rollback_survives_the_next_restart()
     {
-        _advancing = true;
         var first = Service(new RecordingSource(Rows(180)), ("Enabled", "true"), ("MinTrainingSamples", "40"), ("AutoDispatchImpactEnabled", "true"));
         var older = await first.TrainAsync("first", CancellationToken.None);
         Assert.True(older.Success, older.Message);
