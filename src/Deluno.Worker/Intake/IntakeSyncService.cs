@@ -1447,8 +1447,9 @@ public sealed class IntakeSyncService(
             return false;
         }
 
-        if (source.MinimumRating is not null && (entry.Rating is null || entry.Rating.Value < source.MinimumRating.Value))
+        if (source.MinimumRating is not null && entry.Rating is not null && entry.Rating.Value < source.MinimumRating.Value)
         {
+            // A feed that gives no rating is judged later, on the looked-up rating (PassMetadataFilters).
             reason = $"Below minimum rating ({source.MinimumRating:0.0}).";
             return false;
         }

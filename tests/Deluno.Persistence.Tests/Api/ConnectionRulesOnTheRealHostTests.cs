@@ -118,16 +118,36 @@ public sealed class ConnectionRulesOnTheRealHostTests
         Assert.Equal("0", await StoredAsync(app, $"SELECT COUNT(*) FROM library_source_links WHERE indexer_id = '{indexer}'"));
     }
 
-    [Fact(Skip = "Defect: the server does not enforce a download client's priority range (1-50) or port (1-65535). ValidateDownloadClient in ConnectionsEndpointRouteBuilderExtensions checks only the protocol, so POST /api/download-clients with priority 0 or port 99999 is saved as given, although the drawer refuses both and the register row says the server enforces them.")]
-    public async Task The_server_refuses_a_client_priority_outside_1_to_50_and_a_port_outside_1_to_65535()
+    [Fact]
+    public async Task The_server_refuses_a_client_priority_outside_1_to_50_and_a_port_outside_1_to_65535_and_accepts_the_bounds()
     {
         await using var app = await ApplicationTestHost.StartAsync();
+        object Body(string host, int port, int priority) => new { protocol = "qbittorrent", host, port, priority, moviesCategory = "movies", tvCategory = "tv", isEnabled = true };
 
-        var badPriority = await app.Client.PostAsJsonAsync("/api/download-clients", new { protocol = "qbittorrent", host = "a.example.test", port = 8080, priority = 0, moviesCategory = "movies", tvCategory = "tv", isEnabled = true });
-        var badPort = await app.Client.PostAsJsonAsync("/api/download-clients", new { protocol = "qbittorrent", host = "b.example.test", port = 99999, priority = 10, moviesCategory = "movies", tvCategory = "tv", isEnabled = true });
+        foreach (var (port, priority, word) in new[] { (8080, 0, "priority"), (8080, 51, "priority"), (0, 10, "port"), (99999, 10, "port"), (65536, 10, "port") })
+        {
+            var refused = await app.Client.PostAsJsonAsync("/api/download-clients", Body("a.example.test", port, priority));
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            Assert.Contains($"The {word} must be a number from 1 to", await refused.Content.ReadAsStringAsync());
+        }
 
-        Assert.Equal(HttpStatusCode.BadRequest, badPriority.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, badPort.StatusCode);
         Assert.Equal("0", await StoredAsync(app, "SELECT COUNT(*) FROM download_clients"));
+
+        var low = await app.Client.PostAsJsonAsync("/api/download-clients", Body("low.example.test", 1, 1));
+        var high = await app.Client.PostAsJsonAsync("/api/download-clients", Body("high.example.test", 65535, 50));
+        Assert.Equal(HttpStatusCode.OK, low.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, high.StatusCode);
+        var id = (await high.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        foreach (var change in new object[] { new { priority = 0 }, new { priority = 51 }, new { port = 0 }, new { port = 65536 } })
+        {
+            var refused = await app.Client.PutAsJsonAsync($"/api/download-clients/{id}", change);
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            Assert.Contains("must be a number from 1 to", await refused.Content.ReadAsStringAsync());
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.PutAsJsonAsync($"/api/download-clients/{id}", new { priority = 1, port = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.PutAsJsonAsync($"/api/download-clients/{id}", new { priority = 50, port = 65535 })).StatusCode);
+        Assert.Equal("2", await StoredAsync(app, "SELECT COUNT(*) FROM download_clients"));
     }
 }

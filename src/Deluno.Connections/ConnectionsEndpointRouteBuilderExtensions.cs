@@ -667,12 +667,16 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            var updateErrors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
             if (request.Protocol is not null && !DownloadClientProtocolCatalog.IsDispatchable(request.Protocol))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."]
-                });
+                updateErrors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
+            }
+
+            AddDownloadClientRangeErrors(updateErrors, request.Port, request.Priority);
+            if (updateErrors.Count > 0)
+            {
+                return Results.ValidationProblem(updateErrors);
             }
 
             var item = await repository.UpdateDownloadClientAsync(id, request, cancellationToken);
@@ -765,7 +769,22 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             errors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
         }
 
+        AddDownloadClientRangeErrors(errors, request.Port, request.Priority);
         return errors;
+    }
+
+    /// <summary>The drawer's own limits, held by the server too: a port is 1 to 65535 and a priority is 1 to 50.</summary>
+    private static void AddDownloadClientRangeErrors(Dictionary<string, string[]> errors, int? port, int? priority)
+    {
+        if (port is not null && (port.Value < 1 || port.Value > 65535))
+        {
+            errors["port"] = ["The port must be a number from 1 to 65535."];
+        }
+
+        if (priority is not null && (priority.Value < 1 || priority.Value > 50))
+        {
+            errors["priority"] = ["The priority must be a number from 1 to 50."];
+        }
     }
 
     private static IReadOnlyDictionary<string, string>? MergeSecrets(
