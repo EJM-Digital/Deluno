@@ -89,6 +89,31 @@ describe("Tags page (#1039)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/tags/t2", { method: "DELETE" }));
   });
 
+  it("tells the person the server's reason when a repeated tag name is refused (#1341)", async () => {
+    const reason = "Another tag already has that name.";
+    const body = JSON.stringify({ title: "One or more validation errors occurred.", status: 400, errors: { name: [reason] } });
+    authedFetchMock.mockResolvedValue({ ok: false, status: 400, url: "/api/tags", json: async () => JSON.parse(body), text: async () => body });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: "New tag" })[0]);
+    const drawer = await screen.findByRole("dialog");
+    await userEvent.type(within(drawer).getByLabelText("Name"), "KIDS");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Create tag" }));
+
+    expect(await within(drawer).findByText(reason)).toBeInTheDocument();
+    expect(within(drawer).queryByText("Tag could not be created.")).toBeNull();
+  });
+
+  it("falls back to its own sentence when the server gives no reason (#1341)", async () => {
+    authedFetchMock.mockResolvedValue({ ok: false, status: 500, url: "/api/tags", json: async () => ({}), text: async () => "" });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: "New tag" })[0]);
+    const drawer = await screen.findByRole("dialog");
+    await userEvent.type(within(drawer).getByLabelText("Name"), "Lounge");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Create tag" }));
+
+    expect(await within(drawer).findByText("Tag could not be created.")).toBeInTheDocument();
+  });
+
   it("sorts by a column header and remembers it, with Reset columns to go back (#1119)", async () => {
     window.localStorage.clear();
     const { unmount } = renderPage();

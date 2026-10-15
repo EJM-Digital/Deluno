@@ -38,7 +38,7 @@ import { librarySetupNavItems } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type ProcessorPathMappingItem, type QualityProfileItem } from "../lib/api";
+import { readErrorText, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type ProcessorPathMappingItem, type QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -873,13 +873,13 @@ function ProcessingWorkflowPage() {
             removeEmptySourceFolders: workflow.removeEmptySourceFolders
           })
         });
-        if (!response.ok) throw new Error("Import workflow could not be saved.");
+        if (!response.ok) throw new Error(await readErrorText(response, "Import workflow could not be saved."));
         setWorkflowInitial(workflow);
         setMessage("Saved just now");
       } else if (drawer.kind === "callback") {
         const editing = drawer.editId;
         const response = await authedFetch(editing ? `/api/integrations/processors/connections/${editing}` : "/api/integrations/processors/connections", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(callback) });
-        if (!response.ok) throw new Error("Processor connection could not be saved.");
+        if (!response.ok) throw new Error(await readErrorText(response, "Processor connection could not be saved."));
         setCallback(emptyCallback());
         setCallbackInitial(emptyCallback());
         setMessage(editing ? "Processor saved" : "Processor connected");
@@ -911,7 +911,7 @@ function ProcessingWorkflowPage() {
   async function testCallback(connection: ProcessorConnectionItem) {
     await run(`test:${connection.id}`, async () => {
       const response = await authedFetch(`/api/integrations/processors/connections/${connection.id}/test`, { method: "POST" });
-      if (!response.ok) throw new Error("Processor connection test failed.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Processor connection test failed."));
       const result = (await response.json()) as ProcessorConnectionTestResult;
       toast.success(`${connection.name}: ${result.message}`);
     });
@@ -919,7 +919,7 @@ function ProcessingWorkflowPage() {
   async function removeCallback(connection: ProcessorConnectionItem) {
     await run(`remove:${connection.id}`, async () => {
       const response = await authedFetch(`/api/integrations/processors/connections/${connection.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Processor connection could not be disconnected.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Processor connection could not be disconnected."));
     }, `${connection.name} disconnected`);
     setConfirmRemove(null);
   }
@@ -948,7 +948,7 @@ function ProcessingWorkflowPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ delunoPath: newProcessorMapping.delunoPath.trim(), processorPath: newProcessorMapping.processorPath.trim(), isEnabled: true, priority: 10 })
       });
-      if (!response.ok) throw new Error("Path mapping could not be saved.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Path mapping could not be saved."));
       await loadMappings(mappingConnectionId);
       setNewProcessorMapping({ delunoPath: "", processorPath: "" });
     }, "Path mapping saved");
@@ -958,7 +958,7 @@ function ProcessingWorkflowPage() {
     const connectionId = mappingConnectionId;
     await run(`mapping:remove:${mappingId}`, async () => {
       const response = await authedFetch(`/api/integrations/processors/connections/${connectionId}/path-mappings/${mappingId}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Path mapping could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Path mapping could not be removed."));
       await loadMappings(connectionId);
     }, "Path mapping removed");
   }

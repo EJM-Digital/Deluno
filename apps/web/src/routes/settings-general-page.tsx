@@ -24,7 +24,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
+import { readErrorText, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import type { LanAccessStatus } from "../components/app/lan-access-notice";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -378,7 +378,7 @@ function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot
     setBusy(true);
     try {
       const response = await authedFetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-      if (!response.ok) throw new Error("That could not be saved.");
+      if (!response.ok) throw new Error(await readErrorText(response, "That could not be saved."));
       toast.success(said);
     } catch (error) {
       undo();
@@ -458,7 +458,7 @@ function LogLevelCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ level: next })
       });
-      if (!response.ok) throw new Error("The log level could not be changed.");
+      if (!response.ok) throw new Error(await readErrorText(response, "The log level could not be changed."));
       toast.success(`Log level set to ${next} — takes effect immediately.`);
     } catch (error) {
       setLevel(previous);

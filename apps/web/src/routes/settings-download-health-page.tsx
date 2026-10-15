@@ -50,7 +50,8 @@ import {
   type ActivityEventItem,
   type DownloadHealthIgnoreEntry,
   type DownloadHealthRule,
-  type PlatformSettingsSnapshot
+  type PlatformSettingsSnapshot,
+  readErrorText
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -667,7 +668,7 @@ export function SettingsDownloadHealthPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/download-health/rules/${mode.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Rule could not be removed.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Rule could not be removed."));
       toast.success(`${kindLabel(editing?.kind ?? form.kind)} rule removed`);
       setConfirmRemove(false);
       closeDrawer();
@@ -698,7 +699,7 @@ export function SettingsDownloadHealthPage() {
           note: ignoreDraft.note.trim() || null
         })
       });
-      if (!response.ok) throw new Error("Could not add that to the ignore list.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not add that to the ignore list."));
       setIgnoreDraft({ hash: "", category: "", trackerDomain: "", tag: "", note: "" });
       toast.success("Added to the ignore list");
       revalidator.revalidate();
@@ -713,7 +714,7 @@ export function SettingsDownloadHealthPage() {
     setIgnoreBusy(entry.id);
     try {
       const response = await authedFetch(`/api/download-health/ignore-list/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Could not remove that entry.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not remove that entry."));
       toast.success("Removed from the ignore list");
       revalidator.revalidate();
     } catch (error) {
@@ -727,7 +728,7 @@ export function SettingsDownloadHealthPage() {
     setBusy(true);
     try {
       const response = await authedFetch("/api/download-health/purge-strikes", { method: "POST" });
-      if (!response.ok) throw new Error("Could not clear strikes.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not clear strikes."));
       const result = await response.json() as { purgedCount: number };
       toast.success(result.purgedCount > 0 ? `Cleared ${result.purgedCount} recorded strike${result.purgedCount === 1 ? "" : "s"}` : "There was nothing to clear");
       setConfirmPurge(false);

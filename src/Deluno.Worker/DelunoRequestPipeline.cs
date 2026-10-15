@@ -223,6 +223,8 @@ public static class DelunoRequestPipeline
         // Connection.RemoteIpAddress from X-Forwarded-For, so "skip sign-in for
         // local devices" can judge the header against its own trusted-proxies list.
         app.UseDelunoCaptureOriginalRemoteAddress();
+        // #1341: the forwarded host is recorded before UseForwardedHeaders consumes the header.
+        app.UseDelunoRecordForwardedHost();
         app.UseForwardedHeaders();
 
         // Allowed Hosts (#939): refuses a request addressed to a host Deluno was not

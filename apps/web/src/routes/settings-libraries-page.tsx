@@ -259,7 +259,7 @@ export function SettingsLibrariesPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/libraries/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Library could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Library could not be removed."));
       toast.success(`${editing?.name ?? "Library"} removed`);
       setConfirmRemove(false);
       setInitialForm(form);
