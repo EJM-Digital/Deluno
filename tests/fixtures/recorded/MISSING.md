@@ -192,3 +192,9 @@ Rows of the integrations area that need a real reply nobody has recorded yet. Ea
 - weir: a processor output folder that holds a stray finished file, a stray season folder, and a second copy of a film the library holds, each beside a hand-off in each state (working, done, handed back), as Weir leaves the folder: the System > Health rows "Import", "Clear", "Keep" and "Remove" on a processor-output row act on those folders and have no recorded Weir state to run against
 - an indexer whose own test answers unhealthy or unreachable (a Torznab site that refuses, one that times out), recorded as the reply the Indexers screen stores, for the System > Health "Indexer" row and its grace for a new one
 - a download client with leftover finished downloads (qBittorrent, Deluge, Transmission, SABnzbd, NZBGet): the torrents/history list of a client that holds a finished item no library file shares and one a library file still shares, for System > System tasks "Run now" on the leftover-downloads task
+## File listings of SABnzbd, NZBGet (coverage, queue and automation areas)
+
+- sabnzbd `get_files` (the files inside one job) and nzbget `listfiles`: neither is in any recorded state, so the dangerous or junk file rule cannot yet be proven on those two clients from a real reply. Needed: a SABnzbd job and an NZBGet job holding a film and a small extra file, with the client's file-listing reply recorded.
+- deluge: only `location-moved` holds a file listing (one file); a folder torrent's listing (a film and an `.nfo`) is not recorded.
+- uTorrent and rTorrent: no recordings at all (see the allow-list), so the strike rules, the removal verbs and the re-check on those two have no recorded reply.
+- qbittorrent, transmission, deluge, sabnzbd, nzbget: the reply to a re-check (`torrents/recheck`, `torrent-verify`, `force_recheck`, and what the two Usenet clients answer to a re-check) has not been recorded.
