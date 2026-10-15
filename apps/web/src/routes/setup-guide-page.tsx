@@ -54,6 +54,7 @@ import {
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { samePath } from "../lib/library-paths";
+import { safeReturnAddress } from "../lib/return-address";
 import { authedFetch, useAuth } from "../lib/use-auth";
 import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -646,7 +647,7 @@ export function SetupGuidePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const returnTo = params.get("return") || "/";
+  const returnTo = safeReturnAddress(params.get("return"));
   const [stepIndex, setStepIndex] = useState(() => Math.min(STEPS.length - 1, Math.max(0, data.progress.lastCompletedStep)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
