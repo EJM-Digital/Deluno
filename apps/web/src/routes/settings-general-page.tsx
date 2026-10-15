@@ -33,6 +33,7 @@ import { toast } from "../components/shell/toaster";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
+import { SignedApiLink } from "../components/app/signed-api-link";
 interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
@@ -312,7 +313,7 @@ function TrackerDefinitionsCard() {
           on checks that repository for newer site files on the schedule below and writes them to the data folder's
           trackers directory. Off by default; "Check for newer site files" when adding an indexer does the same once,
           on request.{" "}
-          <a className="font-medium text-primary hover:underline" href="/api/trackers/definitions/notice" target="_blank" rel="noreferrer">Where the definitions come from and under what terms</a>.
+          <SignedApiLink className="font-medium text-primary hover:underline" path="/api/trackers/definitions/notice" mode="open" fallbackName="tracker-definitions-notice.md">Where the definitions come from and under what terms</SignedApiLink>.
         </p>
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">

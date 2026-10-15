@@ -637,9 +637,8 @@ describe("Search automation card", () => {
     await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
   });
 
-  // The screen throws the refusal and nothing catches it: the button stops spinning, the person is told nothing,
-  // and the error is unhandled. The row stays a gap until the screen says why the search was not started.
-  it.skip("a refused search-now shows its message to the person (defect: runNow in AutomationCard has no catch)", async () => {
+  // #1332: a refusal used to throw out of AutomationCard.runNow uncaught and the person saw nothing; it now shows the server's reason.
+  it("a refused search-now shows its message to the person", async () => {
     loaderData.automation = [automationRow(1)];
     answerPost("That library is paused.", false, 409);
     renderSystem();

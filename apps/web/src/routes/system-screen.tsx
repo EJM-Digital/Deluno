@@ -66,6 +66,8 @@ import {
   type UpdateStatusResponse, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
+import { SignedApiLink } from "../components/app/signed-api-link";
+import { describeRequestFailure } from "../lib/search-reasons";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { describeCleanup, type RecycleBinCleanupPreview } from "../lib/recycle-bin-words";
@@ -983,18 +985,26 @@ function AutomationCard({
 }) {
   const { preferences } = useDisplayPreferences();
   const [busyLibraryId, setBusyLibraryId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const running = automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latest = cycles[0] ?? null;
   const waiting = retryWindows.filter((item) => new Date(item.nextEligibleUtc).getTime() > Date.now()).length;
 
   async function runNow(libraryId: string) {
     setBusyLibraryId(libraryId);
+    setRunError(null);
     try {
       const response = await authedFetch(`/api/libraries/${libraryId}/search-now`, { method: "POST" });
       if (!response.ok) {
-        throw new Error(await readErrorText(response, "Search could not be requested."));
+        // A refused search says why, in the server's own words (#1332).
+        setRunError(await readErrorText(response, "Search could not be requested."));
+        return;
       }
       onRefresh();
+    } catch (error) {
+      // The request never completed: the shared request-failure helper says so in plain words.
+      const explained = await describeRequestFailure(null, error, { action: "start this search" });
+      setRunError(`${explained.title}. ${explained.description}`);
     } finally {
       setBusyLibraryId(null);
     }
@@ -1012,6 +1022,9 @@ function AutomationCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-(--page-gap)">
+        {runError ? (
+          <p role="alert" className="rounded-xl border border-warning/35 bg-warning/10 p-3 text-sm text-foreground">{runError}</p>
+        ) : null}
         <div className="grid grid-cols-3 gap-2">
           <AutomationMetric label="Active" value={running} />
           <AutomationMetric label="Runs" value={cycles.length} />
@@ -1282,10 +1295,10 @@ function BackupCard({
           </Button>
           {backups[0] ? (
             <Button type="button" variant="outline" asChild>
-              <a href={`/api/backups/${backups[0].id}/download`}>
+              <SignedApiLink path={`/api/backups/${backups[0].id}/download`} mode="save" fallbackName={backups[0].fileName}>
                 <Download className="h-4 w-4" />
                 Download latest
-              </a>
+              </SignedApiLink>
             </Button>
           ) : null}
         </div>
@@ -1398,7 +1411,7 @@ function BackupCard({
                 <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {formatWhen(backup.createdUtc, preferences)}</p>
               </div>
               <Button type="button" variant="ghost" size="sm" asChild>
-                <a href={`/api/backups/${backup.id}/download`}>Download</a>
+                <SignedApiLink path={`/api/backups/${backup.id}/download`} mode="save" fallbackName={backup.fileName}>Download</SignedApiLink>
               </Button>
             </div>
           ))}
@@ -1517,7 +1530,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       else actionStatus.markSaved(result.message);
     } catch (error) {
       actionStatus.markError(error instanceof Error ? error.message : "Update action failed");
-      await refreshStatus();
+      await refreshStatus().catch(() => undefined);
     } finally {
       setBusyAction(null);
     }
@@ -2306,22 +2319,22 @@ function MonitoringCard({ monitoring }: { monitoring: MonitoringDashboardSnapsho
         )}
 
         <div className="grid gap-2">
-          <a
+          <SignedApiLink
             className="rounded-lg border border-hairline bg-background/35 px-3 py-2 text-xs font-medium text-primary hover:bg-background/55"
-            href="/api/monitoring/export/prometheus"
-            target="_blank"
-            rel="noreferrer"
+            path="/api/monitoring/export/prometheus"
+            mode="open"
+            fallbackName="prometheus.txt"
           >
             Open Prometheus metrics export
-          </a>
-          <a
+          </SignedApiLink>
+          <SignedApiLink
             className="rounded-lg border border-hairline bg-background/35 px-3 py-2 text-xs font-medium text-primary hover:bg-background/55"
-            href="/api/monitoring/export/influx"
-            target="_blank"
-            rel="noreferrer"
+            path="/api/monitoring/export/influx"
+            mode="open"
+            fallbackName="influx.txt"
           >
             Open Influx line-protocol export
-          </a>
+          </SignedApiLink>
         </div>
       </CardContent>
     </Card>
