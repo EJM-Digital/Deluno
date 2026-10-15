@@ -1,6 +1,6 @@
 // The coverage register (docs/testing/coverage-register.json) must account for everything Deluno does, and every proof it names must exist.
 //
-//   node scripts/check-coverage-register.mjs                run the checks; (a) and (b) fail, (c) and the determinism counts are reported
+//   node scripts/check-coverage-register.mjs                run the checks; (a), (b), (e) and (f) fail, (c) and the determinism counts are reported
 //   node scripts/check-coverage-register.mjs --strict       also fail on any gap (a row whose proofs do not reach its required level) and any rule breach
 //   node scripts/check-coverage-register.mjs --stubs        print a register row stub for every inventory item without a row
 //   node scripts/check-coverage-register.mjs --base origin/main   also fail when there are more gaps than in the register at that git ref (the ratchet)
@@ -29,9 +29,11 @@
 // (d) with --base: the number of gaps is above the register's count at that git ref. The gaps only go down, measured against the branch a
 //     change goes into, so no number is kept in the file for parallel changes to fight over. A rise needs a `gapIncrease` entry in the
 //     register, { "from": <gaps on the base>, "to": <gaps now>, "reason": "..." }, matching that rise exactly.
+// (e) a row that is not a gap but still carries `issue` is stale; (f) a gap with no `issue` is unowned. A gap is a row below its required level,
+//     or marked `"incomplete": true` (its proofs do not yet cover its whole claim; `partial` stays the list of part-proofs that never count).
 // The statistics (totals by severity, area and proof level) are not kept in the repository: they go to $GITHUB_STEP_SUMMARY when that is
 // set, and to the --report file.
-// Only (a), (b) and (d) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
+// Only (a), (b), (d), (e) and (f) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
 // Determinism rules, reported with counts and failing under --strict: no fixed sleep in a test without a `reason:` comment on its line;
 // every golden-path scenario runnable alone; every external-app test on a recording or in tests/recorded-reply-allow-list.json.
 import { spawnSync } from 'node:child_process';
@@ -84,7 +86,12 @@ export function proofLevel(proof, row, index) {
   return 1;
 }
 export const rowLevel = (row, index) => (row.proofs ?? []).reduce((best, p) => Math.max(best, proofLevel(p, row, index)), 0);
-export const isGap = (row, index) => rowLevel(row, index) < requiredLevel(row);
+/** A row is a gap when its best proof is below its required level, or when it is marked `"incomplete": true` (its proofs do not yet cover its whole claim). */
+export const isGap = (row, index) => row.incomplete === true || rowLevel(row, index) < requiredLevel(row);
+
+/** (e) a row that is not a gap but still names an issue is stale; (f) a gap with no issue has no owner. Rows are listed by id. */
+export const staleIssueRows = (register, index) => register.rows.filter((row) => row.issue != null && !isGap(row, index)).map((row) => row.id);
+export const unownedGapRows = (register, index) => register.rows.filter((row) => row.issue == null && isGap(row, index)).map((row) => row.id);
 
 /** A `gapIncrease` entry says which rise it explains and why: { "from": <gaps on the base>, "to": <gaps now>, "reason": "..." }. */
 export function gapIncreaseShape(entry) {
@@ -116,6 +123,7 @@ export function validateShape(register) {
     else if (row.required !== requiredFor(row)) problems.push(`${where}: required must be "${requiredFor(row)}" for a ${row.severity} row that touches ${row.touches}`);
     if (row.vm != null && row.vm !== true) problems.push(`${where}: vm may only be true (leave it out otherwise)`);
     if (row.vm === true && !REAL_FS_TOUCHES.has(row.touches)) problems.push(`${where}: vm is for a row that touches disk or install, not ${row.touches}`);
+    if (row.incomplete != null && row.incomplete !== true) problems.push(`${where}: incomplete may only be true (leave it out otherwise)`);
     if (row.issue != null && !(Number.isInteger(row.issue) && row.issue > 0)) problems.push(`${where}: issue must be the number of an open coverage issue`);
     if (!Array.isArray(row.proofs)) problems.push(`${where}: proofs must be a list (empty when it is a gap)`);
     for (const p of [...(row.proofs ?? []), ...(row.partial ?? [])]) {
@@ -316,7 +324,9 @@ export function evaluate({ register, inventory, index, plan, root, baseGaps = nu
   const sleeps = safe('sleep rule', () => sleepViolations(index), []);
   const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
   const ratchet = safe('gap ratchet', () => gapRatchet(register, gapCountOf(register, index), baseGaps), { problems: [], notes: [] });
-  return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal, gapProblems: ratchet.problems, gapNotes: ratchet.notes };
+  const staleIssues = safe('stale issue rule', () => staleIssueRows(register, index), []);
+  const unownedGaps = safe('unowned gap rule', () => unownedGapRows(register, index), []);
+  return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal, staleIssues, unownedGaps, gapProblems: ratchet.problems, gapNotes: ratchet.notes };
 }
 
 async function externalAppViolations(root) {
@@ -447,7 +457,7 @@ async function main() {
   }
 
   const lines = [];
-  const fail = []; // the only things that fail CI: (a), (b) and (d)
+  const fail = []; // the only things that fail CI: (a), (b), (d), (e) and (f)
   const warn = []; // everything else is reported, and fails only under --strict
   const shown = (list, f, n = 10) => list.slice(0, n).map(f).join('\n    ') + (list.length > n ? `\n    ... and ${list.length - n} more` : '');
   lines.push(`Coverage register: ${register.rows.length} rows, ${inventory.length} inventory items (${Object.entries(countsOf(inventory)).map(([k, n]) => `${n} ${k}`).join(', ')}).`);
@@ -460,6 +470,12 @@ async function main() {
 
   if (result.gapProblems.length) fail.push(`(d) the gaps:\n    ${shown(result.gapProblems, (x) => x)}`);
   else if (baseRef && baseGaps !== null) lines.push(`  OK  (d) ${t.gaps.length} gaps, no more than the ${baseGaps} at ${baseRef}`);
+  if (result.staleIssues.length) fail.push(`(e) ${result.staleIssues.length} row(s) are not gaps but still name an issue (remove their "issue"):
+    ${shown(result.staleIssues, (x) => x)}`);
+  else lines.push('  OK  (e) no row names an issue once it is no gap');
+  if (result.unownedGaps.length) fail.push(`(f) ${result.unownedGaps.length} gap(s) name no issue (set "issue" to the area's coverage issue):
+    ${shown(result.unownedGaps, (x) => x)}`);
+  else lines.push('  OK  (f) every gap names the issue that will close it');
   if (!baseRef) lines.push('  !!  (d) no --base given, so the gaps were not held to the count on the base branch (CI passes it; locally use --base origin/main)');
   else if (baseGaps === null) lines.push(`  !!  (d) no register at ${baseRef} to compare with, so the gaps were not held to a count`);
   for (const note of result.gapNotes) if (baseGaps !== null) lines.push(`  !!  ${note}`);
