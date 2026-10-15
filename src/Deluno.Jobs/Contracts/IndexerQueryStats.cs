@@ -21,7 +21,10 @@ public sealed record IndexerQueryLogEntry(
     string? ErrorMessage = null,
     IntegrationFailure? Failure = null);
 
-/// <summary>Aggregated query telemetry for one indexer in a requested window.</summary>
+/// <summary>
+/// Aggregated query telemetry for one indexer in a requested window. Only calls that were sent are queries (#1330);
+/// <c>HeldBackQueries</c> counts the calls Deluno itself declined to send (a query limit, the request interval, an open circuit).
+/// </summary>
 public sealed record IndexerQueryStatsItem(
     string IndexerId,
     string IndexerName,
@@ -32,7 +35,8 @@ public sealed record IndexerQueryStatsItem(
     long FailedQueries,
     double AverageResponseMilliseconds,
     long CandidatesReturned,
-    DateTimeOffset? LastQueryUtc = null);
+    DateTimeOffset? LastQueryUtc = null,
+    long HeldBackQueries = 0);
 
 /// <summary>
 /// Dispatch/grab telemetry for one indexer. Grabs are filed under the indexer's

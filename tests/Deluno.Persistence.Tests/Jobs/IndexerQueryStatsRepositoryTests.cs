@@ -98,6 +98,49 @@ public sealed class IndexerQueryStatsRepositoryTests
         Assert.Equal(4, afterPrune.TotalQueries);
     }
 
+    /// <summary>#1330: every reason Deluno itself holds a call back is kept apart; none of them is a query or a failure on the scoreboard.</summary>
+    [Theory]
+    [InlineData("throttled")]
+    [InlineData("query_limit_reached")]
+    [InlineData("instance_query_limit_reached")]
+    [InlineData("circuit_open")]
+    public async Task A_call_Deluno_held_back_is_counted_on_its_own_and_never_as_a_query_or_a_failure(string reason)
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-04-30T12:00:00Z");
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(now)),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteIndexerQueryStatsRepository(storage.Factory);
+
+        await repository.RecordBatchAsync(
+            [
+                Entry("indexer-a", "Alpha", "search", "matched", 100, 3, now.AddHours(-2)),
+                Entry("indexer-a", "Alpha", "search", reason, 0, 0, now.AddHours(-1)),
+                Entry("indexer-a", "Alpha", "rss", reason, 0, 0, now.AddMinutes(-30)),
+                Entry("indexer-b", "Beta", "search", reason, 0, 0, now.AddMinutes(-10))
+            ],
+            CancellationToken.None);
+
+        var snapshot = await repository.GetScoreboardAsync(now.AddDays(-30), now, CancellationToken.None);
+
+        var alpha = Assert.Single(snapshot.QueryStats, item => item.IndexerId == "indexer-a");
+        Assert.Equal(1, alpha.TotalQueries);
+        Assert.Equal(1, alpha.SearchQueries);
+        Assert.Equal(0, alpha.RssQueries);
+        Assert.Equal(0, alpha.FailedQueries);
+        Assert.Equal(2, alpha.HeldBackQueries);
+        Assert.Equal(100, alpha.AverageResponseMilliseconds);
+        Assert.Equal(now.AddHours(-2), alpha.LastQueryUtc);
+        var beta = Assert.Single(snapshot.QueryStats, item => item.IndexerId == "indexer-b");
+        Assert.Equal(0, beta.TotalQueries);
+        Assert.Equal(0, beta.FailedQueries);
+        Assert.Equal(1, beta.HeldBackQueries);
+        Assert.Null(beta.LastQueryUtc);
+        Assert.Equal(1, snapshot.TotalQueries);
+    }
+
     private static IndexerQueryLogEntry Entry(
         string id,
         string name,
