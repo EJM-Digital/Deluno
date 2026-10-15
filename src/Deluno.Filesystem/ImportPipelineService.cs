@@ -502,7 +502,17 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status400BadRequest, message);
         }
 
+        // A processed file with no video is the processor's loss when the download it was made from has video:
+        // say that, and bin the broken copy, before the absolute no-video guard answers (#1342).
+        string? lost = null;
+        var lostChecked = false;
         if (preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 })
+        {
+            lost = await WhatTheProcessorLostAsync(request, preview, cancellationToken);
+            lostChecked = true;
+        }
+
+        if (lost is null && preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 })
         {
             const string message = "No video stream was detected in this file.";
             await RecordImportFailureAsync(
@@ -518,14 +528,18 @@ public sealed partial class ImportPipelineService(
         // Every guard above is absolute, and a processor's failures are
         // relative: a botched remux yields a valid file that is simply less
         // than what went in (#574).
-        var lost = await WhatTheProcessorLostAsync(request, preview, cancellationToken);
+        if (!lostChecked)
+        {
+            lost = await WhatTheProcessorLostAsync(request, preview, cancellationToken);
+        }
+
         if (lost is not null)
         {
             // The broken processed copy is deleted; the original -- already
             // shown good at Checkpoint A -- is kept until a person chooses
             // (#919). Only the processed file, never the download it came
-            // from (request.ProcessedFromPath).
-            DeleteBrokenProcessedCopy(preview.SourcePath, await librariesRepository.ListLibrariesAsync(cancellationToken));
+            // from (request.ProcessedFromPath). The copy goes to the recycle bin, never deleted outright (#1342).
+            await BinBrokenProcessedCopyAsync(preview.SourcePath, request.Preview.LibraryId, await librariesRepository.ListLibrariesAsync(cancellationToken), cancellationToken);
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -2306,29 +2320,42 @@ public sealed partial class ImportPipelineService(
     /// <summary>
     /// The processed copy is the processor's own work, and it is broken; the
     /// download it was made from is kept regardless, because Checkpoint A
-    /// already showed that one is fine (#919). Best-effort: a delete that
-    /// fails is logged, not thrown, and does not stop the fault being held
-    /// and shown.
+    /// already showed that one is fine (#919). The copy goes to the recycle
+    /// bin (#1342), so a person can restore it; with no bin, or a file outside
+    /// the library's processor output folder, it is left where it is.
+    /// Best-effort: a move that fails is logged, not thrown, and does not stop
+    /// the fault being held and shown.
     /// </summary>
-    private void DeleteBrokenProcessedCopy(string processedFilePath, IReadOnlyList<LibraryItem> allLibraries)
+    private async Task BinBrokenProcessedCopyAsync(
+        string processedFilePath,
+        string? libraryId,
+        IReadOnlyList<LibraryItem> allLibraries,
+        CancellationToken cancellationToken)
     {
-        // #1325: nothing is deleted while a folder overlaps a library, and never a file inside a library.
+        // #1325: nothing is moved while a folder overlaps a library, and never a file inside a library.
         if (Deluno.Libraries.LibraryFolderLayout.CleanupBlockedReason(allLibraries) is not null
             || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(allLibraries, processedFilePath))
         {
             return;
         }
 
+        var library = allLibraries.FirstOrDefault(candidate => string.Equals(candidate.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+        if (recycleBinService is null || library is null)
+        {
+            logger.LogWarning("The broken processed copy at {Path} was left where it is; there is no recycle bin or library to move it with.", processedFilePath);
+            return;
+        }
+
         try
         {
-            if (File.Exists(processedFilePath))
+            if (await recycleBinService.StoreStrayOutputAsync(library, processedFilePath, cancellationToken) is null && File.Exists(processedFilePath))
             {
-                File.Delete(processedFilePath);
+                logger.LogWarning("The broken processed copy at {Path} was left where it is because it could not be moved into the recycle bin.", processedFilePath);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(ex, "Could not delete the broken processed copy at {Path}.", processedFilePath);
+            logger.LogWarning(ex, "Could not move the broken processed copy at {Path} to the recycle bin.", processedFilePath);
         }
     }
 

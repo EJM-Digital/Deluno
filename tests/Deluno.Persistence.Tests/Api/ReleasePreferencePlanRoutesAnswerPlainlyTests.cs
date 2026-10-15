@@ -77,7 +77,7 @@ public sealed class ReleasePreferencePlanRoutesAnswerPlainlyTests
     // DEFECT (found by this test, 15 Oct 2026): every plan compiled for a quality profile has an id with a slash ("quality-profile/<profile id>"), and
     // GET /api/v1/release-preferences/plans/{planId} cannot address an id with a slash: the path (even with the slash percent-encoded) lands on the
     // compile route /plans/quality-profile/{profileId} or a 404, so a profile's stored plan can be listed but not read back by its id or a chosen version.
-    [Fact(Skip = "Defect: GET /plans/{planId} cannot read back a profile's compiled plan, whose id is quality-profile/<id> and contains a slash")]
+    [Fact]
     public async Task A_profiles_compiled_plan_is_read_back_by_its_id()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -87,6 +87,24 @@ public sealed class ReleasePreferencePlanRoutesAnswerPlainlyTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(plan.Version, (await response.Content.ReadFromJsonAsync<JsonElement>()).Prop("plan").Prop("version").GetString());
+    }
+
+    [Fact]
+    public async Task What_GET_returns_for_a_plan_is_accepted_by_POST_enum_words_and_all()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var plan = await CompiledPlanAsync(app, "movies");
+        var read = await app.Client.GetAsync($"{Base}/plans/{Uri.EscapeDataString(plan.Id)}");
+        var body = await read.Content.ReadAsStringAsync();
+        var asRead = JsonNode.Parse(body)!["plan"]!.AsObject();
+        Assert.Contains("\"", asRead.ToJsonString());
+        asRead["version"] = "round-trip-1";
+
+        var posted = await app.Client.PostAsync($"{Base}/plans", new StringContent(asRead.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.True(posted.StatusCode == HttpStatusCode.Created, await posted.Content.ReadAsStringAsync());
+        var notAPlan = await app.Client.PostAsync($"{Base}/plans", new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, notAPlan.StatusCode);
     }
 
     [Fact]

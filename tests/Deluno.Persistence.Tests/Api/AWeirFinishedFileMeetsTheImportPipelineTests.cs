@@ -198,8 +198,8 @@ public sealed class AWeirFinishedFileMeetsTheImportPipelineTests
 
     // DEFECT (found by this test, 15 Oct 2026): the absolute "No video stream was detected" guard in ImportPipelineService.ExecuteAsync answers first, so a processed file that
     // lost all its video is refused with that sentence, the "has no video, and the download it was made from does" check in WhatTheProcessorLostAsync is never reached, and the
-    // broken processed copy is NOT deleted (DeleteBrokenProcessedCopy runs only for a loss).
-    [Fact(Skip = "Defect: a processed file with no video is refused by the absolute no-video guard, so its broken copy is not deleted and the lost-video message is unreachable")]
+    // broken processed copy is NOT deleted (the bin step runs only for a loss).
+    [Fact]
     public async Task A_file_Weir_hands_back_with_no_video_is_refused_and_its_broken_copy_deleted_while_the_download_is_kept()
     {
         var weir = await WeirFinishesAsync(new ScriptedProbe { Original = Film(), Processed = Film(videoTracks: 0) });
