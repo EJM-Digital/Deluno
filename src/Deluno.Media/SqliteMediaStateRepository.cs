@@ -752,7 +752,8 @@ public sealed class SqliteMediaStateRepository(
         CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
-        var items = new List<(string Id, string LibraryId, string OldStatus, bool HasFile, string? CurrentQuality, bool IsReleased)>();
+        var items = new List<(string Id, string LibraryId, string OldStatus, bool HasFile, string? CurrentQuality, bool IsReleased, long? FileSize)>();
+        var qualityModel = await TryReadQualityModelAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -786,7 +787,7 @@ public sealed class SqliteMediaStateRepository(
             }
 
             command.CommandText = $"""
-                SELECT w.{map.WantedMediaIdColumn}, w.library_id, w.wanted_status, w.has_file, w.current_quality,
+                SELECT w.{map.WantedMediaIdColumn}, w.library_id, w.wanted_status, w.has_file, w.current_quality, w.file_size_bytes,
                        {map.ReleaseColumns}
                 FROM {map.WantedTable} w
                 {map.ReleaseJoin}
@@ -801,7 +802,8 @@ public sealed class SqliteMediaStateRepository(
                     reader.GetString(2),
                     reader.GetInt64(3) == 1,
                     reader.IsDBNull(4) ? null : reader.GetString(4),
-                    IsReleased(kind, reader, today, firstReleaseOrdinal: 5)));
+                    IsReleased(kind, reader, today, firstReleaseOrdinal: 6),
+                    reader.IsDBNull(5) ? null : reader.GetInt64(5)));
             }
         }
 
@@ -840,14 +842,18 @@ public sealed class SqliteMediaStateRepository(
 
             foreach (var item in items)
             {
-                var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
+                // The same inputs an import builds, so a saved profile cannot call an undersized file covered (#1334).
+                var decision = MediaDecisionRules.DecideWantedState(WantedDecisionInputs.Build(
                     kind == MediaKind.Movie ? "movie" : "tv",
                     item.HasFile,
                     item.CurrentQuality,
                     cutoffQuality,
                     upgradeUntilCutoff,
                     upgradeUnknownItems,
-                    IsReleased: item.IsReleased));
+                    // A show's own row holds one representative episode, so only a film is judged on its row's size.
+                    kind == MediaKind.Movie ? item.FileSize : null,
+                    qualityModel,
+                    item.IsReleased));
 
                 update.Parameters["@mediaId"].Value = item.Id;
                 update.Parameters["@libraryId"].Value = item.LibraryId;
@@ -873,6 +879,7 @@ public sealed class SqliteMediaStateRepository(
                 cutoffQuality,
                 upgradeUntilCutoff,
                 upgradeUnknownItems,
+                qualityModel,
                 now,
                 cancellationToken);
         }
@@ -880,6 +887,22 @@ public sealed class SqliteMediaStateRepository(
         await transaction.CommitAsync(cancellationToken);
 
         return new WantedReevaluationResult(titles, episodes, becameUpgrade, becameCovered);
+    }
+
+    /// <summary>
+    /// The quality model whose tiers set each size floor, or null where the platform database has none to read (a bare
+    /// test store), which keeps the decision exactly as it was before sizes were known.
+    /// </summary>
+    private async Task<QualityModelSnapshot?> TryReadQualityModelAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await new QualityModelService(databaseConnectionFactory, timeProvider).GetAsync(cancellationToken);
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            return null;
+        }
     }
 
     private static void CountMove(string before, string after, ref int becameUpgrade, ref int becameCovered)
@@ -919,10 +942,11 @@ public sealed class SqliteMediaStateRepository(
         string? cutoffQuality,
         bool upgradeUntilCutoff,
         bool upgradeUnknownItems,
+        QualityModelSnapshot? qualityModel,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var rows = new List<(string EpisodeId, string SeriesId, string LibraryId, string OldStatus, string? Quality)>();
+        var rows = new List<(string EpisodeId, string SeriesId, string LibraryId, string OldStatus, string? Quality, long? FileSize)>();
         using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
@@ -952,7 +976,7 @@ public sealed class SqliteMediaStateRepository(
 
             command.CommandText = $"""
                 SELECT ews.episode_id, ews.series_id, ews.library_id, ews.wanted_status,
-                       COALESCE(ews.current_quality, sws.current_quality)
+                       COALESCE(ews.current_quality, sws.current_quality), e.file_size_bytes
                 FROM episode_wanted_state ews
                 JOIN episode_entries e ON e.id = ews.episode_id
                 LEFT JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
@@ -966,7 +990,8 @@ public sealed class SqliteMediaStateRepository(
                     reader.GetString(1),
                     reader.GetString(2),
                     reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4)));
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetInt64(5)));
             }
         }
 
@@ -999,13 +1024,15 @@ public sealed class SqliteMediaStateRepository(
 
             foreach (var row in rows)
             {
-                var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
+                var decision = MediaDecisionRules.DecideWantedState(WantedDecisionInputs.Build(
                     "tv",
-                    HasFile: true,
+                    true,
                     row.Quality,
                     cutoffQuality,
                     upgradeUntilCutoff,
-                    upgradeUnknownItems));
+                    upgradeUnknownItems,
+                    row.FileSize,
+                    qualityModel));
 
                 // Short of the cutoff and still upgrading is the one verdict
                 // that keeps looking; everything else settles.

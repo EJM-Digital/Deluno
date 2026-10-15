@@ -704,15 +704,83 @@ public sealed class SqliteQualityRepository(
     }
 
     public async Task<bool> DeleteQualityProfileAsync(string id, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Platform,
-            cancellationToken);
+        => await RemoveQualityProfileAsync(id, cancellationToken) is not null;
 
-        using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM quality_profiles WHERE id = @id;";
-        AddParameter(command, "@id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    /// <summary>
+    /// Every column that stores a quality profile's id, in every database (#1334). A foreign key clears the ones in the
+    /// platform database, but a title's own choice lives in the movies or series database, where no key can reach the
+    /// profile, so each is cleared here by name. A test lists the real schemas and fails when a column is missing from this list.
+    /// </summary>
+    public static readonly IReadOnlyList<ProfileReferenceColumn> ProfileReferenceColumns =
+    [
+        new(DelunoDatabaseNames.Platform, "libraries", "quality_profile_id", ProfileReferenceKind.Library),
+        new(DelunoDatabaseNames.Platform, "intake_sources", "quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Platform, "policy_sets", "quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Platform, "seerr_servers", "movie_quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Platform, "seerr_servers", "series_quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Platform, "seerr_servers", "movie_4k_quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Platform, "seerr_servers", "series_4k_quality_profile_id", ProfileReferenceKind.Other),
+        new(DelunoDatabaseNames.Movies, "movie_entries", "quality_profile_id", ProfileReferenceKind.Title),
+        new(DelunoDatabaseNames.Movies, "movie_collections", "quality_profile_id", ProfileReferenceKind.Title),
+        new(DelunoDatabaseNames.Series, "series_entries", "quality_profile_id", ProfileReferenceKind.Title)
+    ];
+
+    public async Task<QualityProfileRemoval?> RemoveQualityProfileAsync(string id, CancellationToken cancellationToken)
+    {
+        string name;
+        await using (var platform = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken))
+        {
+            using var find = platform.CreateCommand();
+            find.CommandText = "SELECT name FROM quality_profiles WHERE id = @id;";
+            AddParameter(find, "@id", id);
+            if (await find.ExecuteScalarAsync(cancellationToken) is not string found)
+            {
+                return null;
+            }
+
+            name = found;
+        }
+
+        // Clear every named choice first, so the library or the default profile answers for those titles from now on.
+        int libraries = 0, titles = 0, other = 0;
+        foreach (var column in ProfileReferenceColumns)
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(column.Database, cancellationToken);
+            using (var exists = connection.CreateCommand())
+            {
+                // A store opened without every catalogue (a bare test store) has no such table to clear.
+                exists.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = @table LIMIT 1;";
+                AddParameter(exists, "@table", column.Table);
+                if (await exists.ExecuteScalarAsync(cancellationToken) is null)
+                {
+                    continue;
+                }
+            }
+
+            using var clear = connection.CreateCommand();
+            clear.CommandText = $"UPDATE {column.Table} SET {column.Column} = NULL WHERE {column.Column} = @id COLLATE NOCASE;";
+            AddParameter(clear, "@id", id);
+            var cleared = await clear.ExecuteNonQueryAsync(cancellationToken);
+            switch (column.Kind)
+            {
+                case ProfileReferenceKind.Library: libraries += cleared; break;
+                case ProfileReferenceKind.Title: titles += cleared; break;
+                default: other += cleared; break;
+            }
+        }
+
+        await using (var platform = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken))
+        {
+            using var command = platform.CreateCommand();
+            command.CommandText = "DELETE FROM quality_profiles WHERE id = @id;";
+            AddParameter(command, "@id", id);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                return null;
+            }
+        }
+
+        return new QualityProfileRemoval(id, name, libraries, titles, other);
     }
 
     public async Task<bool> DeleteCustomFormatAsync(string id, CancellationToken cancellationToken)
