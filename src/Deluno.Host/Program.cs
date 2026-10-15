@@ -28,7 +28,6 @@ using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.OpenApi.Models;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -79,21 +78,6 @@ if (OperatingSystem.IsWindows())
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 builder.Services.AddDelunoWebPipeline(builder.Configuration);
 builder.Services.AddDelunoApplicationModules();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    // Minimal-API request records may share the same nested type name across
-    // modules (for example Movies.MetadataLinkRequest and Series.MetadataLinkRequest).
-    // Use a stable fully-qualified schema id so the generated API document stays
-    // available instead of failing on those valid independent contracts.
-    options.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace('+', '.'));
-    options.SwaggerDoc(DelunoApiVersion.Current, new OpenApiInfo
-    {
-        Title = "Deluno API",
-        Version = DelunoApiVersion.Current,
-        Description = "Deluno operational API for local automation, integrations, and UI orchestration."
-    });
-});
 
 var configuredDataRoot = builder.Configuration["Storage:DataRoot"];
 var dataRoot = Path.GetFullPath(
@@ -113,22 +97,6 @@ builder.Services.AddDelunoPlatformSecrets(
 
 var app = builder.Build();
 
-app.UseDelunoRequestPipeline(new DelunoPipelineOptions
-{
-    // The API docs answer the request themselves and stay open.
-    BeforeSignInGate = docs =>
-    {
-        docs.UseSwagger(options =>
-        {
-            options.RouteTemplate = "api/openapi/{documentName}.json";
-        });
-        docs.UseSwaggerUI(options =>
-        {
-            options.RoutePrefix = "api/docs";
-            options.SwaggerEndpoint($"/api/openapi/{DelunoApiVersion.Current}.json", $"Deluno API {DelunoApiVersion.Current}");
-            options.DocumentTitle = "Deluno API docs";
-        });
-    }
-});
+app.UseDelunoRequestPipeline();
 
 app.Run();

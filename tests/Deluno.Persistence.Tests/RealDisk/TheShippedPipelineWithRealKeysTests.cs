@@ -149,7 +149,7 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
 
     // DEFECT: the Windows app and service build their pipeline with no options, so no OpenAPI document is registered and the
     // documented /api/openapi/v1.json answers 404 (observed on this pipeline).
-    [Fact(Skip = "Defect: the shipped pipeline (Windows app and service) serves no API documentation; GET /api/openapi/v1.json answers 404 although the docs name it.")]
+    [Fact]
     public async Task The_API_documentation_the_docs_promise_answers_a_signed_in_owner()
     {
         using var spec = await AsOwnerAsync(HttpMethod.Get, "/api/openapi/v1.json");
