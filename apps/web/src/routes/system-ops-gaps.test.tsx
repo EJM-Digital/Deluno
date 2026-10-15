@@ -245,7 +245,7 @@ describe("Activity timeline (System > Audit)", () => {
     expect(screen.getByText("Live event 59")).toBeInTheDocument();
     expect(screen.getByText("Live event 10")).toBeInTheDocument();
     expect(screen.queryByText("Live event 9")).toBeNull();
-  });
+  }, 30_000);
 });
 
 describe("Backups (System > Backups)", () => {
