@@ -78,3 +78,20 @@ describe("the sidebar collapse button", () => {
     expect(screen.getAllByText("WORKSTATION")).toHaveLength(1);
   });
 });
+
+describe("the account menu", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("Sign out in the account menu signs the person out", async () => {
+    const onLogout = vi.fn();
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={attention} user={user} onLogout={onLogout} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+});
