@@ -92,6 +92,8 @@ const json = (body: unknown) => ({ contentType: "application/json", body: JSON.s
  */
 async function seedLongData(page: Page, seriesId: string, movieId: string) {
   const headers = await authHeaders(page);
+  // System > Backups lists the backups there are: make one, so the walk always measures the file-name row, not only after another spec has left one.
+  await page.request.post("/api/backups", { headers, data: { reason: "manual" } });
   const indexers: { id: string; name: string }[] = [];
   for (let index = 1; index <= 5; index += 1) {
     const created = await (await page.request.post("/api/indexers", {
