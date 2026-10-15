@@ -65,6 +65,44 @@ public sealed class AHandSendForAFilmTests
     }
 
     [Fact]
+    public async Task A_forced_send_keeps_the_reason_the_person_typed_in_activity_and_in_the_search_history()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs, removed: null);
+        var filmId = await SeedAsync(app);
+        const string risky = "Big.Buck.Bunny.2008.HDCAM.x264-GRP";
+
+        using var forced = await GrabAsync(app, filmId, risky, force: true, overrideReason: "It is the only copy there is.");
+
+        Assert.Equal(HttpStatusCode.OK, forced.StatusCode);
+        Assert.Contains("It is the only copy there is.", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+        var history = (await app.Client.GetFromJsonAsync<JsonElement>("/api/movies/search-history")).EnumerateArray().Where(item => item.GetProperty("movieId").GetString() == filmId).ToArray();
+        var row = Assert.Single(history);
+        Assert.Equal("manual-force-grab", row.GetProperty("triggerKind").GetString());
+        Assert.Contains("It is the only copy there is.", row.ToString(), StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(app.DataRoot, "*.mkv", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task A_grab_with_no_release_name_or_a_relative_address_is_refused_with_the_reason_and_an_unknown_film_is_a_not_found()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs, removed: null);
+        var filmId = await SeedAsync(app);
+
+        using var noName = await app.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new { releaseName = "", downloadUrl = "https://fixture.invalid/x.torrent", candidateQuality = "Bluray 1080p" });
+        using var relative = await app.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new { releaseName = Release, downloadUrl = "/x.torrent", candidateQuality = "Bluray 1080p" });
+        using var noUrl = await app.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new { releaseName = Release, downloadUrl = (string?)null, candidateQuality = "Bluray 1080p" });
+        using var unknown = await GrabAsync(app, "no-such-film", Release);
+
+        Assert.Equal(HttpStatusCode.BadRequest, noName.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, relative.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, noUrl.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(0, grabs.Count);
+    }
+
+    [Fact]
     public async Task A_second_hand_send_for_a_film_that_is_already_downloading_asks_first_then_sends_as_well()
     {
         var grabs = new CountingGrabService();
@@ -82,6 +120,7 @@ public sealed class AHandSendForAFilmTests
 
         Assert.Equal(HttpStatusCode.OK, (await GrabAsync(app, filmId, SameFilmAgain, duplicateAction: "send-as-well")).StatusCode);
         Assert.Equal(2, grabs.Count);
+        Assert.Empty(Directory.GetFiles(app.DataRoot, "*.mkv", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -101,6 +140,7 @@ public sealed class AHandSendForAFilmTests
         Assert.True(gone.FromClient);
         Assert.False(gone.Blocklist, "replacing is not a verdict on the first release");
         Assert.Equal(2, grabs.Count);
+        Assert.Empty(Directory.GetFiles(app.DataRoot, "*.mkv", SearchOption.AllDirectories));
     }
 
     // ---------------------------------------------------------------- helpers

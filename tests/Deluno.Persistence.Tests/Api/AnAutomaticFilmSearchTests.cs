@@ -65,6 +65,44 @@ public sealed class AnAutomaticFilmSearchTests
     }
 
     [Fact]
+    public async Task A_preview_lists_the_ranked_candidate_with_its_decision_cutoff_quality_change_and_reasons_and_sends_nothing()
+    {
+        var titles = RecordedTitles();
+        await using var indexer = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-movie-imdb"), RecordedReplies.Jackett("search-text"));
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs);
+        var filmId = await SeedAsync(app, indexer.BaseUrl + JackettPath);
+
+        var preview = await PreviewAsync(app, filmId);
+
+        var candidate = Assert.Single(preview.GetProperty("candidates").EnumerateArray());
+        Assert.Equal(Assert.Single(titles), candidate.GetProperty("releaseName").GetString());
+        Assert.False(string.Equals("rejected", candidate.GetProperty("decisionStatus").GetString(), StringComparison.OrdinalIgnoreCase), "the accepting profile must not reject the release");
+        Assert.True(candidate.GetProperty("meetsCutoff").GetBoolean());
+        Assert.True(candidate.TryGetProperty("qualityDelta", out var delta) && delta.ValueKind == JsonValueKind.Number);
+        Assert.False(string.IsNullOrWhiteSpace(candidate.GetProperty("quality").GetString()));
+        Assert.NotEqual(JsonValueKind.Null, candidate.GetProperty("decisionReasons").ValueKind);
+        Assert.Equal(0, grabs.Count);
+        Assert.Empty(Directory.GetFiles(app.DataRoot, "*.mkv", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task A_preview_under_a_profile_that_refuses_the_release_marks_it_rejected_and_says_why_and_still_sends_nothing()
+    {
+        await using var indexer = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-movie-imdb"), RecordedReplies.Jackett("search-text"));
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs);
+        var filmId = await SeedAsync(app, indexer.BaseUrl + JackettPath, acceptingProfile: false);
+
+        var preview = await PreviewAsync(app, filmId);
+
+        var candidate = Assert.Single(preview.GetProperty("candidates").EnumerateArray());
+        Assert.Equal("rejected", candidate.GetProperty("decisionStatus").GetString(), ignoreCase: true);
+        Assert.NotEmpty(candidate.GetProperty("decisionReasons").EnumerateArray());
+        Assert.Equal(0, grabs.Count);
+    }
+
+    [Fact]
     public async Task A_search_that_finds_nothing_says_so_and_sends_nothing()
     {
         await using var indexer = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-no-results"));
@@ -101,6 +139,14 @@ public sealed class AnAutomaticFilmSearchTests
         return JsonSerializer.Deserialize<JsonElement>(raw);
     }
 
+    private static async Task<JsonElement> PreviewAsync(ApplicationTestHost app, string filmId)
+    {
+        using var response = await app.Client.PostAsync($"/api/movies/{filmId}/search?mode=preview", content: null);
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, raw);
+        return JsonSerializer.Deserialize<JsonElement>(raw);
+    }
+
     private static Task<ApplicationTestHost> StartAsync(CountingGrabService grabs)
         => ApplicationTestHost.StartAsync(replaceServices: services =>
         {
@@ -108,7 +154,7 @@ public sealed class AnAutomaticFilmSearchTests
             services.AddSingleton<IDownloadClientGrabService>(grabs);
         });
 
-    private static async Task<string> SeedAsync(ApplicationTestHost app, string indexerUrl)
+    private static async Task<string> SeedAsync(ApplicationTestHost app, string indexerUrl, bool acceptingProfile = true)
     {
         var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
         var library = await app.Client.PostAsJsonAsync("/api/libraries", new { name = "Films", mediaType = "movies", rootPath = root });
@@ -131,6 +177,9 @@ public sealed class AnAutomaticFilmSearchTests
         Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
         // The default film profile refuses every real YTS release: they are small 720p encodes (0.1 GB here), under its
         // size floor and below its 1080p cutoff. So the film gets a profile, made through the real API, that accepts them.
+        string? qualityProfileId = null;
+        if (acceptingProfile)
+        {
         var profileResponse = await app.Client.PostAsJsonAsync("/api/quality-profiles", new
         {
             name = "Small 720p films",
@@ -143,7 +192,8 @@ public sealed class AnAutomaticFilmSearchTests
             sizeRules = new[] { new { quality = "Bluray 720p", minGb = 0.0, maxGb = 0.0, minMb = 0.0, maxMb = 0.0 } }
         });
         Assert.True(profileResponse.IsSuccessStatusCode, await profileResponse.Content.ReadAsStringAsync());
-        var qualityProfileId = (await profileResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        qualityProfileId = (await profileResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
         var added = await app.Client.PostAsJsonAsync("/api/movies/", new { title = "Sintel", releaseYear = 2010, imdbId = "tt1727587", monitored = true, libraryId, searchForMissingNow = false, qualityProfileId });
         Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
         return (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
