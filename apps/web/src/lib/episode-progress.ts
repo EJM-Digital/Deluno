@@ -43,6 +43,13 @@ export function isEpisodeUpcoming(
   return episode.monitored !== false && !episode.hasFile && !!episode.airDateUtc && !hasAired(episode, now);
 }
 
+/** Upgradable means: Deluno wants it, it holds a file, and that file is below the target. */
+export function isEpisodeUpgradable(
+  episode: Pick<SeriesEpisodeInventoryItem, "hasFile" | "wantedStatus"> & { monitored?: boolean }
+): boolean {
+  return episode.monitored !== false && episode.hasFile && episode.wantedStatus === "upgrade";
+}
+
 export interface EpisodeProgress {
   /** Everything the catalogue knows about, aired or not. */
   total: number;
@@ -79,7 +86,7 @@ export function summariseEpisodes(
       else missing++;
     }
 
-    if (episode.hasFile && episode.wantedStatus === "upgrade") upgradable++;
+    if (isEpisodeUpgradable(episode)) upgradable++;
   }
 
   return { total: episodes.length, aired, held, missing, upcoming, upgradable };

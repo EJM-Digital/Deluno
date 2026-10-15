@@ -208,7 +208,7 @@ function movieGroups(id: string): TitleGroups<MovieDetailLoaderData> {
     // What was searched, sent, decided and noted for this film.
     history: async () => {
       const [searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers] = await Promise.all([
-        fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
+        fetchJson<MovieSearchHistoryItem[]>(`/api/movies/search-history?movieId=${encodeURIComponent(id)}&take=50`),
         // Archived rows included on purpose: an import archives its dispatch the
         // moment it succeeds, so a history that hides them shows nothing was ever
         // sent for the very titles Deluno did download. Asked for by title, because
@@ -626,6 +626,9 @@ export function MovieDetailPage() {
   }
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
+    // Every fresh search starts from every candidate, not the few a past filter left (#1338).
+    setCandidateProtocolFilter("");
+    setCandidateIndexerFilter("");
     setBusyAction(`${mode}-search`);
     setSearchNote({ state: "searching", label: mode === "interactive" ? "Comparing releases from your indexers..." : "Searching your indexers..." });
     let searchResponse: Response | null = null;

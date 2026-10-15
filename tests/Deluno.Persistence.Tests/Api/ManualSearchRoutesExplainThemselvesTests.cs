@@ -49,9 +49,7 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
         Assert.Empty(off.Requests);
     }
 
-    // DEFECT (found by this test, not fixed here): with no category ticked, a TV search against an indexer configured for both
-    // movie and TV categories still sends all of them ("cat=2000,5000"), so the "TV" type does not ask only the TV family.
-    [Fact(Skip = "Defect: a TV search with no category ticked sends the indexer's whole category list (cat=2000,5000) instead of only the 5000 family; the movie type likewise sends the TV categories (ManualSearchEndpointRouteBuilderExtensions /api/search)")]
+    [Fact]
     public async Task A_TV_search_asks_only_the_TV_categories_and_a_movie_search_only_the_movie_ones()
     {
         await using var feed = await FeedAsync();
@@ -83,9 +81,7 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
         Assert.DoesNotContain("2040", request);
     }
 
-    // DEFECT (found by this test, not fixed here): POST /api/search answers only candidates and indexersQueried. An indexer that
-    // timed out or refused during a Search-page search is written to Indexer History but never reaches the page.
-    [Fact(Skip = "Defect: POST /api/search leaves out the failures the planner returns, so the Search page cannot explain an indexer that failed or timed out (ManualSearchEndpointRouteBuilderExtensions /api/search)")]
+    [Fact]
     public async Task An_indexer_that_fails_during_the_search_is_named_in_the_answer()
     {
         await using var broken = await FeedAsync();

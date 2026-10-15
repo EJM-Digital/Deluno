@@ -258,6 +258,15 @@ describe("the show's Episodes tab", () => {
     expect(screen.queryByText("S01E02")).toBeNull();
   });
 
+  it("the Missing chip counts the same list the summary strip does: aired, monitored and without a file", async () => {
+    await renderPage();
+
+    const cell = (label: string) => screen.getAllByText(label).find((node) => node.className.includes("uppercase"))!.parentElement as HTMLElement;
+    expect(cell("Missing")).toHaveTextContent("2");
+    // The unmonitored episode and the one that has not aired are without a file, but they are not missing.
+    expect(screen.getByRole("radio", { name: "Missing 2" })).toBeInTheDocument();
+  });
+
   it("the text box narrows by episode code or by title", async () => {
     await renderPage();
     const box = screen.getByPlaceholderText("Filter by code or title");
@@ -386,7 +395,7 @@ describe("the show's Episodes tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search and send these" }));
 
     await waitFor(() => expect(posts("/episodes/search")).toHaveLength(1));
-    expect(bodies("/episodes/search")[0]).toEqual({ episodeIds: ["e00", "e12", "e13", "e21"], mode: "send" });
+    expect(bodies("/episodes/search")[0]).toEqual({ episodeIds: ["e00", "e12"], mode: "send" });
   });
 
   it("Search and send these is off when nothing is listed", async () => {
@@ -576,9 +585,25 @@ describe("an episode's drawer", () => {
     expect(within(drawer).queryByText("Subtitles")).toBeNull();
   });
 
-  // DEFECT (found by this test, not fixed here): the register row says the drawer shows the episode's file info (path, size,
-  // quality, release group, indexer, client). The drawer has a "File" section, but it holds only Delete file: none of those facts.
-  it.skip("shows the episode file's path, size, quality, release group, indexer and client in its drawer", async () => {
+  it("fills the file panel with what the server holds about the file", async () => {
+    setup((url) => {
+      if (url === "/api/series/s1/inventory") return { body: { ...INVENTORY, episodes: [episode({ episodeId: "f", seasonNumber: 1, episodeNumber: 1, title: "File", hasFile: true, wantedStatus: "covered", currentQuality: "WEB 1080p" })] } };
+      if (url === "/api/series/episodes/f/file") return { body: { episodeId: "f", filePath: "/shows/The Wire/S01E01.mkv", fileSizeBytes: 1073741824, quality: "WEB 1080p", releaseGroup: "EXAMPLE", indexerName: "Fixture Indexer", downloadClientName: "Fixture Client" } };
+      return undefined;
+    });
+    await renderPage();
+
+    fireEvent.click(episodeRow("S01E01"));
+    const drawer = await screen.findByRole("dialog", { name: /S01E01/ });
+
+    expect(await within(drawer).findByText("/shows/The Wire/S01E01.mkv")).toBeInTheDocument();
+    expect(within(drawer).getByText(/^1(\.0)? GB$/)).toBeInTheDocument();
+    expect(within(drawer).getByText("EXAMPLE")).toBeInTheDocument();
+    expect(within(drawer).getByText("Fixture Indexer")).toBeInTheDocument();
+    expect(within(drawer).getByText("Fixture Client")).toBeInTheDocument();
+  });
+
+  it("shows the episode file's path, size, quality, release group, indexer and client in its drawer", async () => {
     setup((url) => (url === "/api/series/s1/inventory" ? { body: { ...INVENTORY, episodes: [episode({ episodeId: "f", seasonNumber: 1, episodeNumber: 1, title: "File", hasFile: true, wantedStatus: "covered", currentQuality: "WEB 1080p" })] } } : undefined));
     await renderPage();
 
@@ -1012,7 +1037,7 @@ describe("the show's History tab", () => {
 
   it("lists this show's searches with their scope and trigger", async () => {
     setup((url) =>
-      url === "/api/series/search-history"
+      url.startsWith("/api/series/search-history?seriesId=s1")
         ? {
             body: [
               { id: "h1", seriesId: "s1", episodeId: "e12", seasonNumber: 1, episodeNumber: 2, libraryId: "lib1", triggerKind: "manual", outcome: "sent", releaseName: "The.Wire.S01E02.Sent", indexerName: "Fixture", detailsJson: null, createdUtc: daysAgo(1) },
@@ -1031,7 +1056,7 @@ describe("the show's History tab", () => {
 
   it("lists only the latest 12 of the show's searches and says Latest 12 of 13", async () => {
     setup((url) =>
-      url === "/api/series/search-history"
+      url.startsWith("/api/series/search-history?seriesId=s1")
         ? { body: Array.from({ length: 13 }, (_, index) => ({ id: `h${index}`, seriesId: "s1", episodeId: null, seasonNumber: null, episodeNumber: null, libraryId: "lib1", triggerKind: "scheduled", outcome: "none", releaseName: `The.Wire.Search.${index}`, indexerName: "Fixture", detailsJson: null, createdUtc: new Date(Date.UTC(2026, 9, 1, 12) - index * 60_000).toISOString() })) }
         : undefined
     );
