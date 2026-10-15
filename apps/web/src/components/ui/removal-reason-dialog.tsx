@@ -5,7 +5,7 @@
  * there is no second gate behind it, and each of the three plain-word
  * choices commits to something different as soon as it is clicked.
  */
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "./dialog-primitives";
 import { Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";

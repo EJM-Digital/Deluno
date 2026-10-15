@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { ListChecks, Tags } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { BulkTagMode } from "../../hooks/use-bulk-edit";

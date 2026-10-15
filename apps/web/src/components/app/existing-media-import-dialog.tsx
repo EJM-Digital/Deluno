@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { formatBytes } from "../../lib/utils";
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileVideo, Folder, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

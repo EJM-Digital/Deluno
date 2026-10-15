@@ -96,7 +96,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const drawSection = (label: string, list: BellRow[]) =>
     list.length === 0 ? null : (
       <section aria-label={label} key={label}>
-        <p className="px-4 pb-0.5 pt-2 text-(length:--type-micro) font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{label}</p>
+        <p className="px-4 pb-0.5 pt-2 text-(length:--type-micro) font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
         <ul>{list.map((row) => bellRowElement(row, action))}</ul>
       </section>
     );

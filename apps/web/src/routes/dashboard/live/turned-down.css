@@ -1,9 +1,9 @@
 /* Turned down today (#1098): the mockup's reason bars, rule for rule, mapped to the app's tokens. */
 .ltd-bars { flex: 1 1 0; min-height: 0; padding: 2px 18px 12px; display: grid; grid-auto-rows: min-content; gap: 8px; align-content: space-between; overflow: hidden; }
-.ltd-br { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: hsl(220 14% 80%); cursor: pointer; border-radius: 6px; padding: 3px 4px; margin: -3px -4px; }
+.ltd-br { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: hsl(var(--foreground)); cursor: pointer; border-radius: 6px; padding: 3px 4px; margin: -3px -4px; }
 .ltd-br:hover { background: hsl(var(--surface-2)); }
 .ltd-br:focus-visible, .ltd-more:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.ltd-br.zero { opacity: .45; }
+.ltd-br.zero { color: hsl(var(--muted-foreground)); }
 .ltd-br > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ltd-num { font-weight: 600; color: hsl(var(--foreground)); transition: color .3s; font-variant-numeric: tabular-nums; }
 .ltd-tr { grid-column: 1 / -1; height: 6px; background: hsl(var(--surface-3)); border-radius: 9px; overflow: hidden; }

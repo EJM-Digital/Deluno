@@ -423,7 +423,7 @@ export function ListRow({ onClick, selected = false, className, children, ...pro
     >
       {table.reordered ? orderedCells(children, table.visual) : children}
       {table.chevron ? (
-        <span aria-hidden className={cn("flex justify-end text-muted-foreground/50", table.flow && "max-md:order-1! max-md:w-10 max-md:shrink-0")}>
+        <span aria-hidden className={cn("flex justify-end text-muted-foreground", table.flow && "max-md:order-1! max-md:w-10 max-md:shrink-0")}>
           {interactive ? <ChevronRight className="h-4 w-4" /> : null}
         </span>
       ) : null}
@@ -511,11 +511,18 @@ export function ListEmpty({
   description?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
-  return (
-    <div className="flex min-h-[112px] flex-col items-center justify-center gap-1.5 px-(--card-pad-x) py-(--card-pad-y) text-center">
+  // Inside a table the message is the table's one row with one cell, so a screen reader reads a table that says
+  // "nothing here" instead of a row group with a stray block in it.
+  const insideTable = Boolean(React.useContext(ListTableContext));
+  const message = (
+    <div
+      role={insideTable ? "cell" : undefined}
+      className="flex min-h-[112px] flex-col items-center justify-center gap-1.5 px-(--card-pad-x) py-(--card-pad-y) text-center"
+    >
       <p className="text-(length:--type-body-sm) font-semibold text-foreground">{title}</p>
       {description ? <p className="max-w-[52ch] text-(length:--type-caption) text-muted-foreground">{description}</p> : null}
       {actions ? <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2">{actions}</div> : null}
     </div>
   );
+  return insideTable ? <div role="row">{message}</div> : message;
 }

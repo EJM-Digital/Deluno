@@ -12,14 +12,14 @@
   --sy-tile: hsl(var(--surface-2) / 0.6);
   --sy-fg: hsl(var(--foreground));
   --sy-muted: hsl(var(--muted-foreground));
-  --sy-faint: hsl(var(--muted-foreground) / 0.7);
+  --sy-faint: hsl(var(--muted-foreground));
   --sy-primary: hsl(var(--primary));
   --sy-success: hsl(var(--success));
   --sy-warning: hsl(var(--warning));
   --sy-danger: hsl(var(--destructive));
   --sy-danger-text: color-mix(in srgb, hsl(var(--destructive)) 80%, white);
   --sy-info: hsl(var(--info));
-  --sy-off: hsl(var(--muted-foreground) / 0.55);
+  --sy-off: hsl(var(--muted-foreground));
   --sy-mine: color-mix(in srgb, hsl(var(--primary)) 62%, hsl(var(--surface-3)));
   font-size: 14px;
   line-height: 1.2;

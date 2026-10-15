@@ -82,7 +82,7 @@ export function Toaster() {
           cancelButton:
           "inline-flex h-7 items-center rounded-md border border-hairline bg-card px-2.5 text-(length:--type-caption) font-medium text-muted-foreground transition hover:text-foreground",
           closeButton:
-            "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-muted/60 hover:text-foreground"
+            "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
         }
       }}
     />

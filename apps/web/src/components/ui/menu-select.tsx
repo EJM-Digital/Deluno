@@ -193,7 +193,7 @@ export function MenuSelect({
         <span className="truncate">{selected?.label ?? ""}</span>
         <ChevronDown
           aria-hidden
-          className={cn("h-4 w-4 shrink-0 text-muted-foreground/80 transition", open && "rotate-180")}
+          className={cn("h-4 w-4 shrink-0 text-muted-foreground transition", open && "rotate-180")}
           strokeWidth={1.75}
         />
       </button>

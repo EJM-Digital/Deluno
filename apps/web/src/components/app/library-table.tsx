@@ -287,7 +287,7 @@ export function LibraryTable(
                 )}
               >
                 <span className="inline-flex items-center gap-1.5">
-                  <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                  <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <SortableHeaderLabel
                     label={listColumnLabel(column)}
                     active={!!sortableField && sortableField === sortField}
