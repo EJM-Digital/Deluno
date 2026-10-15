@@ -136,4 +136,28 @@ public sealed class MediaFileNameFactsTests
         Assert.Null(MediaFileFacts.ApproximateBitrateMbps(0, 90));
         Assert.Null(MediaFileFacts.ApproximateBitrateMbps(4_000_000_000, 0));
     }
+
+    [Theory]
+    [InlineData(".mkv")]
+    [InlineData(@"C:\Films\.mp4")]
+    [InlineData("/films/")]
+    public void A_name_with_nothing_left_after_the_folder_and_extension_are_removed_yields_no_facts(string name)
+        => Assert.Equal(MediaFileFacts.Empty, MediaFileNameFacts.Parse(name));
+
+    [Theory]
+    [InlineData("Film.2016.1080p.Mono.1.0-GROUP", "1.0")]
+    [InlineData("Film.2016.1080p.Stereo.2.1-GROUP", "2.1")]
+    [InlineData("Film.2016.1080p.AAC.5.2-GROUP", "5.2")]
+    [InlineData("Film.2016.1080p.AAC.6.1-GROUP", "6.1")]
+    [InlineData("Film.2016.1080p.AAC.9.1-GROUP", "9.1")]
+    public void Every_channel_layout_digit_and_subwoofer_digit_is_read(string name, string expected)
+        => Assert.Equal(expected, MediaFileNameFacts.Parse(name).AudioChannels);
+
+    [Theory]
+    [InlineData("Film.2016.1080p.AAC.5.3-GROUP")]
+    [InlineData("Film.2016.1080p.AAC.4.1-GROUP")]
+    [InlineData("Film.2016.1080p.AAC.3.0-GROUP")]
+    [InlineData("Film.2016.1080p.AAC.8.1-GROUP")]
+    public void A_pair_that_is_not_a_channel_layout_is_not_read_as_one(string name)
+        => Assert.Null(MediaFileNameFacts.Parse(name).AudioChannels);
 }
