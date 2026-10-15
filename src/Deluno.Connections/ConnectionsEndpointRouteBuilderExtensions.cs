@@ -1377,7 +1377,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         }
 
         var testUrl = BuildIndexerTestUrl(item);
-        if (!Uri.TryCreate(testUrl, UriKind.Absolute, out var uri))
+        if (!WebAddress.TryParse(testUrl, out var uri))
         {
             return ("degraded", "The address is not valid yet.", "configuration");
         }
@@ -1424,7 +1424,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         // An address saved without https:// still works (#627).
         var baseUrl = IndexerApiEndpoint.NormalizeBaseUrl(item.BaseUrl) ?? item.BaseUrl;
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+        if (!WebAddress.TryParse(baseUrl, out var uri))
         {
             return baseUrl;
         }
@@ -1507,7 +1507,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         }
 
         var baseUrl = IndexerApiEndpoint.NormalizeBaseUrl(item.BaseUrl) ?? item.BaseUrl;
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+        if (!WebAddress.IsValid(baseUrl))
         {
             return null;
         }
@@ -1528,7 +1528,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private static async Task<IndexerCapsResult?> FetchIndexerCapsAsync(IndexerItem item, HttpClient httpClient, CancellationToken cancellationToken)
     {
         var capsUrl = BuildIndexerCapsUrl(item);
-        if (capsUrl is null || !Uri.TryCreate(capsUrl, UriKind.Absolute, out var uri))
+        if (capsUrl is null || !WebAddress.TryParse(capsUrl, out var uri))
         {
             return null;
         }
