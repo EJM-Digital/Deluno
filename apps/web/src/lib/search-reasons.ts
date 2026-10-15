@@ -90,8 +90,10 @@ export async function describeRequestFailure(
   // not the first answer.
   let detail: string | undefined;
   let failure: IntegrationFailure | undefined;
+  let retryAfterSeconds: number | undefined;
   try {
     const body = await response.clone().json() as {
+      retryAfterSeconds?: number;
       error?: string;
       detail?: string;
       title?: string;
@@ -100,8 +102,24 @@ export async function describeRequestFailure(
     };
     detail = body.error ?? body.detail ?? body.message ?? body.title;
     failure = body.failure ?? undefined;
+    retryAfterSeconds = typeof body.retryAfterSeconds === "number" ? body.retryAfterSeconds : undefined;
   } catch {
     detail = undefined;
+  }
+
+  // Too many attempts (the sign-in limiter, #1339): say how long to wait, and do not send the person to Settings.
+  if (response.status === 429) {
+    const header = Number(response.headers.get("Retry-After"));
+    const seconds = retryAfterSeconds ?? (Number.isFinite(header) && header > 0 ? header : undefined);
+    return {
+      title: "Too many attempts",
+      description: [
+        detail,
+        seconds
+          ? `Wait ${seconds} second${seconds === 1 ? "" : "s"}, then ${context.action} again.`
+          : `Wait a minute, then ${context.action} again.`,
+      ].filter(Boolean).join(" "),
+    };
   }
 
   // A typed failure already knows which service failed, what it said, and

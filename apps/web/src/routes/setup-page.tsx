@@ -5,6 +5,8 @@ import { AppMark } from "../components/shell/app-mark";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { safeReturnAddress } from "../lib/return-address";
+import { describeAuthRefusal } from "../lib/sign-in-failure";
 import { useAuth } from "../lib/use-auth";
 
 export function SetupPage() {
@@ -20,13 +22,17 @@ export function SetupPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const returnTo = params.get("return") ?? "/";
+  const returnTo = safeReturnAddress(params.get("return"));
+
+  // Creating the account signs the person in, and this effect sees that before handleSubmit's own navigate runs, so
+  // it has to name the same place: the guided setup, which carries the return address on (#1339).
+  const guidePath = `/setup-guide?return=${encodeURIComponent(returnTo)}`;
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(returnTo, { replace: true });
+      navigate(guidePath, { replace: true });
     }
-  }, [isAuthenticated, navigate, returnTo]);
+  }, [isAuthenticated, navigate, guidePath]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -45,9 +51,9 @@ export function SetupPage() {
     setBusy(true);
     try {
       await bootstrap(displayName.trim(), username.trim(), password);
-      navigate(`/setup-guide?return=${encodeURIComponent(returnTo)}`, { replace: true });
+      navigate(guidePath, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed.");
+      setError(await describeAuthRefusal(err, "create the first account"));
     } finally {
       setBusy(false);
     }

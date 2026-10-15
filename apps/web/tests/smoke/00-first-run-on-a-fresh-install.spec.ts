@@ -28,6 +28,46 @@ test.describe("first run on a fresh install", () => {
     await expect(page.getByRole("heading", { name: "Set up Deluno" })).toBeVisible();
   });
 
+  test("a protected page on a fresh install goes to /setup carrying where the person was going", async ({ page }) => {
+    await page.goto("/movies?filter=missing");
+    await expect(page).toHaveURL(/\/setup\?return=%2Fmovies%3Ffilter%3Dmissing$/);
+  });
+
+  test("a status read that fails is read again, so the return address is still kept and nothing is taken as set up (#1339)", async ({ page }) => {
+    let refused = 0;
+    await page.route("**/api/auth/bootstrap-status", async (route) => {
+      if (refused < 2) {
+        refused++;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+    await page.goto("/movies?filter=missing");
+    await expect(page).toHaveURL(/\/setup\?return=%2Fmovies%3Ffilter%3Dmissing$/);
+    expect(refused).toBe(2);
+  });
+
+  test("when the status read keeps failing the person is told, and is not shown a sign-in form", async ({ page }) => {
+    await page.route("**/api/auth/bootstrap-status", (route) => route.abort("failed"));
+    await page.goto("/movies?filter=missing");
+    await expect(page.getByText(/could not check whether it has been set up/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Sign in to Deluno" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
+  });
+
+  test("a return address naming another site is not carried to the guided setup", async ({ page }) => {
+    await page.goto("/setup?return=%2F%2Fother-host");
+    await expect(page.getByRole("heading", { name: "Set up Deluno" })).toBeVisible();
+    await page.getByLabel("Display name").fill("Test User");
+    await page.getByLabel("Username").fill("test-user");
+    await page.getByLabel("Password", { exact: true }).fill("short");
+    await page.getByLabel("Confirm password").fill("short");
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByText("Use at least 8 characters for the password.")).toBeVisible();
+    await expect(page).toHaveURL(/\/setup\?return=%2F%2Fother-host$/);
+  });
+
   test("a fresh install shows Set up Deluno with its four fields and Create account waits until all four have text", async ({ page }) => {
     await page.goto("/setup");
     await expect(page.getByRole("heading", { name: "Set up Deluno" })).toBeVisible();
@@ -64,30 +104,7 @@ test.describe("first run on a fresh install", () => {
     await expect(page).toHaveURL(/\/setup/);
   });
 
-  test("creating the account signs the person in, stores the session, and a reload keeps them signed in", async ({ page }) => {
-    await page.goto("/setup");
-    await page.getByLabel("Display name").fill(fallbackCredentials.displayName);
-    await page.getByLabel("Username").fill(fallbackCredentials.username);
-    await page.getByLabel("Password", { exact: true }).fill(fallbackCredentials.password);
-    await page.getByLabel("Confirm password").fill(fallbackCredentials.password);
-    await page.getByRole("button", { name: "Create account" }).click();
-
-    await expect(page).not.toHaveURL(/\/setup$/);
-    await expect.poll(() => page.evaluate(() => window.localStorage.getItem("deluno-auth-token"))).toBeTruthy();
-    await page.reload();
-    await expect(page).not.toHaveURL(/\/(setup|login)/);
-    await expect(page.getByText(fallbackCredentials.displayName).first()).toBeVisible();
-  });
-});
-
-// DEFECT (found 15 Oct 2026): after Create account the person lands on "/" and not on the guided setup. SetupPage navigates
-// to /setup-guide?return=... once bootstrap() resolves, but bootstrap() has already signed them in, and the page's own
-// "already signed in, go to return" effect runs first and sends them to "/" (the `return` address). The test below is the
-// behaviour the register row asks for; it stays fixme until the page goes to the guide.
-test.describe("first run on a fresh install: the guided setup opens", () => {
-  test.fixme(true, "DEFECT: creating the account lands on / instead of /setup-guide (the signed-in redirect effect beats the explicit navigate)");
-
-  test("creating the account opens the guided setup carrying the return address", async ({ page }) => {
+  test("creating the account opens the guided setup carrying the return address, signs the person in, stores the session, and a reload keeps them signed in", async ({ page }) => {
     await page.goto("/setup?return=%2Fmovies");
     await page.getByLabel("Display name").fill(fallbackCredentials.displayName);
     await page.getByLabel("Username").fill(fallbackCredentials.username);
@@ -96,19 +113,9 @@ test.describe("first run on a fresh install: the guided setup opens", () => {
     await page.getByRole("button", { name: "Create account" }).click();
 
     await expect(page).toHaveURL(/\/setup-guide\?return=%2Fmovies$/);
-  });
-});
-
-// DEFECT (found 15 Oct 2026): a protected page opened on a fresh install does not always carry where the person was going.
-// router.tsx's requiresSetup() answers false when the status read fails, and the read is sometimes aborted by the router's own
-// second navigation (net::ERR_ABORTED on /api/auth/bootstrap-status in a recorded run). The page then goes to
-// /login?return=..., whose loader finds the install needs setup and goes to /setup, with the return address lost. About half
-// the runs end at "/setup" and not "/setup?return=%2Fmovies%3Ffilter%3Dmissing".
-test.describe("first run on a fresh install: the return address is kept", () => {
-  test.fixme(true, "DEFECT: requiresSetup() treats an aborted bootstrap-status read as already set up, so the return address is sometimes lost");
-
-  test("a protected page on a fresh install goes to /setup carrying where the person was going", async ({ page }) => {
-    await page.goto("/movies?filter=missing");
-    await expect(page).toHaveURL(/\/setup\?return=%2Fmovies%3Ffilter%3Dmissing$/);
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem("deluno-auth-token"))).toBeTruthy();
+    await page.goto("/");
+    await expect(page).not.toHaveURL(/\/(setup|login)/);
+    await expect(page.getByText(fallbackCredentials.displayName).first()).toBeVisible();
   });
 });
