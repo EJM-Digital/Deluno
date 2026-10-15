@@ -68,3 +68,69 @@ describe("CalendarSubscribeDrawer feed options (#786)", () => {
     expect(url).not.toContain("tag=");
   });
 });
+
+describe("CalendarSubscribeDrawer link lifecycle", () => {
+  const existingKey = { id: "old-key", name: "Calendar subscription", scopes: "read" };
+
+  it("says a link already exists, and revokes it before making the replacement", async () => {
+    const calls: string[] = [];
+    authedFetch.mockImplementation((path: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path === "/api/api-keys" && init?.method === "POST") {
+        return jsonResponse({ apiKey: "deluno_new-key", item: { id: "new-key", name: "Calendar subscription" } });
+      }
+      if (path === "/api/api-keys") return jsonResponse([existingKey, { id: "other", name: "Something else", scopes: "read" }]);
+      return jsonResponse({});
+    });
+
+    render(<CalendarSubscribeDrawer open onOpenChange={() => undefined} />);
+
+    expect(await screen.findByText(/A calendar link already exists but cannot be shown again/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /calendar link/ }));
+    await waitFor(() => expect(screen.getByText(/apikey=deluno_new-key/)).toBeInTheDocument());
+
+    expect(calls).toContain("DELETE /api/api-keys/old-key");
+    expect(calls).not.toContain("DELETE /api/api-keys/other");
+    expect(calls.indexOf("DELETE /api/api-keys/old-key")).toBeLessThan(calls.indexOf("POST /api/api-keys"));
+  });
+
+  it("treats a key list it cannot read as no link yet, and shows nothing made when the create is refused", async () => {
+    authedFetch.mockImplementation((path: string, init?: RequestInit) => {
+      // A refusal (400), not a 5xx: a 5xx is retried by the request helper before it gives up.
+      const refused = (message: string) => Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ message }), text: () => Promise.resolve(JSON.stringify({ message })), url: "test" } as Response);
+      if (path === "/api/api-keys" && init?.method === "POST") return refused("The key could not be saved.");
+      return refused("The key list could not be read.");
+    });
+
+    render(<CalendarSubscribeDrawer open onOpenChange={() => undefined} />);
+
+    expect(await screen.findByText(/Deluno will create a read-only key/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Create calendar link/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Create calendar link/ })).not.toBeDisabled());
+    expect(screen.queryByText(/feed\.ics/)).toBeNull();
+  });
+
+  it("copies the link, and says so; when the browser refuses it still shows the link to copy by hand", async () => {
+    authedFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/api/api-keys" && init?.method === "POST") {
+        return jsonResponse({ apiKey: "deluno_copy-key", item: { id: "k", name: "Calendar subscription" } });
+      }
+      return jsonResponse([]);
+    });
+    const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<CalendarSubscribeDrawer open onOpenChange={() => undefined} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Create calendar link/ })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /Create calendar link/ }));
+    await waitFor(() => expect(screen.getByText(/apikey=deluno_copy-key/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^Copy$/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Copied$/ })).toBeInTheDocument());
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("apikey=deluno_copy-key"));
+
+    fireEvent.click(screen.getByRole("button", { name: /^Copied$/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/apikey=deluno_copy-key/)).toBeInTheDocument();
+  });
+});
