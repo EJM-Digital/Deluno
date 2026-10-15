@@ -54,7 +54,7 @@ public sealed class TagsOnDiskTests
         Assert.Equal("1", await StoredAsync(app, "SELECT count(*) FROM tags"));
     }
 
-    [Fact(Skip = "Defect: POST /api/tags with a name another tag already has (differing only in case) throws 'UNIQUE constraint failed: tags.name' out of SqlitePlatformSettingsRepository.CreateTagAsync instead of answering 400 in plain words; renaming to a repeated name is refused correctly.")]
+    [Fact]
     public async Task A_new_tag_with_a_name_another_tag_already_has_is_refused_in_plain_words_and_stores_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();
