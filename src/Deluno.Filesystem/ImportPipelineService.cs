@@ -2340,6 +2340,11 @@ public sealed partial class ImportPipelineService(
         }
 
         var library = allLibraries.FirstOrDefault(candidate => string.Equals(candidate.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+        // A preview that names no library: the one whose processor output folder holds the file.
+        library ??= allLibraries.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.ProcessorOutputPath)
+            && Path.GetFullPath(processedFilePath).StartsWith(
+                Path.GetFullPath(candidate.ProcessorOutputPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
         if (recycleBinService is null || library is null)
         {
             logger.LogWarning("The broken processed copy at {Path} was left where it is; there is no recycle bin or library to move it with.", processedFilePath);

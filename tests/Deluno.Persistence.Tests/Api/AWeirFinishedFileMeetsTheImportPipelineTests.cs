@@ -211,6 +211,8 @@ public sealed class AWeirFinishedFileMeetsTheImportPipelineTests
         Assert.Contains("has no video, and the download it was made from does", result.Message);
         Assert.All(weir.OutputFiles, file => Assert.False(File.Exists(file), "the processor's broken copy is deleted"));
         Assert.True(File.Exists(weir.OriginalFile));
+        var bin = await weir.App.Services.GetRequiredService<Deluno.Platform.IRecycleBinService>().ListAsync(CancellationToken.None);
+        Assert.NotEmpty(bin); // the broken copy is in the recycle bin, not deleted outright
     }
 
     [Theory]
