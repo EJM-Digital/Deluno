@@ -35,7 +35,7 @@ public sealed class LibraryAndFilesystemRoutesRefuseWhatTheySayTests
 
     // DEFECT (found by this test, 15 Oct 2026): FilesystemReconciliationService.DecodeIssueToken lets the FormatException / JsonException out, so
     // POST /api/filesystem/reconciliation/repair with an id that is not base64url JSON throws instead of answering 400.
-    [Theory(Skip = "Defect: a repair with an issue id that is not base64url JSON throws (FormatException/JsonException from FilesystemIssueIds.Decode) instead of answering 400")]
+    [Theory]
     [InlineData("not base64 at all !!")]
     [InlineData("e30")] // base64url for {} : valid JSON, but not an issue
     [InlineData("bm90LWpzb24")] // base64url for: not-json

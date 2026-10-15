@@ -504,6 +504,11 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 return Results.BadRequest(new { message = "Issue id and repair action are required." });
             }
 
+            if (!FilesystemIssueIds.TryDecode(request.IssueId, out _))
+            {
+                return Results.BadRequest(new { message = "That is not a reconciliation issue id Deluno issued." });
+            }
+
             var result = await reconciliationService.RepairAsync(request, cancellationToken);
             return result.Repaired ? Results.Ok(result) : Results.Conflict(result);
         });
