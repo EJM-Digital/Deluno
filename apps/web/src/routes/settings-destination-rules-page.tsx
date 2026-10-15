@@ -31,7 +31,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { fetchJson, type DestinationRuleItem, type ImportPreviewResponse, type LibraryItem, type PlatformSettingsSnapshot, type PolicySetItem, type TagItem } from "../lib/api";
+import { readErrorText, fetchJson, type DestinationRuleItem, type ImportPreviewResponse, type LibraryItem, type PlatformSettingsSnapshot, type PolicySetItem, type TagItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -214,7 +214,7 @@ export function SettingsDestinationRulesPage() {
     try {
       const payload = { name: form.name.trim(), mediaType: form.mediaType, matchKind: form.matchKind, matchValue: form.matchValue.trim(), rootPath: form.rootPath.trim(), folderTemplate: form.folderTemplate.trim() || null, priority: Number(form.priority || 100), isEnabled: form.isEnabled, libraryId: form.libraryId || null };
       const response = await authedFetch(mode.kind === "edit" ? `/api/destination-rules/${mode.id}` : "/api/destination-rules", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error(mode.kind === "edit" ? "Destination rule could not be saved." : "Destination rule could not be created.");
+      if (!response.ok) throw new Error(await readErrorText(response, mode.kind === "edit" ? "Destination rule could not be saved." : "Destination rule could not be created."));
       if (mode.kind === "create") {
         const created = (await response.json()) as DestinationRuleItem;
         setMode({ kind: "edit", id: created.id });
@@ -270,7 +270,7 @@ export function SettingsDestinationRulesPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/destination-rules/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Destination rule could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Destination rule could not be removed."));
       toast.success(`${editing?.name ?? "Rule"} removed`);
       setConfirmRemove(false);
       setInitialForm(form);
@@ -287,7 +287,7 @@ export function SettingsDestinationRulesPage() {
     setTogglingId(rule.id);
     try {
       const response = await authedFetch(`/api/destination-rules/${rule.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...rule, isEnabled }) });
-      if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${rule.name}.`);
+      if (!response.ok) throw new Error(await readErrorText(response, `Could not ${isEnabled ? "enable" : "pause"} ${rule.name}.`));
       if (mode.kind === "edit" && mode.id === rule.id && !dirty) {
         const next = { ...form, isEnabled };
         setForm(next);

@@ -79,7 +79,8 @@ import {
   type PolicySetItem,
   type PlatformSettingsSnapshot,
   type QualityProfileItem,
-  type ReleasePreferencePreviewResponse
+  type ReleasePreferencePreviewResponse,
+  readErrorText
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
@@ -510,7 +511,7 @@ export function SettingsCustomFormatsPage() {
     setBusy(`remove:${format.id}`);
     try {
       const response = await authedFetch(`/api/custom-formats/${format.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Rule could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Rule could not be removed."));
       setDrawer(null);
       toast.success(`${format.name} removed`);
       revalidator.revalidate();

@@ -29,7 +29,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import { readErrorText, fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -207,7 +207,7 @@ export function SettingsNotificationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...preferences, [key]: checked })
       });
-      if (!response.ok) throw new Error("Could not save this preference.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not save this preference."));
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save this preference.");
@@ -297,7 +297,7 @@ export function SettingsNotificationsPage() {
       };
       const requestBody = { ...nextForm, configJson: serializeConfig(form.config) };
       const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
-      if (!response.ok) throw new Error(mode.kind === "edit" ? "Webhook could not be saved." : "Webhook could not be added.");
+      if (!response.ok) throw new Error(await readErrorText(response, mode.kind === "edit" ? "Webhook could not be saved." : "Webhook could not be added."));
       if (mode.kind === "create") {
         const created = (await response.json()) as NotificationWebhookItem;
         setMode({ kind: "edit", id: created.id });
@@ -337,7 +337,7 @@ export function SettingsNotificationsPage() {
     const id = mode.id;
     const ok = await run("remove", async () => {
       const response = await authedFetch(`/api/notification-webhooks/${id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Webhook could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Webhook could not be removed."));
     }, `${editing?.name ?? "Webhook"} removed`);
     if (!ok) return;
     setConfirmRemove(false);
@@ -348,7 +348,7 @@ export function SettingsNotificationsPage() {
   async function toggleWebhook(webhook: NotificationWebhookItem, isEnabled: boolean) {
     await run(`toggle:${webhook.id}`, async () => {
       const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled, provider: webhook.provider, configJson: webhook.configJson, includeHealthWarnings: webhook.includeHealthWarnings }) });
-      if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${webhook.name}.`);
+      if (!response.ok) throw new Error(await readErrorText(response, `Could not ${isEnabled ? "enable" : "pause"} ${webhook.name}.`));
     });
     if (mode.kind === "edit" && mode.id === webhook.id && !dirty) {
       const next = { ...form, isEnabled };
@@ -362,7 +362,7 @@ export function SettingsNotificationsPage() {
     const id = mode.id;
     await run("test", async () => {
       const response = await authedFetch(`/api/notification-webhooks/${id}/test`, { method: "POST" });
-      if (!response.ok) throw new Error("Test notification could not be sent.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Test notification could not be sent."));
     }, `Test event sent to ${editing?.name ?? "the webhook"}`);
   }
 

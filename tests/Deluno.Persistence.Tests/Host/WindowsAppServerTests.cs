@@ -280,7 +280,7 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
     /// A reverse proxy or Docker host in front of Deluno shows up as an address to tick well before Allowed Hosts is switched on,
     /// because the host it names is recorded whether or not the setting is on (#939).
     /// </summary>
-    [Fact(Skip = "DEFECT: UseForwardedHeaders runs ahead of UseDelunoAllowedHosts and consumes X-Forwarded-Host, so the middleware reads an empty header and a proxy's host is never recorded. Run unskipped: the overview offers only 127.0.0.1, localhost, the computer name and its LAN addresses, never media.example.com.")]
+    [Fact]
     public async Task A_host_named_by_a_reverse_proxy_is_offered_on_the_security_page_before_allowed_hosts_is_on()
     {
         var token = await SignInAsync();

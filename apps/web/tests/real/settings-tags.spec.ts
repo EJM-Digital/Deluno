@@ -79,13 +79,12 @@ test.describe("Settings > Tags", () => {
 
     // The drawer stays open and the server added nothing.
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByText("Tag could not be created.", { exact: true })).toBeVisible();
+    await expect(drawer.getByText("Another tag already has that name.", { exact: true })).toBeVisible();
     expect((await tagsOnServer(page)).length).toBe(before);
     await drawer.getByRole("button", { name: "Cancel", exact: true }).click();
   });
 
   test("the refusal of a repeated tag name says the name is already used", async ({ page }) => {
-    test.fixme(true, "Found by this spec: a repeated name is refused with only 'Tag could not be created.'; the screen throws the server's reason away (settings-tags-page.tsx handleSubmit), so the person is not told the name is taken.");
     await openScreen(page, "/settings/tags");
     await untilQuiet(page);
     const [existing] = await tagsOnServer(page);
@@ -93,7 +92,7 @@ test.describe("Settings > Tags", () => {
     const drawer = page.getByRole("dialog");
     await drawer.getByLabel("Name").fill(existing.name.toUpperCase());
     await drawer.getByRole("button", { name: "Create tag", exact: true }).click();
-    await expect(drawer.getByText(/already (used|exists|in use)|name is taken/i).first()).toBeVisible();
+    await expect(drawer.getByText(/already has that name/i).first()).toBeVisible();
   });
 
   test("opening a tag, renaming it and saving sends one update, and the new name shows", async ({ page }) => {

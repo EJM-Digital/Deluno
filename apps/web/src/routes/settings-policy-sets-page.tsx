@@ -42,7 +42,8 @@ import {
   type MediaPlanVersionItem,
   type PlatformSettingsSnapshot,
   type PolicySetItem,
-  type QualityProfileItem
+  type QualityProfileItem,
+  readErrorText
 } from "../lib/api";
 import { fetchMediaPlanScenarioCompilation } from "../lib/api/scenarios";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -442,7 +443,7 @@ export function SettingsPolicySetsPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/policy-sets/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Library profile could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Library profile could not be removed."));
       toast.success("Library profile removed");
       setConfirmDelete(false);
       setInitialForm(form);
@@ -464,7 +465,7 @@ export function SettingsPolicySetsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toPayload({ ...formFromPlan(plan), isEnabled }, plan.qualityProfileId, splitCsv(plan.customFormatIds)))
       });
-      if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${plan.name}.`);
+      if (!response.ok) throw new Error(await readErrorText(response, `Could not ${isEnabled ? "enable" : "pause"} ${plan.name}.`));
       if (mode.kind === "edit" && mode.id === plan.id && !dirty) {
         const next = { ...form, isEnabled };
         setForm(next);
@@ -487,7 +488,7 @@ export function SettingsPolicySetsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toPayload(form, form.qualityProfileId, form.customFormatIds))
       });
-      if (!response.ok) throw new Error("Could not preview these changes.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not preview these changes."));
       setPreview((await response.json()) as MediaPlanPreview);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not preview these changes.");

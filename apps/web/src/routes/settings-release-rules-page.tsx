@@ -29,7 +29,7 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type IndexerItem, type PlatformSettingsSnapshot, type ReleaseProfileItem, type ReleaseRuleMode, type ReleaseTermScore } from "../lib/api";
+import { readErrorText, fetchJson, type IndexerItem, type PlatformSettingsSnapshot, type ReleaseProfileItem, type ReleaseRuleMode, type ReleaseTermScore } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -96,7 +96,7 @@ function RuleModeCard({ mode, onChanged }: { mode: ReleaseRuleMode; onChanged: (
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: next })
       });
-      if (!response.ok) throw new Error("not saved");
+      if (!response.ok) throw new Error(await readErrorText(response, "not saved"));
       setSaveState("idle");
       onChanged();
     } catch {
@@ -206,7 +206,7 @@ export function SettingsReleaseRulesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids })
       });
-      if (!response.ok) throw new Error("The order could not be saved.");
+      if (!response.ok) throw new Error(await readErrorText(response, "The order could not be saved."));
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The order could not be saved.");
@@ -293,7 +293,7 @@ export function SettingsReleaseRulesPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/release-profiles/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Acquisition rule could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Acquisition rule could not be removed."));
       toast.success(`${editing?.name ?? "Acquisition rule"} removed`);
       setConfirmRemove(false);
       closeDrawer();

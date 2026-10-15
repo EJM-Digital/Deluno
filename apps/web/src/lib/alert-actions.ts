@@ -277,7 +277,7 @@ export function testAgain(kind: ConnectionKind, id: string, name: string): Alert
     id: `test-again:${kind}:${id}`,
     label: "Test again",
     hint: `Asks ${name} for a real answer now and shows the result. Nothing is changed.`,
-    request: { method: "POST", path: `/api/connections/${kind}/${encodeURIComponent(id)}/test`, done: `${name} tested`, failure: `${name} could not be tested.` }
+    request: { method: "POST", path: `/api/connections/${kind}/${encodeURIComponent(id)}/test`, done: `Tested again: ${name}`, failure: `Could not test ${name}.` }
   };
 }
 

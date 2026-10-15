@@ -41,7 +41,8 @@ import {
   type MediaExclusionItem,
   type PlatformSettingsSnapshot,
   type QualityProfileItem,
-  type TraktConnectionStatus
+  type TraktConnectionStatus,
+  readErrorText
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
@@ -162,7 +163,7 @@ export function SettingsListsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(traktCredentials)
       });
-      if (!response.ok) throw new Error("Could not save the Trakt app credentials.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not save the Trakt app credentials."));
       toast.success("Trakt app credentials saved");
       revalidator.revalidate();
     } catch (error) {
@@ -176,7 +177,7 @@ export function SettingsListsPage() {
     setTraktBusy(true);
     try {
       const response = await authedFetch("/api/trakt/connect", { method: "POST" });
-      if (!response.ok) throw new Error("Could not start connecting Trakt.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not start connecting Trakt."));
       const data = await response.json();
       setTraktDevice({ deviceCode: data.deviceCode, userCode: data.userCode, verificationUrl: data.verificationUrl });
     } catch (error) {
@@ -195,7 +196,7 @@ export function SettingsListsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceCode: traktDevice.deviceCode })
       });
-      if (!response.ok) throw new Error("Could not check Trakt.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not check Trakt."));
       const data = await response.json();
       if (data.status === "connected") {
         setTraktDevice(null);
@@ -218,7 +219,7 @@ export function SettingsListsPage() {
     setTraktBusy(true);
     try {
       const response = await authedFetch("/api/trakt/disconnect", { method: "POST" });
-      if (!response.ok) throw new Error("Could not disconnect Trakt.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Could not disconnect Trakt."));
       toast.success("Trakt disconnected");
       revalidator.revalidate();
     } catch (error) {
@@ -352,7 +353,7 @@ export function SettingsListsPage() {
     const id = mode.id;
     const ok = await run("remove", async () => {
       const response = await authedFetch(`/api/intake-sources/${id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Import list could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Import list could not be removed."));
     }, `${editing?.name ?? "List"} removed`);
     if (!ok) return;
     setConfirmRemove(false);
@@ -384,7 +385,7 @@ export function SettingsListsPage() {
     const id = mode.id;
     const ok = await run("sync", async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/sync`, { method: "POST" });
-      if (!response.ok) throw new Error("Sync could not be queued.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Sync could not be queued."));
     }, "Sync queued — results appear under Last sync");
     if (ok) revalidator.revalidate();
   }
@@ -433,7 +434,7 @@ export function SettingsListsPage() {
     const id = mode.id;
     await run(`exclude:${previewEntryKey(entry)}`, async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/exclude-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: entry.title, year: entry.year, imdbId: entry.imdbId, durationDays, reason: "Excluded during import list preview" }) });
-      if (!response.ok) throw new Error("This entry could not be excluded.");
+      if (!response.ok) throw new Error(await readErrorText(response, "This entry could not be excluded."));
       const exclusion = (await response.json()) as { id: string };
       setPreview((current) =>
         current
@@ -450,7 +451,7 @@ export function SettingsListsPage() {
     const id = mode.id;
     await run(`restore:${entry.exclusionId}`, async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/exclusions/${entry.exclusionId}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("This entry could not be restored.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "This entry could not be restored."));
       setPreview((current) =>
         current
           ? { ...current, items: current.items.map((item) => (previewEntryKey(item) === previewEntryKey(entry) ? { ...item, action: "would add", reason: "Eligible again. Choose it when you are ready to add it.", exclusionId: null } : item)) }
@@ -464,7 +465,7 @@ export function SettingsListsPage() {
     setRestoringExclusionId(exclusion.id);
     try {
       const response = await authedFetch(`/api/exclusions/${exclusion.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("This exclusion could not be restored.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "This exclusion could not be restored."));
       toast.success(`${exclusion.title} can be added again.`);
       revalidator.revalidate();
     } catch (error) {
@@ -1152,7 +1153,7 @@ export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; ta
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tagTitlesOffEveryList: on, offListTag: name.trim() })
       });
-      if (!response.ok) throw new Error("This setting could not be saved.");
+      if (!response.ok) throw new Error(await readErrorText(response, "This setting could not be saved."));
       toast.success("Saved");
       onSaved();
     } catch (error) {
