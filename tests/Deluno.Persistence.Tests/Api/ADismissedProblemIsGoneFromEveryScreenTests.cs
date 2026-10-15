@@ -7,6 +7,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Series.Data;
 using Deluno.Worker.Services;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -21,6 +22,18 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class ADismissedProblemIsGoneFromEveryScreenTests
 {
     private const string Release = "Retwice.2021.1080p.WEB-DL.DDP5.1.H.264-GOLDEN";
+
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the repositories say.</summary>
+    private static string OnDiskText(ApplicationTestHost app, string database, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(app.DataRoot, database)};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
+    private static long OnDisk(ApplicationTestHost app, string database, string sql) => long.Parse(OnDiskText(app, database, sql));
 
     [Fact]
     public async Task Dismissing_the_hand_off_on_Transfers_closes_its_import_issue_and_its_System_row()
@@ -41,6 +54,13 @@ public sealed class ADismissedProblemIsGoneFromEveryScreenTests
         var health = app.Services.GetRequiredService<IHealthCheckRepository>();
         Assert.Null(await health.GetAsync(ProblemTwins.OutputIssueRowId(issue.Id), CancellationToken.None));
         Assert.NotNull(await health.GetAsync(ProblemTwins.OutputIssueRowId(other.Id), CancellationToken.None));
+
+        // And in the database files themselves: the closed issue is dismissed and its System row gone; the other pair is still open.
+        Assert.Equal("dismissed", OnDiskText(app, "movies.db", $"SELECT status FROM movie_import_recovery_cases WHERE id = '{issue.Id}'"));
+        Assert.Equal("open", OnDiskText(app, "movies.db", $"SELECT status FROM movie_import_recovery_cases WHERE id = '{other.Id}'"));
+        Assert.Equal(0, OnDisk(app, "platform.db", $"SELECT COUNT(*) FROM health_check_results WHERE id = '{ProblemTwins.OutputIssueRowId(issue.Id)}'"));
+        Assert.Equal(1, OnDisk(app, "platform.db", $"SELECT COUNT(*) FROM health_check_results WHERE id = '{ProblemTwins.OutputIssueRowId(other.Id)}'"));
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, OnDiskText(app, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     [Fact]
@@ -63,6 +83,10 @@ public sealed class ADismissedProblemIsGoneFromEveryScreenTests
         var health = app.Services.GetRequiredService<IHealthCheckRepository>();
         Assert.Null(await health.GetAsync(ProblemTwins.OutputIssueRowId(issue.Id), CancellationToken.None));
         Assert.Null(await health.GetAsync(ProblemTwins.OutputIssueRowId(twin.Id), CancellationToken.None));
+
+        Assert.Equal(0, OnDisk(app, "movies.db", "SELECT COUNT(*) FROM movie_import_recovery_cases WHERE status = 'open'"));
+        Assert.Equal(0, OnDisk(app, "platform.db", $"SELECT COUNT(*) FROM health_check_results WHERE id IN ('{ProblemTwins.OutputIssueRowId(issue.Id)}', '{ProblemTwins.OutputIssueRowId(twin.Id)}')"));
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, OnDiskText(app, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     [Fact]
@@ -90,6 +114,9 @@ public sealed class ADismissedProblemIsGoneFromEveryScreenTests
         Assert.True(settled >= 1);
         Assert.Empty((await app.Services.GetRequiredService<IMovieCatalogRepository>().GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
         Assert.Null(await app.Services.GetRequiredService<IHealthCheckRepository>().GetAsync(ProblemTwins.OutputIssueRowId(issue.Id), CancellationToken.None));
+
+        Assert.Equal("dismissed", OnDiskText(app, "movies.db", $"SELECT status FROM movie_import_recovery_cases WHERE id = '{issue.Id}'"));
+        Assert.Equal(0, OnDisk(app, "platform.db", $"SELECT COUNT(*) FROM health_check_results WHERE id = '{ProblemTwins.OutputIssueRowId(issue.Id)}'"));
     }
 
     private static async Task<ProcessorHandoffItem> LostHandoffAsync(ApplicationTestHost app, string hash = "hash-1", string release = Release)

@@ -122,6 +122,57 @@ describe("Activity timeline page size (#871)", () => {
   });
 });
 
+describe("Clearing the Activity timeline asks first", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+  });
+
+  function openTimeline() {
+    render(
+      <MemoryRouter initialEntries={["/system/audit"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+  }
+
+  it("says what clearing really takes and does nothing until it is confirmed", async () => {
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
+    openTimeline();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(await screen.findByText("Clear the Activity timeline?")).toBeVisible();
+    expect(screen.getByText(/including the history behind automation decision explanations/)).toBeVisible();
+    expect(screen.getByText(/This cannot be undone./)).toBeVisible();
+    expect(authedFetchMock).not.toHaveBeenCalledWith("/api/activity/clear", expect.anything());
+  });
+
+  it("posts the clear once confirmed, says Activity cleared and reads the timeline again", async () => {
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
+    openTimeline();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Clear activity" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/activity/clear", { method: "POST" }));
+    expect(await screen.findByText("Activity cleared")).toBeVisible();
+    expect(revalidateMock).toHaveBeenCalled();
+    expect(screen.queryByText("Clear the Activity timeline?")).not.toBeInTheDocument();
+  });
+
+  it("keeps the timeline and says why when the clear is refused", async () => {
+    authedFetchMock.mockImplementation((url: string, init?: RequestInit) => url === "/api/activity/clear" ? jsonResponse({}, false) : jsonResponse(init?.method === "POST" ? {} : []));
+    openTimeline();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Clear activity" }));
+
+    expect(await screen.findByText("Activity could not be cleared.")).toBeVisible();
+    expect(screen.queryByText("Activity cleared")).not.toBeInTheDocument();
+  });
+});
+
 /** #1073: a one-time note on the Health screen is cleared by hand, from the screen. */
 describe("Health notes are clearable (#1073)", () => {
   afterEach(() => {
