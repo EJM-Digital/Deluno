@@ -2,7 +2,7 @@
 //
 //   node scripts/coverage/inventory.mjs            print the count of every kind
 //   node scripts/coverage/inventory.mjs --list     print every item (kind, key, where)
-//   node scripts/coverage/inventory.mjs --json     print the whole inventory as JSON
+//   node scripts/coverage/inventory.mjs --json     print the whole inventory as JSON (--no-scenarios skips reading the golden-path plan)
 //
 // Kinds (each item has a `key`; a register row names the keys it covers in `covers`):
 //   route        route:GET /api/movies/{id}        every Map* call in src (minimal-API route groups resolved)
@@ -15,6 +15,9 @@
 //   migration    migration:movies/V0007            every database migration
 //   integration  integration:qbittorrent           every integration client, and
 //                integration:qbittorrent.GrabAsync each of its operations
+//   uisurface    ui:components/app/job-drawer.tsx          every menu, drawer and dialog component of apps/web/src
+//   uiaction     ui:components/app/job-drawer.tsx#Button:Retry   every control inside one: a button, link, switch, field or picker with its
+//                                                          accessible name, its words or, when it has neither, its handler
 //   tray         tray:PauseResume                  every tray menu action (TrayMenuId)
 //   scenario     scenario:film.qbittorrent         every golden-path scenario id (ScenarioPlan.ps1)
 //
@@ -192,6 +195,88 @@ export function webRouteItems(root) {
   for (const [path, info] of [...items].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (path === '*' || path.endsWith('/*')) continue;
     out.push({ kind: 'webroute', key: `web:${path}`, label: path + (info.redirect ? ' (redirect)' : ''), file: 'apps/web/src/router.tsx', redirect: info.redirect });
+  }
+  return out;
+}
+
+
+// -------------------------------------------------------------------------------------- menus, drawers and dialogs (web)
+//
+// A menu, drawer or dialog component is a .tsx file under apps/web/src that renders a Drawer, Sheet, ConfirmDialog, any *Dialog, any
+// *Menu*, a Popover or a MenuSelect, or has role="menu" or role="dialog". Each is a `uisurface` item, and every control inside it is a
+// `uiaction` item named by what a person (or a screen reader) reads on it. Read straight from the source like the rest, so a new
+// drawer, dialog or menu item cannot arrive without a register row: measure 4 of docs/testing/STRATEGY.md.
+
+const SURFACE_MARK = /<(?:Drawer|Sheet|ConfirmDialog|\w*Dialog|\w*Menu\w*|Popover|MenuSelect)\b|role=["'](?:menu|dialog)["']/;
+const ACTION_TAGS = ['Button', 'button', 'DrawerDanger', 'Switch', 'Checkbox', 'Select', 'MenuSelect', 'Input', 'Textarea', 'NavLink', 'Link', 'a', 'SegmentedControl', 'Chip', 'Disclosure'];
+
+/** The end of a JSX opening tag that starts at `from` (the index of its "<"), skipping braces and quotes in attributes. */
+function tagEnd(s, from) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from + 1; i < s.length; i++) {
+    const c = s[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'" || (c === '`' && depth > 0)) { quote = c; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (c === '>' && depth === 0 && s[i - 1] !== '=') return i;
+  }
+  return -1;
+}
+
+/** The literal words in JSX children: expressions in braces and nested tags are dropped. */
+function literalWords(children) {
+  let out = '';
+  let depth = 0;
+  for (const c of children) {
+    if (c === '{') depth++;
+    else if (c === '}') depth = Math.max(0, depth - 1);
+    else if (depth === 0) out += c;
+  }
+  return out.replace(/<[^>]*>/g, ' ').replace(/&\w+;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function actionLabel(attrs, words) {
+  let m;
+  if ((m = /aria-label=(?:"([^"]+)"|\{\s*["'`]([^"'`$]+)["'`]\s*\})/.exec(attrs))) return m[1] ?? m[2];
+  if (words) return words;
+  if ((m = /\b(?:label|title|placeholder|aria-label)=(?:"([^"]+)"|\{\s*["'`]([^"'`$]+)["'`]\s*\})/.exec(attrs))) return m[1] ?? m[2];
+  if ((m = /\b(on(?:Click|Select|Change|CheckedChange|ValueChange|Toggle))=\{\s*(?:\(\s*[^)]*\)\s*=>\s*)?(\w+)/.exec(attrs))) return `${m[1]}:${m[2]}`;
+  if ((m = /\bto=(?:"([^"]+)"|\{\s*["'`]([^"'`$]+)["'`])/.exec(attrs))) return `to:${m[1] ?? m[2]}`;
+  return null;
+}
+
+export function uiItems(root) {
+  const base = join(root, 'apps/web/src');
+  if (!existsSync(base)) return [];
+  const out = [];
+  const files = walk(base, (f) => f.endsWith('.tsx') && !/\.test\.tsx$/.test(f)).sort();
+  for (const file of files) {
+    const s = readCs(file);
+    if (!SURFACE_MARK.test(s)) continue;
+    const where = slash(relative(base, file));
+    const surfaceKey = `ui:${where}`;
+    out.push({ kind: 'uisurface', key: surfaceKey, label: where, file: rel(root, file) });
+    const seen = new Set();
+    const re = new RegExp(`<(${ACTION_TAGS.join('|')})(?=[\\s/>])`, 'g');
+    for (const m of s.matchAll(re)) {
+      const end = tagEnd(s, m.index);
+      if (end < 0) continue;
+      const selfClosing = s[end - 1] === '/';
+      const attrs = s.slice(m.index + m[0].length, selfClosing ? end - 1 : end);
+      let words = '';
+      if (!selfClosing) {
+        const close = s.indexOf(`</${m[1]}>`, end);
+        if (close > 0) words = literalWords(s.slice(end + 1, Math.min(close, end + 600)));
+      }
+      const label = actionLabel(attrs, words);
+      if (!label) continue;
+      const key = `${surfaceKey}#${m[1]}:${label.length > 70 ? label.slice(0, 70) : label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ kind: 'uiaction', key, label: `${where} ${m[1]} ${label}`, file: rel(root, file), line: lineAt(s, m.index) });
+    }
   }
   return out;
 }
@@ -449,7 +534,7 @@ export function scenarioItems(root) {
 
 export function buildInventory(root, { skipScenarios = false } = {}) {
   const items = [
-    ...routeItems(root), ...webRouteItems(root), ...serviceItems(root), ...laneItems(root), ...handlerItems(root), ...taskItems(root),
+    ...routeItems(root), ...webRouteItems(root), ...uiItems(root), ...serviceItems(root), ...laneItems(root), ...handlerItems(root), ...taskItems(root),
     ...healthCheckItems(root), ...migrationItems(root), ...integrationItems(root), ...trayItems(root),
     ...(skipScenarios ? [] : scenarioItems(root))
   ];
@@ -465,7 +550,7 @@ export function countsOf(items) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const items = buildInventory(root);
+  const items = buildInventory(root, { skipScenarios: process.argv.includes('--no-scenarios') });
   if (process.argv.includes('--json')) console.log(JSON.stringify(items, null, 1));
   else if (process.argv.includes('--list')) for (const i of items) console.log(`${i.kind.padEnd(12)} ${i.key}  ${i.file ?? ''}`);
   else {

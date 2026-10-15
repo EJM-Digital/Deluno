@@ -399,7 +399,7 @@ const stubFor = (item) => ({
   id: `${item.kind}.${item.key.split(':')[1].replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}`,
   area: '<area>',
   behaviour: `<one plain sentence about ${item.label ?? item.key}>`,
-  kind: { route: 'API route', webroute: 'screen action', service: 'job', lane: 'job', handler: 'job', task: 'job', healthcheck: 'job', migration: 'migration', integration: 'integration-operation', tray: 'tray', scenario: 'integration-operation' }[item.kind],
+  kind: { route: 'API route', webroute: 'screen action', uisurface: 'screen action', uiaction: 'screen action', service: 'job', lane: 'job', handler: 'job', task: 'job', healthcheck: 'job', migration: 'migration', integration: 'integration-operation', tray: 'tray', scenario: 'integration-operation' }[item.kind],
   severity: 'medium',
   touches: 'none',
   required: 'inproc',

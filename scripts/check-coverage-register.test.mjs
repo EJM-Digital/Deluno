@@ -10,7 +10,7 @@ import {
   baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, staleIssueRows, totals, unownedGapRows, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
-import { migrationItems, routeItems, trayItems, webRouteItems } from './coverage/inventory.mjs';
+import { migrationItems, routeItems, trayItems, uiItems, webRouteItems } from './coverage/inventory.mjs';
 
 function makeRepo(files) {
   const root = mkdtempSync(join(tmpdir(), 'coverage-register-'));
@@ -747,4 +747,31 @@ test('the job summary shows the statistics, then each note', () => {
   const text = jobSummary(reg, [], totals(reg, null), ['first note', 'second note']);
   assert.match(text, /^### Coverage register/);
   assert.match(text, /- first note\n\n- second note\n$/);
+});
+
+test('every menu, drawer and dialog component is a surface, and each named control inside it is an action', () => {
+  const root = makeRepo({
+    'apps/web/src/components/app/job-drawer.tsx': [
+      'export function JobDrawer() {',
+      '  return (<Drawer open title="Job">',
+      '    <Button onClick={() => void retryJob(id)}>Retry <span>now</span></Button>',
+      '    <Button aria-label="Close the job" onClick={close} />',
+      '    <Switch aria-label={"Keep seeding"} onCheckedChange={(v) => setKeep(v)} />',
+      '    <Button onClick={(event) => handleCancel(event)}>{label}</Button>',
+      '    <Input placeholder="Search jobs" onChange={(e) => setQuery(e.target.value)} />',
+      '  </Drawer>);',
+      '}'
+    ].join('\n'),
+    'apps/web/src/components/app/plain-card.tsx': 'export const Card = () => <Button>Never listed</Button>;',
+    'apps/web/src/components/app/job-drawer.test.tsx': '<Drawer><Button>Test file is ignored</Button></Drawer>'
+  });
+  try {
+    const items = uiItems(root);
+    assert.deepEqual(items.filter((i) => i.kind === 'uisurface').map((i) => i.key), ['ui:components/app/job-drawer.tsx']);
+    assert.deepEqual(items.filter((i) => i.kind === 'uiaction').map((i) => i.key.split('#')[1]), [
+      'Button:Retry now', 'Button:Close the job', 'Switch:Keep seeding', 'Button:onClick:handleCancel', 'Input:Search jobs'
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
