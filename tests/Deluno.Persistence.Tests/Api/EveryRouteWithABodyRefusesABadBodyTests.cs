@@ -347,6 +347,8 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
     {
         ["src/Deluno.Api/Network/BundledComponentCredentials.cs"] = (1, ["POST /api/system/bundled-components/{kind}/connect"]),
         ["src/Deluno.Integrations/Seerr/SeerrEndpointRouteBuilderExtensions.cs"] = (1, ["POST /api/seerr-servers/{id}/webhook"]),
+        // Reads the plan with the same JSON words GET writes (#1342), so the route catches a malformed body itself.
+        ["src/Deluno.Quality/QualityEndpointRouteBuilderExtensions.cs"] = (1, ["POST /api/v1/release-preferences/plans"]),
         // The body-limit middleware (#1279) reads every API body before the route; the 413 walk and the malformed-JSON walk send every body route through it.
         ["src/Deluno.Worker/RequestBodyLimits.cs"] = (2, [])
     };
@@ -412,6 +414,14 @@ public sealed class EveryRouteWithABodyRefusesABadBodyTests
         {
             var route = routes.Single(candidate => candidate.Label == "POST /api/system/bundled-components/{kind}/connect");
             var (status, _, body) = await SendWithBodyAsync(app, route, Json("{ \"username\": "));
+            var problem = WhatIsWrongWithTheRefusal(status, body);
+            if (problem is not null) wrong.Add($"{route.Label} {problem}");
+        }
+
+        // A release-preference plan: a signed-in caller, a body that is not JSON.
+        {
+            var route = routes.Single(candidate => candidate.Label == "POST /api/v1/release-preferences/plans");
+            var (status, _, body) = await SendWithBodyAsync(app, route, Json("{ \"planId\": "));
             var problem = WhatIsWrongWithTheRefusal(status, body);
             if (problem is not null) wrong.Add($"{route.Label} {problem}");
         }
