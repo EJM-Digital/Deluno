@@ -160,6 +160,7 @@ Check 'the update group is the last one in the plan' ($plan[-1].Name -eq 'update
 Check 'the existing scenario ids are unchanged' ((@('install-first-run', 'film.qbittorrent', 'film.extra-left-out', 'remove-copy.deluge.file', 'resend.during.sabnzbd', 'stuck.peers.transmission', 'outage.inflight', 'tryagain.nzbget', 'vanish.waiting.deluge', 'problems.dismiss-everywhere', 'activity.one-story') | Where-Object { $_ -notin $allIds }).Count -eq 0)
 $runSuiteText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
 Check 'the VM runner leaves host groups to the host' ($runSuiteText -match '\$group\.Host')
+Check 'a group error carries the script stack trace into the log and the results, so the next error names its line' ($runSuiteText -match '(?s)catch \{.*ScriptStackTrace.*GROUP ERROR.*error = \$msg')
 Write-Host 'The single-file takeover scenario (#1262)'
 Check 'the plan has resend.single-file.takeover in the resend group, and a pattern for one client does not pick it' ((@($plan | Where-Object { $_.Name -eq 'resend' })[0].Ids -contains 'resend.single-file.takeover') -and (@(Resolve-ScenarioSelection -Scenarios 'resend.*.qbittorrent' -Plan $plan) -notcontains 'resend.single-file.takeover'))
 Check 'resend.single-file.takeover can be chosen alone' ((@(Resolve-ScenarioSelection -Scenarios 'resend.single-file.takeover' -Plan $plan) -join ',') -eq 'resend.single-file.takeover')
@@ -529,6 +530,7 @@ try {
     Check 'a scenario whose checks pass is pass' ($res['t.pass'].status -eq 'pass')
     Check 'a scenario with a failed check is fail' ($res['t.fail'].status -eq 'fail')
     Check 'a scenario that throws is error, with the secret removed' ($res['t.error'].status -eq 'error' -and $res['t.error'].error -notmatch [regex]::Escape($pw))
+    Check 'a scenario that throws records the script stack trace in its error' ($res['t.error'].error -match '\[stack: ')
     Check 'a scenario that checks nothing is an error, never a pass' ($res['t.empty'].status -eq 'error')
     $saved = Get-Content -Raw (Join-Path $tmp 'results\results.json') | ConvertFrom-Json
     Check 'results.json is written after each scenario' (@($saved.scenarios).Count -eq 4)
@@ -1161,6 +1163,10 @@ foreach ($k in 'deluge', 'qbittorrent', 'transmission') {
 # A call whose address is not a local web address is refused before anything is sent (and the file is not touched).
 try { Invoke-FxHttp -Client 'deluge' -Call 'core.get_config_value' -Subject 'x' -Uri $Decoy -Method Post -Body '{}' ; $out.FilePath = 'sent' } catch { $out.FilePath = $_.Exception.Message }
 try { Invoke-FxHttp -Client 'deluge' -Call 'core.get_config_value' -Subject 'x' -Uri '' -Method Post -Body '{}' ; $out.EmptyUri = 'sent' } catch { $out.EmptyUri = $_.Exception.Message }
+# The keep-seeding group's own setup, from a cold start (the 14 Oct run: Deluge's label call read $base from its caller and sent to no address).
+$script:Ks.Ports.qbittorrent = $OkPort; $script:Ks.Ports.deluge = $OkPort; $script:Ks.Ports.transmission = $OkPort
+. (Join-Path $Vm 'scenarios\G10-KeepSeeding.ps1')
+foreach ($k in 'qbittorrent', 'deluge', 'transmission') { $script:Fx.Sessions.Clear(); try { New-KsClientCategory -Kind $k -Name 'golden-keep-seeding'; $out["category-$k"] = 'made' } catch { $out["category-$k"] = $_.Exception.Message } }
 $out.DecoyBytesAfter = (Get-Item -LiteralPath $Decoy).Length
 $out | ConvertTo-Json -Depth 4
 '@
@@ -1175,6 +1181,7 @@ $out | ConvertTo-Json -Depth 4
         Check 'Deluge: its download location, from a cold start with no keep-seeding setup' ($c.deluge -eq 'C:\Downloads\Incomplete\Deluge') "$($c.deluge)"
         Check 'qBittorrent: its folder, from a cold start with no keep-seeding setup' ($c.qbittorrent -eq 'C:\Downloads\Incomplete\qBittorrent\deluno-movies') "$($c.qbittorrent)"
         Check 'Transmission: its folder, from a cold start with no keep-seeding setup' ($c.transmission -eq 'C:\Downloads\Incomplete\Transmission') "$($c.transmission)"
+        Check 'the keep-seeding group makes its category in each client from a cold start, with no address left empty' ($c.'category-deluge' -notmatch 'Uri|null or empty' -and $c.'category-qbittorrent' -notmatch 'Uri|null or empty' -and $c.'category-transmission' -eq 'made') "$($c.'category-deluge') | $($c.'category-qbittorrent')"
         Check 'a variable named $base in the caller (the film''s video) is never taken for a client''s address, and the file is untouched' ($c.DecoyBytes -eq 5000 -and $c.DecoyBytesAfter -eq 5000)
         Check 'an address that is a file path is refused before anything is sent, and says which step' ($c.FilePath -match 'was not sent' -and $c.FilePath -match 'deluge' -and $c.FilePath -match 'core.get_config_value')
         Check 'an empty address is refused too' ($c.EmptyUri -match 'was not sent' -or $c.EmptyUri -match 'Uri')
