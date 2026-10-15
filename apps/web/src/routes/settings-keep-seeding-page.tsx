@@ -24,7 +24,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ConfigAreas } from "../lib/config-areas";
-import { fetchJson } from "../lib/api";
+import { readErrorText, fetchJson } from "../lib/api";
 import type {
   KeepSeedingCategoryCheck,
   KeepSeedingClient,
@@ -256,7 +256,7 @@ export function SettingsKeepSeedingPage() {
     setBusy(`problem:${problem.key}`);
     try {
       const response = await authedFetch(`/api/download-health/keep-seeding/problems/${encodeURIComponent(problem.key)}/clear`, { method: "POST" });
-      if (!response.ok && response.status !== 404) throw new Error("That could not be cleared.");
+      if (!response.ok && response.status !== 404) throw new Error(await readErrorText(response, "That could not be cleared."));
       toast.success(`${problem.releaseName} cleared`);
       revalidator.revalidate();
     } catch (error) {

@@ -28,9 +28,9 @@ function ProblemButtonView({ button, row, action }: { button: ProblemButton; row
       className="sy-btn"
       title={button.note}
       aria-label={name}
-      aria-disabled={action.busy === key}
+      aria-disabled={action.busy !== null}
       onClick={() => {
-        if (!post || action.busy === key) return;
+        if (!post || action.busy !== null) return;
         void action.run(key, async () => {
           await send(post.path, post.failure, { method: post.method, body: post.body });
           return post.done;

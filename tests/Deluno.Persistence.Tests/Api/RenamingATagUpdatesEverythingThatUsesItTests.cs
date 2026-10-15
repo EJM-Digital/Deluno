@@ -55,6 +55,30 @@ public sealed class RenamingATagUpdatesEverythingThatUsesItTests
     }
 
 
+    /// <summary>
+    /// #1341: a name another tag already has (in any letter case) is refused with the reason, as a rename is, instead of the
+    /// database's unique index turning it into a bare server error the screen can only call "could not be created".
+    /// </summary>
+    [Fact]
+    public async Task Creating_a_tag_with_a_name_another_tag_has_is_refused_with_the_reason_in_any_letter_case()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var first = await app.Client.PostAsJsonAsync("/api/tags", new { name = "Kids", color = "slate", description = "" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        foreach (var repeated in new[] { "Kids", "KIDS", "  kids  " })
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/tags", new { name = repeated, color = "slate", description = "" });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("Another tag already has that name.", body.RootElement.GetProperty("errors").GetProperty("name")[0].GetString());
+        }
+
+        using var tags = JsonDocument.Parse(await app.Client.GetStringAsync("/api/tags"));
+        Assert.Single(tags.RootElement.EnumerateArray());
+    }
+
     [Fact]
     public async Task Every_title_is_listed_with_its_tags_and_monitored_flag_untagged_ones_included()
     {

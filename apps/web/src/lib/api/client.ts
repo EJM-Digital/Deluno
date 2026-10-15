@@ -85,7 +85,12 @@ export function readErrorMessage(responseBody: string, path: string, status: num
  * sentence was unreachable. Here an empty body means the fallback.
  */
 export async function readErrorText(response: Response, fallback: string): Promise<string> {
-  const body = await response.text().catch(() => "");
+  let body = "";
+  try {
+    body = await response.text();
+  } catch {
+    // No readable body: the caller's own sentence is the answer.
+  }
   if (!body.trim()) return fallback;
 
   const message = readErrorMessage(body, response.url, response.status);

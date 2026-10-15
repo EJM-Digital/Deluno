@@ -32,7 +32,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { fetchJson, type LibraryItem, type QualityProfileItem } from "../lib/api";
+import { readErrorText, fetchJson, type LibraryItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -174,7 +174,7 @@ export function SettingsAutoTaggingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error(mode.kind === "edit" ? "The rule could not be saved." : "The rule could not be created.");
+      if (!response.ok) throw new Error(await readErrorText(response, mode.kind === "edit" ? "The rule could not be saved." : "The rule could not be created."));
       if (mode.kind === "create") {
         const created = (await response.json()) as AutoTagRuleItem;
         setMode({ kind: "edit", id: created.id });
@@ -200,7 +200,7 @@ export function SettingsAutoTaggingPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/auto-tag-rules/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("The rule could not be deleted.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "The rule could not be deleted."));
       toast.success(`${editing?.name ?? "Rule"} deleted`);
       setConfirmRemove(false);
       setInitialForm(form);
@@ -221,7 +221,7 @@ export function SettingsAutoTaggingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...rule, isEnabled })
       });
-      if (!response.ok) throw new Error(`Could not ${isEnabled ? "turn on" : "pause"} ${rule.name}.`);
+      if (!response.ok) throw new Error(await readErrorText(response, `Could not ${isEnabled ? "turn on" : "pause"} ${rule.name}.`));
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The rule could not be updated.");

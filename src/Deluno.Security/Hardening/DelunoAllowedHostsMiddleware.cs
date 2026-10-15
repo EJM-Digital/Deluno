@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Security.Hardening;
@@ -13,6 +14,23 @@ public static class DelunoAllowedHostsMiddlewareExtensions
     /// </summary>
     public static IApplicationBuilder UseDelunoAllowedHosts(this IApplicationBuilder app)
         => app.UseMiddleware<DelunoAllowedHostsMiddleware>();
+
+    /// <summary>
+    /// Records the host a reverse proxy or Docker host names in <c>X-Forwarded-Host</c>. It must sit ahead of
+    /// <c>UseForwardedHeaders</c>, which consumes that header (it moves it to <c>X-Original-Host</c>), so a middleware
+    /// placed after it never sees the header and the host is never offered as a candidate (#1341).
+    /// </summary>
+    public static IApplicationBuilder UseDelunoRecordForwardedHost(this IApplicationBuilder app)
+        => app.Use((context, next) =>
+        {
+            var forwardedHost = context.Request.Headers["X-Forwarded-Host"].ToString();
+            if (!string.IsNullOrWhiteSpace(forwardedHost))
+            {
+                context.RequestServices.GetRequiredService<IForwardedHostTracker>().Record(forwardedHost.Split(',')[0]);
+            }
+
+            return next(context);
+        });
 }
 
 /// <summary>
