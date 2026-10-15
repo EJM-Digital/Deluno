@@ -147,7 +147,14 @@ function Invoke-GroupSeasonPack {
             if ($s.Status -lt 200 -or $s.Status -ge 300) { return }
             $comparisons = @($s.Data.replacementComparisons)
             Add-Check 'Deluno judged the pack against both installed episode files and sent it' ($s.Data.releaseName -eq $pack.Release -and $comparisons.Count -eq 2 -and "$($s.Data.dispatchStatus)" -and "$($s.Data.dispatchStatus)" -notmatch '(?i)fail|error|held|block|refus') (Hide-Secrets "release $($s.Data.releaseName); $($comparisons.Count) comparison(s); dispatch $($s.Data.dispatchStatus): $($s.Data.dispatchMessage); $($s.Data.reason)")
-            if ($s.Data.releaseName -ne $pack.Release -or $comparisons.Count -ne 2) { return }
+            if ($s.Data.releaseName -ne $pack.Release -or $comparisons.Count -ne 2) {
+                # Why no pack was sent: what the feed was asked and what Activity says about this show, kept as evidence.
+                $feedLog = Join-Path $script:Fx.Feed 'feed.log'
+                $asked = if (Test-Path $feedLog) { (Get-Content $feedLog -Tail 15) -join "`n" } else { 'no feed log' }
+                $act = (@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($title) }) | Select-Object -First 12) -join "`n"
+                Save-Evidence -Name 'seasonpack-why-no-pack.txt' -Text ("feed requests:`n$asked`n`nactivity:`n$act`n`nreleases:`n" + (Get-Content (Join-Path $script:Fx.Feed 'releases.jsonl') -Tail 3 | Out-String))
+                return
+            }
 
             # ---------------------------------------------------------- the client finishes it; Deluno's own import runs the replacement
             $fin = Wait-FilmFinished -Film $pack -TimeoutSec 240
