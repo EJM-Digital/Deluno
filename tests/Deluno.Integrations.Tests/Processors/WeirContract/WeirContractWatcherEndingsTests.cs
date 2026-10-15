@@ -54,6 +54,13 @@ public sealed class WeirContractWatcherEndingsTests : IDisposable
         try { Directory.Delete(_folder, recursive: true); } catch (IOException) { }
     }
 
+    /// <summary>
+    /// The waiting limit is judged on a hand-off Weir has left plainly queued. rc.18 records its queued state with the words of an
+    /// earlier cancel on it (the hand-off was cancelled and sent again), which is a different situation, so these tests read the rc.13
+    /// recording they were written against, as the same waiting-limit tests in WeirContractBehaviourTests do.
+    /// </summary>
+    private static Recording QueuedRc13 => RecordedReplies.Load("weir", "1.0.0-rc.13", "status-queued");
+
     private static DateTimeOffset ChangedAt(Recording recording)
         => DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
 
@@ -107,7 +114,7 @@ public sealed class WeirContractWatcherEndingsTests : IDisposable
     [Fact]
     public async Task No_change_from_Weir_for_the_limit_imports_the_original_when_that_is_the_library_rule_after_asking_Weir_to_drop_it()
     {
-        var replay = await WatchAsync(Rec("status-queued"), TimeSpan.FromHours(49), TimeSpan.FromDays(3), "import-original", answeringForTheWholeHold: true, cancel: Rec("handoff-cancelled"));
+        var replay = await WatchAsync(QueuedRc13, TimeSpan.FromHours(49), TimeSpan.FromDays(3), "import-original", answeringForTheWholeHold: true, cancel: Rec("handoff-cancelled"));
 
         Assert.Contains(replay.Sent, request => request.Method == "DELETE");
         var (status, message) = Assert.Single(_updates);
@@ -121,7 +128,7 @@ public sealed class WeirContractWatcherEndingsTests : IDisposable
     [InlineData("block")]
     public async Task No_change_from_Weir_for_the_limit_leaves_it_for_a_person_under_the_other_rules(string mode)
     {
-        await WatchAsync(Rec("status-queued"), TimeSpan.FromHours(49), TimeSpan.FromDays(3), mode, answeringForTheWholeHold: true, cancel: Rec("handoff-cancelled"));
+        await WatchAsync(QueuedRc13, TimeSpan.FromHours(49), TimeSpan.FromDays(3), mode, answeringForTheWholeHold: true, cancel: Rec("handoff-cancelled"));
 
         Assert.Equal(ProcessorHandoffStatuses.Stalled, Assert.Single(_updates).Status);
         Assert.Equal("processor-stalled", Assert.Single(_cases));
@@ -150,7 +157,7 @@ public sealed class WeirContractWatcherEndingsTests : IDisposable
     [Fact]
     public async Task A_run_Weir_has_already_started_when_Deluno_asks_it_to_drop_the_file_is_left_to_finish()
     {
-        var replay = await WatchAsync(Rec("status-queued"), TimeSpan.FromHours(49), TimeSpan.FromDays(3), "import-original", answeringForTheWholeHold: true, cancel: Rec("handoff-cancel-working"));
+        var replay = await WatchAsync(QueuedRc13, TimeSpan.FromHours(49), TimeSpan.FromDays(3), "import-original", answeringForTheWholeHold: true, cancel: Rec("handoff-cancel-working"));
 
         Assert.Contains(replay.Sent, request => request.Method == "DELETE");
         Assert.Empty(_updates);
