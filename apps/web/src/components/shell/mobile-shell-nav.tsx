@@ -192,7 +192,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
         >
           {(["Your Media", "Live operations", "Setup", "Deluno"] as const).map((group) => (
             <div key={group} className="mb-3 last:mb-0">
-              <p className="px-3 pb-1.5 pt-2 text-(length:--shell-subtle-size) font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <p className="px-3 pb-1.5 pt-2 text-(length:--shell-subtle-size) font-semibold uppercase tracking-wider text-muted-foreground">
                 {group}
               </p>
               <ul className="space-y-0.5">

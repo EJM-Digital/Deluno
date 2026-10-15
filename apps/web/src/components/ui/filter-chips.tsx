@@ -70,7 +70,7 @@ export function FilterChips<T extends string>({
           >
             {option.dot ? <span aria-hidden="true" className="mr-[5px] h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: option.dot }} /> : null}
             {option.label}
-            {option.count !== undefined ? <span className={cn("ml-[5px] tabular-nums", active ? "opacity-80" : "text-muted-foreground/70")}>{option.count}</span> : null}
+            {option.count !== undefined ? <span className={cn("ml-[5px] tabular-nums", active ? "opacity-80" : "text-muted-foreground")}>{option.count}</span> : null}
           </button>
         );
       })}

@@ -166,7 +166,6 @@ test.describe("Settings > Tags", () => {
   });
 
   test("Escape on a drawer returns focus to the button that opened it", async ({ page }) => {
-    test.fixme(true, "Found by this spec: after Escape closes the New tag drawer, document.activeElement is BODY (Skip to content is next), not the New tag button, so a keyboard user loses their place. The drawer is opened from state, so nothing hands focus back (components/ui/drawer.tsx). Likely every drawer.");
     await openScreen(page, "/settings/tags");
     await untilQuiet(page);
     const trigger = page.getByRole("button", { name: "New tag", exact: true }).first();

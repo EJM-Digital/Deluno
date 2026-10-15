@@ -39,7 +39,7 @@
 .lb-tile .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
 .lb-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--lb-muted); font-weight: 600; }
 a.lb-label:hover { color: hsl(var(--foreground)); }
-.lb-aside { font-size: 12px; color: hsl(var(--muted-foreground) / .72); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-aside { font-size: 12px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-aside a { color: inherit; }
 .lb-aside a:hover { text-decoration: underline; }
 .lb-tile .lb-fig {

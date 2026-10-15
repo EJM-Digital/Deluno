@@ -705,7 +705,7 @@ function previewMultiEpisodeFormat(episodeFileFormat: string, style: string) {
 function NamingPreview({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1.5">
-      <span className="text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">{label}</span>
+      <span className="text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
       <code className="wrap-break-word rounded-md border border-hairline bg-surface-1 px-2.5 py-2 text-(length:--type-caption) leading-snug text-foreground">{value}</code>
     </div>
   );

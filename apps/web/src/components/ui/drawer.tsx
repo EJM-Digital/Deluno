@@ -9,7 +9,7 @@
  * Opens from the right at --drawer-width; full-screen on narrow viewports.
  * Closing while dirty is the caller's decision (see useUnsavedChanges).
  */
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "./dialog-primitives";
 import { plainTitle } from "../../lib/plain-title";
 import { X, Check, CircleAlert, Loader2, CircleDot, type LucideIcon } from "lucide-react";
 import * as React from "react";

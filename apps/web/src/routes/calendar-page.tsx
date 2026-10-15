@@ -417,7 +417,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
                   <span
                     className={cn(
                       "text-(length:--type-caption) tabular-nums",
-                      cell.isToday ? "font-semibold text-primary" : cell.inRange ? "text-foreground" : "text-muted-foreground/50"
+                      cell.isToday ? "font-semibold text-primary" : cell.inRange ? "text-foreground" : "text-muted-foreground"
                     )}
                   >
                     {cell.date.getDate()}

@@ -84,7 +84,7 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
                 </span>
               </Link>
               {nextStep ? (
-                <span aria-hidden="true" className={cn("flex h-7 w-full shrink-0 items-center justify-center 2xl:h-auto 2xl:w-7", leadsToCurrent ? "text-success" : "text-muted-foreground/30")}>
+                <span aria-hidden="true" className={cn("flex h-7 w-full shrink-0 items-center justify-center 2xl:h-auto 2xl:w-7", leadsToCurrent ? "text-success" : "text-muted-foreground")}>
                   <ArrowRight className={cn("h-4 w-4 rotate-90 2xl:rotate-0", leadsToCurrent && "motion-safe:animate-pulse")} />
                 </span>
               ) : null}
@@ -99,7 +99,7 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
 
 function StepStateIcon({ step }: { step: SetupStatusStep }) {
   const Icon = step.state === "complete" ? CheckCircle2 : step.state === "failed" ? CircleX : Circle;
-  const tone = step.state === "complete" ? "border-success/30 bg-success/10 text-success" : step.state === "failed" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-hairline bg-surface-2 text-muted-foreground/50";
+  const tone = step.state === "complete" ? "border-success/30 bg-success/10 text-success" : step.state === "failed" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-hairline bg-surface-2 text-muted-foreground";
   return (
     <span className={cn("relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border", tone)}>
       <Icon className="h-4 w-4" strokeWidth={1.9} aria-hidden />

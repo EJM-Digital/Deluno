@@ -145,6 +145,7 @@ function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) 
     <ListCard title="Proper &amp; Repack" count="How a corrected re-release affects acquisition">
       <div className="grid gap-3 p-(--card-pad-x)">
         <Select
+          aria-label="What a Proper or Repack release does"
           value={mode}
           onChange={(event) => onChange(event.target.value)}
           options={PROPER_REPACK_OPTIONS.map(({ value, label }) => ({ value, label }))}

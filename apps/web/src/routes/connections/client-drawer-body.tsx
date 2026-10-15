@@ -163,7 +163,7 @@ export function ClientDrawerBody({
           <div className="grid gap-0.5">
             {pageOpens ? (
               <>
-                <a href={webAddress} target="_blank" rel="noopener noreferrer" className="w-fit text-(length:--type-body-sm) font-medium text-primary underline-offset-2 hover:underline">
+                <a href={webAddress} target="_blank" rel="noopener noreferrer" className="w-fit text-(length:--type-body-sm) font-medium text-primary underline underline-offset-2 hover:no-underline">
                   Open {preset?.label ?? "the client"}&rsquo;s page
                 </a>
                 <p className="density-help font-sans text-muted-foreground break-all">{webAddress}</p>

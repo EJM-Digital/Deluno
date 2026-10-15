@@ -1,4 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { AlertTriangle, ListMinus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";

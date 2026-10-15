@@ -103,14 +103,14 @@ export function JumpRail({
             className={cn(
               "rounded-md px-1.5 text-(length:--type-micro) font-semibold leading-[1.35] tabular transition-colors duration-150",
               inert
-                ? "cursor-default text-muted-foreground/25"
+                ? "cursor-default text-muted-foreground"
                 : activeLabel === bucket.label
                   ? "bg-primary/15 text-primary"
                   : waiting
                     ? "animate-pulse text-primary/70"
                     : loaded
                       ? "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                      : "text-muted-foreground/50 hover:bg-muted/50 hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             )}
           >
             {bucket.label}

@@ -9,7 +9,7 @@
   --ls-card-3: hsl(var(--surface-3));
   --ls-line: hsl(var(--hairline));
   --ls-muted: hsl(var(--muted-foreground));
-  --ls-faint: hsl(var(--muted-foreground) / 0.7);
+  --ls-faint: hsl(var(--muted-foreground));
   --ls-fg: hsl(var(--foreground));
   --ls-success: hsl(var(--success));
   --ls-warning: hsl(var(--warning));
