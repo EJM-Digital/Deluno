@@ -119,7 +119,9 @@ export default defineConfig({
     },
     {
       name: "mobile",
-      testIgnore: /shipped[\\/]/,
+      // The real specs (tests/real) set their own viewport and walk 390 px themselves, and several need an empty
+      // library: they run once, in the desktop project, on a database nothing else has filled yet.
+      testIgnore: /(shipped|real)[\\/]/,
       use: {
         ...devices["Pixel 7"],
         browserName: "chromium"

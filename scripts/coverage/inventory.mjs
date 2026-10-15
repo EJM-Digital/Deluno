@@ -234,7 +234,7 @@ function literalWords(children) {
     else if (c === '}') depth = Math.max(0, depth - 1);
     else if (depth === 0) out += c;
   }
-  return out.replace(/<[^>]*>/g, ' ').replace(/&\w+;/g, ' ').replace(/\s+/g, ' ').trim();
+  return out.replace(/<[^>]*>/g, ' ').replace(/<[\s\S]*$/, ' ').replace(/&\w+;/g, ' ').replace(/\(\s*\)/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function actionLabel(attrs, words) {
@@ -268,7 +268,7 @@ export function uiItems(root) {
       let words = '';
       if (!selfClosing) {
         const close = s.indexOf(`</${m[1]}>`, end);
-        if (close > 0) words = literalWords(s.slice(end + 1, Math.min(close, end + 600)));
+        if (close > 0) words = literalWords(s.slice(end + 1, close));
       }
       const label = actionLabel(attrs, words);
       if (!label) continue;
