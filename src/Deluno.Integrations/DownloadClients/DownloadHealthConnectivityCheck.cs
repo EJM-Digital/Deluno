@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Integrations.DownloadClients;
 
 /// <summary>
@@ -27,7 +29,7 @@ public sealed class HttpDownloadHealthConnectivityCheck(IHttpClientFactory httpC
     {
         var urls = (commaSeparatedUrls ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(url => Uri.TryCreate(url, UriKind.Absolute, out _))
+            .Where(url => WebAddress.IsValid(url))
             .ToArray();
         if (urls.Length == 0)
         {

@@ -47,7 +47,7 @@ public sealed class IndexerFeedReader(
     {
         // A tracker's newest releases are a search with no words (#606).
         var isTracker = IndexerProtocols.IsTracker(indexer.Protocol);
-        if (!Uri.TryCreate(isTracker ? indexer.BaseUrl : FeedMediaSearchPlanner.BuildFeedUrl(indexer), UriKind.Absolute, out var uri))
+        if (!WebAddress.TryParse(isTracker ? indexer.BaseUrl : FeedMediaSearchPlanner.BuildFeedUrl(indexer), out var uri))
         {
             return new IndexerFeedResult(false, [], $"{indexer.Name} has no usable address.");
         }
