@@ -171,6 +171,9 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// </summary>
     Task<IReadOnlyList<MovieSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken);
 
+    /// <summary>One film's own searches, newest first, paged on the server (#1337).</summary>
+    Task<IReadOnlyList<MovieSearchHistoryItem>> ListTitleSearchHistoryAsync(string movieId, int limit, int offset, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MovieWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,

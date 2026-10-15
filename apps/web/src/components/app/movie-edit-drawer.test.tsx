@@ -125,9 +125,7 @@ describe("MovieEditDrawer (#784)", () => {
     expect(authedFetch).not.toHaveBeenCalled();
   });
 
-  // DEFECT (found by this test, not fixed here): the drawer sets "Could not load libraries and quality profiles." in its clean state,
-  // and the footer shows a message only in the saved or error state, so the sentence never reaches the screen.
-  it.skip("says the libraries and quality profiles could not be loaded when they cannot", async () => {
+  it("says the libraries and quality profiles could not be loaded when they cannot", async () => {
     vi.mocked(fetchJson).mockImplementation(async (url: string) => {
       if (url === "/api/libraries" || url === "/api/quality-profiles") throw new Error("down");
       return [] as never;

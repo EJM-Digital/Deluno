@@ -36,7 +36,7 @@ import {
   formatReleaseAge,
   formatSeedersAndLeechers
 } from "../lib/release-candidate-columns";
-import { fetchJson, type IndexerItem } from "../lib/api";
+import { fetchJson, type IndexerItem, type IntegrationFailure } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 
@@ -112,6 +112,8 @@ export function SearchPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set());
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ManualSearchCandidate[] | null>(null);
+  // The indexers that failed or timed out during the last search, so an empty list is not mistaken for "nothing found" (#1337).
+  const [failures, setFailures] = useState<IntegrationFailure[]>([]);
   const [protocolFilter, setProtocolFilter] = useState("");
   const [indexerFilter, setIndexerFilter] = useState("");
   const [grabTarget, setGrabTarget] = useState<ManualSearchCandidate | null>(null);
@@ -143,7 +145,7 @@ export function SearchPage() {
     setProtocolFilter("");
     setIndexerFilter("");
     try {
-      const body = await fetchJson<{ candidates: ManualSearchCandidate[]; indexersQueried: number }>("/api/search", {
+      const body = await fetchJson<{ candidates: ManualSearchCandidate[]; indexersQueried: number; failures?: IntegrationFailure[] }>("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -154,6 +156,7 @@ export function SearchPage() {
         })
       });
       setResults(body.candidates);
+      setFailures(body.failures ?? []);
       setSearchedQuery(trimmed);
       if (body.indexersQueried === 0) {
         toast.error("No enabled indexer covers this search. Check Find & Download -> Indexers.");
@@ -161,6 +164,7 @@ export function SearchPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That search could not run.");
       setResults([]);
+      setFailures([]);
     } finally {
       setSearching(false);
     }
@@ -267,6 +271,20 @@ export function SearchPage() {
           </Field>
         </div>
       </ListCard>
+
+      {results !== null && failures.length > 0 ? (
+        <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+          <p className="font-semibold">
+            {failures.length === 1 ? "One indexer could not be searched" : `${failures.length} indexers could not be searched`}
+            {results.length === 0 ? ", so the empty list below may not mean nothing exists." : ", so this list may be missing releases."}
+          </p>
+          <ul aria-label="Indexers that could not be searched" className="mt-1 list-disc space-y-1 pl-4">
+            {failures.map((failure) => (
+              <li key={failure.serviceId}>{failure.summary || `${failure.serviceName} could not be searched: ${failure.message}`}{failure.nextAction ? ` ${failure.nextAction}` : ""}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {results !== null ? (
         <ListCard

@@ -1053,15 +1053,11 @@ public sealed class FeedMediaSearchPlanner(
     private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber, string? imdbId, IReadOnlyList<int>? categoryIds = null)
     {
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
-        var family = isTv ? 5 : 2;
         // A caller-chosen set of categories (#753's Search page) narrows this
         // tracker's own categories the same way its normal default does --
         // still only the ones inside this search's own movie/TV family, since
         // a tracker files the two apart.
-        var requested = categoryIds is { Count: > 0 } ? categoryIds.Where(category => category / 1000 == family).ToArray() : null;
-        var categories = requested is { Length: > 0 }
-            ? requested
-            : TrackerCategories.Parse(indexer.Categories).Where(category => category / 1000 == family).ToArray();
+        var categories = TrackerCategories.ForFamily(isTv, categoryIds, indexer.Categories);
         return new TrackerQuery(
             queryText,
             isTv ? "tvsearch" : "movie",
@@ -1069,7 +1065,7 @@ public sealed class FeedMediaSearchPlanner(
             Episode: isTv ? episodeNumber : null,
             Year: year,
             ImdbId: imdbId,
-            Categories: categories.Length > 0 ? categories : [family * 1000]);
+            Categories: categories);
     }
 
     /// <summary>1 for the show's own year in the name, 2 for the searched episode's own title (#1166, #1173).</summary>
@@ -1344,19 +1340,12 @@ public sealed class FeedMediaSearchPlanner(
         // ones inside this search's own movie/TV family -- the same guard
         // TrackerQueryFor applies for a tracker -- so a stray category from
         // the other engine never reaches this one.
-        var family = isTv ? 5 : 2;
-        var requestedCategories = categoryIds is { Count: > 0 }
-            ? categoryIds.Where(category => category / 1000 == family).ToArray()
-            : null;
-
         // #742: an anime search uses this indexer's own anime category
         // numbers when it has configured them, since anime is often
         // catalogued separately from normal TV on the same indexer.
-        var categories = requestedCategories is { Length: > 0 }
-            ? string.Join(",", requestedCategories)
-            : isTv && IsAnimeGenre(genres) && !string.IsNullOrWhiteSpace(indexer.AnimeCategories)
-                ? indexer.AnimeCategories
-                : indexer.Categories;
+        var categories = categoryIds is not { Count: > 0 } && isTv && IsAnimeGenre(genres) && !string.IsNullOrWhiteSpace(indexer.AnimeCategories)
+            ? indexer.AnimeCategories
+            : string.Join(",", TrackerCategories.ForFamily(isTv, categoryIds, indexer.Categories));
         return FinishIndexerUrl(builder, query, indexer, isTv ? "5000" : "2000", categories);
     }
 

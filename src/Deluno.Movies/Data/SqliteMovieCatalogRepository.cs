@@ -1589,6 +1589,12 @@ public sealed class SqliteMovieCatalogRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<MovieSearchHistoryItem>> ListTitleSearchHistoryAsync(string movieId, int limit, int offset, CancellationToken cancellationToken)
+    {
+        var items = await SharedMediaState.ListTitleSearchHistoryAsync(MediaKind.Movie, movieId, limit, offset, cancellationToken);
+        return items.Select(MapSearchHistory).ToArray();
+    }
+
     public async Task<IReadOnlyList<MovieSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken)
     {
         var boundedLimit = Math.Clamp(limit, 1, 500);

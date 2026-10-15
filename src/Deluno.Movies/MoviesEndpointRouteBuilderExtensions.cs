@@ -455,8 +455,14 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
-        movies.MapGet("/search-history", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        movies.MapGet("/search-history", async (IMovieCatalogRepository repository, string? movieId, int? take, int? skip, CancellationToken cancellationToken) =>
         {
+            // One title's own searches are asked for by id and paged here (#1337); with no id it is still the newest 20 of the library.
+            if (!string.IsNullOrWhiteSpace(movieId))
+            {
+                return Results.Ok(await repository.ListTitleSearchHistoryAsync(movieId, Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), cancellationToken));
+            }
+
             var items = await repository.ListSearchHistoryAsync(cancellationToken);
             return Results.Ok(items);
         });

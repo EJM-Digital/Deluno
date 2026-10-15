@@ -130,6 +130,9 @@ interface BulkRemovalResponse {
   }>;
 }
 
+/** The server refused an add and said why in a sentence meant for the person (#1338). */
+class AddRefusedError extends Error {}
+
 export function LibraryView({
   isRouteLoading = false,
   metadataStatus,
@@ -981,7 +984,7 @@ export function LibraryView({
     if (response.ok) rememberAddTags(addIntoLibraryId, draft.tags);
     if (!response.ok) {
       const problem = await readValidationProblem(response);
-      throw new Error(problem?.title ?? `Could not add ${singular}.`);
+      throw new AddRefusedError(problem?.title ?? `Could not add ${singular}.`);
     }
   }
 
@@ -1124,8 +1127,9 @@ export function LibraryView({
       closeCreate();
       refreshCatalogue();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Create failed.";
-      toast.error(msg);
+      // Only a sentence the server chose for the person is shown as it came. Anything else thrown on the way (a lost
+      // connection, a failed lookup) has its own wording, which is not for the screen (#1338).
+      toast.error(error instanceof AddRefusedError ? error.message : `Could not add the ${singular}. Try again.`);
     } finally {
       setIsCreating(false);
     }
