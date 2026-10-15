@@ -173,7 +173,8 @@ public sealed class FolderChainService(
 
     private async Task<FolderChainReport?> CheckCoreAsync(string libraryId, bool useCache, CancellationToken cancellationToken)
     {
-        var library = (await libraries.ListLibrariesAsync(cancellationToken))
+        var allLibraries = await libraries.ListLibrariesAsync(cancellationToken);
+        var library = allLibraries
             .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
         if (library is null)
         {
@@ -276,6 +277,15 @@ public sealed class FolderChainService(
             // applies, and the check says why (#1073).
             var named = perGrab?.ClientFolder is not null ? perGrab : null;
             var clientFolder = named?.HostFolder ?? DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
+            // #1328: a folder a client saves to that is, holds or sits inside any library root puts the library's media in
+            // the way of every clean-up that follows a client's remove-with-data. Said before anything is removed.
+            if (!string.IsNullOrWhiteSpace(clientFolder) && allLibraries.FirstOrDefault(other => Deluno.Libraries.LibraryFolderLayout.ReachesALibrary([other], clientFolder)) is { } reached)
+            {
+                links.Add(new("in-library", FolderChainStatuses.Problem,
+                    $"{client.Name} saves {kind} to {clientFolder}, which is inside the {reached.Name} library, or holds it. Deluno will never delete files there when {client.Name} removes a download, so they would be left behind, and your media shares a folder with downloads. Point the {category} folder in {client.Name} somewhere outside every library.",
+                    clientFolder));
+            }
+
             if (named is not null)
             {
                 links.Add(new("folder", FolderChainStatuses.Ok,
