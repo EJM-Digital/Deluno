@@ -108,7 +108,7 @@ function Invoke-Scenario {
     Write-SuiteLog "== $Id : $Title"
     try { & $Body }
     catch {
-        $rec.error = Hide-Secrets ($_.Exception.Message + ' @ ' + ($_.InvocationInfo.PositionMessage -replace '\s+', ' '))
+        $rec.error = Hide-Secrets ($_.Exception.Message + ' @ ' + ($_.InvocationInfo.PositionMessage -replace '\s+', ' ') + $(if ($_.ScriptStackTrace) { ' [stack: ' + ($_.ScriptStackTrace -replace '\s*\r?\n\s*', ' <- ') + ']' } else { '' }))
         Write-SuiteLog "   ERROR $($rec.error)"
     }
     $sw.Stop()
