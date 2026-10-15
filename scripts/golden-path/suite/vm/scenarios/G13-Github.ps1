@@ -73,7 +73,11 @@ function Invoke-GroupGithub {
         Add-Check "Update now names GitHub's limit, not an unreachable source" ($error1 -match "GitHub's limit for checking releases from this network is used up until" -and $error1 -notmatch 'could not reach') $error1
         $m = [regex]::Match($error1, '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC')
         $diff = $null
-        if ($m.Success) { $diff = [math]::Abs(([DateTime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)) - ([DateTime]::ParseExact(($stamp -replace ' UTC$', ''), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))).TotalMinutes }
+        if ($m.Success) {
+            $said = [DateTime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+            $github = [DateTime]::ParseExact(($stamp -replace ' UTC$', ''), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+            $diff = [math]::Abs(($said - $github).TotalMinutes)
+        }
         Add-Check "The reset in the sentence is GitHub's own reset time (within a minute)" ($null -ne $diff -and $diff -le 1) $(if ($m.Success) { "Deluno says $($m.Groups[1].Value) UTC; GitHub says $stamp" } else { 'no reset time in the sentence' })
 
         # ... and on the screen, the way a person presses it: Settings > General, in the viewer's own time.
