@@ -103,6 +103,8 @@ jobs:
         id: flags
         env:
           EVENT: ${{ github.event_name }}
+          # Off until the first nightly mutation run has passed (docs/testing/STRATEGY.md, Measure 3).
+          MUTATION_ON_PUSH: ${{ vars.DELUNO_MUTATION_ON_PUSH }}
           CODE: ${{ steps.filter.outputs.code }}
           CODE_COUNT: ${{ steps.filter.outputs.code_count }}
           NOTES: ${{ steps.filter.outputs.notes }}
@@ -128,7 +130,7 @@ jobs:
           if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
           # Mutation runs on the changed files of a push or pull request. A manual run has no base to compare with
           # (the nightly workflow, mutation-nightly.yml, runs the full mutation).
-          if [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
+          if [ "$MUTATION_ON_PUSH" = "true" ] && [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
           # The smoke shards and the web checks both want the production web build.
           web_dist=false
           if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
@@ -730,6 +732,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Switched on by the repository variable DELUNO_MUTATION_ON_PUSH=true (default off: the job has not run in CI yet);
+  # while it is off the flag is false, the job is skipped and ci-passed counts it as not due.
   # Mutation testing on the changed files (issue 1269, docs/testing/STRATEGY.md measure 3): Stryker.NET's diff mode
   # (--since) for the .NET projects the change reaches, StrykerJS on the changed web, sdk and gateway source files.
   # Every mutant that survived or was never covered fails the job, unless docs/testing/mutation-equivalents.json lists
@@ -737,7 +741,7 @@ jobs:
   mutation:
     name: Mutation on the changed files
     needs: changes
-    if: ${{ needs.changes.outputs.run_mutation == 'true' }}
+    if: ${{ vars.DELUNO_MUTATION_ON_PUSH == 'true' && needs.changes.outputs.run_mutation == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
