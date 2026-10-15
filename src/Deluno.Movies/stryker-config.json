@@ -1,0 +1,27 @@
+{
+  "stryker-config": {
+    "project": "Deluno.Movies.csproj",
+    "test-projects": [
+      "tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj",
+      "tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj",
+      "tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj",
+      "tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj",
+      "tests/Deluno.Worker.Tests/Deluno.Worker.Tests.csproj"
+    ],
+    "reporters": [
+      "json",
+      "progress"
+    ],
+    "mutate": [
+      "!**/Migrations/**"
+    ],
+    "mutation-level": "Standard",
+    "thresholds": {
+      "high": 100,
+      "low": 90,
+      "break": 0
+    },
+    "ignore-mutations": [],
+    "disable-bail": false
+  }
+}

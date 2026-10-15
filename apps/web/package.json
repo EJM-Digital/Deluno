@@ -12,6 +12,7 @@
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "test:unit:watch": "vitest",
+    "mutation": "stryker run",
     "lint": "eslint src",
     "check:orphans": "knip --include files,dependencies",
     "validate:job-status": "ts-node scripts/validate-job-status.ts",
