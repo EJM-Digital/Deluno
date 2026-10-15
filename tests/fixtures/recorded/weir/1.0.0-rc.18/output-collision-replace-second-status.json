@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "output-collision-replace-second-status",
+  "recordedAt": "2026-10-15T03:33:34Z",
+  "note": "The status of the second of two different single files with the same name, collision policy replace. The movie output folder held [Recorded.Weir.Collide.replace.mkv] after the first and [Recorded.Weir.Collide.replace.mkv] after the second.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/99666c0c-45b3-44ac-aea7-bd04a9a29ca1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "99666c0c-45b3-44ac-aea7-bd04a9a29ca1",
+          "state": "completed",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T03:33:34.100675Z",
+          "outputPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Collide.replace.mkv",
+          "outputFiles": [
+            "C:\\Weir\\Ready\\Movies\\Recorded.Weir.Collide.replace.mkv"
+          ],
+          "message": "Finished processing this file. The original download was kept in the watched folder for your download client, because this workflow is linked to a media manager."
+        }
+      }
+    }
+  ]
+}

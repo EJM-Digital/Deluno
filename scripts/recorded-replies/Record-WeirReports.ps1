@@ -208,7 +208,7 @@ function Restore-RwLibraries {
 
 function Get-RwLibrary([string] $MediaType) {
     $all = Invoke-RwWeir 'GET' '/processing/libraries'
-    $list = if ($all.value) { @($all.value) } elseif ($all.libraries) { @($all.libraries) } elseif ($all.items) { @($all.items) } else { @($all) }
+    $list = if ($all -is [array]) { @($all) } elseif ($all.value) { @($all.value) } elseif ($all.libraries) { @($all.libraries) } elseif ($all.items) { @($all.items) } else { @($all) }
     $list | Where-Object { $_.media_type -eq $MediaType -and $_.enabled } | Select-Object -First 1
 }
 
@@ -304,7 +304,7 @@ function Invoke-RwHandoff($Library, [string] $MediaType, [string] $Source, [stri
     $accepted = Send-RwHandoff (New-RwPayload $Library $MediaType $Source $Title $id)
     $seen = Watch-RwHandoff $id
     $last = Get-RwStatus $id
-    $reports = Wait-RwReports @($id) $ExpectReports $ReportSeconds
+    $reports = @(Wait-RwReports @($id) $ExpectReports $ReportSeconds)
     [pscustomobject]@{ Id = $id; Accepted = $accepted; Seen = $seen; Last = $last; State = (Get-RwState $last); Reports = $reports }
 }
 
@@ -330,7 +330,7 @@ function Invoke-RwTakeover($Movies) {
     Save-State weir $script:RW.Ver 'resend-takeover-second-final-status' "The final status of the SECOND send of a file that was sent twice at once: $(Get-RwState $lastB); output path: $(if ((Get-ReplyJson $lastB).outputPath) { 'present' } else { 'none' })." @($lastB)
     # The shape #1262 needs is completed with no output path.
     if ((Get-ReplyJson $lastB).outputPath -or (Get-RwState $lastB) -ne 'completed') { Add-Missing "weir reports takeover: the second send ended $(Get-RwState $lastB) with $(if ((Get-ReplyJson $lastB).outputPath) { 'an output path' } else { 'no output path' }), not completed without one (the file may have been processed before the resend arrived; run again)" }
-    $reports = Wait-RwReports @($idA, $idB) 2 90
+    $reports = @(Wait-RwReports @($idA, $idB) 2 90)
     foreach ($row in $reports) {
         $body = Get-RwBody $row
         $isFirst = $row.bodyText -like "*$idA*"
@@ -348,13 +348,18 @@ function Invoke-RwCollision($Movies) {
         Write-RunLog "weir reports: collision $policy"
         if ($library.output_collision_policy -ne $policy) { Set-RwLibrary $library @{ output_collision_policy = $policy } }
         $tag = $policy -replace '_', '-'
-        $nameA = Join-Path (Join-Path $Movies.Watched "RecA$tag") 'Recorded.Weir.Collide.mkv'
-        $nameB = Join-Path (Join-Path $Movies.Watched "RecB$tag") 'Recorded.Weir.Collide.mkv'
-        New-RwLink $nameA
-        New-RwTruncated $nameB ((Get-Item -LiteralPath $script:RW.Film).Length - 1MB)
-        $first = Invoke-RwHandoff $Movies 'movie' $nameA 'Big Buck Bunny (2008) Recorded Collide'
+        # One source path for both: Weir keeps a source's place below the watched folder, so two files in different folders would never meet in the output.
+        $name = Join-Path $Movies.Watched "Recorded.Weir.Collide.$tag.mkv"
+        New-RwLink $name
+        $first = Invoke-RwHandoff $Movies 'movie' $name 'Big Buck Bunny (2008) Recorded Collide'
         $afterFirst = Get-RwOutputNames $Movies.Output 'Recorded.Weir.Collide*'
-        $second = Invoke-RwHandoff $Movies 'movie' $nameB 'Big Buck Bunny (2008) Recorded Collide'
+        # Another file under the same name, sent after the first has been finished and left in the output.
+        # It has to be a whole film Weir can read (a truncated one makes Weir wait): the suite's small base film sits beside the big one.
+        $other = Get-ChildItem -LiteralPath (Join-Path (Split-Path (Split-Path $script:RW.Film)) 'small') -Filter *.mkv -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $other) { Add-Missing 'weir reports collision: the suite''s small base film is not in the VM, so there is no second, different, readable file'; return }
+        Remove-Item -LiteralPath $name -Force
+        Copy-Item -LiteralPath $other.FullName -Destination $name -Force
+        $second = Invoke-RwHandoff $Movies 'movie' $name 'Big Buck Bunny (2008) Recorded Collide'
         $afterSecond = Get-RwOutputNames $Movies.Output 'Recorded.Weir.Collide*'
         $outputs = "The movie output folder held [$($afterFirst -join ', ')] after the first and [$($afterSecond -join ', ')] after the second."
         Save-State weir $script:RW.Ver "output-collision-$tag-first-status" "The status of the first of two different single files with the same name, collision policy $policy. $outputs" @($first.Last)
@@ -366,7 +371,7 @@ function Invoke-RwCollision($Movies) {
             if ($pair[1].Reports.Count -eq 0) { Add-Missing "weir reports collision-$tag-$($pair[0]): no report reached Deluno" }
         }
         Get-ChildItem -LiteralPath $Movies.Output -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Recorded.Weir.Collide*' } | Remove-Item -Force -ErrorAction SilentlyContinue
-        if (@($afterSecond | Where-Object { $_ -match '\(\d+\)\.mkv$' }).Count -eq 0) { Add-Missing "weir reports collision-${tag}: no numbered name appeared under policy $policy (the output folder held [$($afterSecond -join ', ')])" }
+        if ($policy -eq 'keep_both' -and @($afterSecond | Where-Object { $_ -match '\(\d+\)\.mkv$' }).Count -eq 0) { Add-Missing "weir reports collision-${tag}: no numbered name appeared under policy $policy (the output folder held [$($afterSecond -join ', ')])" }
     }
 }
 
@@ -463,10 +468,14 @@ function Invoke-RwRepeat($Movies) {
     Add-RwFault $script:RW.Proxy 'busy-503' 503 'Service Unavailable' 'text/plain'
     $run = Invoke-RwFinishedWithFault $Movies 'Repeat503'
     # The heartbeat (every minute) asks Deluno, and once Deluno answers it Weir sends again what it owes.
-    $reports = Wait-RwReports @($run.Id) 2 170
+    $reports = @(Wait-RwReports @($run.Id) 2 300)
     if ($reports.Count -ge 2) {
         Save-State deluno $script:RW.DelunoVersion 'events-completed-repeated-after-503' "The same completed report twice: the proxy answered the first POST 503, and Weir sent it again on its next heartbeat (about $([int]($reports[1].at - $reports[0].at).TotalSeconds) seconds later). $(Get-RwRealNote @($reports[0], $reports[1]))." @((ConvertTo-RwExchange $reports[0]), (ConvertTo-RwExchange $reports[1]))
-    } else { Add-Missing "weir reports completed repeated after 503: $($reports.Count) POST(s) arrived in 170 s; Weir did not send the report again" }
+    } else {
+        # What the real Weir did: nothing more arrived. Kept as its own recording, so the tests know Weir does not send it again within five minutes.
+        if ($reports.Count -ge 1) { Save-State deluno $script:RW.DelunoVersion 'events-completed-answered-503-not-repeated' "A completed report the proxy answered 503 once. Nothing more arrived in the 300 seconds that followed, so Weir had not sent it again. $(Get-RwRealNote @($reports[0]))." @((ConvertTo-RwExchange $reports[0])) }
+        Add-Missing "weir reports completed repeated after 503: $($reports.Count) POST(s) arrived in 300 s; Weir did not send the report again"
+    }
 }
 
 function Invoke-RwNotRepeated($Movies, [int] $Status, [string] $Body, [string] $Label) {
@@ -479,7 +488,7 @@ function Invoke-RwNotRepeated($Movies, [int] $Status, [string] $Body, [string] $
     Start-Sleep -Seconds 130
     $after = @(Get-RwReports @($run.Id))
     $repeated = $after.Count - 1
-    Save-State deluno $script:RW.DelunoVersion "events-answered-$Status-not-repeated" "A completed report the proxy answered $Status once. After waiting 130 s (two heartbeats) Weir had sent it $repeated more time(s)$(if ($repeated -eq 0) { ': a 4xx answer means Weir no longer owes the report' })." @((ConvertTo-RwExchange $after[0]))
+    Save-State deluno $script:RW.DelunoVersion "events-answered-$Status-not-repeated" "A completed report the proxy answered $Status once. After waiting 130 s Weir had sent it $repeated more time(s)$(if ($repeated -eq 0) { ': a 4xx answer means Weir no longer owes the report' })." @((ConvertTo-RwExchange $after[0]))
     if ($repeated -gt 0) { Add-Missing "weir reports answered ${Status}: Weir sent the report $repeated more time(s) after the answer" }
 }
 
@@ -517,7 +526,7 @@ function Invoke-RecordWeirReports($p) {
     $connection = $null; $original = $null
     try {
         $all = Invoke-RwWeir 'GET' '/media-managers/connections'
-        $list = if ($all.value) { @($all.value) } elseif ($all.connections) { @($all.connections) } elseif ($all.items) { @($all.items) } else { @($all) }
+        $list = if ($all -is [array]) { @($all) } elseif ($all.value) { @($all.value) } elseif ($all.connections) { @($all.connections) } elseif ($all.items) { @($all.items) } else { @($all) }
         $connection = $list | Where-Object { $_.kind -match 'deluno' -or $_.base_url -match ":$($p.DelunoPort)" } | Select-Object -First 1
         if (-not $connection) { Add-Missing 'weir reports: Weir has no connection to Deluno to point at the proxy'; return }
         $original = [string]$connection.base_url
@@ -529,6 +538,7 @@ function Invoke-RecordWeirReports($p) {
         Start-Sleep -Seconds 3
 
         foreach ($step in 'takeover', 'collision', 'rejected', 'season packs', 'repeat after 503', 'answered 401', 'answered 403') {
+            if ($p.ReportSteps -and (@($p.ReportSteps -split ',') -notcontains $step)) { continue }
             try {
                 switch ($step) {
                     'takeover' { Invoke-RwTakeover $movies }

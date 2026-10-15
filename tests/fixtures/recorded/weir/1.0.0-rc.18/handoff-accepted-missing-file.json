@@ -1,0 +1,40 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "handoff-accepted-missing-file",
+  "recordedAt": "2026-10-15T02:41:58Z",
+  "note": "A hand-off naming a file that is not in the watched folder (yet): Weir accepts it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "9518ec80-65fa-48ec-a37d-e28858669c3d",
+          "libraryId": "01a13d68ae4a7e7b84c06a96fd5d8cc7",
+          "mediaType": "movie",
+          "sourcePath": "C:\\Downloads\\Completed\\Movies\\Recorded.Weir.D.mkv",
+          "releaseName": "Recorded missing file",
+          "queueItemId": "fdf10054-7397-4b1d-a3a2-6d2e31e12286",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded missing file",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

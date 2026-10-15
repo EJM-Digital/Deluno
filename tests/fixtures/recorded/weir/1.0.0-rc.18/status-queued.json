@@ -1,0 +1,53 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "status-queued",
+  "recordedAt": "2026-10-15T02:47:50Z",
+  "note": "The status of a hand-off waiting behind others (the last of eight sent together), with its place in the line.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/fcb52132-481d-4f9d-a8e4-c9e1f453ecf9"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "fcb52132-481d-4f9d-a8e4-c9e1f453ecf9",
+          "state": "queued",
+          "queuePosition": 8,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:47:49.139662Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "The media manager cancelled this hand-off before Weir started on it. The original is untouched; queue it again from Activity to process it."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/87c9e703-13a3-4855-9397-32753a739892"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "87c9e703-13a3-4855-9397-32753a739892",
+          "state": "queued",
+          "queuePosition": 2,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:47:48.222831Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "The media manager cancelled this hand-off before Weir started on it. The original is untouched; queue it again from Activity to process it."
+        }
+      }
+    }
+  ]
+}
