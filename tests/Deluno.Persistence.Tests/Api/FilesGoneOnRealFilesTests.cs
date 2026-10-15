@@ -91,6 +91,72 @@ public sealed class FilesGoneOnRealFilesTests
         Assert.All(ids, id => Assert.True(MovieHasFile(app, id).GetAwaiter().GetResult()));
     }
 
+    [Fact]
+    public async Task Above_the_threshold_the_answer_runs_in_the_background_says_so_with_202_and_still_marks_only_what_is_missing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (libraryId, files, ids) = await SeedAsync(app);
+        foreach (var file in files.Take(Deleted)) File.Delete(file);
+        // A dropout of thousands of files: the note carries the count the file check found, which is what picks the background path.
+        await app.Services.GetRequiredService<Deluno.Contracts.IHealthCheckRepository>().UpsertResultsAsync(
+            [Deluno.Contracts.HealthCheckOutcome.Problem(
+                $"notice:library-unreachable:{libraryId}", Deluno.Contracts.HealthCheckCategories.Notice, "Films looks unreachable", "Most files could not be found.",
+                cause: null, fix: null, detailsJson: JsonSerializer.Serialize(new { libraryId, missing = 1500, total = 1520, raisedUtc = DateTimeOffset.UtcNow }))],
+            CancellationToken.None);
+
+        using var response = await app.Client.PostAsync($"/api/filesystem/libraries/{libraryId}/files-gone", content: null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("inBackground").GetBoolean());
+        Assert.Contains("marking about 1500 files as gone in the background", body.GetProperty("message").GetString());
+        // The work finishes on its own: the files that really are missing are marked gone, the ones on disk are left alone, and no file is touched.
+        var finished = false;
+        for (var attempt = 0; attempt < 200 && !finished; attempt++)
+        {
+            finished = !await MovieHasFile(app, ids[0]);
+            // reason: the background job has no completion signal; this polls its visible effect, up to 10 seconds.
+            if (!finished) await Task.Delay(50);
+        }
+        Assert.True(finished, "the background job never marked the missing files as gone");
+        for (var i = 0; i < Deleted; i++) Assert.False(await MovieHasFile(app, ids[i]), $"film {i} was gone");
+        for (var i = Deleted; i < Films; i++) Assert.True(await MovieHasFile(app, ids[i]), $"film {i} is still on disk");
+        Assert.Equal(Films - Deleted, files.Count(File.Exists));
+    }
+
+    [Fact]
+    public async Task A_second_click_while_the_background_run_is_still_going_answers_202_already_marking_and_changes_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (libraryId, files, ids) = await SeedAsync(app);
+        foreach (var file in files.Take(Deleted)) File.Delete(file);
+        await app.Services.GetRequiredService<Deluno.Contracts.IHealthCheckRepository>().UpsertResultsAsync(
+            [Deluno.Contracts.HealthCheckOutcome.Problem(
+                $"notice:library-unreachable:{libraryId}", Deluno.Contracts.HealthCheckCategories.Notice, "Films looks unreachable", "Most files could not be found.",
+                cause: null, fix: null, detailsJson: JsonSerializer.Serialize(new { libraryId, missing = 1500, total = 1520, raisedUtc = DateTimeOffset.UtcNow }))],
+            CancellationToken.None);
+        // A run is in progress for this library: the route's own record of that, the one the first click sets and its job clears.
+        var running = (System.Collections.Concurrent.ConcurrentDictionary<string, byte>)typeof(Deluno.Filesystem.FilesystemEndpointRouteBuilderExtensions)
+            .GetField("FilesGoneRunning", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        Assert.True(running.TryAdd(libraryId, 0));
+        try
+        {
+            using var response = await app.Client.PostAsync($"/api/filesystem/libraries/{libraryId}/files-gone", content: null);
+
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("Deluno is already marking these files as gone. This note goes away when it is done.", body.GetProperty("message").GetString());
+            Assert.True(body.GetProperty("inBackground").GetBoolean());
+            Assert.Equal(0, body.GetProperty("markedGone").GetInt32());
+            // Nothing was started, so nothing changed.
+            Assert.All(ids, id => Assert.True(MovieHasFile(app, id).GetAwaiter().GetResult()));
+        }
+        finally
+        {
+            running.TryRemove(libraryId, out _);
+        }
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task<bool> MovieHasFile(ApplicationTestHost app, string id)
