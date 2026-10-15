@@ -3,6 +3,7 @@ import { describeRequestFailure, RequestFailedError } from "./search-reasons";
 /**
  * What the sign-in and first-run screens say when the server refuses, in plain words and never the raw reply (#1339).
  * Everything but the two cases that only these screens have goes through the shared request-failure helper.
+ * It never rejects: every reply read is guarded and the last step is the shared helper, which never rejects either.
  */
 export async function describeAuthRefusal(error: unknown, action: string): Promise<string> {
   if (error instanceof RequestFailedError && error.response.status === 401) {

@@ -69,7 +69,7 @@ describe("links to /api/ routes work signed in (#1331)", () => {
 const HANDLER_ATTRIBUTES = new Set(["onClick", "onSubmit", "onSelect"]);
 
 /** Helpers that never reject: they turn any failure into words. */
-const NEVER_REJECTS = new Set(["describeRequestFailure"]);
+const NEVER_REJECTS = new Set(["describeRequestFailure", "describeAuthRefusal"]);
 
 /**
  * True when an await sits outside any try block that has a catch clause (awaits in a catch or finally are not protected by it).
