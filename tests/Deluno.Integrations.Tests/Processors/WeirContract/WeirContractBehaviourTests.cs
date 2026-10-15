@@ -503,7 +503,7 @@ public sealed class WeirContractBehaviourTests
     [InlineData("status-queued")]
     public async Task A_hand_off_Weir_has_not_changed_for_the_limit_is_released_to_import_the_original_when_that_is_the_library_rule(string state)
     {
-        var recording = WeirContract.Rec(state);
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", state);
         var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
         var replay = new WeirReplay(Rec("capabilities"), recording, WeirContract.Rec("handoff-cancelled")) { IgnoreIds = true };
 
@@ -521,7 +521,7 @@ public sealed class WeirContractBehaviourTests
     [InlineData("block")]
     public async Task A_queued_hand_off_Weir_has_not_changed_for_the_limit_is_left_for_a_person_under_the_other_library_rules(string mode)
     {
-        var recording = WeirContract.Rec("status-queued");
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", "status-queued");
         var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
         var replay = new WeirReplay(Rec("capabilities"), recording, WeirContract.Rec("handoff-cancelled")) { IgnoreIds = true };
 
@@ -537,7 +537,7 @@ public sealed class WeirContractBehaviourTests
     [InlineData("block")]
     public async Task A_hand_off_Weir_says_it_is_working_on_is_never_interrupted_at_the_limit_whatever_the_library_rule(string mode)
     {
-        var recording = WeirContract.Rec("status-working");
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", "status-working");
         var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
         var replay = new WeirReplay(Rec("capabilities"), recording) { IgnoreIds = true };
 
@@ -553,7 +553,7 @@ public sealed class WeirContractBehaviourTests
     [InlineData("status-working", 3)]
     public async Task A_hand_off_Weir_changed_within_the_limit_keeps_waiting(string state, int hoursSinceChange)
     {
-        var recording = WeirContract.Rec(state);
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", state);
         var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
         var replay = new WeirReplay(Rec("capabilities"), recording) { IgnoreIds = true };
 
