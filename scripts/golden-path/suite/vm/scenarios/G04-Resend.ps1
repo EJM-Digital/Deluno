@@ -180,7 +180,7 @@ function Get-ExpectedProcessorOutput {
 }
 
 function Invoke-ResendTakeover {
-    Invoke-Scenario -Id 'resend.single-file.takeover' -Title "A single file is sent again while Weir works on it: Weir's completed answer for the resend names no output path, and Deluno imports from where Weir puts it" -Body {
+    Invoke-Scenario -Id 'resend.single-file.takeover' -Title "A single file is sent again while Weir works on it: Deluno imports from the output path Weir names, or finds the cleaned file itself when Weir names none" -Body {
         $kind = 'qbittorrent'
         $moment = Get-OpenFirstSend -Kind $kind -Timing 'during' -Label 'retakeover'
         $film = $moment.Film; $first = $moment.First
@@ -198,20 +198,31 @@ function Invoke-ResendTakeover {
             if ($second) { $s = Get-WeirIntakeStatus -HandoffId $second.id; if ($s -and $s.state -in 'completed', 'cancelled', 'failed') { [pscustomobject]@{ Id = $second.id; Status = $s } } }
         }
         $answer = if ($weir.Ok) { $weir.Value.Status } else { $null }
-        Add-Check "Weir's final answer for the resend is 'completed' and names no output path" ([bool]$answer -and $answer.state -eq 'completed' -and -not $answer.outputPath) $(if ($answer) { "state '$($answer.state)', outputPath '$($answer.outputPath)'" } else { "Weir gave no final answer for the resend in 180 s (or its secret could not be read)" })
+        Add-Check "Weir's final answer for the resend is 'completed'" ([bool]$answer -and $answer.state -eq 'completed') $(if ($answer) { "state '$($answer.state)', outputPath '$($answer.outputPath)'" } else { "Weir gave no final answer for the resend in 180 s (or its secret could not be read)" })
+        # Either contract is right. Weir before 1.0.0-rc.18 names no path in a resend's finished answer; from rc.18 it does.
+        $weirNamesPath = [bool]$answer -and -not [string]::IsNullOrWhiteSpace([string]$answer.outputPath)
+        Add-Note "takeover/$kind : Weir's finished answer for the resend $(if ($weirNamesPath) { "names the output path '$($answer.outputPath)'; the branch run is: Deluno imports from the path Weir names" } else { 'names no output path; the branch run is: Deluno finds the cleaned file through the layout fallback and says so' })."
 
         Assert-ResendSettled -Film $film -First $first -What "takeover/$kind" -FirstWasImported:$firstWasImported
 
-        # Deluno found the cleaned file where Weir puts it: the source's path below the watched folder, under the output folder.
         $lib = Get-Library -MediaType movies
         $watched = if ($lib.downloadsPath) { [string]$lib.downloadsPath } else { 'C:\Downloads\Completed\Movies' }
         $output = if ($lib.processorOutputPath) { [string]$lib.processorOutputPath } else { 'C:\Weir\Ready\Movies' }
         $second = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $first.id } | Select-Object -First 1
-        $expected = if ($second) { Get-ExpectedProcessorOutput -SourcePath ([string]$second.sourcePath) -WatchedFolder $watched -OutputFolder $output } else { $null }
-        Add-Check "Deluno imported the file from <output folder>\<source path relative to the watched folder>" ([bool]$expected -and [bool]$second -and [string]$second.outputPath -ieq $expected) $(if ($second) { "source '$($second.sourcePath)', expected '$expected', hand-off output '$($second.outputPath)'" } else { 'there is no second hand-off' })
-        # Deluno's own record of what it did (its Activity feed): it names the cleaned file it found without being told where it was.
-        $fallback = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) -and $_ -match 'found the cleaned file|matched processed output|Found the processed file' })
-        Add-Check "Deluno's log names that it found the cleaned file itself" ($fallback.Count -gt 0) "$($fallback.Count) Activity rows"
+        if ($weirNamesPath) {
+            # Weir names the path: Deluno imports from exactly that path.
+            $named = ([string]$answer.outputPath).Replace('/', '\').TrimEnd('\')
+            $used = if ($second) { ([string]$second.outputPath).Replace('/', '\').TrimEnd('\') } else { '' }
+            Add-Check "Deluno imported the file from the output path Weir named" ([bool]$second -and $used -ieq $named) $(if ($second) { "Weir named '$named', hand-off output '$used'" } else { 'there is no second hand-off' })
+        }
+        else {
+            # Weir names none: Deluno found the cleaned file where Weir puts it, the source's path below the watched folder, under the output folder.
+            $expected = if ($second) { Get-ExpectedProcessorOutput -SourcePath ([string]$second.sourcePath) -WatchedFolder $watched -OutputFolder $output } else { $null }
+            Add-Check "Deluno imported the file from <output folder>\<source path relative to the watched folder>" ([bool]$expected -and [bool]$second -and [string]$second.outputPath -ieq $expected) $(if ($second) { "source '$($second.sourcePath)', expected '$expected', hand-off output '$($second.outputPath)'" } else { 'there is no second hand-off' })
+            # Deluno's own record of what it did (its Activity feed): it names the cleaned file it found without being told where it was.
+            $fallback = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) -and $_ -match 'found the cleaned file|matched processed output|Found the processed file' })
+            Add-Check "Deluno's log names that it found the cleaned file itself" ($fallback.Count -gt 0) "$($fallback.Count) Activity rows"
+        }
     }
 }
 
