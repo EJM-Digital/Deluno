@@ -233,8 +233,10 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
-    # Observed 23 to 34 minutes (3 Oct 2026), about 31 of them the tests.
-    timeout-minutes: 60
+    # Observed 23 to 34 minutes (3 Oct 2026), 41 on 15 Oct, and more than 57 for the tests alone once the coverage work
+    # added about 1,500 Persistence tests (15 Oct, run 38731946211 cancelled at the old 60). Splitting Persistence across
+    # jobs is the lasting fix (Refs #1346); until then the job may take 90.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -370,8 +372,9 @@ jobs:
     needs: [changes, web-dist]
     if: ${{ needs.changes.outputs.run_e2e_smoke == 'true' }}
     runs-on: ubuntu-latest
-    # Observed 9 to 15 minutes per shard.
-    timeout-minutes: 30
+    # Observed 9 to 15 minutes per shard, then 25 for shard 1 once the real-server specs joined (15 Oct), and more than
+    # 29 on run 38731946211, cancelled at the old 30.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 2
