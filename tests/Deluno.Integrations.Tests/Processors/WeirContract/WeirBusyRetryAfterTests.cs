@@ -17,26 +17,21 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 /// <c>{"detail": ..., "code": "internal_error"}</c>. Deluno reads <c>Retry-After</c> through one rule, <see cref="ProcessorRetryAfter"/>,
 /// for every call it makes to Weir, and waits at least that long before it asks again.
 ///
-/// <para><b>These replies are built here, not replayed.</b> They follow Weir 1.0.0-rc.18's source
-/// (<c>DatabaseBusyMiddleware.cs</c>, <c>ProtocolMiddleware.cs</c>) and its release notes, because the golden VM's recording of them
-/// (<c>weir/1.0.0-rc.18/database-busy-outcome</c> and <c>internal-error-outcome</c>, made by
-/// <c>scripts/recorded-replies/Record-WeirErrors.ps1</c>) has not been made yet: the run was stopped on 14 October 2026 (see
-/// tests/fixtures/recorded/MISSING.md). When it is made, replace <see cref="Busy"/> and <see cref="InternalError"/> with
-/// the single reply of each recording. The issue text quotes the body as
-/// <c>{"error":"database_busy"}</c>; Weir's source writes <c>detail</c> and <c>code</c>, which is what is used here, and Deluno reads neither
-/// field for this rule (only the status and the header).</para>
+/// <para><b>These replies are Weir 1.0.0-rc.18's own</b>, recorded on the golden VM by <c>scripts/recorded-replies/Record-WeirErrors.ps1</c>
+/// (<c>weir/1.0.0-rc.18/database-busy-outcome</c> and <c>internal-error-outcome</c>), on a second Weir server whose busy timeout was one second
+/// and whose write lock another program held. The recorded <c>Retry-After</c> is therefore <c>1</c>; where a test is about another number or
+/// a date or no header, it is that same reply with only that header changed. Deluno reads neither body field for this rule (only the status
+/// and the header).</para>
 /// </summary>
 public sealed class WeirBusyRetryAfterTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-10-14T09:00:00Z", CultureInfo.InvariantCulture);
     private const string HandoffId = "01a1371c38837e979272e31cd3ce6c3a";
 
-    private const string BusyBody = "{\"detail\":\"Weir is busy with other changes and could not finish this request. Try again in 30 seconds.\",\"code\":\"database_busy\"}";
-    private const string InternalBody = "{\"detail\":\"Weir ran into an unexpected problem and could not finish this request. The details are in Weir's log.\",\"code\":\"internal_error\"}";
-
     private static HttpResponseMessage Busy(string? retryAfter)
     {
-        var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent(BusyBody, System.Text.Encoding.UTF8, "application/json") };
+        var response = Rec("database-busy-outcome").Single.Reply.ToResponse();
+        response.Headers.Remove("Retry-After");
         if (retryAfter is not null)
         {
             response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
@@ -45,8 +40,7 @@ public sealed class WeirBusyRetryAfterTests
         return response;
     }
 
-    private static HttpResponseMessage InternalError()
-        => new(HttpStatusCode.InternalServerError) { Content = new StringContent(InternalBody, System.Text.Encoding.UTF8, "application/json") };
+    private static HttpResponseMessage InternalError() => Rec("internal-error-outcome").Single.Reply.ToResponse();
 
     // ----- the rule
 
@@ -99,6 +93,24 @@ public sealed class WeirBusyRetryAfterTests
     [Fact]
     public void With_no_time_given_the_schedule_the_caller_had_stands()
         => Assert.Equal(TimeSpan.FromMinutes(4), ProcessorRetryAfter.Wait(TimeSpan.FromMinutes(4), null, 0.7));
+
+    [Fact]
+    public void The_recorded_503_is_Weirs_own_and_carries_the_time_it_asked_for()
+    {
+        var recorded = Rec("database-busy-outcome").Single.Reply;
+        using var response = recorded.ToResponse();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("database_busy", recorded.Body);
+        Assert.Equal(TimeSpan.FromSeconds(1), ProcessorRetryAfter.Read(response, Now));
+    }
+
+    [Fact]
+    public void The_same_report_sent_again_after_the_lock_is_gone_is_an_ordinary_unknown_hand_off()
+    {
+        Assert.Equal(404, Rec("database-busy-retried").Single.Reply.Status);
+        Assert.Equal(Rec("database-busy-outcome").Single.Request.Path, Rec("database-busy-retried").Single.Request.Path);
+    }
 
     // ----- every call reads it the same way
 

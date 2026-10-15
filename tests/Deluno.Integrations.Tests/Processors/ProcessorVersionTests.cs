@@ -27,7 +27,7 @@ public sealed class ProcessorVersionTests
 
         var version = await service.ReadVersionAsync(Connection(), CancellationToken.None);
 
-        Assert.Equal("1.0.0-rc.13", version);
+        Assert.Equal("1.0.0-rc.18", version);
         var call = Assert.Single(sent);
         Assert.Equal("/api/v1/intake/capabilities", call.Path);
         Assert.Equal("shared-secret", call.Secret);
@@ -61,7 +61,7 @@ public sealed class ProcessorVersionTests
             return Capabilities();
         });
 
-        Assert.Equal("1.0.0-rc.13", await service.ReadVersionAsync(Connection(), CancellationToken.None));
+        Assert.Equal("1.0.0-rc.18", await service.ReadVersionAsync(Connection(), CancellationToken.None));
         Assert.Single(paths);
     }
 
@@ -123,7 +123,7 @@ public sealed class ProcessorVersionTests
 
         Assert.True(result.IsReachable);
         var recorded = Assert.Single(store.Recorded);
-        Assert.Equal((ConnectionKinds.Processor, "connection-1", "weir", "1.0.0-rc.13"), recorded);
+        Assert.Equal((ConnectionKinds.Processor, "connection-1", "weir", "1.0.0-rc.18"), recorded);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class ProcessorVersionTests
     private static ProcessorConnectionService Service(Func<HttpRequestMessage, HttpResponseMessage> send)
         => new(new Factory(new HttpClient(new StubHandler(send))));
 
-    /// <summary>Weir 1.0.0-rc.13's recorded capabilities, with the given values of it changed.</summary>
+    /// <summary>Weir 1.0.0-rc.18's recorded capabilities, with the given values of it changed.</summary>
     private static HttpResponseMessage Capabilities(params (string Path, object? Value)[] edits)
         => Json(RecordedReplies.Weir("capabilities").Body("capabilities", edits));
 

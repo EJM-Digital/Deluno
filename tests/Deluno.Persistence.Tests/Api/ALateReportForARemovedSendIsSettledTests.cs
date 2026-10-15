@@ -21,8 +21,8 @@ namespace Deluno.Persistence.Tests.Api;
 ///
 /// <para>The reports are the ones the real Weir sent (tests/fixtures/recorded/deluno/&lt;version&gt;/events-*, #1239), with
 /// only the library, the hand-off and the folder changed to the test's own: handoffId, status, processorName, libraryId,
-/// releaseName, outputPath, message and outputFiles - and no source path. The one report no recording holds, a rejection, is
-/// built here and listed in tests/fixtures/recorded/MISSING.md.</para>
+/// releaseName, outputPath, message and outputFiles - and no source path. A rejection is Weir 1.0.0-rc.18's own
+/// (<c>events-failed-rejected</c>: an audio-only file under its reject policy).</para>
 ///
 /// <para>#1239: a report Weir really sent (tests/fixtures/recorded/deluno/*/events-*) is posted from its recording wherever one matches the case; a case with no real report stays
 /// inline on purpose, and tests/fixtures/recorded/MISSING.md lists it with the Weir state that would produce it.</para>
@@ -187,11 +187,10 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         var scene = await SceneAsync(app);
         var first = await RemovedAndAskedForAgainAsync(app, scene, "transmission-1", "hash-retthree", ProcessorHandoffStatuses.Dismissed);
 
-        // A hold for a file under Weir's minimum size, a file it cannot read, and a download that was gone are Weir's recorded reports.
-        // A rejection has never been recorded (the golden VM has no workflow that rejects), so it stays as Weir's code builds it.
+        // A hold for a file under Weir's minimum size, a file it cannot read, a download that was gone and a file it rejected are Weir's recorded reports.
         var response = kind switch
         {
-            "rejected" => await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new { handoffId = first.Id, status = "failed", processorName = "Weir", libraryId = scene.LibraryId, releaseName = Release + ".mkv", message = "bad release", disposition = "rejected", sourceRemoved = true, outputFiles = Array.Empty<string>() }),
+            "rejected" => await WeirFailsAsync(app, scene, first.Id, "events-failed-rejected"),
             "held" => await WeirFailsAsync(app, scene, first.Id, "events-failed-under-minimum"),
             "unreadable" => await WeirFailsAsync(app, scene, first.Id, "events-failed-unreadable"),
             _ => await WeirFailsAsync(app, scene, first.Id, "events-failed-source-gone")

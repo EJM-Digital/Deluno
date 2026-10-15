@@ -62,7 +62,7 @@ public sealed class ConnectionVersionParserTests
     [Fact]
     public void A_processor_publishes_its_version_in_its_capabilities()
     {
-        Assert.Equal("1.0.0-rc.13", ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities")));
+        Assert.Equal("1.0.0-rc.18", ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities")));
         Assert.Equal("0.0.1-dev", ConnectionVersionParsers.FromProcessorCapabilities(RecordedReplies.Weir("capabilities").Body("capabilities", ("version", "0.0.1-dev"))));
     }
 

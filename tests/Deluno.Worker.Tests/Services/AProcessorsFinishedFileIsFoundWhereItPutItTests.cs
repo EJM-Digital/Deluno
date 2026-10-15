@@ -47,7 +47,8 @@ public sealed class AProcessorsFinishedFileIsFoundWhereItPutItTests : IDisposabl
     [Fact]
     public void A_flat_single_file_is_found_after_a_resend_whose_finished_reply_has_no_path()
     {
-        Assert.Null(NullOutputPathOf("resend-status-completed"));
+        // rc.13 gave a resend's finished status no path (rc.18 gives one); the shape is kept for an older Weir.
+        Assert.Null(NullOutputPathOf("completed-without-output-path"));
         var source = Rebased(SourceOf("handoff-resend-accepted"), _recordedWatched, _downloads);
         var expected = Put(Path.Combine(_ready, Path.GetFileName(source)));
 
@@ -74,16 +75,39 @@ public sealed class AProcessorsFinishedFileIsFoundWhereItPutItTests : IDisposabl
         Assert.Equal(expected, Assert.Single(found), ignoreCase: true);
     }
 
+    /// <summary>
+    /// Weir 1.0.0-rc.18 under its "keep both" policy (recorded: <c>output-collision-keep-both-*</c>): a different file sent under a name the
+    /// output already held comes out as <c>stem (2).ext</c> beside the first (not "(1)": Weir numbers from 2). It is found as the same
+    /// download's, and with the "replace" policy (<c>output-collision-replace-*</c>) the second lands on the very same path.
+    /// </summary>
     [Fact]
     public void A_name_collision_that_renamed_only_the_file_is_found()
     {
-        var source = Rebased(SourceOf("handoff-accepted"), _recordedWatched, _downloads);
-        var stem = Path.GetFileNameWithoutExtension(source);
-        var renamed = Put(Path.Combine(_ready, stem + " (1)" + Path.GetExtension(source)));
+        var firstOutput = Put(Rebased(OutputOf("output-collision-keep-both-first-status"), _recordedOutput, _ready));
+        var secondOutput = Put(Rebased(OutputOf("output-collision-keep-both-second-status"), _recordedOutput, _ready));
+        Assert.Equal(Path.GetFileNameWithoutExtension(firstOutput) + " (2)", Path.GetFileNameWithoutExtension(secondOutput));
+        // Both sends were the same name in the watched folder: the plain name, then the same name again.
+        var source = Path.Combine(_downloads, Path.GetFileName(firstOutput));
 
-        Assert.Equal(renamed, Assert.Single(WorkPlanner.FindCorrelatedProcessorOutputs(_ready, source, _downloads)), ignoreCase: true);
+        var found = WorkPlanner.FindCorrelatedProcessorOutputs(_ready, source, _downloads);
+
+        Assert.Contains(secondOutput, found, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(firstOutput, found, StringComparer.OrdinalIgnoreCase);
         // A reported path for the renamed file is about the same download.
-        Assert.True(ProcessorOutputPathPolicy.IsOutputAbout(renamed, _ready, source));
+        Assert.True(ProcessorOutputPathPolicy.IsOutputAbout(secondOutput, _ready, source));
+
+        var replaced = Rebased(OutputOf("output-collision-replace-second-status"), _recordedOutput, _ready);
+        Assert.Equal(replaced, Rebased(OutputOf("output-collision-replace-first-status"), _recordedOutput, _ready), ignoreCase: true);
+    }
+
+    /// <summary>Weir rc.18 answers a single file sent again while it held the first send with the output at the flat name, like any other single file.</summary>
+    [Fact]
+    public void A_flat_single_file_taken_over_from_the_first_send_is_found_at_the_output_folder()
+    {
+        var output = Put(Rebased(OutputOf("resend-takeover-second-final-status"), _recordedOutput, _ready));
+        var source = Path.Combine(_downloads, Path.GetFileName(output));
+
+        Assert.Equal(output, Assert.Single(WorkPlanner.FindCorrelatedProcessorOutputs(_ready, source, _downloads)), ignoreCase: true);
     }
 
     [Fact]

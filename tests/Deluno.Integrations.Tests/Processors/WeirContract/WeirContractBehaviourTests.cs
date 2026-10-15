@@ -303,12 +303,17 @@ public sealed class WeirContractBehaviourTests
     // ===== watching a hand-off: the status poll =====
 
     [Theory]
-    [InlineData("status-queued", 0, "queued", 12)]
-    [InlineData("status-queued", 1, "queued", 6)]
+    [InlineData("status-queued", 0, "queued", 8)]
+    [InlineData("status-queued", 1, "queued", 2)]
     [InlineData("status-working", 0, "working", null)]
     [InlineData("missing-file-status-working", 0, "working", null)]
     [InlineData("release-folder-status-working", 0, "working", null)]
     [InlineData("source-files-status-working", 0, "working", null)]
+    [InlineData("source-files-status-queued", 0, "queued", 2)]
+    [InlineData("resend-status-working", 0, "working", null)]
+    [InlineData("resend-takeover-second-status-working", 0, "working", null)]
+    [InlineData("completed-season-pack-status-working", 0, "working", null)]
+    [InlineData("failed-partial-season-pack-corrupt-status-working", 0, "working", null)]
     public async Task A_hand_off_Weir_is_still_working_on_stays_open_and_the_screen_shows_what_Weir_said(string state, int exchange, string shown, int? place)
     {
         var recording = Rec(state);
@@ -331,6 +336,13 @@ public sealed class WeirContractBehaviourTests
     [InlineData("resend-status-completed")]
     [InlineData("release-folder-status-completed")]
     [InlineData("source-files-status-completed")]
+    [InlineData("resend-takeover-second-status-completed")]
+    [InlineData("resend-takeover-second-final-status")]
+    [InlineData("output-collision-replace-first-status")]
+    [InlineData("output-collision-replace-second-status")]
+    [InlineData("output-collision-keep-both-first-status")]
+    [InlineData("output-collision-keep-both-second-status")]
+    [InlineData("completed-season-pack-status-completed")]
     public async Task A_hand_off_Weir_says_is_completed_stays_open_for_its_own_report_or_the_output_folder(string state)
     {
         var recording = Rec(state);
@@ -369,6 +381,61 @@ public sealed class WeirContractBehaviourTests
         Assert.Equal(ProcessorHandoffStatuses.Cancelled, update.Status);
         Assert.Equal("Weir stopped work on Sintel.2010.1080p.", update.Message);
         Assert.Equal("processing.cancelled", Assert.Single(_said).Kind);
+        Assert.Empty(_cases);
+    }
+
+    /// <summary>The older of two sends of one file (Weir rc.18): cancelled with "This release was sent again ...", and the hand-off ends stopped.</summary>
+    [Fact]
+    public async Task The_older_send_of_a_file_sent_again_is_cancelled_by_Weir_and_ends_stopped()
+    {
+        var recording = Rec("resend-takeover-first-status");
+
+        await WatchAsync(recording, 0);
+
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Cancelled, update.Status);
+        Assert.Equal("Weir stopped work on Sintel.2010.1080p.", update.Message);
+        Assert.Equal("processing.cancelled", Assert.Single(_said).Kind);
+        Assert.Empty(_cases);
+    }
+
+    /// <summary>Weir 1.0.0-rc.18 says "rejected" for a file it threw out under its reject policy (#1239): the hand-off ends failed in Weir's words and a case is raised.</summary>
+    [Fact]
+    public async Task A_hand_off_Weir_says_it_rejected_ends_failed_in_Weirs_words_and_leaves_a_case_to_clear()
+    {
+        var recording = Rec("failed-rejected-status-rejected");
+
+        await WatchAsync(recording, 0);
+
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, update.Status);
+        Assert.StartsWith("Weir reports rejected for Sintel.2010.1080p: Weir only processes movie and TV files that contain a video stream.", update.Message);
+        Assert.Equal("processing.failed", Assert.Single(_said).Kind);
+        Assert.Equal("processor-failed", Assert.Single(_cases).Kind);
+    }
+
+    /// <summary>A queued answer whose message says how long Weir waits for a file to settle is a wait, not a problem.</summary>
+    [Fact]
+    public async Task A_queued_hand_off_Weir_is_letting_settle_stays_open_and_ends_nothing()
+    {
+        var recording = Rec("failed-rejected-status-queued");
+
+        await WatchAsync(recording, 0);
+
+        Assert.Equal("queued", Assert.Single(_observations).State);
+        Assert.Empty(_updates);
+        Assert.Empty(_cases);
+    }
+
+    [Fact]
+    public async Task A_queued_season_pack_Weir_is_letting_settle_stays_open_and_ends_nothing()
+    {
+        var recording = Rec("failed-partial-season-pack-corrupt-status-queued");
+
+        await WatchAsync(recording, 0);
+
+        Assert.Equal("queued", Assert.Single(_observations).State);
+        Assert.Empty(_updates);
         Assert.Empty(_cases);
     }
 
