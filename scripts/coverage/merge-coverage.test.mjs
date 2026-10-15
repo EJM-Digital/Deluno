@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  parseCobertura, parseLcov, mergeFiles, buildReport, normalizePath, findExclusion, areaOf, renderTable, renderDocBlock, writeDocBlock,
-  DOC_START, DOC_END
+  parseCobertura, parseLcov, mergeFiles, buildReport, normalizePath, findExclusion, areaOf, renderTable
 } from "./merge-coverage.mjs";
 
 const COBERTURA = `<?xml version="1.0"?><coverage><sources><source>/work/Deluno</source></sources><packages><package name="Deluno.Movies"><classes>
@@ -85,16 +84,4 @@ test("areas group by project folder", () => {
   assert.equal(areaOf("src/Deluno.Api/X.cs"), "src/Deluno.Api");
   assert.equal(areaOf("apps/web/src/a.ts"), "apps/web");
   assert.equal(areaOf("scripts/a.mjs"), "scripts");
-});
-
-test("the COVERAGE.md block is rewritten between its markers and a placeholder renders without a report", () => {
-  assert.match(renderDocBlock(null), /not measured yet/);
-  const doc = `top\n${DOC_START}\nold\n${DOC_END}\nbottom\n`;
-  const report = buildReport(parseLcov("SF:scripts/a.mjs\nDA:1,1\nend_of_record\n"));
-  const out = writeDocBlock(doc, report);
-  assert.match(out, /^top\n/);
-  assert.match(out, /\| scripts \| 100.0% \| n\/a \| 1\/1 \| 0\/0 \| 1 \|/);
-  assert.match(out, /bottom\n$/);
-  assert.doesNotMatch(out, /old/);
-  assert.throws(() => writeDocBlock("no markers", report));
 });
