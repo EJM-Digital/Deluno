@@ -177,7 +177,7 @@ describe("download drawer: Queue import is open only to a download that is ready
 
   it("posts the import job with automatic transfer, a copy fallback allowed and the grab it came from, then says the title was queued", async () => {
     authedFetchMock.mockImplementation((path: string) => okResponse(path === "/api/filesystem/import/jobs"
-      ? { jobId: "job-1", preview: { sourcePath: "C:\Downloads\Example.Movie.2026.1080p.WEB-DL-GROUP.mkv", destinationPath: "Movies/Example Movie (2026)/Example Movie (2026).mkv", destinationFolder: "Movies", warnings: [], decisionSteps: [] }, job: {} }
+      ? { jobId: "job-1", preview: { sourcePath: "C:\\Downloads\\Example.Movie.2026.1080p.WEB-DL-GROUP.mkv", destinationPath: "Movies/Example Movie (2026)/Example Movie (2026).mkv", destinationFolder: "Movies", warnings: [], decisionSteps: [] }, job: {} }
       : {}));
     openDrawerFor(ready());
 

@@ -173,6 +173,97 @@ describe("Clearing the Activity timeline asks first", () => {
   });
 });
 
+describe("Recycle bin: the days kept and emptying what has expired", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    loaderData.recycleBin = [];
+    loaderData.recycleBinSettings = null;
+    queryClient.clear();
+  });
+
+  const bin = () => {
+    loaderData.recycleBin = [];
+    loaderData.recycleBinSettings = { retentionDays: 30, maxSizeMb: 102400 } as never;
+  };
+
+  function openBin() {
+    render(
+      <MemoryRouter initialEntries={["/system/recycle-bin"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+  }
+
+  it("asks the server what an empty would take, lists it, and takes nothing until Empty them is pressed", async () => {
+    bin();
+    authedFetchMock.mockImplementation((url: string, init?: RequestInit) => jsonResponse(
+      url === "/api/recycle-bin/cleanup/preview"
+        ? { items: [{ id: "a" }, { id: "b" }], expiredCount: 2, overCapacityCount: 0, bytesFreed: 2048 }
+        : init?.method === "POST" ? { removed: 2 } : []));
+    openBin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clean expired items" }));
+
+    expect(await screen.findByText("Empty these from the recycle bin?")).toBeVisible();
+    expect(screen.getByText(/2 items have passed their retention date\. Emptying frees .* This cannot be undone\./)).toBeVisible();
+    expect(authedFetchMock.mock.calls.map(([path]) => String(path))).toContain("/api/recycle-bin/cleanup/preview");
+    expect(authedFetchMock).not.toHaveBeenCalledWith("/api/recycle-bin/cleanup", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Empty them" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/recycle-bin/cleanup", expect.objectContaining({ method: "POST" })));
+    expect((await screen.findAllByText("Removed 2 expired recycle-bin items.")).length).toBeGreaterThan(0);
+  });
+
+  it("says plainly that nothing is ready and offers only Close when the preview is empty", async () => {
+    bin();
+    authedFetchMock.mockImplementation((url: string) => jsonResponse(
+      url === "/api/recycle-bin/cleanup/preview" ? { items: [], expiredCount: 0, overCapacityCount: 0, bytesFreed: 0 } : []));
+    openBin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clean expired items" }));
+
+    expect(await screen.findByText("Nothing is ready to be emptied")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Empty them" })).not.toBeInTheDocument();
+    expect(authedFetchMock).not.toHaveBeenCalledWith("/api/recycle-bin/cleanup", expect.anything());
+  });
+
+  it("saves the days kept with a PUT of both numbers and says the settings were saved", async () => {
+    bin();
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "PUT" ? { retentionDays: 45, maxSizeMb: 102400 } : []));
+    openBin();
+
+    fireEvent.change(screen.getByDisplayValue("30"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save recycle-bin settings" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/recycle-bin/settings",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ retentionDays: 45, maxSizeMb: 102400 }) })));
+    expect((await screen.findAllByText("Recycle-bin settings saved.")).length).toBeGreaterThan(0);
+  });
+
+  it("reads the bin and its settings again when RecycleBinChanged arrives, with no reload", async () => {
+    vi.useFakeTimers();
+    bin();
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    openBin();
+
+    const handlers = [...(pushHandlers.get("RecycleBinChanged") ?? [])];
+    expect(handlers.length).toBeGreaterThan(0);
+    for (const handler of handlers) handler({ id: "recycle-bin" });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const keys = invalidate.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey: unknown }).queryKey));
+    expect(keys).toContain(JSON.stringify(["src", "recycle-bin"]));
+    expect(keys).toContain(JSON.stringify(["src", "recycle-bin-settings"]));
+    invalidate.mockRestore();
+    vi.useRealTimers();
+  });
+});
+
 /** #1073: a one-time note on the Health screen is cleared by hand, from the screen. */
 describe("Health notes are clearable (#1073)", () => {
   afterEach(() => {
