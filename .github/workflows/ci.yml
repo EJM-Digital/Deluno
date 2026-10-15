@@ -193,6 +193,8 @@ jobs:
           BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
           node --test scripts/check-coverage-register.test.mjs
+          node scripts/check-real-specs.mjs
+          node --test scripts/check-real-specs.test.mjs
           args=(--report)
           if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
             echo "No earlier commit to compare the register with (a first push or a manual run): the gap ratchet is skipped."
