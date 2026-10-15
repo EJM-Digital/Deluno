@@ -124,6 +124,70 @@ public sealed class SettingsPatchPersistsOnDiskTests
     }
 
     [Fact]
+    public async Task The_import_policy_fields_are_stored_under_their_own_keys_within_their_bounds_and_read_back_as_saved()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        await PatchAsync(app, new
+        {
+            renameOnImport = true, renameFoldersOnImport = true, useHardlinks = true, minimumFreeSpaceMb = 2048, skipFreeSpaceCheck = true,
+            setPermissionsOnImport = true, folderChmod = "755", chownGroup = "media",
+            leftoverDownloadCleanupEnabled = true, leftoverDownloadCleanupAgeHours = 72, leftoverExcludePatterns = "*.nfo, Thumbs.db", leftoverMinAgeHours = 5,
+            forceImportEnabled = true, forceImportMaxTries = 4, forceImportMinimumMegabytes = 250, unmatchedImportPolicy = "give-up", unmatchedImportGiveUpDays = 14
+        });
+
+        var settings = await app.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.True(settings.GetProperty("renameOnImport").GetBoolean());
+        Assert.True(settings.GetProperty("renameFoldersOnImport").GetBoolean());
+        Assert.True(settings.GetProperty("useHardlinks").GetBoolean());
+        Assert.Equal(2048, settings.GetProperty("minimumFreeSpaceMb").GetInt32());
+        Assert.Equal(72, settings.GetProperty("leftoverDownloadCleanupAgeHours").GetInt32());
+        Assert.Equal("*.nfo, Thumbs.db", settings.GetProperty("leftoverExcludePatterns").GetString());
+        Assert.Equal(4, settings.GetProperty("forceImportMaxTries").GetInt32());
+        Assert.Equal(14, settings.GetProperty("unmatchedImportGiveUpDays").GetInt32());
+        Assert.Equal("true", await SettingAsync(app, "media.renameOnImport"));
+        Assert.Equal("true", await SettingAsync(app, "media.renameFoldersOnImport"));
+        Assert.Equal("true", await SettingAsync(app, "media.useHardlinks"));
+        Assert.Equal("2048", await SettingAsync(app, "import.minimumFreeSpaceMb"));
+        Assert.Equal("true", await SettingAsync(app, "downloads.leftoverCleanup.enabled"));
+        Assert.Equal("72", await SettingAsync(app, "downloads.leftoverCleanup.ageHours"));
+        Assert.Equal("755", await SettingAsync(app, "media.folderChmod"));
+        Assert.Equal("true", await SettingAsync(app, "imports.forceImport.enabled"));
+        Assert.Equal("250", await SettingAsync(app, "imports.forceImport.minimumMegabytes"));
+        Assert.Equal("14", await SettingAsync(app, "import.unmatchedGiveUpDays"));
+
+        // A value outside what the scheduler honours is held to its bounds rather than stored as typed.
+        await PatchAsync(app, new { leftoverDownloadCleanupAgeHours = 99999, forceImportMaxTries = 99, unmatchedImportGiveUpDays = 9999 });
+        Assert.Equal("8760", await SettingAsync(app, "downloads.leftoverCleanup.ageHours"));
+        Assert.Equal("25", await SettingAsync(app, "imports.forceImport.maxTries"));
+        Assert.Equal("365", await SettingAsync(app, "import.unmatchedGiveUpDays"));
+    }
+
+    [Fact]
+    public async Task The_naming_fields_and_the_safeguards_are_stored_under_their_own_keys_and_read_back_as_saved()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        await PatchAsync(app, new
+        {
+            movieFolderFormat = "{Movie Title}", seriesFolderFormat = "{Series Title}", movieFileFormat = "{Movie Title} ({Release Year})", episodeFileFormat = "{Series Title} S{season:00}E{episode:00}",
+            replaceIllegalCharacters = false, colonReplacementMode = "dash", seasonFolderFormat = "Season {season:00}", specialsFolderFormat = "Specials",
+            searchScoringMode = "rules-only", releaseNeverGrabPatterns = "cam, hdcam"
+        });
+
+        var settings = await app.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.Equal("{Movie Title}", settings.GetProperty("movieFolderFormat").GetString());
+        Assert.False(settings.GetProperty("replaceIllegalCharacters").GetBoolean());
+        Assert.Equal("Season {season:00}", settings.GetProperty("seasonFolderFormat").GetString());
+        Assert.Equal("{Movie Title}", await SettingAsync(app, "media.movieFolderFormat"));
+        Assert.Equal("false", await SettingAsync(app, "media.replaceIllegalCharacters"));
+        Assert.Equal("Specials", await SettingAsync(app, "media.specialsFolderFormat"));
+        Assert.Equal("rules-only", await SettingAsync(app, "search.scoringMode"));
+        Assert.Contains("cam", await SettingAsync(app, "search.neverGrabPatterns"));
+        Assert.Equal("rules-only", settings.GetProperty("searchScoringMode").GetString());
+    }
+
+    [Fact]
     public async Task Nobody_who_is_not_signed_in_can_change_a_setting()
     {
         await using var app = await ApplicationTestHost.StartAsync();

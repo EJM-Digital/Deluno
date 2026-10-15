@@ -16,7 +16,7 @@ const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }));
 const revalidate = vi.fn();
-const loaderData = { libraries: [] as LibraryItem[], languages: [] as { code: string; name: string }[], settings: emptyPlatformSettingsSnapshot as Record<string, unknown> };
+const loaderData = { libraries: [] as LibraryItem[], languages: [] as { code: string; name: string }[], settings: emptyPlatformSettingsSnapshot as object };
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   useLoaderData: () => loaderData,
