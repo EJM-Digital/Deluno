@@ -287,6 +287,7 @@ public sealed class ATitlePageRoutesDoWhatThePageAsksTests
         Assert.Equal("missing", second.GetProperty("wantedStatus").GetString());
         Assert.Contains(episodes, item => item.GetProperty("seasonNumber").GetInt32() == 0);
         Assert.Equal("standard", inventory.GetProperty("numbering").GetProperty("numberingScheme").GetString());
+        Assert.True(File.Exists(show.FilePath), "reading the inventory leaves the episode's file where it is");
 
         using var unknown = await app.Client.GetAsync("/api/series/no-such-show/inventory");
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
@@ -328,7 +329,7 @@ public sealed class ATitlePageRoutesDoWhatThePageAsksTests
     }
 
     [Fact]
-    public async Task Searching_for_episodes_with_none_chosen_is_refused_an_unknown_show_is_a_not_found_and_a_show_nothing_wants_answers_blocked()
+    public async Task Searching_for_episodes_with_none_chosen_is_refused_an_unknown_show_is_a_not_found_and_an_episode_that_is_not_tracked_is_refused()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var show = await ApiScenes.ShowOnDiskAsync(app);

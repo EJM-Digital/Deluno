@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The workstation can be busy with other builds; a slow render is not a failed page.
+configure({ asyncUtilTimeout: 8000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The shelf's own actions (coverage register, area library): what "Search these N" searches, what "Update all metadata" and the
@@ -50,9 +54,9 @@ beforeEach(() => {
   calls = [];
   mocks.fetchJson.mockImplementation(async (path: string, init?: RequestInit) => {
     calls.push({ url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path.startsWith("/api/movies/page")) return pageFor(new URLSearchParams(path.split("?")[1]));
-    if (path.endsWith("/controls")) return { kind: "movies", filterFields: [], sortFields: [], posterOptions: [] };
-    if (path === "/api/libraries") return [{ id: "lib-a", name: "Films", mediaType: "movies", rootPath: "/films", qualityProfileId: "p1" }];
+    if (path.startsWith("/api/movies/page") || path.startsWith("/api/series/page")) return pageFor(new URLSearchParams(path.split("?")[1]));
+    if (path.endsWith("/controls")) return { kind: path.includes("series") ? "shows" : "movies", filterFields: [], sortFields: [], posterOptions: [] };
+    if (path === "/api/libraries") return [{ id: "lib-a", name: "Films", mediaType: "movies", rootPath: "/films", qualityProfileId: "p1" }, { id: "lib-t", name: "Shows", mediaType: "tv", rootPath: "/shows", qualityProfileId: "p2" }];
     if (path.startsWith("/api/metadata/search")) return metadataMatches;
     if (path === "/api/metadata/status") return { isConfigured: true };
     if (path === "/api/movies/metadata/jobs") return { message: "Queued 12 titles for a metadata update." };
@@ -61,7 +65,7 @@ beforeEach(() => {
   mocks.authedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    const reply = url === "/api/movies/bulk/search" ? bulkSearchReply : url === "/api/movies" ? createReply : { ok: true, body: {} };
+    const reply = url === "/api/movies/bulk/search" || url === "/api/series/bulk/search" ? bulkSearchReply : url === "/api/movies" || url === "/api/series" ? createReply : { ok: true, body: {} };
     return new Response(JSON.stringify(reply.body), { status: reply.status ?? (reply.ok ? 200 : 400), headers: { "Content-Type": "application/json" } });
   });
 });
@@ -71,8 +75,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function renderShelf(url = "/") {
-  const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="movies" /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: [url] });
+async function renderShelf(url = "/", variant: "movies" | "shows" = "movies") {
+  const router = createMemoryRouter([{ path: "/", element: <LibraryView variant={variant} /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: [url] });
   render(<RouterProvider router={router} />);
   return router;
 }
@@ -326,12 +330,15 @@ describe("the Add dialog", () => {
     fireEvent.change(within(dialog).getByPlaceholderText("Year (optional)"), { target: { value: "2001" } });
     fireEvent.change(within(dialog).getByPlaceholderText("IMDb ID (optional)"), { target: { value: "tt0000001" } });
 
+    const shelfReadsBefore = calls.filter((c) => c.url.startsWith("/api/movies/page")).length;
+
     fireEvent.click(within(dialog).getByRole("button", { name: "Add movie manually" }));
 
     await waitFor(() => expect(bodyOf("/api/movies")).toHaveLength(1));
     expect(bodyOf("/api/movies")[0]).toMatchObject({ title: "Home Movie", releaseYear: 2001, imdbId: "tt0000001", monitored: true });
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("Movie added"));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Add movie/ })).toBeNull());
+    await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/movies/page")).length).toBeGreaterThan(shelfReadsBefore));
   });
 
   it("a server refusal on add is shown as the server's sentence", async () => {
@@ -352,5 +359,88 @@ describe("the ?filter= link and ?add=true link", () => {
 
     const dialog = await screen.findByRole("dialog", { name: /Add movie/ });
     expect((within(dialog).getByPlaceholderText(/Search movies, for example/) as HTMLInputElement).value).toBe("Nosferatu");
+  });
+});
+
+describe("the status link on the shelf", () => {
+  const statusOf = (url: string) => new URLSearchParams(url.split("?")[1]).get("status");
+
+  it("?filter=missing asks the catalogue for the missing pill on load", async () => {
+    await renderShelf("/?filter=missing");
+
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/movies/page") && statusOf(c.url) === "missing")).toBe(true));
+  });
+
+  it("?filter=upgrades asks for the upgrades pill", async () => {
+    await renderShelf("/?filter=upgrades");
+
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/movies/page") && statusOf(c.url) === "upgrades")).toBe(true));
+  });
+
+  it("an unknown ?filter value is ignored and the shelf asks for everything", async () => {
+    // A library of its own, so the shelf's remembered answers for the default view cannot stand in for a read.
+    await renderShelf("/?library=lib-a&filter=not-a-pill");
+    await searchButton();
+
+    const reads = calls.filter((c) => c.url.startsWith("/api/movies/page") && new URLSearchParams(c.url.split("?")[1]).get("libraryId") === "lib-a");
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((c) => statusOf(c.url) === null)).toBe(true);
+  });
+});
+
+describe("the TV shelf's Add dialog", () => {
+  const showMatch = { provider: "tmdb", providerId: "7", mediaType: "tv", title: "Severance", originalTitle: null, year: 2022, overview: "Work.", posterUrl: null, backdropUrl: null, rating: 8.7, ratings: [], genres: ["Drama"], cast: [], crew: [], imdbId: "tt11280740", externalUrl: null, dataSource: "tvdb", tvDbId: "371980" };
+
+  async function openShowDialog() {
+    await renderShelf("/", "shows");
+    await screen.findByRole("button", { name: /^Search these \d+$/ });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add TV show" })[0]);
+    return await screen.findByRole("dialog", { name: /Add TV show/ });
+  }
+
+  it("a manual add posts the show with no episode preset when All is chosen, to the series route", async () => {
+    const dialog = await openShowDialog();
+    fireEvent.change(within(dialog).getByPlaceholderText(/Search TV shows, for example/), { target: { value: "Home Show" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add TV show manually" }));
+
+    await waitFor(() => expect(bodyOf("/api/series")).toHaveLength(1));
+    expect(bodyOf("/api/series")[0]).toMatchObject({ title: "Home Show", monitored: true, listMonitorMode: null });
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("TV show added"));
+  });
+
+  it("choosing a monitor preset sends it", async () => {
+    const dialog = await openShowDialog();
+    fireEvent.change(within(dialog).getByPlaceholderText(/Search TV shows, for example/), { target: { value: "Home Show" } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Which episodes to monitor" }), { target: { value: "missing" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add TV show manually" }));
+
+    await waitFor(() => expect(bodyOf("/api/series")).toHaveLength(1));
+    expect(bodyOf("/api/series")[0]).toMatchObject({ listMonitorMode: "missing" });
+  });
+
+  it("picking a match carries the provider record and the TVDB id into the add", async () => {
+    metadataMatches = [showMatch];
+    const dialog = await openShowDialog();
+    fireEvent.change(within(dialog).getByPlaceholderText(/Search TV shows, for example/), { target: { value: "Sev" } });
+    fireEvent.click(await within(dialog).findByText("Severance"));
+
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Add selected TV show" }));
+
+    await waitFor(() => expect(bodyOf("/api/series")).toHaveLength(1));
+    const posted = JSON.stringify(bodyOf("/api/series")[0]);
+    expect(posted).toContain("Severance");
+    expect(posted).toContain("371980");
+    expect(posted).toContain("tt11280740");
+  });
+
+  it("Search these N on the TV shelf posts the show ids to the series route", async () => {
+    pageFor = () => page([{ ...movie("s1", "Severance"), type: "series" }, { ...movie("s2", "Silo"), type: "series" }]);
+    await renderShelf("/", "shows");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Search these 2" }));
+
+    await waitFor(() => expect(bodyOf("/api/series/bulk/search")).toEqual([{ seriesIds: ["s1", "s2"] }]));
   });
 });

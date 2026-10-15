@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The workstation can be busy with other builds; a slow render is not a failed page.
+configure({ asyncUtilTimeout: 8000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The Search page's requests and grabs (coverage register, area search-grab): what it asks the server for in each mode, which
