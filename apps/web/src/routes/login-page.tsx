@@ -15,6 +15,8 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { cn } from "../lib/utils";
+import { safeReturnAddress } from "../lib/return-address";
+import { describeAuthRefusal } from "../lib/sign-in-failure";
 
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
@@ -29,7 +31,7 @@ export function LoginPage() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [endedReason] = useState(readSignOutReason);
 
-  const returnTo = params.get("return") ?? "/";
+  const returnTo = safeReturnAddress(params.get("return"));
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -46,7 +48,7 @@ export function LoginPage() {
       await login(username.trim(), password, keepSignedIn);
       navigate(returnTo, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      setError(await describeAuthRefusal(err, "sign you in"));
     } finally {
       setBusy(false);
     }

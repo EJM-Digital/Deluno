@@ -9,6 +9,8 @@ import { LoginPage } from "./routes/login-page";
 import { SetupPage } from "./routes/setup-page";
 import { RoutePending, RouteSkeleton } from "./components/shell/skeleton";
 import { readStored } from "./lib/use-auth";
+import { readRequiresSetup } from "./lib/bootstrap-status";
+import { safeReturnAddress } from "./lib/return-address";
 
 /**
  * The old Automation address keeps its query on the way to its new home, so
@@ -60,19 +62,7 @@ function withSkeleton(loadModule: () => Promise<LazyRouteModule>) {
   };
 }
 
-async function requiresSetup() {
-  try {
-    const response = await fetch("/api/auth/bootstrap-status");
-    if (!response.ok) {
-      return false;
-    }
-
-    const payload = (await response.json()) as { requiresSetup?: boolean };
-    return payload.requiresSetup === true;
-  } catch {
-    return false;
-  }
-}
+const requiresSetup = readRequiresSetup;
 
 async function requireSessionLoader({ request }: { request: Request }) {
   if (await requiresSetup()) {
@@ -107,8 +97,7 @@ async function loginLoader() {
 async function setupLoader({ request }: { request: Request }) {
   if (!(await requiresSetup())) {
     const url = new URL(request.url);
-    const returnTo = url.searchParams.get("return");
-    throw redirect((returnTo?.startsWith("/") ? returnTo : null) || "/login");
+    throw redirect(safeReturnAddress(url.searchParams.get("return"), "/login"));
   }
 
   const { token, user } = readStored();
