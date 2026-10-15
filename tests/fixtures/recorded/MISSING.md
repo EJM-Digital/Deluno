@@ -186,3 +186,9 @@ Rows of the integrations area that need a real reply nobody has recorded yet. Ea
 - weir's account calls the companion makes when it connects Weir (`CompanionTools` connect, account state, add processor connection): the replies to creating the person's account, signing in, a wrong password and a missing account.
 - a Jackett or Prowlarr tracker address asked for its name (`AggregatorIndexerNames`): Prowlarr's `api/v1/indexer/{id}` reply and a Jackett caps reply that carries a tracker's own title (Jackett 0.24.2850 titles its caps just "Jackett").
 - the instance-wide hourly search cap and an indexer's grab limit (the figures of a refused grab) as a real indexer sees them: not an indexer reply, but the grab path needs a recorded Usenet or torrent indexer download link with its bytes (the recorded Jackett `download-link` keeps no bytes).
+
+## Needed by the System coverage rows (#1294, 15 Oct 2026)
+
+- weir: a processor output folder that holds a stray finished file, a stray season folder, and a second copy of a film the library holds, each beside a hand-off in each state (working, done, handed back), as Weir leaves the folder: the System > Health rows "Import", "Clear", "Keep" and "Remove" on a processor-output row act on those folders and have no recorded Weir state to run against
+- an indexer whose own test answers unhealthy or unreachable (a Torznab site that refuses, one that times out), recorded as the reply the Indexers screen stores, for the System > Health "Indexer" row and its grace for a new one
+- a download client with leftover finished downloads (qBittorrent, Deluge, Transmission, SABnzbd, NZBGet): the torrents/history list of a client that holds a finished item no library file shares and one a library file still shares, for System > System tasks "Run now" on the leftover-downloads task
