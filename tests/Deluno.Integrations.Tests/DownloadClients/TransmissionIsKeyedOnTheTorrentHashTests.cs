@@ -24,7 +24,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
         var reply = RecordedTransmissionRig.Reply(
             RecordedTransmissionRig.Finished, ("id", 7), ("hashString", Hash.ToUpperInvariant()), ("name", "Sherlock.Jr.1924.1080p.BluRay"));
 
-        var snapshot = await new TransmissionDownloadClient(new Factory(new Handler(sent, reply)))
+        var snapshot = await new TransmissionDownloadClient(new Factory(new RecordedTransmissionHandler(sent, reply)))
             .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         var item = Assert.Single(snapshot!.Queue);
@@ -39,7 +39,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
         // The same recorded torrent as an old daemon would send it: no hash.
         var reply = RecordedTransmissionRig.Reply(RecordedTransmissionRig.Finished, ("id", 7), ("hashString", null), ("name", "Old.Daemon.1924"));
 
-        var snapshot = await new TransmissionDownloadClient(new Factory(new Handler([], reply)))
+        var snapshot = await new TransmissionDownloadClient(new Factory(new RecordedTransmissionHandler([], reply)))
             .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         var item = Assert.Single(snapshot!.Queue);
@@ -54,7 +54,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     {
         var sent = new List<string>();
 
-        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, string.Empty, holds: true)))
+        var result = await new TransmissionDownloadClient(new Factory(new RecordedTransmissionHandler(sent, string.Empty, holds: true)))
             .ExecuteActionAsync(Client(), action, Hash.ToUpperInvariant(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -69,7 +69,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     {
         var sent = new List<string>();
 
-        var result = await new TransmissionDownloadClient(new Factory(new Handler(sent, string.Empty)))
+        var result = await new TransmissionDownloadClient(new Factory(new RecordedTransmissionHandler(sent, string.Empty)))
             .ExecuteActionAsync(Client(), "pause", "not-an-id", CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -93,7 +93,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     }
 
     private static Task<DownloadClientGrabResult> Grab(string reply)
-        => new TransmissionDownloadClient(new Factory(new Handler([], reply)))
+        => new TransmissionDownloadClient(new Factory(new RecordedTransmissionHandler([], reply)))
             .GrabAsync(Client(), new DownloadClientGrabRequest(
                 "Sherlock.Jr.1924.1080p.BluRay", "magnet:?xt=urn:btih:" + Hash, "movies", null, "Fixture"), CancellationToken.None);
 
@@ -110,7 +110,7 @@ public sealed class TransmissionIsKeyedOnTheTorrentHashTests
     /// With <paramref name="holds"/> the daemon holds the torrent until a torrent-remove arrives (#1252), as the recorded one did. A
     /// removal, a move to the top and a torrent list with nothing in it are Transmission 4.1.3's recorded replies.
     /// </summary>
-    private sealed class Handler(List<string> sent, string reply, bool holds = false) : HttpMessageHandler
+    private sealed class RecordedTransmissionHandler(List<string> sent, string reply, bool holds = false) : HttpMessageHandler
     {
         private bool _removed;
 

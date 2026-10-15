@@ -29,7 +29,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     [Fact]
     public async Task Qbittorrent_found_under_its_own_category_is_reported_as_expected()
     {
-        var torrentsInfo = QbittorrentTorrent("Example.Movie.2024.1080p", "abc123", "movies");
+        var torrentsInfo = RecordedQbittorrentTorrent("Example.Movie.2024.1080p", "abc123", "movies");
         var registry = RegistryFor("qbittorrent", new QbittorrentDownloadClient(() => RecordedQbittorrentRig.Handler(torrentsInfo)));
 
         var result = await new GrabAppearanceLookupService(Connections("qbittorrent"), registry, TimeProvider.System)
@@ -62,7 +62,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     }
 
     /// <summary>qBittorrent 5.2.1's recorded list of a download in progress, as the torrent under test.</summary>
-    private static string QbittorrentTorrent(string name, string hash, string category)
+    private static string RecordedQbittorrentTorrent(string name, string hash, string category)
         => RecordedQbittorrentRig.Info(RecordedQbittorrentRig.Downloading, ("name", name), ("hash", hash), ("category", category));
 
     // ── Transmission ────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     [Fact]
     public async Task Transmission_found_under_its_own_category_is_reported_as_expected()
     {
-        var torrentGet = TransmissionTorrent("Example.Movie.2024.1080p", TransmissionHash, "movies");
+        var torrentGet = RecordedTransmissionTorrent("Example.Movie.2024.1080p", TransmissionHash, "movies");
         var registry = RegistryFor("transmission", new TransmissionDownloadClient(new Factory(RecordedTransmissionRig.Handler(torrentGet))));
 
         var result = await new GrabAppearanceLookupService(Connections("transmission"), registry, TimeProvider.System)
@@ -106,7 +106,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     }
 
     /// <summary>Transmission 4.1.3's recorded list of a download in progress, as the torrent under test.</summary>
-    private static string TransmissionTorrent(string name, string hash, string category)
+    private static string RecordedTransmissionTorrent(string name, string hash, string category)
         => RecordedTransmissionRig.Reply(RecordedTransmissionRig.Downloading, ("hashString", hash), ("name", name), ("labels", new System.Text.Json.Nodes.JsonArray(category)));
 
     // ── Deluge ──────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     [Fact]
     public async Task Deluge_found_under_its_own_category_is_reported_as_expected()
     {
-        var torrent = DelugeTorrent("Example.Movie.2024.1080p", "def456", "movies");
+        var torrent = RecordedDelugeTorrent("Example.Movie.2024.1080p", "def456", "movies");
         var registry = RegistryFor("deluge", new DelugeDownloadClient(new Factory(RecordedDelugeRig.Handler(torrent))));
 
         var result = await new GrabAppearanceLookupService(Connections("deluge"), registry, TimeProvider.System)
@@ -146,7 +146,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     }
 
     /// <summary>Deluge 2.2.0's recorded list of a download in progress, with its one torrent given the hash, name and label under test.</summary>
-    private static string DelugeTorrent(string name, string hash, string category)
+    private static string RecordedDelugeTorrent(string name, string hash, string category)
         => RecordedReplies.Deluge("downloading").Body(
             "web.update_ui",
             (">result.torrents.c8bd46949c0daee70a4abf5e3096df264b7ac60c", hash), ("result.torrents." + hash + ".name", name), ("result.torrents." + hash + ".label", category));
@@ -224,8 +224,8 @@ public sealed class GrabAppearanceLookupPerClientTests
     {
         // SABnzbd 5.1.3's recorded history of a job that failed, with the fail message of a duplicate (the wording of a refused duplicate is not
         // yet recorded; every other value is SABnzbd's own).
-        var history = SabnzbdHistory("nzo-1", "Example.Release.2026", "movies", failMessage: "Duplicate NZB");
-        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(SabnzbdHandler(history))));
+        var history = RecordedSabnzbdHistory("nzo-1", "Example.Release.2026", "movies", failMessage: "Duplicate NZB");
+        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(RecordedSabnzbdHandler(history))));
 
         var result = await new GrabAppearanceLookupService(Connections("sabnzbd"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "nzo-1", "Example.Release.2026", CancellationToken.None);
@@ -237,8 +237,8 @@ public sealed class GrabAppearanceLookupPerClientTests
     public async Task Sabnzbd_a_release_it_rejected_is_reported_as_rejected()
     {
         // The recorded failed job exactly as SABnzbd words it: the address would not fetch.
-        var history = SabnzbdHistory("nzo-2", "Example.Release.2026", "movies", failMessage: null);
-        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(SabnzbdHandler(history))));
+        var history = RecordedSabnzbdHistory("nzo-2", "Example.Release.2026", "movies", failMessage: null);
+        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(RecordedSabnzbdHandler(history))));
 
         var result = await new GrabAppearanceLookupService(Connections("sabnzbd"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "nzo-2", "Example.Release.2026", CancellationToken.None);
@@ -250,7 +250,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     public async Task Sabnzbd_nothing_anywhere_is_reported_as_not_there()
     {
         // SABnzbd 5.1.3's recorded history, which holds a different job.
-        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(SabnzbdHandler(RecordedReplies.Sabnzbd("idle").Body("mode=history")))));
+        var registry = RegistryFor("sabnzbd", new SabnzbdDownloadClient(new Factory(RecordedSabnzbdHandler(RecordedReplies.Sabnzbd("idle").Body("mode=history")))));
 
         var result = await new GrabAppearanceLookupService(Connections("sabnzbd"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "nzo-3", "Example.Release.2026", CancellationToken.None);
@@ -270,7 +270,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     }
 
     /// <summary>SABnzbd 5.1.3's recorded history of its one failed job, as the job under test.</summary>
-    private static string SabnzbdHistory(string nzoId, string name, string category, string? failMessage)
+    private static string RecordedSabnzbdHistory(string nzoId, string name, string category, string? failMessage)
     {
         var edits = new List<(string, object?)> { ("history.slots.0.nzo_id", nzoId), ("history.slots.0.name", name), ("history.slots.0.category", category) };
         if (failMessage is not null)
@@ -281,7 +281,7 @@ public sealed class GrabAppearanceLookupPerClientTests
         return RecordedReplies.Sabnzbd("failed").Body("mode=history", edits.ToArray());
     }
 
-    private static HttpMessageHandler SabnzbdHandler(string historyJson)
+    private static HttpMessageHandler RecordedSabnzbdHandler(string historyJson)
         => RecordedReplies.Handler("sabnzbd", [RecordedReplies.Sabnzbd("idle"), RecordedReplies.Sabnzbd("version"), RecordedReplies.Sabnzbd("settings")], (request, _) =>
             request.RequestUri!.Query.Contains("mode=history", StringComparison.Ordinal) ? RecordedReplies.Json(historyJson) : null);
 
@@ -291,8 +291,8 @@ public sealed class GrabAppearanceLookupPerClientTests
     public async Task Nzbget_a_duplicate_the_client_already_held_is_reported_as_a_duplicate()
     {
         // NZBGet 26.3's recorded history row of a job it deleted as a duplicate (DELETED/DUPE), as the job under test.
-        var history = NzbGetHistory(nzbId: 42, name: "Example.Release.2026", category: "movies", status: "DELETED/DUPE");
-        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(NzbGetHandler(history))));
+        var history = RecordedNzbGetHistory(nzbId: 42, name: "Example.Release.2026", category: "movies", status: "DELETED/DUPE");
+        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(RecordedNzbGetHandler(history))));
 
         var result = await new GrabAppearanceLookupService(Connections("nzbget"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "42", "Example.Release.2026", CancellationToken.None);
@@ -303,8 +303,8 @@ public sealed class GrabAppearanceLookupPerClientTests
     [Fact]
     public async Task Nzbget_a_release_it_rejected_is_reported_as_rejected()
     {
-        var history = NzbGetHistory(nzbId: 43, name: "Example.Release.2026", category: "movies", status: "FAILURE/PAR");
-        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(NzbGetHandler(history))));
+        var history = RecordedNzbGetHistory(nzbId: 43, name: "Example.Release.2026", category: "movies", status: "FAILURE/PAR");
+        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(RecordedNzbGetHandler(history))));
 
         var result = await new GrabAppearanceLookupService(Connections("nzbget"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "43", "Example.Release.2026", CancellationToken.None);
@@ -316,7 +316,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     public async Task Nzbget_nothing_anywhere_is_reported_as_not_there()
     {
         // NZBGet 26.3's recorded history, which holds other jobs.
-        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(NzbGetHandler(RecordedReplies.Nzbget("idle").Body("history\"")))));
+        var registry = RegistryFor("nzbget", new NzbGetDownloadClient(new Factory(RecordedNzbGetHandler(RecordedReplies.Nzbget("idle").Body("history\"")))));
 
         var result = await new GrabAppearanceLookupService(Connections("nzbget"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "44", "Example.Release.2026", CancellationToken.None);
@@ -336,12 +336,12 @@ public sealed class GrabAppearanceLookupPerClientTests
     }
 
     /// <summary>NZBGet 26.3's recorded history, cut to its one deleted-duplicate row, as the job and status under test.</summary>
-    private static string NzbGetHistory(int nzbId, string name, string category, string status)
+    private static string RecordedNzbGetHistory(int nzbId, string name, string category, string status)
         => RecordedReplies.Nzbget("idle").Body(
             "history\"",
             ("^result", 1), ("result.0.NZBID", nzbId), ("result.0.NZBName", name), ("result.0.Name", name), ("result.0.Category", category), ("result.0.Status", status));
 
-    private static HttpMessageHandler NzbGetHandler(string historyReply)
+    private static HttpMessageHandler RecordedNzbGetHandler(string historyReply)
         => RecordedReplies.Handler(
             "nzbget",
             [RecordedReplies.Nzbget("idle"), RecordedReplies.Nzbget("settings"), RecordedReplies.Nzbget("version")],

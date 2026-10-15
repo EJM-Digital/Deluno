@@ -18,7 +18,7 @@ public sealed class DelugeMetadataStallTests
     public async Task A_magnet_with_no_metadata_and_no_peers_is_stalled_after_the_stall_window()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-40);
-        var item = await Snapshot(totalSize: 0, progress: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
+        var item = await RecordedSnapshot(totalSize: 0, progress: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
 
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
     }
@@ -27,7 +27,7 @@ public sealed class DelugeMetadataStallTests
     public async Task A_fresh_magnet_with_no_metadata_is_downloading_not_stalled()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var item = await Snapshot(totalSize: 0, progress: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
+        var item = await RecordedSnapshot(totalSize: 0, progress: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -36,12 +36,12 @@ public sealed class DelugeMetadataStallTests
     public async Task Completion_is_never_inferred_from_zero_size_alone()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot(totalSize: 0, progress: 100, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot(totalSize: 0, progress: 100, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         Assert.NotEqual(DownloadQueueStatuses.ImportReady, item.Status);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(
+    private static async Task<DownloadQueueItem> RecordedSnapshot(
         long totalSize,
         double progress,
         int peers,

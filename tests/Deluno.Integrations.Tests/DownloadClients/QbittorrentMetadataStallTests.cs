@@ -19,7 +19,7 @@ public sealed class QbittorrentMetadataStallTests
     public async Task StalledDL_alone_is_not_read_as_stalled()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot("stalledDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot("stalledDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         // #1193: the client's own flag is not proof; Deluno's no-progress window decides.
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
@@ -29,7 +29,7 @@ public sealed class QbittorrentMetadataStallTests
     public async Task MetaDL_is_downloading_before_the_stall_window()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var item = await Snapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
+        var item = await RecordedSnapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -38,7 +38,7 @@ public sealed class QbittorrentMetadataStallTests
     public async Task MetaDL_becomes_stalled_once_it_has_gone_unmetadatad_past_the_stall_window()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-40);
-        var item = await Snapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
+        var item = await RecordedSnapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
 
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
     }
@@ -47,7 +47,7 @@ public sealed class QbittorrentMetadataStallTests
     public async Task Completion_is_never_inferred_from_zero_size_alone()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot("downloading", size: 0, progress: 1, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot("downloading", size: 0, progress: 1, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         Assert.NotEqual(DownloadQueueStatuses.ImportReady, item.Status);
     }
@@ -63,7 +63,7 @@ public sealed class QbittorrentMetadataStallTests
     public async Task MetaDL_sets_the_fetching_metadata_signal_even_before_the_stall_window()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         Assert.True(item.IsFetchingMetadata);
     }
@@ -74,12 +74,12 @@ public sealed class QbittorrentMetadataStallTests
     public async Task Every_other_state_leaves_the_fetching_metadata_signal_false(string state)
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot(state, size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot(state, size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         Assert.False(item.IsFetchingMetadata);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(
+    private static async Task<DownloadQueueItem> RecordedSnapshot(
         string state,
         long size,
         double progress,
