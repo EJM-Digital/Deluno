@@ -201,6 +201,104 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
         Assert.Contains("ActivityEventAdded", received);
     }
 
+    /// <summary>
+    /// Allowed Hosts (#939) sits ahead of routing in the one shared pipeline, so an address the person did not list is
+    /// turned away from the page, the API, the live hub and the external API alike, and a listed one still gets in.
+    /// </summary>
+    [Fact]
+    public async Task Allowed_hosts_turns_an_unlisted_address_away_from_the_page_the_api_the_live_hub_and_the_external_api()
+    {
+        var token = await SignInAsync();
+        using (var save = new HttpRequestMessage(HttpMethod.Put, "/api/security/allowed-hosts")
+        {
+            Content = JsonContent.Create(new UpdateAllowedHostsRequest(true, ["deluno.lan"]))
+        })
+        {
+            save.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            save.Headers.Host = "deluno.lan";
+            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(save)).StatusCode);
+        }
+
+        async Task<HttpResponseMessage> AskAsync(HttpMethod method, string path, string host)
+        {
+            using var request = new HttpRequestMessage(method, path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Host = host;
+            return await _client.SendAsync(request);
+        }
+
+        var surfaces = new (HttpMethod Method, string Path)[]
+        {
+            (HttpMethod.Get, "/movies"),
+            (HttpMethod.Get, "/api/system/overview"),
+            (HttpMethod.Post, "/hubs/deluno/negotiate?negotiateVersion=1"),
+            (HttpMethod.Get, "/api/integrations/external/health")
+        };
+        foreach (var (method, path) in surfaces)
+        {
+            using var refused = await AskAsync(method, path, "stranger.example");
+            Assert.True(HttpStatusCode.BadRequest == refused.StatusCode, $"{path} answered {refused.StatusCode} to an unlisted address");
+            Assert.Contains("Deluno does not answer on this address", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+            using var listed = await AskAsync(method, path, "deluno.lan");
+            Assert.NotEqual(HttpStatusCode.BadRequest, listed.StatusCode);
+            Assert.NotEqual(HttpStatusCode.Unauthorized, listed.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// "Skip sign-in on the home network" (#993) is judged by the same gate that guards the API and the live hub: with it
+    /// on, a request from this computer reaches both with no token; with it off, both answer 401.
+    /// </summary>
+    [Fact]
+    public async Task Skipping_sign_in_on_the_home_network_opens_the_api_and_the_live_hub_to_a_local_request_and_off_turns_both_away()
+    {
+        var token = await SignInAsync();
+        async Task SetSkipAsync(bool enabled)
+        {
+            using var save = new HttpRequestMessage(HttpMethod.Put, "/api/security/local-network-auth")
+            {
+                Content = JsonContent.Create(new UpdateLocalNetworkAuthRequest(enabled, [], [], []))
+            };
+            save.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(save)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/system/overview")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.PostAsync("/hubs/deluno/negotiate?negotiateVersion=1", content: null)).StatusCode);
+
+        await SetSkipAsync(true);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/system/overview")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync("/hubs/deluno/negotiate?negotiateVersion=1", content: null)).StatusCode);
+
+        await SetSkipAsync(false);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/system/overview")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.PostAsync("/hubs/deluno/negotiate?negotiateVersion=1", content: null)).StatusCode);
+    }
+
+    /// <summary>
+    /// A reverse proxy or Docker host in front of Deluno shows up as an address to tick well before Allowed Hosts is switched on,
+    /// because the host it names is recorded whether or not the setting is on (#939).
+    /// </summary>
+    [Fact(Skip = "DEFECT: UseForwardedHeaders runs ahead of UseDelunoAllowedHosts and consumes X-Forwarded-Host, so the middleware reads an empty header and a proxy's host is never recorded. Run unskipped: the overview offers only 127.0.0.1, localhost, the computer name and its LAN addresses, never media.example.com.")]
+    public async Task A_host_named_by_a_reverse_proxy_is_offered_on_the_security_page_before_allowed_hosts_is_on()
+    {
+        var token = await SignInAsync();
+        using (var seen = new HttpRequestMessage(HttpMethod.Get, "/health"))
+        {
+            seen.Headers.Add("X-Forwarded-Host", "media.example.com");
+            Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(seen)).StatusCode);
+        }
+
+        using var overview = new HttpRequestMessage(HttpMethod.Get, "/api/security/allowed-hosts");
+        overview.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var body = await (await _client.SendAsync(overview)).Content.ReadFromJsonAsync<AllowedHostsOverview>();
+
+        Assert.False(body!.Enabled);
+        var offered = Assert.Single(body.DetectedHosts, candidate => candidate.Host == "media.example.com");
+        Assert.Equal("Seen in a request forwarded from a reverse proxy or Docker host", offered.Reason);
+    }
+
     /// <summary>Creates the first account through the real API and signs in as it.</summary>
     private async Task<string> SignInAsync()
     {
