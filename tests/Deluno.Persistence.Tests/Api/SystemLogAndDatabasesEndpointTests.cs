@@ -179,6 +179,7 @@ public sealed class SystemLogAndDatabasesEndpointTests
         var service = new DatabaseIntegrityService(
             new CannotOpenForReading(app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>()),
             jobs,
+            app.Services.GetRequiredService<IHealthCheckRepository>(),
             TimeProvider.System,
             NullLogger<DatabaseIntegrityService>.Instance);
         await jobs.TryClaimScheduledPassAsync(SystemTasks.DatabaseIntegrity, TimeSpan.FromDays(1), CancellationToken.None);

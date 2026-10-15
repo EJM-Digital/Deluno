@@ -270,7 +270,7 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
             sb.Append("  Firewall: ");
             sb.AppendLine(LanAccess is null ? "(not checked)" : $"{LanAccess.State}: {LanAccess.Message}");
             sb.AppendLine();
-            File.AppendAllText(logPath, sb.ToString());
+            CappedLog.Append(logPath, sb.ToString());
         }
         catch
         {
