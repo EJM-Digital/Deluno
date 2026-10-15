@@ -59,6 +59,27 @@ public sealed class NewznabOnRecordedHydraTests
     }
 
     [Fact]
+    public async Task The_test_of_a_new_indexer_returns_the_categories_and_search_modes_the_indexer_gave_and_a_refused_caps_never_blocks_adding_it()
+    {
+        var (server, app, _) = await StartAsync("caps", "search-text");
+        await using var _s = server; await using var _a = app;
+        var form = new { name = "NZBHydra2 two", protocol = "newznab", privacy = "private", baseUrl = server.BaseUrl, apiKey = Key, priority = 10, categories = "2000", tags = "", mediaScope = "both", isEnabled = true };
+
+        var tested = await app.Client.PostAsJsonAsync("/api/indexers/test", form);
+
+        var body = await tested.Content.ReadFromJsonAsync<JsonElement>();
+        var caps = body.GetProperty("caps");
+        var recorded = System.Xml.Linq.XDocument.Parse(RecordedReplies.Nzbhydra2("caps").Exchanges[0].Reply.Body!)
+            .Descendants().Where(element => element.Name.LocalName is "category" or "subcat").Select(element => (string)element.Attribute("id")!).ToHashSet();
+        Assert.Equal(recorded, caps.GetProperty("categories").GetString()!.Split(',').ToHashSet());
+        Assert.Equal("both", caps.GetProperty("mediaScope").GetString());
+
+        server.AnswerEverythingWith = RecordedReplies.Nzbhydra2("caps-wrong-api-key").Exchanges[0].Reply;
+        var added = await app.Client.PostAsJsonAsync("/api/indexers", form);
+        Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task A_newznab_indexer_that_refuses_the_key_with_an_error_element_is_degraded_and_says_it_refused_the_request()
     {
         var (server, app, indexer) = await StartAsync("caps");
