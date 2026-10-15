@@ -34,7 +34,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 /// deleted and the action's own message says so, so the limit shows on screen
 /// instead of silently doing nothing.</para>
 /// </summary>
-public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
+public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory, Deluno.Libraries.Data.ILibrariesRepository? libraries = null) : DownloadClientBase
 {
     public override string Protocol => "rtorrent";
 
@@ -336,7 +336,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         return await RemoveAsync(client, http, baseUri, action, queueItemId, cancellationToken);
     }
 
-    private static async Task<DownloadClientActionResult> RemoveAsync(
+    private async Task<DownloadClientActionResult> RemoveAsync(
         DownloadClientItem client, HttpClient http, Uri baseUri, string action, string queueItemId, CancellationToken cancellationToken)
     {
         if (action == DownloadClientActions.DeleteWithData)
@@ -377,7 +377,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
     /// download alone, never a guess. Anything less than that is a limit
     /// stated on screen, not a silent no-op.
     /// </summary>
-    private static async Task<DownloadClientActionResult> DeleteWithDataAsync(
+    private async Task<DownloadClientActionResult> DeleteWithDataAsync(
         DownloadClientItem client,
         HttpClient http,
         Uri baseUri,
@@ -405,6 +405,15 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.DeleteWithData, exception.Message, null);
+        }
+
+        if (IsSafeToDeleteRtorrentPath(path, out var safePath)
+            && DownloadFolderRemoval.LibraryRefusal(await DownloadFolderRemoval.ReadLibrariesAsync(libraries, cancellationToken), safePath) is { } refusal)
+        {
+            // #1328: a path the client reports that is, holds or sits inside a library root is never deleted.
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, DownloadClientActions.DeleteWithData,
+                $"rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent but left its files on disk. {refusal}")
+                with { FilesNote = refusal };
         }
 
         if (!IsSafeToDeleteRtorrentPath(path, out var fullPath))

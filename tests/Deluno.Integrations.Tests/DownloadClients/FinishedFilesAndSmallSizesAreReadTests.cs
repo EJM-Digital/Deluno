@@ -96,7 +96,7 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
         // Holding the file open stops the delete on Windows; elsewhere the delete simply works. Either way the
         // answer must match what is on disk.
         using var hold = OperatingSystem.IsWindows() ? new FileStream(film, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
-        var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true);
+        var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: []);
 
         Assert.Equal(problem is null, !Directory.Exists(folder) && !File.Exists(film));
         if (hold is not null)

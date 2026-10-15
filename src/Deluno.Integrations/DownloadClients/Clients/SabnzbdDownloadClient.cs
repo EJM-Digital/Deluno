@@ -9,7 +9,7 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, TimeSpan? readBackDelay = null) : DownloadClientBase
+public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, TimeSpan? readBackDelay = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null) : DownloadClientBase
 {
     private readonly TimeSpan _readBackDelay = readBackDelay ?? TimeSpan.FromMilliseconds(500);
 
@@ -618,7 +618,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                     // `path` is the old incomplete folder and the finished files are under `storage`. So the folder
                     // goes here, or Deluno says plainly that it is still there.
                     var problem = withFiles && finished is not null
-                        ? DownloadFolderRemoval.Remove(Deluno.Contracts.SafePath.ReportedPath(finished.Storage), finished.Name, ClientSaveFolders.IsSameMachine(client))
+                        ? DownloadFolderRemoval.Remove(Deluno.Contracts.SafePath.ReportedPath(finished.Storage), finished.Name, ClientSaveFolders.IsSameMachine(client), await DownloadFolderRemoval.ReadLibrariesAsync(libraries, cancellationToken))
                         : null;
                     var message = withFiles
                         ? problem is null
