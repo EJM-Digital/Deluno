@@ -13,7 +13,7 @@ namespace Deluno.Worker.Tests.Services;
 
 /// <summary>
 /// #1262, end to end through the watcher's public entry point: Weir answers a hand-off "completed" with no output path
-/// (the recorded <c>resend-status-completed</c>), the cleaned file sits flat in the output folder, and Deluno queues
+/// (the recorded <c>completed-without-output-path</c>, Weir rc.13's; rc.18 names the path of a resend, which is a different case), the cleaned file sits flat in the output folder, and Deluno queues
 /// the import of that very file. The source, the status reply and the processor's folder list are recorded Weir replies.
 /// </summary>
 public sealed class AFinishedHandOffWithNoOutputPathStillImportsItsFileTests : IDisposable
@@ -109,7 +109,7 @@ public sealed class AFinishedHandOffWithNoOutputPathStillImportsItsFileTests : I
             File.SetLastWriteTimeUtc(flat, DateTime.UtcNow.AddMinutes(-5));
         }
 
-        var recorded = RecordedReplies.Weir("resend-status-completed").Single.Reply.Json();
+        var recorded = RecordedReplies.Weir("completed-without-output-path").Single.Reply.Json();
         Assert.Equal("completed", (string)recorded["state"]!);
         Assert.Null((string?)recorded["outputPath"]);
 

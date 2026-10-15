@@ -92,6 +92,7 @@ public sealed class WeirContractClientTests
     [InlineData("handoff-release-folder-accepted")]
     [InlineData("handoff-source-files-accepted")]
     [InlineData("handoff-resend-accepted")]
+    [InlineData("resend-takeover-accepted")]
     public async Task An_accepted_hand_off_is_recorded_as_submitted(string state)
     {
         var recording = Rec(state);
@@ -180,6 +181,25 @@ public sealed class WeirContractClientTests
     [InlineData("handoff-cancel-refused", 1)]
     [InlineData("outcome-superseded", 1)]
     [InlineData("outcome-superseded-newer", 0)]
+    // Weir 1.0.0-rc.18, recorded for #1239 and #1262 (scripts/recorded-replies/Record-WeirReports.ps1)
+    [InlineData("source-files-status-queued", 0)]
+    [InlineData("resend-status-working", 0)]
+    [InlineData("completed-after-resend", 0)]
+    [InlineData("completed-after-resend", 1)]
+    [InlineData("resend-takeover-first-status", 0)]
+    [InlineData("resend-takeover-second-status-working", 0)]
+    [InlineData("resend-takeover-second-status-completed", 0)]
+    [InlineData("resend-takeover-second-final-status", 0)]
+    [InlineData("output-collision-replace-first-status", 0)]
+    [InlineData("output-collision-replace-second-status", 0)]
+    [InlineData("output-collision-keep-both-first-status", 0)]
+    [InlineData("output-collision-keep-both-second-status", 0)]
+    [InlineData("completed-season-pack-status-working", 0)]
+    [InlineData("completed-season-pack-status-completed", 0)]
+    [InlineData("failed-partial-season-pack-corrupt-status-queued", 0)]
+    [InlineData("failed-partial-season-pack-corrupt-status-working", 0)]
+    [InlineData("failed-rejected-status-queued", 0)]
+    [InlineData("failed-rejected-status-rejected", 0)]
     public async Task A_status_is_read_as_Weir_said_it(string state, int exchange)
     {
         var recording = Rec(state);
@@ -210,11 +230,56 @@ public sealed class WeirContractClientTests
         var resent = await Service(ReplayOf("completed-without-output-path")).GetHandoffStatusAsync(Connection, HandoffIdOf(Rec("completed-without-output-path")), CancellationToken.None);
         var finished = await Service(ReplayOf("completed-with-output-path")).GetHandoffStatusAsync(Connection, HandoffIdOf(Rec("completed-with-output-path")), CancellationToken.None);
 
-        Assert.Equal((ProcessorHandoffStates.Queued, 12), (queued.State, queued.QueuePosition));
+        Assert.Equal((ProcessorHandoffStates.Queued, 8), (queued.State, queued.QueuePosition));
         Assert.Equal(ProcessorHandoffStates.Completed, resent.State);
         Assert.Null(resent.OutputPath);
         Assert.Equal(ProcessorHandoffStates.Completed, finished.State);
         Assert.False(string.IsNullOrWhiteSpace(finished.OutputPath));
+    }
+
+    /// <summary>
+    /// Weir rc.18's own answers for a file sent again while Weir held the first send (#1262), recorded on the golden VM:
+    /// the first send ends cancelled with Weir's words, the second finishes WITH its output path (rc.13 answered a resend's
+    /// finished status without one), and a different file sent under a name already in the output is told apart by the
+    /// collision policy: "replace" writes the same output name, "keep_both" numbers the second beside the first.
+    /// </summary>
+    [Fact]
+    public async Task A_file_sent_again_and_a_name_that_is_taken_are_read_as_Weir_recorded_them()
+    {
+        async Task<ProcessorHandoffStatusResult> Read(string state, int exchange = 0)
+        {
+            var recording = Rec(state);
+            return await Service(new WeirReplay(recording)).GetHandoffStatusAsync(Connection, HandoffIdOf(recording, exchange), CancellationToken.None);
+        }
+
+        var first = await Read("resend-takeover-first-status");
+        var second = await Read("resend-takeover-second-final-status");
+        Assert.Equal(ProcessorHandoffStates.Cancelled, first.State);
+        Assert.Null(first.OutputPath);
+        Assert.Contains("sent again", first.Message);
+        Assert.Equal(ProcessorHandoffStates.Completed, second.State);
+        Assert.EndsWith("Recorded.Weir.Takeover.mkv", second.OutputPath);
+
+        var replaceFirst = await Read("output-collision-replace-first-status");
+        var replaceSecond = await Read("output-collision-replace-second-status");
+        Assert.Equal(replaceFirst.OutputPath, replaceSecond.OutputPath);
+
+        var keepFirst = await Read("output-collision-keep-both-first-status");
+        var keepSecond = await Read("output-collision-keep-both-second-status");
+        Assert.NotEqual(keepFirst.OutputPath, keepSecond.OutputPath);
+        Assert.EndsWith(" (2).mkv", keepSecond.OutputPath);
+        Assert.Equal(keepFirst.OutputPath!.Replace(".mkv", " (2).mkv"), keepSecond.OutputPath);
+    }
+
+    [Fact]
+    public async Task A_status_that_is_rejected_is_a_state_Deluno_reads_by_its_word_and_keeps_Weirs_message()
+    {
+        var recording = Rec("failed-rejected-status-rejected");
+        var status = await Service(new WeirReplay(recording)).GetHandoffStatusAsync(Connection, HandoffIdOf(recording), CancellationToken.None);
+
+        Assert.Equal(ProcessorHandoffStates.Rejected, status.State);
+        Assert.Null(status.OutputPath);
+        Assert.Contains("rejected", status.Message);
     }
 
     [Fact]
@@ -298,6 +363,7 @@ public sealed class WeirContractClientTests
     [Theory]
     [InlineData("outcome-handoff-not-finished-queued", ProcessorAnswer.Busy)]
     [InlineData("outcome-handoff-not-finished-working", ProcessorAnswer.Busy)]
+    [InlineData("outcome-handoff-not-finished", ProcessorAnswer.Busy)]
     [InlineData("outcome-handoff-ended", ProcessorAnswer.Refused)]
     [InlineData("outcome-handoff-ended-after-failed", ProcessorAnswer.Refused)]
     [InlineData("outcome-outcome-already-recorded", ProcessorAnswer.Settled)]

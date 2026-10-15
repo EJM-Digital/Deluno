@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "status-cancelled",
+  "recordedAt": "2026-10-15T02:47:50Z",
+  "note": "The status of a hand-off after it was cancelled while queued.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/fcb52132-481d-4f9d-a8e4-c9e1f453ecf9"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "fcb52132-481d-4f9d-a8e4-c9e1f453ecf9",
+          "state": "cancelled",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:47:50.280674Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "The media manager cancelled this hand-off before Weir started on it."
+        }
+      }
+    }
+  ]
+}

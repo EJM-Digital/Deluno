@@ -11,8 +11,9 @@ namespace Deluno.Integrations.Tests.Processors;
 /// </summary>
 public sealed class ProcessorLibraryFoldersTests
 {
-    private const string MoviesKey = "01a127b7c0c9718d90fc38b21d1b9daf";
-    private const string TvKey = "01a127b7c0eb7b108e7ec900f36acb11";
+    // The library keys Weir's recorded answer carries (Movies first, TV second).
+    private static readonly string MoviesKey = (string)RecordedReplies.Weir("library-folders").Single.Reply.Json()["libraries"]![0]!["manager_library_key"]!;
+    private static readonly string TvKey = (string)RecordedReplies.Weir("library-folders").Single.Reply.Json()["libraries"]![1]!["manager_library_key"]!;
 
     /// <summary>
     /// Weir's recorded answer (a Movies and a TV library, both with folders from the manager), with the TV library's watched folder empty

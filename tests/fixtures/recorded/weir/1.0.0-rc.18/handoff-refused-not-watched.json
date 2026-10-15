@@ -1,0 +1,36 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "handoff-refused-not-watched",
+  "recordedAt": "2026-10-15T02:41:58Z",
+  "note": "A hand-off for a file that is in no folder a Weir workflow watches.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "c7eedd88-7cc8-4a4e-9d60-2b34a760d3b5",
+          "libraryId": "01a13d68ae4a7e7b84c06a96fd5d8cc7",
+          "mediaType": "movie",
+          "sourcePath": "C:\\golden\\recorded\\weir\\Recorded.Weir.NW.mkv",
+          "releaseName": "Recorded elsewhere",
+          "queueItemId": "f0da43b7-2630-4563-8162-48fc68a7e671",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded elsewhere",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "detail": "No Weir workflow watches the folder that 'Recorded.Weir.NW.mkv' is in. Weir's workflows: Movies watches 'C:\\Downloads\\Completed\\Movies'; TV Shows (TV episodes) watches 'C:\\Downloads\\Completed\\TV'. Set a workflow's watched folder (Setup › Workflows) to the folder the download client finishes into, or add a path mapping in the media manager."
+        }
+      }
+    }
+  ]
+}

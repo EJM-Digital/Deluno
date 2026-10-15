@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "source-files-status-queued",
+  "recordedAt": "2026-10-15T02:47:47Z",
+  "note": "The status of the hand-off that names its files while it was queued.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/2d90f38d-6dd3-418c-b566-d26195fd20b9"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "2d90f38d-6dd3-418c-b566-d26195fd20b9",
+          "state": "queued",
+          "queuePosition": 2,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T02:46:54Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": null
+        }
+      }
+    }
+  ]
+}

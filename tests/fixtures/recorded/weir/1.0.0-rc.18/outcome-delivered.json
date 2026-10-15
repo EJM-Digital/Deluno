@@ -1,0 +1,33 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "outcome-delivered",
+  "recordedAt": "2026-10-15T02:41:46Z",
+  "note": "The outcome reported after Weir finished: Weir answers that the file is released.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/handoffs/deluno/ecb824ca-4b5d-4d1d-bcdd-a68ed98a077e/outcome",
+        "body": {
+          "outcome": "imported",
+          "occurredUtc": "2026-10-15T02:41:46.7917263Z",
+          "importedPath": "C:\\Weir\\Ready\\Movies\\Recorded.Weir.A.mkv",
+          "reason": null
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "ecb824ca-4b5d-4d1d-bcdd-a68ed98a077e",
+          "outcome": "imported",
+          "released": false,
+          "message": "Weir recorded that Deluno imported the file. The manager's library file is Weir's copy itself, so Weir left it where it is."
+        }
+      }
+    }
+  ]
+}

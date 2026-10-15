@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "handoff-ignored-no-source",
+  "recordedAt": "2026-10-15T02:41:57Z",
+  "note": "A hand-off with no source path: Weir answers that it ignored it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "9605a014-37ca-417b-9be2-8aa027eacb4f",
+          "libraryId": "01a13d68ae4a7e7b84c06a96fd5d8cc7",
+          "mediaType": "movie"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ignored",
+          "source": "deluno"
+        }
+      }
+    }
+  ]
+}
