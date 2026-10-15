@@ -16,4 +16,7 @@ public interface IProfileChangeReevaluator
 
     /// <summary>A media plan was saved and its libraries were given its profile: re-decide those libraries.</summary>
     Task<int> ReevaluateForPolicySetAsync(string policySetId, CancellationToken cancellationToken);
+
+    /// <summary>A profile was deleted and what named it now follows the library or the default: say so in Activity (#1334).</summary>
+    Task ReportProfileDeletedAsync(Deluno.Quality.Data.QualityProfileRemoval removal, CancellationToken cancellationToken);
 }

@@ -117,7 +117,7 @@ public sealed class QualityDecisionsOnRealFilesTests
     // DEFECT (read from the code, now pinned): SqliteMediaStateRepository.ReevaluateWantedStateAsync decides every title from its
     // quality name alone (it passes no file size and no tier floor), so saving the profile re-decides an undersized WEB 480p file
     // that the import marked Upgrade as Covered, because its name now meets the cutoff.
-    [Fact(Skip = "Defect: saving a quality profile re-decides an undersized file as Covered, because the re-evaluation passes no file size or tier floor (SqliteMediaStateRepository.ReevaluateWantedStateAsync).")]
+    [Fact]
     public async Task Saving_the_profile_again_leaves_an_undersized_file_marked_upgrade_as_it_was()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -135,6 +135,29 @@ public sealed class QualityDecisionsOnRealFilesTests
 
         Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
         Assert.Equal("upgrade", Read(app, "movies", "SELECT wanted_status FROM movie_wanted_state WHERE file_path IS NOT NULL;"));
+    }
+
+    [Fact]
+    public async Task Saving_the_profile_again_re_decides_each_episode_on_its_own_file_so_the_undersized_one_stays_an_upgrade()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var profileId = await ProfileAsync(app, "tv");
+        var libraryId = await LibraryAsync(app, "tv", profileId);
+        var season = Path.Combine(app.DataRoot, "tv", "Northern Signal (2019)", "Season 01");
+        FileOfLength(Path.Combine(season, "Northern.Signal.S01E01.480p.WEB-DL.mkv"), 4);
+        FileOfLength(Path.Combine(season, "Northern.Signal.S01E02.480p.WEB-DL.mkv"), 300 * Megabyte);
+        await RunToTheEndAsync(app, libraryId);
+
+        var saved = await app.Client.PutAsJsonAsync($"/api/quality-profiles/{profileId}", new
+        {
+            name = "Cutoff WEB 480p tv", mediaType = "tv", cutoffQuality = "WEB 480p", allowedQualities = "WEB 480p,WEB 720p",
+            customFormatIds = string.Empty, upgradeUntilCutoff = true, upgradeUnknownItems = false
+        });
+
+        Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
+        string Met(int episode) => Read(app, "series", $"SELECT w.quality_cutoff_met FROM episode_wanted_state w JOIN episode_entries e ON e.id = w.episode_id WHERE e.episode_number = {episode};");
+        Assert.Equal("0", Met(1));
+        Assert.Equal("1", Met(2));
     }
 
     // ------------------------------------------------------------------ deleting a profile that something uses
@@ -169,7 +192,7 @@ public sealed class QualityDecisionsOnRealFilesTests
 
     // DEFECT (observed): the film's own profile choice lives in the movies database and the profile in the platform database, so
     // no foreign key can clear it: after the profile is deleted the film still names an id that no longer exists.
-    [Fact(Skip = "Defect: deleting a quality profile leaves every title that chose it still naming the deleted profile id (movie_entries.quality_profile_id is in another database, so nothing clears it).")]
+    [Fact]
     public async Task Deleting_a_profile_a_title_chose_leaves_the_title_naming_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -179,5 +202,69 @@ public sealed class QualityDecisionsOnRealFilesTests
 
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
         Assert.True(string.IsNullOrEmpty(Read(app, "movies", $"SELECT quality_profile_id FROM movie_entries WHERE id = '{movieId}';")), "the film still names the deleted profile");
+    }
+
+    [Fact]
+    public async Task Deleting_a_profile_says_in_Activity_what_it_moved_and_leaves_no_column_in_any_database_naming_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (profileId, _, _) = await AProfileInUseAsync(app);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/quality-profiles/{profileId}")).StatusCode);
+
+        var said = Read(app, "jobs", "SELECT message FROM activity_events WHERE category = 'quality.profile.deleted';");
+        Assert.Contains("1 library", said);
+        Assert.Contains("1 title", said);
+        foreach (var column in ProfileColumnsInEveryDatabase(app))
+        {
+            Assert.Equal("0", Read(app, column.Database, $"SELECT COUNT(*) FROM {column.Table} WHERE {column.Column} = '{profileId}' COLLATE NOCASE;"));
+        }
+    }
+
+    [Fact]
+    public async Task Every_column_that_stores_a_profile_id_in_any_database_is_one_deleting_a_profile_clears()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var found = ProfileColumnsInEveryDatabase(app).Select(item => $"{item.Database}.{item.Table}.{item.Column}").Order().ToArray();
+        var cleared = Deluno.Quality.Data.SqliteQualityRepository.ProfileReferenceColumns.Select(item => $"{item.Database}.{item.Table}.{item.Column}").Order().ToArray();
+
+        Assert.Equal(found, cleared);
+    }
+
+    private static IReadOnlyList<Deluno.Quality.Data.ProfileReferenceColumn> ProfileColumnsInEveryDatabase(ApplicationTestHost app)
+    {
+        var found = new List<Deluno.Quality.Data.ProfileReferenceColumn>();
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        foreach (var database in new[] { "platform", "movies", "series", "jobs", "cache" })
+        {
+            using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = factory.GetDatabasePath(database), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+            connection.Open();
+            var tables = new List<string>();
+            using (var list = connection.CreateCommand())
+            {
+                list.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';";
+                using var reader = list.ExecuteReader();
+                while (reader.Read()) tables.Add(reader.GetString(0));
+            }
+
+            foreach (var table in tables)
+            {
+                using var info = connection.CreateCommand();
+                info.CommandText = $"SELECT name FROM pragma_table_info('{table}');";
+                using var reader = info.ExecuteReader();
+                while (reader.Read())
+                {
+                    var column = reader.GetString(0);
+                    // The profile table's own key is not a reference to a profile.
+                    if (table != "quality_profiles" && column.Contains("quality_profile_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        found.Add(new(database, table, column, Deluno.Quality.Data.ProfileReferenceKind.Other));
+                    }
+                }
+            }
+        }
+
+        return found;
     }
 }

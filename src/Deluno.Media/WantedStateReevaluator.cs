@@ -147,6 +147,24 @@ public sealed class WantedStateReevaluator(
         return total;
     }
 
+    public async Task ReportProfileDeletedAsync(QualityProfileRemoval removal, CancellationToken cancellationToken)
+    {
+        var named = removal.Libraries + removal.Titles + removal.Other;
+        var follows = named == 0
+            ? string.Empty
+            : $" {Count(removal.Libraries, "library", "libraries")}, {Count(removal.Titles, "title", "titles")} and {Count(removal.Other, "other setting", "other settings")} that named it now follow the library profile or the default one.";
+        await activityFeedRepository.RecordActivityAsync(
+            "quality.profile.deleted",
+            $"The {removal.Name} profile was deleted.{follows}",
+            null,
+            null,
+            "profile",
+            removal.Id,
+            cancellationToken);
+    }
+
+    private static string Count(int count, string one, string many) => count == 1 ? $"1 {one}" : $"{count} {many}";
+
     private static MediaKind KindOf(string? mediaType)
         => string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase) ? MediaKind.Series : MediaKind.Movie;
 
