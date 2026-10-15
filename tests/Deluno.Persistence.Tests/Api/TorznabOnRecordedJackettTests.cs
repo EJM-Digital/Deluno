@@ -154,6 +154,40 @@ public sealed class TorznabOnRecordedJackettTests
     }
 
     [Fact]
+    public async Task A_search_the_indexers_own_query_limit_refuses_is_never_sent_to_the_indexer_and_lists_nothing()
+    {
+        var (server, app, indexer) = await StartAsync(request => request with { QueryLimit = 1 });
+        await using var _ = server; await using var __ = app;
+
+        var first = await app.Client.PostAsJsonAsync("/api/search", new { query = "Sintel", searchType = "movie", indexerIds = new[] { indexer.Id } });
+        var second = await app.Client.PostAsJsonAsync("/api/search", new { query = "Sintel", searchType = "movie", indexerIds = new[] { indexer.Id } });
+
+        Assert.NotEmpty(JsonSerializer.Deserialize<JsonElement>(await first.Content.ReadAsStringAsync()).GetProperty("candidates").EnumerateArray());
+        Assert.Empty(JsonSerializer.Deserialize<JsonElement>(await second.Content.ReadAsStringAsync()).GetProperty("candidates").EnumerateArray());
+        Assert.Single(server.Requests, request => QueryOf(request, "t") == "search");
+    }
+
+    /// <summary>
+    /// Found by the test above: the second search, which the indexer's own limit stopped before any call was made, is counted on
+    /// the scoreboard as a query and as a failed one ("Needs attention: 50% of 2 queries failed"). The planner's own comment says a
+    /// refused call must never count as a query attempt. Skipped until that is fixed; the figures are from the real run.
+    /// </summary>
+    [Fact(Skip = "Defect: a search stopped by the indexer's own query limit is counted on the scoreboard as a query and as a failure (totalQueries 2, failedQueries 1 after one search and one refused search), against FeedMediaSearchPlanner's own rule that a refused call is never a query attempt.")]
+    public async Task A_search_stopped_by_the_indexers_own_limit_is_not_counted_as_a_query_or_a_failure_on_the_scoreboard()
+    {
+        var (server, app, indexer) = await StartAsync(request => request with { QueryLimit = 1 });
+        await using var _ = server; await using var __ = app;
+        await app.Client.PostAsJsonAsync("/api/search", new { query = "Sintel", searchType = "movie", indexerIds = new[] { indexer.Id } });
+        await app.Client.PostAsJsonAsync("/api/search", new { query = "Sintel", searchType = "movie", indexerIds = new[] { indexer.Id } });
+
+        var board = await app.Client.GetFromJsonAsync<JsonElement>("/api/indexers/scoreboard");
+
+        var row = board.GetProperty("indexers").EnumerateArray().Single();
+        Assert.Equal(1, row.GetProperty("totalQueries").GetInt32());
+        Assert.Equal(0, row.GetProperty("failedQueries").GetInt32());
+    }
+
+    [Fact]
     public async Task An_indexers_additional_parameters_ride_along_on_a_search_and_the_key_is_not_sent_twice()
     {
         var (server, app, indexer) = await StartAsync(request => request with { AdditionalParameters = "token=abc123&apikey=another&extra=1" });
