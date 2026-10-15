@@ -18,7 +18,7 @@ public sealed class TransmissionGrabDuplicateTests
     [Fact]
     public async Task A_transmission_duplicate_answer_is_followed_instead_of_reported_as_an_ordinary_send()
     {
-        var handler = Answering(RecordedReplies.Transmission("duplicate-add").Response("torrent-add"));
+        var handler = RecordedAnswering(RecordedReplies.Transmission("duplicate-add").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
@@ -39,7 +39,7 @@ public sealed class TransmissionGrabDuplicateTests
     [Fact]
     public async Task A_transmission_refusal_reason_is_read_as_a_dead_release()
     {
-        var handler = Answering(RecordedReplies.Transmission("add-refused").Response("torrent-add"));
+        var handler = RecordedAnswering(RecordedReplies.Transmission("add-refused").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
@@ -51,7 +51,7 @@ public sealed class TransmissionGrabDuplicateTests
     [Fact]
     public async Task An_ordinary_added_torrent_is_not_read_as_a_duplicate()
     {
-        var handler = Answering(RecordedReplies.Transmission("finished-single-file").Response("torrent-add"));
+        var handler = RecordedAnswering(RecordedReplies.Transmission("finished-single-file").Response("torrent-add"));
         var result = await new TransmissionDownloadClient(new StubFactory(handler))
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
@@ -77,7 +77,7 @@ public sealed class TransmissionGrabDuplicateTests
     /// Transmission 4.1.3 answering the add with the recorded reply and every other call (its category lookup and label) with its recorded
     /// settings and label replies.
     /// </summary>
-    private static HttpMessageHandler Answering(HttpResponseMessage addReply)
+    private static HttpMessageHandler RecordedAnswering(HttpResponseMessage addReply)
         => RecordedReplies.Handler(
             "transmission",
             [RecordedReplies.Transmission("settings"), RecordedReplies.Transmission("label-set")],

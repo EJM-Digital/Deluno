@@ -26,7 +26,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Transmission_asks_for_the_queue_and_seed_fields_and_counts_the_queue_from_one()
     {
         var sent = new List<string>();
-        var item = await TransmissionSnapshot(sent, ("queuePosition", 0), ("seedRatioMode", 1), ("seedRatioLimit", 2.0), ("seedIdleMode", 0), ("seedIdleLimit", 30));
+        var item = await RecordedTransmissionSnapshot(sent, ("queuePosition", 0), ("seedRatioMode", 1), ("seedRatioLimit", 2.0), ("seedIdleMode", 0), ("seedIdleLimit", 30));
 
         Assert.Equal(1, item.QueuePosition);
         var torrentGet = Assert.Single(sent, body => body.Contains("\"torrent-get\"", StringComparison.Ordinal));
@@ -45,7 +45,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [InlineData(2, 2.0, 0, 30, "Follows Transmission's overall seed limits.")]
     public async Task Transmission_seed_limits_are_read_from_each_torrents_own_mode(int ratioMode, double ratio, int idleMode, int idle, string expected)
     {
-        var item = await TransmissionSnapshot(
+        var item = await RecordedTransmissionSnapshot(
             [], ("queuePosition", 4), ("seedRatioMode", ratioMode), ("seedRatioLimit", ratio), ("seedIdleMode", idleMode), ("seedIdleLimit", idle));
 
         Assert.Equal(5, item.QueuePosition);
@@ -56,7 +56,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Transmission_reports_neither_when_the_daemon_sends_neither()
     {
         // The recorded torrent, whose field list had neither the queue place nor the seed limits.
-        var item = await TransmissionSnapshot([], ("queuePosition", null), ("seedRatioMode", null), ("seedRatioLimit", null), ("seedIdleMode", null), ("seedIdleLimit", null));
+        var item = await RecordedTransmissionSnapshot([], ("queuePosition", null), ("seedRatioMode", null), ("seedRatioLimit", null), ("seedIdleMode", null), ("seedIdleLimit", null));
 
         Assert.Null(item.QueuePosition);
         Assert.Null(item.SeedLimit);
@@ -85,7 +85,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Deluge_asks_for_the_queue_and_seed_fields()
     {
         var sent = new List<string>();
-        await DelugeSnapshot(sent, ("queue", 0), ("stop_at_ratio", true), ("stop_ratio", 2.0), ("remove_at_ratio", false));
+        await RecordedDelugeSnapshot(sent, ("queue", 0), ("stop_at_ratio", true), ("stop_ratio", 2.0), ("remove_at_ratio", false));
 
         var update = Assert.Single(sent, body => body.Contains("web.update_ui", StringComparison.Ordinal));
         foreach (var field in new[] { "queue", "stop_at_ratio", "stop_ratio", "remove_at_ratio" })
@@ -99,7 +99,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [InlineData(6, 7)]
     public async Task Deluge_counts_its_queue_from_one(int queue, int expected)
     {
-        var item = await DelugeSnapshot([], ("queue", queue));
+        var item = await RecordedDelugeSnapshot([], ("queue", queue));
 
         Assert.Equal(expected, item.QueuePosition);
     }
@@ -107,7 +107,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [Fact]
     public async Task Deluge_reads_minus_one_as_not_queued()
     {
-        var item = await DelugeSnapshot([], ("queue", -1));
+        var item = await RecordedDelugeSnapshot([], ("queue", -1));
 
         Assert.Null(item.QueuePosition);
     }
@@ -118,7 +118,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     [InlineData(false, 2.0, false, "Seeds with no ratio limit.")]
     public async Task Deluge_seed_limit_is_the_torrents_own_stop_at_ratio(bool stopAtRatio, double ratio, bool removeAtRatio, string expected)
     {
-        var item = await DelugeSnapshot([], ("queue", 2), ("stop_at_ratio", stopAtRatio), ("stop_ratio", ratio), ("remove_at_ratio", removeAtRatio));
+        var item = await RecordedDelugeSnapshot([], ("queue", 2), ("stop_at_ratio", stopAtRatio), ("stop_ratio", ratio), ("remove_at_ratio", removeAtRatio));
 
         Assert.Equal(expected, item.SeedLimit);
     }
@@ -127,7 +127,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Deluge_reports_no_seed_limit_when_it_sends_no_flag()
     {
         // The recorded torrent with the queue place and the seed flags taken out.
-        var item = await DelugeSnapshot([], ("queue", null), ("stop_at_ratio", null), ("stop_ratio", null), ("remove_at_ratio", null));
+        var item = await RecordedDelugeSnapshot([], ("queue", null), ("stop_at_ratio", null), ("stop_ratio", null), ("remove_at_ratio", null));
 
         Assert.Null(item.SeedLimit);
         Assert.Null(item.QueuePosition);
@@ -142,7 +142,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     {
         var sent = new List<string>();
         const string hash = "0123456789abcdef0123456789abcdef01234567";
-        var result = await new DelugeDownloadClient(new Factory(new DelugeQueueHandler(sent)))
+        var result = await new DelugeDownloadClient(new Factory(new RecordedDelugeQueueHandler(sent)))
             .ExecuteActionAsync(DelugeClient(), action, hash, CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
@@ -162,7 +162,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     // ----------------------------------------------------------------- helpers
 
     /// <summary>Transmission 4.1.3's recorded list of a finished torrent, with the queue place and seed limits under test.</summary>
-    private static async Task<DownloadQueueItem> TransmissionSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
+    private static async Task<DownloadQueueItem> RecordedTransmissionSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
     {
         var torrentGet = RecordedTransmissionRig.Reply(RecordedTransmissionRig.Finished, edits);
         var snapshot = await new TransmissionDownloadClient(new Factory(RecordedTransmissionRig.Handler(torrentGet, (_, body) =>
@@ -175,7 +175,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     }
 
     /// <summary>Deluge 2.2.0's recorded list of a finished torrent, with the queue place and seed flags under test.</summary>
-    private static async Task<DownloadQueueItem> DelugeSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
+    private static async Task<DownloadQueueItem> RecordedDelugeSnapshot(List<string> sent, params (string Field, object? Value)[] edits)
     {
         var updateUi = RecordedDelugeRig.Finished(edits.Append(("label", "movies")).ToArray());
         var snapshot = await new DelugeDownloadClient(new Factory(RecordedDelugeRig.Handler(updateUi, onCall: sent.Add)))
@@ -203,7 +203,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     /// Deluge 2.2.0 answering its sign-in with the recorded one and any queue move with the reply it recorded for a move to the top
     /// (which says nothing: a null result and no error), writing down every request body.
     /// </summary>
-    private sealed class DelugeQueueHandler(List<string> sent) : HttpMessageHandler
+    private sealed class RecordedDelugeQueueHandler(List<string> sent) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

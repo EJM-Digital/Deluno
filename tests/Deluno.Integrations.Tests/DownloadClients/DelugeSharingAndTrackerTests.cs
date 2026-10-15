@@ -21,7 +21,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task Ratio_and_seeding_minutes_are_read_from_the_update_ui_response()
     {
-        var item = await Snapshot(state: "Seeding", ratio: 1.75, seedingTime: 5400, trackerStatus: "Announce OK");
+        var item = await RecordedSnapshot(state: "Seeding", ratio: 1.75, seedingTime: 5400, trackerStatus: "Announce OK");
 
         Assert.Equal(1.75, item.Ratio);
         Assert.Equal(90, item.SeedingMinutes);
@@ -30,7 +30,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task Ratio_and_seeding_minutes_are_null_when_deluge_never_reports_them()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
 
         Assert.Null(item.Ratio);
         Assert.Null(item.SeedingMinutes);
@@ -39,7 +39,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task An_unregistered_tracker_surfaces_as_a_plain_words_error()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
 
         Assert.Equal("Error: unregistered torrent", item.ErrorMessage);
     }
@@ -47,7 +47,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task A_tracker_error_reaches_the_health_evaluator_as_a_client_stalled_finding()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
 
         var findings = Evaluate(item);
         // The default No progress rule owns a stall with nothing arriving (#1194); either way the client's words are kept.
@@ -58,7 +58,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task A_healthy_tracker_status_is_not_surfaced_as_an_error()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
 
         Assert.Null(item.ErrorMessage);
     }
@@ -67,7 +67,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task A_tracker_error_is_not_a_setup_problem()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
 
         Assert.False(item.IsSetupProblem);
     }
@@ -76,7 +76,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task Deluges_own_message_is_a_setup_problem()
     {
-        var item = await Snapshot(state: "Error", ratio: null, seedingTime: null, trackerStatus: "Announce sent", message: "queue failed: Errno 28 No space left on device");
+        var item = await RecordedSnapshot(state: "Error", ratio: null, seedingTime: null, trackerStatus: "Announce sent", message: "queue failed: Errno 28 No space left on device");
 
         Assert.True(item.IsSetupProblem);
         Assert.Equal("queue failed: Errno 28 No space left on device", item.ErrorMessage);
@@ -85,7 +85,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task Paused_by_a_person_is_distinct_from_queued()
     {
-        var item = await Snapshot(state: "Paused", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
+        var item = await RecordedSnapshot(state: "Paused", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
 
         Assert.Equal(DownloadQueueStatuses.Paused, item.Status);
     }
@@ -93,7 +93,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task Queued_stays_queued()
     {
-        var item = await Snapshot(state: "Queued", ratio: null, seedingTime: null, trackerStatus: string.Empty);
+        var item = await RecordedSnapshot(state: "Queued", ratio: null, seedingTime: null, trackerStatus: string.Empty);
 
         Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
     }
@@ -102,7 +102,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task An_unregistered_tracker_normalizes_to_the_tracker_unregistered_status()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
 
         Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
     }
@@ -111,7 +111,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task A_different_tracker_error_is_not_read_as_unregistered()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -119,7 +119,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task A_healthy_tracker_status_normalizes_to_ok()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -127,7 +127,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task No_tracker_status_at_all_normalizes_to_unknown()
     {
-        var item = await Snapshot(state: "Queued", ratio: null, seedingTime: null, trackerStatus: string.Empty);
+        var item = await RecordedSnapshot(state: "Queued", ratio: null, seedingTime: null, trackerStatus: string.Empty);
 
         Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
     }
@@ -136,7 +136,7 @@ public sealed class DelugeSharingAndTrackerTests
     [Fact]
     public async Task An_unregistered_tracker_reaches_the_evaluator_as_an_immediate_critical_finding()
     {
-        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
+        var item = await RecordedSnapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
 
         var findings = Evaluate(item);
         var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.TrackerUnregistered);
@@ -157,7 +157,7 @@ public sealed class DelugeSharingAndTrackerTests
                 TrackerStatus: item.TrackerStatus),
             capturedUtc: item.AddedUtc);
 
-    private static async Task<DownloadQueueItem> Snapshot(string state, double? ratio, double? seedingTime, string trackerStatus, string message = "OK")
+    private static async Task<DownloadQueueItem> RecordedSnapshot(string state, double? ratio, double? seedingTime, string trackerStatus, string message = "OK")
     {
         // Deluge 2.2.0's recorded list of a torrent that is downloading, with the state, sharing figures, tracker status and message under test.
         // A figure Deluge does not report is taken out of the reply, as a null edit does.

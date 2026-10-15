@@ -100,6 +100,24 @@ public sealed class ReleaseFeedUpdateSourceTests
         Assert.Equal(calls, api.Calls);
     }
 
+    [Fact]
+    public async Task An_update_package_found_through_the_api_is_downloaded_by_the_ordinary_downloader_from_the_releases_asset_address()
+    {
+        var downloader = new ApiRecordingDownloader();
+        var source = new ReleaseFeedUpdateSource("https://github.com/owner/app", includePreReleases: true, downloader, new Page(null), new Api(DateTimeOffset.UtcNow.AddMinutes(40)), new Deluno.Infrastructure.Http.GitHubApiState());
+        var logger = new NullVelopackLogger();
+        var feed = await source.GetReleaseFeed(logger, "Deluno", "win");
+        var package = feed.Assets.First();
+        var target = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".nupkg");
+
+        await source.DownloadReleaseEntry(logger, package, target, _ => { });
+
+        var downloaded = Assert.Single(downloader.Files);
+        Assert.Equal(target, downloaded.Target);
+        Assert.Contains(package.FileName, downloaded.Url, StringComparison.Ordinal);
+        Assert.Contains("/releases/download/", downloaded.Url, StringComparison.Ordinal);
+    }
+
     private sealed class Api(DateTimeOffset reset) : HttpMessageHandler
     {
         public int Calls { get; private set; }
@@ -132,8 +150,13 @@ public sealed class ReleaseFeedUpdateSourceTests
     /// <summary>The ordinary downloader: only update files; the API listing never comes here.</summary>
     private sealed class ApiRecordingDownloader : IFileDownloader
     {
+        public List<(string Url, string Target)> Files { get; } = [];
+
         public Task DownloadFile(string url, string targetFile, Action<int> progress, IDictionary<string, string>? headers = null, double timeout = 30, CancellationToken cancelToken = default)
-            => Task.CompletedTask;
+        {
+            Files.Add((url, targetFile));
+            return Task.CompletedTask;
+        }
 
         // The release's Velopack feed file, as GitHub served Weir's.
         public Task<byte[]> DownloadBytes(string url, IDictionary<string, string>? headers = null, double timeout = 30)

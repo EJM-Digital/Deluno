@@ -40,7 +40,7 @@ public sealed class AskingTheProcessorTests
         var service = Service(request =>
         {
             sent = request;
-            return Recorded("capabilities", "capabilities");
+            return RecordedReply("capabilities", "capabilities");
         });
 
         var support = await service.GetStatusSupportAsync(Weir, CancellationToken.None);
@@ -61,7 +61,7 @@ public sealed class AskingTheProcessorTests
         {
             requested.Add(request.RequestUri!.AbsolutePath);
             return request.RequestUri.AbsolutePath.EndsWith("/capabilities")
-                ? Recorded("capabilities", "capabilities")
+                ? RecordedReply("capabilities", "capabilities")
                 : Json(HttpStatusCode.OK, libraryFolders);
         });
 
@@ -78,10 +78,23 @@ public sealed class AskingTheProcessorTests
     [Fact]
     public async Task A_processor_names_itself_in_its_capabilities_answer_or_not_at_all()
     {
-        Assert.Equal("Weir", await Service(_ => Recorded("capabilities", "capabilities"))
+        Assert.Equal("Weir", await Service(_ => RecordedReply("capabilities", "capabilities"))
             .GetProductNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
         Assert.Null(await Service(_ => Json(HttpStatusCode.OK, RecordedReplies.Weir("capabilities").Body("capabilities", ("product", null))))
             .GetProductNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_processors_machine_name_is_the_one_its_capabilities_answer_gives_and_none_when_it_gives_none()
+    {
+        var recorded = RecordedReplies.Weir("capabilities").Find("capabilities").Reply.Json()["machine_name"]!.GetValue<string>();
+
+        Assert.Equal(recorded, await Service(_ => RecordedReply("capabilities", "capabilities"))
+            .GetMachineNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
+        Assert.Null(await Service(_ => Json(HttpStatusCode.OK, RecordedReplies.Weir("capabilities").Body("capabilities", ("machine_name", null))))
+            .GetMachineNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
+        Assert.Null(await Service(_ => RecordedReply("capabilities-wrong-secret", "capabilities"))
+            .GetMachineNameAsync(Weir.SubmissionUrl, "X-Webhook-Secret", "s", CancellationToken.None));
     }
 
     [Fact]
@@ -116,9 +129,9 @@ public sealed class AskingTheProcessorTests
     [InlineData("capabilities-no-secret")]
     public async Task A_refused_secret_is_said_as_the_secret_to_fix_not_as_unsupported(string recording)
     {
-        var support = await Service(_ => Recorded(recording, "capabilities")).GetStatusSupportAsync(Weir, CancellationToken.None);
+        var support = await Service(_ => RecordedReply(recording, "capabilities")).GetStatusSupportAsync(Weir, CancellationToken.None);
         // The status question is refused with the same words; Weir checks the secret the same way on every question.
-        var status = await Service(_ => Recorded(recording, "capabilities")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+        var status = await Service(_ => RecordedReply(recording, "capabilities")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Forbidden, support.Answer);
         Assert.Contains("refused the webhook secret", support.Message, StringComparison.Ordinal);
@@ -153,7 +166,7 @@ public sealed class AskingTheProcessorTests
     [InlineData("status-completed", "completed", null)]
     public async Task Each_recorded_state_is_read_as_that_state(string recording, string state, int? queuePosition)
     {
-        var answer = await Service(_ => Recorded(recording, "handoffs/deluno")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+        var answer = await Service(_ => RecordedReply(recording, "handoffs/deluno")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Answered, answer.Answer);
         Assert.Equal(state, answer.State);
@@ -164,7 +177,7 @@ public sealed class AskingTheProcessorTests
     [Fact]
     public async Task Never_heard_of_it_and_could_not_ask_are_different_answers()
     {
-        var notFound = await Service(_ => Recorded("no-record", "handoffs/deluno/9c911dd4-098c-4cd4-902c-4995b2aaf5b7", 0)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+        var notFound = await Service(_ => RecordedReply("no-record", "handoffs/deluno/9c911dd4-098c-4cd4-902c-4995b2aaf5b7", 0)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
         var down = await Service(_ => throw new HttpRequestException("connection refused")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
         var broken = await Service(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
 
@@ -190,7 +203,7 @@ public sealed class AskingTheProcessorTests
         var result = await Service(request =>
         {
             sent = request;
-            return recording == "none-403" ? new HttpResponseMessage(HttpStatusCode.Forbidden) : Recorded(recording, "handoffs/deluno");
+            return recording == "none-403" ? new HttpResponseMessage(HttpStatusCode.Forbidden) : RecordedReply(recording, "handoffs/deluno");
         }).CancelHandoffAsync(Weir, "h-1", CancellationToken.None);
 
         Assert.Equal(expected, result.Answer);
@@ -233,10 +246,10 @@ public sealed class AskingTheProcessorTests
     {
         var answer = code switch
         {
-            HttpStatusCode.OK => Recorded("outcome-delivered", "outcome"),
-            HttpStatusCode.NotFound => Recorded("no-record", "outcome"),
-            HttpStatusCode.Conflict => Recorded("outcome-handoff-not-finished-working", "outcome"),
-            HttpStatusCode.Unauthorized => Recorded("handoff-refused-wrong-secret", "webhook"),
+            HttpStatusCode.OK => RecordedReply("outcome-delivered", "outcome"),
+            HttpStatusCode.NotFound => RecordedReply("no-record", "outcome"),
+            HttpStatusCode.Conflict => RecordedReply("outcome-handoff-not-finished-working", "outcome"),
+            HttpStatusCode.Unauthorized => RecordedReply("handoff-refused-wrong-secret", "webhook"),
             _ => new HttpResponseMessage(code)
         };
         var told = await Service(_ => answer)
@@ -295,7 +308,7 @@ public sealed class AskingTheProcessorTests
         await Service(request =>
         {
             body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return Recorded("outcome-delivered", "outcome");
+            return RecordedReply("outcome-delivered", "outcome");
         }).ReportOutcomeAsync(Weir, "h-1", ProcessorHandoffOutcome.Imported, "x", null, occurred, CancellationToken.None);
 
         using var sent = System.Text.Json.JsonDocument.Parse(body!);
@@ -303,7 +316,7 @@ public sealed class AskingTheProcessorTests
     }
 
     /// <summary>One of Weir 1.0.0-rc.13's recorded replies as an HTTP response: the exchange of the recording whose request mentions the text (the nth such one).</summary>
-    private static HttpResponseMessage Recorded(string recording, string requestContains, int nth = 0)
+    private static HttpResponseMessage RecordedReply(string recording, string requestContains, int nth = 0)
         => RecordedReplies.Weir(recording).Exchanges
             .Where(e => e.Request.Path.Contains(requestContains, StringComparison.OrdinalIgnoreCase))
             .ElementAt(nth).Reply.ToResponse();

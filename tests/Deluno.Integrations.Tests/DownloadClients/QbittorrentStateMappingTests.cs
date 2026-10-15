@@ -49,7 +49,7 @@ public sealed class QbittorrentStateMappingTests
     {
         // Completed states report progress 1; qBittorrent's own convention.
         var progress = state is "uploading" or "pausedUP" or "stoppedUP" or "queuedUP" or "stalledUP" or "forcedUP" ? 1.0 : 0.4;
-        var item = await Snapshot(state, progress);
+        var item = await RecordedSnapshot(state, progress);
 
         Assert.Equal(expected, item.Status);
     }
@@ -68,7 +68,7 @@ public sealed class QbittorrentStateMappingTests
     [InlineData("moving")]
     public async Task Checking_or_moving_never_reads_as_import_ready_even_at_full_progress(string state)
     {
-        var item = await Snapshot(state, progress: 1.0);
+        var item = await RecordedSnapshot(state, progress: 1.0);
 
         Assert.Equal(DownloadQueueStatuses.NotTransferring, item.Status);
     }
@@ -76,7 +76,7 @@ public sealed class QbittorrentStateMappingTests
     [Fact]
     public async Task MissingFiles_carries_a_plain_words_explanation()
     {
-        var item = await Snapshot("missingFiles", 0.4);
+        var item = await RecordedSnapshot("missingFiles", 0.4);
 
         Assert.Equal("qBittorrent reports this torrent's data is missing from disk.", item.ErrorMessage);
     }
@@ -91,7 +91,7 @@ public sealed class QbittorrentStateMappingTests
     [InlineData("downloading", false)]
     public async Task IsSetupProblem_reflects_whether_qbittorrent_reported_a_local_error(string state, bool expected)
     {
-        var item = await Snapshot(state, 0.4);
+        var item = await RecordedSnapshot(state, 0.4);
 
         Assert.Equal(expected, item.IsSetupProblem);
     }
@@ -99,7 +99,7 @@ public sealed class QbittorrentStateMappingTests
     [Fact]
     public async Task Peers_is_seeds_plus_leechers()
     {
-        var item = await Snapshot("downloading", 0.4, numSeeds: 2, numLeechs: 5);
+        var item = await RecordedSnapshot("downloading", 0.4, numSeeds: 2, numLeechs: 5);
 
         Assert.Equal(7, item.Peers);
     }
@@ -107,7 +107,7 @@ public sealed class QbittorrentStateMappingTests
     [Fact]
     public async Task A_swarm_with_only_leechers_and_no_seeds_is_not_reported_as_zero_peers()
     {
-        var item = await Snapshot("downloading", 0.4, numSeeds: 0, numLeechs: 3);
+        var item = await RecordedSnapshot("downloading", 0.4, numSeeds: 0, numLeechs: 3);
 
         Assert.Equal(3, item.Peers);
     }
@@ -123,12 +123,12 @@ public sealed class QbittorrentStateMappingTests
     [InlineData(null, null)]
     public async Task Privacy_round_trips_from_qbittorrent(bool? clientReports, bool? expected)
     {
-        var item = await Snapshot("downloading", 0.4, isPrivate: clientReports);
+        var item = await RecordedSnapshot("downloading", 0.4, isPrivate: clientReports);
 
         Assert.Equal(expected, item.IsPrivate);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0, bool? isPrivate = null)
+    private static async Task<DownloadQueueItem> RecordedSnapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0, bool? isPrivate = null)
     {
         // qBittorrent 5.2.1's recorded list of a download in progress, in the state, progress, swarm and privacy under test.
         // A privacy the client does not send is taken out of the reply.

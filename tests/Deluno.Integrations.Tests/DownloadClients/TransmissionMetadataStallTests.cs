@@ -21,7 +21,7 @@ public sealed class TransmissionMetadataStallTests
     public async Task A_fresh_magnet_with_no_metadata_is_downloading_not_stalled_or_complete()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var item = await Snapshot(status: 4, totalSize: 0, percentDone: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
+        var item = await RecordedSnapshot(status: 4, totalSize: 0, percentDone: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(5));
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -35,7 +35,7 @@ public sealed class TransmissionMetadataStallTests
     public async Task A_magnet_with_no_metadata_and_no_peers_is_stalled_after_the_stall_window()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-40);
-        var item = await Snapshot(status: 4, totalSize: 0, percentDone: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
+        var item = await RecordedSnapshot(status: 4, totalSize: 0, percentDone: 0, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
 
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
 
@@ -49,7 +49,7 @@ public sealed class TransmissionMetadataStallTests
     public async Task A_magnet_with_no_metadata_but_a_connected_peer_is_not_stalled()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-40);
-        var item = await Snapshot(status: 4, totalSize: 0, percentDone: 0, peers: 3, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
+        var item = await RecordedSnapshot(status: 4, totalSize: 0, percentDone: 0, peers: 3, addedUtc, capturedUtc: addedUtc.AddMinutes(40));
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -63,7 +63,7 @@ public sealed class TransmissionMetadataStallTests
     public async Task Completion_is_never_inferred_from_zero_size_alone()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var item = await Snapshot(status: 4, totalSize: 0, percentDone: 1, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+        var item = await RecordedSnapshot(status: 4, totalSize: 0, percentDone: 1, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
 
         Assert.NotEqual(DownloadQueueStatuses.ImportReady, item.Status);
         Assert.NotEqual(DownloadQueueStatuses.Completed, item.Status);
@@ -74,7 +74,7 @@ public sealed class TransmissionMetadataStallTests
     public async Task A_download_with_known_size_and_full_progress_is_import_ready()
     {
         var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-10);
-        var item = await Snapshot(status: 4, totalSize: 5_000_000_000, percentDone: 1, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(10));
+        var item = await RecordedSnapshot(status: 4, totalSize: 5_000_000_000, percentDone: 1, peers: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(10));
 
         Assert.Equal(DownloadQueueStatuses.ImportReady, item.Status);
     }
@@ -91,7 +91,7 @@ public sealed class TransmissionMetadataStallTests
                 item.ReleaseName),
             capturedUtc);
 
-    private static async Task<DownloadQueueItem> Snapshot(
+    private static async Task<DownloadQueueItem> RecordedSnapshot(
         int status,
         long totalSize,
         double percentDone,

@@ -18,7 +18,7 @@ public sealed class QbittorrentTrackerStatusTests
     [Fact]
     public async Task A_not_working_tracker_reporting_unregistered_normalizes_to_the_tracker_unregistered_status()
     {
-        var item = await Snapshot(trackersJson: RecordedQbittorrentRig.Trackers(4, "torrent not registered with this tracker"));
+        var item = await RecordedSnapshot(trackersJson: RecordedQbittorrentRig.Trackers(4, "torrent not registered with this tracker"));
 
         Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
     }
@@ -26,7 +26,7 @@ public sealed class QbittorrentTrackerStatusTests
     [Fact]
     public async Task A_working_tracker_normalizes_to_ok()
     {
-        var item = await Snapshot(trackersJson: RecordedQbittorrentRig.Trackers(2, string.Empty));
+        var item = await RecordedSnapshot(trackersJson: RecordedQbittorrentRig.Trackers(2, string.Empty));
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -35,7 +35,7 @@ public sealed class QbittorrentTrackerStatusTests
     [Fact]
     public async Task A_not_working_tracker_with_an_unrelated_message_is_not_read_as_unregistered()
     {
-        var item = await Snapshot(trackersJson: RecordedQbittorrentRig.Trackers(4, "Connection refused"));
+        var item = await RecordedSnapshot(trackersJson: RecordedQbittorrentRig.Trackers(4, "Connection refused"));
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -43,7 +43,7 @@ public sealed class QbittorrentTrackerStatusTests
     [Fact]
     public async Task No_trackers_at_all_normalizes_to_ok_not_unregistered()
     {
-        var item = await Snapshot(trackersJson: RecordedReplies.Qbittorrent("trackers").Body("torrents/trackers", ("^", 0)));
+        var item = await RecordedSnapshot(trackersJson: RecordedReplies.Qbittorrent("trackers").Body("torrents/trackers", ("^", 0)));
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -52,12 +52,12 @@ public sealed class QbittorrentTrackerStatusTests
     [Fact]
     public async Task A_failed_tracker_read_normalizes_to_unknown_not_unregistered()
     {
-        var item = await Snapshot(trackersJson: null);
+        var item = await RecordedSnapshot(trackersJson: null);
 
         Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(string? trackersJson)
+    private static async Task<DownloadQueueItem> RecordedSnapshot(string? trackersJson)
     {
         // qBittorrent 5.2.1's recorded list of a download in progress, with the tracker list as under test (null: the tracker read fails).
         var torrentsInfo = RecordedQbittorrentRig.Info(RecordedQbittorrentRig.Downloading, ("category", "movies"), ("state", "downloading"), ("progress", 0.4), ("dlspeed", 0), ("upspeed", 0));

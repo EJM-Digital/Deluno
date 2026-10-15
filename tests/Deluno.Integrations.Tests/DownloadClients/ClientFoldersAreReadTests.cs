@@ -28,7 +28,7 @@ public sealed class ClientFoldersAreReadTests
     [InlineData("DELETED/MANUAL", "failed")]
     public async Task An_NZBGet_history_row_is_finished_or_failed_by_its_main_status(string status, string outcome)
     {
-        var history = await NzbGetHistory(status);
+        var history = await RecordedNzbGetHistory(status);
 
         Assert.Equal(outcome, Assert.Single(history).Outcome);
     }
@@ -36,7 +36,7 @@ public sealed class ClientFoldersAreReadTests
     [Fact]
     public async Task An_NZBGet_download_is_in_its_own_folder_not_one_with_its_name_added_again()
     {
-        var history = await NzbGetHistory("SUCCESS/UNPACK");
+        var history = await RecordedNzbGetHistory("SUCCESS/UNPACK");
 
         Assert.Equal(@"C:\Downloads\Completed\TV\Pioneer.One.S01E01.1080p", Assert.Single(history).SourcePath);
     }
@@ -45,7 +45,7 @@ public sealed class ClientFoldersAreReadTests
     public async Task NZBGet_names_a_categorys_folder_with_its_variables_filled_in()
     {
         // NZBGet 26.3's recorded configuration, with the TV category's folder written as a variable of NZBGet's own.
-        var result = await new NzbGetDownloadClient(Factory(NzbGetConfig(("result.[Name=Category2.DestDir].Value", @"${DestDir}\TV"))))
+        var result = await new NzbGetDownloadClient(Factory(RecordedNzbGetConfig(("result.[Name=Category2.DestDir].Value", @"${DestDir}\TV"))))
             .CheckCategoryAsync(Client("nzbget"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
@@ -56,7 +56,7 @@ public sealed class ClientFoldersAreReadTests
     public async Task NZBGet_without_the_category_says_where_its_downloads_go_instead()
     {
         // The recorded configuration with no category called TV.
-        var result = await new NzbGetDownloadClient(Factory(NzbGetConfig(("result.[Name=Category2.Name].Value", "Other"))))
+        var result = await new NzbGetDownloadClient(Factory(RecordedNzbGetConfig(("result.[Name=Category2.Name].Value", "Other"))))
             .CheckCategoryAsync(Client("nzbget"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Missing, result.Status);
@@ -66,7 +66,7 @@ public sealed class ClientFoldersAreReadTests
     [Fact]
     public async Task Transmission_saves_a_category_inside_its_download_folder()
     {
-        var result = await new TransmissionDownloadClient(Factory(TransmissionSession(("arguments.rpc-version", 16))))
+        var result = await new TransmissionDownloadClient(Factory(RecordedTransmissionSession(("arguments.rpc-version", 16))))
             .CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
@@ -77,7 +77,7 @@ public sealed class ClientFoldersAreReadTests
     [Fact]
     public async Task A_Transmission_too_old_for_labels_says_so_by_name_and_version()
     {
-        var result = await new TransmissionDownloadClient(Factory(TransmissionSession(("arguments.rpc-version", 15))))
+        var result = await new TransmissionDownloadClient(Factory(RecordedTransmissionSession(("arguments.rpc-version", 15))))
             .CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Unsupported, result.Status);
@@ -90,7 +90,7 @@ public sealed class ClientFoldersAreReadTests
     [Fact]
     public async Task A_Transmission_with_no_rpc_version_at_all_is_not_assumed_to_support_labels()
     {
-        var result = await new TransmissionDownloadClient(Factory(TransmissionSession(("arguments.rpc-version", null))))
+        var result = await new TransmissionDownloadClient(Factory(RecordedTransmissionSession(("arguments.rpc-version", null))))
             .CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Unsupported, result.Status);
@@ -126,7 +126,7 @@ public sealed class ClientFoldersAreReadTests
         => Assert.Equal(expected, ClientPaths.ClientFolder(root, folder));
 
     /// <summary>NZBGet 26.3's recorded history of one finished job, in the status and folder under test.</summary>
-    private static async Task<IReadOnlyList<DownloadClientHistoryItem>> NzbGetHistory(string status)
+    private static async Task<IReadOnlyList<DownloadClientHistoryItem>> RecordedNzbGetHistory(string status)
     {
         var history = RecordedReplies.Nzbget("finished-single-file").Body(
             "history\"",
@@ -137,11 +137,11 @@ public sealed class ClientFoldersAreReadTests
     }
 
     /// <summary>NZBGet 26.3's recorded configuration, with the given options changed.</summary>
-    private static HttpMessageHandler NzbGetConfig(params (string Path, object? Value)[] edits)
+    private static HttpMessageHandler RecordedNzbGetConfig(params (string Path, object? Value)[] edits)
         => new FixedReply(RecordedReplies.Nzbget("settings").Body("\"config\"", edits));
 
     /// <summary>Transmission 4.1.3's recorded session settings, with the given values changed.</summary>
-    private static HttpMessageHandler TransmissionSession(params (string Path, object? Value)[] edits)
+    private static HttpMessageHandler RecordedTransmissionSession(params (string Path, object? Value)[] edits)
         => new FixedReply(RecordedReplies.Transmission("settings").Body("session-get", edits));
 
     private static DownloadClientItem Client(string protocol)

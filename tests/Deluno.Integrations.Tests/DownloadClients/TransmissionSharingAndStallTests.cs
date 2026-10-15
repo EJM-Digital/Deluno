@@ -21,7 +21,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Ratio_and_seeding_minutes_are_read_from_the_torrent_get_response()
     {
-        var item = await Snapshot(status: 6, percentDone: 1, uploadRatio: 2.5, secondsSeeding: 7200, peersSendingToUs: 0, isStalled: false);
+        var item = await RecordedSnapshot(status: 6, percentDone: 1, uploadRatio: 2.5, secondsSeeding: 7200, peersSendingToUs: 0, isStalled: false);
 
         Assert.Equal(2.5, item.Ratio);
         Assert.Equal(120, item.SeedingMinutes);
@@ -30,7 +30,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Seeding_minutes_is_null_when_transmission_never_reports_it()
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 2, isStalled: false);
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 2, isStalled: false);
 
         Assert.Null(item.Ratio);
         Assert.Null(item.SeedingMinutes);
@@ -42,7 +42,7 @@ public sealed class TransmissionSharingAndStallTests
     public async Task Transmissions_own_isStalled_flag_alone_is_not_read_as_stalled(double percentDone)
     {
         // #1193: Deluno's own no-progress window decides, at any percent (DownloadClientHelpers.ReconcileTorrentStatus).
-        var item = await Snapshot(status: 4, percentDone: percentDone, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
+        var item = await RecordedSnapshot(status: 4, percentDone: percentDone, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: true);
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -50,7 +50,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task IsStalled_false_leaves_an_actively_downloading_torrent_alone()
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false);
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false);
 
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
@@ -58,7 +58,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task IsStalled_does_not_override_an_error_or_a_completed_download()
     {
-        var completed = await Snapshot(status: 6, percentDone: 1, uploadRatio: 1, secondsSeeding: 60, peersSendingToUs: 0, isStalled: true);
+        var completed = await RecordedSnapshot(status: 6, percentDone: 1, uploadRatio: 1, secondsSeeding: 60, peersSendingToUs: 0, isStalled: true);
 
         Assert.Equal(DownloadQueueStatuses.ImportReady, completed.Status);
     }
@@ -73,7 +73,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Peers_reflects_connected_peers_so_a_metadata_only_magnet_is_not_read_as_peerless()
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false, peersConnected: 5);
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false, peersConnected: 5);
 
         Assert.Equal(5, item.Peers);
     }
@@ -81,7 +81,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Status_zero_is_paused_by_a_person_not_queued()
     {
-        var item = await Snapshot(status: 0, percentDone: 0.2, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
+        var item = await RecordedSnapshot(status: 0, percentDone: 0.2, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
 
         Assert.Equal(DownloadQueueStatuses.Paused, item.Status);
     }
@@ -89,7 +89,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Status_one_still_reads_as_queued()
     {
-        var item = await Snapshot(status: 1, percentDone: 0, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
+        var item = await RecordedSnapshot(status: 1, percentDone: 0, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
 
         Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
     }
@@ -103,7 +103,7 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Status_two_never_reads_as_import_ready_even_at_full_progress()
     {
-        var item = await Snapshot(status: 2, percentDone: 1, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
+        var item = await RecordedSnapshot(status: 2, percentDone: 1, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
 
         Assert.Equal(DownloadQueueStatuses.NotTransferring, item.Status);
     }
@@ -121,7 +121,7 @@ public sealed class TransmissionSharingAndStallTests
     [InlineData(0, false)]
     public async Task IsSetupProblem_reflects_only_transmissions_local_error_code(int errorCode, bool expected)
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false, error: errorCode, errorString: errorCode == 0 ? null : "Something went wrong");
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false, error: errorCode, errorString: errorCode == 0 ? null : "Something went wrong");
 
         Assert.Equal(expected, item.IsSetupProblem);
     }
@@ -131,7 +131,7 @@ public sealed class TransmissionSharingAndStallTests
     public async Task Last_activity_is_read_from_activity_date_when_it_is_the_most_recent()
     {
         var activity = DateTimeOffset.UtcNow.AddMinutes(-2);
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
             activityDate: activity.ToUnixTimeSeconds(), doneDate: 0);
 
         Assert.Equal(activity.ToUnixTimeSeconds(), item.LastActivityUtc!.Value.ToUnixTimeSeconds());
@@ -142,7 +142,7 @@ public sealed class TransmissionSharingAndStallTests
     {
         var done = DateTimeOffset.UtcNow.AddMinutes(-1);
         var stale = DateTimeOffset.UtcNow.AddHours(-3);
-        var item = await Snapshot(status: 6, percentDone: 1, uploadRatio: 1, secondsSeeding: 60, peersSendingToUs: 0, isStalled: false,
+        var item = await RecordedSnapshot(status: 6, percentDone: 1, uploadRatio: 1, secondsSeeding: 60, peersSendingToUs: 0, isStalled: false,
             activityDate: stale.ToUnixTimeSeconds(), doneDate: done.ToUnixTimeSeconds());
 
         Assert.Equal(done.ToUnixTimeSeconds(), item.LastActivityUtc!.Value.ToUnixTimeSeconds());
@@ -151,13 +151,13 @@ public sealed class TransmissionSharingAndStallTests
     [Fact]
     public async Task Last_activity_is_null_when_transmission_reports_neither_field()
     {
-        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
+        var item = await RecordedSnapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
             activityDate: 0, doneDate: 0);
 
         Assert.Null(item.LastActivityUtc);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(
+    private static async Task<DownloadQueueItem> RecordedSnapshot(
         int status,
         double percentDone,
         double? uploadRatio,
