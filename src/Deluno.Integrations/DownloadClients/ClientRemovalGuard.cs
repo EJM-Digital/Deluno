@@ -94,6 +94,42 @@ internal static class ClientRemovalGuard
 internal static class DownloadFolderRemoval
 {
     /// <summary>
+    /// The libraries a client's delete must be checked against (#1328). Null when they could not be read: a delete
+    /// that cannot be checked against the library roots does not happen. A client built with no library source (a test)
+    /// has no libraries to protect.
+    /// </summary>
+    public static async Task<IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>?> ReadLibrariesAsync(
+        Deluno.Libraries.Data.ILibrariesRepository? repository, CancellationToken cancellationToken)
+    {
+        if (repository is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            return await repository.ListLibrariesAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Why the files at <paramref name="path"/> are not deleted, or null when no library is in the way.</summary>
+    public static string? LibraryRefusal(IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries, string path)
+    {
+        if (libraries is null)
+        {
+            return $"Deluno could not check {path} against your libraries, so it left the files alone. Remove them by hand if they should go.";
+        }
+
+        return Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(libraries, path)
+            ? $"{path} is inside a library, or holds one, so Deluno left it alone. The download client reported a folder with your media in it; remove the files by hand if they should go."
+            : null;
+    }
+
+    /// <summary>
     /// Whether <paramref name="path"/> is one Deluno can safely delete on a download's behalf: named, resolvable, not
     /// a filesystem root, and present on this machine.
     /// </summary>
@@ -152,8 +188,9 @@ internal static class DownloadFolderRemoval
     /// folder (a category folder, say) must never have it wiped on one job's behalf.
     /// </param>
     /// <param name="onThisMachine">Whether the client runs here, so a folder that is not found really is gone.</param>
+    /// <param name="libraries">Every library, read just before (#1328); null when they could not be read, and then nothing is deleted.</param>
     /// <returns>Null when the files are gone (removed now, or never there), else why they are still on disk.</returns>
-    public static string? Remove(string? path, string? jobName, bool onThisMachine)
+    public static string? Remove(string? path, string? jobName, bool onThisMachine, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -167,6 +204,12 @@ internal static class DownloadFolderRemoval
                 : $"The client is on another machine, so Deluno cannot see {path} to check it was removed.";
         }
 
+        // #1328: never anything that is, holds or sits inside a library root, whatever the client says it is.
+        if (LibraryRefusal(libraries, fullPath) is { } refusal)
+        {
+            return refusal;
+        }
+
         var trimmedFull = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var folderName = Path.GetFileName(trimmedFull);
         var isFolder = Directory.Exists(fullPath);
@@ -176,6 +219,10 @@ internal static class DownloadFolderRemoval
         // never a filesystem root, and never a shared folder such as the category: it must carry the job's name.
         var jobFolder = isFolder ? null : JobOwnFolder(trimmedFull, jobName);
         var target = jobFolder ?? fullPath;
+        if (jobFolder is not null && LibraryRefusal(libraries, target) is { } folderRefusal)
+        {
+            return folderRefusal;
+        }
 
         if (jobFolder is null)
         {
@@ -254,12 +301,17 @@ internal static class DownloadFolderRemoval
     /// <c>__</c> and six letters or digits, and holding no file at all.
     /// </summary>
     /// <returns>Null when nothing is left over, else why a leftover could not go.</returns>
-    public static string? RemoveEmptyLeftovers(string? downloadFolder, string? torrentName)
+    public static string? RemoveEmptyLeftovers(string? downloadFolder, string? torrentName, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries)
     {
         if (string.IsNullOrWhiteSpace(downloadFolder) || string.IsNullOrWhiteSpace(torrentName)
             || !IsSafeToDelete(downloadFolder, out var folder) || !Directory.Exists(folder))
         {
             return null;
+        }
+
+        if (LibraryRefusal(libraries, folder) is { } refusal)
+        {
+            return refusal;
         }
 
         var prefix = torrentName.Trim() + "__";
