@@ -299,3 +299,74 @@ describe("the Weir questions gate Start", () => {
     expect(suggestedProcessedFolder("/media/tv", "TV")).toBe("");
   });
 });
+
+describe("what the Yes/No answers write when the baseline is created (#1194, #993)", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+    authedFetchMock.mockReset();
+  });
+
+  const form = (overrides: Record<string, unknown>) => ({ ...input().form, ...overrides }) as unknown as Parameters<typeof guide.saveLocalNetworkAuth>[0];
+  const rule = (kind: string, enabled: boolean) => ({ id: `rule-${kind}`, kind, enabled, strikeLimit: 9, timerMinutes: 60, actionPreset: "keep" });
+
+  it("a Yes to skipping sign-in writes the real setting with the ticked addresses, a No writes it off, and no answer writes nothing", async () => {
+    fetchJsonMock.mockResolvedValue({});
+
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: true, localNetworkAllowList: ["192.168.1.20"] }));
+    expect(fetchJsonMock).toHaveBeenLastCalledWith("/api/security/local-network-auth", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true, additionalLocalNetworks: [], allowList: ["192.168.1.20"], trustedProxies: [] })
+    });
+
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: false, localNetworkAllowList: [] }));
+    expect(JSON.parse(fetchJsonMock.mock.lastCall![1].body).enabled).toBe(false);
+
+    fetchJsonMock.mockClear();
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: null }));
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("a Yes to the stall question turns on both the No progress and the Too slow rule with 3 strikes, 50 KB/s and replace, whether they exist or not", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => (url === "/api/download-health/rules" ? [rule("no-progress", false)] : {}));
+
+    await guide.saveStallStrikeRules(form({ automation: { ...NO, stallStrikes: true } }));
+
+    const writes = fetchJsonMock.mock.calls.filter(([, init]) => init?.method === "PUT").map(([url, init]) => ({ url, body: JSON.parse(init.body) }));
+    expect(writes.map((write) => write.url)).toEqual(["/api/download-health/rules/rule-no-progress", "/api/download-health/rules/new"]);
+    expect(writes[0].body).toMatchObject({ kind: "no-progress", enabled: true, strikeLimit: 3, actionPreset: "replace" });
+    expect(writes[1].body).toMatchObject({ kind: "too-slow", enabled: true, strikeLimit: 3, actionPreset: "replace", threshold: 50 });
+  });
+
+  it("a No switches off a stall rule that was on, leaves one that is already off alone, and creates none", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => (url === "/api/download-health/rules" ? [rule("no-progress", true), rule("too-slow", false)] : {}));
+
+    await guide.saveStallStrikeRules(form({ automation: { ...NO, stallStrikes: false } }));
+
+    const writes = fetchJsonMock.mock.calls.filter(([, init]) => init?.method === "PUT").map(([url, init]) => ({ url, body: JSON.parse(init.body) }));
+    expect(writes).toHaveLength(1);
+    expect(writes[0].url).toBe("/api/download-health/rules/rule-no-progress");
+    expect(writes[0].body.enabled).toBe(false);
+  });
+
+  it("no answer to the stall question writes nothing", async () => {
+    await guide.saveStallStrikeRules(form({ automation: { ...NO, stallStrikes: null } }));
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("a sign-in write the server refuses does not stop the baseline: the message names what could not be saved", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/api/quality-profiles") return { id: "qp1", name: "p", mediaType: "movies" };
+      if (url === "/api/libraries") return { id: "lib1", name: "Library" };
+      if (url === "/api/security/local-network-auth") throw new Error("refused");
+      return {};
+    });
+    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
+    const base = input();
+
+    const result = await createBaseline(input({ form: { ...base.form, skipSignInLocalNetwork: true } }), []);
+
+    expect(result.libraries.length).toBeGreaterThan(0);
+    expect(result.message).toContain("These answers could not be saved, so set them in Settings: skipping sign-in on your home network");
+  });
+});
