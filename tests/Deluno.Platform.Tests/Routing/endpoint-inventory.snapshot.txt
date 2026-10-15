@@ -276,7 +276,7 @@ GET /api/v1/guides/trash/versions/{version:int}
 GET /api/v1/import-resolutions/
 GET /api/v1/release-preferences/plans
 GET /api/v1/release-preferences/plans/quality-profile/{profileId}
-GET /api/v1/release-preferences/plans/{planId}
+GET /api/v1/release-preferences/plans/{**planId}
 GET /api/wanted/cutoff
 GET /api/wanted/missing
 GET /health
