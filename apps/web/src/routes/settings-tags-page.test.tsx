@@ -40,6 +40,9 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" })
 }));
 
+const toastSuccess = vi.fn();
+vi.mock("../components/shell/toaster", () => ({ toast: { success: (...args: unknown[]) => toastSuccess(...args), error: vi.fn() } }));
+
 const { SettingsTagsPage } = await import("./settings-tags-page");
 
 function renderPage() {
@@ -54,6 +57,7 @@ function renderPage() {
 describe("Tags page (#1039)", () => {
   beforeEach(() => {
     authedFetchMock.mockReset();
+    toastSuccess.mockReset();
     authedFetchMock.mockResolvedValue({ ok: true, status: 204, json: async () => ({}) });
   });
 
@@ -139,5 +143,39 @@ describe("Tags page (#1039)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete unused tags (1)" }));
     await userEvent.click(await screen.findByRole("button", { name: "Delete unused tags" }));
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/tags/delete-unused", { method: "POST" }));
+  });
+
+  it("names the unused tags in the confirmation and says how many were deleted", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Delete unused tags (1)" }));
+    const title = await screen.findByText("Delete 1 unused tag?");
+    const confirm = title.closest("[role='dialog'], [role='alertdialog']") as HTMLElement;
+    expect(confirm).not.toBeNull();
+    expect(within(confirm).getByText("Spare")).toBeInTheDocument();
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete unused tags" }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Deleted 1 unused tag"));
+  });
+
+  it("asks for a name when a new tag is created blank and sends nothing", async () => {
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: "New tag" })[0]);
+    await userEvent.click(await screen.findByRole("button", { name: "Create tag" }));
+    expect(await screen.findByText("Give the tag a name.")).toBeInTheDocument();
+    expect(authedFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("creates a tag with its name and note, then shows Tag created and stays on the saved tag", async () => {
+    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => tag("t9", "Family") });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: "New tag" })[0]);
+    await userEvent.type(await screen.findByPlaceholderText("Name this tag, for example Kids"), "Family");
+    await userEvent.click(screen.getByRole("button", { name: "Create tag" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = authedFetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe("/api/tags");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toMatchObject({ name: "Family", description: "" });
+    expect(await screen.findByText("Tag created")).toBeInTheDocument();
+    expect(revalidateMock).toHaveBeenCalled();
   });
 });

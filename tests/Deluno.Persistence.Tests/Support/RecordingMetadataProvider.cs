@@ -19,7 +19,8 @@ namespace Deluno.Persistence.Tests.Support;
 /// </summary>
 internal sealed class RecordingMetadataProvider(
     IReadOnlyList<MetadataSearchResult> cards,
-    IReadOnlyDictionary<string, MetadataSearchResult>? detailsByProviderId = null) : IMetadataProvider
+    IReadOnlyDictionary<string, MetadataSearchResult>? detailsByProviderId = null,
+    bool answerOnlyTheTitleAsked = false) : IMetadataProvider
 {
     private readonly IReadOnlyDictionary<string, MetadataSearchResult> _details =
         detailsByProviderId ?? new Dictionary<string, MetadataSearchResult>(StringComparer.Ordinal);
@@ -42,7 +43,8 @@ internal sealed class RecordingMetadataProvider(
 
         var mediaType = request.MediaType?.Trim().ToLowerInvariant() is "tv" or "shows" or "series" ? "tv" : "movies";
         return Task.FromResult<IReadOnlyList<MetadataSearchResult>>(
-            cards.Where(card => card.MediaType == mediaType).ToArray());
+            cards.Where(card => card.MediaType == mediaType
+                && (!answerOnlyTheTitleAsked || (request.Query ?? string.Empty).Contains(card.Title, StringComparison.OrdinalIgnoreCase))).ToArray());
     }
 
     // Everything else throws. If a route under test starts needing more of the
