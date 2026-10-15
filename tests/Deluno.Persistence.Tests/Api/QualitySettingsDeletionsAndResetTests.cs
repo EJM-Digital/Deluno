@@ -78,7 +78,7 @@ public sealed class QualitySettingsDeletionsAndResetTests
         Assert.Equal("0", await StoredAsync(app, $"SELECT COUNT(*) FROM quality_profiles WHERE id = '{profileId}'"));
     }
 
-    [Fact(Skip = "Defect: deleting a quality profile that a title chose for itself leaves that title pointing at a profile id that no longer exists. DeleteQualityProfileAsync is a plain DELETE of the profile row; a library falls back through its foreign key, but movie_entries.quality_profile_id (another database) is never cleared, so GetTitleQualityProfileIdAsync keeps answering the deleted id and the delete confirmation promises libraries 'will need another one' without saying anything about titles.")]
+    [Fact]
     public async Task Deleting_a_quality_profile_a_title_chose_leaves_the_title_on_its_librarys_profile_not_on_one_that_is_gone()
     {
         await using var app = await ApplicationTestHost.StartAsync();

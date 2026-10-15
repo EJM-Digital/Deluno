@@ -357,10 +357,29 @@ public sealed class ImportListsOnTheRealHostTests
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PutAsJsonAsync("/api/intake-sources/no-such-list", good)).StatusCode);
     }
 
-    [Fact(Skip = "Defect: a list whose feed gives no rating (an RSS feed, a plain list) with a minimum rating skips every entry as 'Below minimum rating' before the looked-up rating is read, although the preview warns that the rating is verified against title metadata during sync. Evidence: IntakeSyncService.PassEntryFilters rejects entry.Rating == null ahead of PassMetadataFilters; a film whose lookup says 7.9 against a minimum of 7.0 is never added.")]
-    public async Task A_list_with_a_minimum_rating_keeps_a_film_whose_looked_up_rating_is_high_enough()
+    [Fact]
+    public async Task An_rss_list_with_a_minimum_rating_judges_each_film_on_its_looked_up_rating_and_says_why_it_skips_one()
     {
-        await using var feed = new FeedHolder(Feed(Item("Arrival (2016)"), Item("Gigli (2003)")));
+        await using var feed = new FeedHolder(Feed(Item("Arrival (2016)"), Item("Gigli (2003)"), Item("Obscure Film (2011)")));
+        var (server, url) = await ServeAsync(() => feed.Body);
+        await using var _ = server;
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(
+            Cards(Card("Arrival", 2016, "329865", 7.9), Card("Gigli", 2003, "11111", 2.4), Card("Obscure Film", 2011, "22222"))));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var listId = await CreateListAsync(app, libraryId, url, new { minimumRating = 7.0 });
+
+        var result = await SyncAsync(app, listId);
+
+        Assert.Equal(["Arrival"], await MovieTitlesAsync(app));
+        Assert.Equal(1, result.AddedCount);
+        Assert.Equal(2, result.SkippedCount);
+        Assert.Contains("Below minimum rating (7.0)", await app.Client.GetStringAsync("/api/activity?take=50"));
+    }
+
+    [Fact]
+    public async Task A_plain_list_with_a_minimum_rating_judges_each_film_on_its_looked_up_rating_and_skips_one_with_no_rating_anywhere()
+    {
+        await using var feed = new FeedHolder("Arrival (2016)" + Environment.NewLine + "Gigli (2003)" + Environment.NewLine + "Obscure Film (2011)");
         var (server, url) = await ServeAsync(() => feed.Body);
         await using var _ = server;
         await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(
@@ -372,6 +391,8 @@ public sealed class ImportListsOnTheRealHostTests
 
         Assert.Equal(["Arrival"], await MovieTitlesAsync(app));
         Assert.Equal(1, result.AddedCount);
+        Assert.Equal(2, result.SkippedCount);
+        Assert.Contains("Below minimum rating (7.0)", await app.Client.GetStringAsync("/api/activity?take=50"));
     }
 
     private sealed class FeedHolder(string body) : IAsyncDisposable
