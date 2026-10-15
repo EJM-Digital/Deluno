@@ -7,7 +7,7 @@
     put the file under (ImportPipelineService.ExecuteTvPackAsync).
 
     The fixture is built the way a person could end up there, with Deluno's own screens' calls:
-      1. a TV library of its own and a show in it (no metadata exists for the made-up title, so the first import makes the episodes);
+      1. a TV library of its own and a show in it (a real show, whose episodes come from its metadata: Deluno never invents an episode the catalogue lacks);
       2. season 1, episodes 1 and 2, imported from single files, so the show owns two files in that library;
       3. the library's folder is changed to another folder (Settings > Libraries), so the two files now sit outside every TV library;
       4. a season pack for the same two episodes, with a different (bigger) video, imported as a replacement with the exact
@@ -39,14 +39,17 @@ function Queue-TvImport {
 function Invoke-GroupSeasonPack {
     Invoke-Scenario -Id 'seasonpack.no-library' -Title 'A season-pack replacement whose old files match no library leaves them in place, byte for byte, and says why' -Body {
         $token = New-FilmToken
-        $title = ('Gppack{0}' -f $token).Replace('-', '')
-        $year = 2020
-        $root = Join-Path (Get-SuiteRoot) "seasonpack\$title"
+        # A real show, with its episodes in the metadata: Deluno never invents an episode for a file whose number the show's catalogue
+        # lacks ("unmatched"), so a made-up title cannot own episodes (the 15 Oct run's baseline import failed that way).
+        $title = 'Breaking Bad'
+        $dotted = 'Breaking.Bad'
+        $year = 2008
+        $root = Join-Path (Get-SuiteRoot) ("seasonpack\Pack{0}" -f $token.Replace('-', ''))
         $libRoot = Join-Path $root 'library-before'
         $movedRoot = Join-Path $root 'library-after'
         $downloads = Join-Path $root 'downloads'
         $oldSrc = Join-Path $downloads 'old'
-        $packDir = Join-Path $downloads "$title.S01.1080p.WEB-DL.x264-GOLDEN"
+        $packDir = Join-Path $downloads "$dotted.S01.1080p.WEB-DL.x264-GOLDEN"
         New-Item -ItemType Directory -Force -Path $libRoot, $movedRoot, $oldSrc, $packDir | Out-Null
         $libId = $null; $seriesId = $null
         try {
@@ -61,10 +64,19 @@ function Invoke-GroupSeasonPack {
             $series = Invoke-Deluno -Method POST -Path '/api/series/' -Body @{ title = $title; startYear = $year; monitored = $true; libraryId = $libId }
             $seriesId = $series.id
             $show = [pscustomobject]@{ Title = $title; Year = $year; SeriesId = $seriesId; LibraryId = $libId }
+            # The show's episodes come from its metadata; the import matches a file only to an episode the catalogue holds.
+            $refresh = Try-Deluno -Method POST -Path "/api/series/$seriesId/metadata/refresh" -TimeoutSec 120
+            $catalogued = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition {
+                $inv = Try-Deluno -Path "/api/series/$seriesId/inventory"
+                $have = @($inv.Data.episodes | Where-Object { $_.seasonNumber -eq 1 -and $_.episodeNumber -in 1, 2 })
+                if ($have.Count -eq 2) { $have } else { $null }
+            }
+            Add-Check 'The show''s first two episodes are in its catalogue (from its metadata)' $catalogued.Ok $(if ($catalogued.Ok) { '' } else { "the metadata refresh answered HTTP $($refresh.Status) and the show still has no S01E01 and S01E02" })
+            if (-not $catalogued.Ok) { return }
 
             # ---------------------------------------------------------- 2. two episodes imported, each from a single file
             foreach ($ep in 1, 2) {
-                $file = Join-Path $oldSrc ("{0}.S01E{1:d2}.720p.WEB-DL.x264-GOLDEN.mkv" -f $title, $ep)
+                $file = Join-Path $oldSrc ("{0}.S01E{1:d2}.720p.WEB-DL.x264-GOLDEN.mkv" -f $dotted, $ep)
                 Copy-Item -LiteralPath $script:Fx.Base['small'] -Destination $file
                 $q = Queue-TvImport -SourcePath $file -Show $show
                 if ($q.Status -lt 200 -or $q.Status -ge 300) { throw (Hide-Secrets "Queuing the import of S01E$ep answered $($q.Status). $($q.Raw)") }
@@ -97,7 +109,7 @@ function Invoke-GroupSeasonPack {
 
             # ---------------------------------------------------------- 4. the season pack replaces them
             foreach ($ep in 1, 2) {
-                Copy-Item -LiteralPath $script:Fx.Base['big'] -Destination (Join-Path $packDir ("{0}.S01E{1:d2}.1080p.WEB-DL.x264-GOLDEN.mkv" -f $title, $ep))
+                Copy-Item -LiteralPath $script:Fx.Base['big'] -Destination (Join-Path $packDir ("{0}.S01E{1:d2}.1080p.WEB-DL.x264-GOLDEN.mkv" -f $dotted, $ep))
             }
             $mark = Get-Date
             $q = Queue-TvImport -SourcePath $packDir -Show $show -Replacement -Targets $targets -DispatchId "golden-suite-pack-$token"

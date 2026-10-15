@@ -19,12 +19,13 @@ $script:GithubHostsTag = '# golden-suite-github-block'
 
 function Get-HostsFilePath { Join-Path $env:SystemRoot 'System32\drivers\etc\hosts' }
 
-# Points github.com at this PC so the free release feed cannot be read (api.github.com is left alone: it is the route that is limited).
+# Points github.com at this PC so the free release feed cannot be read, and codeload.github.com too, the free archive the tracker
+# definitions are taken from first (api.github.com is left alone: it is the route that is limited).
 function Set-GithubFeedBlocked {
     param([bool] $Blocked)
     $path = Get-HostsFilePath
     $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | Where-Object { $_ -notlike "*$($script:GithubHostsTag)*" })
-    if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com $($script:GithubHostsTag)" }
+    if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com codeload.github.com $($script:GithubHostsTag)" }
     Set-Content -LiteralPath $path -Value $lines -Encoding ascii
     try { & ipconfig.exe /flushdns | Out-Null } catch { }
 }
@@ -56,6 +57,13 @@ function Invoke-GroupGithub {
         $stamp = Get-GitHubLimitStamp -ResetEpoch $limit.ResetEpoch
         Add-Check "GitHub's anonymous allowance is used up from the VM (0 calls left)" ($limit.Remaining -eq 0) ("made {0} call(s); GitHub says it lifts at {1} UTC" -f $limit.Calls, $limit.ResetUtc.ToString('yyyy-MM-dd HH:mm'))
 
+        # The definitions come from codeload.github.com's free archive first, which spends none of the allowance, so the archive and the
+        # feed are pointed at this PC from here: only the limited API route is left, the case the sentence is for.
+        $blocked = $false
+        try {
+            Set-GithubFeedBlocked -Blocked $true
+            $blocked = $true
+
         # ---------------------------------------------------------- the tracker definitions' Update now
         $run = Try-Deluno -Method POST -Path '/api/trackers/definitions/update-check/run' -TimeoutSec 120
         $state = $run.Data
@@ -84,10 +92,7 @@ function Invoke-GroupGithub {
         finally { Close-CdpPage -Page $page }
 
         # ---------------------------------------------------------- the connections' version check
-        $blocked = $false
-        try {
-            Set-GithubFeedBlocked -Blocked $true
-            $blocked = $true
+        # (github.com and codeload.github.com are already pointed at this PC.)
             $secs = Restart-DelunoFromTray
             Add-Note "Deluno was restarted from its tray menu ($secs s) with github.com pointed at this PC, so its release reads start empty and the free feed cannot be read."
             # Reading the versions starts each project's release read in the background; it is asked again until one says why it cannot.
