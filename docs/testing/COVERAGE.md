@@ -24,7 +24,7 @@ One row is one behaviour a person or another app can rely on:
 | `partial` | no | Proofs that touch the behaviour but do not prove it. Not counted; kept so a gap shows where to start. Checked like `proofs`. |
 | `incomplete` | no | Only `true` (the check refuses `false` and any other value). Says the row's proofs reach its level but do not yet cover its whole claim; the row is then a **gap** until the missing part is proven and the mark is removed. `partial` keeps its meaning: part-proofs that never count toward the level. |
 | `needs` | no | `{ "kind", "test" }`: the test that would close the gap. |
-| `issue` | no | The number (a positive integer) of the open coverage issue that will close the row's gap. Counted in the statistics. A gap (a row below its level, or `incomplete`) must carry it, and a row that is no gap must not (rule 5). |
+| `issue` | no | The number (a positive integer) of the open coverage issue that will close the row's gap. Counted in the statistics. A gap (a row below its level, or `incomplete`) must carry it, and a row that is no gap must not (rule 4). |
 | `audit` | no | Where the row came from. |
 
 A proof's `type` is one of:
@@ -67,9 +67,9 @@ A row is **proven** when its best proof reaches `required` and it is not marked 
    fixed; the row is then a gap again.
 3. **Only those fail the check without `--base`; with `--base` a rise in the gaps fails it too** (and the check's own self-test). A gap, a malformed row, a cover of something that is gone, a proof of a type
    it does not have and the determinism rules are reported with counts; `--strict` fails on all of them. When the gaps are closed, CI runs `--strict`.
-5. **Every gap has an owner, and only a gap has one.** A row that is no gap but still carries `issue` is stale, and a gap with no `issue` is unowned; both fail the check
+4. **Every gap has an owner, and only a gap has one.** A row that is no gap but still carries `issue` is stale, and a gap with no `issue` is unowned; both fail the check
    (CI's `(e)` and `(f)`), listed by row id. Set `issue` to the area's coverage issue ("Coverage: prove every behaviour in the <area> area") and remove it when the row is proven.
-4. **Determinism.** No fixed `Start-Sleep`, `Task.Delay`, `Thread.Sleep` or `waitForTimeout` in a test without a `// reason:`
+5. **Determinism.** No fixed `Start-Sleep`, `Task.Delay`, `Thread.Sleep` or `waitForTimeout` in a test without a `// reason:`
    (`# reason:` in PowerShell) comment on its line. Every golden-path scenario is runnable alone (registered under its own id in
    `ScenarioPlan.ps1`, with a defined group function). Every test of an external app is on a recording or listed in
    `tests/recorded-reply-allow-list.json`.
