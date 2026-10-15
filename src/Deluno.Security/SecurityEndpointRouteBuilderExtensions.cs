@@ -93,7 +93,20 @@ public static class SecurityEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var created = await repository.BootstrapUserAsync(request, cancellationToken);
+            UserItem created;
+            try
+            {
+                created = await repository.BootstrapUserAsync(request, cancellationToken);
+            }
+            catch (DelunoAlreadyConfiguredException)
+            {
+                // Another first-run request made the account between the check above and this one's insert.
+                return Results.Conflict(new
+                {
+                    message = "Deluno has already been configured."
+                });
+            }
+
             return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created));
         })
             .AllowAnonymous()

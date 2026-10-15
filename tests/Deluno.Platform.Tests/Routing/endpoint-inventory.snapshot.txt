@@ -211,6 +211,7 @@ GET /api/seerr-servers/
 GET /api/seerr-servers/{id}/acquisitions
 GET /api/series/calendar
 GET /api/series/controls
+GET /api/series/episodes/{episodeId}/file
 GET /api/series/episodes/{episodeId}/subtitles
 GET /api/series/episodes/{episodeId}/subtitles/history
 GET /api/series/episodes/{episodeId}/subtitles/{language}/candidates

@@ -403,7 +403,7 @@ public sealed class SqliteSecurityRepository(
 
         if (await HasUsersAsync(connection, cancellationToken))
         {
-            throw new InvalidOperationException("Deluno has already been configured.");
+            throw new DelunoAlreadyConfiguredException();
         }
 
         var now = timeProvider.GetUtcNow();
@@ -423,9 +423,8 @@ public sealed class SqliteSecurityRepository(
             INSERT INTO users (
                 id, username, display_name, password_hash, avatar_initials, security_stamp, created_utc, updated_utc
             )
-            VALUES (
-                @id, @username, @displayName, @passwordHash, @avatarInitials, @securityStamp, @createdUtc, @updatedUtc
-            );
+            SELECT @id, @username, @displayName, @passwordHash, @avatarInitials, @securityStamp, @createdUtc, @updatedUtc
+            WHERE NOT EXISTS (SELECT 1 FROM users);
             """;
 
         AddParameter(command, "@id", item.Id);
@@ -436,7 +435,12 @@ public sealed class SqliteSecurityRepository(
         AddParameter(command, "@securityStamp", item.SecurityStamp);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        // The check above and this insert are separate statements, so two first-run requests at once can both pass the
+        // check; the insert itself only writes while there is no account, and the one that finds an account is refused.
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            throw new DelunoAlreadyConfiguredException();
+        }
 
         return item;
     }
