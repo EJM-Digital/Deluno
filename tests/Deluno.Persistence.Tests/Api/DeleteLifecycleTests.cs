@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Deluno.Contracts;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
@@ -39,6 +40,16 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class DeleteLifecycleTests
 {
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the repositories say.</summary>
+    private static string OnDiskText(ApplicationTestHost app, string database, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(app.DataRoot, database)};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
     [Fact]
     public async Task Deleting_a_tag_removes_it_and_saying_it_twice_does_not_work()
     {
@@ -329,10 +340,13 @@ public sealed class DeleteLifecycleTests
             CancellationToken.None);
 
         Assert.Contains(recoveryCase.Id, await ListIdsAsync(app, "/api/movies/import-recovery"));
+        Assert.Equal("1", OnDiskText(app, "movies.db", $"SELECT COUNT(*) FROM movie_import_recovery_cases WHERE id = '{recoveryCase.Id}'"));
         Assert.Equal(
             HttpStatusCode.NoContent,
             (await app.Client.DeleteAsync($"/api/movies/import-recovery/{recoveryCase.Id}")).StatusCode);
         Assert.DoesNotContain(recoveryCase.Id, await ListIdsAsync(app, "/api/movies/import-recovery"));
+        // For good: the row is gone from movies.db itself, not hidden.
+        Assert.Equal("0", OnDiskText(app, "movies.db", $"SELECT COUNT(*) FROM movie_import_recovery_cases WHERE id = '{recoveryCase.Id}'"));
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await app.Client.DeleteAsync($"/api/movies/import-recovery/{recoveryCase.Id}")).StatusCode);
@@ -353,10 +367,13 @@ public sealed class DeleteLifecycleTests
             CancellationToken.None);
 
         Assert.Contains(recoveryCase.Id, await ListIdsAsync(app, "/api/series/import-recovery"));
+        Assert.Equal("1", OnDiskText(app, "series.db", $"SELECT COUNT(*) FROM series_import_recovery_cases WHERE id = '{recoveryCase.Id}'"));
         Assert.Equal(
             HttpStatusCode.NoContent,
             (await app.Client.DeleteAsync($"/api/series/import-recovery/{recoveryCase.Id}")).StatusCode);
         Assert.DoesNotContain(recoveryCase.Id, await ListIdsAsync(app, "/api/series/import-recovery"));
+        // For good: the row is gone from series.db itself, not hidden.
+        Assert.Equal("0", OnDiskText(app, "series.db", $"SELECT COUNT(*) FROM series_import_recovery_cases WHERE id = '{recoveryCase.Id}'"));
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await app.Client.DeleteAsync($"/api/series/import-recovery/{recoveryCase.Id}")).StatusCode);

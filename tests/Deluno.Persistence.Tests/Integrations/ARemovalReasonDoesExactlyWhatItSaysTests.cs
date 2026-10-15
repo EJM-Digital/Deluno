@@ -17,6 +17,7 @@ using Deluno.Platform.Data;
 using Deluno.Recovery.Services;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Deluno.Tests.Recorded;
 
@@ -39,6 +40,19 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     private const string Release = "Some.Movie.2024.1080p.WEB-DL-GROUP";
     private const string Indexer = "TestIndexer";
     private const string QueueItemId = "queue-item-1";
+
+    /// <summary>A real data folder with the real databases in it: every test here runs on one.</summary>
+    private static TestStorage NewStorage() => TestStorage.Create();
+
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the repositories say.</summary>
+    private static string OnDisk(World world, string database, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(world.DataRoot, database)};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
 
     [Theory]
     [InlineData("qbittorrent")]
@@ -80,6 +94,11 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         // message's own wording — "You marked/said/told…" — rather than a
         // separate flag on the activity record itself.
         Assert.StartsWith("You marked", activity.Message, StringComparison.Ordinal);
+
+        // And in the database files: one refused release for every indexer, one replacement search, one Activity line.
+        Assert.Equal("1", OnDisk(world, "jobs.db", $"SELECT COUNT(*) FROM blocked_releases WHERE release_name = '{Release}'"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM activity_events WHERE category = 'download.queue.removed'"));
     }
 
     [Theory]
@@ -108,6 +127,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             .Single(entry => entry.Category == "download.queue.removed");
         Assert.Contains("don't want", activity.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("blocklist", activity.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Nothing was blocklisted or queued in the database files.
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
     }
 
     /// <summary>
@@ -135,6 +158,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(result.Succeeded);
         Assert.Empty(await world.Dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None));
         Assert.Empty(await world.Dispatches.FindOpenDispatchesByHashAsync(world.ClientId, QueueItemId, CancellationToken.None));
+        // On disk: no record of a send for this title is left open.
+        Assert.Equal("0", OnDisk(world, "jobs.db", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{world.EntityId}' AND archived_utc IS NULL AND COALESCE(status, '') <> 'archived'"));
     }
 
     /// <summary>The flag-based API call ("remove from client", no blocklist) closes the send the same way.</summary>
@@ -167,6 +192,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         var movie = await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None);
         Assert.NotNull(movie);
         Assert.False(movie!.Monitored);
+        Assert.Equal("0", OnDisk(world, "movies.db", $"SELECT monitored FROM movie_entries WHERE id = '{world.EntityId}'"));
 
         var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
             .Single(entry => entry.Category == "download.queue.removed");
@@ -234,6 +260,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
         Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
         Assert.True((await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None))!.Monitored);
+        Assert.Equal("1", OnDisk(world, "movies.db", $"SELECT monitored FROM movie_entries WHERE id = '{world.EntityId}'"));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
     }
 
     /// <summary>"Remove this copy" on an unlinked leftover: out of the client with its files, nothing judged.</summary>
@@ -279,6 +307,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             .Single(entry => entry.Category == "download.queue.removed");
         Assert.Contains("stop tracking", activity.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("untouched", activity.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM activity_events WHERE category = 'download.queue.removed'"));
     }
 
     /// <summary>
@@ -478,6 +509,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
         var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
         Assert.Equal("archived", dispatch!.Status);
+        Assert.Equal("archived", OnDisk(world, "jobs.db", $"SELECT status FROM download_dispatches WHERE id = '{world.DispatchId}'"));
     }
 
     [Fact]
@@ -491,6 +523,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(result.Succeeded, result.Message);
         var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
         Assert.Equal("archived", dispatch!.Status);
+        Assert.Equal("archived", OnDisk(world, "jobs.db", $"SELECT status FROM download_dispatches WHERE id = '{world.DispatchId}'"));
     }
 
     [Fact]
@@ -505,6 +538,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.False(result.Succeeded);
         var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
         Assert.NotEqual("archived", dispatch!.Status);
+        Assert.NotEqual("archived", OnDisk(world, "jobs.db", $"SELECT status FROM download_dispatches WHERE id = '{world.DispatchId}'"));
     }
 
     /// <summary>#1212: a client that removed the download but left its files says so; Activity never claims they were deleted.</summary>
@@ -539,6 +573,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         var rows = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
             .Where(entry => entry.Category == "download.queue.removed");
         Assert.Single(rows);
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM activity_events WHERE category = 'download.queue.removed'"));
     }
 
     /// <summary>
@@ -565,6 +600,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         var activity = await world.Activity.ListActivityAsync(20, null, null, CancellationToken.None);
         Assert.Contains(activity, entry => entry.Category == "processing.dismissed" && entry.Message.Contains("because Deluno removed the download", StringComparison.Ordinal));
         Assert.DoesNotContain(activity, entry => entry.Category == "processing.waiting-too-long");
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     /// <summary>#1220: a hand-off closed because a person stopped tracking says so, not that the download was gone.</summary>
@@ -578,6 +614,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         var stored = await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored!.Status);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
         Assert.Contains("stop tracking", stored.FailureMessage, StringComparison.Ordinal);
         Assert.DoesNotContain("was gone", stored.FailureMessage, StringComparison.Ordinal);
     }
@@ -591,6 +628,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         await world.RemoveAsync(QueueRemovalReasons.GaveUp);
 
         Assert.Equal(ProcessorHandoffStatuses.Completed, (await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     // ------------------------------------------------------------------ #1241: stop tracking is Deluno-only
@@ -1107,7 +1145,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         private static async Task<World> CreateAsync(string protocol, TitleKind titleKind, IDownloadClient? realClient)
         {
-            var storage = TestStorage.Create();
+            var storage = NewStorage();
             var now = DateTimeOffset.Parse("2026-09-27T09:00:00Z");
             var time = new FixedTimeProvider(now);
             var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
@@ -1252,6 +1290,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public Task<DownloadOwnership> CheckOwnershipAsync(string queueItemId)
             => _service.CheckOwnershipAsync(ClientId, queueItemId, CancellationToken.None);
+
+        public string DataRoot => _storage.DataRoot;
 
         public void Dispose() => _storage.Dispose();
     }

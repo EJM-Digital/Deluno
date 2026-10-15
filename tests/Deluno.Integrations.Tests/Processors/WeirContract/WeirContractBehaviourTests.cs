@@ -316,7 +316,7 @@ public sealed class WeirContractBehaviourTests
     [InlineData("failed-partial-season-pack-corrupt-status-working", 0, "working", null)]
     public async Task A_hand_off_Weir_is_still_working_on_stays_open_and_the_screen_shows_what_Weir_said(string state, int exchange, string shown, int? place)
     {
-        var recording = Rec(state);
+        var recording = WeirContract.Rec(state);
 
         await WatchAsync(recording, exchange);
 
@@ -493,6 +493,81 @@ public sealed class WeirContractBehaviourTests
         _repository.Verify(r => r.RecordProcessorConnectionHealthAsync(Connection.Id, "degraded", It.Is<string?>(m => m!.Contains("refused the webhook secret")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ===== the limit: how long Deluno waits for a processor that is queued or working =====
+
+    /// <summary>
+    /// Weir's recorded "queued" and "working" answers, read two days and an hour after Weir's last change: the library's limit.
+    /// Under "import the original" the file is released to import unprocessed and Weir is asked to drop it.
+    /// </summary>
+    [Theory]
+    [InlineData("status-queued")]
+    public async Task A_hand_off_Weir_has_not_changed_for_the_limit_is_released_to_import_the_original_when_that_is_the_library_rule(string state)
+    {
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", state);
+        var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
+        var replay = new WeirReplay(Rec("capabilities"), recording, WeirContract.Rec("handoff-cancelled")) { IgnoreIds = true };
+
+        await WatchWithAsync(replay, HandoffIdOf(recording), changed.AddHours(49), failureMode: "import-original", previous: AskedForDays(state, changed));
+
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Released, update.Status);
+        Assert.Contains("no change for 2 days", update.Message);
+        Assert.Contains(replay.Sent, sent => sent.Method == "DELETE" && sent.Path.Contains("/handoffs/deluno/", StringComparison.Ordinal));
+        Assert.Empty(_cases);
+    }
+
+    [Theory]
+    [InlineData("manual-review")]
+    [InlineData("block")]
+    public async Task A_queued_hand_off_Weir_has_not_changed_for_the_limit_is_left_for_a_person_under_the_other_library_rules(string mode)
+    {
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", "status-queued");
+        var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
+        var replay = new WeirReplay(Rec("capabilities"), recording, WeirContract.Rec("handoff-cancelled")) { IgnoreIds = true };
+
+        await WatchWithAsync(replay, HandoffIdOf(recording), changed.AddHours(49), failureMode: mode, previous: AskedForDays("status-queued", changed));
+
+        Assert.Equal(ProcessorHandoffStatuses.Stalled, Assert.Single(_updates).Status);
+        Assert.Equal("processor-stalled", Assert.Single(_cases).Kind);
+    }
+
+    [Theory]
+    [InlineData("import-original")]
+    [InlineData("manual-review")]
+    [InlineData("block")]
+    public async Task A_hand_off_Weir_says_it_is_working_on_is_never_interrupted_at_the_limit_whatever_the_library_rule(string mode)
+    {
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", "status-working");
+        var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
+        var replay = new WeirReplay(Rec("capabilities"), recording) { IgnoreIds = true };
+
+        await WatchWithAsync(replay, HandoffIdOf(recording), changed.AddHours(49), failureMode: mode, previous: AskedForDays("status-working", changed));
+
+        Assert.All(_updates, update => Assert.Equal(ProcessorHandoffStatuses.Started, update.Status));
+        Assert.Empty(_cases);
+        Assert.DoesNotContain(replay.Sent, sent => sent.Method == "DELETE");
+    }
+
+    [Theory]
+    [InlineData("status-queued", 3)]
+    [InlineData("status-working", 3)]
+    public async Task A_hand_off_Weir_changed_within_the_limit_keeps_waiting(string state, int hoursSinceChange)
+    {
+        var recording = RecordedReplies.Load("weir", "1.0.0-rc.13", state);
+        var changed = DateTimeOffset.Parse(Body(recording.Exchanges[0].Reply.Body)["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture);
+        var replay = new WeirReplay(Rec("capabilities"), recording) { IgnoreIds = true };
+
+        await WatchWithAsync(replay, HandoffIdOf(recording), changed.AddHours(hoursSinceChange), previous: AskedForDays(state, changed));
+
+        Assert.Empty(_updates);
+        Assert.Empty(_cases);
+        Assert.Single(_observations);
+    }
+
+    /// <summary>Deluno has been asking Weir about this hand-off since days before its last change, and Weir has always answered.</summary>
+    private static ProcessorHandoffObservation AskedForDays(string state, DateTimeOffset lastChanged)
+        => new(state.Contains("queued", StringComparison.Ordinal) ? ProcessorHandoffStates.Queued : ProcessorHandoffStates.Working, null, null, null, lastChanged, lastChanged.AddMinutes(-5), null, lastChanged.AddDays(-3));
+
     // ===== a release sent again, finished with no output path to name (#1232) =====
 
     /// <summary>
@@ -588,7 +663,8 @@ public sealed class WeirContractBehaviourTests
         TimeSpan? updatedAgo = null,
         IProcessorOutputImportQueue? imports = null,
         string? source = null,
-        string? outputFolder = null)
+        string? outputFolder = null,
+        string failureMode = "import-original")
         => WatchWithAsync(
             new WeirReplay(Rec("capabilities"), recording) { Down = down },
             HandoffIdOf(recording, exchange),
@@ -596,7 +672,8 @@ public sealed class WeirContractBehaviourTests
             updatedAgo,
             imports,
             source,
-            outputFolder);
+            outputFolder,
+            failureMode);
 
     /// <summary>The moment the watcher looks: shortly after Weir's last change, so that no stall limit is near.</summary>
     private static DateTimeOffset Now(Recording recording, int exchange)
@@ -611,7 +688,9 @@ public sealed class WeirContractBehaviourTests
         TimeSpan? updatedAgo = null,
         IProcessorOutputImportQueue? imports = null,
         string? source = null,
-        string? outputFolder = null)
+        string? outputFolder = null,
+        string failureMode = "import-original",
+        ProcessorHandoffObservation? previous = null)
     {
         var at = now ?? Start;
         var updated = at - (updatedAgo ?? TimeSpan.FromMinutes(1));
@@ -620,7 +699,7 @@ public sealed class WeirContractBehaviourTests
                 new ProcessorHandoffItem(
                     handoffId, "library-1", "movies", "qbittorrent", "hash-1", "Sintel.2010.1080p",
                     source ?? "/downloads/completed/Sintel.2010.1080p", "Weir", ProcessorHandoffStatuses.Started, null, null, null,
-                    at - TimeSpan.FromMinutes(2), updated)
+                    at - TimeSpan.FromMinutes(2), updated, previous)
             ]);
         var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
         library = library with
@@ -631,7 +710,7 @@ public sealed class WeirContractBehaviourTests
             ImportWorkflow = "refine-before-import",
             ProcessorName = "Weir",
             ProcessorTimeoutMinutes = ProcessorStallLimits.DefaultMinutes,
-            ProcessorFailureMode = "import-original",
+            ProcessorFailureMode = failureMode,
             ProcessorOutputPath = outputFolder
         };
         await new ProcessorHandoffWatcher(_repository.Object, Service(replay), _activity.Object, _movies.Object, _series.Object, imports)

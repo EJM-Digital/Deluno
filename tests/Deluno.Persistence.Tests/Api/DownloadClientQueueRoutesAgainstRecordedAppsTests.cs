@@ -97,6 +97,49 @@ public sealed class DownloadClientQueueRoutesAgainstRecordedAppsTests
         Assert.False(unknownReason.IsSuccessStatusCode);
     }
 
+    /// <summary>
+    /// Each reason the removal dialog offers, against qBittorrent's recorded replies: "It's bad" and "Remove this copy" delete the
+    /// torrent with its files, "Just stop tracking it" sends the client nothing at all, and each answers with the result the dialog
+    /// toasts. A client Deluno does not have is refused with a result that did not succeed.
+    /// </summary>
+    [Theory]
+    [InlineData("failed", true, true)]
+    [InlineData("reclaim", true, false)]
+    [InlineData("forget", false, false)]
+    public async Task Each_removal_reason_does_what_it_says_to_the_client_and_returns_the_result_the_dialog_shows(string reason, bool deletesAtClient, bool blocklists)
+    {
+        await using var qbit = await QbittorrentAsync(RecordedAppServer.InOrder("torrents/info", RecordedReplies.Qbittorrent("downloading").Exchanges[0], RecordedReplies.Qbittorrent("removed-with-data").Exchanges[1]), "sign-in", "version", "removed-with-data");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var client = await CreateClientAsync(app, QbittorrentForm(qbit));
+        var id = client.GetProperty("id").GetString()!;
+        var dispatchId = await SentAsync(app, id, client.GetProperty("name").GetString()!, Hash);
+
+        var response = await app.Client.PostAsJsonAsync($"/api/download-clients/{id}/queue/{Hash}/remove", new { reason });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(result.GetProperty("succeeded").GetBoolean());
+        Assert.Equal(blocklists, result.GetProperty("blocklisted").GetBoolean());
+        var deletes = qbit.Requests.Where(request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal)).ToArray();
+        if (deletesAtClient)
+        {
+            var delete = Assert.Single(deletes);
+            Assert.Contains(Hash, delete.Body, StringComparison.Ordinal);
+            Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Empty(deletes);
+        }
+
+        Assert.Empty(qbit.Unanswered);
+        var stored = await app.Services.GetRequiredService<IDownloadDispatchesRepository>().GetDispatchIncludingArchivedAsync(dispatchId, CancellationToken.None);
+        Assert.Equal("archived", stored!.Status);
+        var unknownClient = await app.Client.PostAsJsonAsync($"/api/download-clients/no-such-client/queue/{Hash}/remove", new { reason });
+        Assert.False(unknownClient.IsSuccessStatusCode);
+        Assert.False((await unknownClient.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("succeeded").GetBoolean());
+    }
+
     [Fact]
     public async Task Clearing_a_clients_warnings_asks_SABnzbd_to_clear_them_too()
     {

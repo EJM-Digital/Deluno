@@ -12,6 +12,7 @@ using Deluno.Libraries.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -29,6 +30,19 @@ namespace Deluno.Persistence.Tests.Integrations;
 public sealed class AStruckPrivateTorrentKeepsSeedingTests
 {
     private const string Release = "Example.Movie.2026.1080p.WEB-DL-GROUP";
+
+    /// <summary>A real data folder with the real databases in it: every test here runs on one, and its download folder holds a real file.</summary>
+    private static TestStorage NewStorage() => TestStorage.Create();
+
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the repositories say.</summary>
+    private static string OnDisk(World world, string database, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(world.DataRoot, database)};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
 
     public static IEnumerable<object[]> EveryRuleKind() =>
     [
@@ -394,6 +408,10 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         Assert.Single(world.Client.Moves);
         Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
+        // Still one blocklist entry and one search in the database files after the second check, and the payload is still on disk.
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
+        Assert.True(File.Exists(world.PayloadPath), "a moved torrent keeps its files");
     }
 
     [Fact]
@@ -490,6 +508,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         var scan = Assert.Single(await world.Service.GetSnapshotsForLeftoverScanAsync(CancellationToken.None));
         Assert.Contains(folder, scan.OutsideSourcePaths);
         Assert.True(Directory.Exists(folder));
+        Assert.True(File.Exists(Path.Combine(folder, "Example.Movie.2026.mkv")), "the moved torrent's file is still on disk");
         // The orphan scan, given what the client holds, finds nothing to offer, even for a release Deluno sent and
         // even long after the grace period: the parked torrent's files sit inside Deluno's own download folder.
         var entry = new DownloadFolderEntry(folder, true, 15, DateTimeOffset.UtcNow.AddDays(-30));
@@ -530,6 +549,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
             await world.Jobs.ListActivityAsync(50, null, null, CancellationToken.None),
             item => item.Category == "processing.dismissed");
         Assert.Contains("because Deluno moved the download to keep it seeding", closed.Message, StringComparison.Ordinal);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     [Fact]
@@ -541,6 +561,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         await world.RemediateAsync();
 
         Assert.Equal(ProcessorHandoffStatuses.Completed, (await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     [Fact]
@@ -553,6 +574,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         await world.RemediateAsync();
 
         Assert.Equal(ProcessorHandoffStatuses.Submitted, (await world.Processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, OnDisk(world, "platform.db", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}'"));
     }
 
     // ------------------------------------------------------------- a fresh install and an upgraded one
@@ -597,7 +619,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
     [Fact]
     public async Task An_upgrade_from_the_last_release_keeps_every_rule_exactly_and_adds_nothing_to_the_keep_seeding_settings()
     {
-        using var storage = TestStorage.Create();
+        using var storage = NewStorage();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-11T09:00:00Z"));
         var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
@@ -806,7 +828,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
             bool dryRun = false,
             string protocol = "qbittorrent")
         {
-            var storage = TestStorage.Create();
+            var storage = NewStorage();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-11T10:00:00Z"));
             var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
             await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
@@ -938,6 +960,8 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
                 "queue-movie", _client.Id, _client.Name, _client.Protocol, "movies", "Example Movie", Release,
                 category, DownloadQueueStatuses.Downloading, 40, 0, 60, 4_000_000_000, 1_600_000_000, 0, "Example Tracker", null,
                 _time.GetUtcNow(), sourcePath ?? PayloadPath, IsPrivate: ClientSaysPrivate);
+
+        public string DataRoot => _storage.DataRoot;
 
         public void Dispose() => _storage.Dispose();
     }
