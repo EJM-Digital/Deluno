@@ -56,3 +56,8 @@ vendor/rig-installers/
 
 # The real rig address and NAS paths. Merged over scripts/lab/rig.json by Get-Rig.ps1.
 scripts/lab/rig.local.json
+
+# Mutation testing output (issue 1269): reports and Stryker scratch folders.
+StrykerOutput/
+.stryker-tmp/
+**/reports/mutation/

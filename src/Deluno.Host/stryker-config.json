@@ -1,0 +1,24 @@
+{
+  "stryker-config": {
+    "project": "Deluno.Host.csproj",
+    "test-projects": [
+      "tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj",
+      "tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj"
+    ],
+    "reporters": [
+      "json",
+      "progress"
+    ],
+    "mutate": [
+      "!**/Migrations/**"
+    ],
+    "mutation-level": "Standard",
+    "thresholds": {
+      "high": 100,
+      "low": 90,
+      "break": 0
+    },
+    "ignore-mutations": [],
+    "disable-bail": false
+  }
+}

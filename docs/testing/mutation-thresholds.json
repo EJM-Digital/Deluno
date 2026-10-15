@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "$comment": "Mutation score floor per project (issue 1269). It only goes up: scripts/check-mutation-ratchet.mjs --update raises it from the nightly report, the owner reviews and commits it. 0 means not measured yet.",
+  "projects": {
+    "Deluno.Api": {
+      "score": 0
+    },
+    "Deluno.Companions": {
+      "score": 0
+    },
+    "Deluno.Connections": {
+      "score": 0
+    },
+    "Deluno.Contracts": {
+      "score": 0
+    },
+    "Deluno.Filesystem": {
+      "score": 0
+    },
+    "Deluno.Host": {
+      "score": 0
+    },
+    "Deluno.Infrastructure": {
+      "score": 0
+    },
+    "Deluno.Intake": {
+      "score": 0
+    },
+    "Deluno.Integrations": {
+      "score": 0
+    },
+    "Deluno.Jobs": {
+      "score": 0
+    },
+    "Deluno.Libraries": {
+      "score": 0
+    },
+    "Deluno.Media": {
+      "score": 0
+    },
+    "Deluno.Movies": {
+      "score": 0
+    },
+    "Deluno.Notifications": {
+      "score": 0
+    },
+    "Deluno.Platform": {
+      "score": 0
+    },
+    "Deluno.Quality": {
+      "score": 0
+    },
+    "Deluno.Realtime": {
+      "score": 0
+    },
+    "Deluno.Recovery": {
+      "score": 0
+    },
+    "Deluno.Retention": {
+      "score": 0
+    },
+    "Deluno.Security": {
+      "score": 0
+    },
+    "Deluno.Series": {
+      "score": 0
+    },
+    "Deluno.Tray": {
+      "score": 0
+    },
+    "Deluno.Worker": {
+      "score": 0
+    },
+    "metadata-gateway": {
+      "score": 0
+    },
+    "sdk": {
+      "score": 0
+    },
+    "web": {
+      "score": 0
+    }
+  }
+}

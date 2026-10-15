@@ -57,6 +57,7 @@ jobs:
       run_docker: ${{ steps.flags.outputs.run_docker }}
       run_windows_installer: ${{ steps.flags.outputs.run_windows_installer }}
       run_coverage: ${{ steps.flags.outputs.run_coverage }}
+      run_mutation: ${{ steps.flags.outputs.run_mutation }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -102,6 +103,8 @@ jobs:
         id: flags
         env:
           EVENT: ${{ github.event_name }}
+          # Off until the first nightly mutation run has passed (docs/testing/STRATEGY.md, Measure 3).
+          MUTATION_ON_PUSH: ${{ vars.DELUNO_MUTATION_ON_PUSH }}
           CODE: ${{ steps.filter.outputs.code }}
           CODE_COUNT: ${{ steps.filter.outputs.code_count }}
           NOTES: ${{ steps.filter.outputs.notes }}
@@ -111,7 +114,7 @@ jobs:
           WORKFLOWS: ${{ steps.filter.outputs.workflows }}
         run: |
           set -euo pipefail
-          backend=false; web=false; smoke=false; docker=false; installer=false; coverage=false
+          backend=false; web=false; smoke=false; docker=false; installer=false; coverage=false; mutation=false
           if [ "$EVENT" = "workflow_dispatch" ]; then
             backend=true; web=true; smoke=true; docker=true; installer=true
           else
@@ -125,6 +128,9 @@ jobs:
           # Coverage is measured and held to its baseline only when both the backend and the web tests ran: the
           # ratchet compares whole-repository numbers, and a half report would look like a drop.
           if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
+          # Mutation runs on the changed files of a push or pull request. A manual run has no base to compare with
+          # (the nightly workflow, mutation-nightly.yml, runs the full mutation).
+          if [ "$MUTATION_ON_PUSH" = "true" ] && [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
           # The smoke shards and the web checks both want the production web build.
           web_dist=false
           if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
@@ -136,6 +142,7 @@ jobs:
             echo "run_docker=$docker"
             echo "run_windows_installer=$installer"
             echo "run_coverage=$coverage"
+            echo "run_mutation=$mutation"
           } | tee -a "$GITHUB_OUTPUT"
 
   # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
@@ -209,6 +216,12 @@ jobs:
         run: |
           node scripts/check-coverage-ratchet.mjs
           node --test scripts/check-coverage-ratchet.test.mjs scripts/coverage/merge-coverage.test.mjs
+
+      - name: The mutation tooling works, the configs are current, and the thresholds and equivalent-mutant list are valid
+        run: |
+          node scripts/mutation/gen-stryker-configs.mjs --check
+          node scripts/check-mutation-ratchet.mjs
+          node --test scripts/check-mutation-ratchet.test.mjs
 
       - name: The Windows icon is built from the current logo
         run: node scripts/check-windows-icon.mjs
@@ -719,9 +732,69 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Switched on by the repository variable DELUNO_MUTATION_ON_PUSH=true (default off: the job has not run in CI yet);
+  # while it is off the flag is false, the job is skipped and ci-passed counts it as not due.
+  # Mutation testing on the changed files (issue 1269, docs/testing/STRATEGY.md measure 3): Stryker.NET's diff mode
+  # (--since) for the .NET projects the change reaches, StrykerJS on the changed web, sdk and gateway source files.
+  # Every mutant that survived or was never covered fails the job, unless docs/testing/mutation-equivalents.json lists
+  # it with the reason no test can kill it. The nightly run (mutation-nightly.yml) scores whole projects.
+  mutation:
+    name: Mutation on the changed files
+    needs: changes
+    if: ${{ vars.DELUNO_MUTATION_ON_PUSH == 'true' && needs.changes.outputs.run_mutation == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install the pinned tools
+        run: |
+          dotnet tool restore
+          npm ci
+
+      # The base is the pull request's base commit, or the commit before the push. A first push or a force push has no
+      # base to diff against: the job says so and stops, and the nightly run still scores everything.
+      - name: Mutate the changed files
+        id: run
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "No earlier commit to compare with (a first push or a force push): the changed-file mutation is skipped."
+            echo "ran=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/mutation/run-changed.mjs --base "$BEFORE" --out mutation-reports
+          echo "ran=true" >> "$GITHUB_OUTPUT"
+
+      - name: No mutant survives, unless it is listed as equivalent
+        if: ${{ steps.run.outputs.ran == 'true' }}
+        run: |
+          mkdir -p mutation-reports
+          node scripts/check-mutation-ratchet.mjs --reports mutation-reports --survivors
+
+      - name: Upload the mutation reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-changed
+          path: mutation-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, coverage-node, coverage]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, coverage-node, coverage, mutation]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
