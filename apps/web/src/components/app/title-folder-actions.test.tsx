@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authedFetch } from "../../lib/use-auth";
+import { toast } from "../shell/toaster";
 import { TitleFolderActions } from "./title-folder-actions";
 
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
@@ -94,5 +95,74 @@ describe("TitleFolderActions", () => {
 
     await waitFor(() => expect(screen.getByText("Nothing would change.")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Rename folder" })).toBeNull();
+  });
+
+  describe("Rename folder", () => {
+    const willRename = { outcome: "will-rename", currentFolder: "Arrival", proposedFolder: "Arrival (2016)", willChange: true, message: "Deluno would rename the folder." };
+
+    async function previewThenRename(renameReply: unknown, onChanged = vi.fn()) {
+      fetchMock.mockImplementation((input) => String(input).includes("rename-preview") ? json(willRename) : json(renameReply));
+      render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" onChanged={onChanged} />);
+      await userEvent.click(screen.getByRole("button", { name: "Preview the folder rename for Arrival" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Rename folder" }));
+      return onChanged;
+    }
+
+    it("shows the folder now and the folder after, then renames it, says so and tells the page", async () => {
+      const onChanged = await previewThenRename({ renamedCount: 1, failures: [] });
+
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The folder was renamed."));
+      const apply = fetchMock.mock.calls.find((call) => String(call[0]) === "/api/movies/bulk/rename-apply")!;
+      expect(JSON.parse(String((apply[1] as RequestInit).body))).toEqual({ movieIds: ["m1"] });
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it("says why a rename was refused and keeps that on screen", async () => {
+      await previewThenRename({ renamedCount: 0, failures: [{ reason: "Another folder already has that name." }] });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("The folder could not be renamed", { duration: Infinity, description: "Another folder already has that name." }));
+    });
+
+    it("says nothing needed renaming when nothing was changed and nothing failed", async () => {
+      const onChanged = await previewThenRename({ renamedCount: 0, failures: [] });
+
+      await waitFor(() => expect(toast.info).toHaveBeenCalledWith("Nothing needed renaming."));
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it("says the folder could not be renamed when the request itself fails", async () => {
+      fetchMock.mockImplementation((input) => String(input).includes("rename-preview") ? json(willRename) : Promise.resolve(new Response("{}", { status: 500 })));
+      render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
+      await userEvent.click(screen.getByRole("button", { name: "Preview the folder rename for Arrival" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Rename folder" }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("The folder could not be renamed."));
+    });
+  });
+
+  it("Review for import adds an untracked video to Import issues, and says so when that fails", async () => {
+    const untracked = { outcome: "ok", title: "Arrival", filesChecked: 1, filesPresent: 1, missing: [], untracked: [{ fileName: "Arrival.extended.mkv", path: "/m/Arrival.extended.mkv", sizeBytes: 1, issueId: "tok" }], summary: "Rescanned Arrival." };
+    fetchMock.mockImplementation((input) => String(input).includes("reconciliation/repair") ? json({}) : json(untracked));
+    render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
+    await userEvent.click(screen.getByRole("button", { name: "Rescan the folder for Arrival" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rescan now" }));
+
+    await userEvent.click(await screen.findByRole("button", { name: /Review/ }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Added to Import issues so you can review it."));
+    const repair = fetchMock.mock.calls.find((call) => String(call[0]) === "/api/filesystem/reconciliation/repair")!;
+    expect(JSON.parse(String((repair[1] as RequestInit).body))).toEqual({ issueId: "tok", action: "queue-import-review" });
+  });
+
+  it("Review for import says the file could not be added when the repair is refused", async () => {
+    const untracked = { outcome: "ok", title: "Arrival", filesChecked: 1, filesPresent: 1, missing: [], untracked: [{ fileName: "Arrival.extended.mkv", path: "/m/Arrival.extended.mkv", sizeBytes: 1, issueId: "tok" }], summary: "Rescanned Arrival." };
+    fetchMock.mockImplementation((input) => String(input).includes("reconciliation/repair") ? Promise.resolve(new Response("{}", { status: 400 })) : json(untracked));
+    render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
+    await userEvent.click(screen.getByRole("button", { name: "Rescan the folder for Arrival" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rescan now" }));
+
+    await userEvent.click(await screen.findByRole("button", { name: /Review/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That file could not be added for review."));
   });
 });
