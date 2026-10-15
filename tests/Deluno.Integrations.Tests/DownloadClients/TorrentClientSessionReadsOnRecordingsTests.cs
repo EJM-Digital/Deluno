@@ -76,6 +76,25 @@ public sealed class TorrentClientSessionReadsOnRecordingsTests
         Assert.Equal("healthy", snapshot.HealthStatus);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("<html><body>Unauthorized</body></html>")]
+    public async Task Qbittorrent_whose_torrent_list_is_empty_text_or_a_web_page_gives_no_snapshot_instead_of_an_invented_empty_queue(string body)
+    {
+        var handler = QbittorrentIdle((request, _) => request.RequestUri!.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal)
+            ? RecordedReplies.Json(body)
+            : null);
+
+        var outcome = await Record.ExceptionAsync(async () =>
+        {
+            var snapshot = await new QbittorrentDownloadClient(() => handler)
+                .GetSnapshotAsync(Client("qbittorrent", "deluno"), DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.True(snapshot is null || snapshot.HealthStatus != "healthy" || snapshot.Queue.Count == 0, "an unreadable list must not read as a healthy queue with downloads in it");
+        });
+
+        Assert.True(outcome is null or System.Text.Json.JsonException or HttpRequestException or InvalidOperationException, outcome?.ToString());
+    }
+
     [Fact]
     public async Task Transmission_reads_its_version_without_the_build_hash_and_the_free_space_of_its_download_folder()
     {
