@@ -60,6 +60,8 @@ public sealed class EveryWeirRecordingIsUsedByAContractTestTests
         var states = Regex.Matches(ContractTestSources(), @"(?:Rec|ReplayOf)\(""([a-z0-9-]+)""|InlineData\(""([a-z0-9-]+)""")
             .SelectMany(match => new[] { match.Groups[1].Value, match.Groups[2].Value })
             .Where(state => state.Length > 0 && state.Contains('-'))
+            // The library's rules for a hand-off Weir leaves unchanged are InlineData too, but they are settings, not recordings.
+            .Where(state => state is not ("import-original" or "manual-review"))
             .Distinct()
             .ToArray();
         // A state is found where the helpers find it: in the newest version that was recorded giving it (an older version's remains

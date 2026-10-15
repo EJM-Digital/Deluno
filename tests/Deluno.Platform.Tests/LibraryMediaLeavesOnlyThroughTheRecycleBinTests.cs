@@ -28,7 +28,7 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Companions/CompanionTools.cs"] = (2, "A companion installer download. " + OwnData),
         ["src/Deluno.Contracts/StateFiles/StateFile.cs"] = (1, "The one shared state-file writer: the real disk behind it, deleting only the temporary file it wrote beside a state file, or a state file it was asked to clear. " + OwnData),
         ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (1, "A write-probe file. " + OwnData),
-        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188)."),
+        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (9, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188). A broken processed copy with no video in it also goes to the recycle bin now, no longer deleted outright."),
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs"] = (2, "A processor's partial output and empty folders inside its output folder. " + DownloadArea),
