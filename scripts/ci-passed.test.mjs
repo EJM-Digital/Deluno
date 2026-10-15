@@ -61,8 +61,6 @@ test("a missing flag, a missing job or an unknown job is refused", () => {
 
 test("per-push mutation switched off is skipped and fine; running while off is a disagreement", () => {
   assert.deepEqual(verdict(needs({ due: { run_mutation: false } })), []);
-  assert.match(verdict(needs({ due: { run_mutation: false }, results: { mutation: "success" } })).join("
-"), /mutation ended success; it was not due/);
-  assert.match(verdict(needs({ results: { mutation: "failure" } })).join("
-"), /mutation ended failure/);
+  assert.match(verdict(needs({ due: { run_mutation: false }, results: { mutation: "success" } })).join(" "), /mutation ended success; it was not due/);
+  assert.match(verdict(needs({ results: { mutation: "failure" } })).join(" "), /mutation ended failure/);
 });
