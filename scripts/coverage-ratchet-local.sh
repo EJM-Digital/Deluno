@@ -19,7 +19,8 @@ mkdir -p "$dst"
 rsync -a --delete --exclude bin/ --exclude obj/ --exclude node_modules/ --exclude TestResults/ --exclude artifacts/ \
   --exclude .claude/ --exclude coverage-in/ --exclude coverage-out/ --exclude apps/web/coverage/ "$src/" "$dst/"
 cd "$dst"
-rm -rf coverage-in coverage-out
+# An earlier run's results (rsync leaves excluded folders alone) would otherwise be merged as this run's.
+rm -rf coverage-in coverage-out tests/*/TestResults apps/web/coverage
 mkdir -p coverage-in/coverage-dotnet coverage-in/coverage-web coverage-in/coverage-node
 
 echo "== .NET build (Release)"
@@ -35,7 +36,9 @@ for project in tests/*/*.Tests.csproj; do
     --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings 2>&1 | grep -E "Passed!|Failed!|\[FAIL\]" | head -20
   [ "${PIPESTATUS[0]}" = 0 ] || failed=1
   mkdir -p "coverage-in/coverage-dotnet/$name"
-  find "tests/$name/TestResults" -name coverage.cobertura.xml -exec cp {} "coverage-in/coverage-dotnet/$name/" \;
+  find "tests/$name/TestResults" -name coverage.cobertura.xml | while read -r file; do
+    cp "$file" "coverage-in/coverage-dotnet/$name/$(basename "$(dirname "$file")").cobertura.xml"
+  done
 done
 
 echo "== web unit tests with coverage"
@@ -55,7 +58,7 @@ node --test --experimental-test-coverage \
 
 echo "== merge and ratchet"
 dotnet tool restore >/dev/null
-dotnet tool run reportgenerator "-reports:coverage-in/coverage-dotnet/**/coverage.cobertura.xml" \
+dotnet tool run reportgenerator "-reports:coverage-in/coverage-dotnet/**/*.cobertura.xml" \
   "-targetdir:coverage-out/dotnet" "-reporttypes:Cobertura" "-assemblyfilters:+Deluno.*;-Deluno.*.Tests" >/dev/null
 node scripts/coverage/merge-coverage.mjs \
   --cobertura coverage-out/dotnet/Cobertura.xml \
