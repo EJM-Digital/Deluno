@@ -117,7 +117,7 @@ public sealed class ProcessorHandoffWatcherAgainstRecordedWeirTests
         var after = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
         Assert.Equal(ProcessorHandoffStatuses.Submitted, after.Status);
         Assert.True(after.Processor?.State == "queued", Seen(weir, after));
-        Assert.Equal(12, after.Processor.QueuePosition);
+        Assert.Equal(System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Weir("status-queued").Exchanges[0].Reply.Body!)!["queuePosition"]!.GetValue<int>(), after.Processor.QueuePosition);
     }
 
     [Fact]
