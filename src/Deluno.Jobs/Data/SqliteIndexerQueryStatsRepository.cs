@@ -91,18 +91,22 @@ public sealed class SqliteIndexerQueryStatsRepository(
                     (SELECT latest.indexer_name FROM indexer_query_events latest
                      WHERE latest.indexer_id = indexer_query_events.indexer_id
                      ORDER BY latest.created_utc DESC LIMIT 1),
-                    COUNT(*),
-                    SUM(CASE WHEN query_kind = 'search' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN query_kind = 'rss' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN query_kind = 'auth' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN outcome IN ('failed', 'invalid_url', 'circuit_open') THEN 1 ELSE 0 END),
-                    AVG(elapsed_ms),
+                    -- #1330: only a call that was sent is a query. A call Deluno itself held back
+                    -- (the indexer's limit, the instance limit, the request interval, an open circuit)
+                    -- is counted on its own and never as a query or a failure.
+                    SUM(CASE WHEN outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN query_kind = 'search' AND outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN query_kind = 'rss' AND outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN query_kind = 'auth' AND outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN outcome IN ('failed', 'invalid_url') THEN 1 ELSE 0 END),
+                    AVG(CASE WHEN outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN elapsed_ms END),
                     SUM(candidate_count),
-                    MAX(created_utc)
+                    MAX(CASE WHEN outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN created_utc END),
+                    SUM(CASE WHEN outcome IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END)
                 FROM indexer_query_events
                 WHERE created_utc >= @fromUtc AND created_utc < @toUtc
                 GROUP BY indexer_id
-                ORDER BY COUNT(*) DESC, indexer_id;
+                ORDER BY SUM(CASE WHEN outcome NOT IN ('throttled', 'query_limit_reached', 'instance_query_limit_reached', 'circuit_open') THEN 1 ELSE 0 END) DESC, indexer_id;
                 """;
             AddParameter(command, "@fromUtc", fromUtc.ToUniversalTime().ToString("O"));
             AddParameter(command, "@toUtc", toUtc.ToUniversalTime().ToString("O"));
@@ -120,7 +124,8 @@ public sealed class SqliteIndexerQueryStatsRepository(
                     FailedQueries: reader.GetInt64(6),
                     AverageResponseMilliseconds: reader.IsDBNull(7) ? 0 : reader.GetDouble(7),
                     CandidatesReturned: reader.GetInt64(8),
-                    LastQueryUtc: !reader.IsDBNull(9) && DateTimeOffset.TryParse(reader.GetString(9), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var lastQuery) ? lastQuery : null));
+                    LastQueryUtc: !reader.IsDBNull(9) && DateTimeOffset.TryParse(reader.GetString(9), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var lastQuery) ? lastQuery : null,
+                    HeldBackQueries: reader.GetInt64(10)));
             }
         }
 
@@ -195,6 +200,8 @@ public sealed class SqliteIndexerQueryStatsRepository(
             "matched" => "matched",
             "no_results" => "no_results",
             "throttled" => "throttled",
+            "query_limit_reached" => "query_limit_reached",
+            "instance_query_limit_reached" => "instance_query_limit_reached",
             "circuit_open" => "circuit_open",
             "invalid_url" => "invalid_url",
             _ => "failed"

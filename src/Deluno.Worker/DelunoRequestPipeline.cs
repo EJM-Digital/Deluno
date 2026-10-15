@@ -60,6 +60,13 @@ public static class DelunoRequestPipeline
     {
         var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
         if (isRead) return ["read"];
+        // #1333: the docs give queue removal the queue scope. A queue-only key is let through to the route.
+        if (path.StartsWithSegments("/api/queue", StringComparison.OrdinalIgnoreCase))
+            return ["queue"];
+        // #1333: a command names its own scope in the docs (write, queue or system). The gate lets any of them reach the command
+        // route, and the route then asks for the scope of the command named in the body.
+        if (path.Equals("/api/command", StringComparison.OrdinalIgnoreCase))
+            return ["write", "queue", "system"];
         if (path.StartsWithSegments("/api/download-clients", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWithSegments("/api/download-dispatches", StringComparison.OrdinalIgnoreCase))
             return ["queue"];

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Deluno.Contracts;
+using Deluno.Security;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
@@ -102,8 +103,15 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
         filesystem.MapPost("/native-folder-picker", PickNativeFolderAsync);
 
-        filesystem.MapGet("/directories", (string? path) =>
+        filesystem.MapGet("/directories", (string? path, HttpContext httpContext) =>
         {
+            // #1333: browsing the server's folders needs the imports scope on top of read, never read alone (docs/external-integration-api.md).
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null)
+            {
+                return scopeDenied;
+            }
+
             try
             {
                 var normalizedPath = string.IsNullOrWhiteSpace(path)

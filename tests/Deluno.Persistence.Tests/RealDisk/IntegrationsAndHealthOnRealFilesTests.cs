@@ -232,7 +232,7 @@ public sealed class IntegrationsAndHealthOnRealFilesTests
 
     // DEFECT (observed): the filesystem group is meant to need the Imports policy so a read-only key cannot browse, but a key
     // holding only `read` is answered 200 with the machine's folders by GET /api/filesystem/directories.
-    [Fact(Skip = "Defect: a read-only API key can browse the server's folders (GET /api/filesystem/directories answers 200), although the filesystem group is meant to need the Imports scope.")]
+    [Fact]
     public async Task A_read_only_key_cannot_browse_the_servers_folders()
     {
         await using var app = await ApplicationTestHost.StartAsync();

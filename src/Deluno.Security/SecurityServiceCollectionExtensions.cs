@@ -42,6 +42,7 @@ public static class SecurityServiceCollectionExtensions
             .AddPolicy(DelunoAuthorizationPolicies.Write, policy => policy.AddRequirements(new DelunoScopeRequirement("write")))
             .AddPolicy(DelunoAuthorizationPolicies.Queue, policy => policy.AddRequirements(new DelunoScopeRequirement("queue")))
             .AddPolicy(DelunoAuthorizationPolicies.Imports, policy => policy.AddRequirements(new DelunoScopeRequirement("imports", "queue")))
+            .AddPolicy(DelunoAuthorizationPolicies.Commands, policy => policy.AddRequirements(new DelunoScopeRequirement("write", "queue", "system")))
             .AddPolicy(DelunoAuthorizationPolicies.System, policy => policy.AddRequirements(new DelunoScopeRequirement("system")));
         return services;
     }

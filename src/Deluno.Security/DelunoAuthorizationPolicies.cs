@@ -7,6 +7,8 @@ public static class DelunoAuthorizationPolicies
     public const string Queue = "deluno:queue";
     public const string Imports = "deluno:imports";
     public const string System = "deluno:system";
+    /// <summary>#1333: <c>POST /api/command</c>; each command then checks its own scope (write, queue or system).</summary>
+    public const string Commands = "deluno:commands";
 
     public static readonly string[] AllScopes = ["read", "write", "queue", "imports", "system"];
 }

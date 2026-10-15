@@ -160,7 +160,7 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
 
     // DEFECT: DelunoRequestPipeline.ResolveApiScopes asks for `write` on every API write outside a short list, so a key with only
     // `queue` is refused 403 at the sign-in gate although the documents give this route the queue scope.
-    [Fact(Skip = "Defect: a queue-only key is refused DELETE /api/queue/{clientId}/{itemId} (403) by the sign-in gate, which wants write; the docs give it the queue scope.")]
+    [Fact]
     public async Task A_queue_only_key_can_remove_a_download_as_the_documents_say()
     {
         var queue = await KeyAsync("queue");
@@ -174,7 +174,7 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
 
     // DEFECT: POST /api/command is gated to `write` first, so a key with only the scope the table names (queue or system) never reaches
     // the command's own scope check and is refused 403.
-    [Fact(Skip = "Defect: a queue-only key is refused POST /api/command RefreshMonitoredDownloads (403) by the sign-in gate; the command table names the queue scope.")]
+    [Fact]
     public async Task A_queue_key_can_ask_for_a_download_check_through_the_command_route()
     {
         var queue = await KeyAsync("queue");
@@ -184,7 +184,7 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, refresh.StatusCode);
     }
 
-    [Fact(Skip = "Defect: a system-only key is refused POST /api/command Backup (403) by the sign-in gate, which wants write; the command table names the system scope.")]
+    [Fact]
     public async Task A_system_key_can_ask_for_a_backup_through_the_command_route()
     {
         var system = await KeyAsync("system");
