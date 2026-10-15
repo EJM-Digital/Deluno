@@ -156,7 +156,7 @@ function HeroStatTile({ label, value, tone = "neutral" }: PageHeroStat) {
 
   return (
     <div className="min-w-0 rounded-xl border border-hairline bg-muted/30 px-[calc(var(--tile-pad)*0.55)] py-[calc(var(--tile-pad)*0.42)] dark:border-white/5 dark:bg-white/2">
-      <p className="density-nowrap text-(length:--type-micro) font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+      <p className="density-nowrap text-(length:--type-micro) font-bold uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </p>
       <p

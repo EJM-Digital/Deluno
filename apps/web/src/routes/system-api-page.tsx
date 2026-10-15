@@ -146,7 +146,7 @@ export function SystemApiPage() {
                 <Badge variant="success">one-time secret</Badge>
               </div>
               <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row">
-                <code className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 font-mono text-(length:--type-body) text-foreground">
+                <code tabIndex={0} className="min-w-0 flex-1 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-xl border border-hairline bg-background/70 p-3 font-mono text-(length:--type-body) text-foreground">
                   {createdKey.apiKey}
                 </code>
                 <Button type="button" variant="outline" onClick={() => void handleCopy(createdKey.apiKey)}>
@@ -238,12 +238,12 @@ export function SystemApiPage() {
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">
                       <span className="font-mono text-(length:--type-caption) font-bold text-primary">{method}</span>
-                      <code className="overflow-x-auto font-mono text-(length:--type-caption) text-foreground">{path}</code>
+                      <code tabIndex={0} className="overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring font-mono text-(length:--type-caption) text-foreground">{path}</code>
                       <span className="text-(length:--type-caption) text-muted-foreground">scope: {scope}</span>
                     </div>
                   ))}
                 </div>
-                <pre className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-background/70 p-3 text-(length:--type-caption) text-muted-foreground">
+                <pre tabIndex={0} className="mt-3 overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-xl border border-hairline bg-background/70 p-3 text-(length:--type-caption) text-muted-foreground">
 {`curl -H "X-Api-Key: deluno_..." http://127.0.0.1:5099/api/integrations/external/health
 
 curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integrations/external/queue?take=25`}

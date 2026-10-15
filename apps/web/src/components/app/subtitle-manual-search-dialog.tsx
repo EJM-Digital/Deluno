@@ -6,7 +6,7 @@
  * candidates/pick/blacklist/upload endpoints under their own base path.
  */
 import { useEffect, useRef, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { Loader2, ShieldBan, Upload, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { toast } from "../shell/toaster";

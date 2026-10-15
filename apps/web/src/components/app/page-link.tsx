@@ -16,7 +16,7 @@ export const PAGE_ROUTES = {
 export function PageLink({ page, label }: { page: keyof typeof PAGE_ROUTES; label?: string }) {
   const route = PAGE_ROUTES[page];
   return (
-    <Link to={route.to} className="text-primary underline-offset-2 hover:underline">
+    <Link to={route.to} className="text-primary underline underline-offset-2 hover:no-underline">
       {label ?? route.label}
     </Link>
   );

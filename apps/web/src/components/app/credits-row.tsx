@@ -163,7 +163,7 @@ function ScrollArrow({ direction, enabled, heading, onClick }: {
       aria-label={`Scroll ${heading.toLowerCase()} ${direction}`}
       className={cn(
         "flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-surface-2/80 transition",
-        enabled ? "text-foreground hover:border-primary/40 hover:bg-surface-2" : "cursor-default text-muted-foreground/30"
+        enabled ? "text-foreground hover:border-primary/40 hover:bg-surface-2" : "cursor-default text-muted-foreground"
       )}
     >
       <Icon className="h-4 w-4" />

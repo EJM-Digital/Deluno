@@ -72,7 +72,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         </select>
         <ChevronDown
           aria-hidden
-          className="pointer-events-none absolute right-(--field-pad-x) top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/80 transition-colors group-hover:text-foreground group-focus-within:text-primary"
+          className="pointer-events-none absolute right-(--field-pad-x) top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-hover:text-foreground group-focus-within:text-primary"
         />
       </span>
     );

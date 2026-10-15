@@ -299,12 +299,12 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               "focus-within:bg-foreground/6 focus-within:ring-primary/35",
               "focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.09)]"
             )}>
-              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-colors duration-200 group-focus-within:text-primary/70" strokeWidth={2} />
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary/70" strokeWidth={2} />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={`Search ${label}…`}
-                className="h-full border-0 bg-transparent px-0 text-(length:--library-toolbar-size) shadow-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                className="h-full border-0 bg-transparent px-0 text-(length:--library-toolbar-size) shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
               />
               {query ? (
                 <button
@@ -316,7 +316,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   <span className="text-(length:--type-micro) font-bold leading-none">×</span>
                 </button>
               ) : (
-                <kbd className="hidden shrink-0 rounded-sm border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-(length:--library-badge-size) text-muted-foreground/40 group-focus-within:hidden sm:block">
+                <kbd className="hidden shrink-0 rounded-sm border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-(length:--library-badge-size) text-muted-foreground group-focus-within:hidden sm:block">
                   /
                 </kbd>
               )}

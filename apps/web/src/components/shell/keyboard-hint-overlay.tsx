@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Dialog from "../ui/dialog-primitives";
 import { X } from "lucide-react";
 import { Kbd } from "../ui/kbd";
 import { cn } from "../../lib/utils";
