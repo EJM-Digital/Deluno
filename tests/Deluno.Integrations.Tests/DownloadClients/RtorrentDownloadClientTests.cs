@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Moq;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -212,6 +213,76 @@ public sealed class RtorrentDownloadClientTests
         {
             Directory.Delete(scratch.FullName, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// #1328: a base path rTorrent reports that is, holds or sits inside a library root is never deleted. A real library
+    /// folder holding a real film, rTorrent's hand-built reply (no recording yet) with only the base path swapped in.
+    /// </summary>
+    [Theory]
+    [InlineData("inside")]
+    [InlineData("is")]
+    [InlineData("holds")]
+    public async Task DeleteWithData_never_deletes_a_base_path_that_is_holds_or_sits_inside_a_library(string relation)
+    {
+        var scratch = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rtorrent-{Guid.NewGuid():N}"));
+        try
+        {
+            var library = Directory.CreateDirectory(Path.Combine(scratch.FullName, "Media", "Movies"));
+            var jobFolder = Directory.CreateDirectory(Path.Combine(library.FullName, "Some.Film"));
+            var film = Path.Combine(jobFolder.FullName, "Some.Film.mkv");
+            await File.WriteAllTextAsync(film, "mine");
+            var reported = relation switch { "inside" => jobFolder.FullName, "is" => library.FullName, _ => library.Parent!.FullName };
+            var handler = new RtorrentDeleteWithDataHandler(reported);
+
+            var result = await new RtorrentDownloadClient(new StubFactory(handler), LibrariesAt(library.FullName))
+                .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+            Assert.True(File.Exists(film), "the film in the library is untouched");
+            Assert.Contains("d.erase", handler.Methods);
+            Assert.True(result.Succeeded, result.Message);
+            Assert.Contains("inside a library, or holds one", result.FilesNote);
+            Assert.Contains("left its files on disk", result.Message);
+        }
+        finally
+        {
+            Directory.Delete(scratch.FullName, recursive: true);
+        }
+    }
+
+    /// <summary>#1328 control: the same removal of a folder outside every library still deletes it.</summary>
+    [Fact]
+    public async Task DeleteWithData_still_deletes_a_base_path_outside_every_library()
+    {
+        var scratch = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rtorrent-{Guid.NewGuid():N}"));
+        try
+        {
+            var library = Directory.CreateDirectory(Path.Combine(scratch.FullName, "Media", "Movies"));
+            var jobFolder = Directory.CreateDirectory(Path.Combine(scratch.FullName, "Completed", "Some.Film"));
+            await File.WriteAllTextAsync(Path.Combine(jobFolder.FullName, "Some.Film.mkv"), "x");
+
+            var result = await new RtorrentDownloadClient(new StubFactory(new RtorrentDeleteWithDataHandler(jobFolder.FullName)), LibrariesAt(library.FullName))
+                .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+            Assert.False(Directory.Exists(jobFolder.FullName));
+            Assert.Null(result.FilesNote);
+        }
+        finally
+        {
+            Directory.Delete(scratch.FullName, recursive: true);
+        }
+    }
+
+    private static Deluno.Libraries.Data.ILibrariesRepository LibrariesAt(string root)
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var library = new Deluno.Libraries.Contracts.LibraryItem(
+            "library-1", "Movies", "movies", "main", root, null, null, null, null,
+            true, true, "direct", null, null, 0, "block",
+            false, false, false, 6, 6, 10, null, null, "active", false, null, null, now, now);
+        var repository = new Mock<Deluno.Libraries.Data.ILibrariesRepository>();
+        repository.Setup(instance => instance.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        return repository.Object;
     }
 
     /// <summary>#1306: the folder rTorrent lists for a download is dropped when it climbs out (hand-built reply, one value swapped).</summary>

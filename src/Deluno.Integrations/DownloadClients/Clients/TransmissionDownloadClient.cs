@@ -8,7 +8,7 @@ using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
+public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFactory, Deluno.Libraries.Data.ILibrariesRepository? libraries = null) : DownloadClientBase
 {
     public override string Protocol => "transmission";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "basic", SupportsQueueReorder: true);
@@ -386,7 +386,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             if (deleteLocalData is { } wipe) arguments["delete-local-data"] = wipe;
             await SendAsync(client, baseUri, new TransmissionRequest(method, arguments), cancellationToken);
             var done = DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
-            var leftover = DownloadFolderRemoval.RemoveEmptyLeftovers(removed.Folder, removed.Name);
+            var leftover = DownloadFolderRemoval.RemoveEmptyLeftovers(removed.Folder, removed.Name, await DownloadFolderRemoval.ReadLibrariesAsync(libraries, cancellationToken));
             return leftover is null ? done : done with { FilesNote = leftover };
         }
 
