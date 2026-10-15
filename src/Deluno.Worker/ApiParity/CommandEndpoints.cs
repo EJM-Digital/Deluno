@@ -413,7 +413,7 @@ public static class CommandEndpoints
     public static IEndpointRouteBuilder MapDelunoCommandEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var commands = endpoints.MapGroup("/api/command")
-            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
+            .RequireAuthorization(DelunoAuthorizationPolicies.Commands);
 
         commands.MapPost(string.Empty, async (
             HttpContext httpContext,
