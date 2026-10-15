@@ -86,6 +86,9 @@ export function BlockReleaseAction({
     setChecking(true);
     try {
       setMatch(await checkQueueMatch(identity));
+    } catch {
+      // The check is a convenience before blocking; the dialog still opens and says so.
+      toast.error("Deluno could not check whether this release is in the queue. You can still block it.");
     } finally {
       setChecking(false);
     }

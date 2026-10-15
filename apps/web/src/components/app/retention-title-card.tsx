@@ -71,6 +71,8 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
       setKeeping(null);
       await load();
       onChanged?.();
+    } catch {
+      toast.error("That could not be kept. Deluno could not be reached.");
     } finally {
       setBusy(null);
     }
@@ -88,6 +90,8 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
       setPostponing(null);
       await load();
       onChanged?.();
+    } catch {
+      toast.error("That could not be postponed. Deluno could not be reached.");
     } finally {
       setBusy(null);
     }
@@ -100,6 +104,8 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
       toast[response.ok ? "success" : "error"](response.ok ? done : "That could not be undone.");
       await load();
       onChanged?.();
+    } catch {
+      toast.error("That could not be undone. Deluno could not be reached.");
     } finally {
       setBusy(null);
     }

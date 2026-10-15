@@ -7,6 +7,7 @@ import { Field } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 
+import { SignedApiLink } from "../../components/app/signed-api-link";
 export type TrackerKind = "all" | "public" | "semi-private" | "private";
 
 export function privacyWords(privacy: string) {
@@ -84,7 +85,7 @@ export function SiteListPanel({ onDone }: { onDone: () => void }) {
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 text-muted-foreground">
           Sites come from the public Prowlarr repository.{" "}
-          <a className="font-medium text-primary hover:underline" href="/api/trackers/definitions/notice" target="_blank" rel="noreferrer">Where they come from and under what terms</a>.
+          <SignedApiLink className="font-medium text-primary hover:underline" path="/api/trackers/definitions/notice" mode="open" fallbackName="tracker-definitions-notice.md">Where they come from and under what terms</SignedApiLink>.
         </span>
         <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void run()}>
           {busy ? "Checking…" : "Check for newer site files"}

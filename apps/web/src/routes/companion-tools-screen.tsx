@@ -97,6 +97,8 @@ export function CompanionToolsPage() {
       }
       setSelected([]);
       setData(await loadCompanionTools());
+    } catch {
+      setMessage("Setting up could not start. Deluno could not be reached.");
     } finally {
       setBusy(false);
     }

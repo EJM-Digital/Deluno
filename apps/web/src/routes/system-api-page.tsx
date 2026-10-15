@@ -87,8 +87,12 @@ export function SystemApiPage() {
   }
 
   async function handleCopy(value: string) {
-    await navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("The browser would not copy it. Select the text and copy it by hand.");
+    }
   }
 
   async function handleDelete(item: ApiKeyItem) {

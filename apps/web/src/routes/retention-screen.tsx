@@ -4,7 +4,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
 import { Loader2, Play } from "lucide-react";
-import { fetchJson, readValidationProblem } from "../lib/api";
+import { fetchJson, readErrorText, readValidationProblem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -475,8 +475,14 @@ export function RetentionPage() {
   async function undoKeep(item: RetentionKeep) {
     setBusy(`undo:${item.id}`);
     try {
-      await authedFetch(`/api/retention/keeps/${item.id}`, { method: "DELETE" });
+      const response = await authedFetch(`/api/retention/keeps/${item.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        setPageMessage(await readErrorText(response, `${item.title} could not be taken off the keep list. Try again.`));
+        return;
+      }
       revalidator.revalidate();
+    } catch (error) {
+      setPageMessage(error instanceof Error && error.message ? error.message : "That could not be undone. Try again.");
     } finally {
       setBusy(null);
     }

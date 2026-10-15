@@ -80,6 +80,9 @@ export function LibraryMembershipCard({
       toast.success(done);
       onChanged();
       return true;
+    } catch {
+      toast.error("That could not be done. Deluno could not be reached.");
+      return false;
     } finally {
       setBusy(false);
     }
