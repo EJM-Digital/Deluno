@@ -277,6 +277,8 @@ $workflowChecks = @(
     @{ Label = "the recordings manifest check works"; Args = @("--test", "scripts/check-recorded-manifest.test.mjs") },
     @{ Label = "the coverage register names a row for every route, screen, job, migration, integration, tray action and scenario, every proof it names exists, and the gaps are no more than on origin/main"; Args = @("scripts/check-coverage-register.mjs", "--base", "origin/main") },
     @{ Label = "the coverage register check and its inventories work"; Args = @("--test", "scripts/check-coverage-register.test.mjs") },
+    @{ Label = "a real Playwright spec (apps/web/tests/real) stubs no request, directly or through a helper"; Args = @("scripts/check-real-specs.mjs") },
+    @{ Label = "the real-spec guard works"; Args = @("--test", "scripts/check-real-specs.test.mjs") },
     @{ Label = "the TypeScript SDK sends the right request and reports a refusal"; Args = @("--test", "sdk/typescript/tests/delunoclient.test.mjs") }
 )
 foreach ($check in $workflowChecks) {
