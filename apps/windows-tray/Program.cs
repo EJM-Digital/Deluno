@@ -335,7 +335,7 @@ internal static class Program
                 "logs");
             Directory.CreateDirectory(logDir);
             var logPath = Path.Combine(logDir, "tray-startup.log");
-            File.AppendAllText(
+            CappedLog.Append(
                 logPath,
                 $"{DateTimeOffset.Now:O} startup failure{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
         }

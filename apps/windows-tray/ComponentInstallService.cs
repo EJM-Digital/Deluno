@@ -91,7 +91,7 @@ public sealed class FileInstallLog : IInstallLog
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno");
             var logDir = Path.Combine(root, "logs");
             Directory.CreateDirectory(logDir);
-            File.AppendAllText(Path.Combine(logDir, "install-hook.log"), $"{DateTimeOffset.Now:O} {line}{Environment.NewLine}");
+            CappedLog.Append(Path.Combine(logDir, "install-hook.log"), $"{DateTimeOffset.Now:O} {line}{Environment.NewLine}");
         }
         catch
         {

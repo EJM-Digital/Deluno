@@ -150,6 +150,7 @@ public static class SystemLogAndDatabasesEndpointRouteBuilderExtensions
 public sealed class DatabaseIntegrityService(
     IDelunoDatabaseConnectionFactory databases,
     IJobQueueRepository jobs,
+    IHealthCheckRepository health,
     TimeProvider timeProvider,
     ILogger<DatabaseIntegrityService> logger)
     : BackgroundService
@@ -260,6 +261,17 @@ public sealed class DatabaseIntegrityService(
             startedUtc.Add(SystemTasks.IntervalFor(SystemTasks.DatabaseIntegrity)),
             CancellationToken.None,
             note);
+        // Health reads the stored answers of its checks (#1335): ask for the System ones now, so a damaged database
+        // shows within seconds and a mended one clears, not at the next quarter hour.
+        try
+        {
+            await health.RequestImmediateRunAsync(HealthCheckCategories.System, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "The database check ran, but Health could not be asked to look again.");
+        }
+
         return problems;
     }
 }

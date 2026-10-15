@@ -5,6 +5,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Api.SystemInfo;
 using Deluno.Contracts;
+using Deluno.Worker.HealthChecks;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,7 +51,7 @@ public sealed class ADamagedDatabaseIsSaidOnEveryScreenOnRealFilesTests
 
     // DEFECT: no health check reads the integrity note, so a database that failed its daily check is on System and in the log but not on Health.
     // GET /api/system/health answers {"checks":[],"summary":{"problemCount":0,...}} after a pass recorded as failed (src/Deluno.Worker/HealthChecks/Checks has no database check).
-    [Fact(Skip = "Defect: a database that fails its daily integrity check is not shown on Health (no health check reads the integrity note); the register row says it is.")]
+    [Fact]
     public async Task A_damaged_database_is_shown_in_health_with_its_name()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -65,7 +66,33 @@ public sealed class ADamagedDatabaseIsSaidOnEveryScreenOnRealFilesTests
         await jobs.TryClaimScheduledPassAsync(SystemTasks.DatabaseIntegrity, TimeSpan.FromDays(1), CancellationToken.None);
         await app.Services.GetRequiredService<DatabaseIntegrityService>().RunOnceAsync(CancellationToken.None);
 
+        // The test host runs no background services, so the health service's next look is done by hand: it takes what the pass asked for.
+        var healthStore = app.Services.GetRequiredService<IHealthCheckRepository>();
+        using (var scope = app.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<HealthCheckRunner>()
+                .RunCategoriesAsync(await healthStore.TakePendingImmediateRunsAsync(CancellationToken.None), CancellationToken.None);
+        }
+
         var health = await app.Client.GetStringAsync("/api/system/health");
         Assert.Contains("Movies", health, StringComparison.Ordinal);
+        var problem = (await app.Client.GetFromJsonAsync<JsonElement>("/api/system/health")).GetProperty("checks").EnumerateArray()
+            .Single(check => check.GetProperty("id").GetString() == "system:database-integrity");
+        Assert.Equal("problem", problem.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("fix").GetString()));
+    }
+
+    [Fact]
+    public async Task A_database_check_asks_health_to_look_again_for_the_system_checks()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var health = app.Services.GetRequiredService<IHealthCheckRepository>();
+        await health.TakePendingImmediateRunsAsync(CancellationToken.None);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        await jobs.TryClaimScheduledPassAsync(SystemTasks.DatabaseIntegrity, TimeSpan.FromDays(1), CancellationToken.None);
+
+        await app.Services.GetRequiredService<DatabaseIntegrityService>().RunOnceAsync(CancellationToken.None);
+
+        Assert.Contains(HealthCheckCategories.System, await health.TakePendingImmediateRunsAsync(CancellationToken.None));
     }
 }
