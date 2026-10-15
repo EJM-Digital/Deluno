@@ -125,11 +125,7 @@ public sealed class GivingUpOnUnmatchedFilesOnDiskTests
         var dispatch = await world.RecordDispatchAsync(movie.Id, "Sintel 2010 WEB 1080p");
         var locked = Write(Path.Combine(world.Downloads, "Sintel.2010.WEB.1080p.mkv"));
         var caseId = await OpenCaseAsync(world, ImportFailurePolicy.Unmatched, locked, dispatch);
-        using var block = DeleteBlock.TryApply(locked);
-        if (block is null)
-        {
-            return; // this account can delete anything (for example root in a container), so a delete cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(locked);
 
         using var scope = world.App.Services.CreateScope();
         var handled = await ServiceFor(world, scope).RunAsync(CancellationToken.None);

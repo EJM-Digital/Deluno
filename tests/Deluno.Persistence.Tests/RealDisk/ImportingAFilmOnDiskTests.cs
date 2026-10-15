@@ -163,11 +163,7 @@ public sealed class ImportingAFilmOnDiskTests
         var dispatch = await world.RecordDispatchAsync(movie.Id, "Sintel 2010 WEB 1080p");
         var movieFolder = Path.Combine(world.Root, "Sintel (2010)");
         Directory.CreateDirectory(movieFolder);
-        using var denial = FolderWriteDenial.TryApply(movieFolder);
-        if (denial is null)
-        {
-            return; // this account is allowed to write anywhere (for example root in a container), so the OS cannot be made to refuse
-        }
+        using var denial = FolderWriteDenial.Apply(movieFolder);
 
         var result = await world.ImportAsync(RealDiskLibrary.Request(source, "Sintel", 2010, mode: "move", dispatchId: dispatch));
         denial.Dispose();
@@ -314,7 +310,7 @@ internal sealed class FolderWriteDenial : IDisposable
 
     private FolderWriteDenial(Action undo) => _undo = undo;
 
-    public static FolderWriteDenial? TryApply(string folder)
+    public static FolderWriteDenial Apply(string folder)
         => OperatingSystem.IsWindows() ? DenyOnWindows(folder) : DenyOnPosix(folder);
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -342,22 +338,8 @@ internal sealed class FolderWriteDenial : IDisposable
     }
 
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static FolderWriteDenial? DenyOnPosix(string folder)
-    {
-        var original = File.GetUnixFileMode(folder);
-        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-        try
-        {
-            File.WriteAllText(Path.Combine(folder, ".probe"), "x");
-            File.Delete(Path.Combine(folder, ".probe"));
-            File.SetUnixFileMode(folder, original);
-            return null; // still writable: this account ignores the mode
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return new FolderWriteDenial(() => File.SetUnixFileMode(folder, original));
-        }
-    }
+    private static FolderWriteDenial DenyOnPosix(string folder)
+        => new(PosixLock.TakeAwayWrite(folder));
 
     public void Dispose()
     {
