@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "$comment": "Mutants no test can kill (issue 1269). Each entry names the project, file as the Stryker report spells it, mutator, line and replacement, and says why. A push whose changed files leave any other mutant surviving fails.",
+  "equivalents": []
+}
