@@ -193,4 +193,35 @@ public sealed class MetadataLinkRoutesTests
 
         Assert.Equal(before, (await series.GetByIdAsync(show.SeriesId, CancellationToken.None))!.MetadataProviderId);
     }
+
+    [Fact]
+    public async Task Previewing_a_link_says_what_would_change_and_changes_nothing_and_a_missing_title_record_or_service_is_said_plainly()
+    {
+        var provider = new LinkProvider { Title = "Dune: Part One", ProviderId = "9001" };
+        await using var app = await StartAsync(provider);
+        var film = await ApiScenes.FilmOnDiskAsync(app, "Dune", 2021);
+        var show = await ApiScenes.ShowOnDiskAsync(app, "The Wire", 2002);
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        var before = (await movies.GetByIdAsync(film.MovieId, CancellationToken.None))!.MetadataProviderId;
+
+        var preview = await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/metadata/link/preview", new { providerId = "9001" });
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        var body = await preview.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("canApply").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("confirmationToken").GetString()));
+        Assert.Equal(before, (await movies.GetByIdAsync(film.MovieId, CancellationToken.None))!.MetadataProviderId);
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsJsonAsync("/api/movies/no-such-film/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsJsonAsync("/api/series/no-such-show/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/metadata/link/preview", new { providerId = " " })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "" })).StatusCode);
+
+        provider.Status = MetadataProviderRecordStatus.Missing;
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+        provider.Status = MetadataProviderRecordStatus.Unavailable;
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+    }
 }
