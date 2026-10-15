@@ -24,6 +24,11 @@ public sealed class RaisingACutoffMakesOwnedFilesUpgradableTests
 {
     private const string Allowed = "WEB 1080p,WEB 2160p";
 
+    // The files on disk are a few bytes, but the catalogue records the size of a real WEB 1080p release. A saved profile judges a file
+    // by its size as well as its name (#1334), so a recorded size under the tier's floor would rightly stay an upgrade.
+    private const long FilmBytes = 8L * 1024 * 1024 * 1024;
+    private const long EpisodeBytes = 3L * 1024 * 1024 * 1024;
+
     [Fact]
     public async Task Raising_the_cutoff_makes_covered_episodes_upgrades_the_sweep_picks_and_lowering_it_settles_them_again()
     {
@@ -231,7 +236,7 @@ public sealed class RaisingACutoffMakesOwnedFilesUpgradableTests
             var path = Path.Combine(root, $"Chernobyl S01E0{number} WEB 1080p.mkv");
             await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
             episodes.Add(new ImportedEpisodeItem(
-                1, number, HasFile: true, FilePath: path, FileSizeBytes: 4,
+                1, number, HasFile: true, FilePath: path, FileSizeBytes: EpisodeBytes,
                 AirDate: new DateOnly(2019, 5, 6 + number), CurrentQuality: "WEB 1080p", QualityCutoffMet: true));
         }
 
@@ -262,7 +267,7 @@ public sealed class RaisingACutoffMakesOwnedFilesUpgradableTests
         await movies.ImportExistingAsync(
             libraryId, title, year,
             wantedStatus: "covered", wantedReason: "Imported", currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
-            qualityCutoffMet: true, filePath: path, fileSizeBytes: 4, cancellationToken: CancellationToken.None);
+            qualityCutoffMet: true, filePath: path, fileSizeBytes: FilmBytes, cancellationToken: CancellationToken.None);
         return (await movies.ListAsync(CancellationToken.None)).First(item => item.Title == title).Id;
     }
 
