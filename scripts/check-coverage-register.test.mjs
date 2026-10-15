@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
-  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, totals, validateShape
+  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, staleIssueRows, totals, unownedGapRows, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
 import { migrationItems, routeItems, trayItems, webRouteItems } from './coverage/inventory.mjs';
@@ -22,6 +22,8 @@ function makeRepo(files) {
   return root;
 }
 
+/** A fixture gap names an issue, as the register requires; a row with proofs is left as written. */
+const owned = (r) => (r.proofs.length || r.issue != null ? r : { ...r, issue: 1284 });
 const row = (over = {}) => ({
   id: 'api.movies.get-movies', area: 'api', behaviour: 'GET /api/movies lists the movies', kind: 'API route', severity: 'medium', touches: 'none', required: 'inproc',
   proofs: [], ...over
@@ -54,6 +56,29 @@ test('a row reaches its level only with a proof of that level', () => {
   assert.equal(isGap(high), true, 'a high row is not met by an in-process test');
   assert.equal(isGap(highReal), false);
   assert.equal(isGap(row({ severity: 'high', touches: 'other-app', required: 'real', proofs: [{ type: 'scenario', file: 'G.ps1', name: 'film.qbittorrent' }] })), false);
+});
+
+test('a row marked incomplete is a gap whatever its proofs reach', () => {
+  const unit = [{ type: 'vitest', file: 'a.test.ts', name: 'x' }];
+  assert.equal(isGap(row({ proofs: unit })), false);
+  assert.equal(isGap(row({ proofs: unit, incomplete: true })), true);
+  assert.equal(rowLevel(row({ proofs: unit, incomplete: true })), 1, 'the level itself is unchanged');
+  assert.deepEqual(validateShape(register([row({ proofs: unit, incomplete: true })])), []);
+  for (const bad of [false, 'yes', 1]) assert.match(validateShape(register([row({ incomplete: bad })])).join(' '), /incomplete may only be true/);
+});
+
+test('a stale issue (no gap) and an unowned gap (no issue) are listed by row id', () => {
+  const unit = [{ type: 'vitest', file: 'a.test.ts', name: 'x' }];
+  const rows = [
+    row({ id: 'a.stale', proofs: unit, issue: 1284 }),
+    row({ id: 'a.owned-gap', issue: 1284 }),
+    row({ id: 'a.unowned-gap' }),
+    row({ id: 'a.unowned-incomplete', proofs: unit, incomplete: true }),
+    row({ id: 'a.owned-incomplete', proofs: unit, incomplete: true, issue: 1284 }),
+    row({ id: 'a.clean', proofs: unit })
+  ];
+  assert.deepEqual(staleIssueRows(register(rows)), ['a.stale']);
+  assert.deepEqual(unownedGapRows(register(rows)), ['a.unowned-gap', 'a.unowned-incomplete']);
 });
 
 test('the register shape refuses a high row that asks for less than real proof, and duplicate ids', () => {
@@ -186,6 +211,9 @@ test('evaluate ties the parts together', () => {
     const result = evaluate({ register: register(rows), inventory, index, plan: [], root });
     assert.deepEqual([result.shape, result.unmapped, result.stale, result.missing], [[], [], [], []]);
     assert.equal(result.totals.gaps.length, 0);
+    assert.deepEqual([result.staleIssues, result.unownedGaps], [[], []]);
+    const flagged = evaluate({ register: register([{ ...rows[0], issue: 1284 }, row({ id: 'api.no-owner' })]), inventory, index, plan: [], root });
+    assert.deepEqual([flagged.staleIssues, flagged.unownedGaps], [['api.movies.get-movies'], ['api.no-owner']]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -316,7 +344,7 @@ test('only an unmapped item or a missing proof fails the default run; the rest f
   const script = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'check-coverage-register.mjs');
   const run = (rows, args = []) => {
     mkdirSync(dirname(registerFile), { recursive: true });
-    writeFileSync(registerFile, JSON.stringify(register(rows)));
+    writeFileSync(registerFile, JSON.stringify(register(rows.map(owned))));
     return spawnSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8' });
   };
   const good = { type: 'backend', file: 'tests/X.Tests/MovieListTests.cs', name: 'Listing_movies_answers_ok' };
@@ -325,7 +353,7 @@ test('only an unmapped item or a missing proof fails the default run; the rest f
     const soft = run([
       row({ covers: ['route:GET /api/movies'] }),
       row({ covers: ['route:GET /api/gone'], proofs: [{ ...good, type: 'recording-replay' }] }),
-      row({ id: 'api.other', severity: 'high', touches: 'other-app', required: 'real', proofs: [good] })
+      row({ id: 'api.other', severity: 'high', touches: 'other-app', required: 'real', proofs: [good], issue: 1284 })
     ]);
     assert.equal(soft.status, 0, soft.stderr + soft.stdout);
     assert.equal(run([row({ covers: ['route:GET /api/movies'] })], ['--strict']).status, 1, '--strict fails on a gap');
@@ -336,6 +364,13 @@ test('only an unmapped item or a missing proof fails the default run; the rest f
     assert.equal(missing.status, 1);
     assert.match(missing.stderr, /\(b\)/);
     assert.equal(run([row({ covers: ['route:GET /api/movies'], proofs: [good] })]).status, 0);
+    // (e) a stale issue on a row that is no gap fails; (f) a gap with no issue fails.
+    const stale = run([row({ covers: ['route:GET /api/movies'], proofs: [good], issue: 1284 })]);
+    assert.equal(stale.status, 1);
+    assert.match(stale.stderr, /\(e\) 1 row\(s\) are not gaps but still name an issue[\s\S]*api\.movies\.get-movies/);
+    const unowned = run([row({ covers: ['route:GET /api/movies'], proofs: [good], incomplete: true })]);
+    assert.equal(unowned.status, 1);
+    assert.match(unowned.stderr, /\(f\) 1 gap\(s\) name no issue[\s\S]*api\.movies\.get-movies/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -649,7 +684,7 @@ test('--base fails a rise in the gaps, allows a reasoned one, and --report write
   const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
   const write = (rows, extra = {}) => {
     mkdirSync(dirname(registerFile), { recursive: true });
-    writeFileSync(registerFile, JSON.stringify({ ...register(rows), ...extra }));
+    writeFileSync(registerFile, JSON.stringify({ ...register(rows.map(owned)), ...extra }));
   };
   const run = (args, env = {}) => spawnSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: '', ...env } });
   const cover = row({ covers: ['route:GET /api/movies'] });
