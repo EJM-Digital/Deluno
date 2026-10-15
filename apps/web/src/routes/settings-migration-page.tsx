@@ -170,18 +170,23 @@ export function SettingsMigrationPage() {
     if (!importedConnections.length) return;
     setBusy("validate");
     const results: Record<string, ConnectionValidationResult> = {};
-    await Promise.all(
-      importedConnections.map(async (item) => {
-        const collection = item.targetType === "indexer" ? "indexers" : "download-clients";
-        try {
-          results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, { method: "POST" });
-        } catch (error) {
-          results[item.operationId] = { healthStatus: "needs review", message: error instanceof Error ? error.message : "The test could not run." };
-        }
-      })
-    );
-    setConnectionValidation(results);
-    setBusy(null);
+    try {
+      await Promise.all(
+        importedConnections.map(async (item) => {
+          const collection = item.targetType === "indexer" ? "indexers" : "download-clients";
+          try {
+            results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, { method: "POST" });
+          } catch (error) {
+            results[item.operationId] = { healthStatus: "needs review", message: error instanceof Error ? error.message : "The test could not run." };
+          }
+        })
+      );
+    } catch {
+      // Every test records its own failure above; nothing else can reject here.
+    } finally {
+      setConnectionValidation(results);
+      setBusy(null);
+    }
   }
 
   function toggleOperation(operation: MigrationReportOperation, on: boolean) {
