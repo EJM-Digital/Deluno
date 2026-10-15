@@ -9,6 +9,88 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.33
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.32, plus:
+
+Your files are safer:
+- Nothing Deluno removes is deleted outright any more. Clearing leftovers,
+  giving up on a download, removing orphans and removing a title all go
+  through the recycle bin, and a library's own folder is never touched.
+- Removing a title takes only that title's own files and their subtitles and
+  artwork. A folder goes only when nothing else is left in it.
+- A path that tries to climb out of where it belongs is refused everywhere a
+  path comes from outside Deluno: download clients, processors, imports,
+  deletes, the recycle bin and restoring a backup.
+- A download client that reports a delete inside a library, or of a library's
+  own folder, is refused. A client set to save inside a library is shown as a
+  problem.
+- Two libraries whose folders overlap are shown as a problem on System, and
+  clean-up waits until that is fixed.
+- Backups clean up only backups Deluno made. Anything else in the folder is
+  left alone and mentioned once.
+- A database that fails its integrity check now shows on Health by name.
+- Every log Deluno writes, the tray's start-up log included, has a size cap.
+
+Things that now work as they should:
+- Backups can be downloaded from the screen again. The links used to answer
+  "not signed in".
+- An indexer that held back a search because of its own query limit no longer
+  shows "Needs attention".
+- A wrong or missing indexer key shows as a sign-in problem everywhere: search,
+  RSS, the Test button and Indexer History.
+- A download client that refuses its login no longer breaks the status of the
+  other clients.
+- A send to Weir that Weir refused now counts as failed, not as sent.
+- Saving a quality profile now judges files by their real size, so an
+  undersized file is no longer marked as good enough. Deleting a profile
+  leaves no title pointing at it.
+- Bulk search searches exactly the titles you chose.
+- A film's older searches stay in its History. A TV search no longer asks
+  indexers for film categories. A failed indexer in a search now says so.
+- Episodes have a file panel on the show page, and messages in the title
+  drawers are shown.
+- Moving a show to another library moves its folder, and every stored path
+  follows in one step. A refused move changes nothing.
+- File names are cut to a safe length with the year and extension kept, and
+  episode names like S01E01E02 or daily shows are read correctly.
+- A list with a minimum rating now checks the looked-up rating when the list
+  itself gives none. Before, it skipped every entry.
+- A download client's priority and port are checked by Deluno itself, not only
+  on the screen.
+- Settings screens show the server's own reason when a save is refused,
+  including a repeated tag name.
+
+Sign-in and security:
+- After sign-in Deluno only returns you to a page inside Deluno, never to
+  another site.
+- A failed setup check no longer counts as set up, and creating the first
+  account lands on the right page.
+- Two first-run sign-ups at the same moment make one account. The other is
+  told Deluno is already set up.
+- A read-only API key can no longer read backups, API keys or the server's
+  folders. Queue removal and commands accept the scope the docs give them.
+- Behind a reverse proxy, the proxy's address is offered for Allowed Hosts.
+
+Screens:
+- Every screen has better colour contrast and named controls. Focus returns
+  where it was when a drawer closes.
+- The Dashboard's Log card says a line repeated back to back once, with a count.
+- The System screen's Run now and Health buttons say why when they are refused,
+  and are disabled while a request runs.
+- A page open across a Deluno restart catches up instead of showing old numbers.
+
 ## 1.0.0-rc.30.32
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
