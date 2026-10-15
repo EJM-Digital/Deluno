@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "$comment": "Mutation testing for the API client (issue 1269). Its tests are node:test files, so the command runner runs them. Run from sdk/typescript: npx stryker run.",
+  "_comment": "Mutation testing for the API client (issue 1269). Its tests are node:test files, so the command runner runs them. Run from sdk/typescript: npx stryker run.",
   "testRunner": "command",
   "commandRunner": { "command": "node --test tests/delunoclient.test.mjs" },
   "mutate": ["src/**/*.ts", "!src/**/*.d.ts"],

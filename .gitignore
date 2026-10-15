@@ -60,4 +60,4 @@ scripts/lab/rig.local.json
 # Mutation testing output (issue 1269): reports and Stryker scratch folders.
 StrykerOutput/
 .stryker-tmp/
-reports/mutation/
+**/reports/mutation/
