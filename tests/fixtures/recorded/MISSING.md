@@ -198,3 +198,15 @@ Rows of the integrations area that need a real reply nobody has recorded yet. Ea
 ## Guided setup (coverage register, area guided-setup)
 
 - jackett `t=search` answered to a wrong or missing API key: the guided setup's "Test search source" sends `t=search&limit=1` first and `t=caps` after, and only the `t=caps` replies to a wrong key (`caps-wrong-api-key`) and to no key (`caps-no-api-key`) are recorded. The "Failed + the server's own message" case of the search-source test cannot be proven against a real reply until the search reply to a wrong key is recorded.
+
+## Coverage gaps in the api, services and health areas (#1297, #1298, #1299, 15 Oct 2026)
+
+Rows left open because the other app's reply is not recorded. Each line says what is needed.
+
+- seerr (no recording at all): the identity and status replies, the reply to a test of a connection, the webhook calls Seerr sends (request approved, request declined, a 4K approval) and the reply to a request lookup. Needed by `POST/PUT/DELETE /api/seerr-servers`, `POST /api/seerr-servers/test`, `/{id}/test`, `/{id}/webhook-secret` and `/{id}/webhook`.
+- trakt (no recording): the device-code reply, the poll while pending, the poll once approved, the token refresh and the revoke. Needed by `/api/trakt/credentials`, `/connect`, `/connect/poll`, `/disconnect`.
+- subtitle providers (no recording): a provider's login reply, its search reply and its refusal of a wrong account. Needed by `PUT/DELETE /api/subtitle-providers/{key}` and `/{key}/test`.
+- notification webhooks (no recording): what a webhook target (Discord, Slack, a generic URL) answers to a test message, to a rate limit and to a refused request. Needed by `POST/PUT/DELETE /api/notification-webhooks`, `/{id}/test` and `/deliveries/{id}/replay`.
+- sabnzbd 5.1.3: whole-queue pause and resume (`mode=pause`, `mode=resume`), and `mode=set_config&section=servers` (saving a news server). nzbget 26.3: `pausedownload`, `resumedownload` and `saveconfig` for a server. Needed by `POST /api/download-clients/{id}/resume` and `POST /api/download-clients/usenet-provider`.
+- weir 1.0.0-rc.13: the `HEAD /api/v1/intake/webhook/deluno` connection check and the `/ready` health-check address (what the installer sets). Needed by `POST /api/integrations/processors/connections/{id}/test`.
+- flaresolverr 3.5.2 with an indexer that answers a Cloudflare challenge page (the challenge reply, then the solved page): the indexer-proxy routes only act when an indexer meets a challenge. Needed by `POST/PUT/DELETE /api/indexer-proxies`.
