@@ -23,12 +23,6 @@ function Get-InstalledDelunoExe {
     Get-ChildItem -Path $dir -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
-function Read-StartMarker {
-    $path = Join-Path $env:LOCALAPPDATA 'Deluno\logs\start-progress.json'
-    if (-not (Test-Path $path)) { return $null }
-    try { Get-Content -Raw $path | ConvertFrom-Json } catch { $null }
-}
-
 # The state the previous release is given: the first account, a quality profile, a library, a download client, and some Activity.
 function Initialize-UpdateState {
     $status = Wait-DelunoUp
