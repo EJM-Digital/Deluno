@@ -2,14 +2,16 @@
 // Makes a release tag, only when it is safe to. Run through scripts/tag-release.ps1 -Version <x.y.z[-rc.N[.M]]>.
 // Tags are made only this way (AGENTS.md, docs/ga-release-checklist.md). It refuses, saying why in plain words,
 // unless: the working tree is clean and HEAD is origin/main; Directory.Build.props and RELEASE_NOTES.md carry the
-// version; ci.yml passed on HEAD and really ran the jobs; and the golden path passed on HEAD. Then it creates the
+// version; ci.yml passed on HEAD and really ran the jobs; and the golden path passed on HEAD
+// (or on an earlier commit with the same shipped files, scripts/ship-paths.mjs). Then it creates the
 // annotated tag v<version> and pushes it, which starts the release.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import {
-  checkCi, checkGoldenPath, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
+  checkCi, checkGoldenPath, describeGoldenPath, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
 } from "./tag-release-checks.mjs";
 import { CI_WORKFLOW } from "./verify-ci-for-release.mjs";
+import { findGoldenPathPass } from "./verify-golden-path-for-release.mjs";
 
 const run = (file, args) => execFileSync(file, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 const git = (...args) => run("git", args);
@@ -47,11 +49,14 @@ function main() {
   const jobsFor = (candidate) => JSON.parse(gh("run", "view", String(candidate.databaseId), "--repo", repository, "--json", "jobs")).jobs;
   refusals.push(...checkCi(runs, jobsFor));
 
-  const statuses = gh(
-    "api", "--paginate", `repos/${repository}/commits/${head}/statuses?per_page=100`,
+  const listStatuses = (commit) => gh(
+    "api", "--paginate", `repos/${repository}/commits/${commit}/statuses?per_page=100`,
     "--jq", ".[] | {id, context, state, description, created_at}",
   ).split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line));
-  refusals.push(...checkGoldenPath(statuses));
+  // HEAD's own pass, else an earlier commit's with the same shipped files (the release makes the same judgement).
+  const golden = findGoldenPathPass(head, { listStatuses, git: (args) => git(...args) });
+  refusals.push(...checkGoldenPath(golden));
+  if (golden.ok) console.log(describeGoldenPath(golden));
   if (refusals.length) fail(refusals);
 
   git("tag", "-a", `v${version}`, "-m", `Deluno ${version}`, head);
