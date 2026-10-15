@@ -191,7 +191,12 @@ function Invoke-GroupSeasonPack {
             $said = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition {
                 $hits = New-Object System.Collections.ArrayList
                 foreach ($f in Get-DelunoLogFiles) {
-                    try { foreach ($line in [IO.File]::ReadLines($f.FullName)) { if ($line -match 'because no library matched it; nothing was deleted') { [void]$hits.Add($line) } } } catch { }
+                    # Deluno has its log open for writing: read it sharing the file (File.ReadLines refuses a file another process writes).
+                    try {
+                        $fs = New-Object IO.FileStream($f.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                        $sr = New-Object IO.StreamReader($fs)
+                        try { while ($null -ne ($line = $sr.ReadLine())) { if ($line -match 'because no library matched it; nothing was deleted') { [void]$hits.Add($line) } } } finally { $sr.Dispose() }
+                    } catch { }
                 }
                 if ($hits.Count -gt 0) { @($hits) } else { $null }
             }
