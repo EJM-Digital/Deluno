@@ -23,12 +23,12 @@ public sealed class CompleteTorrentWithTrackerErrorTests
 
     [Fact]
     public async Task Deluge_seeding_torrent_with_a_tracker_error_is_finished_and_quiet()
-        => AssertFinishedAndQuiet(await Deluge("Seeding", 100.0, "Error: Connection refused"));
+        => AssertFinishedAndQuiet(await RecordedDelugeSnapshot("Seeding", 100.0, "Error: Connection refused"));
 
     [Fact]
     public async Task Deluge_paused_complete_torrent_with_a_tracker_error_is_not_failed()
     {
-        var item = await Deluge("Paused", 100.0, "Error: Connection refused");
+        var item = await RecordedDelugeSnapshot("Paused", 100.0, "Error: Connection refused");
         Assert.Null(item.ErrorMessage);
         Assert.Null(item.Failure);
         Assert.NotEqual(DownloadQueueStatuses.Stalled, item.Status);
@@ -37,7 +37,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [Fact]
     public async Task Deluge_incomplete_torrent_with_a_tracker_error_keeps_the_error()
     {
-        var item = await Deluge("Downloading", 40.0, "Error: Connection refused");
+        var item = await RecordedDelugeSnapshot("Downloading", 40.0, "Error: Connection refused");
         Assert.NotNull(item.ErrorMessage);
         Assert.NotNull(item.Failure);
     }
@@ -68,7 +68,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
 
     [Fact]
     public async Task Transmission_complete_torrent_with_a_tracker_error_is_finished_and_quiet()
-        => AssertFinishedAndQuiet(await Transmission(status: 6, percentDone: 1.0, error: 2, errorString: "Could not connect to tracker"));
+        => AssertFinishedAndQuiet(await RecordedTransmissionSnapshot(status: 6, percentDone: 1.0, error: 2, errorString: "Could not connect to tracker"));
 
     /// <summary>The reply exactly as Transmission 4.1.3 sent it for a complete torrent whose tracker is down: the failure is in the tracker report only.</summary>
     [Fact]
@@ -82,12 +82,12 @@ public sealed class CompleteTorrentWithTrackerErrorTests
 
     [Fact]
     public async Task Transmission_complete_torrent_with_a_tracker_warning_is_finished_and_quiet()
-        => AssertFinishedAndQuiet(await Transmission(status: 6, percentDone: 1.0, error: 1, errorString: "Tracker gave a warning"));
+        => AssertFinishedAndQuiet(await RecordedTransmissionSnapshot(status: 6, percentDone: 1.0, error: 1, errorString: "Tracker gave a warning"));
 
     [Fact]
     public async Task Transmission_incomplete_torrent_with_a_tracker_error_keeps_the_error()
     {
-        var item = await Transmission(status: 4, percentDone: 0.4, error: 2, errorString: "Could not connect to tracker");
+        var item = await RecordedTransmissionSnapshot(status: 4, percentDone: 0.4, error: 2, errorString: "Could not connect to tracker");
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
         Assert.Equal("Could not connect to tracker", item.ErrorMessage);
     }
@@ -95,7 +95,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [Fact]
     public async Task Transmission_complete_torrent_with_a_local_error_is_still_an_error()
     {
-        var item = await Transmission(status: 6, percentDone: 1.0, error: 3, errorString: "No space left on device");
+        var item = await RecordedTransmissionSnapshot(status: 6, percentDone: 1.0, error: 3, errorString: "No space left on device");
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
         Assert.True(item.IsSetupProblem);
     }
@@ -106,7 +106,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [InlineData("pausedUP")]
     public async Task Qbittorrent_complete_torrent_whose_tracker_is_not_working_is_finished_and_quiet(string state)
     {
-        var item = await Qbit(state, 1.0, "The tracker is not answering");
+        var item = await RecordedQbitSnapshot(state, 1.0, "The tracker is not answering");
         AssertFinishedAndQuiet(item);
         Assert.NotEqual(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
     }
@@ -114,13 +114,13 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     [Fact]
     public async Task Qbittorrent_incomplete_torrent_whose_tracker_is_not_working_keeps_its_behaviour()
     {
-        var item = await Qbit("stalledDL", 0.4, "The tracker is not answering");
+        var item = await RecordedQbitSnapshot("stalledDL", 0.4, "The tracker is not answering");
         // #1193: stalledDL alone stays Downloading until Deluno's no-progress window finds no byte gain.
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
     /// <summary>Deluge 2.2.0's recorded list of a finished torrent, in the state, progress and tracker status under test.</summary>
-    private static async Task<DownloadQueueItem> Deluge(string state, double progress, string trackerStatus)
+    private static async Task<DownloadQueueItem> RecordedDelugeSnapshot(string state, double progress, string trackerStatus)
     {
         var handler = RecordedDelugeRig.Handler(RecordedDelugeRig.Finished(
             ("state", state), ("progress", progress), ("label", "movies"), ("tracker_status", trackerStatus)));
@@ -132,7 +132,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     /// Transmission 4.1.3's recorded list of a complete torrent whose tracker does not answer (its own tracker report, "Could not
     /// connect to tracker", is in the reply), with the torrent's status, progress and error fields as under test.
     /// </summary>
-    private static async Task<DownloadQueueItem> Transmission(int status, double percentDone, int error, string errorString)
+    private static async Task<DownloadQueueItem> RecordedTransmissionSnapshot(int status, double percentDone, int error, string errorString)
     {
         var json = RecordedTransmissionRig.Reply(
             RecordedTransmissionRig.FinishedTrackerError,
@@ -146,7 +146,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
     /// qBittorrent 5.2.1's recorded list of a complete torrent whose tracker does not answer, in the state and progress under test.
     /// The tracker list is the recorded one with its first entry a tracker that is not working (the nearest recorded reply).
     /// </summary>
-    private static async Task<DownloadQueueItem> Qbit(string state, double progress, string trackerMessage)
+    private static async Task<DownloadQueueItem> RecordedQbitSnapshot(string state, double progress, string trackerMessage)
     {
         var info = RecordedQbittorrentRig.Info(RecordedQbittorrentRig.FinishedTrackerError, ("state", state), ("progress", progress), ("category", "movies"));
         var trackers = RecordedQbittorrentRig.Trackers(4, trackerMessage, "http://127.0.0.1:9/announce");

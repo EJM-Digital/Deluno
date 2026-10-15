@@ -416,6 +416,27 @@ public sealed class ConnectionNamesTests
 
 
     [Fact]
+    public async Task Jackett_as_it_really_answers_caps_names_no_tracker_and_a_title_it_gives_is_used()
+    {
+        var recorded = Deluno.Tests.Recorded.RecordedReplies.Jackett("caps").Exchanges[0].Reply;
+        Assert.Contains("title=\"Jackett\"", recorded.Body, StringComparison.Ordinal);
+        var address = "http://localhost:9117/api/v2.0/indexers/yts/results/torznab/";
+
+        // Jackett 0.24.2850 titles its caps just "Jackett": that is no name for a tracker.
+        using (var client = new HttpClient(new StubHandler(_ => recorded.ToResponse())))
+        {
+            Assert.Null(await AggregatorIndexerNames.DiscoverAsync(Aggregated(address), client, CancellationToken.None));
+        }
+
+        // The same recorded answer with the one value a tracker's own caps would change: its title.
+        using var titled = new HttpClient(new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent(recorded.Body!.Replace("title=\"Jackett\"", "title=\"YTS\"", StringComparison.Ordinal))
+        }));
+        Assert.Equal("YTS", await AggregatorIndexerNames.DiscoverAsync(Aggregated(address), titled, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_redirect_is_no_name_and_is_never_followed()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Redirect)

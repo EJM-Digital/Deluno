@@ -38,7 +38,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
             {
                 Calls.Add($"{request.Method} {request.RequestUri!.PathAndQuery} {body}".TrimEnd());
                 Requests.Add(request);
-                return answer?.Invoke(request, body) ?? Recorded(request);
+                return answer?.Invoke(request, body) ?? RecordedReply(request);
             })));
 
         public bool Sent(string fragment) => Calls.Any(call => call.Contains(fragment, StringComparison.Ordinal));
@@ -47,7 +47,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
     }
 
     /// <summary>The recorded reply to the kind of call: the catalogue calls pick the movie or the series reply by the item types asked for.</summary>
-    private static HttpResponseMessage Recorded(HttpRequestMessage request)
+    private static HttpResponseMessage RecordedReply(HttpRequestMessage request)
     {
         var path = request.RequestUri!.AbsolutePath;
         var query = request.RequestUri.Query;
