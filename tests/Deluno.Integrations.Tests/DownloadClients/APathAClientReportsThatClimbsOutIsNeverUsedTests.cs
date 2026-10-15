@@ -215,9 +215,9 @@ public sealed class APathAClientReportsThatClimbsOutIsNeverUsedTests
             Assert.True(DownloadFolderRemoval.IsSafeToDelete(victim, out _), "control: the same folder by its plain path is deletable");
 
             // The removal with a job name that would match, on a client that runs here: nothing is deleted.
-            Assert.Null(DownloadFolderRemoval.Remove(climbing, "victim", onThisMachine: true));
+            Assert.Null(DownloadFolderRemoval.Remove(climbing, "victim", onThisMachine: true, libraries: []));
             Assert.True(File.Exists(Path.Combine(victim, "keep.mkv")));
-            Assert.Null(DownloadFolderRemoval.RemoveEmptyLeftovers(climbing, "victim"));
+            Assert.Null(DownloadFolderRemoval.RemoveEmptyLeftovers(climbing, "victim", []));
         }
         finally
         {

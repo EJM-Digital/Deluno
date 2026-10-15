@@ -59,6 +59,23 @@ describe("the folder check (#616)", () => {
     expect(screen.getByText(/Half-finished files sit where the processor and the library look/)).toBeTruthy();
   });
 
+  it("says in plain words that a client saves inside a library (#1328)", async () => {
+    fetchJson.mockResolvedValue({
+      ...mismatch,
+      clients: [{
+        clientId: "q", clientName: "qBittorrent", protocol: "qbittorrent", category: "movies",
+        links: [
+          { step: "in-library", status: "problem", message: "qBittorrent saves movies to /media/movies, which is inside the Movies library, or holds it. Point the movies folder in qBittorrent somewhere outside every library." }
+        ]
+      }]
+    });
+
+    render(<FolderChainSection libraryId="tv" />);
+
+    expect(await screen.findByText("qBittorrent · saves inside a library")).toBeTruthy();
+    expect(screen.getByText(/somewhere outside every library/)).toBeTruthy();
+  });
+
   it("checks again on request", async () => {
     fetchJson.mockResolvedValue({ ...mismatch, allMatch: true, clients: [], libraryLinks: [] });
 

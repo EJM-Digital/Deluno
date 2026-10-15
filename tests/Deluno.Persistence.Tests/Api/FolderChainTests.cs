@@ -36,6 +36,42 @@ public sealed class FolderChainTests
         Assert.Contains(Steps(report), step => step == "ready");
     }
 
+    /// <summary>#1328: a client category folder that is, holds or sits inside a library root is a problem on the chain, said before anything is removed, and it leads the folder line.</summary>
+    [Theory]
+    [InlineData("inside")]
+    [InlineData("is")]
+    [InlineData("holds")]
+    public async Task A_client_folder_that_is_holds_or_sits_inside_a_library_root_is_a_problem_in_plain_words(string relation)
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+        var films = Path.Combine(app.DataRoot, "Films");
+        var saves = relation switch { "inside" => Directory.CreateDirectory(Path.Combine(films, "Downloads")).FullName, "is" => films, _ => app.DataRoot };
+        client.Result = Ready(saves);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var link = Link(report, "in-library");
+        Assert.Equal("problem", link.GetProperty("status").GetString());
+        Assert.Contains("inside the Films library, or holds it", link.GetProperty("message").GetString());
+        Assert.Contains("somewhere outside every library", link.GetProperty("message").GetString());
+        Assert.False(report.GetProperty("allMatch").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_client_folder_outside_every_library_draws_no_inside_a_library_line()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: true);
+        client.Result = Ready(scene.Downloads);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        Assert.DoesNotContain(report.GetProperty("clients")[0].GetProperty("links").EnumerateArray(), link => link.GetProperty("step").GetString() == "in-library");
+    }
+
     [Fact]
     public async Task Where_it_downloads_is_checked_apart_from_where_it_finishes()
     {
