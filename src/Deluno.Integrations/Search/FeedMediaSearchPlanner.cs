@@ -492,7 +492,7 @@ public sealed class FeedMediaSearchPlanner(
         var searchAddress = isTracker
             ? indexer.BaseUrl
             : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, genres, categoryIds);
-        if (!Uri.TryCreate(searchAddress, UriKind.Absolute, out var uri))
+        if (!WebAddress.TryParse(searchAddress, out var uri))
         {
             logger.LogWarning(
                 "Indexer {IndexerName} ({IndexerId}) has an unusable search URL; skipping.",

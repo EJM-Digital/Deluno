@@ -412,7 +412,7 @@ public static class MediaGrabHandler
         {
             errors["downloadUrl"] = ["This release does not include a downloadable URL. Choose a different release or check the indexer configuration."];
         }
-        else if (!Uri.TryCreate(request.DownloadUrl, UriKind.Absolute, out _))
+        else if (!WebAddress.IsDownloadLink(request.DownloadUrl))
         {
             errors["downloadUrl"] = ["The selected release has an invalid download URL."];
         }
