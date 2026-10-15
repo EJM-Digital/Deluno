@@ -37,7 +37,7 @@ public sealed class CloudflareHelperHealthCheckTests
     [Fact]
     public async Task A_helper_that_refuses_the_connection_is_a_plain_words_problem()
     {
-        var check = Check("http://127.0.0.1:8191", new RefusingHandler());
+        var check = Check("http://127.0.0.1:8191", RecordedReplies.Flaresolverr("not-answering").NotAnswering());
 
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
@@ -50,7 +50,8 @@ public sealed class CloudflareHelperHealthCheckTests
     [Fact]
     public async Task A_helper_that_answers_with_an_error_is_a_problem()
     {
-        var check = Check("http://127.0.0.1:8191", new AnsweringHandler(HttpStatusCode.InternalServerError));
+        var refused = RecordedReplies.Flaresolverr("unknown-command").Single.Reply;
+        var check = Check("http://127.0.0.1:8191", new AnsweringHandler((HttpStatusCode)refused.Status, refused.Body ?? string.Empty));
 
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
@@ -74,13 +75,6 @@ public sealed class CloudflareHelperHealthCheckTests
             => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
     }
 
-    private sealed class RefusingHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => throw new HttpRequestException(
-                "No connection could be made because the target machine actively refused it.",
-                new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused));
-    }
 
     private static PlatformSettingsSnapshot DefaultSettings() => new(
         MovieRootPath: null,
