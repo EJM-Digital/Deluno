@@ -88,7 +88,9 @@ try {
         try { & $group.Function }
         catch {
             # A group that breaks as a whole is recorded so the host sees which one, and the run goes on with the next.
-            $msg = Hide-Secrets $_.Exception.Message
+            # The script stack names the function and line that threw; without it a null argument says only which parameter.
+            $trace = Hide-Secrets ("$($_.ScriptStackTrace)" -replace '\s*\r?\n\s*', ' <- ')
+            $msg = (Hide-Secrets $_.Exception.Message) + $(if ($trace) { " [stack: $trace]" } else { '' })
             Write-SuiteLog "   GROUP ERROR $($group.Name): $msg"
             $rec = [ordered]@{ id = "group.$($group.Name)"; title = "The $($group.Name) group stopped"; status = 'error'; startedUtc = [DateTime]::UtcNow.ToString('o'); seconds = 0
                 checks = @(); notes = @(); error = $msg }
