@@ -8108,7 +8108,7 @@ public sealed class ImportPipelineServiceTests
         var result = await scene.ImportAsync();
 
         Assert.False(result.Succeeded);
-        Assert.Contains("No video stream", result.Message);
+        Assert.Contains("has no video, and the download it was made from does", result.Message);
     }
 
     /// <summary>
@@ -8143,7 +8143,7 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
-    /// #919: on a fault, the broken processed copy is deleted -- the
+    /// #919: on a fault, the broken processed copy leaves the output folder (to the recycle bin, #1342) -- the
     /// original, already shown good at Checkpoint A, is kept regardless (the
     /// original itself is never probed by this scene, only referenced by
     /// ProcessedFromPath, so its continued existence is not re-asserted
@@ -8857,7 +8857,8 @@ public sealed class ImportPipelineServiceTests
             qualityProfileId = profile.Id;
         }
 
-        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: qualityProfileId);
+        // The processor's own folder, so the broken copy can go to the recycle bin from it (#1342).
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: qualityProfileId, processorOutputPath: refinedPath);
 
         var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight, sourceAudioLanguage, processedAudioLanguage);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
@@ -8874,6 +8875,7 @@ public sealed class ImportPipelineServiceTests
             new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage)),
             NullLogger<ImportPipelineService>.Instance,
             null,
+            new Deluno.Platform.RecycleBinService(Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }), timeProvider, NullLogger<Deluno.Platform.RecycleBinService>.Instance),
             qualityRepository: qualityRepository);
 
         var libraryId = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None)).Id;
@@ -9061,7 +9063,8 @@ public sealed class ImportPipelineServiceTests
         string downloadsPath,
         string cleanupMode = "keep-source",
         bool removeEmptySourceFolders = false,
-        string? qualityProfileId = null)
+        string? qualityProfileId = null,
+        string? processorOutputPath = null)
     {
         var request = new CreateLibraryRequest(
             Name: "Movies",
@@ -9072,7 +9075,7 @@ public sealed class ImportPipelineServiceTests
             QualityProfileId: qualityProfileId,
             ImportWorkflow: "standard",
             ProcessorName: null,
-            ProcessorOutputPath: null,
+            ProcessorOutputPath: processorOutputPath,
             ProcessorTimeoutMinutes: null,
             ProcessorFailureMode: null,
             AutoSearchEnabled: true,

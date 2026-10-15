@@ -293,13 +293,15 @@ public static class QualityEndpointRouteBuilderExtensions
             return Results.Json(plans, ReleasePreferenceJson.Options);
         });
 
-        releasePreferences.MapGet("/plans/{planId}", async (
+        // Catch-all: a plan id such as "quality-profile/<id>" carries a slash (#1342).
+        releasePreferences.MapGet("/plans/{**planId}", async (
             string planId,
             string? version,
             [FromServices] IReleasePreferencePlanRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var stored = await repository.GetAsync(planId, version, cancellationToken);
+            // A catch-all keeps a percent-encoded slash as it came; the id is the decoded text.
+            var stored = await repository.GetAsync(Uri.UnescapeDataString(planId), version, cancellationToken);
             return stored is null
                 ? Results.NotFound()
                 : Results.Json(stored, ReleasePreferenceJson.Options);
@@ -406,7 +408,6 @@ public static class QualityEndpointRouteBuilderExtensions
         // creating a second mutable release-ranking store.
         releasePreferenceWrites.MapPost("/plans", async (
             HttpContext httpContext,
-            [FromBody] ReleasePreferencePlan plan,
             [FromServices] IReleasePreferencePlanRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -414,6 +415,25 @@ public static class QualityEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            // Read with the options GET writes with, so what GET returns (enum words) POSTs back (#1342). Numbers still bind.
+            ReleasePreferencePlan? plan;
+            try
+            {
+                plan = await httpContext.Request.ReadFromJsonAsync<ReleasePreferencePlan>(ReleasePreferenceJson.Options, cancellationToken);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                plan = null;
+            }
+
+            if (plan is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["plan"] = ["The body is not a release-preference plan."]
+                });
             }
 
             var errors = ReleasePreferencePlanValidator.Validate(plan);

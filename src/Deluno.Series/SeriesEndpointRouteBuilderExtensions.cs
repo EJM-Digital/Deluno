@@ -1948,12 +1948,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                     {
                         failures.Add(dispatchFailure);
                     }
-                    if (grabResult.Status == "sent")
+                    if (grabResult.Succeeded && grabResult.Status == "sent")
                     {
                         sentCount++;
                     }
-                    else if (grabResult.Status == "failed")
+                    else if (!grabResult.Succeeded && grabResult.Status != "planned")
                     {
+                        // A send the client refused, a paused or open circuit: a failed episode, not a planned one.
                         failedCount++;
                     }
                     else
