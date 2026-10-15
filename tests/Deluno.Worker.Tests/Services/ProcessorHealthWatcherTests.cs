@@ -32,6 +32,25 @@ public sealed class ProcessorHealthWatcherTests
         public ProcessorHealthWatcher Watcher = null!;
         public int SettingsReads;
         private int _ticks;
+        private int _parked;
+
+        /// <summary>
+        /// A probe is only ever unfinished because it is waiting on the fake clock or a cancel (parked), or because
+        /// it was just woken and the thread pool has not yet run its continuation. A fixed number of yields does
+        /// not cover the second case on a machine with one or two cores (CI's): the next tick then skips the
+        /// processor as "still being checked" and the stored status lands a whole real-time scheduling delay late.
+        /// So each step waits, in real time and bounded, until every unfinished probe is parked.
+        /// </summary>
+        private async Task SettleAsync()
+        {
+            var deadline = Environment.TickCount64 + 10_000;
+            while (Outstanding.Count(task => !task.IsCompleted) > Volatile.Read(ref _parked) && Environment.TickCount64 < deadline)
+            {
+                await Task.Delay(1);
+            }
+
+            for (var y = 0; y < 30; y++) await Task.Yield();
+        }
 
         public void Add(string id, string health = "healthy", Reply reply = Reply.Answered, bool enabled = true)
         {
@@ -62,7 +81,8 @@ public sealed class ProcessorHealthWatcherTests
                         using var timer = Clock.CreateTimer(_ => wait.TrySetResult(), null, latency, Timeout.InfiniteTimeSpan);
                         using (token.Register(() => wait.TrySetCanceled(token)))
                         {
-                            await wait.Task;
+                            Interlocked.Increment(ref _parked);
+                            try { await wait.Task; } finally { Interlocked.Decrement(ref _parked); }
                         }
                     }
 
@@ -73,7 +93,8 @@ public sealed class ProcessorHealthWatcherTests
                             var never = new TaskCompletionSource<ProcessorStatusSupport>();
                             using (token.Register(() => never.TrySetCanceled(token)))
                             {
-                                return await never.Task;
+                                Interlocked.Increment(ref _parked);
+                                try { return await never.Task; } finally { Interlocked.Decrement(ref _parked); }
                             }
                         case Reply.Unreachable:
                             return new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, $"Deluno could not reach {item.Name}.");
@@ -105,7 +126,7 @@ public sealed class ProcessorHealthWatcherTests
                     Outstanding.AddRange(await Watcher.TickAsync(CancellationToken.None));
                 }
 
-                for (var y = 0; y < 30; y++) await Task.Yield();
+                await SettleAsync();
             }
         }
 

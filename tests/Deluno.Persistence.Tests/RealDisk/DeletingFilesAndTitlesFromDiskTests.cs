@@ -156,11 +156,7 @@ public sealed class DeletingFilesAndTitlesFromDiskTests
         Write(Path.Combine(world.Root, "Nosferatu (1922)", "Nosferatu (1922).mkv"));
         var subtitle = Write(Path.Combine(world.Root, "Nosferatu (1922)", "Nosferatu (1922).srt"), "mine");
         var id = await AddMovieAsync(world, "Nosferatu", 1922);
-        using var block = DeleteBlock.TryApply(subtitle);
-        if (block is null)
-        {
-            return; // this account can rename anything (for example root in a container), so a rename cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(subtitle);
 
         var response = await world.App.Client.PutAsJsonAsync($"/api/movies/{id}/files/language", new { path = subtitle, language = "English" });
         block.Dispose();
@@ -169,6 +165,25 @@ public sealed class DeletingFilesAndTitlesFromDiskTests
         Assert.Contains("could not be renamed", await response.Content.ReadAsStringAsync());
         Assert.Equal("mine", File.ReadAllText(subtitle));
         Assert.False(File.Exists(Path.ChangeExtension(subtitle, ".en.srt")));
+    }
+
+    [Fact]
+    public async Task Marking_a_subtitles_language_when_a_folder_sits_where_the_new_name_goes_answers_500_for_any_account()
+    {
+        // Needs no permission trick, so it proves the failed rename for every account on every platform, root included.
+        await using var world = await StartWorldAsync();
+        Write(Path.Combine(world.Root, "Nosferatu (1922)", "Nosferatu (1922).mkv"));
+        var subtitle = Write(Path.Combine(world.Root, "Nosferatu (1922)", "Nosferatu (1922).srt"), "mine");
+        var id = await AddMovieAsync(world, "Nosferatu", 1922);
+        var inTheWay = Path.ChangeExtension(subtitle, ".en.srt");
+        Directory.CreateDirectory(Path.Combine(inTheWay, "inside"));
+
+        var response = await world.App.Client.PutAsJsonAsync($"/api/movies/{id}/files/language", new { path = subtitle, language = "English" });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains("could not be renamed", await response.Content.ReadAsStringAsync());
+        Assert.Equal("mine", File.ReadAllText(subtitle));
+        Assert.True(Directory.Exists(inTheWay));
     }
 
     // ---------------------------------------------------------------- an episode's file
