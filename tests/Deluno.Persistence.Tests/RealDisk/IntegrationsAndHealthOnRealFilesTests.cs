@@ -182,6 +182,32 @@ public sealed class IntegrationsAndHealthOnRealFilesTests
         Assert.Empty(Directory.GetFiles(app.DataRoot, "*.zip", SearchOption.AllDirectories));
     }
 
+    [Fact]
+    public async Task Revoking_a_key_that_is_unknown_or_already_revoked_answers_404_and_the_revoked_key_no_longer_opens_anything()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/api-keys/", new { name = "Short lived", scopes = "read" });
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("item").GetProperty("id").GetString()!;
+
+        var unknown = await app.Client.DeleteAsync("/api/api-keys/nope");
+        var first = await app.Client.DeleteAsync($"/api/api-keys/{id}");
+        var second = await app.Client.DeleteAsync($"/api/api-keys/{id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, second.StatusCode);
+        Assert.Equal(0L, Convert.ToInt64(await ScalarAsync(app, "platform", $"SELECT COUNT(*) FROM api_keys WHERE id = '{id}';")));
+    }
+
+    private static async Task<object?> ScalarAsync(ApplicationTestHost app, string database, string sql)
+    {
+        var factory = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
+        await using var connection = await factory.OpenConnectionAsync(database, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return await command.ExecuteScalarAsync();
+    }
+
     // ------------------------------------------------------------------ the filesystem routes need the Imports scope
 
     [Fact]
@@ -274,6 +300,37 @@ public sealed class IntegrationsAndHealthOnRealFilesTests
         Assert.Contains("cannot write to it", outcome.Message);
         Assert.Contains("refuses writes", outcome.Cause);
         Assert.Contains("\"writable\":false", outcome.DetailsJson);
+        Assert.Empty(ProbeLeftovers(root));
+    }
+
+    /// <summary>
+    /// The thresholds are compared with the free space of the real drive the root is on. They cannot be set above 50 per cent, so which
+    /// row is right depends on how full the test machine's drive is; the row asserted is the one the drive's own reading calls for.
+    /// </summary>
+    [Fact]
+    public async Task A_library_root_is_called_low_on_space_exactly_when_the_real_drive_has_no_more_free_than_the_pause_threshold()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var root = Path.Combine(app.DataRoot, "Films");
+        await CreateLibraryAsync(app, root);
+        (await app.Client.PatchAsJsonAsync("/api/settings", new { libraryFreeSpaceWarnPercent = 50, libraryFreeSpacePausePercent = 50 })).EnsureSuccessStatusCode();
+        var drive = new DriveInfo(root);
+        var freePercent = (double)drive.AvailableFreeSpace / drive.TotalSize * 100d;
+
+        var outcome = Assert.Single(await RootCheck(app).RunAsync(CancellationToken.None));
+
+        if (freePercent <= 49.9)
+        {
+            Assert.Equal(HealthCheckStatuses.Problem, outcome.Status);
+            Assert.Contains("at or below the 50% pause threshold", outcome.Message);
+            Assert.Contains("fell to or below the configured pause threshold", outcome.Cause);
+        }
+        else if (freePercent >= 50.1)
+        {
+            Assert.Equal(HealthCheckStatuses.Ok, outcome.Status);
+            Assert.Contains("reachable and writable", outcome.Message);
+        }
+
         Assert.Empty(ProbeLeftovers(root));
     }
 
