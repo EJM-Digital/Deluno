@@ -51,7 +51,9 @@ function New-PackRelease {
     $source = Join-Path (Get-SuiteRoot) "films\$release"
     $folder = Join-Path $source $release
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
-    foreach ($ep in 1, 2) {
+    # Five episodes: Deluno refuses a pack under its minimum size for the quality (1.5 GB for WEB 1080p, rc.30.33 run), and the
+    # first two replace the files the show owns. The other three are new to the show.
+    foreach ($ep in 1..5) {
         New-Item -ItemType HardLink -Path (Join-Path $folder ("{0}.S01E{1:d2}.1080p.WEB-DL.x264-GP{2}.mkv" -f $Dotted, $ep, $Token.Replace('-', ''))) -Target $script:Fx.Base['big'] | Out-Null
     }
     $rel = Add-SuiteTorrentRelease -Title $release -Cat 5040 -Folder $folder
@@ -162,9 +164,9 @@ function Invoke-GroupSeasonPack {
             if (-not $fin.Ok) { return }
             $placed = Wait-Until -TimeoutSec 360 -IntervalSec 3 -Condition {
                 $n = @(Get-ChildItem -LiteralPath $movedRoot -Recurse -File -Filter '*.mkv' -ErrorAction SilentlyContinue)
-                if ($n.Count -ge 2) { $n } else { $null }
+                if ($n.Count -ge 5) { $n } else { $null }
             }
-            Add-Check 'Deluno''s own import placed the pack''s two episode files under the library''s new folder' $placed.Ok $(if ($placed.Ok) { ($placed.Value | ForEach-Object { $_.FullName }) -join '; ' } else { 'no pack file under the new folder in 6 minutes' })
+            Add-Check 'Deluno''s own import placed the pack''s five episode files under the library''s new folder' $placed.Ok $(if ($placed.Ok) { ($placed.Value | ForEach-Object { $_.FullName }) -join '; ' } else { 'no pack file under the new folder in 6 minutes' })
             $h = Find-Handoffs -Name $pack.Release | Select-Object -First 1
             if ($h) { Save-Evidence -Name 'seasonpack-handoff.json' -Text ($h | ConvertTo-Json -Depth 5) }
 
