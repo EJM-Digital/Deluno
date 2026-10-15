@@ -177,10 +177,33 @@ jobs:
           node scripts/check-recorded-replies.mjs
           node --test scripts/check-recorded-replies.test.mjs scripts/recorded-replies/scrub.test.mjs
 
-      - name: The coverage register has a row for everything Deluno does, and every proof it names exists
+      # The register is read against the code, and against the register as it was before this change: on a pull request the base
+      # commit's, on a push to main the previous commit's. The gaps may not go up from that count (scripts/check-coverage-register.mjs),
+      # so no gap count is kept in the file for pull requests to conflict on. A first push to a branch (an all-zero "before") and a force
+      # push (a "before" that is no longer there) have nothing to compare with: the check says so and skips the ratchet.
+      - name: The coverage register has a row for everything Deluno does, every proof it names exists, and the gaps have not gone up
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
-          node scripts/check-coverage-register.mjs
           node --test scripts/check-coverage-register.test.mjs
+          args=(--report)
+          if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
+            echo "No earlier commit to compare the register with (a first push or a manual run): the gap ratchet is skipped."
+          elif git fetch --no-tags --depth=1 origin "$BEFORE"; then
+            args+=(--base FETCH_HEAD)
+          else
+            echo "The earlier commit $BEFORE cannot be fetched (a force push): the gap ratchet is skipped."
+          fi
+          node scripts/check-coverage-register.mjs "${args[@]}"
+
+      - name: Upload the coverage register statistics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-register
+          if-no-files-found: ignore
+          retention-days: 7
+          path: artifacts/coverage-register.md
 
       - name: Coverage exclusions have reasons, and the coverage merge and ratchet work
         run: |
@@ -673,8 +696,7 @@ jobs:
             --lcov coverage-in/coverage-node/metadata-gateway.lcov \
             --exclusions docs/testing/coverage-exclusions.json \
             --out-json coverage-out/coverage-report.json \
-            --out-md coverage-out/coverage-report.md \
-            --write-doc docs/testing/COVERAGE.md
+            --out-md coverage-out/coverage-report.md
           cat coverage-out/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: No file is below its baseline, and every exclusion has a reason
@@ -686,7 +708,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           cp docs/testing/coverage-baseline.json coverage-out/coverage-baseline.json
-          cp docs/testing/COVERAGE.md coverage-out/COVERAGE.md
           node scripts/check-coverage-ratchet.mjs --report coverage-out/coverage-report.json --baseline coverage-out/coverage-baseline.json --update
 
       - name: Upload the coverage report

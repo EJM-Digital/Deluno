@@ -2,12 +2,12 @@
 // Run: node --test scripts/check-coverage-register.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
-  evaluate, generatedSection, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, totals, validateShape
+  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, totals, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
 import { migrationItems, routeItems, trayItems, webRouteItems } from './coverage/inventory.mjs';
@@ -136,7 +136,7 @@ test('totals count gaps by severity, best proof and area', () => {
   assert.equal(t.highGaps, 1);
   assert.deepEqual(t.byLevel, { none: 1, inproc: 2, real: 1 });
   assert.equal(t.byArea.api.highGaps, 1);
-  assert.match(generatedSection(register(rows), [], t), /\*\*4\*\* behaviours/);
+  assert.match(statisticsReport(register(rows), [], t), /\*\*4\*\* behaviours/);
 });
 
 test('a fixed sleep in a test needs a reason on its line', () => {
@@ -299,12 +299,12 @@ test('a smoke proof is real for a screen behaviour only when its API calls are n
   }
 });
 
-test('the generated section names the issues rows point at', () => {
+test('the statistics report names the issues rows point at', () => {
   const rows = [row({ id: 'i1', issue: 1301 }), row({ id: 'i2', issue: 1301, proofs: [{ type: 'backend', file: 'A.cs', name: 'x' }] })];
   const reg = register(rows);
-  const text = generatedSection(reg, [], totals(reg, null));
+  const text = statisticsReport(reg, [], totals(reg, null));
   assert.match(text, /#1301 \| 2 \| 1 \| 0/);
-  assert.match(generatedSection(register([row()]), [], totals(register([row()]), null)), /No row names an issue yet/);
+  assert.match(statisticsReport(register([row()]), [], totals(register([row()]), null)), /No row names an issue yet/);
 });
 
 test('only an unmapped item or a missing proof fails the default run; the rest fails only under --strict', () => {
@@ -495,9 +495,9 @@ test('vm is only true, and only on a row that touches disk or install', () => {
   assert.deepEqual(validateShape(register([row({ proofs: [{ type: 'real-fs', file: 'a.cs', name: 'x' }] })])), [], 'real-fs is a known proof type');
 });
 
-test('the generated section reports the real-fs proofs and the vm rows', () => {
+test('the statistics report reports the real-fs proofs and the vm rows', () => {
   const rows = [row({ id: 'v1', severity: 'high', touches: 'install', required: 'real', vm: true })];
-  const text = generatedSection(register(rows), [], totals(register(rows)));
+  const text = statisticsReport(register(rows), [], totals(register(rows)));
   assert.match(text, /Real-fs proofs: \*\*0\*\* claimed/);
   assert.match(text, /\*\*1\*\* rows are "vm"/);
 });
@@ -573,8 +573,143 @@ test('container-smoke does not count for a vm row or a row that touches no disk 
     const t = totals(reg, index);
     assert.deepEqual({ ...t.container }, { claims: 3, counted: 1, refused: 1, noEffect: 1 });
     assert.deepEqual(validateShape(reg), [], 'container-smoke is a known proof type');
-    assert.match(generatedSection(reg, [], t), /Container-smoke proofs: \*\*3\*\* claimed; \*\*1\*\* verified/);
+    assert.match(statisticsReport(reg, [], t), /Container-smoke proofs: \*\*3\*\* claimed; \*\*1\*\* verified/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// ----------------------------------------------------------------------------------- the gap ratchet against the base branch (15 Oct 2026)
+
+test('the shape refuses gapCeiling and a malformed gapIncrease, and accepts a reasoned one', () => {
+  const reg = (extra) => ({ ...register([row()]), ...extra });
+  assert.deepEqual(validateShape(reg({})), []);
+  assert.ok(validateShape(reg({ gapCeiling: 5201 })).some((p) => /gapCeiling/.test(p)), 'a stale gapCeiling is refused, not read');
+  assert.deepEqual(validateShape(reg({ gapIncrease: { from: 3, to: 5, reason: 'two rows wait for a screen' } })), []);
+  for (const bad of [null, {}, { from: 3, to: 3, reason: 'x' }, { from: 5, to: 3, reason: 'x' }, { from: 3, to: 5 }, { from: 3, to: 5, reason: '  ' }, { from: '3', to: 5, reason: 'x' }, { from: -1, to: 5, reason: 'x' }]) {
+    assert.equal(validateShape(reg({ gapIncrease: bad })).length, 1, JSON.stringify(bad));
+    assert.equal(gapIncreaseShape(bad).length, 1);
+  }
+});
+
+test('the ratchet: fewer or equal gaps pass, more fail unless a gapIncrease matches that rise exactly, and no base passes with a note', () => {
+  const reg = (gapIncrease) => ({ ...register([]), ...(gapIncrease ? { gapIncrease } : {}) });
+  assert.deepEqual(gapRatchet(reg(), 4, 5), { problems: [], notes: [] });
+  assert.deepEqual(gapRatchet(reg(), 5, 5), { problems: [], notes: [] });
+  const more = gapRatchet(reg(), 6, 5);
+  assert.equal(more.problems.length, 1);
+  assert.match(more.problems[0], /6 gaps, more than the 5/);
+  assert.match(more.problems[0], /"from": 5, "to": 6/, 'it names the entry to write');
+  const reason = 'a screen cannot be tested yet';
+  const allowed = gapRatchet(reg({ from: 5, to: 6, reason }), 6, 5);
+  assert.deepEqual(allowed.problems, []);
+  assert.match(allowed.notes[0], new RegExp(`5 to 6: ${reason}`));
+  for (const entry of [{ from: 4, to: 6, reason }, { from: 5, to: 7, reason }, { from: 5, to: 6, reason: ' ' }]) {
+    assert.equal(gapRatchet(reg(entry), 6, 5).problems.length, 1, JSON.stringify(entry));
+  }
+  assert.match(gapRatchet(reg({ from: 5, to: 7, reason }), 6, 5).problems[0], /says 5 to 7, which is not this rise/);
+  // A leftover entry changes nothing when the gaps did not rise.
+  assert.deepEqual(gapRatchet(reg({ from: 5, to: 6, reason }), 5, 5), { problems: [], notes: [] });
+  for (const none of [null, undefined]) assert.match(gapRatchet(reg(), 99, none).notes[0], /No register on the base branch/);
+  assert.deepEqual(gapRatchet(reg(), 99, null).problems, []);
+});
+
+test('the base register is counted from git with this checkout tests; no ref, no register or a broken one is null', () => {
+  const root = makeRepo({ 'tests/X.Tests/MovieListTests.cs': CS_TEST });
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
+  try {
+    git('init', '-q');
+    const good = { type: 'backend', file: 'tests/X.Tests/MovieListTests.cs', name: 'Listing_movies_answers_ok' };
+    const commit = (text, message) => {
+      mkdirSync(join(root, 'docs/testing'), { recursive: true });
+      writeFileSync(join(root, 'docs/testing/coverage-register.json'), text);
+      git('add', '-A');
+      assert.equal(git('commit', '-q', '-m', message).status, 0);
+    };
+    commit('not json', 'broken');
+    assert.equal(baseGapCount(root, 'HEAD', new TestIndex(root)), null);
+    commit(JSON.stringify({ version: 1 }), 'no rows');
+    assert.equal(baseGapCount(root, 'HEAD', new TestIndex(root)), null);
+    commit(JSON.stringify({ ...register([row({ id: 'a' }), row({ id: 'b', proofs: [good] }), row({ id: 'c' })]), gapCeiling: 99 }), 'two gaps');
+    assert.equal(baseGapCount(root, 'HEAD', new TestIndex(root)), 2, 'a gapCeiling left in the base is ignored');
+    assert.equal(baseGapCount(root, 'no-such-ref', new TestIndex(root)), null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('--base fails a rise in the gaps, allows a reasoned one, and --report writes the statistics without touching the docs', () => {
+  const root = makeRepo({
+    'tests/X.Tests/MovieListTests.cs': CS_TEST,
+    'src/Deluno.Movies/MoviesEndpoints.cs': 'class E { void Map(IEndpointRouteBuilder endpoints) { endpoints.MapGet("/api/movies", List); } }',
+    'docs/testing/COVERAGE.md': 'hand-written\n'
+  });
+  const registerFile = join(root, 'docs/testing/coverage-register.json');
+  const script = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'check-coverage-register.mjs');
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
+  const write = (rows, extra = {}) => {
+    mkdirSync(dirname(registerFile), { recursive: true });
+    writeFileSync(registerFile, JSON.stringify({ ...register(rows), ...extra }));
+  };
+  const run = (args, env = {}) => spawnSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: '', ...env } });
+  const cover = row({ covers: ['route:GET /api/movies'] });
+  const three = [cover, row({ id: 'extra.one' }), row({ id: 'extra.two' })];
+  try {
+    git('init', '-q');
+    write([cover, row({ id: 'extra.one' })]);
+    git('add', '-A');
+    assert.equal(git('commit', '-q', '-m', 'base: two gaps').status, 0);
+
+    assert.equal(run(['--base', 'HEAD']).status, 0, 'the same gaps pass');
+    write([cover]);
+    assert.match(run(['--base', 'HEAD']).stdout, /\(d\) 1 gaps, no more than the 2 at HEAD/);
+
+    write(three);
+    const more = run(['--base', 'HEAD']);
+    assert.equal(more.status, 1);
+    assert.match(more.stderr, /\(d\) the gaps/);
+    assert.match(more.stderr, /3 gaps, more than the 2/);
+    assert.equal(run([]).status, 0, 'without --base nothing is held to a count');
+    assert.match(run([]).stdout, /no --base given/);
+
+    write(three, { gapIncrease: { from: 2, to: 3, reason: 'a screen is not testable yet' } });
+    const allowed = run(['--base', 'HEAD']);
+    assert.equal(allowed.status, 0, allowed.stderr + allowed.stdout);
+    assert.match(allowed.stdout, /The gaps rise from 2 to 3: a screen is not testable yet/);
+    write(three, { gapIncrease: { from: 2, to: 4, reason: 'wrong rise' } });
+    assert.equal(run(['--base', 'HEAD']).status, 1);
+
+    // A ref with no register to compare with passes with a note.
+    write(three);
+    assert.match(run(['--base', 'no-such-ref']).stdout, /no register at no-such-ref/);
+    assert.equal(run(['--base', 'no-such-ref']).status, 0);
+
+    // --report writes the statistics; the docs are left alone.
+    const reported = run(['--report']);
+    assert.equal(reported.status, 0, reported.stderr);
+    const text = readFileSync(join(root, 'artifacts/coverage-register.md'), 'utf8');
+    assert.match(text, /behaviours\. \*\*\d+\*\* reach their required proof level/);
+    assert.match(text, /### By area/);
+    run(['--report', 'out/custom.md']);
+    assert.match(readFileSync(join(root, 'out/custom.md'), 'utf8'), /### By severity/);
+    assert.equal(run(['--write-doc']).status, 0, 'the removed flag does nothing');
+    assert.equal(readFileSync(join(root, 'docs/testing/COVERAGE.md'), 'utf8'), 'hand-written\n');
+
+    // The CI job summary gets the statistics and the notes.
+    write(three, { gapIncrease: { from: 2, to: 3, reason: 'a screen is not testable yet' } });
+    const summary = join(root, 'summary.md');
+    run(['--base', 'HEAD'], { GITHUB_STEP_SUMMARY: summary });
+    const summaryText = readFileSync(summary, 'utf8');
+    assert.match(summaryText, /### Coverage register/);
+    assert.match(summaryText, /- The gaps rise from 2 to 3: a screen is not testable yet/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the job summary shows the statistics, then each note', () => {
+  const reg = register([row()]);
+  const text = jobSummary(reg, [], totals(reg, null), ['first note', 'second note']);
+  assert.match(text, /^### Coverage register/);
+  assert.match(text, /- first note\n\n- second note\n$/);
 });
