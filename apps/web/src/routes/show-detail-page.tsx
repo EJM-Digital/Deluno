@@ -49,7 +49,7 @@ import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
 import { SubtitleManualSearchDialog } from "../components/app/subtitle-manual-search-dialog";
 import { authedFetch } from "../lib/use-auth";
 import { cn, formatBytes } from "../lib/utils";
-import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
+import { isEpisodeMissing, isEpisodeUpcoming, isEpisodeUpgradable, summariseEpisodes } from "../lib/episode-progress";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason, plainSearchResult } from "../lib/release-candidate-status";
@@ -192,7 +192,7 @@ function showGroups(id: string): TitleGroups<ShowDetailLoaderData> {
     // What was searched, sent, decided and noted for this show.
     history: async () => {
       const [searchHistory, dispatches, activity, decisions, origins, acquisitionBlockers] = await Promise.all([
-        fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
+        fetchJson<SeriesSearchHistoryItem[]>(`/api/series/search-history?seriesId=${encodeURIComponent(id)}&take=50`),
         // Archived rows included on purpose: an import archives its dispatch the
         // moment it succeeds, so a history that hides them shows nothing was ever
         // sent for the very shows Deluno did download. Asked for by title, because
@@ -306,6 +306,8 @@ export function ShowDetailPage() {
   // for free but an episode drawer opens on demand.
   const [episodeSubtitles, setEpisodeSubtitles] = useState<Record<string, MediaSubtitleRow[]>>({});
   // #840: what has already been tried for this episode's subtitles.
+  // What the drawer shows about the file an episode holds (#1338), read when the drawer opens on an episode with a file.
+  const [episodeFiles, setEpisodeFiles] = useState<Record<string, EpisodeFileFacts | null>>({});
   const [episodeSubtitleHistory, setEpisodeSubtitleHistory] = useState<Record<string, MediaSubtitleAttemptHistoryEntry[]>>({});
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
@@ -417,6 +419,15 @@ export function ShowDetailPage() {
     () => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, episodeFilter, query)),
     [episodeFilter, inventory.episodes, query]
   );
+  const visibleSeasons = useMemo(() => buildSeasonGroups(visibleEpisodes), [visibleEpisodes]);
+  // Counted over what has aired. `|| !item.hasFile` used to pull in every
+  // episode still to come, so a show mid-season offered to "find" episodes that
+  // did not exist yet — Slow Horses read 36 missing when 30 had aired.
+  const progress = useMemo(() => summariseEpisodes(inventory.episodes), [inventory.episodes]);
+  const missingCount = progress.missing;
+  const upcomingCount = progress.upcoming;
+  const upgradeCount = progress.upgradable;
+  // The chips and the summary strip count a list through the same helpers, so one list has one answer (#1338).
   const episodeFilterOptions = useMemo<FilterChipOption<EpisodeFilter>[]>(() => {
     const countOf = (filter: EpisodeFilter) => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, filter, "")).length;
     return [
@@ -427,14 +438,6 @@ export function ShowDetailPage() {
       { value: "imported", label: "On disk", count: countOf("imported") }
     ];
   }, [inventory.episodes]);
-  const visibleSeasons = useMemo(() => buildSeasonGroups(visibleEpisodes), [visibleEpisodes]);
-  // Counted over what has aired. `|| !item.hasFile` used to pull in every
-  // episode still to come, so a show mid-season offered to "find" episodes that
-  // did not exist yet — Slow Horses read 36 missing when 30 had aired.
-  const progress = useMemo(() => summariseEpisodes(inventory.episodes), [inventory.episodes]);
-  const missingCount = progress.missing;
-  const upcomingCount = progress.upcoming;
-  const upgradeCount = progress.upgradable;
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
   // The season switch answers for the whole season, not for the rows a filter leaves
   // showing: with the list filtered to Monitored, 1 of 74 Specials read as all of them.
@@ -474,6 +477,24 @@ export function ShowDetailPage() {
       cancelled = true;
     };
   }, [openEpisodeId, episodeSubtitles]);
+
+  const openEpisodeHasFile = openEpisode?.hasFile ?? false;
+  useEffect(() => {
+    if (!openEpisodeId || !openEpisodeHasFile || openEpisodeId in episodeFiles) {
+      return;
+    }
+    let cancelled = false;
+    fetchJson<EpisodeFileFacts>(`/api/series/episodes/${openEpisodeId}/file`)
+      .then((facts) => {
+        if (!cancelled) setEpisodeFiles((current) => ({ ...current, [openEpisodeId]: facts }));
+      })
+      .catch(() => {
+        if (!cancelled) setEpisodeFiles((current) => ({ ...current, [openEpisodeId]: null }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openEpisodeId, openEpisodeHasFile, episodeFiles]);
 
   useEffect(() => {
     if (!openEpisodeId || episodeSubtitleHistory[openEpisodeId]) {
@@ -846,6 +867,9 @@ export function ShowDetailPage() {
   }
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
+    // Every fresh search starts from every candidate, not the few a past filter left (#1338).
+    setCandidateProtocolFilter("");
+    setCandidateIndexerFilter("");
     setBusyAction(`${mode}-search`);
     setSearchNote({ state: "searching", label: mode === "interactive" ? "Comparing releases from your indexers..." : "Searching your indexers..." });
     let searchResponse: Response | null = null;
@@ -991,6 +1015,8 @@ export function ShowDetailPage() {
   async function handleEpisodeSearch(episodeIds: string[], mode: "send" | "choose" = "send") {
     if (!episodeIds.length) return;
     setBusyAction(mode === "choose" ? "episode-choose" : "episode-search");
+    setCandidateProtocolFilter("");
+    setCandidateIndexerFilter("");
     let searchResponse: Response | null = null;
 
     try {
@@ -2317,6 +2343,16 @@ export function ShowDetailPage() {
 
             {openEpisode.hasFile ? (
               <DrawerSection title="File">
+                <DrawerFacts
+                  items={[
+                    { label: "Path", value: episodeFiles[openEpisode.episodeId]?.filePath ?? "Not recorded", mono: true },
+                    { label: "Size", value: episodeFiles[openEpisode.episodeId]?.fileSizeBytes ? formatBytes(episodeFiles[openEpisode.episodeId]!.fileSizeBytes!) : "Not recorded" },
+                    { label: "Quality", value: episodeFiles[openEpisode.episodeId]?.quality ?? openEpisode.currentQuality ?? "Not recorded" },
+                    { label: "Release group", value: episodeFiles[openEpisode.episodeId]?.releaseGroup ?? "Not recorded" },
+                    { label: "Indexer", value: episodeFiles[openEpisode.episodeId]?.indexerName ?? "Not recorded" },
+                    { label: "Download client", value: episodeFiles[openEpisode.episodeId]?.downloadClientName ?? "Not recorded" }
+                  ]}
+                />
                 <div className="flex flex-wrap items-center gap-(--grid-gap)">
                   {confirmingEpisodeFileDelete === openEpisode.episodeId ? (
                     <>
@@ -2712,8 +2748,9 @@ function matchesEpisodeFilter(episode: SeriesEpisodeInventoryItem, filter: Episo
 
   const matchesFilter =
     filter === "all" ||
-    (filter === "missing" && (episode.wantedStatus === "missing" || !episode.hasFile)) ||
-    (filter === "upgrade" && episode.wantedStatus === "upgrade") ||
+    // The Missing and Upgrade chips count with the same helpers as the summary strip (#1338), so one list never has two answers.
+    (filter === "missing" && isEpisodeMissing(episode)) ||
+    (filter === "upgrade" && isEpisodeUpgradable(episode)) ||
     (filter === "monitored" && episode.monitored) ||
     (filter === "imported" && episode.hasFile);
 
@@ -2749,6 +2786,16 @@ function buildSeasonGroups(episodes: SeriesEpisodeInventoryItem[]) {
  * unchanged when no episode is selected - clearing the filter is just
  * passing `null` back in.
  */
+/** What the server knows about the file an episode holds, from GET /api/series/episodes/{id}/file. */
+interface EpisodeFileFacts {
+  filePath: string;
+  fileSizeBytes: number | null;
+  quality: string | null;
+  releaseGroup: string | null;
+  indexerName: string | null;
+  downloadClientName: string | null;
+}
+
 export function filterSearchHistoryByEpisode(
   searches: SeriesSearchHistoryItem[],
   episodeId: string | null

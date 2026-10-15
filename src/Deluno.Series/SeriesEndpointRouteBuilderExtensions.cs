@@ -289,8 +289,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
-        series.MapGet("/search-history", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
+        series.MapGet("/search-history", async (ISeriesCatalogRepository repository, string? seriesId, int? take, int? skip, CancellationToken cancellationToken) =>
         {
+            // One title's own searches are asked for by id and paged here (#1337); with no id it is still the newest 20 of the library.
+            if (!string.IsNullOrWhiteSpace(seriesId))
+            {
+                return Results.Ok(await repository.ListTitleSearchHistoryAsync(seriesId, Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), cancellationToken));
+            }
+
             var items = await repository.ListSearchHistoryAsync(cancellationToken);
             return Results.Ok(items);
         });

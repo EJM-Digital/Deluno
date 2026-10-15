@@ -1062,12 +1062,29 @@ public sealed class SqliteMediaStateRepository(
         return (updated, becameUpgrade, becameCovered);
     }
 
-    public async Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
+    public Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
         MediaKind kind,
         int limit,
         CancellationToken cancellationToken)
+        => ReadSearchHistoryAsync(kind, null, limit, 0, cancellationToken);
+
+    public Task<IReadOnlyList<MediaSearchHistoryItem>> ListTitleSearchHistoryAsync(
+        MediaKind kind,
+        string mediaId,
+        int limit,
+        int offset,
+        CancellationToken cancellationToken)
+        => ReadSearchHistoryAsync(kind, mediaId, limit, offset, cancellationToken);
+
+    private async Task<IReadOnlyList<MediaSearchHistoryItem>> ReadSearchHistoryAsync(
+        MediaKind kind,
+        string? mediaId,
+        int limit,
+        int offset,
+        CancellationToken cancellationToken)
     {
         var boundedLimit = Math.Clamp(limit, 1, 1000);
+        var boundedOffset = Math.Max(offset, 0);
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -1079,8 +1096,9 @@ public sealed class SqliteMediaStateRepository(
               SELECT id, movie_id, NULL, NULL, NULL, library_id, trigger_kind, outcome,
                      release_name, indexer_name, details_json, created_utc, indexer_id
               FROM {map.HistoryTable}
+              {(mediaId is null ? "" : "WHERE movie_id = @mediaId")}
               ORDER BY created_utc DESC
-              LIMIT {boundedLimit};
+              LIMIT {boundedLimit} OFFSET {boundedOffset};
               """
             : $"""
               SELECT COALESCE(h.id, ''), COALESCE(h.series_id, ''), h.episode_id,
@@ -1089,9 +1107,17 @@ public sealed class SqliteMediaStateRepository(
                      h.release_name, h.indexer_name, h.details_json, COALESCE(h.created_utc, ''), h.indexer_id
               FROM {map.HistoryTable} h
               LEFT JOIN episode_entries e ON e.id = h.episode_id
+              {(mediaId is null ? "" : "WHERE h.series_id = @mediaId")}
               ORDER BY h.created_utc DESC
-              LIMIT {boundedLimit};
+              LIMIT {boundedLimit} OFFSET {boundedOffset};
               """;
+        if (mediaId is not null)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@mediaId";
+            parameter.Value = mediaId;
+            command.Parameters.Add(parameter);
+        }
 
         var items = new List<MediaSearchHistoryItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);

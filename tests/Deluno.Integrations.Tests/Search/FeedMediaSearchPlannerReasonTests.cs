@@ -654,7 +654,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Contains("cat=5070", handler.Query, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>An indexer with no anime categories configured keeps using its normal ones for an anime search.</summary>
+    /// <summary>An indexer with no anime categories configured keeps using its normal ones for an anime search, which for a TV search is the TV family only (#1337).</summary>
     [Fact]
     public async Task An_anime_tv_search_falls_back_to_normal_categories_when_none_are_configured()
     {
@@ -671,7 +671,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             genres: "Anime",
             cancellationToken: CancellationToken.None);
 
-        Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cat=5000", handler.Query, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>A non-anime TV search never uses anime categories, even when the indexer has some configured.</summary>
@@ -691,7 +691,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             genres: "Drama",
             cancellationToken: CancellationToken.None);
 
-        Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cat=5000", handler.Query, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>#753: the manual Search page's own category picker narrows a newznab/torznab query to just the categories chosen, instead of the indexer's own defaults.</summary>

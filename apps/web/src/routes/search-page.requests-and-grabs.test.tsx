@@ -275,9 +275,7 @@ describe("grabbing from the Search page", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  // DEFECT (found by this test, not fixed here): the register says an indexer that fails or times out during a Search-page search
-  // is explained on the page. POST /api/search answers no failures and the page draws none: a failed indexer is silent.
-  it.skip("explains an indexer that failed or timed out during the search", async () => {
+  it("explains an indexer that failed or timed out during the search", async () => {
     searchReply = { body: { candidates: [row({})], indexersQueried: 2, failures: [{ serviceName: "Enabled Two", operation: "search", kind: "Timeout", message: "Timed out", summary: "Enabled Two search failed: Timed out." }] } };
     await renderPage();
 

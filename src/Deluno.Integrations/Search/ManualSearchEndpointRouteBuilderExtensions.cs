@@ -102,7 +102,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
 
             if (indexers.Length == 0)
             {
-                return Results.Ok(new { candidates = Array.Empty<object>(), indexersQueried = 0 });
+                return Results.Ok(new { candidates = Array.Empty<object>(), indexersQueried = 0, failures = Array.Empty<object>() });
             }
 
             var now = timeProvider.GetUtcNow();
@@ -214,10 +214,16 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                     cancellationToken);
             }
 
+            // #1337: every indexer that failed or timed out is listed, as the planner described it (the same failure a
+            // per-title search returns), so the Search page can say so instead of showing an empty list that looks like
+            // "nothing found".
+            var failures = failedIndexers.Values.ToArray();
+
             return Results.Ok(new
             {
                 candidates,
-                indexersQueried = indexers.Length
+                indexersQueried = indexers.Length,
+                failures
             });
         });
 
