@@ -18,6 +18,7 @@ using Deluno.Platform.Data;
 using Deluno.Series;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -41,6 +42,19 @@ namespace Deluno.Persistence.Tests.Integrations;
 /// </summary>
 public sealed class ARemovedTitleTakesItsDownloadWithItTests
 {
+    /// <summary>A real data folder with the real databases in it: every test here runs on one.</summary>
+    private static TestStorage NewStorage() => TestStorage.Create();
+
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the repositories say.</summary>
+    private static string OnDisk(World world, string database, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(world.DataRoot, database)};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
     [Fact]
     public async Task Deleting_a_title_by_hand_cancels_its_active_download_with_its_data_and_never_blocklists()
     {
@@ -59,6 +73,10 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
         // Never blocklisted, whatever the removal reason - the class has no
         // path to the blocklist at all, and this is that fact proven live.
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
+        // The title is gone from the catalogue file, and its download's record is closed.
+        Assert.Equal("0", OnDisk(world, "movies.db", $"SELECT COUNT(*) FROM movie_entries WHERE id = '{movie.Id}'"));
+        Assert.Equal("archived", OnDisk(world, "jobs.db", "SELECT status FROM download_dispatches WHERE release_name = 'Arrival.2016.1080p.WEB-DL-GROUP'"));
 
         var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
             .Single(entry => entry.Category == "movie.removed");
@@ -82,6 +100,8 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
         var untouched = await world.Dispatches.GetDispatchAsync(otherDispatchId, CancellationToken.None);
         Assert.NotNull(untouched);
         Assert.NotEqual("archived", untouched!.Status, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual("archived", OnDisk(world, "jobs.db", $"SELECT status FROM download_dispatches WHERE id = '{otherDispatchId}'"));
+        Assert.Equal("1", OnDisk(world, "movies.db", $"SELECT COUNT(*) FROM movie_entries WHERE id = '{other.Id}'"));
     }
 
     /// <summary>
@@ -247,6 +267,7 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
         Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
 
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM blocked_releases"));
 
         var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
             .Single(entry => entry.Category == "movie.download-cancelled");
@@ -608,7 +629,7 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public static async Task<World> CreateAsync()
         {
-            var storage = TestStorage.Create();
+            var storage = NewStorage();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T09:00:00Z"));
             var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
             await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
@@ -788,6 +809,8 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<Dictionary<string, string?>> UnmonitorEpisodeAsync(string episodeId, string title, TitleRemovalService.SeasonPackUnmonitorContext seasonPack)
             => removal.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, title, CancellationToken.None, seasonPack: seasonPack);
+
+        public string DataRoot => storage.DataRoot;
 
         public void Dispose() => storage.Dispose();
     }

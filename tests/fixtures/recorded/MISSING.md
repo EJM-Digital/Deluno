@@ -210,3 +210,10 @@ Rows left open because the other app's reply is not recorded. Each line says wha
 - sabnzbd 5.1.3: whole-queue pause and resume (`mode=pause`, `mode=resume`), and `mode=set_config&section=servers` (saving a news server). nzbget 26.3: `pausedownload`, `resumedownload` and `saveconfig` for a server. Needed by `POST /api/download-clients/{id}/resume` and `POST /api/download-clients/usenet-provider`.
 - weir 1.0.0-rc.13: the `HEAD /api/v1/intake/webhook/deluno` connection check and the `/ready` health-check address (what the installer sets). Needed by `POST /api/integrations/processors/connections/{id}/test`.
 - flaresolverr 3.5.2 with an indexer that answers a Cloudflare challenge page (the challenge reply, then the solved page): the indexer-proxy routes only act when an indexer meets a challenge. Needed by `POST/PUT/DELETE /api/indexer-proxies`.
+
+## File listings of SABnzbd, NZBGet (coverage, queue and automation areas)
+
+- sabnzbd `get_files` (the files inside one job) and nzbget `listfiles`: neither is in any recorded state, so the dangerous or junk file rule cannot yet be proven on those two clients from a real reply. Needed: a SABnzbd job and an NZBGet job holding a film and a small extra file, with the client's file-listing reply recorded.
+- deluge: only `location-moved` holds a file listing (one file); a folder torrent's listing (a film and an `.nfo`) is not recorded.
+- uTorrent and rTorrent: no recordings at all (see the allow-list), so the strike rules, the removal verbs and the re-check on those two have no recorded reply.
+- qbittorrent, transmission, deluge, sabnzbd, nzbget: the reply to a re-check (`torrents/recheck`, `torrent-verify`, `force_recheck`, and what the two Usenet clients answer to a re-check) has not been recorded.
