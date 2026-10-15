@@ -238,7 +238,9 @@ API key scopes:
 - `imports` can call import preview, report a changed library file, and ask for a title to be downloaded again.
 - `imports` can list processor hand-offs (`GET /api/integrations/processors/handoffs`), read where each library's downloads land (`GET /api/integrations/processors/download-destinations`) and report processor events. These two reads are the only reads an `imports`-only key can make: every other `GET` asks for `read`, and a test walks every `GET` route to keep it so (#1265).
 - Per route: `GET .../processors/handoffs` and `GET .../processors/download-destinations` need `imports` (the authorization policy lets `imports` through a `GET` for these two, and the route then checks `imports` itself, so `read` alone is refused); `POST .../processors/handoffs/{id}/import-original` and `POST .../processors/handoffs/{id}/outcome/send-again` need `imports`; a key with `read` alone is refused (`403`) on those two writes.
-- `queue` can trigger refreshes and queue-related actions.
+- `queue` can trigger refreshes and queue-related actions, and remove a download from the queue (`DELETE /api/queue/{clientId}/{queueItemId}` (`queue` scope)).
+- `POST /api/command` takes any key that holds `write`, `queue` or `system`; the command named in the body then asks for its own scope in the table under "Commands". A test reads this document and checks every scope it names against the code (#1333).
+- `GET /api/filesystem/directories` (`read` and `imports` scopes) lists the server's folders, so a key with `read` alone is refused (`403`).
 - `all` can call everything.
 
 ### A library file changed
