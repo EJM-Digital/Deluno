@@ -283,6 +283,7 @@ public static class ActivityEventLabels
             ["subtitle.rejected"] = "Subtitle rejected",
             ["subtitle.fetched"] = "Subtitle fetched",
             ["quality.model.reset"] = "Release ranking reset",
+            ["quality.profile.deleted"] = "Quality profile deleted",
             ["quality.custom-format.guide-moved"] = "Quality rules moved to the new guide",
             ["tags.auto"] = "Tags applied automatically",
             ["tags.bulk.connections"] = "Tags changed on several connections",
