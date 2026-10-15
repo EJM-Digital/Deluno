@@ -179,6 +179,30 @@ public class FileBackedSecretProtectorTests
     }
 
     [Fact]
+    public void A_master_key_file_made_on_first_run_is_readable_and_writable_by_its_owner_only_on_linux_and_macos()
+    {
+        Environment.SetEnvironmentVariable(FileBackedSecretProtector.EnvVarName, null);
+        var dir = Path.Combine(Path.GetTempPath(), $"deluno-secrets-{Guid.NewGuid():N}");
+        var path = Path.Combine(dir, "master.key");
+        try
+        {
+            FileBackedSecretProtector.ResolveOrCreateKey(path);
+
+            Assert.True(File.Exists(path));
+            Assert.Equal(32, new FileInfo(path).Length);
+            if (!OperatingSystem.IsWindows())
+            {
+                // CI runs on Linux, so this is checked on every push. On Windows the folder's ACL is what protects the file.
+                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResolveOrCreateKey_rejects_malformed_env_var()
     {
         Environment.SetEnvironmentVariable(FileBackedSecretProtector.EnvVarName, "not-base64-???");
