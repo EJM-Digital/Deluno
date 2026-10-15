@@ -229,7 +229,7 @@ internal static class HookLog
             {
                 var dir = PrimaryFolder;
                 Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, fileName), line);
+                CappedLog.Append(Path.Combine(dir, fileName), line);
                 return;
             }
             catch
@@ -245,7 +245,7 @@ internal static class HookLog
         {
             var dir = FallbackFolder;
             Directory.CreateDirectory(dir);
-            File.AppendAllText(
+            CappedLog.Append(
                 Path.Combine(dir, "Deluno-" + fileName),
                 $"{DateTimeOffset.Now:O} (could not write the per-user log) {message}{Environment.NewLine}");
         }
@@ -253,5 +253,44 @@ internal static class HookLog
         {
             // Nothing left to write to; an install must never fail over its own log.
         }
+    }
+}
+
+/// <summary>
+/// Every log the tray appends to goes through here, so none grows without end (#1335). Past <see cref="MaxBytes"/> the file
+/// is kept as <c>name.1</c> (replacing the one before) and a new file is started, so a log and its copy together never pass
+/// twice the cap. A copy that cannot be made falls back to starting the file again; the line is never lost to the cap.
+/// </summary>
+internal static class CappedLog
+{
+    internal const long DefaultMaxBytes = 2L * 1024 * 1024;
+
+    /// <summary>Test seam: the size past which a log is rolled.</summary>
+    internal static long MaxBytes { get; set; } = DefaultMaxBytes;
+
+    internal static void Append(string path, string text)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (info.Exists && info.Length >= MaxBytes)
+            {
+                var previous = path + ".1";
+                try
+                {
+                    File.Move(path, previous, overwrite: true);
+                }
+                catch
+                {
+                    File.WriteAllText(path, string.Empty);
+                }
+            }
+        }
+        catch
+        {
+            // Rolling is best-effort; the line below still goes in.
+        }
+
+        File.AppendAllText(path, text);
     }
 }
