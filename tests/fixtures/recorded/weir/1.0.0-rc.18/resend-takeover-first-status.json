@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "resend-takeover-first-status",
+  "recordedAt": "2026-10-15T03:03:02Z",
+  "note": "The final status of the FIRST send of a file that was sent twice at once: cancelled.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/88649ffd-82e5-4d8c-bf58-19ad731d4fd9"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "88649ffd-82e5-4d8c-bf58-19ad731d4fd9",
+          "state": "cancelled",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T03:02:50.397306Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "This release was sent again, so Weir is answering the newer send and has nothing to add here."
+        }
+      }
+    }
+  ]
+}

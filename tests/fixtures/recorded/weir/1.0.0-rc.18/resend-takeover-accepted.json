@@ -1,0 +1,40 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "resend-takeover-accepted",
+  "recordedAt": "2026-10-15T03:02:50Z",
+  "note": "The same single file sent again while Weir still had the first send (queued or working): Weir accepts the second.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "9cf1d041-2f55-4206-be4b-98f39b95c7f7",
+          "libraryId": "01a13d68ae4a7e7b84c06a96fd5d8cc7",
+          "mediaType": "movie",
+          "sourcePath": "C:\\Downloads\\Completed\\Movies\\Recorded.Weir.Takeover.mkv",
+          "releaseName": "Big Buck Bunny (2008) Recorded Takeover",
+          "queueItemId": "25db2cea-d2f2-4f95-960b-d06bf345a212",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Big Buck Bunny (2008) Recorded Takeover",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

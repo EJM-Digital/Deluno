@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "failed-rejected-status-queued",
+  "recordedAt": "2026-10-15T03:09:43Z",
+  "note": "The status of a hand-off of an audio-only file under the reject failure policy while it was queued.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/c51f4299-ff7e-4999-9c81-f005f5a638e8"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "c51f4299-ff7e-4999-9c81-f005f5a638e8",
+          "state": "queued",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-15T03:08:35.473099Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "This file changed too recently. Weir waits 60s after the last change before processing, so it has about 60s to go."
+        }
+      }
+    }
+  ]
+}
