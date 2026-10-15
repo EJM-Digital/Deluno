@@ -32,7 +32,7 @@ public sealed class TheLogFileNeverHoldsASecretTests : IDisposable
         {
             var logger = factory.CreateLogger("Deluno.Integrations.Test");
             logger.LogWarning(
-                "Client {Client} refused http://client.test/api?apikey={Leak}&username=alice&password={Password}; header Authorization: Bearer {Bearer}",
+                "Client {Client} refused http://client.test/api?apikey={Leak}&username=alice&password={Password}; header Authorization: Bearer {Token}",
                 "qBittorrent",
                 "leaked-api-key-123",
                 "hunter2-password",
