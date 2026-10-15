@@ -101,6 +101,7 @@ export function clientStepTitle(step: string, category: string): string {
   if (step === "category") return `category ${category}`;
   if (step === "layout") return "file layout";
   if (step === "incomplete") return "where it downloads";
+  if (step === "in-library") return "saves inside a library";
   return "where it finishes";
 }
 
