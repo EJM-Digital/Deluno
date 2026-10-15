@@ -412,3 +412,9 @@ function Test-DelunoAnswering {
 function Get-DelunoProcess {
     @(Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue)
 }
+
+function Read-StartMarker {
+    $path = Join-Path $env:LOCALAPPDATA 'Deluno\logs\start-progress.json'
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content -Raw $path | ConvertFrom-Json } catch { $null }
+}

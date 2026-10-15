@@ -32,15 +32,19 @@ function Set-GithubFeedBlocked {
 
 # Quits Deluno and starts it again the way a person does, from its tray menu, and waits until it answers as a new process.
 function Restart-DelunoFromTray {
-    $before = @(Get-DelunoProcess | ForEach-Object { $_.Id })
+    # Restart Deluno rebuilds the host inside the same process (the tray keeps its process id), so a restart is told by Deluno's own
+    # start marker (start-progress.json): written again after the click, in phase "ready", and Deluno answering.
+    $clickedAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
     $clicked = $false
     try { $clicked = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Restart Deluno') } catch { $clicked = $false }
     if (-not $clicked) { throw ("Deluno's tray menu did not offer Restart Deluno ($script:TrayMenuMiss), so Deluno could not be restarted to empty its memory of earlier reads.") }
     $new = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition {
-        $procs = @(Get-DelunoProcess | Where-Object { $_.Id -notin $before })
-        if ($procs.Count -gt 0 -and (Test-DelunoAnswering)) { $procs } else { $null }
+        $m = Read-StartMarker
+        $at = $null
+        if ($m -and $m.atUtc) { try { $at = [DateTimeOffset]::Parse([string]$m.atUtc).UtcDateTime } catch { $at = $null } }
+        if ($m -and "$($m.phase)" -eq 'ready' -and $at -and $at -gt $clickedAt -and (Test-DelunoAnswering)) { $m } else { $null }
     }
-    if (-not $new.Ok) { throw 'Deluno did not come back as a new process within 4 minutes of Restart Deluno.' }
+    if (-not $new.Ok) { throw 'Deluno did not write a new "ready" start marker and answer within 4 minutes of Restart Deluno.' }
     Wait-DelunoUp | Out-Null
     Connect-Deluno
     $new.Seconds
