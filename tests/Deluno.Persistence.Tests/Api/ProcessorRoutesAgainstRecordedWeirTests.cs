@@ -24,24 +24,24 @@ public sealed class ProcessorRoutesAgainstRecordedWeirTests
     private const string VmOutputRoot = @"C:\Weir\Ready\Movies";
     private const string Secret = "a-webhook-secret";
 
-    private static IProcessorRepository Repository(ApplicationTestHost app) => app.Services.GetRequiredService<IProcessorRepository>();
+    internal static IProcessorRepository Repository(ApplicationTestHost app) => app.Services.GetRequiredService<IProcessorRepository>();
 
-    private static Task<RecordedAppServer> WeirAsync(Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept, params string[] states)
+    internal static Task<RecordedAppServer> WeirAsync(Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept, params string[] states)
         => RecordedAppServer.StartAsync("weir", states.Select(RecordedReplies.Weir), intercept);
 
-    private static object ConnectionForm(RecordedAppServer weir)
+    internal static object ConnectionForm(RecordedAppServer weir)
         => new { provider = "weir", submissionUrl = weir.BaseUrl + "/api/v1/intake/webhook/deluno", authHeaderName = "X-Webhook-Secret", secret = Secret, isEnabled = true };
 
-    private static async Task<JsonElement> ConnectAsync(ApplicationTestHost app, RecordedAppServer weir)
+    internal static async Task<JsonElement> ConnectAsync(ApplicationTestHost app, RecordedAppServer weir)
     {
         var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/connections", ConnectionForm(weir));
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private sealed record Scene(string LibraryId, string Downloads, string Output);
+    internal sealed record Scene(string LibraryId, string Downloads, string Output);
 
-    private static async Task<Scene> SceneAsync(ApplicationTestHost app, string processorName = "Weir")
+    internal static async Task<Scene> SceneAsync(ApplicationTestHost app, string processorName = "Weir")
     {
         var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
         var downloads = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Downloads")).FullName;
@@ -61,13 +61,13 @@ public sealed class ProcessorRoutesAgainstRecordedWeirTests
         return new Scene(library!.Id, downloads, output);
     }
 
-    private static async Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string release, string? connectionName = "Weir")
+    internal static async Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string release, string? connectionName = "Weir")
         => await Repository(app).EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest(scene.LibraryId, "movies", "qbittorrent", $"queue-{release}", release, Path.Combine(scene.Downloads, release), connectionName),
             CancellationToken.None);
 
     /// <summary>Posts a real Weir report of the recorded state: Deluno's ids for the library and the hand-off, everything else as Weir sent it.</summary>
-    private static async Task ReportAsync(ApplicationTestHost app, Scene scene, ProcessorHandoffItem handoff, string state)
+    internal static async Task ReportAsync(ApplicationTestHost app, Scene scene, ProcessorHandoffItem handoff, string state)
     {
         var body = JsonNode.Parse(RecordedReplies.Deluno(state).Exchanges[0].Request.Body!)!.AsObject();
         body["libraryId"] = scene.LibraryId;
@@ -76,7 +76,7 @@ public sealed class ProcessorRoutesAgainstRecordedWeirTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
 
-    private static string ReleaseOf(string state)
+    internal static string ReleaseOf(string state)
         => JsonNode.Parse(RecordedReplies.Deluno(state).Exchanges[0].Request.Body!)!["releaseName"]!.GetValue<string>();
 
     [Fact]
