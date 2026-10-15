@@ -155,4 +155,35 @@ describe("resync (#1179)", () => {
     await waitFor(() => expect(hub.resumes).toBe(3));
     expect(hub.resumeArgs[2][2]).toBe("run-b");
   });
+  // #1315: a connected page must not go deaf after a restart, when the new run counts from 1 again.
+  it("after a server restart a connected page hears the new run's pushes even though their numbers are lower than the last one it saw", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "40", "X-Deluno-Event-Instance": "run-a" }) });
+    hub.answer = "Replayed";
+    const seen = vi.fn();
+    renderHook(() => { useSignalREvent("MovieChanged", "dashboard", seen); }, { wrapper });
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    const push = (seq: number, id: string) => act(async () => { hub.deliver?.({ seq, name: "MovieChanged", subject: "dashboard", at: "", data: { id } }); });
+
+    await push(41, "before-restart");
+    await push(41, "same-number-again");
+    expect(seen).toHaveBeenCalledTimes(1);
+
+    // The restarted run numbers from 1: without the resync the page would drop these until the count passed 41.
+    await push(1, "dropped-without-a-resync");
+    expect(seen).toHaveBeenCalledTimes(1);
+    hub.answer = "ResyncRequired";
+    hub.instanceId = "run-b";
+    await act(async () => {
+      hub.state = "Reconnecting";
+      hub.onreconnecting?.();
+      hub.state = "Connected";
+      hub.onreconnected?.();
+    });
+    await waitFor(() => expect(hub.resumes).toBe(2));
+
+    await push(1, "first-of-the-new-run");
+    await push(2, "second-of-the-new-run");
+    expect(seen).toHaveBeenCalledTimes(3);
+    expect(seen.mock.calls.map((call) => (call[0] as { id: string }).id)).toEqual(["before-restart", "first-of-the-new-run", "second-of-the-new-run"]);
+  });
 });
