@@ -1,0 +1,166 @@
+# Nightly full mutation run (issue 1269, docs/testing/STRATEGY.md measure 3). Every push already mutates its changed
+# files in ci.yml; this scores whole projects, publishes the score per project, and fails when a score falls below the
+# checked-in threshold (docs/testing/mutation-thresholds.json), which only goes up. Surviving mutants are published
+# in the report as findings for the owner; they do not fail this run by themselves.
+#
+# Each .NET production project is one job (Stryker.NET, its stryker-config.json, the test projects that cover it), so a
+# slow project cannot starve the others. The web app, the API client and the metadata gateway are StrykerJS jobs.
+name: Mutation (nightly)
+
+on:
+  schedule:
+    # Every night, 01:17 UTC.
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  matrix:
+    name: Projects to mutate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      dotnet: ${{ steps.matrix.outputs.dotnet }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Every production project has a config; list them
+        id: matrix
+        run: |
+          node scripts/mutation/gen-stryker-configs.mjs --check
+          echo "dotnet=$(node scripts/mutation/gen-stryker-configs.mjs --matrix)" >> "$GITHUB_OUTPUT"
+
+  dotnet:
+    name: ${{ matrix.project }}
+    needs: matrix
+    runs-on: ${{ matrix.os }}
+    # A hosted job stops at six hours; a project that does not finish in that time must be split, not skipped.
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.dotnet) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Stryker.NET, pinned in .config/dotnet-tools.json
+        shell: bash
+        run: |
+          dotnet tool restore
+          dotnet tool run dotnet-stryker -f "${{ matrix.config }}" --output "$PWD/StrykerOutput/${{ matrix.project }}"
+          mkdir -p mutation-reports
+          cp "StrykerOutput/${{ matrix.project }}/reports/mutation-report.json" "mutation-reports/${{ matrix.project }}.json"
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ matrix.project }}
+          path: mutation-reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  javascript:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            dir: apps/web
+          - name: sdk
+            dir: sdk/typescript
+          - name: metadata-gateway
+            dir: services/metadata-gateway
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install the pinned packages
+        run: npm ci
+
+      - name: StrykerJS
+        working-directory: ${{ matrix.dir }}
+        run: npx stryker run
+
+      - name: Collect the report
+        run: |
+          mkdir -p mutation-reports
+          cp "${{ matrix.dir }}/reports/mutation/${{ matrix.name }}.json" "mutation-reports/${{ matrix.name }}.json"
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ matrix.name }}
+          path: mutation-reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  # The score per project, held to its threshold. The proposed raise is published for the owner to review and commit;
+  # this workflow never commits it.
+  score:
+    name: Score per project and ratchet
+    needs: [dotnet, javascript]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: mutation-*
+          path: mutation-reports
+          merge-multiple: true
+
+      - name: Publish the score per project
+        run: |
+          node scripts/check-mutation-ratchet.mjs --reports mutation-reports --summary >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No project is below its threshold
+        run: node scripts/check-mutation-ratchet.mjs --reports mutation-reports
+
+      - name: Propose the raised thresholds
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p mutation-out
+          cp docs/testing/mutation-thresholds.json mutation-out/mutation-thresholds.json
+          node scripts/check-mutation-ratchet.mjs --reports mutation-reports --thresholds mutation-out/mutation-thresholds.json --update
+
+      - name: Upload the scores and the proposed thresholds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-score
+          path: |
+            mutation-reports/
+            mutation-out/
+          if-no-files-found: error
+          retention-days: 30

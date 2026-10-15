@@ -20,6 +20,11 @@
     "coverage:inventory": "node scripts/coverage-inventory.mjs",
     "validate:agents": "node scripts/run-powershell.mjs scripts/validate-agent-readiness.ps1",
     "gate": "node scripts/run-powershell.mjs scripts/gate.ps1",
-    "build:icon": "node scripts/build-windows-icon.mjs"
+    "build:icon": "node scripts/build-windows-icon.mjs",
+    "mutation:web": "npm --workspace apps/web run mutation"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0"
   }
 }

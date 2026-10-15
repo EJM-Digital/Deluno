@@ -1,0 +1,13 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "$comment": "Mutation testing for the metadata gateway (issue 1269). Its tests are node:test files, so the command runner runs them. Run from services/metadata-gateway: npx stryker run.",
+  "testRunner": "command",
+  "commandRunner": { "command": "node --test" },
+  "mutate": ["src/**/*.js"],
+  "coverageAnalysis": "off",
+  "reporters": ["json", "progress", "clear-text"],
+  "jsonReporter": { "fileName": "reports/mutation/metadata-gateway.json" },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "thresholds": { "high": 100, "low": 90, "break": 0 }
+}

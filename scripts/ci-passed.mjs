@@ -24,6 +24,8 @@ export const GATES = {
   // Coverage is measured only when the backend and the web tests both ran (issue 1268).
   "coverage-node": "run_coverage",
   coverage: "run_coverage",
+  // Mutation on the changed files of a push or pull request (issue 1269); the full run is the nightly workflow.
+  mutation: "run_mutation",
 };
 
 // Returns one line per problem; empty means CI passed.
