@@ -140,6 +140,20 @@ public sealed class TorznabOnRecordedJackettTests
     }
 
     [Fact]
+    public async Task A_disabled_indexer_is_tested_as_disabled_and_no_search_is_sent_to_it()
+    {
+        var (server, app, indexer) = await StartAsync(request => request with { IsEnabled = false });
+        await using var _ = server; await using var __ = app;
+
+        var body = await TestAsync(app, indexer.Id);
+
+        Assert.Equal("disabled", body.GetProperty("healthStatus").GetString());
+        Assert.Contains("Disabled until you turn it on", body.GetProperty("message").GetString());
+        // Only its capabilities are asked for (to fill the form); no search is sent to an indexer that is switched off.
+        Assert.DoesNotContain(server.Requests, request => QueryOf(request, "t") == "search");
+    }
+
+    [Fact]
     public async Task An_indexers_additional_parameters_ride_along_on_a_search_and_the_key_is_not_sent_twice()
     {
         var (server, app, indexer) = await StartAsync(request => request with { AdditionalParameters = "token=abc123&apikey=another&extra=1" });
