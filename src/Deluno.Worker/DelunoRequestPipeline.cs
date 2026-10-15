@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.OpenApi.Models;
 
 namespace Deluno.Worker;
 
@@ -30,13 +31,6 @@ public sealed record DelunoPipelineOptions
     /// front of every API route uses it. Defaults to <see cref="DelunoRequestPipeline.ResolveApiScopes"/>.
     /// </summary>
     public Func<PathString, string, string[]> ResolveScopes { get; init; } = DelunoRequestPipeline.ResolveApiScopes;
-
-    /// <summary>
-    /// Runs after the request-timing step and before the sign-in gate: for
-    /// documentation endpoints that answer the request themselves and stay
-    /// open, such as the API docs of the container build.
-    /// </summary>
-    public Action<IApplicationBuilder>? BeforeSignInGate { get; init; }
 }
 
 /// <summary>
@@ -114,6 +108,20 @@ public static class DelunoRequestPipeline
         // stricter policy on top. See ApiRateLimitDefaults for why it is generous.
         var apiPermitLimit = configuration.GetValue<int?>("Security:Api:PermitLimit") ?? ApiRateLimitDefaults.DefaultPermitLimit;
         var apiWindowSeconds = configuration.GetValue<int?>("Security:Api:WindowSeconds") ?? ApiRateLimitDefaults.DefaultWindowSeconds;
+
+        // The API document the docs page and integrations read (#1336). Minimal-API request records may share a nested type
+        // name across modules, so schema ids are fully qualified.
+        services.AddEndpointsApiExplorer();
+        services.AddSwaggerGen(swagger =>
+        {
+            swagger.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace('+', '.'));
+            swagger.SwaggerDoc(DelunoApiVersion.Current, new OpenApiInfo
+            {
+                Title = "Deluno API",
+                Version = DelunoApiVersion.Current,
+                Description = "Deluno operational API for local automation, integrations, and UI orchestration."
+            });
+        });
 
         services.AddDelunoResponseCompression();
 
@@ -317,7 +325,15 @@ public static class DelunoRequestPipeline
             }
         });
 
-        options.BeforeSignInGate?.Invoke(app);
+        // The API document and its docs page answer the request themselves and stay open, so they sit in front of the sign-in
+        // gate. They are mapped here, once, so every host serves them the same way (#1336).
+        app.UseSwagger(swagger => swagger.RouteTemplate = "api/openapi/{documentName}.json");
+        app.UseSwaggerUI(ui =>
+        {
+            ui.RoutePrefix = "api/docs";
+            ui.SwaggerEndpoint($"/api/openapi/{DelunoApiVersion.Current}.json", $"Deluno API {DelunoApiVersion.Current}");
+            ui.DocumentTitle = "Deluno API docs";
+        });
 
         // The sign-in check in front of every API route (#1146); a route that
         // declares itself public (the poster route) is let through.

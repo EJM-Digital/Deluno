@@ -67,6 +67,17 @@ public interface IQualityRepository
         string? expectedPlanHash = null);
 
     Task<bool> DeleteQualityProfileAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>Deletes the profile after clearing every library, title and other setting that names it; null when there is no such profile (#1334).</summary>
+    Task<QualityProfileRemoval?> RemoveQualityProfileAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteCustomFormatAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeletePolicySetAsync(string id, CancellationToken cancellationToken);
 }
+
+/// <summary>What deleting a quality profile cleared: libraries and titles that named it, and other settings (an intake list, a request-app mapping, a media plan).</summary>
+public sealed record QualityProfileRemoval(string Id, string Name, int Libraries, int Titles, int Other);
+
+public enum ProfileReferenceKind { Library, Title, Other }
+
+/// <summary>One column in one database that stores a quality profile's id.</summary>
+public sealed record ProfileReferenceColumn(string Database, string Table, string Column, ProfileReferenceKind Kind);
