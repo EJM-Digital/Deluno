@@ -218,11 +218,7 @@ public sealed class ImportRoutesOnDiskTests
         Directory.CreateDirectory(Path.GetDirectoryName(stranger)!);
         File.WriteAllText(stranger, "not in a download folder");
         var climbing = Path.Combine(world.Downloads, "..", "elsewhere", "Other.mkv");
-        using var block = DeleteBlock.TryApply(locked);
-        if (block is null)
-        {
-            return; // this account can delete anything (for example root in a container), so a delete cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(locked);
 
         var response = await DeleteLeftoversAsync(world, locked, stranger, climbing);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();

@@ -1183,8 +1183,12 @@ public sealed class ExistingLibraryImportService(
     private static bool IsVideoFile(string path)
         => SupportedVideoExtensions.Contains(path);
 
+    /// <summary>
+    /// In name order, so a folder with two videos always yields the same first one. The disk's own order is
+    /// alphabetical on Windows but arbitrary on Linux, which made the file a film matched to depend on the platform.
+    /// </summary>
     private IEnumerable<string> EnumerateVideoFiles(string path)
-        => Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories).Where(IsVideoFile);
+        => Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories).Where(IsVideoFile).OrderBy(file => file, StringComparer.OrdinalIgnoreCase);
 
     private long? GetFileSize(string path)
     {
