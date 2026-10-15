@@ -63,8 +63,12 @@ public sealed class AnAnswerToTheLibraryLooksUnreachableNoteTests
             async () => (await app.Services.GetRequiredService<IMovieCatalogRepository>().ListAsync(CancellationToken.None)).Count(film => film.HasFile) == 5,
             "the background marking of the missing files",
             TimeSpan.FromSeconds(60));
-        var activity = await app.Client.GetStringAsync("/api/activity");
-        Assert.Contains("library.files-gone", activity);
+        // The background job writes its Activity line after it has marked the films, so the line is waited for on its
+        // own: reading Activity the moment the films are marked raced the job under load (local gate, 15 Oct 2026).
+        await Wait.UntilAsync(
+            async () => (await app.Client.GetStringAsync("/api/activity")).Contains("library.files-gone", StringComparison.Ordinal),
+            "the Activity line for the background marking",
+            TimeSpan.FromSeconds(60));
     }
 
     private static async Task<(string LibraryId, string Root)> LibraryWithFilesAsync(ApplicationTestHost app, int tracked, int present)
