@@ -69,7 +69,8 @@ import {
   type ProfileAcquisitionRules,
   type ProfileScoreLimits,
   type ProfileLanguagePreference,
-  type ReleasePreferencePlanCompilation
+  type ReleasePreferencePlanCompilation,
+  readErrorText
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
@@ -478,7 +479,7 @@ export function SettingsProfilesPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/quality-profiles/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Profile could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Profile could not be removed."));
       toast.success(`${editing?.name ?? "Profile"} removed`);
       setConfirmRemove(false);
       setInitialForm(form);

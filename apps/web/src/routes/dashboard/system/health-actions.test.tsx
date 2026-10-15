@@ -44,7 +44,7 @@ describe("the Health card's buttons", () => {
     { label: "Snooze 1 day", check: check({ id: "storage:disk", name: "A drive is nearly full", category: "storage" }), method: "POST", path: "/api/system/health/storage%3Adisk/snooze", body: { hours: 24 }, done: "Snoozed for a day" },
     { label: "Keep awake", check: check({ id: "machine:sleep", name: "This computer may sleep", category: "machine" }), method: "PATCH", path: "/api/settings", body: { keepComputerAwake: true }, done: "Deluno is keeping this computer awake" },
     { label: "Back up now", check: check({ id: "machine:drive:C:", name: "Drive C: is nearly full", category: "machine" }), method: "POST", path: "/api/backups", done: "Backup started" },
-    { label: "Test again", check: check({ id: "processor:p1", name: "Cleaner isn’t answering", category: "connections" }), method: "POST", path: "/api/connections/processor/p1/test", done: "this connection tested" },
+    { label: "Test again", check: check({ id: "processor:p1", name: "Cleaner isn’t answering", category: "connections" }), method: "POST", path: "/api/connections/processor/p1/test", done: "Tested again: Cleaner isn’t answering" },
     { label: "Unsnooze", check: check({ id: "old:one", name: "An old problem", snoozedUntilUtc: "2999-01-01T00:00:00Z" }), method: "POST", path: "/api/system/health/old%3Aone/unsnooze", done: "An old problem is being watched again" }
   ];
 
@@ -100,9 +100,8 @@ describe("the Health card's buttons", () => {
     await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "false"));
   });
 
-  // DEFECT: only the button that was pressed is marked busy (aria-disabled={action.busy === key}); the row's other
-  // buttons stay live while it runs, so a second, different request can start. The register row says all the others are disabled.
-  it.skip("disables the other buttons while one request is running", async () => {
+  // One request at a time: while any health button runs, every health button is disabled (#1341).
+  it("disables the other buttons while one request is running", async () => {
     let finish: (value: unknown) => void = () => undefined;
     authedFetchMock.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     renderCard([BUTTONS[3].check]);

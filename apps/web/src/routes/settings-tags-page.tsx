@@ -19,7 +19,7 @@ import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem, type TagUsageItem } from "../lib/api";
+import { readErrorText, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem, type TagUsageItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -113,7 +113,7 @@ export function SettingsTagsPage() {
     try {
       const payload = { name: form.name.trim(), color: form.color, description: form.description.trim() };
       const response = await authedFetch(mode.kind === "edit" ? `/api/tags/${mode.id}` : "/api/tags", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error(mode.kind === "edit" ? "Tag could not be saved." : "Tag could not be created.");
+      if (!response.ok) throw new Error(await readErrorText(response, mode.kind === "edit" ? "Tag could not be saved." : "Tag could not be created."));
       if (mode.kind === "create") {
         const created = (await response.json()) as TagItem;
         setMode({ kind: "edit", id: created.id });
@@ -138,7 +138,7 @@ export function SettingsTagsPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/tags/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Tag could not be removed.");
+      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Tag could not be removed."));
       toast.success(`${editing?.name ?? "Tag"} removed`);
       setConfirmRemove(false);
       setInitialForm(form);
@@ -155,7 +155,7 @@ export function SettingsTagsPage() {
     setBusy(true);
     try {
       const response = await authedFetch("/api/tags/delete-unused", { method: "POST" });
-      if (!response.ok) throw new Error("Unused tags could not be deleted.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Unused tags could not be deleted."));
       toast.success(`Deleted ${unused.length} unused tag${unused.length === 1 ? "" : "s"}`);
       setConfirmRemoveUnused(false);
       revalidator.revalidate();

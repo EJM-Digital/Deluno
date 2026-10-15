@@ -620,6 +620,16 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
+            var newName = request.Name!.Trim();
+            var existing = await repository.ListTagsAsync(cancellationToken);
+            if (existing.Any(tag => string.Equals(tag.Name.Trim(), newName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["name"] = ["Another tag already has that name."]
+                });
+            }
+
             var item = await repository.CreateTagAsync(request, cancellationToken);
             return Results.Ok(item);
         });

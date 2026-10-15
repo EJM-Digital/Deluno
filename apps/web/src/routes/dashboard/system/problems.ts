@@ -105,7 +105,7 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
   for (const problem of listed) {
     rows.push({
       id: `problem:${problem.id}`, area: problem.area, tone: "bad", title: problem.title, why: problem.detail ? `${problem.message} ${problem.detail}` : problem.message, atUtc: problem.at,
-      buttons: buttonsFor(healthProblemActions({ id: problem.id, category: problem.category, link: problem.link }))
+      buttons: buttonsFor(healthProblemActions({ id: problem.id, name: problem.title, category: problem.category, link: problem.link }))
     });
   }
 
@@ -117,7 +117,7 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
     rows.push({ id: `lane:${lane.name}`, area: "machine", tone: "bad", title: `${plainWords(lane.name, "A worker")} isn’t running`, why: lane.lastError ?? "It stopped and hasn’t come back.", atUtc: null, buttons: buttonsFor(screenLinkActions("Look", "/system", `look:${lane.name}`)) });
   }
   for (const check of checks ? open.filter((c) => covered.has(c.id)) : []) {
-    rows.push({ id: `check:${check.id}`, area: areaOf(check), tone: "bad", title: check.name, why: `${check.message} Fix it in Connections.`, atUtc: check.problemSinceUtc ?? check.lastRunUtc, buttons: buttonsFor(healthProblemActions({ id: check.id, category: check.category as string, link: "/system" })) });
+    rows.push({ id: `check:${check.id}`, area: areaOf(check), tone: "bad", title: check.name, why: `${check.message} Fix it in Connections.`, atUtc: check.problemSinceUtc ?? check.lastRunUtc, buttons: buttonsFor(healthProblemActions({ id: check.id, name: check.name, category: check.category as string, link: "/system" })) });
   }
   // The server lists every open problem, so none is "more" than what is listed.
   const need = rows.length;
