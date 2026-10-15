@@ -150,6 +150,46 @@ describe("Calendar options drawer (#786)", () => {
   });
 });
 
+describe("Calendar release-type switches hide only their own type", () => {
+  it("hides in-cinemas releases when that switch is off and keeps the digital one", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "List" }));
+    fireEvent.click(screen.getByRole("button", { name: /Options/ }));
+    fireEvent.click(screen.getByRole("switch", { name: "In cinemas" }));
+
+    expect(screen.queryByText("In Cinemas Movie")).not.toBeInTheDocument();
+    expect(screen.getByText("Digital Movie")).toBeInTheDocument();
+  });
+
+  it("hides a physical release when the Physical switch is off, and shows it again when turned back on", () => {
+    loaderData.movies.push({
+      movieId: "m3",
+      title: "Disc Movie",
+      releaseYear: 2026,
+      posterUrl: null,
+      kind: "physical" as never,
+      date: localToday(),
+      monitored: true,
+      wantedStatus: "missing"
+    });
+    try {
+      renderPage();
+      fireEvent.click(screen.getByRole("radio", { name: "List" }));
+      expect(screen.getByText("Disc Movie")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /Options/ }));
+      fireEvent.click(screen.getByRole("switch", { name: "Physical" }));
+      expect(screen.queryByText("Disc Movie")).not.toBeInTheDocument();
+      expect(screen.getByText("Digital Movie")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("switch", { name: "Physical" }));
+      expect(screen.getByText("Disc Movie")).toBeInTheDocument();
+    } finally {
+      loaderData.movies.pop();
+    }
+  });
+});
+
 describe("Calendar episode marks (#1179)", () => {
   it("reads an unaired episode as Airs <date> in the list, not Missing", () => {
     const later = { ...loaderData.episodes[0], episodeId: "e2", seriesTitle: "Later Show", wantedStatus: "missing", airDateUtc: new Date(Date.now() + 3 * 86_400_000).toISOString() };
