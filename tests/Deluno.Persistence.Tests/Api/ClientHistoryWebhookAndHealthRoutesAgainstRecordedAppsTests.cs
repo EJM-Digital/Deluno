@@ -115,4 +115,62 @@ public sealed class ClientHistoryWebhookAndHealthRoutesAgainstRecordedAppsTests
         var unknown = await app.Client.PostAsJsonAsync($"/api/download-clients/client-1/queue/not-recorded/health/{DownloadHealthStrikes.ClientStalled}/ignore", new { durationDays = 3 });
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
+
+    [Fact]
+    public async Task A_callback_naming_a_download_of_a_different_client_matches_nothing_by_dispatch_id_or_by_hash()
+    {
+        var torrent = FinishedTorrent();
+        var hash = torrent["hash"]!.GetValue<string>();
+        var name = torrent["name"]!.GetValue<string>();
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var dispatches = app.Services.GetRequiredService<IDownloadDispatchesRepository>();
+        var dispatchId = await jobs.RecordDownloadDispatchAsync(libraryId, "movies", "movie", "movie-1", name, "Fixture", "client-1", "qBittorrent", "sent", null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordGrabAsync(dispatchId, "succeeded", 200, null, null, null, CancellationToken.None, externalId: hash);
+
+        var byId = await app.Client.PostAsJsonAsync("/api/download-clients/client-2/webhook", new { @event = "completed", dispatchId, name });
+        var byHash = await app.Client.PostAsJsonAsync("/api/download-clients/client-2/webhook", new { @event = "completed", hash, name });
+
+        Assert.Equal(HttpStatusCode.NotFound, byId.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, byHash.StatusCode);
+        Assert.Contains("No matching dispatch found.", await byId.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Null((await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None))!.ClientCompletedUtc);
+        var rightClient = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "completed", dispatchId, name });
+        Assert.Equal(HttpStatusCode.OK, rightClient.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_failed_event_records_the_import_outcome_failed_with_the_clients_own_words_a_typed_failure_and_a_webhook_failed_timeline_event()
+    {
+        var failed = JsonNode.Parse(RecordedReplies.Sabnzbd("failed").Body("mode=history&output"))!["history"]!["slots"]![0]!;
+        var reason = failed["fail_message"]!.GetValue<string>();
+        Assert.False(string.IsNullOrWhiteSpace(reason), "the recorded failed download carries SABnzbd's own words");
+        var name = failed["name"]!.GetValue<string>();
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var dispatches = app.Services.GetRequiredService<IDownloadDispatchesRepository>();
+        var dispatchId = await jobs.RecordDownloadDispatchAsync(libraryId, "movies", "movie", "movie-1", name, "Fixture", "client-1", "SABnzbd", "sent", null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordGrabAsync(dispatchId, "succeeded", 200, null, null, null, CancellationToken.None, externalId: failed["nzo_id"]!.GetValue<string>());
+
+        var withReason = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "failed", dispatchId, failureReason = reason });
+
+        Assert.Equal(HttpStatusCode.OK, withReason.StatusCode);
+        Assert.Equal("Download failure recorded.", (await withReason.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+        var stored = (await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None))!;
+        Assert.Equal("failed", stored.ImportStatus);
+        Assert.Equal(Deluno.Integrations.DownloadClients.DownloadClientFailureCodes.ClientReported, stored.ImportFailureCode);
+        Assert.Equal(reason, stored.ImportFailureMessage);
+        Assert.NotNull(stored.Failure);
+        Assert.Equal("download-client", stored.Failure!.ServiceType);
+        var timeline = await dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        var webhookFailed = Assert.Single(timeline, item => item.EventType == "webhook-failed");
+        Assert.Contains(reason, webhookFailed.DetailsJson!, StringComparison.Ordinal);
+
+        // Without a reason the client's silence is said in the default words.
+        var second = await jobs.RecordDownloadDispatchAsync(libraryId, "movies", "movie", "movie-2", "Another.Release.2020.1080p", "Fixture", "client-1", "SABnzbd", "sent", null, cancellationToken: CancellationToken.None);
+        await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "failed", dispatchId = second });
+        Assert.Equal("Download client reported failure.", (await dispatches.GetDispatchAsync(second, CancellationToken.None))!.ImportFailureMessage);
+    }
 }
