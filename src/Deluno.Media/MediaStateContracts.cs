@@ -518,6 +518,17 @@ public interface IMediaStateRepository
         int limit,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One title's own searches, newest first, paged on the server (#1337): a film's
+    /// older searches no longer vanish once newer ones exist for other titles.
+    /// </summary>
+    Task<IReadOnlyList<MediaSearchHistoryItem>> ListTitleSearchHistoryAsync(
+        MediaKind kind,
+        string mediaId,
+        int limit,
+        int offset,
+        CancellationToken cancellationToken);
+
     /// <param name="limit">How many open cases to list; the counts always cover every open case.</param>
     /// <param name="includeDetails">False leaves each case's details JSON out, which a list has no use for (#1081).</param>
     Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(

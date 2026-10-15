@@ -260,10 +260,7 @@ describe("Choose a release on a film", () => {
     expect(toast.success.mock.calls[0][0]).toBe("2 releases compared. Choose one below.");
   });
 
-  // DEFECT (found by this test, not fixed here): handleSearchNow never resets candidateIndexerFilter / candidateProtocolFilter,
-  // although the comment above those states says each fresh search does. After narrowing to one indexer, a second
-  // "Choose a release" still shows only that indexer's candidates.
-  it.skip("starts every fresh interactive search with the protocol and indexer filters cleared", async () => {
+  it("starts every fresh interactive search with the protocol and indexer filters cleared", async () => {
     setup(preview);
     await renderPage();
     press("Choose a release");
@@ -691,7 +688,7 @@ describe("the film's History tab", () => {
 
   it("lists this film's searches with the trigger and the outcome", async () => {
     setup((url) =>
-      url === "/api/movies/search-history"
+      url.startsWith("/api/movies/search-history?movieId=m1")
         ? { body: [{ id: "s1", movieId: "m1", releaseName: "Some.Release.1080p", indexerName: "Fixture Indexer", triggerKind: "manual", outcome: "sent", createdUtc: "2026-10-01T00:00:00Z" }, { id: "s2", movieId: "other", releaseName: "Another.Films.Release", triggerKind: "scheduled", outcome: "none", createdUtc: "2026-10-01T00:00:00Z" }] }
         : undefined
     );
@@ -715,6 +712,13 @@ describe("opening the film", () => {
     await renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Big Buck Bunny" })).toBeInTheDocument();
+  });
+
+  it("asks for the film's own search history by title, paged on the server", async () => {
+    await renderPage();
+
+    const asked = calls.map((c) => c.url).filter((url) => url.startsWith("/api/movies/search-history"));
+    expect(asked).toEqual(["/api/movies/search-history?movieId=m1&take=50"]);
   });
 
   it("reads the film in its five groups, including the search history and the whole library list", async () => {
@@ -746,7 +750,7 @@ describe("the release candidates table and its drawer", () => {
 
   const typed = { ...PREFERRED, preferenceEvaluation: { typed: true } };
 
-  async function openDrawerFor(candidate: { releaseName: string }, handlerFor: Handler = RESPONSES([PREFERRED, ELIGIBLE])) {
+  async function openDrawerFor(candidate: { releaseName: string } & Record<string, unknown>, handlerFor: Handler = RESPONSES([PREFERRED, ELIGIBLE])) {
     setup(handlerFor);
     await renderPage();
     press("Choose a release");
@@ -909,7 +913,7 @@ describe("the film's Searches card and its drawer", () => {
   });
 
   it("lists the latest 12 searches and says Latest 12 of 13", async () => {
-    setup((url) => (url === "/api/movies/search-history" ? { body: Array.from({ length: 13 }, (_, index) => search(index)) } : undefined));
+    setup((url) => (url.startsWith("/api/movies/search-history?movieId=m1") ? { body: Array.from({ length: 13 }, (_, index) => search(index)) } : undefined));
     await renderPage();
     openHistoryTab();
 
@@ -919,7 +923,7 @@ describe("the film's Searches card and its drawer", () => {
   });
 
   it("a row opens the drawer with the trigger, the source and the release", async () => {
-    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0, { triggerKind: "scheduled" })] } : undefined));
+    setup((url) => (url.startsWith("/api/movies/search-history?movieId=m1") ? { body: [search(0, { triggerKind: "scheduled" })] } : undefined));
     await renderPage();
     openHistoryTab();
 
@@ -935,7 +939,7 @@ describe("the film's Searches card and its drawer", () => {
 
   it("lists the releases a search considered under Release outcomes", async () => {
     const details = JSON.stringify({ candidates: [{ releaseName: "Considered.One", quality: "WEB 1080p", decisionStatus: "rejected", preferenceEvaluation: { typed: true } }] });
-    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0, { detailsJson: details })] } : undefined));
+    setup((url) => (url.startsWith("/api/movies/search-history?movieId=m1") ? { body: [search(0, { detailsJson: details })] } : undefined));
     await renderPage();
     openHistoryTab();
 
@@ -947,7 +951,7 @@ describe("the film's Searches card and its drawer", () => {
   });
 
   it("a search with a release offers Block this release in its drawer footer", async () => {
-    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0)] } : undefined));
+    setup((url) => (url.startsWith("/api/movies/search-history?movieId=m1") ? { body: [search(0)] } : undefined));
     await renderPage();
     openHistoryTab();
 
@@ -1016,7 +1020,7 @@ describe("the film page follows the server's announcements (live)", () => {
     await announce("ReleasesTurnedDown");
 
     await waitFor(() => expect(read(GROUPS.history)).toBe(true), { timeout: 4000 });
-    expect(calls.filter((c) => c.method === "GET" && c.url === "/api/movies/search-history")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "GET" && c.url.startsWith("/api/movies/search-history?movieId=m1"))).toHaveLength(1);
   });
 
   it("shows the change without a reload when a re-read finds the film changed", async () => {

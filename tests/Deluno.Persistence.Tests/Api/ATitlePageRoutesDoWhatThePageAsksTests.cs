@@ -144,24 +144,43 @@ public sealed class ATitlePageRoutesDoWhatThePageAsksTests
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
-    // DEFECT (found by this test, not fixed here): GET /api/movies/search-history answers the newest 20 searches across the whole
-    // library (SqliteMovieCatalogRepository.ListSearchHistoryAsync, LIMIT 20), and the film page's loader reads that list and
-    // filters it to the film in the browser, so on a busy library a film's own older searches never reach its History tab.
-    [Fact(Skip = "Defect: the film page reads the newest 20 searches of the whole library and filters in the browser, so a film's own search vanishes once 20 newer ones exist for other films (movie-detail-page.tsx loader, SqliteMovieCatalogRepository.ListSearchHistoryAsync LIMIT 20)")]
+    [Fact]
     public async Task A_films_own_older_search_is_still_in_the_list_its_page_reads_after_twenty_five_newer_searches_for_other_films()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var film = await ApiScenes.FilmOnDiskAsync(app, "Dune", 2021);
         var other = await ApiScenes.FilmOnDiskAsync(app, "Heat", 1995, film.LibraryId);
+        Assert.True(File.Exists(film.FilePath), "the film is on a real disk, in a real library folder");
         await InsertMovieSearchAsync(app, film, film.MovieId, "Dune.2021.1080p.BluRay-OWN", DateTimeOffset.UtcNow.AddDays(-2));
         for (var index = 0; index < 25; index++)
         {
             await InsertMovieSearchAsync(app, film, other.MovieId, $"Heat.1995.Release.{index}", DateTimeOffset.UtcNow.AddMinutes(-index));
         }
 
-        var history = await app.Client.GetFromJsonAsync<JsonElement>("/api/movies/search-history");
+        var history = await app.Client.GetFromJsonAsync<JsonElement>($"/api/movies/search-history?movieId={film.MovieId}");
 
         Assert.Contains(history.EnumerateArray(), item => item.GetProperty("movieId").GetString() == film.MovieId);
+        Assert.All(history.EnumerateArray(), item => Assert.Equal(film.MovieId, item.GetProperty("movieId").GetString()));
+    }
+
+    [Fact]
+    public async Task A_titles_search_history_is_paged_on_the_server_for_a_film_and_for_a_show()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var film = await ApiScenes.FilmOnDiskAsync(app, "Dune", 2021);
+        var show = await ApiScenes.ShowOnDiskAsync(app);
+        Assert.True(File.Exists(film.FilePath) && File.Exists(show.FilePath), "both titles are on a real disk, in real library folders");
+        for (var index = 0; index < 5; index++)
+        {
+            await InsertMovieSearchAsync(app, film, film.MovieId, $"Dune.2021.Release.{index}", DateTimeOffset.UtcNow.AddMinutes(-index));
+            await InsertSeriesSearchAsync(app, show, $"The.Wire.S01E01.Release.{index}", "manual", DateTimeOffset.UtcNow.AddMinutes(-index));
+        }
+
+        var filmPage = await app.Client.GetFromJsonAsync<JsonElement>($"/api/movies/search-history?movieId={film.MovieId}&take=2&skip=1");
+        var showPage = await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/search-history?seriesId={show.SeriesId}&take=2&skip=1");
+
+        Assert.Equal(["Dune.2021.Release.1", "Dune.2021.Release.2"], filmPage.EnumerateArray().Select(item => item.GetProperty("releaseName").GetString()));
+        Assert.Equal(["The.Wire.S01E01.Release.1", "The.Wire.S01E01.Release.2"], showPage.EnumerateArray().Select(item => item.GetProperty("releaseName").GetString()));
     }
 
     // ------------------------------------------------------------------------------------------- the show
@@ -183,6 +202,26 @@ public sealed class ATitlePageRoutesDoWhatThePageAsksTests
         Assert.Equal(show.EpisodeId, episode.GetProperty("episodeId").GetString());
 
         using var unknown = await app.Client.GetAsync("/api/series/no-such-show/numbering");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_episodes_file_is_read_with_its_path_size_release_group_indexer_and_client_and_a_missing_one_is_a_not_found()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var show = await ApiScenes.ShowOnDiskAsync(app);
+        await ApiScenes.ExecuteAsync(app, "jobs",
+            $"INSERT INTO download_dispatches (id, library_id, media_type, entity_type, entity_id, release_name, indexer_name, download_client_id, download_client_name, status, created_utc) VALUES ('{Guid.NewGuid():N}', '{show.LibraryId}', 'tv', 'episode', '{show.EpisodeId}', 'The.Wire.S01E01.1080p.WEB-DL.H264-EXAMPLE', 'Fixture Indexer', 'client-1', 'Fixture Client', 'sent', '{DateTimeOffset.UtcNow:O}');");
+
+        var file = await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/episodes/{show.EpisodeId}/file");
+
+        Assert.Equal(show.FilePath, file.GetProperty("filePath").GetString());
+        Assert.True(file.GetProperty("fileSizeBytes").GetInt64() > 0);
+        Assert.Equal("Fixture Indexer", file.GetProperty("indexerName").GetString());
+        Assert.Equal("Fixture Client", file.GetProperty("downloadClientName").GetString());
+        Assert.Equal("EXAMPLE", file.GetProperty("releaseGroup").GetString());
+
+        using var unknown = await app.Client.GetAsync("/api/series/episodes/no-such-episode/file");
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 

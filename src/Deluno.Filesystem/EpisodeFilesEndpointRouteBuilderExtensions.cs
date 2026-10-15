@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Notifications;
+using Deluno.Quality;
 using Deluno.Platform;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Builder;
@@ -25,6 +26,47 @@ public static class EpisodeFilesEndpointRouteBuilderExtensions
     public static IEndpointRouteBuilder MapDelunoEpisodeFilesEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var series = endpoints.MapGroup("/api/series");
+
+        // What the episode's drawer shows about the file it holds (#1338): where it is, how big, what quality, and where it came
+        // from. The indexer and download client are the ones the latest grab for this episode used; they are null when the
+        // file came in by a scan or a season pack, which the drawer says plainly.
+        series.MapGet("/episodes/{episodeId}/file", async (
+            string episodeId,
+            ISeriesCatalogRepository repository,
+            IDownloadDispatchesRepository dispatches,
+            CancellationToken cancellationToken) =>
+        {
+            var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
+            var filePath = await repository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+            if (seriesId is null || string.IsNullOrWhiteSpace(filePath))
+            {
+                return Results.NotFound();
+            }
+
+            var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
+            var episode = inventory?.Episodes.FirstOrDefault(item => string.Equals(item.EpisodeId, episodeId, StringComparison.OrdinalIgnoreCase));
+            var sizeBytes = await repository.GetEpisodeFileSizeBytesAsync(episodeId, cancellationToken);
+            var (grabs, _) = await dispatches.QueryDispatchesAsync(
+                new DispatchQueryFilter { EntityType = "episode", EntityId = episodeId },
+                new DispatchPaginationOptions { PageSize = 1 },
+                cancellationToken);
+            var grab = grabs.FirstOrDefault();
+            var releaseGroup = MediaFileNameFacts.Parse(Path.GetFileName(filePath)).ReleaseGroup
+                ?? (grab is null ? null : MediaFileNameFacts.Parse(grab.ReleaseName).ReleaseGroup);
+
+            return Results.Ok(new
+            {
+                episodeId,
+                filePath,
+                fileName = Path.GetFileName(filePath),
+                fileSizeBytes = sizeBytes,
+                quality = episode?.CurrentQuality,
+                releaseGroup,
+                releaseName = grab?.ReleaseName,
+                indexerName = string.IsNullOrWhiteSpace(grab?.IndexerName) ? null : grab!.IndexerName,
+                downloadClientName = string.IsNullOrWhiteSpace(grab?.DownloadClientName) ? null : grab!.DownloadClientName
+            });
+        });
 
         series.MapDelete("/episodes/{episodeId}/file", async (
             string episodeId,

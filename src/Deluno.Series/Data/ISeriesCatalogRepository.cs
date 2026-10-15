@@ -255,6 +255,9 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// </summary>
     Task<IReadOnlyList<SeriesSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken);
 
+    /// <summary>One show's own searches, newest first, paged on the server (#1337).</summary>
+    Task<IReadOnlyList<SeriesSearchHistoryItem>> ListTitleSearchHistoryAsync(string seriesId, int limit, int offset, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,

@@ -341,6 +341,22 @@ describe("the Add dialog", () => {
     await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/movies/page")).length).toBeGreaterThan(shelfReadsBefore));
   });
 
+  it("a lost connection says a plain sentence, never the browser's own error text", async () => {
+    const inner = mocks.authedFetch.getMockImplementation()!;
+    mocks.authedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/movies") throw new TypeError("Failed to fetch");
+      return inner(input, init);
+    });
+    const dialog = await openDialog();
+    fireEvent.change(within(dialog).getByPlaceholderText(/Search movies, for example/), { target: { value: "Home Movie" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add movie manually" }));
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("Could not add the movie. Try again."));
+    expect(mocks.toast.error).not.toHaveBeenCalledWith("Failed to fetch");
+    expect(screen.getByRole("dialog", { name: /Add movie/ })).toBeInTheDocument();
+  });
+
   it("a server refusal on add is shown as the server's sentence", async () => {
     createReply = { ok: false, status: 400, body: { title: "That title is already in your library." } };
     const dialog = await openDialog();

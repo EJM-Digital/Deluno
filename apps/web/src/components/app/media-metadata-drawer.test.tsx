@@ -187,9 +187,7 @@ describe("MediaMetadataDrawer provider record, search and override (coverage reg
     expect(await screen.findByText(/No matches\. Try adding the year, the original title, or an IMDb ID\./)).toBeVisible();
   });
 
-  // DEFECT (found by this test, not fixed here): handleSearch sets the message "N matches found" only in the clean state, and the
-  // drawer footer shows a message only in the saved or error states, so the count the register promises is never on screen.
-  it.skip("says how many matches were found", async () => {
+  it("says how many matches were found", async () => {
     const user = userEvent.setup();
     vi.mocked(fetchJson).mockResolvedValue([match, { ...match, providerId: "43" }]);
     renderDrawer(vi.fn());

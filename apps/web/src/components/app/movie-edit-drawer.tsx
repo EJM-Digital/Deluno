@@ -193,6 +193,8 @@ export function MovieEditDrawer({
         <DrawerFooter
           state={state}
           message={message}
+          // A message set before anything is edited ("3 matches found", "Could not load ...") is shown too (#1338).
+          note={state === "clean" ? message : null}
           saveLabel={confirmingPathChange ? "Confirm and save" : "Save"}
           onCancel={requestClose}
           onSave={() => void handleSave()}

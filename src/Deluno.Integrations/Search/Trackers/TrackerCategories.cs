@@ -74,4 +74,23 @@ public static class TrackerCategories
             .Select(part => int.TryParse(part, out var number) ? number : (int?)null)
             .OfType<int>()
             .ToArray();
+
+    /// <summary>
+    /// The categories a search asks one indexer for (#1337), through one rule for every search: only the
+    /// family of the media being searched (2000 for a film, 5000 for TV). A person's ticked categories
+    /// win, then the indexer's own configured list, and a list with nothing in the family asks the whole
+    /// family. A film search never sends a TV category and a TV search never sends a film one.
+    /// </summary>
+    public static IReadOnlyList<int> ForFamily(bool isTv, IReadOnlyList<int>? requested, string? configured)
+    {
+        var family = isTv ? 5 : 2;
+        var ticked = requested is { Count: > 0 } ? requested.Where(category => category / 1000 == family).ToArray() : [];
+        if (ticked.Length > 0)
+        {
+            return ticked;
+        }
+
+        var own = Parse(configured).Where(category => category / 1000 == family).ToArray();
+        return own.Length > 0 ? own : [family * 1000];
+    }
 }
