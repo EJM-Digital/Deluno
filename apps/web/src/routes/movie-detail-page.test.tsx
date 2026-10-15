@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The workstation can be busy with other builds; a slow render is not a failed page.
+configure({ asyncUtilTimeout: 8000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The film page's own wiring (coverage register, area movie-detail): the page is rendered through its real
@@ -956,4 +960,115 @@ describe("the film's Searches card and its drawer", () => {
   function openHistoryTab() {
     fireEvent.click(screen.getByRole("radio", { name: "History" }));
   }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The live connection: the server announces a change to this film and the page reads again only the groups it can move.
+const live = vi.hoisted(() => ({ handlers: {} as Record<string, Array<() => void>> }));
+vi.mock("../lib/use-signalr", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/use-signalr")>()),
+  useSignalREvent: (event: string, _subject: unknown, handler: () => void) => {
+    (live.handlers[event] ??= []).push(handler);
+  }
+}));
+const announce = async (event: string) => {
+  const handler = live.handlers[event]?.at(-1);
+  if (!handler) throw new Error(`the page did not listen for ${event}`);
+  await act(async () => { handler(); });
+};
+
+describe("the film page follows the server's announcements (live)", () => {
+  const read = (path: string) => calls.some((c) => c.method === "GET" && c.url.split("?")[0] === path);
+  const GROUPS = {
+    title: "/api/movies/m1",
+    history: "/api/movies/search-history",
+    recovery: "/api/movies/import-recovery",
+    subtitles: "/api/movies/m1/subtitles",
+    shared: "/api/libraries"
+  };
+
+  beforeEach(() => { for (const key of Object.keys(live.handlers)) delete live.handlers[key]; });
+
+  it.each([
+    ["MovieChanged", ["title", "subtitles", "recovery", "history"], ["shared"]],
+    ["ImportStateChanged", ["title", "history", "recovery"], ["subtitles", "shared"]],
+    ["JourneyStageChanged", ["history", "title"], ["recovery", "subtitles", "shared"]],
+    ["RecoveryCaseChanged", ["recovery", "title"], ["history", "subtitles", "shared"]],
+    ["ReleasesTurnedDown", ["history"], ["title", "recovery", "subtitles", "shared"]]
+  ] as const)("%s re-reads exactly its groups and no others", async (event, reads, leaves) => {
+    setup();
+    await renderPage();
+    calls.length = 0;
+
+    await announce(event);
+
+    await waitFor(() => { for (const group of reads) expect(read(GROUPS[group]), `${event} should re-read ${group}`).toBe(true); }, { timeout: 4000 });
+    for (const group of leaves) expect(read(GROUPS[group]), `${event} should leave ${group} alone`).toBe(false);
+  });
+
+  it("a burst of announcements is one read of each group, not one per announcement", async () => {
+    setup();
+    await renderPage();
+    calls.length = 0;
+
+    await announce("ReleasesTurnedDown");
+    await announce("ReleasesTurnedDown");
+    await announce("ReleasesTurnedDown");
+
+    await waitFor(() => expect(read(GROUPS.history)).toBe(true), { timeout: 4000 });
+    expect(calls.filter((c) => c.method === "GET" && c.url === "/api/movies/search-history")).toHaveLength(1);
+  });
+
+  it("shows the change without a reload when a re-read finds the film changed", async () => {
+    let title = "Big Buck Bunny";
+    setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, title } } : undefined));
+    await renderPage();
+
+    title = "Big Buck Bunny (Remastered)";
+    await announce("MovieChanged");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Big Buck Bunny (Remastered)" }, { timeout: 4000 })).toBeInTheDocument();
+  });
+});
+
+describe("a film in more than one library", () => {
+  const twoLibraries: Handler = (url) => {
+    if (url === "/api/movies/m1/libraries/") {
+      return { body: [{ libraryId: "lib1", libraryName: "Films", hasFile: false, notWantedHere: false, canRemove: true, canMove: true }, { libraryId: "lib2", libraryName: "Kids", hasFile: false, notWantedHere: false, canRemove: true, canMove: true }] };
+    }
+    if (url === "/api/libraries") {
+      return { body: [{ id: "lib1", name: "Films", mediaType: "movies", rootPath: "/films" }, { id: "lib2", name: "Kids", mediaType: "movies", rootPath: "/kids" }] };
+    }
+    return undefined;
+  };
+
+  it("passes the library being acted on with Search now and Choose a release", async () => {
+    setup((url, init) => twoLibraries(url, init) ?? (url.startsWith("/api/movies/m1/search") ? { body: { outcome: "none", candidates: [] } } : undefined));
+    await renderPage();
+
+    press("Search now");
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/movies/m1/search?libraryId=lib1")).toBe(true));
+    press("Choose a release");
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/movies/m1/search?mode=preview&libraryId=lib1")).toBe(true));
+  });
+
+  it("Use for search points every later search and send at the other library", async () => {
+    setup((url, init) => twoLibraries(url, init) ?? (url.startsWith("/api/movies/m1/search") ? { body: { outcome: "none", candidates: [] } } : undefined));
+    await renderPage();
+
+    const kidsRow = (await screen.findByText("Kids", { selector: "*" })).closest("[role='row']") as HTMLElement;
+    fireEvent.click(within(kidsRow).getByRole("button", { name: "Use for search" }));
+    press("Search now");
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/movies/m1/search?libraryId=lib2")).toBe(true));
+  });
+
+  it("with one library no library is passed at all", async () => {
+    setup((url) => (url.startsWith("/api/movies/m1/search") ? { body: { outcome: "none", candidates: [] } } : undefined));
+    await renderPage();
+
+    press("Search now");
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/movies/m1/search")).toBe(true));
+  });
 });

@@ -6,11 +6,7 @@ using Deluno.Connections.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Http;
+using Deluno.Tests.Recorded;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -26,9 +22,9 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     [Fact]
     public async Task A_search_reaches_only_the_chosen_indexers_and_never_a_disabled_one()
     {
-        await using var chosen = await FeedAsync("Chosen.Release.1080p");
-        await using var other = await FeedAsync("Other.Release.1080p");
-        await using var off = await FeedAsync("Disabled.Release.1080p");
+        await using var chosen = await FeedAsync();
+        await using var other = await FeedAsync();
+        await using var off = await FeedAsync();
         await using var app = await ApplicationTestHost.StartAsync();
         var chosenIndexer = await AddIndexerAsync(app, "Chosen", chosen.BaseUrl, enabled: true);
         await AddIndexerAsync(app, "Other", other.BaseUrl, enabled: true);
@@ -37,7 +33,9 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
         var narrowed = await SearchAsync(app, new { query = "Release", searchType = "movie", indexerIds = new[] { chosenIndexer.Id } });
 
         Assert.Equal(1, narrowed.GetProperty("indexersQueried").GetInt32());
-        Assert.Equal("Chosen.Release.1080p", Assert.Single(narrowed.GetProperty("candidates").EnumerateArray()).GetProperty("releaseName").GetString());
+        var only = Assert.Single(narrowed.GetProperty("candidates").EnumerateArray());
+        Assert.Equal(Release, only.GetProperty("releaseName").GetString());
+        Assert.Equal("Chosen", only.GetProperty("indexerName").GetString());
         Assert.NotEmpty(chosen.Requests);
         Assert.Empty(other.Requests);
         Assert.Empty(off.Requests);
@@ -45,7 +43,8 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
         var everyone = await SearchAsync(app, new { query = "Release", searchType = "movie", indexerIds = (string[]?)null });
 
         Assert.Equal(2, everyone.GetProperty("indexersQueried").GetInt32());
-        Assert.Equal(new[] { "Chosen.Release.1080p", "Other.Release.1080p" }, everyone.GetProperty("candidates").EnumerateArray().Select(item => item.GetProperty("releaseName").GetString()!).Order().ToArray());
+        // Both indexers carry the same release, so the combined list holds it once.
+        Assert.Equal(Release, Assert.Single(everyone.GetProperty("candidates").EnumerateArray()).GetProperty("releaseName").GetString());
         Assert.NotEmpty(other.Requests);
         Assert.Empty(off.Requests);
     }
@@ -55,15 +54,14 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     [Fact(Skip = "Defect: a TV search with no category ticked sends the indexer's whole category list (cat=2000,5000) instead of only the 5000 family; the movie type likewise sends the TV categories (ManualSearchEndpointRouteBuilderExtensions /api/search)")]
     public async Task A_TV_search_asks_only_the_TV_categories_and_a_movie_search_only_the_movie_ones()
     {
-        await using var feed = await FeedAsync("Example.Release.1080p");
+        await using var feed = await FeedAsync();
         await using var app = await ApplicationTestHost.StartAsync();
         await AddIndexerAsync(app, "Both kinds", feed.BaseUrl, enabled: true, categories: "2000,5000", scope: "both");
 
         await SearchAsync(app, new { query = "Example", searchType = "tv" });
         var tvRequests = feed.Requests.ToArray();
-        feed.Requests.Clear();
         await SearchAsync(app, new { query = "Example", searchType = "movie" });
-        var movieRequests = feed.Requests.ToArray();
+        var movieRequests = feed.Requests.Skip(tvRequests.Length).ToArray();
 
         Assert.NotEmpty(tvRequests);
         Assert.NotEmpty(movieRequests);
@@ -74,7 +72,7 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     [Fact]
     public async Task Ticked_categories_are_cut_down_to_the_family_of_the_chosen_type()
     {
-        await using var feed = await FeedAsync("Example.Release.1080p");
+        await using var feed = await FeedAsync();
         await using var app = await ApplicationTestHost.StartAsync();
         await AddIndexerAsync(app, "Both kinds", feed.BaseUrl, enabled: true, categories: "2000,5000", scope: "both");
 
@@ -90,7 +88,8 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     [Fact(Skip = "Defect: POST /api/search leaves out the failures the planner returns, so the Search page cannot explain an indexer that failed or timed out (ManualSearchEndpointRouteBuilderExtensions /api/search)")]
     public async Task An_indexer_that_fails_during_the_search_is_named_in_the_answer()
     {
-        await using var broken = await FeedAsync(status: 500);
+        await using var broken = await FeedAsync();
+        broken.AnswerEverythingWith = RecordedReplies.Jackett("unknown-indexer").Single.Reply;
         await using var app = await ApplicationTestHost.StartAsync();
         var indexer = await AddIndexerAsync(app, "Broken", broken.BaseUrl, enabled: true);
 
@@ -115,7 +114,7 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     [Fact]
     public async Task A_torrent_release_with_only_a_Usenet_client_routed_is_refused_with_the_reason()
     {
-        await using var feed = await FeedAsync("Example.Release.1080p");
+        await using var feed = await FeedAsync();
         await using var app = await ApplicationTestHost.StartAsync();
         var indexer = await AddIndexerAsync(app, "Torrent site", feed.BaseUrl, enabled: true);
         var libraryId = await CreateLibraryAsync(app, "movies", "Films");
@@ -246,34 +245,8 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
         }
     }
 
-    private sealed class Feed(WebApplication app, string baseUrl, List<string> requests) : IAsyncDisposable
-    {
-        public string BaseUrl => baseUrl;
+    private static Task<RecordedIndexerServer> FeedAsync()
+        => RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-text"), RecordedReplies.Jackett("caps"));
 
-        public List<string> Requests => requests;
-
-        public ValueTask DisposeAsync() => app.DisposeAsync();
-    }
-
-    private static async Task<Feed> FeedAsync(string? release = null, int status = 200)
-    {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var app = builder.Build();
-        var requests = new List<string>();
-        var feed =
-            "<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\"><channel>"
-            + (release is null ? string.Empty : $"<item><title>{release}</title><link>https://fixture.invalid/{release}.torrent</link><torznab:attr name=\"seeders\" value=\"12\" /><torznab:attr name=\"peers\" value=\"3\" /></item>")
-            + "</channel></rss>";
-        app.Run(async context =>
-        {
-            lock (requests) requests.Add(context.Request.QueryString.Value ?? string.Empty);
-            context.Response.StatusCode = status;
-            context.Response.ContentType = "application/rss+xml";
-            await context.Response.WriteAsync(feed);
-        });
-        await app.StartAsync();
-        var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
-        return new Feed(app, address, requests);
-    }
+    private const string Release = "Sintel (2010) 720p BRRip x264 -YTS";
 }

@@ -54,6 +54,41 @@ public sealed class AHandSendForSomethingAlreadyDownloadingAsksFirstTests
     }
 
     [Fact]
+    public async Task A_hand_send_for_a_show_is_recorded_as_a_dispatch_and_leaves_the_show_downloading()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs, removed: null);
+        var seriesId = await SeedAsync(app);
+        Assert.NotEqual("downloading", (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{seriesId}")).GetProperty("wantedStatus").GetString());
+
+        var sent = await GrabAsync(app, seriesId, FirstRelease);
+
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        Assert.Contains(FirstRelease, await app.Client.GetStringAsync("/api/download-dispatches"), StringComparison.Ordinal);
+        Assert.Equal("downloading", (await app.Client.GetFromJsonAsync<JsonElement>($"/api/series/{seriesId}")).GetProperty("wantedStatus").GetString());
+        Assert.Equal(1, grabs.Count);
+    }
+
+    [Fact]
+    public async Task A_release_a_show_would_not_pick_is_refused_with_the_force_hint_and_sent_only_when_forced()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs, removed: null);
+        var seriesId = await SeedAsync(app);
+        const string risky = "The.Simpsons.S00E78.Extreme.Makeover.Homer.Edition.2026.HDCAM.x264-GRP";
+
+        using var refused = await app.Client.PostAsJsonAsync($"/api/series/{seriesId}/grab", new { releaseName = risky, indexerName = "Fixture", downloadUrl = "https://fixture.invalid/x.torrent", candidateQuality = "CAM" });
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("requires force override", await refused.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, grabs.Count);
+
+        using var forced = await app.Client.PostAsJsonAsync($"/api/series/{seriesId}/grab", new { releaseName = risky, indexerName = "Fixture", downloadUrl = "https://fixture.invalid/x.torrent", candidateQuality = "CAM", force = true, overrideReason = "Only copy." });
+        Assert.Equal(HttpStatusCode.OK, forced.StatusCode);
+        Assert.Equal(1, grabs.Count);
+        Assert.Contains("Only copy.", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Replace_removes_the_first_download_from_its_client_before_sending_the_new_one()
     {
         var grabs = new CountingGrabService();

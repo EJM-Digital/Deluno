@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadTelemetryOverview } from "../../lib/api";
@@ -326,5 +326,72 @@ describe("lifting a block from anywhere it can be blocked", () => {
 
     expect(await screen.findByRole("button", { name: 'Block "Arrival"' })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /lift the block/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * When a block cannot be done (coverage register, area search-grab): the person is told in words what went wrong, never a bare
+ * "failed", and the dialog stays so they can try again or cancel.
+ */
+describe("a block that cannot be done", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const props = { releaseName: "Arrival.2016.2160p.UHD.BluRay", indexerName: "Nebula", mediaType: "movie", entityId: "movie-1", title: "Arrival" } as const;
+
+  it("a block the server refuses is explained and the dialog stays open", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(emptyOverview());
+    vi.mocked(authedFetch).mockResolvedValue({ ok: false, status: 400, json: async () => ({}), clone() { return this; } } as unknown as Response);
+    const onBlocked = vi.fn();
+    render(<BlockReleaseAction {...props} onBlocked={onBlocked} />);
+
+    await userEvent.click(screen.getByRole("button", { name: 'Block "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Block this release" }));
+
+    expect(toasts.error).toHaveBeenCalled();
+    expect(String(toasts.error.mock.calls[0][0])).not.toBe("failed");
+    expect(toasts.success).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Block this release" })).toBeInTheDocument();
+  });
+
+  it("a stop-and-block the client refuses is explained and nothing is reported as blocked", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(overviewWithQueueItem());
+    vi.mocked(authedFetch).mockResolvedValue({ ok: false, status: 502, json: async () => ({}), clone() { return this; } } as unknown as Response);
+    const onBlocked = vi.fn();
+    render(<BlockReleaseAction {...props} onBlocked={onBlocked} />);
+
+    await userEvent.click(screen.getByRole("button", { name: 'Block "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Stop it, delete its files and find another" }));
+
+    expect(toasts.error).toHaveBeenCalled();
+    expect(toasts.success).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("a lift the server refuses is explained", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(blockedReleaseList({ id: "blocked-9", hash: "abcdef0123456789" }));
+    vi.mocked(authedFetch).mockResolvedValue({ ok: false, status: 500, json: async () => ({}), clone() { return this; } } as unknown as Response);
+    const onBlocked = vi.fn();
+    render(<BlockReleaseAction {...props} hash="abcdef0123456789" onBlocked={onBlocked} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: 'Lift the block on "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Lift the block" }));
+
+    expect(toasts.error).toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("after a block, the toast names the release and says every indexer's copy is refused, and the dialog closes", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(emptyOverview());
+    vi.mocked(authedFetch).mockResolvedValue({ ok: true, json: async () => ({ id: "block-1" }) } as Response);
+    render(<BlockReleaseAction {...props} />);
+
+    await userEvent.click(screen.getByRole("button", { name: 'Block "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Block this release" }));
+
+    expect(toasts.success).toHaveBeenCalledWith(`"Arrival" blocked; every indexer's copy is refused from now on.`);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });

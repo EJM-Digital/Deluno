@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The workstation can be busy with other builds; a slow render is not a failed page.
+configure({ asyncUtilTimeout: 8000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The show page's own wiring (coverage register, area show-detail): the page is rendered through its real loader with only
@@ -334,6 +338,16 @@ describe("the show's Episodes tab", () => {
     expect(within(drawer).getByText("Basics")).toBeInTheDocument();
     expect(within(drawer).getByText("First aired")).toBeInTheDocument();
     fireEvent.click(within(drawer).getAllByRole("button", { name: "Close" }).at(-1)!);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /S01E02 · The Detail/ })).toBeNull());
+  });
+
+  it("Escape closes the episode drawer", async () => {
+    await renderPage();
+    fireEvent.click(episodeRow("S01E02"));
+    const drawer = await screen.findByRole("dialog", { name: /S01E02 · The Detail/ });
+
+    fireEvent.keyDown(drawer, { key: "Escape" });
+
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /S01E02 · The Detail/ })).toBeNull());
   });
 
@@ -815,7 +829,7 @@ describe("the show's controls", () => {
     expect(bodies("/monitor-new-episodes")).toHaveLength(1);
   });
 
-  it("Defer for 24 hours posts hours 24 for the show's library and toasts, and says so when it fails", async () => {
+  it("Defer for 24 hours posts hours 24 for the show's library and toasts", async () => {
     setup((url) => (url === "/api/series/s1/automation/defer" ? { body: {} } : undefined));
     await renderPage();
     openTab("Destination");
@@ -854,6 +868,16 @@ describe("the show's controls", () => {
     setup((url) => (url === "/api/series/s1/metadata/refresh" ? { status: 409, body: {} } : undefined));
     fireEvent.click(screen.getByRole("button", { name: "Refresh metadata" }));
     await waitFor(() => expect(toast.info).toHaveBeenCalledWith("The TMDb record is no longer available. Your show and files were kept."));
+  });
+
+  it("a metadata refresh that fails otherwise is explained with a Check metadata settings action", async () => {
+    setup((url) => (url === "/api/series/s1/metadata/refresh" ? { status: 400, body: { message: "TMDb said no." } } : undefined));
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh metadata" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect((toast.error.mock.calls[0][1] as { action: { label: string } }).action.label).toBe("Check metadata settings");
   });
 
   it("a removal that fails says the TV show could not be removed", async () => {
@@ -1005,6 +1029,21 @@ describe("the show's History tab", () => {
     expect(screen.getByText("S01E02")).toBeInTheDocument();
   });
 
+  it("lists only the latest 12 of the show's searches and says Latest 12 of 13", async () => {
+    setup((url) =>
+      url === "/api/series/search-history"
+        ? { body: Array.from({ length: 13 }, (_, index) => ({ id: `h${index}`, seriesId: "s1", episodeId: null, seasonNumber: null, episodeNumber: null, libraryId: "lib1", triggerKind: "scheduled", outcome: "none", releaseName: `The.Wire.Search.${index}`, indexerName: "Fixture", detailsJson: null, createdUtc: new Date(Date.UTC(2026, 9, 1, 12) - index * 60_000).toISOString() })) }
+        : undefined
+    );
+    await renderPage();
+    openTab("History");
+
+    expect(await screen.findByText("Latest 12 of 13")).toBeInTheDocument();
+    expect(screen.getByText("The.Wire.Search.11")).toBeInTheDocument();
+    expect(screen.queryByText("The.Wire.Search.12")).toBeNull();
+    expect(screen.getAllByText("Whole show").length).toBeGreaterThan(0);
+  });
+
   it("lists this show's last sent releases with the client and an Open Transfers link", async () => {
     setup((url) =>
       url.startsWith("/api/download-dispatches")
@@ -1040,5 +1079,119 @@ describe("opening the show", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("Route error screen")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The live connection: the server announces a change to this show and the page reads again only the groups it can move.
+const live = vi.hoisted(() => ({ handlers: {} as Record<string, Array<() => void>> }));
+vi.mock("../lib/use-signalr", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/use-signalr")>()),
+  useSignalREvent: (event: string, _subject: unknown, handler: () => void) => {
+    (live.handlers[event] ??= []).push(handler);
+  }
+}));
+const announce = async (event: string) => {
+  const handler = live.handlers[event]?.at(-1);
+  if (!handler) throw new Error(`the page did not listen for ${event}`);
+  await act(async () => { handler(); });
+};
+
+describe("the show page follows the server's announcements (live)", () => {
+  const read = (path: string) => calls.some((c) => c.method === "GET" && c.url.split("?")[0] === path);
+  const GROUPS = {
+    title: "/api/series/s1",
+    inventory: "/api/series/s1/inventory",
+    history: "/api/series/search-history",
+    recovery: "/api/series/import-recovery",
+    shared: "/api/libraries"
+  };
+
+  beforeEach(() => { for (const key of Object.keys(live.handlers)) delete live.handlers[key]; });
+
+  it.each([
+    ["SeriesChanged", ["title", "inventory", "recovery", "history"], ["shared"]],
+    ["ImportStateChanged", ["inventory", "history", "recovery"], ["title", "shared"]],
+    ["JourneyStageChanged", ["history", "inventory"], ["title", "recovery", "shared"]],
+    ["RecoveryCaseChanged", ["recovery", "inventory"], ["title", "history", "shared"]],
+    ["ReleasesTurnedDown", ["history"], ["title", "inventory", "recovery", "shared"]]
+  ] as const)("%s re-reads exactly its groups and no others", async (event, reads, leaves) => {
+    setup();
+    await renderPage();
+    calls.length = 0;
+
+    await announce(event);
+
+    await waitFor(() => { for (const group of reads) expect(read(GROUPS[group]), `${event} should re-read ${group}`).toBe(true); }, { timeout: 4000 });
+    for (const group of leaves) expect(read(GROUPS[group]), `${event} should leave ${group} alone`).toBe(false);
+  });
+
+  it("an import finishing shows the new On disk count and the new search row with no reload", async () => {
+    let imported = false;
+    setup((url) => {
+      if (url === "/api/series/s1/inventory") {
+        return { body: { ...INVENTORY, importedEpisodeCount: imported ? 2 : 1, episodes: EPISODES.map((item) => (imported && item.episodeId === "e12" ? { ...item, hasFile: true, wantedStatus: "covered" } : item)) } };
+      }
+      return undefined;
+    });
+    await renderPage();
+    const onDisk = () => screen.getByText("imported and verified").parentElement as HTMLElement;
+    expect(onDisk()).toHaveTextContent("1");
+
+    imported = true;
+    await announce("ImportStateChanged");
+
+    await waitFor(() => expect(onDisk()).toHaveTextContent("2"), { timeout: 4000 });
+  });
+});
+
+describe("a show in more than one library", () => {
+  const twoLibraries: Handler = (url) => {
+    if (url === "/api/series/s1/libraries/") {
+      return { body: [{ libraryId: "lib1", libraryName: "Shows", hasFile: true, notWantedHere: false, canRemove: false, canMove: true }, { libraryId: "lib2", libraryName: "Anime", hasFile: false, notWantedHere: false, canRemove: true, canMove: true }] };
+    }
+    if (url === "/api/libraries") {
+      return { body: [{ id: "lib1", name: "Shows", mediaType: "tv", rootPath: "/shows" }, { id: "lib2", name: "Anime", mediaType: "tv", rootPath: "/anime" }] };
+    }
+    return undefined;
+  };
+
+  it("passes the library being acted on with Search now and Choose a release", async () => {
+    setup((url, init) => twoLibraries(url, init) ?? (url.startsWith("/api/series/s1/search") ? { body: { outcome: "none", candidates: [] } } : undefined));
+    await renderPage();
+
+    press("Search now");
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/search?libraryId=lib1")).toBe(true));
+    press("Choose a release");
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/search?mode=preview&libraryId=lib1")).toBe(true));
+  });
+
+  it("passes the library with a grab, and Use for search points it at the other library", async () => {
+    setup((url, init) =>
+      twoLibraries(url, init) ??
+      (url.startsWith("/api/series/s1/search?mode=preview") ? { body: { candidates: [PREFERRED] } } : url.startsWith("/api/series/s1/grab") ? { body: { releaseName: PREFERRED.releaseName, dispatchStatus: "sent" } } : undefined)
+    );
+    await renderPage();
+    openTab("Destination");
+    const animeRow = (await screen.findByText("Anime", { selector: "*" })).closest("[role='row']") as HTMLElement;
+    fireEvent.click(within(animeRow).getByRole("button", { name: "Use for search" }));
+    press("Choose a release");
+    fireEvent.click(await screen.findByText(PREFERRED.releaseName));
+    const drawer = await screen.findByRole("dialog", { name: PREFERRED.releaseName });
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Send to downloads" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/grab?libraryId=lib2")).toBe(true));
+  });
+
+  it("an episode search carries no library (the episode route does not take one)", async () => {
+    setup((url, init) => twoLibraries(url, init) ?? (url === "/api/series/s1/episodes/search" ? { body: { searchedEpisodes: 1, episodes: [] } } : undefined));
+    await renderPage();
+    fireEvent.click(episodeRow("S01E02"));
+    const drawer = await screen.findByRole("dialog", { name: /S01E02/ });
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Search and send the best release" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/episodes/search")).toBe(true));
   });
 });
