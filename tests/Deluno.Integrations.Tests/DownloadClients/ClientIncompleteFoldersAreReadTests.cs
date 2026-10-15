@@ -25,7 +25,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task Transmission_downloads_into_its_incomplete_folder_when_that_is_switched_on()
     {
-        var result = await new TransmissionDownloadClient(Factory(TransmissionSession(true)))
+        var result = await new TransmissionDownloadClient(Factory(RecordedTransmissionSession(true)))
             .CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.Equal(@"C:\Downloads\Completed\TV", result.SavePath);
@@ -35,7 +35,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task Transmission_with_no_incomplete_folder_downloads_straight_into_the_finished_folder()
     {
-        var result = await new TransmissionDownloadClient(Factory(TransmissionSession(false)))
+        var result = await new TransmissionDownloadClient(Factory(RecordedTransmissionSession(false)))
             .CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.NotNull(result.SavePath);
@@ -45,7 +45,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task QBittorrent_reports_the_folder_Deluno_sends_torrents_to_not_the_categorys_when_the_client_has_one()
     {
-        var handler = QbitHandler(tempPathEnabled: false);
+        var handler = RecordedQbitHandler(tempPathEnabled: false);
         var client = Client("qbittorrent") with { Location = @"E:\Elsewhere\Movies" };
 
         var result = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(client, "Movies", CancellationToken.None);
@@ -57,7 +57,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task QBittorrent_with_no_folder_of_its_own_reports_the_categorys_folder_because_grabs_use_automatic_management()
     {
-        var handler = QbitHandler(tempPathEnabled: false);
+        var handler = RecordedQbitHandler(tempPathEnabled: false);
 
         var result = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(Client("qbittorrent"), "Movies", CancellationToken.None);
 
@@ -69,7 +69,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [InlineData(false, @"C:\Downloads\Completed\Movies")]
     public async Task QBittorrent_downloads_into_its_temporary_path_only_when_it_keeps_incomplete_torrents_apart(bool enabled, string expected)
     {
-        var handler = QbitHandler(tempPathEnabled: enabled);
+        var handler = RecordedQbitHandler(tempPathEnabled: enabled);
 
         var result = await new QbittorrentDownloadClient(() => handler).CheckCategoryAsync(Client("qbittorrent"), "Movies", CancellationToken.None);
 
@@ -93,7 +93,7 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task NZBGet_downloads_into_its_intermediate_folder()
     {
-        var result = await NzbGetCheck(@"D:\Incomplete\NZBGet");
+        var result = await RecordedNzbGetCheck(@"D:\Incomplete\NZBGet");
 
         Assert.Equal(@"D:\Incomplete\NZBGet", result.IncompletePath);
     }
@@ -101,25 +101,25 @@ public sealed class ClientIncompleteFoldersAreReadTests
     [Fact]
     public async Task NZBGet_with_no_intermediate_folder_downloads_straight_into_the_destination()
     {
-        var result = await NzbGetCheck(string.Empty);
+        var result = await RecordedNzbGetCheck(string.Empty);
 
         Assert.Equal(@"C:\Downloads\Completed\Movies", result.SavePath);
         Assert.Equal(result.SavePath, result.IncompletePath);
     }
 
     /// <summary>NZBGet 26.3's recorded configuration, with the intermediate folder as under test and the Movies category taking NZBGet's own destination.</summary>
-    private static Task<DownloadClientCategoryCheckResult> NzbGetCheck(string interDir)
+    private static Task<DownloadClientCategoryCheckResult> RecordedNzbGetCheck(string interDir)
         => new NzbGetDownloadClient(Factory(new FixedReply(RecordedReplies.Nzbget("settings").Body(
             "\"config\"", ("result.[Name=InterDir].Value", interDir), ("result.[Name=Category1.DestDir].Value", string.Empty)))))
             .CheckCategoryAsync(Client("nzbget"), "Movies", CancellationToken.None);
 
     /// <summary>Transmission 4.1.3's recorded session settings, with its incomplete folder as under test.</summary>
-    private static HttpMessageHandler TransmissionSession(bool incompleteEnabled)
+    private static HttpMessageHandler RecordedTransmissionSession(bool incompleteEnabled)
         => new FixedReply(RecordedReplies.Transmission("settings").Body(
             "session-get", ("arguments.incomplete-dir", @"D:\Incomplete\Transmission"), ("arguments.incomplete-dir-enabled", incompleteEnabled)));
 
     /// <summary>qBittorrent 5.2.1's recorded sign-in, categories and preferences, with its temporary path and the Movies category's folder as under test.</summary>
-    private static HttpMessageHandler QbitHandler(bool tempPathEnabled)
+    private static HttpMessageHandler RecordedQbitHandler(bool tempPathEnabled)
         => RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("settings")], (request, _) =>
         {
             var path = request.RequestUri!.AbsolutePath;

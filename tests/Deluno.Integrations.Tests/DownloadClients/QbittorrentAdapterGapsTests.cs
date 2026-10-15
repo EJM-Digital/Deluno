@@ -46,7 +46,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Sends_no_authorization_header_and_logs_in_when_a_username_is_set()
     {
-        var handler = new RecordingHandler();
+        var handler = new RecordedQbittorrentLog();
         await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient() with { Username = "admin", Secret = "hunter2" }, DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -57,7 +57,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Sends_a_bearer_token_and_skips_login_when_only_a_secret_is_set()
     {
-        var handler = new RecordingHandler();
+        var handler = new RecordedQbittorrentLog();
         await new QbittorrentDownloadClient(() => handler)
             .GetSnapshotAsync(QbitClient() with { Username = null, Secret = "api-key-value" }, DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -76,7 +76,7 @@ public sealed class QbittorrentAdapterGapsTests
         var bodies = new List<string>();
         var client = QbitClient() with { SkipHashCheck = skip, SequentialDownload = sequential, FirstLastPiecePrio = firstLast };
 
-        await new QbittorrentDownloadClient(() => new AddCapturingHandler(bodies))
+        await new QbittorrentDownloadClient(() => new RecordedAddCapturingHandler(bodies))
             .GrabAsync(client, GrabRequest(), CancellationToken.None);
 
         var body = Assert.Single(bodies);
@@ -87,7 +87,7 @@ public sealed class QbittorrentAdapterGapsTests
     public async Task Grab_sends_the_clients_own_tags_on_the_torrent_itself()
     {
         var bodies = new List<string>();
-        await new QbittorrentDownloadClient(() => new AddCapturingHandler(bodies))
+        await new QbittorrentDownloadClient(() => new RecordedAddCapturingHandler(bodies))
             .GrabAsync(QbitClient() with { Tags = "anime,4k" }, GrabRequest(), CancellationToken.None);
 
         Assert.Contains("tags=anime%2C4k", Assert.Single(bodies), StringComparison.Ordinal);
@@ -97,7 +97,7 @@ public sealed class QbittorrentAdapterGapsTests
     public async Task Grab_sends_no_tags_field_for_an_untagged_client()
     {
         var bodies = new List<string>();
-        await new QbittorrentDownloadClient(() => new AddCapturingHandler(bodies))
+        await new QbittorrentDownloadClient(() => new RecordedAddCapturingHandler(bodies))
             .GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
 
         Assert.DoesNotContain("tags=", Assert.Single(bodies), StringComparison.Ordinal);
@@ -106,7 +106,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_sets_share_limits_on_the_newly_added_torrent()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
         var client = QbitClient() with { ShareRatioLimit = 2.5, ShareSeedingTimeLimitMinutes = 4320, ShareInactiveSeedingTimeLimitMinutes = 60 };
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(client, GrabRequest(), CancellationToken.None);
@@ -125,7 +125,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_never_calls_setShareLimits_when_no_share_limit_is_configured()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
 
         await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
 
@@ -135,7 +135,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_sends_savepath_at_add_time_and_reasserts_it_with_setLocation()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
         var client = QbitClient() with { Location = @"D:\Downloads\Movies" };
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(client, GrabRequest(), CancellationToken.None);
@@ -151,7 +151,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_without_a_save_path_asks_for_automatic_management_so_the_category_folder_is_used()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
 
@@ -165,7 +165,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_with_a_save_path_keeps_its_own_folder_and_does_not_turn_automatic_management_on()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
         var client = QbitClient() with { Location = @"D:\Downloads\Movies" };
 
         await new QbittorrentDownloadClient(() => handler).GrabAsync(client, GrabRequest(), CancellationToken.None);
@@ -177,7 +177,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_never_calls_setLocation_when_no_save_path_is_configured()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
 
         await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
 
@@ -187,7 +187,7 @@ public sealed class QbittorrentAdapterGapsTests
     [Fact]
     public async Task Grab_reasserts_the_resolved_category_with_setCategory()
     {
-        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var handler = new RecordedAddThenNewHashHandler(newHash: "abc123");
 
         var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
 
@@ -223,7 +223,7 @@ public sealed class QbittorrentAdapterGapsTests
     private static HttpResponseMessage NoTorrents() => RecordedReplies.Json(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"));
 
     /// <summary>Records every request it answers, so a test can check what was (or was not) sent. It answers from the recordings with an empty list.</summary>
-    private sealed class RecordingHandler : HttpMessageHandler
+    private sealed class RecordedQbittorrentLog : HttpMessageHandler
     {
         private readonly HttpMessageHandler _inner = RecordedQbittorrentRig.Handler(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"));
 
@@ -238,7 +238,7 @@ public sealed class QbittorrentAdapterGapsTests
     }
 
     /// <summary>Captures the body posted to torrents/add, answering an empty list before and after (no new hash, so only the request under test matters).</summary>
-    private sealed class AddCapturingHandler(List<string> addBodies) : HttpMessageHandler
+    private sealed class RecordedAddCapturingHandler(List<string> addBodies) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -260,7 +260,7 @@ public sealed class QbittorrentAdapterGapsTests
     /// reading a genuinely new torrent — and records whatever the grab then sets. Every reply is qBittorrent 5.2.1's recorded one,
     /// including its recorded refusal of share limits sent without a share-limit action.
     /// </summary>
-    private sealed class AddThenNewHashHandler(string newHash) : HttpMessageHandler
+    private sealed class RecordedAddThenNewHashHandler(string newHash) : HttpMessageHandler
     {
         private bool _added;
 

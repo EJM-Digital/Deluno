@@ -17,7 +17,7 @@ public sealed class TransmissionTrackerStatusTests
     [Fact]
     public async Task An_unregistered_announce_result_normalizes_to_the_tracker_unregistered_status()
     {
-        var item = await Snapshot(hasAnnounced: true, succeeded: false, result: "torrent not registered with this tracker");
+        var item = await RecordedSnapshot(hasAnnounced: true, succeeded: false, result: "torrent not registered with this tracker");
 
         Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
     }
@@ -25,7 +25,7 @@ public sealed class TransmissionTrackerStatusTests
     [Fact]
     public async Task A_successful_announce_normalizes_to_ok()
     {
-        var item = await Snapshot(hasAnnounced: true, succeeded: true, result: "Success");
+        var item = await RecordedSnapshot(hasAnnounced: true, succeeded: true, result: "Success");
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -38,7 +38,7 @@ public sealed class TransmissionTrackerStatusTests
     [Fact]
     public async Task An_announce_not_yet_attempted_is_not_read_as_unregistered()
     {
-        var item = await Snapshot(hasAnnounced: false, succeeded: false, result: "torrent not registered with this tracker");
+        var item = await RecordedSnapshot(hasAnnounced: false, succeeded: false, result: "torrent not registered with this tracker");
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -47,7 +47,7 @@ public sealed class TransmissionTrackerStatusTests
     [Fact]
     public async Task A_timeout_is_not_read_as_unregistered()
     {
-        var item = await Snapshot(hasAnnounced: true, succeeded: false, result: "Connection timed out");
+        var item = await RecordedSnapshot(hasAnnounced: true, succeeded: false, result: "Connection timed out");
 
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
     }
@@ -55,12 +55,12 @@ public sealed class TransmissionTrackerStatusTests
     [Fact]
     public async Task No_trackers_at_all_normalizes_to_unknown()
     {
-        var item = await Snapshot(hasAnnounced: null, succeeded: null, result: null, includeTrackerStats: false);
+        var item = await RecordedSnapshot(hasAnnounced: null, succeeded: null, result: null, includeTrackerStats: false);
 
         Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
     }
 
-    private static async Task<Deluno.Integrations.DownloadClients.DownloadQueueItem> Snapshot(
+    private static async Task<Deluno.Integrations.DownloadClients.DownloadQueueItem> RecordedSnapshot(
         bool? hasAnnounced, bool? succeeded, string? result, bool includeTrackerStats = true)
     {
         // Transmission 4.1.3's recorded list of a download in progress, with its one tracker report as under test (or none).
