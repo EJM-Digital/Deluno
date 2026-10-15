@@ -127,9 +127,8 @@ public sealed class TorznabOnRecordedJackettTests
 
         var raw = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, raw);
-        XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         var item = XDocument.Parse(RecordedReplies.Jackett("search-text").Single.Reply.Body!).Descendants("item").First();
-        string Attr(string name) => item.Elements(torznab + "attr").First(a => (string?)a.Attribute("name") == name).Attribute("value")!.Value;
+        string Attr(string name) => item.Elements().First(a => a.Name.LocalName == "attr" && (string?)a.Attribute("name") == name).Attribute("value")!.Value;
         var candidate = JsonSerializer.Deserialize<JsonElement>(raw).GetProperty("candidates").EnumerateArray()
             .First(c => c.GetProperty("releaseName").GetString() == item.Element("title")!.Value);
         Assert.Equal(long.Parse(item.Element("size")!.Value), candidate.GetProperty("sizeBytes").GetInt64());
