@@ -327,6 +327,53 @@ public sealed class ImportListsOnTheRealHostTests
         Assert.True(queuedAgain <= 1, "the same hour must not queue a second job for the same list");
     }
 
+    [Fact]
+    public async Task Creating_or_changing_a_list_refuses_a_bad_address_a_rating_outside_0_to_10_a_year_outside_1888_to_2100_an_age_of_zero_and_an_interval_outside_1_to_168_hours_and_stores_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var good = new Dictionary<string, object?> { ["name"] = "L", ["provider"] = "rss", ["feedUrl"] = "https://lists.example.test/a.xml", ["mediaType"] = "movies", ["libraryId"] = libraryId, ["searchOnAdd"] = false, ["isEnabled"] = true };
+
+        foreach (var (field, bad, message) in new (string, object, string)[]
+        {
+            ("feedUrl", "not a url", "Use a public HTTP or HTTPS RSS/Atom feed URL."),
+            ("minimumRating", 11.0, "Minimum rating must be between 0 and 10."),
+            ("minimumYear", 1500, "Minimum year must be between 1888 and 2100."),
+            ("maximumAgeDays", 0, "Maximum age in days must be greater than zero when provided."),
+            ("syncIntervalHours", 500, "Sync interval must be between 1 and 168 hours.")
+        })
+        {
+            var body = new Dictionary<string, object?>(good) { [field] = bad };
+            var created = await app.Client.PostAsJsonAsync("/api/intake-sources", body);
+            Assert.Equal(HttpStatusCode.BadRequest, created.StatusCode);
+            Assert.Contains(message, await created.Content.ReadAsStringAsync());
+        }
+
+        Assert.Equal("0", await StoredAsync(app, DelunoDatabaseNames.Platform, "SELECT count(*) FROM intake_sources"));
+        var listId = await CreateListAsync(app, libraryId, "https://lists.example.test/a.xml");
+        var changed = await app.Client.PutAsJsonAsync($"/api/intake-sources/{listId}", new Dictionary<string, object?>(good) { ["minimumRating"] = -1.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, changed.StatusCode);
+        Assert.Contains("Minimum rating must be between 0 and 10.", await changed.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PutAsJsonAsync("/api/intake-sources/no-such-list", good)).StatusCode);
+    }
+
+    [Fact(Skip = "Defect: a list whose feed gives no rating (an RSS feed, a plain list) with a minimum rating skips every entry as 'Below minimum rating' before the looked-up rating is read, although the preview warns that the rating is verified against title metadata during sync. Evidence: IntakeSyncService.PassEntryFilters rejects entry.Rating == null ahead of PassMetadataFilters; a film whose lookup says 7.9 against a minimum of 7.0 is never added.")]
+    public async Task A_list_with_a_minimum_rating_keeps_a_film_whose_looked_up_rating_is_high_enough()
+    {
+        await using var feed = new FeedHolder(Feed(Item("Arrival (2016)"), Item("Gigli (2003)")));
+        var (server, url) = await ServeAsync(() => feed.Body);
+        await using var _ = server;
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(
+            Cards(Card("Arrival", 2016, "329865", 7.9), Card("Gigli", 2003, "11111", 2.4))));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var listId = await CreateListAsync(app, libraryId, url, new { minimumRating = 7.0 });
+
+        var result = await SyncAsync(app, listId);
+
+        Assert.Equal(["Arrival"], await MovieTitlesAsync(app));
+        Assert.Equal(1, result.AddedCount);
+    }
+
     private sealed class FeedHolder(string body) : IAsyncDisposable
     {
         public string Body { get; } = body;

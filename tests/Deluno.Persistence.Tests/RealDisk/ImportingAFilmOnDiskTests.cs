@@ -250,6 +250,27 @@ public sealed class ImportingAFilmOnDiskTests
         Assert.StartsWith(ruleRoot, preview.DestinationPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    // The screen offers more kinds than an import can evaluate: these are read only when a Seerr request is placed, so at import time
+    // they match nothing and the file lands where it would have with no rule at all.
+    [Theory]
+    [InlineData("anime", "true")]
+    [InlineData("certification", "PG-13")]
+    [InlineData("requested4k", "true")]
+    [InlineData("quality", "1080p")]
+    [InlineData("library", "Films")]
+    public async Task A_rule_of_a_kind_only_a_Seerr_request_reads_never_places_an_imported_file(string kind, string ruleValue)
+    {
+        await using var world = await StartWorldAsync(new ScriptedProbe(_ => ScriptedProbe.Good()));
+        var ruleRoot = Path.Combine(world.App.DataRoot, "never-" + kind);
+        await world.CreateRuleAsync("Never " + kind, kind, ruleValue, ruleRoot, priority: 1);
+        var source = world.WriteDownload(Release + ".mkv");
+
+        var preview = await world.PreviewAsync(RealDiskLibrary.Request(source, "Sintel", 2010).Preview with { Genres = ["Animation"], OriginalLanguage = "ja", Tags = ["kids"] });
+
+        Assert.DoesNotContain(ruleRoot, preview.DestinationPath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrEmpty(preview.MatchedRuleName), "a rule of kind " + kind + " matched at import time: " + preview.MatchedRuleName);
+    }
+
     [Fact]
     public async Task A_disabled_rule_is_ignored_and_the_first_enabled_match_by_priority_wins()
     {
