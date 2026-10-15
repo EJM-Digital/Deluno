@@ -1407,10 +1407,10 @@ function BackupCard({
           {backups.slice(0, 4).map((backup) => (
             <div key={backup.id} className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1 p-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{backup.fileName}</p>
+                <p className="break-all text-sm font-medium text-foreground">{backup.fileName}</p>
                 <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {formatWhen(backup.createdUtc, preferences)}</p>
               </div>
-              <Button type="button" variant="ghost" size="sm" asChild>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0" asChild>
                 <SignedApiLink path={`/api/backups/${backup.id}/download`} mode="save" fallbackName={backup.fileName}>Download</SignedApiLink>
               </Button>
             </div>
