@@ -8,6 +8,8 @@ import {
   type ReactNode
 } from "react";
 import { noteRealtimePosition } from "./realtime-position";
+import { RequestFailedError } from "./search-reasons";
+import { readRequiresSetup } from "./bootstrap-status";
 
 export interface UserProfile {
   id: string;
@@ -159,8 +161,40 @@ function redirectToLogin() {
   window.location.replace(target);
 }
 
-function handleUnauthorizedResponse(response: Response): Response {
+let visitorRedirectStarted = false;
+
+/**
+ * A request with no session at all was refused. The router's own guard is sending this person to sign-in, or to setup
+ * on a fresh install, and the page's data loaders run beside it: this full-page jump used to win, cut off the guard's
+ * check of whether setup is needed, and always chose sign-in, which then bounced to setup and lost the return address
+ * (#1339). It now asks the same question, and goes to the same place the guard would.
+ */
+async function redirectVisitor() {
+  if (typeof window === "undefined" || visitorRedirectStarted) {
+    return;
+  }
+
+  visitorRedirectStarted = true;
+  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  let needsSetup = false;
+  try {
+    needsSetup = await readRequiresSetup();
+  } catch {
+    // Not answered: sign-in checks again and says so on screen.
+  }
+
+  visitorRedirectStarted = false;
+  const encoded = encodeURIComponent(returnTo);
+  window.location.replace(needsSetup ? `/setup?return=${encoded}` : returnTo === "/login" ? "/login" : `/login?return=${encoded}`);
+}
+
+function handleUnauthorizedResponse(response: Response, hadSession = true): Response {
   applyRenewedToken(response);
+  if (response.status === 401 && !hadSession) {
+    void redirectVisitor();
+    return response;
+  }
+
   if (response.status === 401) {
     rememberSignOutReason();
     clearStored();
@@ -202,8 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || "Invalid credentials");
+      throw new RequestFailedError(res, "sign-in-refused");
     }
 
     const data = (await res.json()) as LoginPayload;
@@ -218,8 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || "Setup failed.");
+      throw new RequestFailedError(res, "setup-refused");
     }
 
     const data = (await res.json()) as LoginPayload;
@@ -308,7 +340,7 @@ export function authedFetch(
 
   return fetch(url, { ...init, headers }).then((response) => {
     noteRealtimePosition(response);
-    return handleUnauthorizedResponse(response);
+    return handleUnauthorizedResponse(response, Boolean(effectiveToken));
   });
 }
 
