@@ -76,11 +76,7 @@ public sealed class ExternalRedownloadOnDiskTests
     {
         await using var world = await StartWorldAsync();
         var (id, file) = await AFilmInTheLibraryAsync(world);
-        using var block = DeleteBlock.TryApply(file, posixFolder: world.Root);
-        if (block is null)
-        {
-            return; // this account can move anything (for example root in a container), so a move cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(file, posixFolder: world.Root);
 
         var response = await world.App.Client.PostAsJsonAsync("/api/integrations/external/redownload", new { path = file, reason = "test", tool = "Weir" });
         var body = await response.Content.ReadAsStringAsync();

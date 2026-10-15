@@ -98,11 +98,7 @@ public sealed class LibraryFoldersOnDiskTests
     {
         await using var world = await StartWorldAsync();
         var file = Write(Path.Combine(world.Root, "Nosferatu (1922)", "Nosferatu.mkv"));
-        using var block = DeleteBlock.TryApply(file, posixFolder: world.Root);
-        if (block is null)
-        {
-            return; // this account can move anything (for example root in a container), so a move cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(file, posixFolder: world.Root);
 
         var result = await world.Bin.MoveAsync([new TrackedLibraryFile(world.Library.Id, file)], [world.Library], CancellationToken.None);
         block.Dispose();

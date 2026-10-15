@@ -169,8 +169,10 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 {
                     File.Move(subtitlePath, newPath);
                 }
-                catch (IOException)
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
+                    // A locked file (Windows) is an IOException; a folder the account may not write to (Linux, or a
+                    // denied permission on Windows) is an UnauthorizedAccessException. Either way the file stays put.
                     return Results.Problem("The subtitle file could not be renamed.", statusCode: StatusCodes.Status500InternalServerError);
                 }
             }

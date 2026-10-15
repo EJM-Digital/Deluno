@@ -213,11 +213,7 @@ public sealed class TheRecycleBinOnDiskTests
         await Wait.ClockMovesOnAsync();
         var itemC = (await world.Bin.StoreReplacementAsync(world.Library, c, c, CancellationToken.None))!;
         var settings = await world.Bin.GetSettingsAsync(CancellationToken.None);
-        using var block = DeleteBlock.TryApply(itemA.RecyclePath);
-        if (block is null)
-        {
-            return; // this account can delete anything (for example root in a container), so a delete cannot be made to fail
-        }
+        using var block = DeleteBlock.Apply(itemA.RecyclePath);
 
         // Three 1.3 MB items against a 3 MB limit: only the oldest has to go. Its delete fails, and nothing else may go instead.
         await world.Bin.SaveSettingsAsync(settings with { MaxSizeMb = 3 }, CancellationToken.None);
@@ -231,7 +227,13 @@ public sealed class TheRecycleBinOnDiskTests
     }
 }
 
-/// <summary>Makes deleting one real file fail for the account running the test, and undoes it on dispose.</summary>
+/// <summary>
+/// Makes deleting or moving one real file fail for the account running the test, and undoes it on dispose. It never
+/// answers "could not": a test that needs the failure either gets it or fails, so none passes without proving anything.
+/// Windows holds the file open. POSIX takes the folder's write permission away; an account that ignores modes (root)
+/// gets the immutable attribute instead, which even root cannot delete, move into or out of. If neither bites the
+/// test fails and says to run it as an ordinary account.
+/// </summary>
 internal sealed class DeleteBlock : IDisposable
 {
     private Action? _undo;
@@ -240,7 +242,7 @@ internal sealed class DeleteBlock : IDisposable
 
     /// <param name="file">The file to hold open on Windows.</param>
     /// <param name="posixFolder">The folder whose write permission is taken away elsewhere; the file's own folder when left out.</param>
-    public static DeleteBlock? TryApply(string file, string? posixFolder = null)
+    public static DeleteBlock Apply(string file, string? posixFolder = null)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -248,31 +250,75 @@ internal sealed class DeleteBlock : IDisposable
             return new DeleteBlock(held.Dispose);
         }
 
-        return ApplyOnPosix(posixFolder ?? Path.GetDirectoryName(file)!);
-    }
-
-    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static DeleteBlock? ApplyOnPosix(string folder)
-    {
-        var original = File.GetUnixFileMode(folder);
-        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-        try
-        {
-            var probe = Path.Combine(folder, ".probe");
-            File.WriteAllText(probe, "x");
-            File.Delete(probe);
-            File.SetUnixFileMode(folder, original);
-            return null; // still writable: this account ignores the mode
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return new DeleteBlock(() => File.SetUnixFileMode(folder, original));
-        }
+        return new DeleteBlock(PosixLock.TakeAwayWrite(posixFolder ?? Path.GetDirectoryName(file)!));
     }
 
     public void Dispose()
     {
         _undo?.Invoke();
         _undo = null;
+    }
+}
+
+/// <summary>Takes a real folder's write access away from the account running the test on Linux and macOS, root included.</summary>
+internal static class PosixLock
+{
+    /// <returns>The action that puts the folder back.</returns>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public static Action TakeAwayWrite(string folder)
+    {
+        var original = File.GetUnixFileMode(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        if (!CanWriteInto(folder))
+        {
+            return () => File.SetUnixFileMode(folder, original);
+        }
+
+        // The account ignores the mode (root). The immutable attribute is checked against the kernel, not the mode.
+        File.SetUnixFileMode(folder, original);
+        if (SetImmutable(folder, on: true))
+        {
+            if (!CanWriteInto(folder))
+            {
+                return () => SetImmutable(folder, on: false);
+            }
+
+            SetImmutable(folder, on: false);
+        }
+
+        throw new InvalidOperationException(
+            "This account ignores folder permissions and cannot make the folder immutable either, so the failure this test needs cannot be produced here. "
+            + "Run the tests as an ordinary account (as CI does), or as root with the CAP_LINUX_IMMUTABLE capability.");
+    }
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static bool CanWriteInto(string folder)
+    {
+        var probe = Path.Combine(folder, ".probe");
+        try
+        {
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return true;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+    }
+
+    private static bool SetImmutable(string path, bool on)
+    {
+        try
+        {
+            var info = new System.Diagnostics.ProcessStartInfo("chattr", [on ? "+i" : "-i", path]) { RedirectStandardError = true, RedirectStandardOutput = true };
+            using var process = System.Diagnostics.Process.Start(info);
+            process!.WaitForExit();
+            return process.ExitCode == 0;
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
     }
 }
