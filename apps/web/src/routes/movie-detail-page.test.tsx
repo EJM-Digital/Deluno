@@ -735,3 +735,225 @@ describe("opening the film", () => {
     expect(screen.queryByRole("heading", { level: 1, name: "Big Buck Bunny" })).toBeNull();
   });
 });
+
+describe("the release candidates table and its drawer", () => {
+  const RESPONSES = (candidates: unknown[], extra: Record<string, unknown> = {}): Handler => (url) =>
+    url.startsWith("/api/movies/m1/search?mode=preview") ? { body: { outcome: "held", candidates, ...extra } } : undefined;
+
+  const typed = { ...PREFERRED, preferenceEvaluation: { typed: true } };
+
+  async function openDrawerFor(candidate: { releaseName: string }, handlerFor: Handler = RESPONSES([PREFERRED, ELIGIBLE])) {
+    setup(handlerFor);
+    await renderPage();
+    press("Choose a release");
+    fireEvent.click(await screen.findByText(candidate.releaseName));
+    return await screen.findByRole("dialog", { name: candidate.releaseName });
+  }
+
+  it("says how many releases were compared in the note, with the indexers that failed appended", async () => {
+    setup(RESPONSES([PREFERRED, ELIGIBLE], { failures: [{ serviceName: "Broken Indexer", operation: "search", kind: "Timeout", message: "Timed out", summary: "Broken Indexer search failed: Timed out." }] }));
+    await renderPage();
+
+    press("Choose a release");
+
+    const note = await screen.findByRole("status", { name: "Result of the last search" });
+    expect(note).toHaveTextContent("2 releases compared. Choose one below.");
+    expect(note).toHaveTextContent("Broken Indexer search failed: Timed out.");
+  });
+
+  it("says one release in the singular", async () => {
+    setup(RESPONSES([PREFERRED]));
+    await renderPage();
+
+    press("Choose a release");
+
+    expect(await screen.findByRole("status", { name: "Result of the last search" })).toHaveTextContent("1 release compared. Choose one below.");
+  });
+
+  it("offers the protocol filter only when two protocols are present and choosing one narrows the rows", async () => {
+    setup(RESPONSES([PREFERRED, { ...ELIGIBLE, indexerProtocol: "newznab" }]));
+    await renderPage();
+    press("Choose a release");
+    await screen.findByText(PREFERRED.releaseName);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by protocol" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Usenet" }));
+
+    await waitFor(() => expect(screen.queryByText(PREFERRED.releaseName)).toBeNull());
+    expect(screen.getByText(ELIGIBLE.releaseName)).toBeInTheDocument();
+  });
+
+  it("offers no filter menus when the candidates share one protocol and one indexer", async () => {
+    setup(RESPONSES([PREFERRED]));
+    await renderPage();
+    press("Choose a release");
+    await screen.findByText(PREFERRED.releaseName);
+
+    expect(screen.queryByRole("combobox", { name: "Filter by protocol" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Filter by indexer" })).toBeNull();
+  });
+
+  it("opens with the quality, who judged it, the cutoff, the size, the seeders, the bitrate and the release group", async () => {
+    const drawer = await openDrawerFor(typed, RESPONSES([{ ...typed, estimatedBitrateMbps: 8.5, releaseGroup: "GRP" }]));
+
+    expect(within(drawer).getByText("How Deluno evaluated it")).toBeInTheDocument();
+    expect(within(drawer).getByText("Your quality profile")).toBeInTheDocument();
+    expect(within(drawer).getByText("Meets cutoff")).toBeInTheDocument();
+    expect(within(drawer).getByText("Yes")).toBeInTheDocument();
+    expect(within(drawer).getByText("2.0 GB")).toBeInTheDocument();
+    expect(within(drawer).getByText("40")).toBeInTheDocument();
+    expect(within(drawer).getByText("8.5 Mbps")).toBeInTheDocument();
+    expect(within(drawer).getByText("GRP")).toBeInTheDocument();
+  });
+
+  it("says a release judged by the older rules was judged by them", async () => {
+    const drawer = await openDrawerFor(PREFERRED);
+
+    expect(within(drawer).getByText("Your older rules")).toBeInTheDocument();
+  });
+
+  it("headlines a liked release Why Deluno likes it and any other How Deluno reached this, each reason once", async () => {
+    const liked = await openDrawerFor(PREFERRED);
+    expect(within(liked).getByText("Why Deluno likes it")).toBeInTheDocument();
+    expect(within(liked).getAllByText("Best match for this profile")).toHaveLength(1);
+  });
+
+  it("headlines a release Deluno does not like How Deluno reached this", async () => {
+    const drawer = await openDrawerFor({ ...ELIGIBLE, decisionStatus: "rejected" }, RESPONSES([{ ...ELIGIBLE, decisionStatus: "rejected", decisionReasons: ["Smaller than the profile allows."] }]));
+
+    expect(within(drawer).getByText("How Deluno reached this")).toBeInTheDocument();
+    expect(within(drawer).getByText("Smaller than the profile allows.")).toBeInTheDocument();
+  });
+
+  it("lists the risks Deluno found", async () => {
+    const drawer = await openDrawerFor(PREFERRED, RESPONSES([{ ...PREFERRED, riskFlags: ["Looks like a cam copy.", "No one is seeding this release."] }]));
+
+    expect(within(drawer).getByText("Risks")).toBeInTheDocument();
+    expect(within(drawer).getByText("Looks like a cam copy.")).toBeInTheDocument();
+    expect(within(drawer).getByText("No one is seeding this release.")).toBeInTheDocument();
+  });
+
+  it("enables Send to downloads for Deluno's own preferred, cutoff-met pick and offers no Force", async () => {
+    const drawer = await openDrawerFor(PREFERRED);
+
+    expect(within(drawer).getByRole("button", { name: "Send to downloads" })).toBeEnabled();
+    expect(within(drawer).queryByRole("button", { name: "Force" })).toBeNull();
+  });
+
+  it("disables Send to downloads for any other candidate, says why in plain words and opens with Force already expanded", async () => {
+    const drawer = await openDrawerFor(ELIGIBLE);
+
+    expect(within(drawer).getByRole("button", { name: "Send to downloads" })).toBeDisabled();
+    expect(within(drawer).getByText(/Deluno did not pick this release automatically \(.+\)\. Force it below to send anyway\./)).toBeInTheDocument();
+    expect(within(drawer).getByRole("textbox", { name: "Why force this release?" })).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "Force" })).toBeNull();
+  });
+
+  it.each([
+    ["acceptable", {}],
+    ["equivalent", {}],
+    ["held", {}],
+    ["rejected", {}],
+    ["current-better", {}],
+    ["preferred", { meetsCutoff: false }],
+    ["preferred", { qualityDelta: -1 }]
+  ])("a %s candidate (%j) cannot be sent plainly and needs a forced send", async (status, over) => {
+    const candidate = { ...PREFERRED, releaseName: `Variation.${status}.${JSON.stringify(over).length}`, decisionStatus: status, ...over };
+    const drawer = await openDrawerFor(candidate, RESPONSES([candidate]));
+
+    expect(within(drawer).getByRole("button", { name: "Send to downloads" })).toBeDisabled();
+    expect(within(drawer).getByRole("textbox", { name: "Why force this release?" })).toBeInTheDocument();
+  });
+
+  it("a preferred candidate at the cutoff with no downgrade is the only one sent plainly", async () => {
+    const candidate = { ...PREFERRED, qualityDelta: 0 };
+    const drawer = await openDrawerFor(candidate, RESPONSES([candidate]));
+
+    expect(within(drawer).getByRole("button", { name: "Send to downloads" })).toBeEnabled();
+  });
+
+  it("Block this release in the drawer blocks the exact release for this film and closes the drawer", async () => {
+    const drawer = await openDrawerFor(PREFERRED, (url, init) =>
+      RESPONSES([PREFERRED])(url) ?? (url === "/api/blocked-releases" && init?.method === "POST" ? { body: { id: "b1" } } : undefined)
+    );
+
+    fireEvent.click(await within(drawer).findByRole("button", { name: `Block "Big Buck Bunny"` }));
+    fireEvent.click(await screen.findByRole("button", { name: "Block this release" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/blocked-releases" && c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.url === "/api/blocked-releases" && c.method === "POST")!.body).toMatchObject({
+      releaseName: PREFERRED.releaseName,
+      indexerName: "Fixture Indexer",
+      mediaType: "movie",
+      entityId: "m1"
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: PREFERRED.releaseName })).toBeNull());
+  });
+});
+
+describe("the film's Searches card and its drawer", () => {
+  const search = (index: number, over: Record<string, unknown> = {}) => ({
+    id: `s${index}`,
+    movieId: "m1",
+    releaseName: `Some.Release.${index}`,
+    indexerName: "Fixture Indexer",
+    triggerKind: "manual",
+    outcome: "sent",
+    detailsJson: null,
+    createdUtc: new Date(Date.UTC(2026, 9, 1, 12, 0, 0) - index * 60_000).toISOString(),
+    ...over
+  });
+
+  it("lists the latest 12 searches and says Latest 12 of 13", async () => {
+    setup((url) => (url === "/api/movies/search-history" ? { body: Array.from({ length: 13 }, (_, index) => search(index)) } : undefined));
+    await renderPage();
+    openHistoryTab();
+
+    expect(await screen.findByText("Latest 12 of 13")).toBeInTheDocument();
+    expect(screen.getByText("Some.Release.11")).toBeInTheDocument();
+    expect(screen.queryByText("Some.Release.12")).toBeNull();
+  });
+
+  it("a row opens the drawer with the trigger, the source and the release", async () => {
+    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0, { triggerKind: "scheduled" })] } : undefined));
+    await renderPage();
+    openHistoryTab();
+
+    fireEvent.click(await screen.findByText("Some.Release.0"));
+
+    const drawer = await screen.findByRole("dialog", { name: "Some.Release.0" });
+    expect(within(drawer).getByText("Outcome")).toBeInTheDocument();
+    expect(within(drawer).getByText("Trigger")).toBeInTheDocument();
+    expect(within(drawer).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(drawer).getByText("Source")).toBeInTheDocument();
+    expect(within(drawer).getByText("Fixture Indexer")).toBeInTheDocument();
+  });
+
+  it("lists the releases a search considered under Release outcomes", async () => {
+    const details = JSON.stringify({ candidates: [{ releaseName: "Considered.One", quality: "WEB 1080p", decisionStatus: "rejected", preferenceEvaluation: { typed: true } }] });
+    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0, { detailsJson: details })] } : undefined));
+    await renderPage();
+    openHistoryTab();
+
+    fireEvent.click(await screen.findByText("Some.Release.0"));
+
+    const drawer = await screen.findByRole("dialog", { name: "Some.Release.0" });
+    expect(within(drawer).getByText("Release outcomes")).toBeInTheDocument();
+    expect(within(drawer).getByText("Considered.One")).toBeInTheDocument();
+  });
+
+  it("a search with a release offers Block this release in its drawer footer", async () => {
+    setup((url) => (url === "/api/movies/search-history" ? { body: [search(0)] } : undefined));
+    await renderPage();
+    openHistoryTab();
+
+    fireEvent.click(await screen.findByText("Some.Release.0"));
+
+    const drawer = await screen.findByRole("dialog", { name: "Some.Release.0" });
+    expect(await within(drawer).findByRole("button", { name: 'Block "Big Buck Bunny"' })).toBeInTheDocument();
+  });
+
+  function openHistoryTab() {
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+  }
+});
