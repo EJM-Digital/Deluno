@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionSnapshot } from "../../lib/use-attention";
@@ -32,5 +32,23 @@ describe("the phone menu's account line", () => {
     fireEvent.click(screen.getByRole("button", { name: /more/i }));
     expect(screen.getByText("Sam Example")).toBeTruthy();
     expect(screen.queryByText("@sam")).toBeNull();
+  });
+});
+
+describe("signing out from the phone menu's sheet", () => {
+  it("signs out and closes the sheet", async () => {
+    const onLogout = vi.fn();
+    render(
+      <MemoryRouter>
+        <MobileShellNav attention={attention} user={{ displayName: "Sam Example", username: "sam", avatarInitials: "SE" }} onLogout={onLogout} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /more/i }));
+    expect(screen.getByText("Sam Example")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText("Sam Example")).toBeNull());
   });
 });

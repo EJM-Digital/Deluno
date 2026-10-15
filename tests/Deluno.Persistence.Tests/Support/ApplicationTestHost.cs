@@ -73,7 +73,8 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
     /// </param>
     public static async Task<ApplicationTestHost> StartAsync(
         CancellationToken cancellationToken = default,
-        Action<IServiceCollection>? replaceServices = null)
+        Action<IServiceCollection>? replaceServices = null,
+        bool withRateLimiting = false)
     {
         var storage = TestStorage.Create();
 
@@ -82,7 +83,7 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
         // check it. Each host still owns a private copy of the files.
         await MigratedDatabaseTemplate.CopyIntoAsync(storage.DataRoot);
 
-        var host = BuildHost(storage.DataRoot, replaceServices);
+        var host = BuildHost(storage.DataRoot, replaceServices, withRateLimiting);
 
         await host.StartAsync(cancellationToken);
 
@@ -99,12 +100,12 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
     /// </summary>
     internal static async Task MigrateEmptyDataRootAsync(string dataRoot)
     {
-        using var host = BuildHost(dataRoot, replaceServices: null);
+        using var host = BuildHost(dataRoot, replaceServices: null, withRateLimiting: false);
         await host.StartAsync();
         await host.StopAsync();
     }
 
-    private static IHost BuildHost(string dataRoot, Action<IServiceCollection>? replaceServices)
+    private static IHost BuildHost(string dataRoot, Action<IServiceCollection>? replaceServices, bool withRateLimiting)
     {
         return new HostBuilder()
             .ConfigureWebHost(web => web
@@ -117,6 +118,11 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     services.AddDelunoPlatformSecrets(Path.Combine(dataRoot, "secrets", "master.key"));
                     services.AddDelunoApplicationModules();
                     KeepOnlyTheServicesThatBuildTheSchema(services);
+                    // The shared pipeline's own limiters (login: 10 a minute per address), for the tests that prove them.
+                    if (withRateLimiting)
+                    {
+                        services.AddDelunoWebPipeline(context.Configuration);
+                    }
                     replaceServices?.Invoke(services);
                 })
                 .Configure(app =>
@@ -125,6 +131,10 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     // real deployment rather than to the API: static files,
                     // rate limiting, the migration gate and version aliasing.
                     app.UseRouting();
+                    if (withRateLimiting)
+                    {
+                        app.UseRateLimiter();
+                    }
                     app.UseAuthentication();
                     app.UseAuthorization();
                     // The bad-request answers are the shared pipeline's own, so a test sees what a caller sees (#1280).
