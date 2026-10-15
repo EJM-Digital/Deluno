@@ -1416,4 +1416,35 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
                 clock ?? TimeProvider.System,
                 CancellationToken.None);
     }
+
+    // ---- #1155 with the report Weir really sent (tests/fixtures/recorded/deluno/*/events-completed) --------------------------------
+
+    [Fact]
+    public async Task Weirs_recorded_completed_report_for_an_already_imported_download_is_answered_already_handled_its_second_copy_deleted_and_nothing_blocklisted()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene);
+        await RecordDispatchAsync(app, scene, imported: true);
+        var body = RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-completed", 2), scene.LibraryId, handoff.Id, scene.Output, Release);
+        var files = RecordedWeirReports.OutputFilesOf(body);
+        foreach (var file in files)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            await File.WriteAllBytesAsync(file, new byte[2048]);
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-30));
+        }
+
+        var response = await RecordedWeirReports.PostAsync(app.Client, body);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
+        Assert.All(files, file => Assert.False(File.Exists(file), "the processor's second copy is deleted"));
+        Assert.Empty(await app.Services.GetRequiredService<IBlockedReleaseRepository>().ListAsync(CancellationToken.None));
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        Assert.DoesNotContain(jobs, job => job.JobType == "filesystem.import.execute");
+        var activity = await app.Services.GetRequiredService<IActivityFeedRepository>()
+            .ListActivityAsync(20, "processor-handoff", handoff.Id, CancellationToken.None);
+        Assert.Single(activity, item => item.Category == "processing.output.already-imported");
+    }
 }
