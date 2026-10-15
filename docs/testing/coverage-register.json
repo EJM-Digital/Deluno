@@ -103,7 +103,7 @@
       "name": "Golden-path scenarios (ScenarioPlan.ps1)"
     }
   },
-  "gapIncrease": { "from": 5203, "to": 5341, "reason": "the inventory now lists every menu, drawer and dialog component and each named control in it (81 surfaces, 698 controls, issue 1270); the 138 rows that account for the controls no real spec reaches yet are gaps owned by 1270 until their real specs land" },
+  "gapIncrease": { "from": 4703, "to": 4841, "reason": "the inventory now lists every menu, drawer and dialog component and each named control in it (81 surfaces, 698 controls, issue 1270); the 138 rows that account for the controls no real spec reaches yet are gaps owned by 1270 until their real specs land" },
   "rows": [
     {"id":"shell.router-redirects-and-session.login-on-a-configured-install-with-no-session","area":"shell","behaviour":"`/login` on a configured install with no session shows the sign-in page","kind":"screen action","severity":"medium","touches":"install","required":"inproc","proofs":[{"type":"smoke","file":"apps/web/tests/smoke/setup-login.spec.ts","name":"login screen exposes the expected sign-in controls"}],"audit":{"id":"A.1.1","kind":"smoke","real":"Yes-smoke","gap":"N"}},
     {"id":"shell.router-redirects-and-session.login-on-a-fresh-install-bootstrap-status-says","area":"shell","behaviour":"`/login` on a fresh install (bootstrap-status says setup needed) redirects to `/setup`","kind":"screen action","severity":"medium","touches":"install","required":"inproc","proofs":[],"audit":{"id":"A.1.2","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"smoke","test":"Playwright on a fresh host (own host/DB, or a route-stubbed bootstrap-status of true): open /login and assert the URL becomes /setup"},"covers":["web:/login","web:/setup"],"issue":1281},
