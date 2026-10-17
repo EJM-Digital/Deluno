@@ -138,14 +138,10 @@ public sealed class TheApiPagesIntegrationEndpointsAreTrueTests
     [Fact]
     public async Task A_key_holding_only_the_scope_the_page_names_is_let_through_on_every_row_that_names_one_method()
     {
-        var refused = await RefusedAsync(ListedEndpoints().Where(row => !row.Method.Contains('|') && !IsKnownDefect(row)));
+        var refused = await RefusedAsync(ListedEndpoints().Where(row => !row.Method.Contains('|')));
 
         Assert.True(refused.Count == 0, string.Join("; ", refused));
     }
-
-    /// <summary>The rows the page gets wrong; see the skipped test below.</summary>
-    private static bool IsKnownDefect((string Scope, string Method, string Path) row)
-        => row.Method == "GET" && row.Path == "/api/integrations/processors/handoffs";
 
     [Fact]
     public async Task A_key_without_the_scope_a_route_needs_is_refused_there_so_the_scope_on_the_page_is_not_decoration()
@@ -160,10 +156,29 @@ public sealed class TheApiPagesIntegrationEndpointsAreTrueTests
     }
 
     [Fact]
-    public async Task A_key_holding_only_the_scope_the_page_names_is_let_through_for_every_method_of_a_row_of_several_and_on_the_handoffs_list()
+    public async Task A_key_holding_only_the_scope_the_page_names_is_let_through_for_every_method_of_a_row_of_several()
     {
-        var refused = await RefusedAsync(ListedEndpoints().Where(row => row.Method.Contains('|') || IsKnownDefect(row)));
+        var refused = await RefusedAsync(ListedEndpoints().Where(row => row.Method.Contains('|')));
 
         Assert.True(refused.Count == 0, string.Join("; ", refused));
+    }
+
+    [Fact]
+    public void Every_listed_route_names_a_scope_the_sign_in_gate_really_asks_for_on_that_method()
+    {
+        var wrong = new List<string>();
+        foreach (var (scope, method, path) in ListedEndpoints())
+        {
+            foreach (var one in method.Split('|'))
+            {
+                var asked = Deluno.Worker.DelunoRequestPipeline.ResolveApiScopes(new Microsoft.AspNetCore.Http.PathString(path), one);
+                if (!asked.Contains(scope, StringComparer.OrdinalIgnoreCase))
+                {
+                    wrong.Add($"{one} {path} is listed with \"{scope}\" but the gate asks for {string.Join(" or ", asked)}");
+                }
+            }
+        }
+
+        Assert.True(wrong.Count == 0, string.Join("; ", wrong));
     }
 }

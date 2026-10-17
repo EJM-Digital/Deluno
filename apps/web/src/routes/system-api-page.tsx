@@ -234,7 +234,8 @@ export function SystemApiPage() {
                     ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
                     ["write", "POST", "/api/intake-sources/{id}/sync"],
                     ["read", "GET", "/api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=… (maximum 500)"],
-                    ["write", "GET|POST|PUT|DELETE", "/api/notification-webhooks"]
+                    ["read", "GET", "/api/notification-webhooks"],
+                    ["write", "POST|PUT|DELETE", "/api/notification-webhooks"]
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">
                       <span className="font-mono text-(length:--type-caption) font-bold text-primary">{method}</span>
