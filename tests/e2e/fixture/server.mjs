@@ -9,6 +9,10 @@
 //   * the .torrent carries no tracker. It names this server as a web seed (BEP 19, "url-list"), so a download client
 //     given the torrent really downloads every byte of it from /webseed/ over HTTP, with no internet and no second client;
 //   * GET /api?t=caps|search|movie|tvsearch is the Torznab feed;  GET /dl/<name>.torrent is the torrent;
+//   * POST /films with {"usenet": true} makes a Usenet release instead: the film and an .nfo posted as real yEnc articles
+//     (the way a newsgroup carries them) with the .nzb that lists them. GET /newznab/api is the Newznab feed offering them,
+//     GET /dl/<name>.nzb is the .nzb, and an NNTP server on port 1119 (any login) serves the articles, so SABnzbd and NZBGet
+//     download every byte over NNTP with no internet and no account;
 //   * GET /inspect?root=media|downloads|weir&contains=<text> lists the files under a shared folder (read-only), and
 //     GET /probe?root=...&path=... is ffprobe's reading of one, so a spec can say what is on disk, and that it is a video,
 //     without trusting any application's word for it.
@@ -18,6 +22,7 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 
 const PORT = Number(process.env.FIXTURE_PORT || "8765");
@@ -27,8 +32,12 @@ const WORK = process.env.FIXTURE_WORK || "/work";
 const FILM_MB = Number(process.env.FIXTURE_FILM_MB || "24");
 const ROOTS = { media: "/media", downloads: "/downloads", weir: "/weir" };
 const PIECE = 256 * 1024;
+const NNTP_PORT = Number(process.env.FIXTURE_NNTP_PORT || "1119");
+const PART_BYTES = 700 * 1024; // the data in one posted article
+const GROUP = "alt.binaries.e2e";
+const ARTICLES = new Map(); // message-id (no brackets) -> { head, body }
 
-const RELEASES = []; // newest last: title, torrent, infohash, size, cat, seeders
+const RELEASES = []; // newest last: title, torrent (or nzb), infohash, size, cat, seeders, usenet
 
 function log(msg) {
   console.log(new Date().toTimeString().slice(0, 8) + " " + msg);
@@ -150,6 +159,169 @@ async function newFilm(title, year, withExtra) {
   };
 }
 
+// ------------------------------------------------------------------ Usenet: yEnc articles, the .nzb and the NNTP server
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return ((c ^ 0xffffffff) >>> 0).toString(16).padStart(8, "0");
+}
+
+// One article's body: =ybegin, =ypart, the data yEnc-encoded in 128-character lines, =yend (CRLF line ends).
+function yencPart(data, begin, part, total, size, name, wholeCrc, last) {
+  const head = Buffer.from(`=ybegin part=${part} total=${total} line=128 size=${size} name=${name}\r\n=ypart begin=${begin} end=${begin + data.length - 1}\r\n`);
+  const body = Buffer.alloc(data.length * 2 + Math.ceil(data.length / 64) + 16);
+  let at = 0;
+  let col = 0;
+  for (let i = 0; i < data.length; i++) {
+    const o = (data[i] + 42) & 0xff;
+    const critical = o === 0 || o === 10 || o === 13 || o === 61 || (col === 0 && (o === 46 || o === 9 || o === 32));
+    if (critical) {
+      if (col >= 127) { body[at++] = 13; body[at++] = 10; col = 0; }
+      body[at++] = 61; body[at++] = (o + 64) & 0xff; col += 2;
+    } else { body[at++] = o; col++; }
+    if (col >= 128) { body[at++] = 13; body[at++] = 10; col = 0; }
+  }
+  if (col > 0) { body[at++] = 13; body[at++] = 10; }
+  const tail = Buffer.from(`=yend size=${data.length} part=${part} pcrc32=${crc32(data)}${last ? ` crc32=${wholeCrc}` : ""}\r\n`);
+  return Buffer.concat([head, body.subarray(0, at), tail]);
+}
+
+// Posts a file as articles; returns what the .nzb lists for it.
+function postFile(file, postedName, index, count, releaseKey) {
+  const data = fs.readFileSync(file);
+  const total = Math.max(1, Math.ceil(data.length / PART_BYTES));
+  const whole = crc32(data);
+  const segments = [];
+  for (let part = 1; part <= total; part++) {
+    const slice = data.subarray((part - 1) * PART_BYTES, part * PART_BYTES);
+    const body = yencPart(slice, (part - 1) * PART_BYTES + 1, part, total, data.length, postedName, whole, part === total);
+    const id = `e2e.${releaseKey}.${index}.${part}@e2e.test`;
+    const subject = `[${index}/${count}] - "${postedName}" yEnc (${part}/${total}) ${data.length}`;
+    const head = `Message-ID: <${id}>\r\nNewsgroups: ${GROUP}\r\nSubject: ${subject}\r\nFrom: e2e <e2e@e2e.test>\r\nDate: Mon, 01 Jan 2024 00:00:00 +0000\r\n`;
+    ARTICLES.set(id, { head: Buffer.from(head), body });
+    segments.push({ number: part, bytes: body.length, id });
+  }
+  return { name: postedName, size: data.length, total, segments };
+}
+
+const esc = (text) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+function nzbXml(name, files) {
+  const lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">',
+    '<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">', `  <head><meta type="name">${esc(name)}</meta></head>`];
+  files.forEach((f, i) => {
+    const subject = `[${i + 1}/${files.length}] - "${f.name}" yEnc (1/${f.total}) ${f.size}`;
+    lines.push(`  <file poster="e2e &lt;e2e@e2e.test&gt;" date="1704067200" subject="${esc(subject)}">`,
+      `    <groups><group>${GROUP}</group></groups>`, "    <segments>");
+    for (const s of f.segments) lines.push(`      <segment bytes="${s.bytes}" number="${s.number}">${s.id}</segment>`);
+    lines.push("    </segments>", "  </file>");
+  });
+  lines.push("</nzb>");
+  return lines.join("\n");
+}
+
+// A Usenet release: a folder job (the film and a small .nfo beside it, as a real post carries them) and its .nzb.
+async function newUsenetFilm(title, year) {
+  const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
+  if (RELEASES.some((r) => r.title === release)) throw new Error("a release of that name already exists");
+  const [baseFilm] = await makeBaseVideos();
+  const folder = path.join(WORK, "nzb-films", release);
+  fs.mkdirSync(folder, { recursive: true });
+  const film = path.join(folder, `${release}.mkv`);
+  await ffmpeg(["-i", baseFilm, "-c", "copy", "-metadata", `title=${release}`, film]);
+  const nfo = path.join(folder, `${release}.nfo`);
+  // Plain sentences: a line ending in eight hex digits reads as an SFV checksum line to SABnzbd.
+  fs.writeFileSync(nfo, Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of the note that travels beside the film in this release.`).join("\n") + "\n");
+  const key = sha1(Buffer.from(release)).toString("hex").slice(0, 10);
+  const files = [postFile(film, `${release}.mkv`, 1, 2, key), postFile(nfo, `${release}.nfo`, 2, 2, key)];
+  fs.mkdirSync(path.join(WORK, "nzbs"), { recursive: true });
+  const name = `${release}.nzb`;
+  fs.writeFileSync(path.join(WORK, "nzbs", name), nzbXml(release, files));
+  const size = files.reduce((sum, f) => sum + f.size, 0);
+  RELEASES.push({ title: release, torrent: name, infohash: key, size, cat: 2000, seeders: 0, usenet: true });
+  log(`made ${release}: ${size} bytes, ${files.length} files, ${files.reduce((n, f) => n + f.total, 0)} articles`);
+  return { title, year, release, protocol: "usenet", infohash: key, size, url: `${PUBLIC_BASE}/dl/${name}`, files: files.map((f) => ({ path: f.name, size: f.size })) };
+}
+
+// A news server for those articles. It speaks what a downloader needs and accepts any login.
+const nntp = net.createServer((socket) => {
+  socket.setNoDelay(true);
+  log(`news: ${socket.remoteAddress} connected`);
+  socket.on("error", () => {});
+  socket.write("200 E2E news server ready (no posting)\r\n");
+  let pending = "";
+  socket.on("data", (chunk) => {
+    pending += chunk.toString("latin1");
+    let at;
+    while ((at = pending.indexOf("\n")) >= 0) {
+      const line = pending.slice(0, at).replace(/\r$/, "");
+      pending = pending.slice(at + 1);
+      nntpCommand(socket, line.trim());
+    }
+  });
+});
+
+// Lines that start with "." are doubled; the text always ends with CRLF.
+function dotStuffed(buf) {
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] === 10) {
+      if (buf[start] === 46) parts.push(Buffer.from("."));
+      parts.push(buf.subarray(start, i + 1));
+      start = i + 1;
+    }
+  }
+  if (start < buf.length) {
+    if (buf[start] === 46) parts.push(Buffer.from("."));
+    parts.push(buf.subarray(start), Buffer.from("\r\n"));
+  }
+  return Buffer.concat(parts);
+}
+
+function nntpCommand(socket, line) {
+  if (!line) return;
+  log(`news: ${line.replace(/(AUTHINFO PASS).*/i, "$1 ...")}`);
+  const [verb, ...rest] = line.split(" ");
+  const arg = rest.join(" ");
+  const command = verb.toUpperCase();
+  switch (command) {
+    case "QUIT": socket.end("205 Goodbye\r\n"); return;
+    case "CAPABILITIES": socket.write("101 Capability list:\r\nVERSION 2\r\nREADER\r\nAUTHINFO USER\r\nIMPLEMENTATION E2E\r\n.\r\n"); return;
+    case "MODE": socket.write("200 Reader mode, posting prohibited\r\n"); return;
+    case "AUTHINFO": socket.write(/^USER/i.test(arg) ? "381 Password required\r\n" : "281 Authentication accepted\r\n"); return;
+    case "GROUP": socket.write(`211 1000 1 1000 ${arg || GROUP}\r\n`); return;
+    case "DATE": socket.write(`111 ${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}\r\n`); return;
+    case "STAT": case "ARTICLE": case "HEAD": case "BODY": {
+      const id = arg.replace(/^</, "").replace(/>$/, "");
+      const article = ARTICLES.get(id);
+      if (!article) { socket.write("430 No such article\r\n"); return; }
+      if (command === "STAT") { socket.write(`223 0 <${id}>\r\n`); return; }
+      const parts = [Buffer.from(`${{ ARTICLE: "220", HEAD: "221", BODY: "222" }[command]} 0 <${id}>\r\n`)];
+      if (command !== "BODY") parts.push(dotStuffed(article.head));
+      if (command === "ARTICLE") parts.push(Buffer.from("\r\n"));
+      if (command !== "HEAD") parts.push(dotStuffed(article.body));
+      parts.push(Buffer.from(".\r\n"));
+      const out = Buffer.concat(parts);
+      socket.write(out, () => log(`news: sent ${command} <${id}> (${out.length} bytes)`));
+      return;
+    }
+    default: socket.write("500 Command not recognised\r\n");
+  }
+}
+
 // ------------------------------------------------------------------ the feed
 
 const CAPS = '<?xml version="1.0" encoding="UTF-8"?><caps><server version="1.0" title="E2E feed" />' +
@@ -159,16 +331,24 @@ const CAPS = '<?xml version="1.0" encoding="UTF-8"?><caps><server version="1.0" 
   '<categories><category id="2000" name="Movies"><subcat id="2040" name="Movies/HD"/><subcat id="2045" name="Movies/UHD"/></category>' +
   '<category id="5000" name="TV"><subcat id="5040" name="TV/HD"/><subcat id="5045" name="TV/UHD"/></category></categories></caps>';
 
-const esc = (text) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
-function searchXml(query) {
+function searchXml(query, usenet) {
   const words = (query.get("q") || "").toLowerCase().split(/[ .\-_()]/).filter((w) => w.length >= 3);
   const kind = (query.get("t") || "").toLowerCase();
   const items = [];
   for (const row of [...RELEASES]) {
     if (kind === "tvsearch" || kind === "tv") continue;
+    if (Boolean(row.usenet) !== usenet) continue;
     if (words.length && !words.some((w) => row.title.toLowerCase().includes(w))) continue;
     const url = `${PUBLIC_BASE}/dl/${row.torrent}`;
+    if (usenet) {
+      items.push(
+        `<item><title>${esc(row.title)}</title><guid isPermaLink="false">${row.infohash}</guid><link>${url}</link>` +
+        `<pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate><size>${row.size}</size>` +
+        `<enclosure url="${url}" length="${row.size}" type="application/x-nzb"/>` +
+        `<newznab:attr name="category" value="${row.cat}"/><newznab:attr name="size" value="${row.size}"/></item>`);
+      continue;
+    }
     items.push(
       `<item><title>${esc(row.title)}</title><guid isPermaLink="false">${row.infohash}</guid><link>${url}</link>` +
       `<pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate><size>${row.size}</size>` +
@@ -178,7 +358,7 @@ function searchXml(query) {
       `<torznab:attr name="size" value="${row.size}"/></item>`);
   }
   return '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" ' +
-    'xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><title>E2E feed</title><description>local</description>' +
+    'xmlns:torznab="http://torznab.com/schemas/2015/feed" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><title>E2E feed</title><description>local</description>' +
     `<link>${PUBLIC_BASE}/</link><torznab:response offset="0" total="${items.length}"/>` + items.join("") + "</channel></rss>";
 }
 
@@ -230,13 +410,15 @@ async function handleGet(req, res, url) {
   const route = decodeURIComponent(url.pathname);
   const query = url.searchParams;
   if (route === "/health") return sendBytes(req, res, 200, "ok", "text/plain");
-  if (route === "/api") {
+  if (route === "/api" || route === "/newznab/api") {
     const kind = (query.get("t") || "").toLowerCase();
-    return sendBytes(req, res, 200, kind === "caps" ? CAPS : searchXml(query));
+    return sendBytes(req, res, 200, kind === "caps" ? CAPS : searchXml(query, route === "/newznab/api"));
   }
   if (route.startsWith("/dl/")) {
     const target = path.join(WORK, "torrents", path.basename(route));
     if (fs.existsSync(target)) return sendBytes(req, res, 200, fs.readFileSync(target), "application/x-bittorrent");
+    const nzb = path.join(WORK, "nzbs", path.basename(route));
+    if (route.endsWith(".nzb") && fs.existsSync(nzb)) return sendBytes(req, res, 200, fs.readFileSync(nzb), "application/x-nzb");
     return sendBytes(req, res, 404, "no", "text/plain");
   }
   if (route.startsWith("/webseed/")) {
@@ -282,6 +464,7 @@ async function handlePost(req, res, url) {
     const raw = Buffer.concat(chunks).toString("utf8");
     const body = raw.trim() ? JSON.parse(raw) : {};
     if (url.pathname === "/films") {
+      if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10))), "application/json");
       const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra));
       return sendBytes(req, res, 200, JSON.stringify(made), "application/json");
     }
@@ -306,3 +489,5 @@ fs.mkdirSync(WORK, { recursive: true });
 await makeBaseVideos();
 log(`base film ready; serving on ${PORT}, web seed ${PUBLIC_BASE}/webseed/`);
 server.listen(PORT, "0.0.0.0");
+nntp.listen(NNTP_PORT, "0.0.0.0");
+log(`news server on ${NNTP_PORT}`);
